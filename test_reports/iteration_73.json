@@ -1,0 +1,118 @@
+{
+  "summary": "Iteration 73 - School Settings CRUD operations testing. Fixed critical bug: POST /school/constraints was inserting into admin_constraints instead of school_constraints. All backend tests pass (14/14). Frontend UI verified working.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [],
+    "fixed_in_this_iteration": [
+      {
+        "endpoint": "POST /school/constraints",
+        "issue": "Was inserting into admin_constraints collection instead of school_constraints",
+        "fix": "Changed db.admin_constraints.insert_one to db.school_constraints.insert_one in server.py line 3203",
+        "status": "FIXED"
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_results": {
+    "backend": {
+      "total": 14,
+      "passed": 14,
+      "failed": 0,
+      "tests": [
+        "test_get_school_subjects - PASSED",
+        "test_create_subject - PASSED",
+        "test_update_subject - PASSED (no longer returns 'المادة غير موجودة')",
+        "test_delete_subject - PASSED",
+        "test_get_school_constraints - PASSED",
+        "test_create_constraint - PASSED",
+        "test_update_constraint - PASSED (no longer returns 'القيد غير موجود')",
+        "test_delete_constraint - PASSED (after fix)",
+        "test_get_school_settings - PASSED",
+        "test_update_time_slots - PASSED",
+        "test_get_grades_options - PASSED (returns grades with name_ar)",
+        "test_get_class_types_options - PASSED",
+        "test_get_teachers_options - PASSED",
+        "test_import_export_endpoint_exists - PASSED"
+      ]
+    },
+    "frontend": {
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "tests": [
+        "Login as principal - PASSED",
+        "School Settings page loads with 9 tabs - PASSED",
+        "Subjects tab shows subjects with edit/delete on hover - PASSED",
+        "Constraints tab shows 10 constraints with toggle buttons - PASSED",
+        "Time tab shows reset button and inline edit capability - PASSED",
+        "Users Management page shows Import/Export button in action row - PASSED",
+        "Create Class Wizard Grade dropdown shows Arabic names - PASSED",
+        "Schedule page shows schedule grid with class selector - PASSED"
+      ]
+    }
+  },
+  "features_verified": {
+    "school_settings_subjects_crud": {
+      "status": "WORKING",
+      "details": "GET, POST, PUT, DELETE all working correctly"
+    },
+    "school_settings_constraints_crud": {
+      "status": "WORKING",
+      "details": "GET, POST, PUT, DELETE all working correctly after fix"
+    },
+    "time_tab_inline_edit": {
+      "status": "WORKING",
+      "details": "Shows reset button and inline edit capability"
+    },
+    "import_export_button_location": {
+      "status": "WORKING",
+      "details": "Button is in action buttons row, not in tabs"
+    },
+    "create_class_wizard_grade_dropdown": {
+      "status": "WORKING",
+      "details": "Shows grades with Arabic names (الصف الأول, الصف الثاني, etc.)"
+    },
+    "schedule_page_grid": {
+      "status": "WORKING",
+      "details": "Shows schedule grid with class selector after page load"
+    }
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration_73.py",
+    "/app/test_reports/pytest/pytest_iteration_73.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "The POST /school/constraints endpoint was inserting into wrong collection (admin_constraints vs school_constraints) - FIXED"
+  ],
+  "updated_files": [
+    "/app/backend/server.py - Fixed POST /school/constraints to insert into school_constraints collection"
+  ],
+  "success_rate": {
+    "backend": "100%",
+    "frontend": "100%"
+  },
+  "test_credentials": {
+    "principal": "principal1@nassaq.com / Principal@123"
+  },
+  "seed_data_creation": "Created test subjects and constraints with TEST_ prefix for testing",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "All School Settings CRUD operations are working. The fix applied was changing db.admin_constraints.insert_one to db.school_constraints.insert_one in the POST /school/constraints endpoint. Frontend UI is working correctly with edit/delete buttons appearing on hover for subjects and constraints.",
+  "rca_of_the_issue": {
+    "root_cause": "POST /school/constraints endpoint was inserting into admin_constraints collection while GET/PUT/DELETE were querying school_constraints collection",
+    "reproduction_steps": [
+      "1. Login as principal",
+      "2. Go to School Settings > Constraints tab",
+      "3. Create a new constraint",
+      "4. Try to delete the newly created constraint",
+      "5. Error: 'القيد غير موجود' (Constraint not found)"
+    ],
+    "fix_applied": "Changed line 3203 in server.py from 'await db.admin_constraints.insert_one(constraint_doc)' to 'await db.school_constraints.insert_one(constraint_doc)'",
+    "verification": "After fix, create and delete constraint operations work correctly"
+  }
+}

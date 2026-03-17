@@ -1,0 +1,629 @@
+فيما يلي **Prompt شامل ومفصل جدًا** يمكنك إرساله إلى **AI Vibe Coding Agent** قبل إطلاق التطبيق، بهدف تنفيذ **Pre-Launch Audit / Production Readiness Review** والتأكد أن النظام جاهز للتحول من **مرحلة التطوير** إلى **مرحلة التشغيل الفعلي (Production)**.
+
+---
+
+# Prompt — Full Pre-Launch Audit & Production Readiness for NASSAQ
+
+# مراجعة ما قبل الإطلاق والتحويل إلى بيئة التشغيل
+
+أريد منك تنفيذ **مراجعة شاملة وكاملة للنظام بالكامل** قبل إطلاق التطبيق رسميًا، للتأكد من أن كل شيء يعمل بشكل صحيح وآمن ومستقر، وأن التطبيق جاهز للانتقال من:
+
+**Development Mode**
+إلى
+**Production Mode**
+
+الهدف من هذه المهمة ليس فقط إصلاح Bugs ظاهرة، بل تنفيذ **Production Readiness Audit** كاملة تشمل:
+
+* الكود
+* قاعدة البيانات
+* الأمان
+* الصلاحيات
+* الواجهات
+* الأداء
+* الـ APIs
+* الـ Workflows
+* الـ AI modules
+* الـ Logging
+* الـ Error handling
+* الـ Deployment readiness
+
+أريدك أن تتعامل مع هذه المهمة كأنك **CTO + Senior QA + Security Engineer + Production Architect** في نفس الوقت.
+
+---
+
+# 1) المطلوب أولًا: مراجعة شاملة قبل أي تعديل
+
+قبل تنفيذ أي تعديل، أريد منك أن تقوم بعمل **System-Wide Audit** للنظام بالكامل وتقديم صورة واضحة عن:
+
+1. ما الذي يعمل بشكل صحيح
+2. ما الذي يعمل جزئيًا
+3. ما الذي لا يزال في وضع Development أو Placeholder
+4. ما الذي يمثل خطرًا على الإطلاق
+5. ما الذي يجب إصلاحه قبل Production بشكل إلزامي
+6. ما الذي يمكن تأجيله لما بعد الإطلاق
+
+---
+
+# 2) نطاق المراجعة
+
+يجب أن تشمل المراجعة جميع أجزاء النظام بدون استثناء، بما في ذلك:
+
+## 2.1 Frontend
+
+* جميع الصفحات
+* جميع الـ components
+* جميع الـ forms
+* جميع الـ modals
+* جميع الرسائل والتنبيهات
+* RTL / LTR
+* Responsive behavior
+* Mobile / Tablet / Desktop
+
+## 2.2 Backend
+
+* جميع الـ APIs
+* جميع الـ services
+* جميع الـ engines
+* validation
+* permission checks
+* business logic
+* background logic إن وجد
+
+## 2.3 Database
+
+* collections / tables
+* indexes
+* unique constraints
+* foreign/reference integrity
+* lookup tables
+* seed data
+* null safety
+* default values
+
+## 2.4 Security
+
+* authentication
+* authorization
+* session handling
+* password handling
+* role protection
+* API access protection
+* sensitive data exposure
+* file upload security
+* rate limiting
+* production secrets handling
+
+## 2.5 AI & Smart Engines
+
+* Hakim AI integrations
+* timetable engine
+* attendance logic
+* reports & analytics logic
+* AI suggestions
+* AI prompts / context mapping
+* fail-safe behavior if AI fails
+
+## 2.6 Workflows
+
+* create / edit / delete
+* login / logout
+* schedule generation / publish
+* teacher session flow
+* user creation flows
+* import/export
+* notifications
+* reporting
+* parent-student linking
+* student/teacher/parent account management
+
+---
+
+# 3) المخرجات المطلوبة أولًا قبل الإصلاح
+
+أريد منك أن تبدأ بإخراج **Pre-Launch Assessment Report** مفصل يحتوي على الأقسام التالية:
+
+## A. Overall Readiness Status
+
+تقييم عام للنظام مثل:
+
+* Ready for Production
+* Needs Critical Fixes Before Launch
+* Partially Ready
+* Not Ready
+
+## B. Critical Issues
+
+كل المشاكل الحرجة التي تمنع الإطلاق
+
+## C. High Priority Issues
+
+المشاكل المهمة التي يجب إصلاحها قبل الإطلاق
+
+## D. Medium / Low Priority Issues
+
+المشاكل التي يمكن جدولتها لما بعد الإطلاق إذا لزم الأمر
+
+## E. Security Risks
+
+كل المخاطر الأمنية المحتملة
+
+## F. Stability Risks
+
+أي أجزاء قد تسبب Crash أو Failure أو inconsistency
+
+## G. Placeholder / Dummy / Dev-only Logic
+
+أي جزء لا يزال يعتمد على:
+
+* mock data
+* Math.random()
+* hardcoded values
+* development shortcuts
+* incomplete state logic
+* debug code
+* test-only flows
+
+## H. Production Readiness Checklist
+
+Checklist واضحة تبين:
+
+* Done
+* Missing
+* Needs Fix
+
+---
+
+# 4) قواعد العمل أثناء الإصلاح
+
+بعد التقرير، أريد منك تنفيذ الإصلاحات اللازمة للوصول إلى **Production Readiness** وفق القواعد التالية:
+
+## 4.1 لا تكسر أي جزء يعمل
+
+أي تعديل يجب أن يكون آمنًا ولا يؤدي إلى كسر أجزاء مستقرة من النظام.
+
+## 4.2 لا تترك أي placeholder logic
+
+أي placeholder أو dummy data أو test data يجب إزالته أو استبداله بربط حقيقي بقاعدة البيانات.
+
+## 4.3 لا تعتمد على assumptions
+
+لا تفترض أن role معين أو field معين موجود بدون التحقق من قاعدة البيانات الفعلية.
+
+## 4.4 لا تترك أي flow ناقص
+
+أي رحلة مستخدم يجب أن تكون كاملة end-to-end.
+
+## 4.5 لا يوجد silent failure
+
+أي فشل يجب أن يكون:
+
+* logged
+* handled
+* visible with proper message if relevant
+
+---
+
+# 5) مراجعة الأمان — Security Audit
+
+أريد منك تنفيذ **Security Review** كاملة للنظام، وتشمل على الأقل:
+
+## 5.1 Authentication
+
+* التأكد من أن تسجيل الدخول آمن
+* منع bypass
+* التأكد من إدارة الجلسات بشكل صحيح
+* التأكد من انتهاء الجلسات عند الحاجة
+
+## 5.2 Authorization
+
+* التحقق من أن كل role يرى فقط ما يحق له رؤيته
+* منع أي access غير مصرح به
+* التأكد من school scope isolation
+* principal sees only school data
+* teacher sees only allowed data
+* parent sees only linked children
+
+## 5.3 Password Security
+
+* التأكد من hashing الصحيح
+* عدم تخزين كلمات المرور بشكل غير آمن
+* تأكيد reset/change password flows
+* منع كشف كلمات المرور في logs أو responses
+
+## 5.4 Input Validation
+
+* sanitize inputs
+* validate forms
+* validate API payloads
+* prevent malformed submissions
+
+## 5.5 File Upload Security
+
+* validate file type
+* validate file size
+* prevent unsafe executable uploads
+* safe storage paths
+
+## 5.6 Secrets & Configuration
+
+* no hardcoded secrets
+* proper environment variables
+* separate dev/prod configs
+
+## 5.7 Error Exposure
+
+* لا تظهر stack traces أو internal errors للمستخدم النهائي
+* production-safe error messages only
+
+## 5.8 Rate Limiting / Abuse Protection
+
+* login attempts
+* sensitive endpoints
+* brute force protection إن أمكن
+
+---
+
+# 6) مراجعة قاعدة البيانات — Database Readiness
+
+أريد منك التأكد من أن قاعدة البيانات جاهزة للتشغيل الفعلي، وتشمل:
+
+## 6.1 Data Integrity
+
+* required fields
+* null safety
+* default values
+* schema consistency
+
+## 6.2 Indexes
+
+إضافة indexes اللازمة لتحسين الأداء خصوصًا في:
+
+* users
+* schedules
+* attendance
+* reports
+* notifications
+* relationships
+
+## 6.3 Unique Constraints
+
+تأكيد القيود الفريدة مثل:
+
+* teacher + subject assignment uniqueness
+* class + day + period uniqueness
+* teacher + day + period uniqueness
+* unique emails / usernames where required
+
+## 6.4 Lookup Data
+
+التأكد من أن:
+
+* dropdown data موجودة
+* fallback values موجودة
+* الإعدادات الافتراضية سليمة
+
+## 6.5 Migration Safety
+
+إذا كانت هناك تعديلات schema، أريد تنفيذها بأمان وبدون كسر البيانات الحالية.
+
+---
+
+# 7) مراجعة الأداء — Performance Readiness
+
+أريد منك تنفيذ **Performance Audit** للنظام للتأكد من أنه مناسب للتشغيل الفعلي.
+
+يشمل ذلك:
+
+## 7.1 Frontend Performance
+
+* تقليل الـ unnecessary renders
+* تحسين loading states
+* تحسين navigation
+* تقليل blocking UI patterns
+
+## 7.2 Backend Performance
+
+* مراجعة endpoints الثقيلة
+* منع queries غير فعالة
+* تحسين aggregation logic
+* caching where appropriate if needed
+
+## 7.3 Database Query Optimization
+
+* تحسين الاستعلامات
+* تقليل query duplication
+* منع N+1 style fetching إن وجد
+
+## 7.4 Large Data Readiness
+
+التأكد أن النظام يتعامل بشكل جيد مع:
+
+* عدد كبير من الطلاب
+* عدد كبير من المعلمين
+* عدد كبير من الحصص
+* عدد كبير من الإشعارات والتقارير
+
+---
+
+# 8) مراجعة الواجهات وتجربة الاستخدام — UX/UI Readiness
+
+أريد منك مراجعة شاملة للواجهات قبل الإطلاق للتأكد من أن النظام يبدو جاهزًا للاستخدام الفعلي.
+
+يشمل ذلك:
+
+## 8.1 Visual Consistency
+
+* توحيد الألوان
+* توحيد spacing
+* توحيد buttons
+* توحيد cards
+* توحيد modals
+* consistent typography
+
+## 8.2 System Messages
+
+* success messages
+* warning messages
+* error messages
+* confirmation dialogs
+
+كلها يجب أن تكون:
+
+* واضحة
+* مفهومة
+* متناسقة بصريًا
+* مناسبة للنظام
+
+## 8.3 Empty States
+
+أي صفحة بدون بيانات يجب أن تعرض empty state احترافي.
+
+## 8.4 Loading States
+
+أي عملية تحتاج وقتًا يجب أن تعرض loading state محترم.
+
+## 8.5 Accessibility
+
+* text readable
+* contrast acceptable
+* no intrusive animations
+* Reduced Motion awareness where relevant
+
+---
+
+# 9) مراجعة المحركات الأساسية — Core Engines Validation
+
+أريد منك مراجعة واختبار جميع المحركات الرئيسية والتأكد أنها تعمل في بيئة التشغيل:
+
+## 9.1 User Identity Engine
+
+## 9.2 Role & Permission Engine
+
+## 9.3 User Relationship Graph Engine
+
+## 9.4 Student Enrollment Engine
+
+## 9.5 Guardian Linking Engine
+
+## 9.6 Teacher Assignment Engine
+
+## 9.7 Scheduling Engine
+
+## 9.8 Attendance Engine
+
+## 9.9 Assessment Engine
+
+## 9.10 Behaviour Engine
+
+## 9.11 Reporting Engine
+
+## 9.12 Notification Engine
+
+## 9.13 Communication Engine
+
+## 9.14 Hakim AI Engine
+
+## 9.15 Audit Log Engine
+
+لكل محرك أريد التأكد من:
+
+* هل يعمل؟
+* هل هو متصل بقاعدة البيانات؟
+* هل الـ APIs الخاصة به سليمة؟
+* هل به أي logic gaps؟
+* هل ينتج بيانات صحيحة؟
+
+---
+
+# 10) مراجعة الرحلات الأساسية — End-to-End Workflow Validation
+
+أريد منك اختبار الرحلات الحرجة end-to-end بالكامل مثل:
+
+## 10.1 تسجيل الدخول لكل Role
+
+* platform admin
+* principal
+* teacher
+* parent
+* student
+
+## 10.2 إنشاء مستخدم جديد
+
+* student
+* teacher
+* parent
+* class
+
+## 10.3 ربط الطالب بولي الأمر
+
+## 10.4 إسناد المواد للمعلمين
+
+## 10.5 إنشاء الجدول
+
+## 10.6 نشر الجدول
+
+## 10.7 بدء الحصة وإدارتها وإنهاؤها
+
+## 10.8 تسليم واجب من الطالب
+
+## 10.9 إرسال رسالة / إشعار
+
+## 10.10 عرض التقارير
+
+## 10.11 تغيير كلمة المرور
+
+## 10.12 تعليق / تفعيل الحسابات
+
+لكل flow أريد التأكد من:
+
+* frontend works
+* backend works
+* DB updates correctly
+* permissions correct
+* UI updates correctly
+
+---
+
+# 11) مراجعة Hakim AI قبل الإطلاق
+
+بما أن **حكيم** عنصر مهم في النظام، أريد منك التأكد من:
+
+* ظهوره بشكل ثابت وواضح
+* عدم إزعاجه للمستخدم
+* عمل الرسائل السياقية بشكل سليم
+* عدم تعارضه مع modals أو forms
+* عمل الاقتراحات الذكية
+* fallback behavior إذا فشل AI
+* عدم وجود prompts broken or empty
+* عدم ظهور placeholder AI messages
+
+---
+
+# 12) التعامل مع الأخطاء — Error Handling & Recovery
+
+أريد منك التأكد من أن كل جزء في النظام لديه:
+
+* graceful failure handling
+* proper alerts
+* retry-safe behavior when needed
+* no broken UI state after failure
+* no hidden crashes
+
+---
+
+# 13) السجلات والتتبع — Logging & Audit
+
+قبل الإطلاق أريد التأكد من أن النظام يسجل بشكل صحيح:
+
+* logins
+* account edits
+* password changes
+* assignments
+* timetable publish
+* attendance approvals
+* behaviour changes
+* critical admin actions
+
+ويجب أن يكون هناك:
+
+* application logs
+* audit logs
+* meaningful error logs
+
+---
+
+# 14) جاهزية الإطلاق — Deployment Readiness
+
+أريد منك التأكد من:
+
+## 14.1 Environment Readiness
+
+* production env variables configured
+* no dev-only config left
+* no test routes exposed
+* no debug banners or console leftovers
+
+## 14.2 Build Readiness
+
+* production build succeeds
+* no build warnings that could affect runtime
+* no peer dependency risks
+* no missing packages
+
+## 14.3 Runtime Readiness
+
+* startup works
+* DB connections stable
+* APIs reachable
+* frontend routes stable
+
+---
+
+# 15) المطلوب بعد الإصلاح — Final Production Readiness Report
+
+بعد الانتهاء، أريد منك إرسال **Final Launch Readiness Report** يحتوي على:
+
+## A. What was audited
+
+## B. What was fixed
+
+## C. What remains and why
+
+## D. Security fixes applied
+
+## E. Database changes applied
+
+## F. Performance improvements applied
+
+## G. Production blockers resolved
+
+## H. Final recommendation:
+
+* Ready to Launch
+* Ready with Minor Post-Launch Items
+* Not Ready
+
+---
+
+# 16) قاعدة مهمة جدًا
+
+لا أريد فقط “التأكد أن التطبيق يعمل”، بل أريد **التأكد أن التطبيق جاهز فعليًا للاستخدام الحقيقي من المستخدمين**.
+
+هذا يعني:
+
+* لا dummy data
+* لا placeholder UI
+* لا broken actions
+* لا dev-only behavior
+* لا security gaps معروفة
+* لا inconsistent permissions
+* لا contradictory statuses
+* لا incomplete user journeys
+
+---
+
+# 17) الهدف النهائي
+
+أريد تحويل التطبيق من:
+
+**Prototype / Development State**
+
+إلى:
+
+**Stable, Secure, Production-Ready Operating System**
+
+بحيث يكون جاهزًا للإطلاق أمام المستخدمين الحقيقيين بثقة.
+
+ابدأ أولًا بـ:
+
+1. تنفيذ **Full Pre-Launch Audit**
+2. ثم إصلاح كل ما هو Critical / High Priority
+3. ثم إرسال تقرير نهائي يحدد هل النظام جاهز للإطلاق أم لا
+
+---
+
+إذا أردت، أستطيع أيضًا أن أكتب لك **نسخة ثانية أكثر صرامة وتقنية جدًا** بعنوان:
+
+**Production Launch Governance Prompt**
+
+تكون أقرب إلى تعليمات CTO رسمية للـ Agent قبل الإطلاق.

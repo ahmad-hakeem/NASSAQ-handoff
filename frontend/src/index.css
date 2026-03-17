@@ -1,0 +1,299 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800&family=Tajawal:wght@300;400;500;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    :root {
+        /* NASSAQ Brand Colors - New Palette */
+        --brand-navy: 217 61% 28%;
+        --brand-turquoise: 179 49% 51%;
+        --brand-purple: 255 29% 44%;
+        
+        /* Light Mode */
+        --background: 210 20% 98%;
+        --foreground: 217 61% 28%;
+        --card: 0 0% 100%;
+        --card-foreground: 217 61% 28%;
+        --popover: 0 0% 100%;
+        --popover-foreground: 217 61% 28%;
+        --primary: 217 61% 28%;
+        --primary-foreground: 0 0% 100%;
+        --secondary: 179 49% 51%;
+        --secondary-foreground: 0 0% 100%;
+        --muted: 210 14% 93%;
+        --muted-foreground: 217 25% 45%;
+        --accent: 255 29% 44%;
+        --accent-foreground: 0 0% 100%;
+        --destructive: 0 84% 60%;
+        --destructive-foreground: 0 0% 100%;
+        --border: 214 32% 91%;
+        --input: 214 32% 91%;
+        --ring: 217 61% 28%;
+        --chart-1: 217 61% 28%;
+        --chart-2: 179 49% 51%;
+        --chart-3: 255 29% 44%;
+        --chart-4: 142 71% 45%;
+        --chart-5: 38 92% 50%;
+        --radius: 0.75rem;
+    }
+
+    .dark {
+        /* Dark Mode */
+        --background: 222 47% 6%;
+        --foreground: 210 40% 98%;
+        --card: 222 47% 9%;
+        --card-foreground: 210 40% 98%;
+        --popover: 222 47% 9%;
+        --popover-foreground: 210 40% 98%;
+        --primary: 179 49% 51%;
+        --primary-foreground: 222 47% 6%;
+        --secondary: 255 29% 44%;
+        --secondary-foreground: 0 0% 100%;
+        --muted: 217 33% 17%;
+        --muted-foreground: 215 20% 65%;
+        --accent: 255 29% 44%;
+        --accent-foreground: 0 0% 100%;
+        --destructive: 0 63% 31%;
+        --destructive-foreground: 0 0% 100%;
+        --border: 217 33% 17%;
+        --input: 217 33% 17%;
+        --ring: 179 49% 51%;
+        --chart-1: 179 49% 51%;
+        --chart-2: 255 29% 44%;
+        --chart-3: 142 71% 45%;
+        --chart-4: 38 92% 50%;
+        --chart-5: 0 84% 60%;
+    }
+}
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+    
+    html {
+        scroll-behavior: smooth;
+    }
+    
+    body {
+        @apply bg-background text-foreground font-tajawal antialiased;
+    }
+    
+    h1, h2, h3, h4, h5, h6 {
+        @apply font-cairo font-bold;
+    }
+    
+    /* RTL/LTR Support - Global Rules */
+    html[dir="rtl"],
+    html[data-direction="rtl"],
+    [dir="rtl"] {
+        text-align: right;
+        direction: rtl;
+    }
+    
+    html[dir="ltr"],
+    html[data-direction="ltr"],
+    [dir="ltr"] {
+        text-align: left;
+        direction: ltr;
+    }
+    
+    /* Ensure all elements inherit direction */
+    html[dir="rtl"] *,
+    [dir="rtl"] * {
+        direction: inherit;
+    }
+    
+    html[dir="ltr"] *,
+    [dir="ltr"] * {
+        direction: inherit;
+    }
+}
+
+@layer components {
+    /* Card Styles */
+    .card-nassaq {
+        @apply bg-card text-card-foreground rounded-2xl border shadow-card hover:shadow-card-hover transition-all duration-300;
+    }
+    
+    /* Button Styles */
+    .btn-primary {
+        @apply bg-brand-navy text-white hover:bg-brand-navy-light shadow-md rounded-xl px-6 py-3 font-medium transition-all duration-200;
+    }
+    
+    .btn-secondary {
+        @apply bg-brand-turquoise/10 text-brand-turquoise hover:bg-brand-turquoise/20 rounded-xl px-6 py-3 font-medium transition-all duration-200;
+    }
+    
+    .btn-accent {
+        @apply bg-brand-purple text-white hover:bg-brand-purple-light rounded-xl px-6 py-3 font-medium transition-all duration-200;
+    }
+    
+    /* Input Styles */
+    .input-nassaq {
+        @apply h-12 rounded-xl border-input bg-background px-4 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-turquoise focus-visible:ring-offset-2 transition-all duration-200;
+    }
+    
+    /* Gradient Backgrounds */
+    .gradient-navy {
+        background: linear-gradient(135deg, #0F2C59 0%, #1a3d70 100%);
+    }
+    
+    .gradient-brand {
+        background: linear-gradient(135deg, #0F2C59 0%, #1B93A4 50%, #7C3AED 100%);
+    }
+    
+    /* Glass Effect */
+    .glass {
+        @apply bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl;
+    }
+    
+    /* Sidebar Active State */
+    .sidebar-item {
+        @apply flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-xl transition-all duration-200;
+    }
+    
+    .sidebar-item-active {
+        @apply bg-brand-turquoise text-white;
+    }
+    
+    .sidebar-item-inactive {
+        @apply text-white/70 hover:bg-white/10 hover:text-white;
+    }
+}
+
+@layer utilities {
+    /* Text Gradient */
+    .text-gradient {
+        @apply bg-clip-text text-transparent bg-gradient-to-r from-brand-navy via-brand-turquoise to-brand-purple;
+    }
+    
+    /* Hide scrollbar */
+    .hide-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+    
+    .hide-scrollbar::-webkit-scrollbar {
+        display: none;
+    }
+    
+    /* Custom Scrollbar */
+    .custom-scrollbar::-webkit-scrollbar {
+        width: 6px;
+    }
+    
+    .custom-scrollbar::-webkit-scrollbar-track {
+        @apply bg-muted rounded-full;
+    }
+    
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+        @apply bg-brand-navy/30 rounded-full hover:bg-brand-navy/50;
+    }
+}
+
+/* ═══════════════ Mobile Enhancements ═══════════════ */
+
+@media (max-width: 640px) {
+    .card-nassaq {
+        @apply rounded-xl;
+    }
+
+    input, select, textarea {
+        font-size: 16px !important;
+    }
+}
+
+@supports (padding: env(safe-area-inset-bottom)) {
+    .pb-safe {
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+    .pt-safe {
+        padding-top: env(safe-area-inset-top, 0px);
+    }
+    .mb-safe {
+        margin-bottom: env(safe-area-inset-bottom, 0px);
+    }
+}
+
+@media (max-width: 640px) {
+    .table-scroll-mobile table,
+    table.table-scroll-mobile {
+        display: block;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+}
+
+* {
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* Animation Classes */
+.animate-delay-100 { animation-delay: 100ms; }
+.animate-delay-200 { animation-delay: 200ms; }
+.animate-delay-300 { animation-delay: 300ms; }
+.animate-delay-400 { animation-delay: 400ms; }
+.animate-delay-500 { animation-delay: 500ms; }
+
+/* Shimmer Animation for Live Cards */
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+.animate-shimmer {
+  animation: shimmer 2s infinite;
+}
+
+/* Pulse Glow for Live Indicators */
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.5; box-shadow: 0 0 5px rgba(34, 197, 94, 0.3); }
+  50% { opacity: 1; box-shadow: 0 0 15px rgba(34, 197, 94, 0.6); }
+}
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes cellLand {
+  0% { transform: scale(0.85); opacity: 0.4; box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.4); }
+  50% { transform: scale(1.06); opacity: 1; box-shadow: 0 0 12px 2px rgba(124, 58, 237, 0.25); }
+  100% { transform: scale(1); opacity: 1; box-shadow: none; }
+}
+.nassaq-cell-land {
+  animation: cellLand 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* Debug Wrapper */
+@layer base {
+    [data-debug-wrapper="true"] {
+        display: contents !important;
+    }
+
+    [data-debug-wrapper="true"] > * {
+        margin-left: inherit;
+        margin-right: inherit;
+        margin-top: inherit;
+        margin-bottom: inherit;
+        padding-left: inherit;
+        padding-right: inherit;
+        padding-top: inherit;
+        padding-bottom: inherit;
+        column-gap: inherit;
+        row-gap: inherit;
+        gap: inherit;
+        border-left-width: inherit;
+        border-right-width: inherit;
+        border-top-width: inherit;
+        border-bottom-width: inherit;
+        border-left-style: inherit;
+        border-right-style: inherit;
+        border-top-style: inherit;
+        border-bottom-style: inherit;
+        border-left-color: inherit;
+        border-right-color: inherit;
+        border-top-color: inherit;
+        border-bottom-color: inherit;
+    }
+}

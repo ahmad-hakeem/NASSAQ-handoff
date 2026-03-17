@@ -1,0 +1,130 @@
+{
+  "summary": "Completed comprehensive testing of NASSAQ School Management System - Iteration 66. All 4 priority features tested and working: 1) Time slots display correctly on Schedule page, 2) Subjects CRUD (Add/Edit/Delete) working, 3) Constraints CRUD (Add/Edit/Delete/Toggle) working, 4) Active Role Context APIs working.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_subjects_constraints_activerole.py",
+    "/app/test_reports/pytest/pytest_subjects_constraints_iter66.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [
+    "/app/backend/tests/test_subjects_constraints_activerole.py"
+  ],
+  "success_rate": {
+    "backend": "100% (21/21 tests passed)",
+    "frontend": "100% (All features verified via Playwright)"
+  },
+  "test_credentials": {
+    "school_principal": {
+      "email": "principal1@nassaq.com",
+      "password": "Principal@123",
+      "school": "مدرسة النور (Al Noor School)"
+    },
+    "platform_admin": {
+      "email": "admin@nassaq.com",
+      "password": "Admin@123"
+    }
+  },
+  "seed_data_creation": "No new seed data created - test data prefixed with TEST_ and cleaned up after tests",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "All 4 priority features fully tested and working. Subjects CRUD at /api/school/subjects, Constraints CRUD at /api/school/constraints, Active Role Context at /api/auth/active-role and /api/auth/set-active-role. Schedule page shows time slots correctly with breaks and prayer periods.",
+  "verified_features": {
+    "time_slots_display": {
+      "status": "PASSED",
+      "evidence": "Schedule page at /school/schedule shows 7 periods + break + prayer with correct times (07:00-13:15)"
+    },
+    "subjects_crud_add": {
+      "status": "PASSED",
+      "evidence": "POST /api/school/subjects creates new subject, returns id and success message"
+    },
+    "subjects_crud_edit": {
+      "status": "PASSED",
+      "evidence": "PUT /api/school/subjects/{id} updates subject name, weekly_periods, category"
+    },
+    "subjects_crud_delete": {
+      "status": "PASSED",
+      "evidence": "DELETE /api/school/subjects/{id} soft-deletes subject (is_active=false)"
+    },
+    "subjects_ui_add_button": {
+      "status": "PASSED",
+      "evidence": "Settings page المواد tab shows 'إضافة مادة' button that opens dialog with form fields"
+    },
+    "constraints_crud_add": {
+      "status": "PASSED",
+      "evidence": "POST /api/school/constraints creates new constraint with priority and type"
+    },
+    "constraints_crud_edit": {
+      "status": "PASSED",
+      "evidence": "PUT /api/school/constraints/{id} updates constraint name, priority, is_active"
+    },
+    "constraints_crud_delete": {
+      "status": "PASSED",
+      "evidence": "DELETE /api/school/constraints/{id} soft-deletes constraint"
+    },
+    "constraints_toggle_active": {
+      "status": "PASSED",
+      "evidence": "PUT /api/school/constraints/{id} with is_active toggles constraint status"
+    },
+    "constraints_ui_add_button": {
+      "status": "PASSED",
+      "evidence": "Settings page القيود tab shows 'إضافة قيد' button that opens dialog"
+    },
+    "constraints_ui_toggle_buttons": {
+      "status": "PASSED",
+      "evidence": "Each constraint has مفعّل/معطّل toggle button for activation"
+    },
+    "active_role_get": {
+      "status": "PASSED",
+      "evidence": "GET /api/auth/active-role returns user_identity_id, role_id, role_name, school_id"
+    },
+    "active_role_set": {
+      "status": "PASSED",
+      "evidence": "POST /api/auth/set-active-role sets active role context and returns updated context"
+    }
+  },
+  "backend_api_tests": {
+    "total_tests": 21,
+    "passed": 21,
+    "skipped": 0,
+    "failed": 0,
+    "test_details": [
+      "TestAuthentication::test_principal_login - PASSED",
+      "TestAuthentication::test_admin_login - PASSED",
+      "TestActiveRoleContext::test_get_active_role_principal - PASSED",
+      "TestActiveRoleContext::test_get_active_role_admin - PASSED",
+      "TestActiveRoleContext::test_set_active_role - PASSED",
+      "TestSubjectsCRUD::test_get_school_subjects - PASSED",
+      "TestSubjectsCRUD::test_create_subject - PASSED",
+      "TestSubjectsCRUD::test_update_subject - PASSED",
+      "TestSubjectsCRUD::test_delete_subject - PASSED",
+      "TestConstraintsCRUD::test_get_school_constraints - PASSED",
+      "TestConstraintsCRUD::test_create_constraint - PASSED",
+      "TestConstraintsCRUD::test_update_constraint - PASSED",
+      "TestConstraintsCRUD::test_toggle_constraint_active - PASSED",
+      "TestConstraintsCRUD::test_delete_constraint - PASSED",
+      "TestReferenceAPIs::test_get_reference_subjects - PASSED",
+      "TestReferenceAPIs::test_get_reference_admin_constraints - PASSED",
+      "TestReferenceAPIs::test_get_school_settings - PASSED",
+      "TestReferenceAPIs::test_get_time_slots - PASSED",
+      "TestSchedulePageAPIs::test_get_schedule_sessions - PASSED",
+      "TestSchedulePageAPIs::test_get_teachers - PASSED",
+      "TestSchedulePageAPIs::test_get_classes - PASSED"
+    ]
+  },
+  "frontend_tests": {
+    "settings_subjects_tab": "PASSED - Shows 12 subjects with Add button and dialog",
+    "settings_constraints_tab": "PASSED - Shows 4 constraints with Add button, toggle buttons, and dialog",
+    "schedule_page_time_slots": "PASSED - Shows 7 periods + break + prayer with correct times",
+    "schedule_page_days": "PASSED - Shows 5 working days (الأحد to الخميس)",
+    "schedule_page_view_toggle": "PASSED - بالفصل/بالمعلم toggle working"
+  }
+}

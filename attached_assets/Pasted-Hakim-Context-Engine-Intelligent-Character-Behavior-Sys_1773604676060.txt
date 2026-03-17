@@ -1,0 +1,288 @@
+Hakim Context Engine
+### Intelligent Character Behavior System for NASSAQ
+Create a system called **Hakim Context Engine** responsible for controlling the appearance, pose selection, and interaction behavior of the AI assistant **Hakim** across the NASSAQ platform.
+Hakim must behave like an **intelligent contextual assistant**, not a static image.
+The engine should determine:
+• when Hakim appears
+• which pose to use
+• which message to display
+• which animation level to trigger
+based on **system events, page context, and user actions**.
+---
+# 1️⃣ Engine Objective
+Hakim Context Engine transforms Hakim into a **dynamic AI assistant layer** inside the platform.
+The engine must ensure that:
+• Hakim reacts to user actions
+• Hakim reacts to system states
+• Hakim reacts to AI insights
+• Hakim reacts to success or problems
+This creates the feeling that **an intelligent system is working behind the interface.**
+---
+# 2️⃣ Core Engine Architecture
+The Hakim Context Engine consists of the following components:
+### 1️⃣ Context Detector
+Detects the current state of the system.
+Inputs include:
+page_type
+user_role
+system_event
+workflow_state
+ai_analysis_state
+task_status
+Example contexts:
+Landing Page
+First Login
+Teacher Dashboard
+Student Dashboard
+AI Insights
+Schedule Creation
+Attendance Recording
+System Alert
+Task Completed
+---
+### 2️⃣ Pose Selector
+Selects the most appropriate Hakim pose.
+Uses rules:
+```
+context → pose group → random variation
+```
+Example:
+context = schedule_created
+possible poses:
+Positive feedback pose
+Motivating pose
+Congratulating student pose
+Engine randomly selects one.
+---
+### 3️⃣ Message Generator
+Generates the contextual message displayed with Hakim.
+Message types:
+welcome
+guidance
+explanation
+analysis
+alert
+motivation
+success
+Example:
+pose = AI thinking pose
+message:
+"دعني أفكر قليلاً… أقوم بتحليل البيانات."
+---
+### 4️⃣ Animation Controller
+Controls Hakim animation level.
+Three levels must exist.
+---
+# 3️⃣ Hakim Animation Levels
+### Level 1 — Idle Animation
+Used when Hakim is simply present.
+Very subtle movement.
+Examples:
+• slow breathing
+• gentle floating
+• blinking
+• minimal head movement
+Purpose:
+Make Hakim feel alive without distracting the user.
+---
+### Level 2 — Interaction Animation
+Triggered when the user interacts.
+Examples:
+• pointing
+• explaining gesture
+• guiding hand movement
+Used during:
+instructions
+help
+explanations
+alerts
+---
+### Level 3 — Celebration Animation
+Triggered when something positive happens.
+Examples:
+• clapping
+• happy movement
+• congratulation gesture
+Used after:
+task completion
+student success
+goal achievement
+---
+# 4️⃣ Pose Groups
+Organize Hakim poses into logical groups.
+---
+## Greeting Poses
+Friendly greeting pose
+Hand wave greeting
+Open hands welcoming pose
+Welcome pose
+Slight bow greeting
+Used for:
+first visit
+landing page
+login welcome
+dashboard entry
+---
+## Guidance Poses
+Inviting the user to begin
+Pointing to start button
+Giving instructions pose
+Explaining concept pose
+Support pose
+Used for:
+onboarding
+setup wizard
+guiding user actions
+---
+## Teaching Poses
+Teacher helper pose
+Teaching pose
+Pointing to board pose
+Used for:
+teacher tools
+classroom guidance
+instructional content
+---
+## AI Intelligence Poses
+AI thinking pose
+Analyzing data pose
+Detecting patterns pose
+Looking at charts pose
+Used for:
+AI insights
+analytics dashboards
+reports
+---
+## Interaction Poses
+Listening pose
+Explaining concept pose
+Support pose
+Used for:
+Ask Hakim
+help center
+AI chat
+---
+## Alert Poses
+Attention gesture pose
+Used for:
+system alerts
+important notifications
+---
+## Success Poses
+Positive feedback pose
+Motivating pose
+Congratulating student pose
+Clapping celebration pose
+Used for:
+task completion
+achievement
+correct answers
+student progress
+---
+# 5️⃣ Context → Pose Mapping Examples
+Example logic.
+---
+### Landing Page
+Possible poses:
+Friendly greeting pose
+Open hands welcoming pose
+Introducing the system pose
+---
+### First Login
+Possible poses:
+Hand wave greeting
+Welcome pose
+---
+### Onboarding
+Possible poses:
+Giving instructions pose
+Inviting the user to begin
+---
+### Teacher Dashboard
+Possible poses:
+Teacher helper pose
+Teaching pose
+---
+### AI Insights Page
+Possible poses:
+AI thinking pose
+Analyzing data pose
+Detecting patterns pose
+---
+### Analytics Page
+Possible poses:
+Looking at charts pose
+Analyzing data pose
+---
+### System Alert
+Possible poses:
+Attention gesture pose
+---
+### Task Completed
+Possible poses:
+Positive feedback pose
+Motivating pose
+Congratulating student pose
+---
+### Major Achievement
+Possible poses:
+Clapping celebration pose
+---
+# 6️⃣ Randomized Pose Selection
+For natural behavior, the engine must allow **pose rotation**.
+Example:
+```
+context: task_completed
+poses:
+Positive feedback pose
+Motivating pose
+Congratulating student pose
+engine randomly selects one.
+```
+This prevents the interface from feeling repetitive.
+---
+# 7️⃣ Message Context Examples
+Example messages.
+---
+### Greeting
+"مرحبًا… أنا حكيم."
+---
+### Guidance
+"دعني أرشدك للخطوة التالية."
+---
+### AI Thinking
+"دعني أفكر قليلاً… أقوم بتحليل البيانات."
+---
+### Insight
+"لاحظت نمطًا مهمًا في البيانات."
+---
+### Alert
+"يرجى الانتباه… هناك تنبيه مهم."
+---
+### Success
+"أحسنت! تم تنفيذ العملية بنجاح."
+---
+### Motivation
+"عمل رائع… استمر."
+---
+# 8️⃣ Placement Across the System
+Hakim can appear in:
+• dashboard corners
+• onboarding panels
+• AI insights sections
+• help assistant panels
+• system notifications
+• task success banners
+Hakim should never block UI elements.
+He must behave like a **smart assistant inside the interface**.
+---
+# 9️⃣ Design Goal
+Hakim Context Engine must transform the experience from:
+**Static Software**
+into
+**AI-Assisted Educational Environment**
+Users should feel that:
+• the system understands what they are doing
+• the interface reacts intelligently
+• Hakim is a real assistant
+Hakim should represent the **intelligence of NASSAQ**.

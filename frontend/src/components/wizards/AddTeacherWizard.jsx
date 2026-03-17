@@ -1,0 +1,625 @@
+import { useState, useEffect } from 'react';
+import { useTheme } from '../../contexts/ThemeContext';
+import { useAuth } from '../../contexts/AuthContext';
+import { useNassaqAlert } from '../ui/NassaqAlertDialog';
+import { Button } from '../../components/ui/button';
+import { Input } from '../../components/ui/input';
+import { Label } from '../../components/ui/label';
+import { Badge } from '../../components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../../components/ui/dialog';
+import { toast } from 'sonner';
+import {
+  User,
+  Phone,
+  Mail,
+  ArrowLeft,
+  ArrowRight,
+  Loader2,
+  CheckCircle2,
+  GraduationCap,
+  BookOpen,
+  Calendar,
+  Copy,
+  Award,
+  Briefcase,
+  Clock,
+  FileText,
+  Shield,
+} from 'lucide-react';
+import axios from 'axios';
+
+const API_URL = process.env.REACT_APP_BACKEND_URL;
+
+const StepProgress = ({ currentStep, steps, isRTL }) => {
+  const totalSteps = steps.length;
+  const progress = ((currentStep - 1) / (totalSteps - 1)) * 100;
+
+  return (
+    <div className="px-6 py-4">
+      <div className="relative">
+        <div className="absolute top-4 left-0 right-0 h-1 bg-muted rounded-full">
+          <div
+            className="h-full bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 rounded-full transition-all duration-500 ease-out"
+            style={{ width: `${Math.min(progress, 100)}%` }}
+          />
+        </div>
+        <div className="relative flex justify-between">
+          {steps.map((s) => {
+            const Icon = s.icon;
+            const isActive = currentStep === s.num;
+            const isDone = currentStep > s.num;
+            return (
+              <div key={s.num} className="flex flex-col items-center">
+                <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold transition-all duration-300 border-2 ${
+                  isDone ? 'bg-emerald-500 border-emerald-500 text-white scale-90' :
+                  isActive ? 'bg-green-600 border-green-600 text-white scale-110 shadow-lg shadow-green-500/30' :
+                  'bg-background border-muted-foreground/20 text-muted-foreground'
+                }`}>
+                  {isDone ? <CheckCircle2 className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
+                </div>
+                <span className={`text-[10px] mt-1.5 font-medium transition-colors ${
+                  isActive ? 'text-green-700 dark:text-green-400' : isDone ? 'text-emerald-600' : 'text-muted-foreground'
+                }`}>
+                  {s.title}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const FormField = ({ label, required, error, children }) => (
+  <div className="space-y-1.5">
+    <Label className="text-sm font-medium">
+      {label} {required && <span className="text-red-500">*</span>}
+    </Label>
+    {children}
+    {error && <p className="text-red-500 text-xs mt-1">{error}</p>}
+  </div>
+);
+
+const SectionHeader = ({ icon: Icon, title, subtitle, color = 'green' }) => {
+  const colors = {
+    green: 'from-emerald-500 to-green-600',
+    blue: 'from-blue-500 to-indigo-600',
+    purple: 'from-violet-500 to-purple-600',
+    amber: 'from-amber-500 to-orange-500',
+    indigo: 'from-indigo-500 to-blue-600',
+  };
+  return (
+    <div className="flex items-center gap-3 mb-5">
+      <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${colors[color]} flex items-center justify-center shadow-sm`}>
+        <Icon className="h-5 w-5 text-white" />
+      </div>
+      <div>
+        <h3 className="font-bold text-base font-cairo">{title}</h3>
+        {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
+      </div>
+    </div>
+  );
+};
+
+export const AddTeacherWizard = ({ open, onOpenChange, onSuccess, api }) => {
+  const { isRTL } = useTheme();
+  const { token } = useAuth();
+  const { nassaqError } = useNassaqAlert();
+
+  const handleCloseDialog = (val) => {
+    if (val === true) return;
+    handleReset();
+    if (onOpenChange) onOpenChange(false);
+  };
+
+  const [currentStep, setCurrentStep] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [errors, setErrors] = useState({});
+  const [result, setResult] = useState(null);
+
+  const [basicData, setBasicData] = useState({ nationality: 'SA' });
+  const [qualData, setQualData] = useState({ years_of_experience: 0 });
+  const [subjectData, setSubjectData] = useState({ subject_ids: [], grade_ids: [], max_periods_per_week: 24 });
+  const [scheduleData, setScheduleData] = useState({ contract_type: 'permanent', available_days: ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday'] });
+
+  const [options, setOptions] = useState({
+    subjects: [], grades: [], degrees: [], ranks: [], contractTypes: [], nationalities: []
+  });
+
+  useEffect(() => {
+    if (open) fetchOptions();
+  }, [open]);
+
+  const apiClient = api || axios.create({ baseURL: `${API_URL}/api`, headers: token ? { Authorization: `Bearer ${token}` } : {} });
+
+  const fetchOptions = async () => {
+    setLoading(true);
+    try {
+      const [subjectsRes, gradesRes, degreesRes, ranksRes, contractsRes, nationsRes] = await Promise.all([
+        apiClient.get('/teachers/options/subjects').catch(() => ({ data: { subjects: [] } })),
+        apiClient.get('/teachers/options/grades').catch(() => ({ data: { grades: [] } })),
+        apiClient.get('/teachers/options/academic-degrees').catch(() => ({ data: { degrees: [] } })),
+        apiClient.get('/teachers/options/teacher-ranks').catch(() => ({ data: { ranks: [] } })),
+        apiClient.get('/teachers/options/contract-types').catch(() => ({ data: { types: [] } })),
+        apiClient.get('/teachers/options/nationalities').catch(() => ({ data: { nationalities: [] } })),
+      ]);
+      setOptions({
+        subjects: subjectsRes.data.subjects || [],
+        grades: gradesRes.data.grades || [],
+        degrees: degreesRes.data.degrees || [],
+        ranks: ranksRes.data.ranks || [],
+        contractTypes: contractsRes.data.types || [],
+        nationalities: nationsRes.data.nationalities || [],
+      });
+    } catch (error) {
+      console.error('Error fetching options:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const validateStep = (step) => {
+    const newErrors = {};
+    if (step === 1) {
+      if (!basicData.full_name_ar?.trim()) newErrors.full_name_ar = isRTL ? 'مطلوب' : 'Required';
+      if (!basicData.national_id || basicData.national_id.length !== 10) newErrors.national_id = isRTL ? '10 أرقام' : '10 digits';
+      if (!basicData.gender) newErrors.gender = isRTL ? 'مطلوب' : 'Required';
+      if (!basicData.phone?.trim()) newErrors.phone = isRTL ? 'مطلوب' : 'Required';
+      if (!basicData.email?.trim()) newErrors.email = isRTL ? 'مطلوب' : 'Required';
+    } else if (step === 2) {
+      if (!qualData.academic_degree) newErrors.academic_degree = isRTL ? 'مطلوب' : 'Required';
+      if (!qualData.teacher_rank) newErrors.teacher_rank = isRTL ? 'مطلوب' : 'Required';
+    } else if (step === 3) {
+      if (!subjectData.subject_ids?.length) newErrors.subject_ids = isRTL ? 'اختر مادة واحدة على الأقل' : 'Select at least one';
+      if (!subjectData.grade_ids?.length) newErrors.grade_ids = isRTL ? 'اختر صف واحد على الأقل' : 'Select at least one';
+      if (!subjectData.primary_subject_id) newErrors.primary_subject_id = isRTL ? 'مطلوب' : 'Required';
+    }
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleNext = () => {
+    if (!validateStep(currentStep)) return;
+    if (currentStep < 5) { setCurrentStep(prev => prev + 1); setErrors({}); }
+  };
+
+  const handleBack = () => {
+    if (currentStep > 1) { setCurrentStep(prev => prev - 1); setErrors({}); }
+  };
+
+  const handleSubmit = async () => {
+    setSubmitting(true);
+    try {
+      const payload = { basic_info: basicData, qualifications: qualData, subjects: subjectData, schedule: scheduleData };
+      const response = await apiClient.post('/teachers/create', payload);
+      if (response.data.success) {
+        setResult(response.data);
+        setCurrentStep(6);
+        toast.success(isRTL ? 'تم إضافة المعلم بنجاح' : 'Teacher added successfully');
+        if (onSuccess) onSuccess(response.data);
+      } else {
+        nassaqError(response.data.error || (isRTL ? 'حدث خطأ' : 'Error occurred'));
+      }
+    } catch (error) {
+      const detail = error.response?.data?.detail;
+      let errorMessage = isRTL ? 'خطأ' : 'Error';
+      if (typeof detail === 'string') errorMessage = detail;
+      else if (Array.isArray(detail)) errorMessage = detail.map(e => e.msg || e.message || JSON.stringify(e)).join(', ');
+      else if (detail && typeof detail === 'object') errorMessage = detail.msg || detail.message || JSON.stringify(detail);
+      nassaqError(errorMessage);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleReset = () => {
+    setCurrentStep(1);
+    setBasicData({ nationality: 'SA' });
+    setQualData({ years_of_experience: 0 });
+    setSubjectData({ subject_ids: [], grade_ids: [], max_periods_per_week: 24 });
+    setScheduleData({ contract_type: 'permanent', available_days: ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday'] });
+    setErrors({});
+    setResult(null);
+  };
+
+  const steps = [
+    { num: 1, title: isRTL ? 'البيانات' : 'Basic', icon: User },
+    { num: 2, title: isRTL ? 'المؤهلات' : 'Quals', icon: GraduationCap },
+    { num: 3, title: isRTL ? 'المواد' : 'Subjects', icon: BookOpen },
+    { num: 4, title: isRTL ? 'الجدول' : 'Schedule', icon: Calendar },
+    { num: 5, title: isRTL ? 'المراجعة' : 'Review', icon: FileText },
+  ];
+
+  const days = [
+    { id: 'sunday', ar: 'الأحد', en: 'Sun' },
+    { id: 'monday', ar: 'الإثنين', en: 'Mon' },
+    { id: 'tuesday', ar: 'الثلاثاء', en: 'Tue' },
+    { id: 'wednesday', ar: 'الأربعاء', en: 'Wed' },
+    { id: 'thursday', ar: 'الخميس', en: 'Thu' },
+  ];
+
+  const toggleSubject = (subjectId) => {
+    const current = subjectData.subject_ids || [];
+    const updated = current.includes(subjectId) ? current.filter(id => id !== subjectId) : [...current, subjectId];
+    setSubjectData(p => ({ ...p, subject_ids: updated }));
+  };
+
+  const toggleGrade = (gradeId) => {
+    const current = subjectData.grade_ids || [];
+    const updated = current.includes(gradeId) ? current.filter(id => id !== gradeId) : [...current, gradeId];
+    setSubjectData(p => ({ ...p, grade_ids: updated }));
+  };
+
+  const toggleDay = (dayId) => {
+    const current = scheduleData.available_days || ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday'];
+    const updated = current.includes(dayId) ? current.filter(id => id !== dayId) : [...current, dayId];
+    setScheduleData(p => ({ ...p, available_days: updated }));
+  };
+
+  const getSubjectName = (id) => options.subjects?.find(s => s.id === id)?.[isRTL ? 'name_ar' : 'name_en'] || options.subjects?.find(s => s.id === id)?.name_ar || id;
+  const getGradeName = (id) => options.grades?.find(g => g.id === id)?.[isRTL ? 'name_ar' : 'name_en'] || options.grades?.find(g => g.id === id)?.name_ar || id;
+
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text);
+    toast.success(isRTL ? 'تم النسخ' : 'Copied!');
+  };
+
+  const generateWelcomeMessage = () => {
+    const schoolName = result?.school_name || 'المدرسة';
+    const teacherName = result?.teacher_name || result?.basic_info?.full_name_ar || basicData.full_name_ar || 'المعلم';
+    const teacherId = result?.teacher_id || '';
+    const email = result?.user_account?.email || '';
+    const password = result?.user_account?.temp_password || '';
+    const platformUrl = window.location.origin;
+
+    if (isRTL) {
+      return `السلام عليكم ورحمة الله وبركاته\n\nالأستاذ الكريم: ${teacherName}\n\nيسعدنا انضمامكم إلى فريق العمل في ${schoolName}، ويسرنا إبلاغكم بأنه تم إنشاء حساب خاص بكم على منصة نَسَّق | NASSAQ.\n\nبيانات حساب المعلم:\n• اسم المعلم: ${teacherName}\n• كود المعلم: ${teacherId}\n• اسم المدرسة: ${schoolName}\n\nبيانات تسجيل الدخول:\n• رابط المنصة: ${platformUrl}\n• اسم المستخدم: ${email}\n• كلمة المرور المؤقتة: ${password}\n\nننصحكم بتغيير كلمة المرور بعد أول تسجيل دخول.\n\nمع خالص التحية،\nإدارة ${schoolName}\nمنصة نَسَّق | NASSAQ`;
+    }
+    return `Dear ${teacherName},\n\nWelcome to ${schoolName}!\n\nAccount Details:\n• Teacher Name: ${teacherName}\n• Teacher ID: ${teacherId}\n\nLogin Credentials:\n• URL: ${platformUrl}\n• Email: ${email}\n• Temporary Password: ${password}\n\nPlease change your password after first login.\n\nBest regards,\n${schoolName} Administration`;
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={handleCloseDialog}>
+      <DialogContent className="max-w-3xl h-[85vh] flex flex-col p-0 gap-0 overflow-hidden" data-testid="add-teacher-wizard" dir={isRTL ? 'rtl' : 'ltr'}>
+        <div className="bg-gradient-to-r from-green-700 to-emerald-600 text-white px-6 py-4 flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center">
+              <Briefcase className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <DialogTitle className="font-cairo text-lg text-white">{isRTL ? 'إضافة معلم جديد' : 'Add New Teacher'}</DialogTitle>
+              <DialogDescription className="text-white/70 text-xs">
+                {isRTL ? 'الخطوة' : 'Step'} {Math.min(currentStep, 5)} {isRTL ? 'من' : 'of'} 5
+              </DialogDescription>
+            </div>
+          </div>
+        </div>
+
+        {currentStep < 6 && <StepProgress currentStep={currentStep} steps={steps} isRTL={isRTL} />}
+
+        {loading ? (
+          <div className="flex-1 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-green-600" /></div>
+        ) : (
+          <div className="flex-1 overflow-y-auto px-6 py-4">
+            {currentStep === 1 && (
+              <div className="space-y-5">
+                <SectionHeader icon={User} title={isRTL ? 'البيانات الأساسية' : 'Basic Information'} subtitle={isRTL ? 'أدخل بيانات المعلم الشخصية' : 'Enter teacher personal info'} color="green" />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormField label={isRTL ? 'الاسم الكامل (عربي)' : 'Full Name (Arabic)'} required error={errors.full_name_ar}>
+                    <Input value={basicData.full_name_ar || ''} onChange={(e) => setBasicData(p => ({ ...p, full_name_ar: e.target.value }))} className={`h-10 rounded-lg ${errors.full_name_ar ? 'border-red-500' : ''}`} data-testid="teacher-name-ar" />
+                  </FormField>
+                  <FormField label={isRTL ? 'الاسم الكامل (إنجليزي)' : 'Full Name (English)'}>
+                    <Input value={basicData.full_name_en || ''} onChange={(e) => setBasicData(p => ({ ...p, full_name_en: e.target.value }))} dir="ltr" className="h-10 rounded-lg" data-testid="teacher-name-en" />
+                  </FormField>
+                  <FormField label={isRTL ? 'رقم الهوية' : 'National ID'} required error={errors.national_id}>
+                    <Input value={basicData.national_id || ''} onChange={(e) => setBasicData(p => ({ ...p, national_id: e.target.value.replace(/\D/g, '').slice(0, 10) }))} className={`h-10 rounded-lg ${errors.national_id ? 'border-red-500' : ''}`} maxLength={10} dir="ltr" data-testid="teacher-national-id" />
+                  </FormField>
+                  <FormField label={isRTL ? 'الجنس' : 'Gender'} required error={errors.gender}>
+                    <div className="flex gap-2">
+                      {[{ val: 'male', ar: 'ذكر', en: 'Male' }, { val: 'female', ar: 'أنثى', en: 'Female' }].map(g => (
+                        <button key={g.val} type="button" onClick={() => setBasicData(p => ({ ...p, gender: g.val }))}
+                          className={`flex-1 h-10 rounded-lg border-2 text-sm font-medium transition-all ${
+                            basicData.gender === g.val
+                              ? g.val === 'male' ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300' : 'border-pink-500 bg-pink-50 text-pink-700 dark:bg-pink-950 dark:text-pink-300'
+                              : 'border-border hover:border-muted-foreground/40'
+                          }`}>
+                          {isRTL ? g.ar : g.en}
+                        </button>
+                      ))}
+                    </div>
+                  </FormField>
+                  <FormField label={isRTL ? 'الجنسية' : 'Nationality'}>
+                    <Select value={basicData.nationality || 'SA'} onValueChange={(val) => setBasicData(p => ({ ...p, nationality: val }))}>
+                      <SelectTrigger className="h-10 rounded-lg" data-testid="teacher-nationality"><SelectValue placeholder={isRTL ? 'اختر' : 'Select'} /></SelectTrigger>
+                      <SelectContent>
+                        {options.nationalities?.map((n) => (<SelectItem key={n.id || n.code} value={n.id || n.code}>{isRTL ? (n.name || n.name_ar) : (n.name_en || n.name)}</SelectItem>))}
+                      </SelectContent>
+                    </Select>
+                  </FormField>
+                  <FormField label={isRTL ? 'تاريخ الميلاد' : 'Date of Birth'}>
+                    <Input type="date" value={basicData.date_of_birth || ''} onChange={(e) => setBasicData(p => ({ ...p, date_of_birth: e.target.value }))} className="h-10 rounded-lg" data-testid="teacher-dob" />
+                  </FormField>
+                  <FormField label={isRTL ? 'رقم الجوال' : 'Phone'} required error={errors.phone}>
+                    <Input value={basicData.phone || ''} onChange={(e) => setBasicData(p => ({ ...p, phone: e.target.value }))} className={`h-10 rounded-lg ${errors.phone ? 'border-red-500' : ''}`} dir="ltr" data-testid="teacher-phone" placeholder="05xxxxxxxx" />
+                  </FormField>
+                  <FormField label={isRTL ? 'البريد الإلكتروني' : 'Email'} required error={errors.email}>
+                    <Input type="email" value={basicData.email || ''} onChange={(e) => setBasicData(p => ({ ...p, email: e.target.value }))} className={`h-10 rounded-lg ${errors.email ? 'border-red-500' : ''}`} dir="ltr" data-testid="teacher-email" />
+                  </FormField>
+                </div>
+              </div>
+            )}
+
+            {currentStep === 2 && (
+              <div className="space-y-5">
+                <SectionHeader icon={GraduationCap} title={isRTL ? 'المؤهلات العلمية' : 'Qualifications'} subtitle={isRTL ? 'أدخل بيانات المؤهل والخبرة' : 'Enter qualification and experience info'} color="blue" />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormField label={isRTL ? 'الدرجة العلمية' : 'Academic Degree'} required error={errors.academic_degree}>
+                    <Select value={qualData.academic_degree || ''} onValueChange={(val) => setQualData(p => ({ ...p, academic_degree: val }))}>
+                      <SelectTrigger className={`h-10 rounded-lg ${errors.academic_degree ? 'border-red-500' : ''}`} data-testid="teacher-degree"><SelectValue placeholder={isRTL ? 'اختر الدرجة' : 'Select degree'} /></SelectTrigger>
+                      <SelectContent>
+                        {options.degrees?.map((d) => (<SelectItem key={d.id || d.code} value={d.id || d.code}>{isRTL ? (d.name || d.name_ar) : (d.name_en || d.name)}</SelectItem>))}
+                      </SelectContent>
+                    </Select>
+                  </FormField>
+                  <FormField label={isRTL ? 'التخصص' : 'Specialization'}>
+                    <Input value={qualData.specialization || ''} onChange={(e) => setQualData(p => ({ ...p, specialization: e.target.value }))} className="h-10 rounded-lg" placeholder={isRTL ? 'مثال: رياضيات' : 'e.g. Mathematics'} data-testid="teacher-specialization" />
+                  </FormField>
+                  <FormField label={isRTL ? 'الجامعة' : 'University'}>
+                    <Input value={qualData.university || ''} onChange={(e) => setQualData(p => ({ ...p, university: e.target.value }))} className="h-10 rounded-lg" data-testid="teacher-university" />
+                  </FormField>
+                  <FormField label={isRTL ? 'سنة التخرج' : 'Graduation Year'}>
+                    <Input type="number" value={qualData.graduation_year || ''} onChange={(e) => setQualData(p => ({ ...p, graduation_year: parseInt(e.target.value) || '' }))} min="1970" max={new Date().getFullYear()} className="h-10 rounded-lg" data-testid="teacher-grad-year" />
+                  </FormField>
+                  <FormField label={isRTL ? 'سنوات الخبرة' : 'Years of Experience'} required error={errors.years_of_experience}>
+                    <Input type="number" value={qualData.years_of_experience ?? ''} onChange={(e) => setQualData(p => ({ ...p, years_of_experience: parseInt(e.target.value) || 0 }))} min="0" className={`h-10 rounded-lg ${errors.years_of_experience ? 'border-red-500' : ''}`} data-testid="teacher-experience" />
+                  </FormField>
+                  <FormField label={isRTL ? 'الرتبة الوظيفية' : 'Teacher Rank'} required error={errors.teacher_rank}>
+                    <Select value={qualData.teacher_rank || ''} onValueChange={(val) => setQualData(p => ({ ...p, teacher_rank: val }))}>
+                      <SelectTrigger className={`h-10 rounded-lg ${errors.teacher_rank ? 'border-red-500' : ''}`} data-testid="teacher-rank"><SelectValue placeholder={isRTL ? 'اختر الرتبة' : 'Select rank'} /></SelectTrigger>
+                      <SelectContent>
+                        {options.ranks?.map((r) => (<SelectItem key={r.id || r.code} value={r.id || r.code}>{isRTL ? (r.name || r.name_ar) : (r.name_en || r.name)}</SelectItem>))}
+                      </SelectContent>
+                    </Select>
+                  </FormField>
+                </div>
+              </div>
+            )}
+
+            {currentStep === 3 && (
+              <div className="space-y-5">
+                <SectionHeader icon={BookOpen} title={isRTL ? 'المواد والصفوف' : 'Subjects & Grades'} subtitle={isRTL ? 'اختر المواد والصفوف التي يدرسها' : 'Select teaching subjects and grades'} color="purple" />
+
+                <div className="space-y-4">
+                  <div>
+                    <Label className="mb-2 block text-sm font-medium">{isRTL ? 'المواد التي يدرسها' : 'Subjects'} <span className="text-red-500">*</span></Label>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                      {options.subjects?.map((subject) => (
+                        <button key={subject.id} type="button" onClick={() => toggleSubject(subject.id)}
+                          className={`p-2.5 rounded-lg border-2 text-sm font-medium text-start transition-all ${
+                            (subjectData.subject_ids || []).includes(subject.id)
+                              ? 'border-violet-500 bg-violet-50 text-violet-700 dark:bg-violet-950 dark:text-violet-300'
+                              : 'border-border hover:border-muted-foreground/40 text-foreground'
+                          }`}>
+                          {isRTL ? (subject.name_ar || subject.name) : (subject.name_en || subject.name_ar || subject.name)}
+                        </button>
+                      ))}
+                    </div>
+                    {errors.subject_ids && <p className="text-red-500 text-xs mt-1">{errors.subject_ids}</p>}
+                  </div>
+
+                  <FormField label={isRTL ? 'المادة الأساسية' : 'Primary Subject'} required error={errors.primary_subject_id}>
+                    <Select value={subjectData.primary_subject_id || ''} onValueChange={(val) => setSubjectData(p => ({ ...p, primary_subject_id: val }))}>
+                      <SelectTrigger className={`h-10 rounded-lg ${errors.primary_subject_id ? 'border-red-500' : ''}`} data-testid="teacher-primary-subject"><SelectValue placeholder={isRTL ? 'اختر المادة الأساسية' : 'Select primary subject'} /></SelectTrigger>
+                      <SelectContent>
+                        {options.subjects?.map((subject) => (<SelectItem key={subject.id} value={subject.id}>{isRTL ? (subject.name_ar || subject.name) : (subject.name_en || subject.name_ar || subject.name)}</SelectItem>))}
+                      </SelectContent>
+                    </Select>
+                  </FormField>
+
+                  <div>
+                    <Label className="mb-2 block text-sm font-medium">{isRTL ? 'الصفوف التي يدرسها' : 'Grades'} <span className="text-red-500">*</span></Label>
+                    <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+                      {options.grades?.map((grade) => (
+                        <button key={grade.id} type="button" onClick={() => toggleGrade(grade.id)}
+                          className={`p-2 rounded-lg border-2 text-center text-sm font-medium transition-all ${
+                            (subjectData.grade_ids || []).includes(grade.id)
+                              ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+                              : 'border-border hover:border-muted-foreground/40'
+                          }`}>
+                          {isRTL ? (grade.name_ar || grade.name) : (grade.name_en || grade.name_ar || grade.name)}
+                        </button>
+                      ))}
+                    </div>
+                    {errors.grade_ids && <p className="text-red-500 text-xs mt-1">{errors.grade_ids}</p>}
+                  </div>
+
+                  <FormField label={isRTL ? 'الحد الأقصى للحصص أسبوعياً' : 'Max Periods/Week'}>
+                    <Input type="number" value={subjectData.max_periods_per_week || 24} onChange={(e) => setSubjectData(p => ({ ...p, max_periods_per_week: parseInt(e.target.value) || 24 }))} min="1" max="30" className="h-10 rounded-lg" data-testid="teacher-max-periods" />
+                  </FormField>
+                </div>
+              </div>
+            )}
+
+            {currentStep === 4 && (
+              <div className="space-y-5">
+                <SectionHeader icon={Calendar} title={isRTL ? 'التفضيلات والجدول' : 'Schedule Preferences'} subtitle={isRTL ? 'نوع التعاقد وأيام العمل' : 'Contract type and work days'} color="amber" />
+                <div className="space-y-4">
+                  <FormField label={isRTL ? 'نوع التعاقد' : 'Contract Type'}>
+                    <Select value={scheduleData.contract_type || 'permanent'} onValueChange={(val) => setScheduleData(p => ({ ...p, contract_type: val }))}>
+                      <SelectTrigger className="h-10 rounded-lg" data-testid="teacher-contract"><SelectValue placeholder={isRTL ? 'اختر' : 'Select'} /></SelectTrigger>
+                      <SelectContent>
+                        {options.contractTypes?.map((c) => (<SelectItem key={c.id || c.code} value={c.id || c.code}>{isRTL ? (c.name || c.name_ar) : (c.name_en || c.name)}</SelectItem>))}
+                      </SelectContent>
+                    </Select>
+                  </FormField>
+
+                  <div>
+                    <Label className="mb-2 block text-sm font-medium">{isRTL ? 'أيام العمل المتاحة' : 'Available Days'}</Label>
+                    <div className="grid grid-cols-5 gap-2">
+                      {days.map((day) => (
+                        <button key={day.id} type="button" onClick={() => toggleDay(day.id)}
+                          className={`p-3 rounded-lg border-2 text-center transition-all ${
+                            (scheduleData.available_days || ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday']).includes(day.id)
+                              ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                              : 'border-border hover:border-muted-foreground/40'
+                          }`}>
+                          <p className="font-medium text-sm">{isRTL ? day.ar : day.en}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {currentStep === 5 && (
+              <div className="space-y-4">
+                <SectionHeader icon={FileText} title={isRTL ? 'مراجعة البيانات' : 'Review Information'} subtitle={isRTL ? 'تأكد من صحة جميع البيانات' : 'Verify all information is correct'} color="indigo" />
+
+                <div className="rounded-xl border overflow-hidden">
+                  <div className="px-4 py-2.5 bg-green-50 dark:bg-green-950/20 border-b flex items-center gap-2">
+                    <User className="h-4 w-4 text-green-600" />
+                    <span className="font-semibold text-sm text-green-800 dark:text-green-300">{isRTL ? 'البيانات الأساسية' : 'Basic Info'}</span>
+                  </div>
+                  <div className="p-4 grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                    <div><span className="text-muted-foreground text-xs">{isRTL ? 'الاسم' : 'Name'}</span><p className="font-medium">{basicData.full_name_ar}</p></div>
+                    <div><span className="text-muted-foreground text-xs">{isRTL ? 'الهوية' : 'ID'}</span><p className="font-medium" dir="ltr">{basicData.national_id}</p></div>
+                    <div><span className="text-muted-foreground text-xs">{isRTL ? 'البريد' : 'Email'}</span><p className="font-medium" dir="ltr">{basicData.email}</p></div>
+                    <div><span className="text-muted-foreground text-xs">{isRTL ? 'الجوال' : 'Phone'}</span><p className="font-medium" dir="ltr">{basicData.phone}</p></div>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border overflow-hidden">
+                  <div className="px-4 py-2.5 bg-blue-50 dark:bg-blue-950/20 border-b flex items-center gap-2">
+                    <GraduationCap className="h-4 w-4 text-blue-600" />
+                    <span className="font-semibold text-sm text-blue-800 dark:text-blue-300">{isRTL ? 'المؤهلات' : 'Qualifications'}</span>
+                  </div>
+                  <div className="p-4 grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                    <div><span className="text-muted-foreground text-xs">{isRTL ? 'الدرجة' : 'Degree'}</span><p className="font-medium">{qualData.academic_degree}</p></div>
+                    <div><span className="text-muted-foreground text-xs">{isRTL ? 'الخبرة' : 'Experience'}</span><p className="font-medium">{qualData.years_of_experience} {isRTL ? 'سنوات' : 'years'}</p></div>
+                    <div><span className="text-muted-foreground text-xs">{isRTL ? 'الرتبة' : 'Rank'}</span><p className="font-medium">{qualData.teacher_rank}</p></div>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border overflow-hidden">
+                  <div className="px-4 py-2.5 bg-violet-50 dark:bg-violet-950/20 border-b flex items-center gap-2">
+                    <BookOpen className="h-4 w-4 text-violet-600" />
+                    <span className="font-semibold text-sm text-violet-800 dark:text-violet-300">{isRTL ? 'المواد والصفوف' : 'Subjects & Grades'}</span>
+                  </div>
+                  <div className="p-4">
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {(subjectData.subject_ids || []).map(id => (<Badge key={id} variant="secondary" className="text-xs">{getSubjectName(id)}</Badge>))}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(subjectData.grade_ids || []).map(id => (<Badge key={id} variant="outline" className="text-xs">{getGradeName(id)}</Badge>))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {currentStep === 6 && result && (
+              <div className="space-y-5 py-2">
+                <div className="text-center">
+                  <div className="w-16 h-16 rounded-full bg-gradient-to-br from-emerald-400 to-green-600 mx-auto flex items-center justify-center mb-4 shadow-lg shadow-emerald-500/20">
+                    <CheckCircle2 className="h-8 w-8 text-white" />
+                  </div>
+                  <h2 className="text-xl font-bold text-emerald-600 font-cairo mb-1">{isRTL ? 'تم إضافة المعلم بنجاح!' : 'Teacher Added!'}</h2>
+                </div>
+
+                <div className="p-4 rounded-xl border-2 border-emerald-200 bg-emerald-50/50 dark:bg-emerald-950/20">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <p className="text-xs text-muted-foreground">{isRTL ? 'رقم المعلم' : 'Teacher ID'}</p>
+                      <p className="text-lg font-bold font-mono text-emerald-800">{result.teacher_id}</p>
+                    </div>
+                    <Button variant="ghost" size="icon" onClick={() => copyToClipboard(result.teacher_id)} className="text-emerald-600">
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  {result.user_account?.created && (
+                    <div className="space-y-2 p-3 bg-white dark:bg-background rounded-lg text-sm">
+                      <p className="font-semibold text-xs text-emerald-800 dark:text-emerald-300">{isRTL ? 'بيانات الدخول' : 'Login Credentials'}</p>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-muted-foreground">{isRTL ? 'البريد:' : 'Email:'}</span>
+                        <code className="text-xs bg-muted px-2 py-0.5 rounded">{result.user_account.email}</code>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-muted-foreground">{isRTL ? 'كلمة المرور:' : 'Password:'}</span>
+                        <div className="flex items-center gap-1">
+                          <code className="text-xs bg-muted px-2 py-0.5 rounded">{result.user_account.temp_password}</code>
+                          <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => copyToClipboard(result.user_account.temp_password)}>
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <Button variant="outline" className="w-full h-10 rounded-lg" onClick={() => {
+                  const message = generateWelcomeMessage();
+                  navigator.clipboard.writeText(message);
+                  toast.success(isRTL ? 'تم نسخ رسالة الترحيب' : 'Welcome message copied!');
+                }}>
+                  <Copy className="h-4 w-4 me-2" />
+                  {isRTL ? 'نسخ رسالة الترحيب' : 'Copy Welcome Message'}
+                </Button>
+
+                <div className="flex justify-center gap-3 pt-2">
+                  <Button variant="outline" className="rounded-lg" onClick={() => handleCloseDialog(false)}>{isRTL ? 'إغلاق' : 'Close'}</Button>
+                  <Button className="rounded-lg bg-green-600 hover:bg-green-700" onClick={handleReset}>{isRTL ? 'إضافة معلم آخر' : 'Add Another'}</Button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {!loading && currentStep < 6 && (
+          <div className="flex items-center justify-between px-6 py-3 border-t bg-muted/20 flex-shrink-0">
+            <div>
+              {currentStep > 1 && (
+                <Button variant="ghost" size="sm" onClick={handleBack} disabled={submitting} className="gap-1.5 rounded-lg h-9">
+                  {isRTL ? <ArrowRight className="h-3.5 w-3.5" /> : <ArrowLeft className="h-3.5 w-3.5" />}
+                  {isRTL ? 'السابق' : 'Back'}
+                </Button>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button variant="ghost" size="sm" className="rounded-lg h-9" onClick={() => handleCloseDialog(false)} disabled={submitting}>{isRTL ? 'إلغاء' : 'Cancel'}</Button>
+              {currentStep < 5 ? (
+                <Button size="sm" onClick={handleNext} className="bg-green-600 hover:bg-green-700 gap-1.5 rounded-lg h-9 px-5">
+                  {isRTL ? 'التالي' : 'Next'}
+                  {isRTL ? <ArrowLeft className="h-3.5 w-3.5" /> : <ArrowRight className="h-3.5 w-3.5" />}
+                </Button>
+              ) : (
+                <Button size="sm" onClick={handleSubmit} disabled={submitting} className="bg-emerald-600 hover:bg-emerald-700 gap-1.5 rounded-lg h-9 px-5">
+                  {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                  {isRTL ? 'تأكيد وحفظ' : 'Confirm & Save'}
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+export default AddTeacherWizard;

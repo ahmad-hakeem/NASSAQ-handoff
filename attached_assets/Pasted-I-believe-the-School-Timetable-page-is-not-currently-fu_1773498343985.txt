@@ -1,0 +1,126 @@
+I believe the **School Timetable page** is not currently fulfilling its intended functionality. I will rewrite the requirements again in detail, but I am concerned about possible conflicts between **existing code and new modifications**. Therefore, I need you to proceed with caution when building or modifying this part of the system.
+
+Before implementing any changes, carefully review the current implementation to determine:
+
+* What has already been implemented.
+* What parts of the existing code can be safely modified.
+* What parts can be removed because they are unnecessary or unused.
+
+Your goal is to implement the requested improvements so the page appears and works correctly within the **Principal (School Manager) user interface**.
+
+The timetable is one of the most critical components in the entire system. It must operate in a **dynamic and intelligent way**, and the page requires a **comprehensive redesign**.
+
+---
+
+# 1. Code Safety Requirement (Very Important)
+
+Before making any modifications:
+
+1. Analyze the entire codebase related to the **School Timetable page**.
+2. Clearly identify:
+
+   * What has already been implemented.
+   * What can be modified.
+   * What can be removed because it is unused or unnecessary.
+
+Ensure that none of the following issues occur:
+
+* Conflicts between old and new code.
+* Logic duplication.
+* Dead or unused code.
+
+If you determine that modifying the current implementation would create unnecessary complexity, it is preferable to **rebuild this module cleanly and safely** instead of patching it.
+
+The objective is to maintain:
+
+* **Code Integrity**
+* **Clean Architecture**
+
+Also review the card labeled **“There is an unpublished draft version”** and ensure it functions correctly with proper logic.
+
+Remove the following buttons from the interface:
+
+* “Diagnostics”
+* “Partial Reprocessing”
+* “Archive”
+
+---
+
+# 2. Fix the AI Schedule Generation Issue
+
+When the user clicks the button:
+
+**“Process Timetable using AI”**
+
+the timetable is generated internally but **does not appear in its designated location in the interface**.
+
+This issue must be fixed so that:
+
+* The timetable is saved correctly in the database.
+* The interface refreshes automatically.
+* The generated timetable appears immediately in the appropriate section.
+
+---
+
+# 3. Data Source Requirement
+
+All important timetable data must be retrieved **exclusively from the database**, specifically from the data configured in:
+
+**School Settings**
+
+This includes:
+
+* Academic year
+* Current term
+* School days
+* Number of daily periods
+* Period duration
+* Break times
+* Prayer times
+* Classes
+* Teachers
+* Subjects
+* Teacher assignments
+
+No timetable data should be hardcoded or locally defined in the page.
+
+---
+
+# 4. “Ready to Generate Timetable!” Section
+
+The **default behavior** of this section should be:
+
+* The detailed information is **hidden by default**.
+* The details should only appear when the user clicks **“View Details”**.
+
+Within this section, the system must display all required prerequisites for timetable generation and show their readiness status as a **percentage indicator**.
+
+If any required information is missing, the system must display an **“Fix” button** next to the missing item.
+
+When the user clicks **“Fix”**, the system should automatically redirect them to the exact location in **School Settings** where that information can be corrected.
+
+---
+
+# 5. “Weekly Timetable” Section
+
+This section must display the **main timetable after it has been generated**.
+
+Once the timetable is processed, it should appear here for review.
+
+The user must be able to:
+
+* Review the generated timetable carefully.
+* Click **“Reprocess”** to generate a new timetable using the same data.
+
+---
+
+# 6. Visual Redesign of the Weekly Timetable
+
+The **Weekly Timetable section** must be redesigned to ensure that the timetable appears:
+
+* Highly organized
+* Visually clear
+* Professionally structured
+* Easy to read
+
+The timetable should be presented in a **strong and well-structured visual layout**, ensuring consistency and clarity across the interface.

@@ -1,0 +1,424 @@
+فيما يلي **Prompt احترافي ومفصل** يمكنك إعطاؤه مباشرة إلى **Vibe Coding Agent** ليقوم بإنشاء **Academic Year & Term Management داخل School Settings** وفق الهيكل الذي ذكرناه، مع توضيح **المنطق التشغيلي، التصميم، والربط مع محركات النظام**.
+
+---
+
+# Prompt — Build Academic Year & Term Management inside School Settings (NASSAQ)
+
+أريد إنشاء **Academic Year & Term Management** كجزء من **School Settings** داخل منصة **نَسَّق | NASSAQ**.
+يجب أن تكون هذه الوحدة هي **الطبقة الزمنية الأساسية للنظام (Core Temporal Layer)** بحيث تعتمد عليها جميع أجزاء النظام مثل الجدول، الحضور، الاختبارات، والتقارير.
+
+يجب بناء هذه الوحدة وفق **الهيكل التالي بدقة**.
+
+---
+
+# 1. مكان الوحدة داخل النظام
+
+يجب أن تكون هذه الصفحة داخل:
+
+School Dashboard
+→ School Settings
+→ Operational Configuration
+→ **Academic Structure**
+
+ويجب أن يحتوي قسم **Academic Structure** على التبويبات التالية:
+
+Academic Structure
+
+* Academic Year Management
+* Term Structure
+* Academic Calendar
+* Exams Periods
+* Promotion Rules
+
+---
+
+# 2. الهدف من الوحدة
+
+هذه الوحدة مسؤولة عن:
+
+* إنشاء السنة الدراسية
+* تقسيم السنة إلى فصول دراسية
+* تحديد التقويم الأكاديمي
+* تحديد الإجازات
+* تحديد فترات الاختبارات
+* التحكم في انتقال الطلاب بين السنوات الدراسية
+
+هذه الوحدة يجب أن تكون مرتبطة مباشرة مع:
+
+* Scheduling Engine
+* Attendance Engine
+* Assessment Engine
+* Reporting Engine
+* AI Planning Engine
+
+وأي تعديل داخلها يجب أن يؤثر مباشرة على هذه المحركات.
+
+---
+
+# 3. تصميم الصفحة (UI Structure)
+
+يجب تصميم الصفحة باستخدام **Interactive Cards Layout**.
+
+الصفحة تتكون من الأقسام التالية:
+
+1. Header Area
+2. Academic Year Cards
+3. Term Structure Panel
+4. Academic Calendar Integration
+5. AI Planning Panel (Hakim)
+6. Transition & Promotion Rules
+7. Actions Bar
+
+---
+
+# 4. Header Area
+
+يظهر أعلى الصفحة ويحتوي على:
+
+Title
+Academic Year & Term Management
+
+Description
+إدارة السنة الدراسية والفصول الدراسية والتقويم الأكاديمي.
+
+Quick Indicators:
+
+* Current Academic Year
+* Number of Terms
+* Current Term Start Date
+* Remaining School Days
+
+يجب أن يتم حساب هذه المؤشرات تلقائياً من قاعدة البيانات.
+
+---
+
+# 5. Academic Year Cards
+
+يجب عرض جميع السنوات الدراسية في شكل **Cards Layout**.
+
+كل كارت يمثل سنة دراسية.
+
+يحتوي الكارت على:
+
+Academic Year Name
+مثال: 2025 / 2026
+
+Start Date
+End Date
+
+Number of Terms
+
+Status
+
+الحالات الممكنة:
+
+Upcoming
+Active
+Closed
+Archived
+
+الأزرار داخل الكارت:
+
+View Details
+Edit Academic Year
+Close Academic Year
+Archive Academic Year
+
+---
+
+# 6. Create Academic Year Wizard
+
+عند الضغط على زر:
+
+Add Academic Year
+
+يجب فتح **Wizard Creation Flow**.
+
+الخطوة 1 — Basic Information
+
+Fields:
+
+Academic Year Name
+Start Date
+End Date
+Timezone
+
+---
+
+الخطوة 2 — Terms Structure
+
+يمكن اختيار:
+
+2 Terms
+or
+3 Terms
+
+---
+
+الخطوة 3 — Calendar Integration
+
+ربط السنة مع:
+
+Academic Calendar Engine
+Schedule Rules
+
+---
+
+الخطوة 4 — Review & Confirmation
+
+Buttons:
+
+Save Draft
+Confirm Creation
+
+---
+
+# 7. System Logic After Creation
+
+عند إنشاء سنة دراسية يجب أن يقوم النظام تلقائياً بـ:
+
+1. إنشاء سجل AcademicYear داخل قاعدة البيانات.
+
+AcademicYear
+
+fields:
+
+id
+name
+start_date
+end_date
+status
+
+---
+
+2. إنشاء Terms تلقائياً.
+
+مثال:
+
+Term 1
+Term 2
+Term 3
+
+---
+
+3. إنشاء Academic Calendar تلقائياً.
+
+---
+
+4. ربط السنة الدراسية مع:
+
+Scheduling Engine
+Attendance Engine
+Assessment Engine
+Reporting Engine
+AI Planning Engine
+
+---
+
+# 8. Term Structure Panel
+
+عند اختيار سنة دراسية يجب عرض الفصول الدراسية الخاصة بها.
+
+مثال:
+
+Term 1
+Term 2
+Term 3
+
+كل Term Card يحتوي على:
+
+Term Name
+Start Date
+End Date
+Number of Weeks
+Number of School Days
+
+Buttons:
+
+Edit Term
+Add Holiday
+Add Exam Period
+View Calendar
+
+---
+
+# 9. Academic Calendar Integration
+
+يجب أن يتم دمج الصفحة مع **Academic Calendar Engine**.
+
+يمكن للمستخدم إضافة:
+
+Public Holidays
+School Holidays
+Exam Days
+Activity Days
+
+الأزرار:
+
+Add Holiday
+Edit Holiday
+Delete Holiday
+View Calendar
+
+---
+
+# 10. AI Planning Panel (Hakim)
+
+يجب عرض لوحة تحليل ذكاء اصطناعي تحتوي على **Hakim AI Assistant**.
+
+يقوم حكيم بتحليل:
+
+Distribution of Study Weeks
+Balance of Terms
+Exam Period Distribution
+Schedule Pressure
+
+Examples of Hakim Messages:
+
+"Term 2 is shorter than average by three weeks."
+
+"School days in this term are lower than standard."
+
+"Would you like to rebalance exam periods?"
+
+---
+
+# 11. Transition & Promotion Rules
+
+يجب أن تحتوي الصفحة على إعدادات انتقال الطلاب.
+
+Promotion Modes:
+
+Auto Promotion
+Conditional Promotion
+Manual Promotion
+Repeat Year
+
+Buttons:
+
+Edit Rules
+Apply Rules
+Test Rules
+
+---
+
+# 12. Actions Bar
+
+يظهر أسفل الصفحة.
+
+Buttons:
+
+Save Changes
+
+Publish Academic Year
+
+Archive Academic Year
+
+Export Academic Calendar
+
+---
+
+# 13. System Behaviour After Publishing
+
+عند الضغط على:
+
+Publish Academic Year
+
+يجب أن يقوم النظام بـ:
+
+1. تغيير الحالة إلى Active
+
+2. تحديد Current Term
+
+3. إرسال Event إلى النظام:
+
+AcademicYearActivatedEvent
+
+لتحديث:
+
+Scheduling Engine
+Attendance Engine
+Assessment Engine
+Reporting Engine
+
+---
+
+# 14. Integration Rules
+
+بدون سنة دراسية نشطة:
+
+* لا يمكن إنشاء جدول دراسي
+* لا يمكن تسجيل حضور
+* لا يمكن إنشاء اختبارات
+
+---
+
+# 15. Database Models Required
+
+Create models:
+
+AcademicYear
+
+Term
+
+AcademicCalendar
+
+Holiday
+
+ExamPeriod
+
+PromotionRule
+
+---
+
+# 16. Required APIs
+
+Create APIs:
+
+Create Academic Year
+Update Academic Year
+Get Academic Years
+Create Term
+Update Term
+Add Holiday
+Add Exam Period
+Publish Academic Year
+
+---
+
+# 17. System Safety Rules
+
+يجب تطبيق القواعد التالية:
+
+* لا يمكن حذف سنة دراسية نشطة
+* لا يمكن تعديل تاريخ سنة دراسية بعد نشرها
+* أي تعديل يجب حفظه مباشرة في قاعدة البيانات
+* يجب إعادة حساب جميع المحركات المرتبطة تلقائياً
+
+---
+
+# 18. UX Rules
+
+يجب أن تكون الصفحة:
+
+Card Based Layout
+
+Responsive
+
+Real-time updates
+
+Auto-save enabled
+
+---
+
+# الهدف النهائي
+
+بناء وحدة **Academic Year & Term Management** داخل **School Settings** بحيث تصبح **الطبقة الزمنية الأساسية التي يعتمد عليها النظام بالكامل**.
+
+---
+
+إذا أردت، أستطيع أيضًا أن أكتب لك **Prompt أخطر وأهم من هذا** وهو:
+
+**School Settings Readiness Engine Prompt**
+
+وهو المحرك الذي يمنع إنشاء الجدول قبل اكتمال جميع إعدادات المدرسة، وهو عنصر أساسي في بناء نظام **NASSAQ** بشكل احترافي.

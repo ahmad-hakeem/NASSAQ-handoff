@@ -1,0 +1,266 @@
+import React, { useState, useEffect } from 'react';
+import { useParams, Link } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
+import { useTheme } from '../../contexts/ThemeContext';
+import PortalLayout from '../../components/portal/PortalLayout';
+import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
+import { Badge } from '../../components/ui/badge';
+import { Button } from '../../components/ui/button';
+import { Skeleton } from '../../components/ui/skeleton';
+import { ScrollArea } from '../../components/ui/scroll-area';
+import { toast } from 'sonner';
+import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
+import axios from 'axios';
+import {
+  Calendar, BookOpen, ChevronLeft, Clock, User, Printer
+} from 'lucide-react';
+
+const API_URL = process.env.REACT_APP_BACKEND_URL;
+
+const DAY_NAMES = {
+  sunday: { ar: 'الأحد', color: 'from-blue-500 to-blue-600' },
+  monday: { ar: 'الإثنين', color: 'from-purple-500 to-purple-600' },
+  tuesday: { ar: 'الثلاثاء', color: 'from-green-500 to-green-600' },
+  wednesday: { ar: 'الأربعاء', color: 'from-amber-500 to-amber-600' },
+  thursday: { ar: 'الخميس', color: 'from-rose-500 to-rose-600' },
+  friday: { ar: 'الجمعة', color: 'from-emerald-500 to-emerald-600' },
+  saturday: { ar: 'السبت', color: 'from-slate-500 to-slate-600' },
+};
+
+const ChildSchedulePage = () => {
+  const { nassaqError, nassaqWarning } = useNassaqAlert();
+  const { childId } = useParams();
+  const { token } = useAuth();
+  const { isRTL } = useTheme();
+  const [loading, setLoading] = useState(true);
+  const [schedule, setSchedule] = useState(null);
+  const [child, setChild] = useState(null);
+  const [viewMode, setViewMode] = useState('list');
+
+  useEffect(() => {
+    fetchData();
+  }, [childId, token]);
+
+  const fetchData = async () => {
+    try {
+      const [scheduleRes, childRes] = await Promise.all([
+        axios.get(`${API_URL}/api/parent-portal/child/${childId}/schedule`, {
+          headers: { Authorization: `Bearer ${token}` }
+        }),
+        axios.get(`${API_URL}/api/parent-portal/child/${childId}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        }).catch(() => ({ data: null }))
+      ]);
+      setSchedule(scheduleRes.data);
+      setChild(childRes.data);
+    } catch (error) {
+      console.error('Error fetching schedule:', error);
+      nassaqError(isRTL ? 'حدث خطأ في جلب الجدول' : 'Error fetching schedule');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  if (loading) {
+    return (
+      <PortalLayout portalType="parent">
+        <div className="p-4 space-y-4">
+          <Skeleton className="h-12 w-full rounded-xl" />
+          <Skeleton className="h-64 w-full rounded-2xl" />
+        </div>
+      </PortalLayout>
+    );
+  }
+
+  const days = schedule?.days || [];
+  const scheduleData = schedule?.schedule || {};
+
+  return (
+    <PortalLayout portalType="parent">
+      <div className="p-4 space-y-4" data-testid="child-schedule-page">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Link to={`/parent/child/${childId}`}>
+              <Button variant="ghost" size="sm">
+                <ChevronLeft className="h-4 w-4 me-1" />
+                {isRTL ? 'العودة' : 'Back'}
+              </Button>
+            </Link>
+            <div>
+              <h1 className="text-lg font-bold">
+                {isRTL ? 'الجدول الدراسي' : 'Class Schedule'}
+              </h1>
+              {child && (
+                <p className="text-sm text-muted-foreground">
+                  {child.name} - {child.class_name}
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handlePrint} className="gap-2 print:hidden">
+              <Printer className="h-4 w-4" />
+              {isRTL ? 'طباعة' : 'Print'}
+            </Button>
+            <div className="flex bg-gray-100 rounded-lg p-0.5 print:hidden">
+              <button
+                onClick={() => setViewMode('list')}
+                className={`px-3 py-1 text-xs rounded-md transition ${viewMode === 'list' ? 'bg-white shadow-sm font-medium' : 'text-gray-500'}`}
+              >
+                {isRTL ? 'قائمة' : 'List'}
+              </button>
+              <button
+                onClick={() => setViewMode('grid')}
+                className={`px-3 py-1 text-xs rounded-md transition ${viewMode === 'grid' ? 'bg-white shadow-sm font-medium' : 'text-gray-500'}`}
+              >
+                {isRTL ? 'شبكة' : 'Grid'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {days.length === 0 ? (
+          <Card className="rounded-2xl border-0 shadow-sm">
+            <CardContent className="py-16 text-center">
+              <Calendar className="h-16 w-16 mx-auto mb-4 text-gray-300" />
+              <h3 className="font-bold text-lg text-gray-700 mb-2">
+                {isRTL ? 'لا يوجد جدول دراسي حالياً' : 'No schedule available'}
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                {isRTL ? 'سيتم عرض الجدول بعد نشره من إدارة المدرسة' : 'Schedule will appear after it is published by school admin'}
+              </p>
+            </CardContent>
+          </Card>
+        ) : viewMode === 'list' ? (
+          <div className="space-y-4">
+            {days.map((day) => {
+              const dayInfo = DAY_NAMES[day] || { ar: day, color: 'from-gray-500 to-gray-600' };
+              const entries = scheduleData[day] || [];
+              return (
+                <Card key={day} className="rounded-2xl border-0 shadow-sm overflow-hidden">
+                  <div className={`bg-gradient-to-r ${dayInfo.color} px-4 py-2.5`}>
+                    <h3 className="font-bold text-white text-sm flex items-center gap-2">
+                      <Calendar className="h-4 w-4" />
+                      {isRTL ? dayInfo.ar : day}
+                      <Badge className="bg-white/20 text-white border-0 text-[10px]">
+                        {entries.length} {isRTL ? 'حصص' : 'classes'}
+                      </Badge>
+                    </h3>
+                  </div>
+                  <CardContent className="p-3">
+                    {entries.length > 0 ? (
+                      <div className="space-y-2">
+                        {entries.map((entry, idx) => (
+                          <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition">
+                            <div className="flex flex-col items-center justify-center min-w-[56px] h-12 rounded-lg bg-indigo-100">
+                              <span className="text-[10px] font-bold text-indigo-600">{entry.start_time}</span>
+                              <span className="text-[9px] text-indigo-400">{entry.end_time}</span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <BookOpen className="h-3.5 w-3.5 text-indigo-500 flex-shrink-0" />
+                                <p className="font-semibold text-sm truncate">{entry.subject}</p>
+                              </div>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <User className="h-3 w-3 text-gray-400 flex-shrink-0" />
+                                <p className="text-xs text-muted-foreground truncate">{entry.teacher}</p>
+                              </div>
+                            </div>
+                            {entry.period && (
+                              <Badge variant="outline" className="text-[10px] shrink-0">
+                                {isRTL ? `ح${entry.period}` : `P${entry.period}`}
+                              </Badge>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-center text-sm text-muted-foreground py-4">
+                        {isRTL ? 'لا توجد حصص' : 'No classes'}
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        ) : (
+          <Card className="rounded-2xl border-0 shadow-sm">
+            <CardContent className="p-3">
+              <ScrollArea className="w-full">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs border-collapse" dir="rtl">
+                    <thead>
+                      <tr>
+                        <th className="p-2 text-gray-500 font-medium border-b w-16">
+                          {isRTL ? 'الفترة' : 'Period'}
+                        </th>
+                        {days.map(day => {
+                          const dayInfo = DAY_NAMES[day] || { ar: day, color: 'from-gray-500 to-gray-600' };
+                          return (
+                            <th key={day} className="p-2 border-b">
+                              <span className={`inline-block px-2 py-0.5 rounded-full text-white text-[10px] font-bold bg-gradient-to-r ${dayInfo.color}`}>
+                                {isRTL ? dayInfo.ar : day}
+                              </span>
+                            </th>
+                          );
+                        })}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(() => {
+                        const maxPeriods = Math.max(...days.map(d => (scheduleData[d] || []).length), 0);
+                        return Array.from({ length: maxPeriods }, (_, i) => (
+                          <tr key={i} className="hover:bg-gray-50/50">
+                            <td className="p-1.5 text-center font-medium text-gray-400 border-b">
+                              {i + 1}
+                            </td>
+                            {days.map(day => {
+                              const entry = (scheduleData[day] || [])[i];
+                              if (!entry) {
+                                return (
+                                  <td key={day} className="p-1 border-b">
+                                    <div className="h-12 rounded-lg bg-gray-50 border border-dashed border-gray-200" />
+                                  </td>
+                                );
+                              }
+                              return (
+                                <td key={day} className="p-1 border-b">
+                                  <div className="h-12 rounded-lg bg-indigo-50 border border-indigo-100 flex flex-col items-center justify-center px-1">
+                                    <span className="text-[10px] font-semibold text-indigo-700 truncate max-w-full">
+                                      {entry.subject}
+                                    </span>
+                                    <span className="text-[9px] text-gray-400 truncate max-w-full">
+                                      {entry.teacher}
+                                    </span>
+                                  </div>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ));
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+              </ScrollArea>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      <style>{`
+        @media print {
+          .print\\:hidden { display: none !important; }
+          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
+      `}</style>
+    </PortalLayout>
+  );
+};
+
+export default ChildSchedulePage;

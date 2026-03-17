@@ -1,0 +1,78 @@
+modules = ["nodejs-20", "web", "python-3.11"]
+[agent]
+expertMode = true
+integrations = ["python_openai_ai_integrations:1.0.0"]
+
+[nix]
+channel = "stable-25_05"
+packages = ["cargo", "freetype", "glibcLocales", "lcms2", "libiconv", "libimagequant", "libjpeg", "libtiff", "libwebp", "libxcrypt", "mongodb", "openjpeg", "rustc", "tcl", "tk", "zlib"]
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Backend API"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow]]
+name = "Backend API"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "mongod --dbpath /home/runner/workspace/.mongodb/data --logpath /home/runner/workspace/.mongodb/logs/mongod.log --port 27017 --bind_ip 127.0.0.1 --fork && cd backend && uvicorn server:app --host 0.0.0.0 --port 8000"
+waitForPort = 8000
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd frontend && npm run start"
+waitForPort = 5000
+
+[[ports]]
+localPort = 3000
+externalPort = 3000
+
+[[ports]]
+localPort = 5000
+externalPort = 5000
+
+[[ports]]
+localPort = 5001
+externalPort = 3001
+
+[[ports]]
+localPort = 8000
+externalPort = 80
+
+[deployment]
+deploymentTarget = "vm"
+run = ["bash", "-c", "mongod --dbpath /home/runner/workspace/.mongodb/data --logpath /home/runner/workspace/.mongodb/logs/mongod.log --port 27017 --bind_ip 127.0.0.1 --fork && cd /home/runner/workspace/backend && uvicorn server:app --host 0.0.0.0 --port 8000"]
+build = ["bash", "/home/runner/workspace/build.sh"]
+
+[userenv]
+
+[userenv.production]
+JWT_SECRET_KEY = "mkzodaGeExRnHqMNLu1DwiC6dBT2ic5hRmr-hUCogRaqhuGh0r2ZLEFhLVbG-s43"
+CORS_ORIGINS = "https://nassaq.com,https://www.nassaq.com"
+
+[userenv.development]
+JWT_SECRET_KEY = "mkzodaGeExRnHqMNLu1DwiC6dBT2ic5hRmr-hUCogRaqhuGh0r2ZLEFhLVbG-s43"

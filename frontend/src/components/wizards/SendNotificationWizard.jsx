@@ -1,0 +1,396 @@
+import { useState, useEffect } from 'react';
+import { useTheme } from '../../contexts/ThemeContext';
+import { useAuth } from '../../contexts/AuthContext';
+import { useNassaqAlert } from '../ui/NassaqAlertDialog';
+import { Button } from '../../components/ui/button';
+import { Input } from '../../components/ui/input';
+import { Label } from '../../components/ui/label';
+import { Card, CardContent } from '../../components/ui/card';
+import { Badge } from '../../components/ui/badge';
+import { Textarea } from '../../components/ui/textarea';
+import { Checkbox } from '../../components/ui/checkbox';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../../components/ui/dialog';
+import { toast } from 'sonner';
+import {
+  Loader2,
+  CheckCircle2,
+  Send,
+  Bell,
+  Users,
+  AlertTriangle,
+  Calendar,
+  Megaphone,
+} from 'lucide-react';
+import axios from 'axios';
+
+const API_URL = process.env.REACT_APP_BACKEND_URL;
+
+export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
+  const { isRTL } = useTheme();
+  const { token } = useAuth();
+  const { nassaqWarning, nassaqError } = useNassaqAlert();
+  
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [result, setResult] = useState(null);
+  
+  const [data, setData] = useState({
+    title_ar: '',
+    title_en: '',
+    message_ar: '',
+    message_en: '',
+    recipient_type: 'all_students',
+    recipient_filter: null,
+    notification_type: 'announcement',
+    priority: 'normal',
+    send_push: true,
+    send_sms: false,
+    send_email: false,
+  });
+  
+  const [options, setOptions] = useState({
+    recipientTypes: [],
+    notificationTypes: [],
+    priorities: [],
+    grades: [],
+    classes: [],
+  });
+
+  useEffect(() => {
+    if (open) fetchOptions();
+  }, [open]);
+
+  const fetchOptions = async () => {
+    setLoading(true);
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    try {
+      const [recipientRes, notifTypeRes, priorityRes, gradesRes, classesRes] = await Promise.all([
+        axios.get(`${API_URL}/api/notifications/options/recipient-types`, { headers }).catch(() => ({ data: { types: [] } })),
+        axios.get(`${API_URL}/api/notifications/options/notification-types`, { headers }).catch(() => ({ data: { types: [] } })),
+        axios.get(`${API_URL}/api/notifications/options/priorities`, { headers }).catch(() => ({ data: { priorities: [] } })),
+        axios.get(`${API_URL}/api/classes/options/grades`, { headers }).catch(() => ({ data: { grades: [] } })),
+        axios.get(`${API_URL}/api/classes/`, { headers }).catch(() => ({ data: { classes: [] } })),
+      ]);
+
+      setOptions({
+        recipientTypes: recipientRes.data.types || [
+          { code: 'all_students', name_ar: 'جميع الطلاب', name_en: 'All Students' },
+          { code: 'all_teachers', name_ar: 'جميع المعلمين', name_en: 'All Teachers' },
+          { code: 'all_parents', name_ar: 'جميع أولياء الأمور', name_en: 'All Parents' },
+          { code: 'grade_students', name_ar: 'طلاب صف معين', name_en: 'Grade Students' },
+          { code: 'class_students', name_ar: 'طلاب فصل معين', name_en: 'Class Students' },
+        ],
+        notificationTypes: notifTypeRes.data.types || [
+          { code: 'announcement', name_ar: 'إعلان', name_en: 'Announcement' },
+          { code: 'reminder', name_ar: 'تذكير', name_en: 'Reminder' },
+          { code: 'alert', name_ar: 'تنبيه', name_en: 'Alert' },
+          { code: 'event', name_ar: 'حدث', name_en: 'Event' },
+          { code: 'emergency', name_ar: 'طوارئ', name_en: 'Emergency' },
+        ],
+        priorities: priorityRes.data.priorities || [
+          { code: 'low', name_ar: 'منخفضة', name_en: 'Low' },
+          { code: 'normal', name_ar: 'عادية', name_en: 'Normal' },
+          { code: 'high', name_ar: 'عالية', name_en: 'High' },
+          { code: 'urgent', name_ar: 'عاجلة', name_en: 'Urgent' },
+        ],
+        grades: gradesRes.data.grades || [],
+        classes: classesRes.data.classes || [],
+      });
+    } catch (error) {
+      console.error('Error:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onChange = (key, value) => setData(prev => ({ ...prev, [key]: value }));
+
+  const needsFilter = ['grade_students', 'grade_parents', 'class_students', 'class_parents'].includes(data.recipient_type);
+
+  const handleSubmit = async () => {
+    if (!data.title_ar?.trim() || !data.message_ar?.trim()) {
+      nassaqWarning(isRTL ? 'العنوان والرسالة مطلوبان' : 'Title and message required');
+      return;
+    }
+
+    setSubmitting(true);
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    
+    try {
+      const payload = {
+        ...data,
+        recipient_filter: needsFilter ? data.recipient_filter : null,
+      };
+
+      const response = await axios.post(`${API_URL}/api/notifications/send`, payload, { headers });
+      
+      if (response.data.success) {
+        setResult(response.data);
+        setSuccess(true);
+        toast.success(isRTL ? 'تم إرسال الإشعار' : 'Notification sent');
+      } else {
+        nassaqError(response.data.error);
+      }
+    } catch (error) {
+      nassaqError(error.response?.data?.detail || (isRTL ? 'حدث خطأ أثناء إرسال الإشعار' : 'Error sending notification'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleReset = () => {
+    setData({
+      title_ar: '',
+      title_en: '',
+      message_ar: '',
+      message_en: '',
+      recipient_type: 'all_students',
+      recipient_filter: null,
+      notification_type: 'announcement',
+      priority: 'normal',
+      send_push: true,
+      send_sms: false,
+      send_email: false,
+    });
+    setSuccess(false);
+    setResult(null);
+  };
+
+  const handleClose = () => { 
+    handleReset(); 
+    if (onOpenChange) onOpenChange(false);
+    else if (onClose) onClose();
+  };
+
+  const getPriorityColor = (p) => {
+    const colors = { low: 'bg-gray-100 text-gray-700', normal: 'bg-blue-100 text-blue-700', high: 'bg-amber-100 text-amber-700', urgent: 'bg-red-100 text-red-700' };
+    return colors[p] || colors.normal;
+  };
+
+  const getTypeIcon = (t) => {
+    const icons = { announcement: Megaphone, reminder: Calendar, alert: AlertTriangle, event: Calendar, emergency: AlertTriangle };
+    return icons[t] || Bell;
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="send-notification-wizard">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-3 font-cairo text-xl">
+            <div className="w-10 h-10 bg-pink-100 rounded-xl flex items-center justify-center">
+              <Send className="h-5 w-5 text-pink-600" />
+            </div>
+            {isRTL ? 'إرسال إشعار' : 'Send Notification'}
+          </DialogTitle>
+        </DialogHeader>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-pink-600" />
+          </div>
+        ) : success && result ? (
+          <div className="text-center space-y-6 py-8">
+            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+              <CheckCircle2 className="h-10 w-10 text-green-600" />
+            </div>
+            <div>
+              <h3 className="text-2xl font-bold font-cairo text-green-700">
+                {isRTL ? 'تم إرسال الإشعار بنجاح!' : 'Notification Sent!'}
+              </h3>
+              <p className="text-lg mt-2 text-muted-foreground">
+                {isRTL ? `تم إرسال الإشعار إلى ${result.recipient_count} مستلم` : `Sent to ${result.recipient_count} recipients`}
+              </p>
+            </div>
+            <div className="flex justify-center gap-3">
+              <Button variant="outline" onClick={handleClose}>{isRTL ? 'إغلاق' : 'Close'}</Button>
+              <Button onClick={handleReset} className="bg-pink-600 hover:bg-pink-700">
+                {isRTL ? 'إرسال إشعار آخر' : 'Send Another'}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-6 py-4">
+            {/* Recipient Type */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>{isRTL ? 'المستلمون' : 'Recipients'} <span className="text-red-500">*</span></Label>
+                <Select value={data.recipient_type} onValueChange={(val) => onChange('recipient_type', val)}>
+                  <SelectTrigger data-testid="notif-recipient">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {options.recipientTypes.map((t) => (
+                      <SelectItem key={t.code} value={t.code}>{isRTL ? t.name_ar : t.name_en}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {needsFilter && (
+                <div className="space-y-2">
+                  <Label>
+                    {data.recipient_type.includes('grade') ? (isRTL ? 'الصف' : 'Grade') : (isRTL ? 'الفصل' : 'Class')}
+                  </Label>
+                  <Select 
+                    value={data.recipient_filter?.grade_id || data.recipient_filter?.class_id || ''} 
+                    onValueChange={(val) => onChange('recipient_filter', 
+                      data.recipient_type.includes('grade') ? { grade_id: val } : { class_id: val }
+                    )}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={isRTL ? 'اختر' : 'Select'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {data.recipient_type.includes('grade') 
+                        ? options.grades.map((g) => <SelectItem key={g.id} value={g.id}>{isRTL ? g.name_ar : g.name_en}</SelectItem>)
+                        : options.classes.map((c) => <SelectItem key={c.class_id} value={c.class_id}>{c.name_ar}</SelectItem>)
+                      }
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+
+            {/* Notification Type & Priority */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>{isRTL ? 'نوع الإشعار' : 'Type'}</Label>
+                <Select value={data.notification_type} onValueChange={(val) => onChange('notification_type', val)}>
+                  <SelectTrigger data-testid="notif-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {options.notificationTypes.map((t) => (
+                      <SelectItem key={t.code} value={t.code}>{isRTL ? t.name_ar : t.name_en}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>{isRTL ? 'الأولوية' : 'Priority'}</Label>
+                <Select value={data.priority} onValueChange={(val) => onChange('priority', val)}>
+                  <SelectTrigger data-testid="notif-priority">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {options.priorities.map((p) => (
+                      <SelectItem key={p.code} value={p.code}>{isRTL ? p.name_ar : p.name_en}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Title */}
+            <div className="space-y-2">
+              <Label>{isRTL ? 'العنوان (عربي)' : 'Title (Arabic)'} <span className="text-red-500">*</span></Label>
+              <Input
+                value={data.title_ar}
+                onChange={(e) => onChange('title_ar', e.target.value)}
+                placeholder={isRTL ? 'عنوان الإشعار' : 'Notification title'}
+                data-testid="notif-title-ar"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>{isRTL ? 'العنوان (إنجليزي)' : 'Title (English)'}</Label>
+              <Input
+                value={data.title_en}
+                onChange={(e) => onChange('title_en', e.target.value)}
+                dir="ltr"
+                data-testid="notif-title-en"
+              />
+            </div>
+
+            {/* Message */}
+            <div className="space-y-2">
+              <Label>{isRTL ? 'الرسالة (عربي)' : 'Message (Arabic)'} <span className="text-red-500">*</span></Label>
+              <Textarea
+                value={data.message_ar}
+                onChange={(e) => onChange('message_ar', e.target.value)}
+                placeholder={isRTL ? 'محتوى الإشعار...' : 'Notification content...'}
+                rows={4}
+                data-testid="notif-message-ar"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>{isRTL ? 'الرسالة (إنجليزي)' : 'Message (English)'}</Label>
+              <Textarea
+                value={data.message_en}
+                onChange={(e) => onChange('message_en', e.target.value)}
+                dir="ltr"
+                rows={3}
+                data-testid="notif-message-en"
+              />
+            </div>
+
+            {/* Delivery Options */}
+            <Card className="bg-muted/30">
+              <CardContent className="p-4">
+                <Label className="mb-3 block">{isRTL ? 'طريقة الإرسال' : 'Delivery Method'}</Label>
+                <div className="flex flex-wrap gap-4">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="send_push"
+                      checked={data.send_push}
+                      onCheckedChange={(checked) => onChange('send_push', checked)}
+                    />
+                    <Label htmlFor="send_push" className="cursor-pointer">{isRTL ? 'إشعار فوري' : 'Push'}</Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="send_sms"
+                      checked={data.send_sms}
+                      onCheckedChange={(checked) => onChange('send_sms', checked)}
+                    />
+                    <Label htmlFor="send_sms" className="cursor-pointer">{isRTL ? 'رسالة SMS' : 'SMS'}</Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="send_email"
+                      checked={data.send_email}
+                      onCheckedChange={(checked) => onChange('send_email', checked)}
+                    />
+                    <Label htmlFor="send_email" className="cursor-pointer">{isRTL ? 'بريد إلكتروني' : 'Email'}</Label>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {!loading && !success && (
+          <DialogFooter className="flex justify-between gap-3 mt-4">
+            <Button variant="ghost" onClick={handleClose}>{isRTL ? 'إلغاء' : 'Cancel'}</Button>
+            <Button 
+              onClick={handleSubmit} 
+              disabled={submitting || !data.title_ar || !data.message_ar}
+              className="bg-pink-600 hover:bg-pink-700"
+            >
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : <Send className="h-4 w-4 me-2" />}
+              {isRTL ? 'إرسال الإشعار' : 'Send Notification'}
+            </Button>
+          </DialogFooter>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+export default SendNotificationWizard;

@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "-5mORokbsqOAC2184-v_B"
+uri = "file://.local/teacher_module_analysis.md"
+type = "text"
+title = "Teacher Module — Complete Analysis Report"

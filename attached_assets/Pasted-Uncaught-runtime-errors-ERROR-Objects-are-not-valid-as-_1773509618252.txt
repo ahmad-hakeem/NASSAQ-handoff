@@ -1,0 +1,23 @@
+Uncaught runtime errors:
+×
+ERROR
+Objects are not valid as a React child (found: object with keys {type, loc, msg, input}). If you meant to render a collection of children, use an array instead.
+throwOnInvalidObjectTypeImpl@https://76d3d322-060b-41e8-b1b6-757b9374d907-00-uqpmfo0lufwh.worf.replit.dev:5000/static/js/bundle.js:314030:16
+throwOnInvalidObjectType@https://76d3d322-060b-41e8-b1b6-757b9374d907-00-uqpmfo0lufwh.worf.replit.dev:5000/static/js/bundle.js:314034:134
+createChild@https://76d3d322-060b-41e8-b1b6-757b9374d907-00-uqpmfo0lufwh.worf.replit.dev:5000/static/js/bundle.js:314135:33
+reconcileChildrenArray@https://76d3d322-060b-41e8-b1b6-757b9374d907-00-uqpmfo0lufwh.worf.replit.dev:5000/static/js/bundle.js:314235:77
+reconcileChildFibersImpl@https://76d3d322-060b-41e8-b1b6-757b9374d907-00-uqpmfo0lufwh.worf.replit.dev:5000/static/js/bundle.js:314342:131
+@https://76d3d322-060b-41e8-b1b6-757b9374d907-00-uqpmfo0lufwh.worf.replit.dev:5000/static/js/bundle.js:314369:55
+reconcileChildren@https://76d3d322-060b-41e8-b1b6-757b9374d907-00-uqpmfo0lufwh.worf.replit.dev:5000/static/js/bundle.js:315928:63
+beginWork@https://76d3d322-060b-41e8-b1b6-757b9374d907-00-uqpmfo0lufwh.worf.replit.dev:5000/static/js/bundle.js:316744:1582
+runWithFiberInDEV@https://76d3d322-060b-41e8-b1b6-757b9374d907-00-uqpmfo0lufwh.worf.replit.dev:5000/static/js/bundle.js:311196:133
+performUnitOfWork@https://76d3d322-060b-41e8-b1b6-757b9374d907-00-uqpmfo0lufwh.worf.replit.dev:5000/static/js/bundle.js:319105:110
+workLoopSync@https://76d3d322-060b-41e8-b1b6-757b9374d907-00-uqpmfo0lufwh.worf.replit.dev:5000/static/js/bundle.js:319000:55
+renderRootSync@https://76d3d322-060b-41e8-b1b6-757b9374d907-00-uqpmfo0lufwh.worf.replit.dev:5000/static/js/bundle.js:318985:19
+performWorkOnRoot@https://76d3d322-060b-41e8-b1b6-757b9374d907-00-uqpmfo0lufwh.worf.replit.dev:5000/static/js/bundle.js:318658:47
+performSyncWorkOnRoot@https://76d3d322-060b-41e8-b1b6-757b9374d907-00-uqpmfo0lufwh.worf.replit.dev:5000/static/js/bundle.js:319768:22
+flushSyncWorkAcrossRoots_impl@https://76d3d322-060b-41e8-b1b6-757b9374d907-00-uqpmfo0lufwh.worf.replit.dev:5000/static/js/bundle.js:319683:327
+flushSyncWork$1@https://76d3d322-060b-41e8-b1b6-757b9374d907-00-uqpmfo0lufwh.worf.replit.dev:5000/static/js/bundle.js:318788:111
+f@https://76d3d322-060b-41e8-b1b6-757b9374d907-00-uqpmfo0lufwh.worf.replit.dev:5000/static/js/bundle.js:325285:39
+@https://76d3d322-060b-41e8-b1b6-757b9374d907-00-uqpmfo0lufwh.worf.replit.dev:5000/static/js/bundle.js:325748:103
+@https://76d3d322-060b-41e8-b1b6-757b9374d907-00-uqpmfo0lufwh.worf.replit.dev:5000/static/js/bundle.js:423981:57

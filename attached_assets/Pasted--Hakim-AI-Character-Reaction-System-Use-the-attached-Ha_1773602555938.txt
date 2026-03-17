@@ -1,0 +1,342 @@
+## Hakim AI Character Reaction System
+
+Use the attached Hakim character images as a **dynamic AI assistant across the NASSAQ system**.
+
+Hakim is the **AI intelligence layer of the platform** and should appear in different parts of the system to guide, explain, celebrate, alert, and interact with users.
+
+Hakim must not behave like a static mascot.
+
+He must feel like a **living intelligent assistant that reacts to context, events, and user actions.**
+
+The system should dynamically choose from the provided **Hakim poses** depending on the situation, user action, and system state.
+
+Hakim should appear in:
+
+• dashboards
+• onboarding screens
+• help panels
+• AI insights sections
+• alerts and notifications
+• student dashboards
+• teacher workflow moments
+• system success states
+
+The goal is for users to feel that **there is an intelligent system actively assisting them in the background.**
+
+---
+
+# Available Hakim Poses
+
+Use the following poses that are attached with this prompt:
+
+Friendly greeting pose
+Hand wave greeting
+Introducing the system pose
+Inviting the user to begin
+Open hands welcoming pose
+Pointing to start button
+Slight bow greeting
+Support pose
+Welcome pose
+Explaining concept pose
+Giving instructions pose
+Pointing to board pose
+Teacher helper pose
+Teaching pose
+AI thinking pose
+Analyzing data pose
+Attention gesture pose
+Clapping celebration pose
+Congratulating student pose
+Detecting patterns pose
+Listening pose
+Looking at charts pose
+Motivating pose
+Positive feedback pose
+
+---
+
+# Context-Based Pose Usage Logic
+
+The system should choose a pose **based on the current context of the page or action**.
+
+Below are examples of where each pose should appear.
+
+---
+
+# 1️⃣ First Visit / Landing Page / Onboarding
+
+Use welcoming and greeting poses.
+
+Possible poses:
+
+Friendly greeting pose
+Hand wave greeting
+Open hands welcoming pose
+Welcome pose
+Slight bow greeting
+Introducing the system pose
+
+Example usage:
+
+When the user first enters the platform:
+
+"Hakim appears with a Friendly greeting pose and welcomes the user."
+
+When introducing NASSAQ:
+
+Use **Introducing the system pose**.
+
+When guiding to start:
+
+Use **Inviting the user to begin** or **Pointing to start button**.
+
+---
+
+# 2️⃣ Onboarding and Setup Wizards
+
+Use guidance and instruction poses.
+
+Possible poses:
+
+Giving instructions pose
+Explaining concept pose
+Support pose
+Teacher helper pose
+
+Example:
+
+When explaining system setup:
+
+Use **Explaining concept pose**.
+
+When guiding user actions:
+
+Use **Giving instructions pose**.
+
+When assisting teachers:
+
+Use **Teacher helper pose**.
+
+---
+
+# 3️⃣ Teaching / Teacher Tools / Classroom Management
+
+Possible poses:
+
+Teaching pose
+Teacher helper pose
+Pointing to board pose
+Explaining concept pose
+
+Example:
+
+When showing class analytics:
+
+Use **Pointing to board pose**.
+
+When helping a teacher manage a class:
+
+Use **Teacher helper pose**.
+
+---
+
+# 4️⃣ AI Analysis / Data Insights / Reports
+
+Possible poses:
+
+AI thinking pose
+Analyzing data pose
+Looking at charts pose
+Detecting patterns pose
+
+Example:
+
+When the system is processing analytics:
+
+Use **AI thinking pose**.
+
+When presenting data:
+
+Use **Analyzing data pose**.
+
+When highlighting trends:
+
+Use **Detecting patterns pose**.
+
+When looking at charts or analytics dashboards:
+
+Use **Looking at charts pose**.
+
+---
+
+# 5️⃣ Alerts / Notifications / Important Messages
+
+Possible poses:
+
+Attention gesture pose
+Support pose
+Explaining concept pose
+
+Example:
+
+When showing an alert:
+
+Use **Attention gesture pose**.
+
+When explaining the alert:
+
+Use **Explaining concept pose**.
+
+---
+
+# 6️⃣ Listening and Interaction (Ask Hakim / AI Assistant)
+
+Possible poses:
+
+Listening pose
+Explaining concept pose
+Support pose
+
+Example:
+
+When the user asks a question:
+
+Hakim appears with **Listening pose**.
+
+When responding:
+
+Switch to **Explaining concept pose**.
+
+---
+
+# 7️⃣ Success States / Completed Tasks
+
+Possible poses:
+
+Positive feedback pose
+Motivating pose
+Congratulating student pose
+Clapping celebration pose
+
+Example:
+
+When a task completes successfully:
+
+Use **Positive feedback pose**.
+
+When finishing schedule creation:
+
+Use
+
+Positive feedback pose
+or Motivating pose
+or Congratulating student pose
+
+When a student achieves something:
+
+Use **Congratulating student pose**.
+
+For major achievements:
+
+Use **Clapping celebration pose**.
+
+---
+
+# Dynamic Pose Rotation
+
+Do not always show the same pose.
+
+Allow the system to randomly select between **2–3 relevant poses for the same context**.
+
+Example:
+
+When schedule creation is completed:
+
+Possible poses:
+
+Positive feedback pose
+Motivating pose
+Congratulating student pose
+
+Choose randomly to create variation.
+
+---
+
+# Behavior Design Goal
+
+Hakim must feel like a **living intelligent assistant**.
+
+The user should feel:
+
+• the system is aware of what is happening
+• the AI reacts to actions
+• the interface is alive and intelligent
+
+Hakim should enhance the feeling of **AI-powered interaction inside the platform.**
+
+---
+
+# Important Design Tip (Animation Levels)
+
+Hakim should have **3 animation levels** to make the system feel alive.
+
+### 1️⃣ Idle Animation
+
+Very subtle movement.
+
+Examples:
+
+breathing motion
+slight floating
+small head movement
+soft blinking
+
+Used when Hakim is simply present.
+
+---
+
+### 2️⃣ Interaction Animation
+
+Triggered when the user interacts.
+
+Examples:
+
+pointing
+hand gestures
+explaining movement
+slight body shift
+
+Used when Hakim is guiding or explaining.
+
+---
+
+### 3️⃣ Celebration Animation
+
+Used when the system detects success.
+
+Examples:
+
+clapping
+small celebratory motion
+happy gesture
+
+Used after achievements or completed tasks.
+
+---
+
+# Final Goal
+
+Hakim should transform the interface from a **static software system** into a **living AI-powered educational environment**.
+
+The character must:
+
+• guide users
+• react to actions
+• celebrate success
+• assist learning
+• highlight insights
+
+Hakim should feel like the **intelligence behind NASSAQ**, not just a visual mascot.
+
+---
