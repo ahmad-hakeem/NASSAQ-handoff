@@ -31,3 +31,4 @@
 .mongodb/data/journal/WiredTigerLog.0000000270 filter=lfs diff=lfs merge=lfs -text
 .mongodb/data/journal/WiredTigerLog.0000000271 filter=lfs diff=lfs merge=lfs -text
 .mongodb/data/journal/WiredTigerLog.0000000272 filter=lfs diff=lfs merge=lfs -text
+.mongodb/data/journal/WiredTigerLog.0000000273 filter=lfs diff=lfs merge=lfs -text

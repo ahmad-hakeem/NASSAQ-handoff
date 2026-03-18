@@ -14,26 +14,40 @@ logger = logging.getLogger("nassaq.ratelimit")
 
 
 class RateLimitStore:
+    MAX_KEYS = 50_000
+
     def __init__(self):
-        self._store = defaultdict(list)
+        self._store: dict[str, list[float]] = {}
         self._lock = asyncio.Lock()
 
     async def is_rate_limited(self, key: str, max_requests: int, window_seconds: int) -> bool:
         async with self._lock:
             now = time.time()
             cutoff = now - window_seconds
-            self._store[key] = [t for t in self._store[key] if t > cutoff]
+
+            if key in self._store:
+                self._store[key] = [t for t in self._store[key] if t > cutoff]
+            else:
+                if len(self._store) >= self.MAX_KEYS:
+                    await self._evict_expired(now)
+                    if len(self._store) >= self.MAX_KEYS:
+                        return False
+                self._store[key] = []
+
             if len(self._store[key]) >= max_requests:
                 return True
             self._store[key].append(now)
             return False
 
+    async def _evict_expired(self, now: float):
+        expired = [k for k, v in self._store.items() if not v or max(v) < now - 3600]
+        for k in expired:
+            del self._store[k]
+
     async def cleanup(self):
         async with self._lock:
             now = time.time()
-            expired = [k for k, v in self._store.items() if not v or max(v) < now - 3600]
-            for k in expired:
-                del self._store[k]
+            await self._evict_expired(now)
 
 
 rate_store = RateLimitStore()
@@ -51,7 +65,11 @@ RATE_LIMITS = {
 class RateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
-        client_ip = request.client.host if request.client else "unknown"
+        forwarded = request.headers.get("X-Forwarded-For")
+        if forwarded:
+            client_ip = forwarded.split(",")[0].strip()
+        else:
+            client_ip = request.client.host if request.client else "unknown"
 
         for pattern, limits in RATE_LIMITS.items():
             if path.startswith(pattern):
