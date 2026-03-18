@@ -210,14 +210,16 @@ const TimetableGridSection = ({
     ? workingDays
     : WEEKDAYS.filter(d => ['sunday','monday','tuesday','wednesday','thursday'].includes(d.key));
 
-  const getSessionsForCell = (dayKey, slotId, slotNumber) => {
+  const getSessionsForCell = (dayKey, slotId, slotNumber, periodNumber) => {
     const sn = slotNumber != null ? Number(slotNumber) : null;
+    const pn = periodNumber != null ? Number(periodNumber) : null;
     return sessions.filter(s => {
       const dayMatch = s.day_of_week === dayKey || s.day === dayKey;
       const sPeriod = s.period_number != null ? Number(s.period_number) : null;
       const slotMatch =
         s.time_slot_id === slotId ||
-        (sPeriod != null && sn != null && sPeriod === sn);
+        (pn != null && sPeriod != null && sPeriod === pn) ||
+        (pn == null && sPeriod != null && sn != null && sPeriod === sn);
 
       let filterMatch = true;
       if (selectedFilter && filterType === 'class') filterMatch = s.class_id === selectedFilter;
@@ -434,8 +436,8 @@ const TimetableGridSection = ({
                   </div>
 
                   {days.map(day => {
-                    const cellSessions = getSessionsForCell(day.key, slot.id, slot.slot_number);
-                    const slotNum = Number(slot.slot_number || slot.period_number || currentPeriod);
+                    const cellSessions = getSessionsForCell(day.key, slot.id, slot.slot_number, slot.period_number);
+                    const slotNum = Number(slot.period_number || slot.slot_number || currentPeriod);
                     const cellKey = `${day.key}-${slotNum}`;
                     const isConflict = conflictCells.some(
                       cc => cc.day === day.key && cc.period === slotNum

@@ -452,7 +452,7 @@ async def get_filter_options(
     async for s in db.subjects.find({"school_id": school_id, "is_active": {"$ne": False}}, {"_id": 0}):
         subjects.append({"id": s.get("id"), "name": s.get("name_ar") or s.get("name", "")})
 
-    time_slots = []
+    raw_time_slots = []
     async for ts in db.time_slots.find({"school_id": school_id}, {"_id": 0}):
         slot_num = ts.get("slot_number") or ts.get("period_number")
         is_break = ts.get("is_break", False)
@@ -469,7 +469,7 @@ async def get_filter_options(
             slot_type = raw_type
         else:
             slot_type = "period"
-        time_slots.append({
+        raw_time_slots.append({
             "id": ts.get("id"),
             "slot_number": slot_num,
             "type": slot_type,
@@ -481,7 +481,18 @@ async def get_filter_options(
             "is_break": is_break,
             "is_prayer": is_prayer,
         })
-    time_slots.sort(key=lambda x: x.get("start_time") or "99:99")
+    raw_time_slots.sort(key=lambda x: x.get("start_time") or "99:99")
+
+    teaching_counter = 0
+    time_slots = []
+    for slot in raw_time_slots:
+        is_teaching = slot["type"] not in ("break", "prayer")
+        if is_teaching:
+            teaching_counter += 1
+            slot["period_number"] = teaching_counter
+        else:
+            slot["period_number"] = None
+        time_slots.append(slot)
 
     settings = await db.school_settings.find_one({"school_id": school_id}, {"_id": 0}) or {}
     working_days_config = settings.get("working_days", {})
@@ -1901,9 +1912,22 @@ async def move_session(
 
     slot = await db.time_slots.find_one({
         "school_id": school_id,
-        "slot_number": data.new_period,
+        "period_number": data.new_period,
         "type": {"$nin": ["break", "prayer"]}
     }, {"_id": 0})
+    if not slot:
+        all_slots = []
+        async for ts in db.time_slots.find({"school_id": school_id}, {"_id": 0}):
+            all_slots.append(ts)
+        all_slots.sort(key=lambda x: x.get("start_time") or "99:99")
+        teaching_counter = 0
+        for ts in all_slots:
+            ts_type = ts.get("type", "period")
+            if ts_type not in ("break", "prayer") and not ts.get("is_break") and not ts.get("is_prayer"):
+                teaching_counter += 1
+                if teaching_counter == data.new_period:
+                    slot = ts
+                    break
 
     if not slot:
         raise HTTPException(status_code=400, detail="الخانة المستهدفة ليست حصة دراسية صالحة")

@@ -649,7 +649,10 @@ const PrincipalTimetablePage = () => {
 
     if (movedSession) {
       const matchingSlot = (filterOptions.time_slots || []).find(
-        ts => Number(ts.slot_number || ts.period_number) === Number(newPeriod) &&
+        ts => ts.period_number != null && Number(ts.period_number) === Number(newPeriod) &&
+              ts.type !== 'break' && ts.type !== 'prayer'
+      ) || (filterOptions.time_slots || []).find(
+        ts => Number(ts.slot_number) === Number(newPeriod) &&
               ts.type !== 'break' && ts.type !== 'prayer'
       );
       setSessions(prev => prev.map(s => {

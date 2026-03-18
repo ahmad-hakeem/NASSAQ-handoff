@@ -476,7 +476,8 @@ Routed at `/principal/settings` and `/school/settings`. Two sections:
 - `generate_draft_timetable` only schedules into teaching periods (skips break/prayer slot numbers)
 - Gap-fill phase runs after initial scheduling to fill remaining empty teaching slots
 - `periods_per_day` in settings = raw DB value (7); `teaching_period_numbers` = actual teaching-only period numbers [1,2,3,5,6]
-- DB time_slots for school-noor-ahlia: 9 slots (P1-P3=teaching, P4=break, P5-P7=teaching, P8=prayer, P9=teaching) = 7 teaching + 1 break + 1 prayer
+- DB time_slots for school-noor-ahlia: 10 slots (P1-P2=teaching, break, P4-P5=teaching, prayer, P7=teaching, break, P9-P10=teaching) = 7 teaching + 2 break + 1 prayer
+- **CRITICAL**: `slot_number` is sequential (1-10 including breaks/prayers); `period_number` counts only teaching periods (1-7). Sessions use `period_number` (teaching-only). The filter-options API returns both fields on time_slots. Frontend matching in TimetableGridSection and SchedulePageNew uses `slot.period_number` to match `session.period_number`. The move endpoint resolves time slots by DB `period_number` field first, fallback to `slot_number`.
 
 ### Official Curriculum API Endpoints
 - Stats: `GET /api/official-curriculum/stats`
