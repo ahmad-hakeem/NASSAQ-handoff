@@ -196,6 +196,19 @@ import { getPose, getPoseForPath, getRandomPoseFromCategory, HERO_POSES } from '
 - **Frontend capacity UI**: Result dialog shows severity-colored cards (red=critical, amber=warning) with Arabic messages and actionable fix guidance (e.g., "Go to Curriculum Settings > reduce weekly hours")
 - **Data fields**: `grade_subjects` uses `weekly_hours` (NOT `weekly_periods`); teacher `working_days` is per-teacher array in teachers collection
 
+## Timetable Drag & Drop (Move / Swap)
+- **Frontend**: `SchedulePageNew.jsx` — native HTML5 drag & drop on the timetable grid
+  - SessionCard is draggable when timetable status !== 'published' (draft mode)
+  - Drop on empty cell → move session (POST `/smart-scheduling/sessions/move`)
+  - Drop on occupied cell → swap sessions (POST `/smart-scheduling/sessions/swap`)
+  - Optimistic state updates with rollback on API error
+  - Visual feedback: turquoise highlight on empty drop targets, amber highlight on swap targets, grip dots icon on draggable cards
+  - Badge "اسحب وأفلت لنقل الحصص ↔" shown in grid header when draft mode
+- **Backend**: `scheduling_routes_mod.py` endpoints
+  - `/smart-scheduling/sessions/move` — validates teacher/class conflicts (409), published guard (400), tenant ownership (403), resolves time slot by `period_number` with `is_break/is_prayer` exclusion
+  - `/smart-scheduling/sessions/swap` — validates cross-timetable (400), teacher/class conflicts for both directions (409), published guard (400), tenant ownership (403), swaps all fields (day, period, time_slot_id, start/end times)
+- **PrincipalTimetablePage.jsx** — also has D&D via TimetableGridSection (uses `/principal/timetable/sessions/swap` and `/sessions/move` endpoints)
+
 ## Timetable Period Distribution
 The scheduling engine uses contiguous-fill scoring to distribute sessions evenly across all periods:
 - **No period bias**: Periods 3-5 no longer receive a fixed +10 bonus

@@ -2383,15 +2383,80 @@ async def swap_smart_sessions(
     
     if not session1 or not session2:
         raise HTTPException(status_code=404, detail="إحدى الحصتين غير موجودة")
-    
-    # Swap day and period
+
+    tt_id = session1.get("timetable_id")
+    if tt_id != session2.get("timetable_id"):
+        raise HTTPException(status_code=400, detail="لا يمكن تبديل حصص من جداول مختلفة")
+
+    school_id = session1.get("school_id")
+    user_tenant = current_user.get("tenant_id") or current_user.get("school_id")
+    user_role = current_user.get("role", "")
+    if user_tenant and school_id != user_tenant and user_role != UserRole.PLATFORM_ADMIN.value:
+        raise HTTPException(status_code=403, detail="غير مصرح بالتعديل على هذه المدرسة")
+
+    tt = await db.timetables.find_one({"id": tt_id}, {"_id": 0, "status": 1})
+    if tt and tt.get("status") == "published":
+        raise HTTPException(status_code=400, detail="لا يمكن تعديل جدول منشور")
+
+    s1_day = session1.get("day_of_week") or session1.get("day")
+    s1_period = session1.get("period_number")
+    s1_slot = session1.get("time_slot_id")
+    s1_start = session1.get("start_time")
+    s1_end = session1.get("end_time")
+
+    s2_day = session2.get("day_of_week") or session2.get("day")
+    s2_period = session2.get("period_number")
+    s2_slot = session2.get("time_slot_id")
+    s2_start = session2.get("start_time")
+    s2_end = session2.get("end_time")
+
+    exclude_ids = [request.session_id_1, request.session_id_2]
+
+    t1_conflict = await db.timetable_sessions.find_one({
+        "timetable_id": tt_id,
+        "teacher_id": session1.get("teacher_id"),
+        "day_of_week": s2_day, "period_number": s2_period,
+        "id": {"$nin": exclude_ids}
+    })
+    if t1_conflict:
+        raise HTTPException(status_code=409, detail=f"تعارض: المعلم {session1.get('teacher_name', '')} لديه حصة أخرى في الخانة المستهدفة")
+
+    c1_conflict = await db.timetable_sessions.find_one({
+        "timetable_id": tt_id,
+        "class_id": session1.get("class_id"),
+        "day_of_week": s2_day, "period_number": s2_period,
+        "id": {"$nin": exclude_ids}
+    })
+    if c1_conflict:
+        raise HTTPException(status_code=409, detail=f"تعارض: الفصل {session1.get('class_name', '')} لديه حصة أخرى في الخانة المستهدفة")
+
+    t2_conflict = await db.timetable_sessions.find_one({
+        "timetable_id": tt_id,
+        "teacher_id": session2.get("teacher_id"),
+        "day_of_week": s1_day, "period_number": s1_period,
+        "id": {"$nin": exclude_ids}
+    })
+    if t2_conflict:
+        raise HTTPException(status_code=409, detail=f"تعارض: المعلم {session2.get('teacher_name', '')} لديه حصة أخرى في الخانة المستهدفة")
+
+    c2_conflict = await db.timetable_sessions.find_one({
+        "timetable_id": tt_id,
+        "class_id": session2.get("class_id"),
+        "day_of_week": s1_day, "period_number": s1_period,
+        "id": {"$nin": exclude_ids}
+    })
+    if c2_conflict:
+        raise HTTPException(status_code=409, detail=f"تعارض: الفصل {session2.get('class_name', '')} لديه حصة أخرى في الخانة المستهدفة")
+
     now = datetime.now(timezone.utc).isoformat()
     
     await db.timetable_sessions.update_one(
         {"id": request.session_id_1},
         {"$set": {
-            "day_of_week": session2.get("day_of_week"),
-            "period_number": session2.get("period_number"),
+            "day_of_week": s2_day, "day": s2_day,
+            "period_number": s2_period,
+            "time_slot_id": s2_slot,
+            "start_time": s2_start, "end_time": s2_end,
             "source_type": "hybrid_adjusted",
             "updated_at": now
         }}
@@ -2400,8 +2465,10 @@ async def swap_smart_sessions(
     await db.timetable_sessions.update_one(
         {"id": request.session_id_2},
         {"$set": {
-            "day_of_week": session1.get("day_of_week"),
-            "period_number": session1.get("period_number"),
+            "day_of_week": s1_day, "day": s1_day,
+            "period_number": s1_period,
+            "time_slot_id": s1_slot,
+            "start_time": s1_start, "end_time": s1_end,
             "source_type": "hybrid_adjusted",
             "updated_at": now
         }}
@@ -2411,6 +2478,91 @@ async def swap_smart_sessions(
         "success": True,
         "message_ar": "تم تبديل الحصتين بنجاح",
         "message_en": "Sessions swapped successfully"
+    }
+
+
+class SmartMoveRequest(BaseModel):
+    session_id: str
+    new_day: str
+    new_period: int
+
+@router.post("/smart-scheduling/sessions/move")
+async def move_smart_session(
+    request: SmartMoveRequest,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
+):
+    session = await db.timetable_sessions.find_one({"id": request.session_id}, {"_id": 0})
+    if not session:
+        raise HTTPException(status_code=404, detail="الحصة غير موجودة")
+
+    tt_id = session.get("timetable_id")
+    school_id = session.get("school_id")
+
+    user_tenant = current_user.get("tenant_id") or current_user.get("school_id")
+    user_role = current_user.get("role", "")
+    if user_tenant and school_id != user_tenant and user_role != UserRole.PLATFORM_ADMIN.value:
+        raise HTTPException(status_code=403, detail="غير مصرح بالتعديل على هذه المدرسة")
+
+    tt = await db.timetables.find_one({"id": tt_id}, {"_id": 0, "status": 1})
+    if tt and tt.get("status") == "published":
+        raise HTTPException(status_code=400, detail="لا يمكن تعديل جدول منشور")
+
+    teacher_conflict = await db.timetable_sessions.find_one({
+        "timetable_id": tt_id,
+        "teacher_id": session.get("teacher_id"),
+        "day_of_week": request.new_day,
+        "period_number": request.new_period,
+        "id": {"$ne": request.session_id}
+    })
+    if teacher_conflict:
+        raise HTTPException(status_code=409, detail=f"تعارض: المعلم {session.get('teacher_name', '')} لديه حصة في نفس الوقت")
+
+    class_conflict = await db.timetable_sessions.find_one({
+        "timetable_id": tt_id,
+        "class_id": session.get("class_id"),
+        "day_of_week": request.new_day,
+        "period_number": request.new_period,
+        "id": {"$ne": request.session_id}
+    })
+    if class_conflict:
+        raise HTTPException(status_code=409, detail=f"تعارض: الفصل {session.get('class_name', '')} لديه حصة في نفس الوقت")
+
+    slot = await db.time_slots.find_one({
+        "school_id": school_id,
+        "period_number": request.new_period,
+        "is_break": {"$ne": True},
+        "is_prayer": {"$ne": True}
+    }, {"_id": 0})
+    if not slot:
+        slot = await db.time_slots.find_one({
+            "school_id": school_id,
+            "slot_number": request.new_period,
+            "is_break": {"$ne": True},
+            "is_prayer": {"$ne": True}
+        }, {"_id": 0})
+
+    now = datetime.now(timezone.utc).isoformat()
+    update_fields = {
+        "day_of_week": request.new_day,
+        "day": request.new_day,
+        "period_number": request.new_period,
+        "source_type": "hybrid_adjusted",
+        "updated_at": now
+    }
+    if slot:
+        update_fields["time_slot_id"] = slot.get("id")
+        update_fields["start_time"] = slot.get("start_time")
+        update_fields["end_time"] = slot.get("end_time")
+
+    await db.timetable_sessions.update_one(
+        {"id": request.session_id},
+        {"$set": update_fields}
+    )
+
+    return {
+        "success": True,
+        "message_ar": "تم نقل الحصة بنجاح",
+        "message_en": "Session moved successfully"
     }
 
 

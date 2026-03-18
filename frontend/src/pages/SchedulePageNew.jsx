@@ -72,14 +72,27 @@ const subjectColorIndex = (name) => {
 };
 
 // ─── Session Card ─────────────────────────────────────────────────────────
-const SessionCard = ({ session, viewMode, onClick }) => {
+const SessionCard = ({ session, viewMode, onClick, isDraggable, onDragStart, isDragging }) => {
   const palette = SUBJECT_PALETTE[subjectColorIndex(session.subject_name)];
   return (
-    <button
+    <div
+      draggable={isDraggable}
+      onDragStart={isDraggable ? (e) => {
+        e.dataTransfer.setData('application/nassaq-session', JSON.stringify({
+          id: session.id,
+          day: session.day_of_week || session.day,
+          period: session.period_number
+        }));
+        e.dataTransfer.effectAllowed = 'move';
+        onDragStart?.(session.id);
+      } : undefined}
+      onDragEnd={() => onDragStart?.(null)}
       onClick={onClick}
       className={`w-full h-full min-h-[80px] p-2.5 rounded-xl ${palette.bg} ${palette.text}
-        cursor-pointer hover:shadow-lg hover:scale-[1.03] active:scale-[0.98]
-        transition-all duration-200 shadow-sm text-right group`}
+        ${isDraggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}
+        hover:shadow-lg hover:scale-[1.03] active:scale-[0.98]
+        transition-all duration-200 shadow-sm text-right group
+        ${isDragging ? 'opacity-40 scale-95 ring-2 ring-white/50' : ''}`}
       data-testid={`session-${session.id}`}
     >
       <div className="flex flex-col h-full justify-between gap-1">
@@ -95,18 +108,29 @@ const SessionCard = ({ session, viewMode, onClick }) => {
           <span className="text-[9px] opacity-70 font-mono">
             {session.start_time?.substring(0, 5)}
           </span>
-          <Info className="h-2.5 w-2.5 opacity-0 group-hover:opacity-70 transition-opacity" />
+          {isDraggable
+            ? <svg className="h-3 w-3 opacity-0 group-hover:opacity-70 transition-opacity" viewBox="0 0 24 24" fill="currentColor">
+                <circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/>
+                <circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>
+                <circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/>
+              </svg>
+            : <Info className="h-2.5 w-2.5 opacity-0 group-hover:opacity-70 transition-opacity" />}
         </div>
       </div>
-    </button>
+    </div>
   );
 };
 
 // ─── Empty Cell ───────────────────────────────────────────────────────────
-const EmptyCell = () => (
-  <div className="w-full min-h-[80px] rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/50
-    flex items-center justify-center hover:border-slate-300 hover:bg-slate-50 transition-colors">
-    <span className="text-slate-300 text-[10px] select-none">—</span>
+const EmptyCell = ({ isDropTarget }) => (
+  <div className={`w-full min-h-[80px] rounded-xl border-2 border-dashed
+    flex items-center justify-center transition-all duration-200
+    ${isDropTarget
+      ? 'border-[#46C1BE] bg-[#46C1BE]/10 shadow-inner scale-[1.02]'
+      : 'border-slate-200 bg-slate-50/50 hover:border-slate-300 hover:bg-slate-50'}`}>
+    {isDropTarget
+      ? <span className="text-[#46C1BE] text-[10px] font-bold select-none">انقل هنا ↓</span>
+      : <span className="text-slate-300 text-[10px] select-none">—</span>}
   </div>
 );
 
@@ -186,6 +210,9 @@ export default function SchedulePageNew() {
   const [sessionDetailOpen, setSessionDetailOpen] = useState(false);
   const [publishDialogOpen, setPublishDialogOpen] = useState(false);
   const [publishing, setPublishing]             = useState(false);
+
+  const [draggingSessionId, setDraggingSessionId] = useState(null);
+  const [dropTargetCell, setDropTargetCell]       = useState(null);
 
   const { nassaqError, nassaqWarning } = useNassaqAlert();
   const schoolId = user?.tenant_id;
@@ -335,13 +362,98 @@ export default function SchedulePageNew() {
     });
   }, [sessions, viewMode]);
 
+  const currentTimetable = smartTimetables.find(t => t.id === selectedTimetableId);
+  const canDragDrop = currentTimetable && currentTimetable.status !== 'published';
+
+  const handleCellDragOver = useCallback((e, dayKey, periodNum) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDropTargetCell(`${dayKey}-${periodNum}`);
+  }, []);
+
+  const handleCellDragLeave = useCallback(() => {
+    setDropTargetCell(null);
+  }, []);
+
+  const handleCellDrop = useCallback(async (e, targetDay, targetPeriod, targetSession) => {
+    e.preventDefault();
+    setDropTargetCell(null);
+    setDraggingSessionId(null);
+
+    let dragData;
+    try {
+      dragData = JSON.parse(e.dataTransfer.getData('application/nassaq-session'));
+    } catch { return; }
+
+    const { id: draggedId, day: srcDay, period: srcPeriod } = dragData;
+    if (draggedId === targetSession?.id) return;
+    if (srcDay === targetDay && srcPeriod === targetPeriod) return;
+
+    const prevSessions = [...sessions];
+
+    if (targetSession) {
+      setSessions(prev => prev.map(s => {
+        if (s.id === draggedId) {
+          return { ...s, day_of_week: targetDay, day: targetDay, period_number: targetPeriod, _justMoved: true };
+        }
+        if (s.id === targetSession.id) {
+          return { ...s, day_of_week: srcDay, day: srcDay, period_number: srcPeriod, _justMoved: true };
+        }
+        return s;
+      }));
+
+      try {
+        const res = await api.post('/smart-scheduling/sessions/swap', {
+          session_id_1: draggedId,
+          session_id_2: targetSession.id
+        });
+        if (res.data?.success || res.success) {
+          toast.success('تم تبديل الحصتين بنجاح');
+          fetchSessions();
+        } else {
+          setSessions(prevSessions);
+          nassaqWarning(res.data?.detail || res.detail || 'فشل تبديل الحصتين');
+        }
+      } catch (err) {
+        setSessions(prevSessions);
+        const detail = err.response?.data?.detail || err.message || 'فشل تبديل الحصتين';
+        nassaqWarning(detail);
+      }
+    } else {
+      setSessions(prev => prev.map(s => {
+        if (s.id === draggedId) {
+          return { ...s, day_of_week: targetDay, day: targetDay, period_number: targetPeriod, _justMoved: true };
+        }
+        return s;
+      }));
+
+      try {
+        const res = await api.post('/smart-scheduling/sessions/move', {
+          session_id: draggedId,
+          new_day: targetDay,
+          new_period: targetPeriod
+        });
+        if (res.data?.success || res.success) {
+          toast.success('تم نقل الحصة بنجاح');
+          fetchSessions();
+        } else {
+          setSessions(prevSessions);
+          nassaqWarning(res.data?.detail || res.detail || 'فشل نقل الحصة');
+        }
+      } catch (err) {
+        setSessions(prevSessions);
+        const detail = err.response?.data?.detail || err.message || 'فشل نقل الحصة';
+        nassaqWarning(detail);
+      }
+    }
+  }, [sessions, api, nassaqWarning, fetchSessions]);
+
   // ── Derived ─────────────────────────────────────────────────────────────
   const currentFilter = viewMode === 'class' ? selectedClass : selectedTeacher;
   const currentFilterName = viewMode === 'class'
     ? (classes.find(c => c.id === selectedClass)?.name || classes.find(c => c.id === selectedClass)?.name_ar || '—')
     : (teachers.find(t => t.id === selectedTeacher)?.full_name || '—');
 
-  const currentTimetable = smartTimetables.find(t => t.id === selectedTimetableId);
   const periodSlots      = timeSlots.filter(s => !s.is_break && !s.is_prayer);
 
   const gridSessions   = sessions.filter(s =>
@@ -619,12 +731,19 @@ export default function SchedulePageNew() {
                       </p>
                     </div>
                   </div>
-                  {sessionsLoading && (
-                    <div className="flex items-center gap-1.5 text-xs text-slate-400">
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                      تحميل...
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {sessionsLoading && (
+                      <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        تحميل...
+                      </div>
+                    )}
+                    {canDragDrop && (
+                      <Badge className="text-[9px] px-2 py-0.5 bg-[#46C1BE]/10 text-[#46C1BE] border-[#46C1BE]/30 font-medium">
+                        اسحب وأفلت لنقل الحصص ↔
+                      </Badge>
+                    )}
+                  </div>
                 </div>
               </CardHeader>
 
@@ -682,16 +801,29 @@ export default function SchedulePageNew() {
                           {/* Day Cells */}
                           {DAYS.map(day => {
                             const session = getSessionForCell(day.key, slotPeriodNum, currentFilter);
+                            const cellKey = `${day.key}-${slotPeriodNum}`;
+                            const isTarget = dropTargetCell === cellKey;
                             return (
-                              <td key={`${day.key}-${slot.id}`} className="p-1.5 border-l border-slate-100">
+                              <td
+                                key={`${day.key}-${slot.id}`}
+                                className={`p-1.5 border-l border-slate-100 transition-colors duration-150
+                                  ${isTarget && session ? 'bg-amber-50 ring-2 ring-inset ring-amber-300 rounded' : ''}
+                                  ${isTarget && !session ? 'bg-[#46C1BE]/5' : ''}`}
+                                onDragOver={canDragDrop ? (e) => handleCellDragOver(e, day.key, slotPeriodNum) : undefined}
+                                onDragLeave={canDragDrop ? handleCellDragLeave : undefined}
+                                onDrop={canDragDrop ? (e) => handleCellDrop(e, day.key, slotPeriodNum, session) : undefined}
+                              >
                                 {session ? (
                                   <SessionCard
                                     session={session}
                                     viewMode={viewMode}
                                     onClick={() => { setSelectedSession(session); setSessionDetailOpen(true); }}
+                                    isDraggable={canDragDrop}
+                                    onDragStart={setDraggingSessionId}
+                                    isDragging={draggingSessionId === session.id}
                                   />
                                 ) : (
-                                  <EmptyCell />
+                                  <EmptyCell isDropTarget={isTarget} />
                                 )}
                               </td>
                             );
