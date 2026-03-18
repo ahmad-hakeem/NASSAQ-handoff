@@ -138,7 +138,7 @@ const HakimReaction = ({
         <img
           src={currentPose}
           alt="حكيم"
-          className={`${sc.imgClass} object-contain drop-shadow-lg`}
+          className={`hakim-img ${sc.imgClass} object-contain drop-shadow-lg`}
           draggable={false}
         />
       </div>

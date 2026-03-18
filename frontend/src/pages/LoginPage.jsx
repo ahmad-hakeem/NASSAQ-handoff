@@ -249,7 +249,7 @@ export const LoginPage = () => {
             <CardHeader className="text-center pb-2">
               {/* Mobile-only Hakim + Logo */}
               <div className="lg:hidden flex items-center justify-center gap-3 mb-4">
-                <img src={HAKIM_CHARACTER} alt={isRTL ? 'حكيم' : 'Hakim'} className="w-16 h-16 rounded-2xl object-contain border-2 border-brand-turquoise bg-gradient-to-br from-cyan-50 to-violet-50 p-1" />
+                <img src={HAKIM_CHARACTER} alt={isRTL ? 'حكيم' : 'Hakim'} className="hakim-img w-16 h-16 rounded-2xl object-contain border-2 border-brand-turquoise bg-gradient-to-br from-cyan-50 to-violet-50 p-1" />
                 <img src={LOGO_WHITE} alt="نَسَّق" className="h-10 rounded-xl bg-brand-navy p-1.5" />
               </div>
               <h1 className="font-cairo text-2xl font-bold text-foreground">

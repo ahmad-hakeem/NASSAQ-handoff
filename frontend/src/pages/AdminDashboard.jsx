@@ -309,7 +309,7 @@ export const AdminDashboard = () => {
                 <div className="flex items-start gap-4">
                   <div className="flex-shrink-0 flex flex-col items-center gap-1.5">
                     <div className="w-24 h-24 rounded-2xl overflow-hidden shadow-lg border-2 border-violet-200 dark:border-violet-700 bg-gradient-to-br from-violet-50 to-cyan-50 dark:from-violet-900/30 dark:to-cyan-900/30 p-1">
-                      <img src={HAKIM_AVATAR} alt="Hakim" className="w-full h-full object-contain drop-shadow-md" style={{ animation: 'hakimRxFloat 4s ease-in-out infinite' }} />
+                      <img src={HAKIM_AVATAR} alt="Hakim" className="hakim-img w-full h-full object-contain drop-shadow-md" style={{ animation: 'hakimRxFloat 4s ease-in-out infinite' }} />
                     </div>
                     <span className="text-[10px] font-cairo font-bold text-brand-purple/60">{isRTL ? 'حكيم AI' : 'Hakim AI'}</span>
                   </div>

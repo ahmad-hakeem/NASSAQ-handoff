@@ -59,7 +59,7 @@ export const AITimetableGenerationModal = ({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-4">
             <div className="w-20 h-20 rounded-2xl overflow-hidden shadow-lg border-2 border-violet-200 flex-shrink-0 bg-gradient-to-br from-violet-50 to-cyan-50 p-1">
-              <img src="/hakim-poses/ai-thinking.png" alt="حكيم" className="w-full h-full object-contain drop-shadow-md" style={{ animation: 'hakimRxFloat 4s ease-in-out infinite' }} />
+              <img src="/hakim-poses/ai-thinking.png" alt="حكيم" className="hakim-img w-full h-full object-contain drop-shadow-md" style={{ animation: 'hakimRxFloat 4s ease-in-out infinite' }} />
             </div>
             <div>
               <span className="block text-lg">حكيم يساعدك في توليد الجدول</span>
@@ -558,7 +558,7 @@ export const PublishTimetableVersionModal = ({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-4">
             <div className="w-24 h-24 rounded-2xl overflow-hidden shadow-xl border-2 border-emerald-200 flex-shrink-0 bg-gradient-to-br from-emerald-50 to-cyan-50 p-1">
-              <img src="/hakim-poses/clapping-celebration.png" alt="حكيم" className="w-full h-full object-contain drop-shadow-md" style={{ animation: 'hakimCelebrate 1.2s ease-in-out infinite' }} />
+              <img src="/hakim-poses/clapping-celebration.png" alt="حكيم" className="hakim-img w-full h-full object-contain drop-shadow-md" style={{ animation: 'hakimCelebrate 1.2s ease-in-out infinite' }} />
             </div>
             <div>
               <span className="block text-lg">نشر الجدول المدرسي</span>

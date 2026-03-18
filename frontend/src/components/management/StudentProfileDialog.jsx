@@ -129,7 +129,7 @@ const HakimPlanCard = ({ type, plan, isRTL, loading, onGenerate }) => {
           >
             <div className="flex items-center gap-2">
               <div className="w-5 h-5 rounded-full bg-brand-purple/10 flex items-center justify-center flex-shrink-0">
-                <img src={HAKIM_POSES[type]} alt="" className="w-4 h-4 object-contain rounded-full" onError={(e) => { e.target.style.display = 'none'; }} />
+                <img src={HAKIM_POSES[type]} alt="" className="hakim-img w-4 h-4 object-contain rounded-full" onError={(e) => { e.target.style.display = 'none'; }} />
               </div>
               <span className="text-xs font-medium font-cairo">{plan.title || (isRTL ? cfg.title_ar : cfg.title_en)}</span>
               {plan.steps && (

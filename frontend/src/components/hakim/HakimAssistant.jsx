@@ -400,7 +400,7 @@ export const HakimAssistant = () => {
                 >
                   {message.role === 'assistant' && (
                     <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-[#7C3AED]/15 to-[#1B93A4]/15 overflow-hidden flex-shrink-0 mt-0.5">
-                      <img src={hakimAvatar} alt="حكيم" className="w-full h-full object-contain" />
+                      <img src={hakimAvatar} alt="حكيم" className="hakim-img w-full h-full object-contain" />
                     </div>
                   )}
                   <div
@@ -439,7 +439,7 @@ export const HakimAssistant = () => {
               {loading && (
                 <div className="flex gap-3">
                   <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-[#7C3AED]/15 to-[#1B93A4]/15 overflow-hidden flex-shrink-0">
-                    <img src={hakimThinkingAvatar} alt="حكيم" className="w-full h-full object-contain" />
+                    <img src={hakimThinkingAvatar} alt="حكيم" className="hakim-img w-full h-full object-contain" />
                   </div>
                   <div className="bg-muted/60 dark:bg-muted/30 border border-border/40 rounded-2xl rounded-bl-md px-5 py-3.5">
                     <div className="flex items-center gap-2.5">

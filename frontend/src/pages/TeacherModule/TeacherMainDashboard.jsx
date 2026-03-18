@@ -686,7 +686,7 @@ export default function TeacherMainDashboard() {
             <Card className="border border-brand-purple/20 shadow-sm overflow-hidden">
               <CardHeader className="pb-3 bg-gradient-to-r from-brand-purple/5 to-transparent border-b border-brand-purple/10">
                 <div className="flex items-center gap-3">
-                  <img src={HAKIM_CHARACTER} alt="حكيم" className="w-20 h-20 rounded-2xl object-contain border-2 border-brand-purple/30 shadow-lg bg-gradient-to-br from-violet-50 to-cyan-50 p-1" style={{ animation: 'hakimRxFloat 4s ease-in-out infinite' }} />
+                  <img src={HAKIM_CHARACTER} alt="حكيم" className="hakim-img w-20 h-20 rounded-2xl object-contain border-2 border-brand-purple/30 shadow-lg bg-gradient-to-br from-violet-50 to-cyan-50 p-1" style={{ animation: 'hakimRxFloat 4s ease-in-out infinite' }} />
                   <style>{`@keyframes hakimRxFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }`}</style>
                   <div>
                     <CardTitle className="flex items-center gap-2 text-lg font-cairo">

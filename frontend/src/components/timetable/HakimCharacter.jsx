@@ -282,6 +282,7 @@ const HakimCharacter = ({
           <img
             src={currentPoseUrl}
             alt="حكيم - المساعد الذكي"
+            className="hakim-img"
             draggable={false}
             style={{ objectFit: 'contain' }}
           />

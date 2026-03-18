@@ -249,7 +249,7 @@ const HakeemGuide = ({ activeSection, isRTL, insights, predictions, alerts, stud
         <div className="bg-gradient-to-br from-brand-purple to-brand-navy p-4">
           <div className="flex items-center gap-3">
             <div className="w-16 h-16 rounded-xl bg-white/20 overflow-hidden flex-shrink-0 ring-2 ring-white/30 ai-float p-0.5">
-              <img src={HAKIM_AVATAR} alt="حكيم" className="w-full h-full object-contain" />
+              <img src={HAKIM_AVATAR} alt="حكيم" className="hakim-img w-full h-full object-contain" />
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
@@ -273,7 +273,7 @@ const HakeemGuide = ({ activeSection, isRTL, insights, predictions, alerts, stud
             <div key={idx} className={`flex gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
               {msg.role === 'assistant' && (
                 <div className="w-9 h-9 rounded-lg bg-brand-purple/10 overflow-hidden flex-shrink-0">
-                  <img src={HAKIM_AVATAR} alt="حكيم" className="w-full h-full object-contain" />
+                  <img src={HAKIM_AVATAR} alt="حكيم" className="hakim-img w-full h-full object-contain" />
                 </div>
               )}
               <div className={`max-w-[85%] rounded-2xl px-3 py-2 ${
@@ -298,7 +298,7 @@ const HakeemGuide = ({ activeSection, isRTL, insights, predictions, alerts, stud
           {isLoading && (
             <div className="flex gap-2">
               <div className="w-9 h-9 rounded-lg bg-brand-purple/10 overflow-hidden flex-shrink-0">
-                <img src={HAKIM_AVATAR} alt="حكيم" className="w-full h-full object-contain" />
+                <img src={HAKIM_AVATAR} alt="حكيم" className="hakim-img w-full h-full object-contain" />
               </div>
               <div className="bg-muted rounded-2xl px-3 py-2">
                 <div className="flex gap-1">
@@ -878,7 +878,7 @@ export const AIInsightsPage = () => {
                     <div className="flex-1 text-center lg:text-start">
                       <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 backdrop-blur-md border border-white/15 mb-5 shadow-lg shadow-brand-turquoise/10">
                         <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0">
-                          <img src={HAKIM_AVATAR} alt="حكيم" className="w-full h-full object-contain" />
+                          <img src={HAKIM_AVATAR} alt="حكيم" className="hakim-img w-full h-full object-contain" />
                         </div>
                         <span className="text-xs font-tajawal text-white/80 font-medium">
                           {isRTL ? 'تحليل مدعوم بحكيم AI' : 'Powered by Hakim AI'}

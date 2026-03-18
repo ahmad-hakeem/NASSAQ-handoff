@@ -1559,7 +1559,7 @@ const PrincipalTimetablePage = () => {
               <div className="relative">
                 <div className="absolute -inset-5 rounded-full bg-violet-400/20 blur-2xl animate-pulse" />
                 <div className="relative w-40 h-40 rounded-full overflow-hidden border-4 border-violet-300/50 shadow-2xl shadow-violet-500/30 bg-gradient-to-br from-violet-50 to-cyan-50 p-3">
-                  <img src="/hakim-poses/clapping-celebration.png" alt="حكيم" className="w-full h-full object-contain drop-shadow-lg" style={{ animation: 'hakimGenSuccess 1.5s ease-in-out infinite' }} />
+                  <img src="/hakim-poses/clapping-celebration.png" alt="حكيم" className="hakim-img w-full h-full object-contain drop-shadow-lg" style={{ animation: 'hakimGenSuccess 1.5s ease-in-out infinite' }} />
                 </div>
                 <div className="absolute -top-3 -right-3 w-11 h-11 rounded-full bg-yellow-400 flex items-center justify-center shadow-lg animate-bounce text-xl">🎉</div>
                 <div className="absolute -bottom-2 -left-2 w-9 h-9 rounded-full bg-violet-300 flex items-center justify-center shadow-lg animate-bounce text-lg" style={{ animationDelay: '0.3s' }}>✨</div>
@@ -1577,7 +1577,7 @@ const PrincipalTimetablePage = () => {
               <div className="relative bg-white rounded-xl px-5 py-3 shadow-sm border border-violet-200">
                 <div className="flex items-center gap-2 mb-1">
                   <div className="w-8 h-8 rounded-lg overflow-hidden bg-violet-100 p-0.5 flex-shrink-0">
-                    <img src="/hakim-poses/positive-feedback.png" alt="حكيم" className="w-full h-full object-contain" />
+                    <img src="/hakim-poses/positive-feedback.png" alt="حكيم" className="hakim-img w-full h-full object-contain" />
                   </div>
                   <span className="text-xs font-cairo font-bold text-violet-700">حكيم يقول:</span>
                 </div>
@@ -1608,7 +1608,7 @@ const PrincipalTimetablePage = () => {
               <div className="relative">
                 <div className="absolute -inset-6 rounded-full bg-emerald-400/20 blur-2xl animate-pulse" />
                 <div className="relative w-44 h-44 rounded-full overflow-hidden border-4 border-emerald-300/50 shadow-2xl shadow-emerald-500/30 bg-gradient-to-br from-emerald-50 to-cyan-50 p-3">
-                  <img src="/hakim-poses/congratulating-student.png" alt="حكيم" className="w-full h-full object-contain drop-shadow-lg" style={{ animation: 'hakimPublishCelebrate 1.8s ease-in-out infinite' }} />
+                  <img src="/hakim-poses/congratulating-student.png" alt="حكيم" className="hakim-img w-full h-full object-contain drop-shadow-lg" style={{ animation: 'hakimPublishCelebrate 1.8s ease-in-out infinite' }} />
                 </div>
                 <div className="absolute -top-3 -right-3 w-12 h-12 rounded-full bg-yellow-400 flex items-center justify-center shadow-lg animate-bounce text-2xl">🎉</div>
                 <div className="absolute -bottom-2 -left-3 w-10 h-10 rounded-full bg-emerald-400 flex items-center justify-center shadow-lg animate-bounce text-xl" style={{ animationDelay: '0.4s' }}>✅</div>
@@ -1628,7 +1628,7 @@ const PrincipalTimetablePage = () => {
               <div className="relative bg-white rounded-xl px-5 py-3 shadow-sm border border-emerald-200">
                 <div className="flex items-center gap-2 mb-1">
                   <div className="w-8 h-8 rounded-lg overflow-hidden bg-emerald-100 p-0.5 flex-shrink-0">
-                    <img src="/hakim-poses/positive-feedback.png" alt="حكيم" className="w-full h-full object-contain" />
+                    <img src="/hakim-poses/positive-feedback.png" alt="حكيم" className="hakim-img w-full h-full object-contain" />
                   </div>
                   <span className="text-xs font-cairo font-bold text-emerald-700">حكيم يقول:</span>
                 </div>

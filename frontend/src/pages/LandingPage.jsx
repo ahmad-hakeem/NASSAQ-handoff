@@ -586,10 +586,9 @@ export const LandingPage = () => {
                 <img
                   src={heroHakim.src}
                   alt={isRTL ? 'حكيم' : 'Hakim'}
-                  className="relative z-10 w-72 h-auto lg:w-96 object-contain mb-[-40px]"
+                  className="hakim-img relative z-10 w-72 h-auto lg:w-96 object-contain mb-[-40px]"
                   data-testid="hakim-avatar"
                   style={{
-                    filter: 'drop-shadow(0 20px 40px rgba(56,189,248,0.15))',
                     opacity: heroHakim.visible ? 1 : 0,
                     transition: 'opacity 0.5s ease-in-out',
                   }}
@@ -736,7 +735,7 @@ export const LandingPage = () => {
               {/* Hakim Quote */}
               <div className="flex items-start gap-3">
                 <div className="relative flex-shrink-0">
-                  <img src="/hakim-poses/explaining-concept.png" alt={isRTL ? 'حكيم' : 'Hakim'} className="w-20 h-20 rounded-2xl object-contain border-2 border-brand-purple/40 shadow-xl bg-gradient-to-br from-violet-50 to-cyan-50 p-1" />
+                  <img src="/hakim-poses/explaining-concept.png" alt={isRTL ? 'حكيم' : 'Hakim'} className="hakim-img w-20 h-20 rounded-2xl object-contain border-2 border-brand-purple/40 shadow-xl bg-gradient-to-br from-violet-50 to-cyan-50 p-1" />
                   <div className="absolute -bottom-1 -end-1 w-5 h-5 rounded-md bg-brand-purple flex items-center justify-center border border-card">
                     <Brain className="h-2.5 w-2.5 text-white" />
                   </div>
@@ -874,7 +873,7 @@ export const LandingPage = () => {
                   {/* Hakim Quote */}
                   <div className="flex items-start gap-3 bg-gradient-to-br from-white/95 to-gray-50/95 rounded-xl p-4 shadow-lg border border-white/20">
                     <div className="relative flex-shrink-0">
-                      <img src="/hakim-poses/ai-thinking.png" alt={isRTL ? 'حكيم' : 'Hakim'} className="w-16 h-16 rounded-xl object-contain border-2 border-brand-turquoise/40 shadow-md bg-gradient-to-br from-cyan-50 to-violet-50 p-1" />
+                      <img src="/hakim-poses/ai-thinking.png" alt={isRTL ? 'حكيم' : 'Hakim'} className="hakim-img w-16 h-16 rounded-xl object-contain border-2 border-brand-turquoise/40 shadow-md bg-gradient-to-br from-cyan-50 to-violet-50 p-1" />
                     </div>
                     <p className="text-gray-700 text-sm font-tajawal leading-relaxed">
                       <span className="text-brand-turquoise font-bold font-cairo">{isRTL ? 'حكيم: ' : 'Hakim: '}</span>
@@ -1045,7 +1044,7 @@ export const LandingPage = () => {
 
                 <div className="flex items-start gap-3">
                   <div className="relative flex-shrink-0">
-                    <img src="/hakim-poses/giving-instructions.png" alt={isRTL ? 'حكيم' : 'Hakim'} className="w-16 h-16 rounded-xl object-contain border-2 border-brand-purple/40 shadow-lg bg-gradient-to-br from-violet-50 to-cyan-50 p-1" />
+                    <img src="/hakim-poses/giving-instructions.png" alt={isRTL ? 'حكيم' : 'Hakim'} className="hakim-img w-16 h-16 rounded-xl object-contain border-2 border-brand-purple/40 shadow-lg bg-gradient-to-br from-violet-50 to-cyan-50 p-1" />
                     <div className="absolute -bottom-1 -end-1 w-5 h-5 rounded-md bg-brand-purple flex items-center justify-center border border-card">
                       <Brain className="h-2.5 w-2.5 text-white" />
                     </div>
@@ -1152,7 +1151,7 @@ export const LandingPage = () => {
           <div className="flex items-center justify-center gap-5 mb-12">
             <div className="relative flex-shrink-0">
               <div className="absolute -inset-2 rounded-full bg-brand-turquoise/20 blur-xl animate-pulse" />
-              <img src="/hakim-poses/motivating.png" alt={isRTL ? 'حكيم' : 'Hakim'} className="relative w-24 h-24 rounded-2xl object-contain border-2 border-brand-turquoise shadow-xl flex-shrink-0 bg-gradient-to-br from-cyan-50 to-violet-50 p-1" />
+              <img src="/hakim-poses/motivating.png" alt={isRTL ? 'حكيم' : 'Hakim'} className="hakim-img relative w-24 h-24 rounded-2xl object-contain border-2 border-brand-turquoise shadow-xl flex-shrink-0 bg-gradient-to-br from-cyan-50 to-violet-50 p-1" />
             </div>
             <div className="bg-white/10 backdrop-blur-sm border border-white/15 rounded-2xl px-6 py-4 max-w-lg text-start">
               <p className="text-white/90 font-tajawal text-base leading-relaxed">

@@ -630,7 +630,7 @@ const PermanentHakimWidget = ({ insights, isRTL, onAction, stats }) => {
           <div className="sticky top-0 bg-gradient-to-r from-violet-600 to-purple-600 text-white px-4 py-3 rounded-t-2xl flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center overflow-hidden">
-                <img src="/hakim-poses/analyzing-data.png" alt="" className="w-10 h-10 object-contain" onError={(e) => { e.target.style.display = 'none'; }} />
+                <img src="/hakim-poses/analyzing-data.png" alt="" className="hakim-img w-10 h-10 object-contain" onError={(e) => { e.target.style.display = 'none'; }} />
               </div>
               <div>
                 <h4 className="font-bold text-sm">{isRTL ? 'تحليلات حكيم' : 'Hakim Analysis'}</h4>
@@ -693,7 +693,7 @@ const PermanentHakimWidget = ({ insights, isRTL, onAction, stats }) => {
       <div className="relative group cursor-pointer" onClick={() => setPanelOpen(!panelOpen)}
         title={isRTL ? 'حكيم - المساعد الذكي' : 'Hakim - Smart Assistant'}>
         <div className={`w-[72px] h-[72px] rounded-full overflow-hidden bg-white shadow-xl ring-3 ${hasInsights ? 'ring-violet-400 animate-[hakim-ring-pulse_2s_ease-in-out_infinite]' : 'ring-violet-200'} flex items-center justify-center transition-all duration-300 group-hover:scale-110 group-hover:shadow-2xl`}>
-          <img src="/hakim-poses/detecting-patterns.png" alt="Hakim" className="w-20 h-20 object-contain animate-[hakim-alive_4s_ease-in-out_infinite]"
+          <img src="/hakim-poses/detecting-patterns.png" alt="Hakim" className="hakim-img w-20 h-20 object-contain animate-[hakim-alive_4s_ease-in-out_infinite]"
             onError={(e) => { e.target.style.display = 'none'; e.target.parentElement.innerHTML = '<span class="text-3xl">🧠</span>'; }} />
         </div>
         {hasInsights && (
