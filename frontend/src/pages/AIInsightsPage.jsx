@@ -454,8 +454,8 @@ const HealthRing = ({ label, value, color, icon: Icon, isRTL }) => {
         </div>
       </div>
       <div className="text-center">
-        <p className="text-lg font-bold font-cairo text-foreground">{value}%</p>
-        <p className="text-[10px] text-muted-foreground font-tajawal">{label}</p>
+        <p className="text-lg font-bold font-cairo text-white">{value}%</p>
+        <p className="text-[10px] text-white/70 font-tajawal">{label}</p>
       </div>
     </div>
   );
