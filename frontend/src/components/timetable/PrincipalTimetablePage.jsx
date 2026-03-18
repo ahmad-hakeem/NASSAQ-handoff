@@ -199,8 +199,20 @@ const PrincipalTimetablePage = () => {
   const gridSectionRef = useRef(null);
   const journeyTimersRef = useRef([]);
   const [showSuccessOverlay, setShowSuccessOverlay] = useState(false);
+  const genConfetti = useMemo(() => showSuccessOverlay ? Array.from({ length: 35 }, (_, i) => ({
+    left: `${Math.random() * 100}%`, w: 8 + Math.random() * 12, h: 8 + Math.random() * 12,
+    color: ['#46C1BE','#615090','#FFD700','#FF6B6B','#4ECDC4','#A855F7','#F97316','#3B82F6','#1C3D74','#10B981'][i % 10],
+    radius: i % 3 === 0 ? '50%' : i % 3 === 1 ? '2px' : '0',
+    dur: 2.5 + Math.random() * 3, delay: Math.random() * 2, rot: Math.random() * 360, endRot: 360 + Math.random() * 720,
+  })) : [], [showSuccessOverlay]);
   const [successSessionsCount, setSuccessSessionsCount] = useState(0);
   const [showPublishSuccessOverlay, setShowPublishSuccessOverlay] = useState(false);
+  const pubConfetti = useMemo(() => showPublishSuccessOverlay ? Array.from({ length: 35 }, (_, i) => ({
+    left: `${Math.random() * 100}%`, w: 8 + Math.random() * 12, h: 8 + Math.random() * 12,
+    color: ['#10B981','#46C1BE','#FFD700','#34D399','#6EE7B7','#A855F7','#3B82F6','#1C3D74','#F97316','#FF6B6B'][i % 10],
+    radius: i % 3 === 0 ? '50%' : i % 3 === 1 ? '2px' : '0',
+    dur: 2.5 + Math.random() * 3, delay: Math.random() * 2, rot: Math.random() * 360, endRot: 360 + Math.random() * 720,
+  })) : [], [showPublishSuccessOverlay]);
   const [showGenerationJourney, setShowGenerationJourney] = useState(false);
   const [journeyApiCompleted, setJourneyApiCompleted] = useState(false);
   const [journeyApiFailed, setJourneyApiFailed] = useState(false);
@@ -1556,20 +1568,16 @@ const PrincipalTimetablePage = () => {
       />
       {showSuccessOverlay && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-300">
-          {[...Array(30)].map((_, i) => (
+          {genConfetti.map((c, i) => (
             <div
-              key={`confetti-${i}`}
+              key={`cg-${i}`}
               className="fixed pointer-events-none"
               style={{
-                left: `${Math.random() * 100}%`,
-                top: '-20px',
-                width: `${8 + Math.random() * 12}px`,
-                height: `${8 + Math.random() * 12}px`,
-                backgroundColor: ['#46C1BE', '#615090', '#FFD700', '#FF6B6B', '#4ECDC4', '#A855F7', '#F97316', '#3B82F6'][i % 8],
-                borderRadius: i % 3 === 0 ? '50%' : i % 3 === 1 ? '2px' : '0',
-                animation: `confettiFall ${2.5 + Math.random() * 3}s ease-in forwards`,
-                animationDelay: `${Math.random() * 2}s`,
-                transform: `rotate(${Math.random() * 360}deg)`,
+                left: c.left, top: '-20px', width: `${c.w}px`, height: `${c.h}px`,
+                backgroundColor: c.color, borderRadius: c.radius,
+                animation: `celebConfetti ${c.dur}s ease-in forwards`,
+                animationDelay: `${c.delay}s`,
+                '--end-rot': `${c.endRot}deg`,
               }}
             />
           ))}
@@ -1577,24 +1585,16 @@ const PrincipalTimetablePage = () => {
           <div className="relative bg-white rounded-3xl shadow-2xl p-10 max-w-lg w-full mx-4 text-center animate-in zoom-in-95 duration-500 overflow-visible">
             <div className="absolute -top-1 -left-1 -right-1 -bottom-1 rounded-3xl bg-gradient-to-br from-violet-400 via-purple-400 to-indigo-400 -z-10 blur-sm opacity-60" />
 
-            <div className="flex justify-center mb-4">
-              <div className="relative" style={{ animation: 'hakimFloat 3s ease-in-out infinite' }}>
-                <div className="absolute -inset-8 rounded-full bg-gradient-to-br from-violet-400/30 to-cyan-400/20 blur-2xl" style={{ animation: 'glowPulse 2s ease-in-out infinite alternate' }} />
-
-                <div className="relative w-64 h-72 flex items-end justify-center">
-                  <div className="absolute bottom-0 w-48 h-48 rounded-full bg-gradient-to-br from-violet-100 via-purple-50 to-cyan-50 border-4 border-violet-200/60 shadow-2xl shadow-violet-500/25" />
-                  <img
-                    src="/hakim-poses/congratulating-student.png"
-                    alt="حكيم"
-                    className="hakim-img relative z-10 w-56 h-56 object-contain drop-shadow-2xl"
-                    style={{ marginBottom: '-8px' }}
-                  />
+            <div className="flex justify-center mb-5">
+              <div className="relative" style={{ animation: 'celebCircleBounce 2.5s ease-in-out infinite' }}>
+                <div className="absolute -inset-8 rounded-full bg-gradient-to-br from-violet-400/30 to-cyan-400/20 blur-2xl" style={{ animation: 'celebGlow 2s ease-in-out infinite alternate' }} />
+                <div className="relative w-40 h-40 rounded-full overflow-hidden border-4 border-violet-300/60 shadow-2xl shadow-violet-500/30 bg-gradient-to-br from-violet-50 via-purple-50 to-cyan-50 p-2.5">
+                  <img src="/hakim-poses/congratulating-student.png" alt="حكيم" className="hakim-img w-full h-full object-contain drop-shadow-xl" />
                 </div>
-
-                <div className="absolute -top-2 -right-1 w-12 h-12 rounded-full bg-yellow-400 flex items-center justify-center shadow-lg text-2xl" style={{ animation: 'emojiBounce 1.5s ease-in-out infinite' }}>🎉</div>
-                <div className="absolute top-8 -left-4 w-10 h-10 rounded-full bg-violet-300 flex items-center justify-center shadow-lg text-xl" style={{ animation: 'emojiBounce 1.5s ease-in-out infinite 0.3s' }}>✨</div>
-                <div className="absolute -bottom-1 -right-3 w-9 h-9 rounded-full bg-cyan-300 flex items-center justify-center shadow-lg text-lg" style={{ animation: 'emojiBounce 1.5s ease-in-out infinite 0.6s' }}>⭐</div>
-                <div className="absolute top-2 left-1/2 -translate-x-1/2 w-9 h-9 rounded-full bg-emerald-300 flex items-center justify-center shadow-lg text-lg" style={{ animation: 'emojiBounce 1.5s ease-in-out infinite 0.9s' }}>🏆</div>
+                <div className="absolute -top-3 -right-2 w-11 h-11 rounded-full bg-yellow-400 flex items-center justify-center shadow-lg text-xl" style={{ animation: 'celebEmoji 1.5s ease-in-out infinite' }}>🎉</div>
+                <div className="absolute top-6 -left-5 w-9 h-9 rounded-full bg-violet-300 flex items-center justify-center shadow-lg text-lg" style={{ animation: 'celebEmoji 1.5s ease-in-out infinite 0.3s' }}>✨</div>
+                <div className="absolute -bottom-2 -right-3 w-9 h-9 rounded-full bg-cyan-300 flex items-center justify-center shadow-lg text-lg" style={{ animation: 'celebEmoji 1.5s ease-in-out infinite 0.6s' }}>⭐</div>
+                <div className="absolute -bottom-1 -left-2 w-9 h-9 rounded-full bg-emerald-300 flex items-center justify-center shadow-lg text-lg" style={{ animation: 'celebEmoji 1.5s ease-in-out infinite 0.9s' }}>🏆</div>
               </div>
             </div>
 
@@ -1628,42 +1628,37 @@ const PrincipalTimetablePage = () => {
               </div>
             </div>
           </div>
-          <style>{`
-            @keyframes hakimFloat {
-              0%, 100% { transform: translateY(0) rotate(0deg); }
-              25% { transform: translateY(-12px) rotate(-2deg); }
-              50% { transform: translateY(-6px) rotate(1deg); }
-              75% { transform: translateY(-14px) rotate(-1deg); }
-            }
-            @keyframes glowPulse {
-              0% { opacity: 0.4; transform: scale(1); }
-              100% { opacity: 0.8; transform: scale(1.1); }
-            }
-            @keyframes emojiBounce {
-              0%, 100% { transform: scale(1) translateY(0); }
-              50% { transform: scale(1.2) translateY(-8px); }
-            }
-            @keyframes confettiFall {
-              0% { transform: translateY(0) rotate(0deg); opacity: 1; }
-              100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
-            }
-          `}</style>
         </div>
       )}
       {showPublishSuccessOverlay && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-300">
-          <div className="relative bg-white rounded-3xl shadow-2xl p-10 max-w-lg w-full mx-4 text-center animate-in zoom-in-95 duration-500">
+          {pubConfetti.map((c, i) => (
+            <div
+              key={`cp-${i}`}
+              className="fixed pointer-events-none"
+              style={{
+                left: c.left, top: '-20px', width: `${c.w}px`, height: `${c.h}px`,
+                backgroundColor: c.color, borderRadius: c.radius,
+                animation: `celebConfetti ${c.dur}s ease-in forwards`,
+                animationDelay: `${c.delay}s`,
+                '--end-rot': `${c.endRot}deg`,
+              }}
+            />
+          ))}
+
+          <div className="relative bg-white rounded-3xl shadow-2xl p-10 max-w-lg w-full mx-4 text-center animate-in zoom-in-95 duration-500 overflow-visible">
             <div className="absolute -top-1 -left-1 -right-1 -bottom-1 rounded-3xl bg-gradient-to-br from-emerald-400 via-teal-400 to-cyan-400 -z-10 blur-sm opacity-60" />
 
             <div className="flex justify-center mb-5">
-              <div className="relative">
-                <div className="absolute -inset-6 rounded-full bg-emerald-400/20 blur-2xl animate-pulse" />
-                <div className="relative w-44 h-44 rounded-full overflow-hidden border-4 border-emerald-300/50 shadow-2xl shadow-emerald-500/30 bg-gradient-to-br from-emerald-50 to-cyan-50 p-3">
-                  <img src="/hakim-poses/congratulating-student.png" alt="حكيم" className="hakim-img w-full h-full object-contain drop-shadow-lg" style={{ animation: 'hakimPublishCelebrate 1.8s ease-in-out infinite' }} />
+              <div className="relative" style={{ animation: 'celebCircleBounce 2.5s ease-in-out infinite' }}>
+                <div className="absolute -inset-8 rounded-full bg-gradient-to-br from-emerald-400/30 to-cyan-400/20 blur-2xl" style={{ animation: 'celebGlow 2s ease-in-out infinite alternate' }} />
+                <div className="relative w-40 h-40 rounded-full overflow-hidden border-4 border-emerald-300/60 shadow-2xl shadow-emerald-500/30 bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 p-2.5">
+                  <img src="/hakim-poses/congratulating-student.png" alt="حكيم" className="hakim-img w-full h-full object-contain drop-shadow-xl" />
                 </div>
-                <div className="absolute -top-3 -right-3 w-12 h-12 rounded-full bg-yellow-400 flex items-center justify-center shadow-lg animate-bounce text-2xl">🎉</div>
-                <div className="absolute -bottom-2 -left-3 w-10 h-10 rounded-full bg-emerald-400 flex items-center justify-center shadow-lg animate-bounce text-xl" style={{ animationDelay: '0.4s' }}>✅</div>
-                <div className="absolute top-0 -left-4 w-8 h-8 rounded-full bg-cyan-300 flex items-center justify-center shadow-md animate-bounce text-lg" style={{ animationDelay: '0.8s' }}>⭐</div>
+                <div className="absolute -top-3 -right-2 w-11 h-11 rounded-full bg-yellow-400 flex items-center justify-center shadow-lg text-xl" style={{ animation: 'celebEmoji 1.5s ease-in-out infinite' }}>✅</div>
+                <div className="absolute top-6 -left-5 w-9 h-9 rounded-full bg-emerald-400 flex items-center justify-center shadow-lg text-lg" style={{ animation: 'celebEmoji 1.5s ease-in-out infinite 0.3s' }}>🎉</div>
+                <div className="absolute -bottom-2 -right-3 w-9 h-9 rounded-full bg-cyan-300 flex items-center justify-center shadow-lg text-lg" style={{ animation: 'celebEmoji 1.5s ease-in-out infinite 0.6s' }}>⭐</div>
+                <div className="absolute -bottom-1 -left-2 w-9 h-9 rounded-full bg-violet-300 flex items-center justify-center shadow-lg text-lg" style={{ animation: 'celebEmoji 1.5s ease-in-out infinite 0.9s' }}>🏆</div>
               </div>
             </div>
 
@@ -1692,13 +1687,36 @@ const PrincipalTimetablePage = () => {
             <div className="mt-5 flex justify-center">
               <div className="flex items-center gap-1.5">
                 <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                <span className="text-sm text-emerald-600 font-tajawal font-medium">Published Timetable</span>
+                <span className="text-sm text-emerald-600 font-tajawal font-medium">الجدول المعتمد</span>
               </div>
             </div>
           </div>
-          <style>{`@keyframes hakimPublishCelebrate { 0%, 100% { transform: scale(1) rotate(0deg); } 20% { transform: scale(1.12) rotate(-4deg); } 40% { transform: scale(1.06) rotate(4deg); } 60% { transform: scale(1.1) rotate(-2deg); } 80% { transform: scale(1.04) rotate(1deg); } }`}</style>
         </div>
       )}
+      <style>{`
+        @keyframes celebCircleBounce {
+          0%, 100% { transform: translateY(0) scale(1); }
+          15% { transform: translateY(-18px) scale(1.05); }
+          30% { transform: translateY(-4px) scale(0.98); }
+          45% { transform: translateY(-14px) scale(1.03); }
+          60% { transform: translateY(-2px) scale(0.99); }
+          75% { transform: translateY(-10px) scale(1.02); }
+          90% { transform: translateY(-1px) scale(1); }
+        }
+        @keyframes celebGlow {
+          0% { opacity: 0.3; transform: scale(0.95); }
+          100% { opacity: 0.7; transform: scale(1.15); }
+        }
+        @keyframes celebEmoji {
+          0%, 100% { transform: scale(1) translateY(0); }
+          50% { transform: scale(1.25) translateY(-10px); }
+        }
+        @keyframes celebConfetti {
+          0% { transform: translateY(0) rotate(0deg) scale(1); opacity: 1; }
+          50% { opacity: 1; }
+          100% { transform: translateY(100vh) rotate(var(--end-rot, 720deg)) scale(0.5); opacity: 0; }
+        }
+      `}</style>
       <style>{`
         @media print {
           .print\\:hidden, [data-testid="sidebar"], nav, header, .sidebar { display: none !important; }
