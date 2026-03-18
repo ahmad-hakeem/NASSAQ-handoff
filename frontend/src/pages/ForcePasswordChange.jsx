@@ -132,7 +132,8 @@ export default function ForcePasswordChange() {
   };
   
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-navy via-brand-navy/95 to-brand-turquoise/20 flex items-center justify-center p-4" dir="rtl">
+    <div className="relative min-h-screen bg-gradient-to-br from-brand-navy via-brand-navy/95 to-brand-turquoise/20 flex items-center justify-center p-4 overflow-hidden" dir="rtl">
+      <div className="absolute inset-0 nassaq-pattern opacity-[0.04] pointer-events-none" style={{ backgroundImage: "url('/nassaq-pattern.png')" }} />
       <Card className="w-full max-w-md shadow-2xl">
         <CardHeader className="text-center pb-2">
           <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-yellow-100 flex items-center justify-center">

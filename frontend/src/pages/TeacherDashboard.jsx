@@ -144,8 +144,9 @@ export default function TeacherDashboard() {
         <div className="p-4 sm:p-6 space-y-6">
           
           {/* Welcome Card */}
-          <Card className="bg-gradient-to-r from-brand-navy/5 via-brand-turquoise/5 to-brand-purple/5 border-brand-navy/20">
-            <CardContent className="py-5 px-6">
+          <Card className="relative overflow-hidden bg-gradient-to-r from-brand-navy/5 via-brand-turquoise/5 to-brand-purple/5 border-brand-navy/20">
+            <div className="absolute inset-0 nassaq-pattern opacity-[0.03] pointer-events-none" style={{ backgroundImage: "url('/nassaq-pattern.png')" }} />
+            <CardContent className="relative py-5 px-6">
               <div className="flex items-center justify-between">
                 {/* User Info */}
                 <div className="flex items-center gap-4">

@@ -464,6 +464,7 @@ export const AccountSettingsPage = () => {
         <div className="p-6 max-w-[1200px] mx-auto">
           <Card className="card-nassaq overflow-hidden mb-6 border-0 shadow-lg">
             <div className="relative bg-gradient-to-br from-brand-navy via-brand-navy/95 to-brand-turquoise/70 p-6 overflow-hidden">
+              <div className="absolute inset-0 nassaq-pattern opacity-[0.05] pointer-events-none" style={{ backgroundImage: "url('/nassaq-pattern.png')" }} />
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_80%,rgba(27,147,164,0.15),transparent_50%)]" />
               <div className="relative z-10 flex items-center gap-5">
                 <div className="relative group">

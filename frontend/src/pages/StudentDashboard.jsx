@@ -118,8 +118,9 @@ export default function StudentDashboard() {
   return (
     <div className="min-h-screen bg-gray-50 pb-24" dir="rtl" data-testid="student-dashboard">
       {/* Header */}
-      <div className="bg-gradient-to-br from-emerald-600 to-teal-500 text-white">
-        <div className="px-4 py-6 space-y-4">
+      <div className="relative bg-gradient-to-br from-emerald-600 to-teal-500 text-white overflow-hidden">
+        <div className="absolute inset-0 nassaq-pattern opacity-[0.05] pointer-events-none" style={{ backgroundImage: "url('/nassaq-pattern.png')" }} />
+        <div className="relative px-4 py-6 space-y-4">
           {/* Date */}
           <p className="text-emerald-100 text-sm text-center">{formatHijriDate()}</p>
           

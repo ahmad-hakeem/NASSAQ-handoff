@@ -169,7 +169,8 @@ export default function TeacherHomePage() {
 
           {/* Teacher Info Card */}
           <Card className="overflow-hidden border-0 shadow-lg">
-            <div className="bg-gradient-to-br from-brand-navy via-brand-navy to-slate-900 text-white">
+            <div className="relative bg-gradient-to-br from-brand-navy via-brand-navy to-slate-900 text-white overflow-hidden">
+              <div className="absolute inset-0 nassaq-pattern opacity-[0.05] pointer-events-none" style={{ backgroundImage: "url('/nassaq-pattern.png')" }} />
               <CardContent className="p-5 relative">
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_20%,rgba(56,189,248,0.08),transparent)]" />
                 <div className="relative z-10">

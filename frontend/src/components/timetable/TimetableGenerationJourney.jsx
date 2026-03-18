@@ -223,7 +223,8 @@ const TimetableGenerationJourney = ({
       >
         <div className="absolute -top-1 -left-1 -right-1 h-2 rounded-t-3xl bg-gradient-to-l from-violet-500 via-purple-500 to-indigo-500" />
 
-        <div className={`px-6 pt-6 pb-5 transition-all duration-700 ${allCompleted ? 'bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-600' : 'bg-gradient-to-l from-[#1a1f4e] via-[#252b6e] to-[#2d3594]'}`}>
+        <div className={`relative px-6 pt-6 pb-5 transition-all duration-700 ${allCompleted ? 'bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-600' : 'bg-gradient-to-l from-[#1a1f4e] via-[#252b6e] to-[#2d3594]'}`}>
+          <div className="absolute inset-0 nassaq-pattern opacity-[0.05] pointer-events-none" style={{ backgroundImage: "url('/nassaq-pattern.png')" }} />
           {allCompleted ? (
             <div className="flex flex-col items-center text-center py-4">
               <div className="relative mb-4">

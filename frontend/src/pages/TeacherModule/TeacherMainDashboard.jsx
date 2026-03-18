@@ -75,6 +75,7 @@ const TeacherDayProgress = ({ isRTL, user }) => {
 
   return (
     <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-800 via-slate-900 to-brand-navy p-3.5 sm:p-5 text-white border border-white/5">
+      <div className="absolute inset-0 nassaq-pattern opacity-[0.04] pointer-events-none" style={{ backgroundImage: "url('/nassaq-pattern.png')" }} />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_50%,rgba(56,189,248,0.05),transparent)]" />
       <div className="relative z-10">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
@@ -338,6 +339,7 @@ export default function TeacherMainDashboard() {
 
           {/* Hero Header */}
           <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-brand-navy via-brand-navy to-slate-900 p-4 sm:p-6 md:p-8 text-white border border-white/5">
+            <div className="absolute inset-0 nassaq-pattern opacity-[0.05] pointer-events-none" style={{ backgroundImage: "url('/nassaq-pattern.png')" }} />
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_20%,rgba(56,189,248,0.08),transparent)]" />
             <div className="absolute top-0 end-0 w-48 md:w-64 h-48 md:h-64 rounded-full bg-brand-turquoise/5 blur-3xl" />
             <div className="absolute bottom-0 start-0 w-36 md:w-48 h-36 md:h-48 rounded-full bg-brand-purple/5 blur-3xl" />
