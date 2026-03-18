@@ -189,6 +189,13 @@ import { getPose, getPoseForPath, getRandomPoseFromCategory, HERO_POSES } from '
 - **Categories**: resource_conflict, time_boundary, capacity, workload, curriculum, distribution, assignment, completeness, data_integrity, publishing
 - **Enforcement**: Loaded by smart scheduling engine during generation; validated during publish
 
+## Timetable Engine Bug Fixes & Capacity Diagnostics
+- **weekly_hours fix**: Engine reads `weekly_periods` OR `weekly_hours` OR `weekly_sessions` from `grade_subjects` (was only checking `weekly_periods` which doesn't exist, causing all subjects to default to 4/week)
+- **Teacher working_days fix**: Resource availability builder intersects school `working_days` with each teacher's individual `working_days` (47/48 teachers work Sun-Thu only; engine was ignoring this and scheduling on Saturday)
+- **Capacity diagnostics**: `_analyze_capacity_issues()` detects grade over-capacity (demand > available slots) and per-subject teacher shortages; stored in `timetables.capacity_issues`; returned via `GenerationResult.capacity_issues`
+- **Frontend capacity UI**: Result dialog shows severity-colored cards (red=critical, amber=warning) with Arabic messages and actionable fix guidance (e.g., "Go to Curriculum Settings > reduce weekly hours")
+- **Data fields**: `grade_subjects` uses `weekly_hours` (NOT `weekly_periods`); teacher `working_days` is per-teacher array in teachers collection
+
 ## Timetable Period Distribution
 The scheduling engine uses contiguous-fill scoring to distribute sessions evenly across all periods:
 - **No period bias**: Periods 3-5 no longer receive a fixed +10 bonus

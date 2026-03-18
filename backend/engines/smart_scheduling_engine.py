@@ -224,6 +224,7 @@ class GenerationResult(BaseModel):
     optimization_score: float
     message_ar: str
     message_en: str
+    capacity_issues: Optional[List[Dict[str, Any]]] = None
 
 
 # ============== SMART SCHEDULING ENGINE ==============
@@ -697,7 +698,7 @@ class SmartSchedulingEngine:
             
             for gs in grade_subjects:
                 subject_id = gs.get("subject_id")
-                weekly_periods = gs.get("weekly_periods", 4)
+                weekly_periods = gs.get("weekly_periods") or gs.get("weekly_hours") or gs.get("weekly_sessions", 4)
                 total_periods += weekly_periods
                 
                 # Find suitable teachers for this subject
@@ -809,7 +810,12 @@ class SmartSchedulingEngine:
             
             availability = {}
             teaching_period_numbers = settings.get("teaching_period_numbers", list(range(1, periods_per_day + 1)))
-            for day in working_days:
+            teacher_working_days = teacher.get("working_days", [])
+            if teacher_working_days and isinstance(teacher_working_days, list) and len(teacher_working_days) > 0:
+                effective_days = [d for d in working_days if d in teacher_working_days]
+            else:
+                effective_days = working_days
+            for day in effective_days:
                 availability[day] = list(teaching_period_numbers)
             
             # Apply teacher availability restrictions
@@ -1356,6 +1362,112 @@ class SmartSchedulingEngine:
                 })
 
         return underutilized
+
+    def _analyze_capacity_issues(
+        self,
+        demands: list,
+        resources: list,
+        settings: dict,
+        sessions: list
+    ) -> list:
+        working_days = settings.get("working_days", [])
+        periods_per_day = settings.get("periods_per_day", 7)
+        max_slots_per_class = len(working_days) * periods_per_day
+
+        subject_demand = {}
+        subject_classes = {}
+        for demand in demands:
+            for subj in demand.subjects:
+                sid = subj.get("subject_id", "")
+                wp = subj.get("weekly_periods", 4)
+                subject_demand[sid] = subject_demand.get(sid, 0) + wp
+                if sid not in subject_classes:
+                    subject_classes[sid] = set()
+                subject_classes[sid].add(demand.class_id)
+
+        subject_teachers = {}
+        subject_capacity = {}
+        for resource in resources:
+            for sid in (resource.subject_ids or []):
+                if sid not in subject_teachers:
+                    subject_teachers[sid] = set()
+                    subject_capacity[sid] = 0
+                subject_teachers[sid].add(resource.teacher_id)
+                avail_days = len(resource.availability)
+                max_pd = min(periods_per_day, 6)
+                subject_capacity[sid] += min(resource.weekly_load, avail_days * max_pd)
+
+        placed_per_subject = {}
+        for s in sessions:
+            sid = s.subject_id
+            placed_per_subject[sid] = placed_per_subject.get(sid, 0) + 1
+
+        grades_over_capacity = {}
+        for demand in demands:
+            if demand.total_periods_required > max_slots_per_class:
+                gid = demand.grade_id
+                if gid not in grades_over_capacity:
+                    grades_over_capacity[gid] = {
+                        "demand": demand.total_periods_required,
+                        "capacity": max_slots_per_class,
+                        "over_by": demand.total_periods_required - max_slots_per_class,
+                        "class_count": 0
+                    }
+                grades_over_capacity[gid]["class_count"] += 1
+
+        issues = []
+
+        for gid, info in grades_over_capacity.items():
+            issues.append({
+                "type": "grade_over_capacity",
+                "severity": "critical",
+                "grade_id": gid,
+                "message_ar": f"المرحلة الدراسية تتطلب {info['demand']} حصة أسبوعياً لكن الحد الأقصى المتاح {info['capacity']} حصة ({info['class_count']} فصل متأثر). يجب تقليل عدد الحصص الأسبوعية لبعض المواد.",
+                "message_en": f"Grade demands {info['demand']} periods/week but only {info['capacity']} slots available ({info['class_count']} classes affected). Reduce weekly hours for some subjects.",
+                "fix_ar": "اذهب إلى إعدادات المنهج الدراسي > اختر المرحلة > قلّل عدد الحصص الأسبوعية حتى لا يتجاوز المجموع {capacity} حصة".format(capacity=info['capacity']),
+                "fix_en": f"Go to Curriculum Settings > select grade > reduce weekly hours so total doesn't exceed {info['capacity']}"
+            })
+
+        for sid in subject_demand:
+            demand = subject_demand[sid]
+            capacity = subject_capacity.get(sid, 0)
+            placed = placed_per_subject.get(sid, 0)
+            n_teachers = len(subject_teachers.get(sid, set()))
+            n_classes = len(subject_classes.get(sid, set()))
+
+            if capacity < demand and n_teachers > 0:
+                shortage = demand - capacity
+                needed_extra = max(1, (shortage + 23) // 24)
+                issues.append({
+                    "type": "teacher_shortage",
+                    "severity": "warning",
+                    "subject_id": sid,
+                    "demand": demand,
+                    "capacity": capacity,
+                    "placed": placed,
+                    "shortage": shortage,
+                    "teachers_count": n_teachers,
+                    "classes_count": n_classes,
+                    "message_ar": f"المادة تحتاج {demand} حصة أسبوعياً لكن المعلمين المتاحين ({n_teachers}) يمكنهم تغطية {capacity} حصة فقط. ينقص {needed_extra} معلم إضافي على الأقل.",
+                    "message_en": f"Subject needs {demand} sessions/week but {n_teachers} teachers can only cover {capacity}. Need at least {needed_extra} more teacher(s).",
+                    "fix_ar": f"اذهب إلى إدارة المعلمين > عيّن {needed_extra} معلم إضافي لهذه المادة أو انقل معلمين من مواد أخرى",
+                    "fix_en": f"Go to Teacher Management > assign {needed_extra} more teacher(s) to this subject"
+                })
+            elif n_teachers == 0:
+                issues.append({
+                    "type": "no_teachers",
+                    "severity": "critical",
+                    "subject_id": sid,
+                    "demand": demand,
+                    "classes_count": n_classes,
+                    "message_ar": f"لا يوجد أي معلم مخصص لهذه المادة ({n_classes} فصل بحاجة لها)",
+                    "message_en": f"No teachers assigned to this subject ({n_classes} classes need it)",
+                    "fix_ar": "اذهب إلى إدارة المعلمين > حدد معلماً > أضف هذه المادة كمادة تخصص",
+                    "fix_en": "Go to Teacher Management > select a teacher > add this subject as their specialty"
+                })
+
+        issues.sort(key=lambda x: 0 if x["severity"] == "critical" else 1)
+        return issues
 
     # ============== PHASE 7: DETECT CONFLICTS ==============
     
@@ -1930,6 +2042,8 @@ class SmartSchedulingEngine:
             # Save timetable
             total_demand = sum(d.total_periods_required for d in demands)
             
+            capacity_issues = self._analyze_capacity_issues(demands, resources, settings, optimized_sessions)
+            
             timetable_doc = {
                 "id": timetable_id,
                 "school_id": school_id,
@@ -1948,7 +2062,8 @@ class SmartSchedulingEngine:
                     "completion_rate": (len(optimized_sessions) / total_demand * 100) if total_demand > 0 else 0,
                     "conflicts_count": len(conflicts),
                     "optimization_score": optimization_score
-                }
+                },
+                "capacity_issues": capacity_issues
             }
             await self.timetables.insert_one(timetable_doc)
             
@@ -2009,7 +2124,8 @@ class SmartSchedulingEngine:
                 unscheduled_count=len(unscheduled),
                 optimization_score=optimization_score,
                 message_ar=f"تم توليد الجدول بنجاح ({len(optimized_sessions)} حصة)",
-                message_en=f"Timetable generated successfully ({len(optimized_sessions)} sessions)"
+                message_en=f"Timetable generated successfully ({len(optimized_sessions)} sessions)",
+                capacity_issues=capacity_issues if capacity_issues else None
             )
             
         except Exception as e:

@@ -282,6 +282,7 @@ export default function SchedulePageNew() {
         unplaced,
         success_rate: successRate,
         name: result.timetable_name || 'الجدول الجديد',
+        capacity_issues: result.capacity_issues || [],
       });
 
       setGenerateDialogOpen(false);
@@ -797,7 +798,7 @@ export default function SchedulePageNew() {
 
         {/* ── RESULT DIALOG ───────────────────────────────────────────── */}
         <Dialog open={resultDialogOpen} onOpenChange={setResultDialogOpen}>
-          <DialogContent className="max-w-md" dir="rtl">
+          <DialogContent className="max-w-lg" dir="rtl">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 {parseFloat(generationResult?.success_rate) >= 90
@@ -855,11 +856,36 @@ export default function SchedulePageNew() {
                     <p className="text-sm text-emerald-700 font-medium">تم توليد جميع الحصص بنجاح كامل!</p>
                   </div>
                 ) : (
-                  <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 flex items-start gap-2">
-                    <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-                    <p className="text-xs text-amber-700">
-                      يوجد {generationResult.unplaced} حصة لم تُجدَّل. راجع الإسنادات والقيود ثم أعد المحاولة.
-                    </p>
+                  <div className="space-y-2">
+                    <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 flex items-start gap-2">
+                      <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                      <p className="text-xs text-amber-700">
+                        يوجد {generationResult.unplaced} حصة لم تُجدَّل بسبب نقص في المعلمين أو تجاوز الطاقة الاستيعابية.
+                      </p>
+                    </div>
+                    {generationResult.capacity_issues?.length > 0 && (
+                      <div className="max-h-40 overflow-y-auto space-y-1.5">
+                        {generationResult.capacity_issues.map((issue, idx) => (
+                          <div
+                            key={idx}
+                            className={`p-2.5 rounded-lg border text-xs ${
+                              issue.severity === 'critical'
+                                ? 'bg-red-50 border-red-200'
+                                : 'bg-amber-50 border-amber-200'
+                            }`}
+                          >
+                            <p className={`font-medium mb-1 ${issue.severity === 'critical' ? 'text-red-700' : 'text-amber-700'}`}>
+                              {issue.severity === 'critical' ? '⛔' : '⚠️'} {issue.message_ar}
+                            </p>
+                            {issue.fix_ar && (
+                              <p className="text-slate-600">
+                                <span className="font-semibold">الحل: </span>{issue.fix_ar}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
