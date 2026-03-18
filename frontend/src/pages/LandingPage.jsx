@@ -41,20 +41,30 @@ const LOGO_WHITE = 'https://customer-assets.emergentagent.com/job_f5ea20bb-5cf5-
 const BG_PATTERN = 'https://customer-assets.emergentagent.com/job_f5ea20bb-5cf5-462f-a7f0-958201e27f89/artifacts/1itjy61q_Nassaq%20Background.png';
 const HAKIM_CHARACTER = '/hakim-poses/friendly-greeting.png';
 
-function useHeroHakimRotation(interval = 6000) {
-  const [index, setIndex] = useState(0);
-  const [visible, setVisible] = useState(true);
+function useHeroHakimRotation(interval = 7000) {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [nextIndex, setNextIndex] = useState(null);
+  const [transitioning, setTransitioning] = useState(false);
+
   useEffect(() => {
     const timer = setInterval(() => {
-      setVisible(false);
+      const next = (currentIndex + 1) % HERO_POSES.length;
+      setNextIndex(next);
+      setTransitioning(true);
       setTimeout(() => {
-        setIndex(prev => (prev + 1) % HERO_POSES.length);
-        setVisible(true);
-      }, 500);
+        setCurrentIndex(next);
+        setNextIndex(null);
+        setTransitioning(false);
+      }, 900);
     }, interval);
     return () => clearInterval(timer);
-  }, [interval]);
-  return { src: HERO_POSES[index], visible };
+  }, [interval, currentIndex]);
+
+  return {
+    currentSrc: HERO_POSES[currentIndex],
+    nextSrc: nextIndex !== null ? HERO_POSES[nextIndex] : null,
+    transitioning,
+  };
 }
 
 function useTypedText(texts, speed = 40, pauseBetween = 3000) {
@@ -177,7 +187,7 @@ export const LandingPage = () => {
   const [aiPaused, setAIPaused] = useState(false);
   const [ecosystemPaused, setEcosystemPaused] = useState(false);
 
-  const heroHakim = useHeroHakimRotation(6000);
+  const heroHakim = useHeroHakimRotation(7000);
 
   const [platformStats, setPlatformStats] = useState({
     schools: 0,
@@ -583,16 +593,29 @@ export const LandingPage = () => {
 
             <div className={`flex flex-col items-center justify-end ${isRTL ? 'lg:order-2' : 'lg:order-2'}`}>
               <div className="relative w-full max-w-md flex flex-col items-center">
-                <img
-                  src={heroHakim.src}
-                  alt={isRTL ? 'حكيم' : 'Hakim'}
-                  className="hakim-img relative z-10 w-72 h-auto lg:w-96 object-contain mb-[-40px]"
-                  data-testid="hakim-avatar"
-                  style={{
-                    opacity: heroHakim.visible ? 1 : 0,
-                    transition: 'opacity 0.5s ease-in-out',
-                  }}
-                />
+                <div className="relative z-10 w-72 lg:w-96 mb-[-40px]" style={{ aspectRatio: '1/1.2' }}>
+                  <img
+                    src={heroHakim.currentSrc}
+                    alt={isRTL ? 'حكيم' : 'Hakim'}
+                    className="hakim-img absolute inset-0 w-full h-full object-contain"
+                    data-testid="hakim-avatar"
+                    style={{
+                      opacity: heroHakim.transitioning ? 0 : 1,
+                      transition: 'opacity 0.9s cubic-bezier(0.4, 0, 0.2, 1)',
+                    }}
+                  />
+                  {heroHakim.nextSrc && (
+                    <img
+                      src={heroHakim.nextSrc}
+                      alt={isRTL ? 'حكيم' : 'Hakim'}
+                      className="hakim-img absolute inset-0 w-full h-full object-contain"
+                      style={{
+                        opacity: heroHakim.transitioning ? 1 : 0,
+                        transition: 'opacity 0.9s cubic-bezier(0.4, 0, 0.2, 1)',
+                      }}
+                    />
+                  )}
+                </div>
 
                 <div className="relative z-20 w-full">
                   <div className="relative bg-white/10 backdrop-blur-md border border-white/15 rounded-2xl px-6 py-5 shadow-2xl">

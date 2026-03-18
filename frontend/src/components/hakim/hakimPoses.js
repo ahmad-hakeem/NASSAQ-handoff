@@ -134,9 +134,8 @@ export function getRandomPoseFromCategory(category) {
 
 export const HERO_POSES = [
   '/hakim-poses/welcome.png',
-  '/hakim-poses/slight-bow-greeting.png',
   '/hakim-poses/pointing-to-start.png',
-  '/hakim-poses/friendly-greeting.png',
+  '/hakim-poses/slight-bow-greeting.png',
 ];
 
 export { HAKIM_POSES, POSE_CATEGORIES, CONTEXT_MAP };

@@ -133,7 +133,7 @@ export const HakimAssistant = () => {
     return null;
   }, [location.pathname]);
 
-  const hakimAvatar = useMemo(() => getPoseForPath(location.pathname), [location.pathname]);
+  const hakimAvatar = useMemo(() => getPose('friendly-greeting'), []);
   const hakimListeningAvatar = useMemo(() => getPose('listening'), []);
   const hakimThinkingAvatar = useMemo(() => getPose('ai-thinking'), []);
   const hakimRespondingAvatar = useMemo(() => getPose('explaining-concept'), []);
