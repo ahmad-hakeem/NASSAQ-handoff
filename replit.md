@@ -180,6 +180,14 @@ import { getPose, getPoseForPath, getRandomPoseFromCategory } from '../component
 - **Codes**: HC-01 through HC-17 (teacher conflict, class conflict, room conflict, day boundaries, non-teaching periods, daily limits, working days, teacher load, subject periods, consecutive subjects, teacher qualification, teacher-class assignment, double-booking, completeness, academic structure, entity integrity, publish block)
 - **Categories**: resource_conflict, time_boundary, capacity, workload, curriculum, distribution, assignment, completeness, data_integrity, publishing
 - **Enforcement**: Loaded by smart scheduling engine during generation; validated during publish
+
+## Timetable Period Distribution
+The scheduling engine uses contiguous-fill scoring to distribute sessions evenly across all periods:
+- **No period bias**: Periods 3-5 no longer receive a fixed +10 bonus
+- **Contiguous fill**: Sessions prefer filling the next sequential period on a given day (+8 bonus for period == last_filled + 1)
+- **Gap penalty**: Large gaps between filled periods are penalized (-5 for period > last_filled + 2)
+- **Gap-fill pass**: Fills remaining empty slots with proper teacher load and availability checks, prioritizing under-scheduled subjects (+25 bonus)
+- **Optimizer**: Hill climbing rejects moves that violate teacher availability in addition to class/teacher conflicts
 - **Seed file**: `backend/seeds/timetable_hard_constraints.py`
 
 ## Workflows

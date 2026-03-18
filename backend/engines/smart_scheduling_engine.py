@@ -1032,8 +1032,21 @@ class SmartSchedulingEngine:
                             load_ratio = resource_usage.get(teacher_id, 0) / resource.weekly_load
                             score -= load_ratio * 30
 
-                            if period in [3, 4, 5]:
-                                score += 10
+                            filled_periods = sorted([
+                                p for p in teaching_period_numbers
+                                if class_id in grid[day].get(p, {})
+                            ])
+                            if filled_periods:
+                                last_filled = filled_periods[-1]
+                                if period == last_filled + 1:
+                                    score += 8
+                                elif period < last_filled:
+                                    score += 3
+                                elif period > last_filled + 2:
+                                    score -= 5
+                            else:
+                                if period <= 2:
+                                    score += 5
 
                             for constraint in constraints:
                                 if constraint.get("is_active", True):
@@ -1135,16 +1148,29 @@ class SmartSchedulingEngine:
                             s = grid[day][p][class_id]
                             class_day_subjects.add(s.subject_id)
 
+                    subject_session_counts = {}
+                    for s in sessions:
+                        if s.class_id == class_id:
+                            sk = s.subject_id
+                            subject_session_counts[sk] = subject_session_counts.get(sk, 0) + 1
+
                     for demand in schedulable_demands:
                         subject_id = demand["subject_id"]
+                        weekly_needed = demand.get("weekly_periods", 4)
+                        current_count = subject_session_counts.get(subject_id, 0)
 
                         for teacher_id in demand["suitable_teachers"]:
-                            # HARD CONSTRAINT: teacher_id + day + period must be unique
                             if teacher_id in teacher_grid[day][period]:
                                 continue
 
                             resource = resource_lookup.get(teacher_id)
                             if not resource:
+                                continue
+
+                            if resource_usage.get(teacher_id, 0) >= resource.weekly_load:
+                                continue
+
+                            if period not in resource.availability.get(day, []):
                                 continue
 
                             score = 50
@@ -1154,6 +1180,11 @@ class SmartSchedulingEngine:
 
                             load_ratio = resource_usage.get(teacher_id, 0) / max(resource.weekly_load, 1)
                             score -= load_ratio * 15
+
+                            if current_count < weekly_needed:
+                                score += 25
+                            else:
+                                score -= 10
 
                             if score > best_score:
                                 best_score = score
@@ -1544,6 +1575,18 @@ class SmartSchedulingEngine:
                 no_improve_count += 1
                 continue
 
+            availability_violated = False
+            for s in candidate:
+                r = resource_map.get(s.teacher_id)
+                if r and hasattr(r, 'availability') and r.availability:
+                    avail_periods = r.availability.get(s.day_of_week, [])
+                    if avail_periods and s.period_number not in avail_periods:
+                        availability_violated = True
+                        break
+            if availability_violated:
+                no_improve_count += 1
+                continue
+
             new_conflicts_count = _count_conflicts(candidate)
             old_conflicts_count = _count_conflicts(current_sessions)
 
@@ -1607,9 +1650,9 @@ class SmartSchedulingEngine:
         if sc:
             w = sc.get("weight", 5) / 10.0
             if period <= 3:
-                score += 5 * w
-            elif period >= len(teaching_period_numbers) - 1:
-                score -= 3 * w
+                score += 3 * w
+            elif period == teaching_period_numbers[-1]:
+                score -= 1 * w
 
         sc = sc_map.get("limit_consecutive_teacher")
         if sc:
