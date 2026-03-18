@@ -40,7 +40,7 @@ if not JWT_SECRET:
     JWT_SECRET = _secrets.token_urlsafe(48)
     logger.warning("JWT_SECRET_KEY not set — generated ephemeral secret (tokens will invalidate on restart)")
 JWT_ALGORITHM = os.environ.get('JWT_ALGORITHM', 'HS256')
-ACCESS_TOKEN_EXPIRE = int(os.environ.get('ACCESS_TOKEN_EXPIRE_MINUTES', 129600))
+ACCESS_TOKEN_EXPIRE = int(os.environ.get('ACCESS_TOKEN_EXPIRE_MINUTES', 60))
 
 security = HTTPBearer()
 

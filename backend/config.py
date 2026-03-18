@@ -35,9 +35,11 @@ class NassaqConfig:
     def validate(cls) -> list:
         issues = []
         if not cls.JWT_SECRET:
+            if cls.is_production():
+                raise ValueError("JWT_SECRET_KEY must be set in production environment")
             issues.append("JWT_SECRET not set")
         if cls.is_production() and cls.JWT_SECRET and len(cls.JWT_SECRET) < 32:
-            issues.append("JWT_SECRET too short for production (min 32 chars)")
+            raise ValueError("JWT_SECRET_KEY too short for production (min 32 chars)")
         if cls.is_production() and cls.CORS_ORIGINS == ["*"]:
             issues.append("CORS_ORIGINS should not be '*' in production")
         if cls.is_production() and cls.DEBUG:
