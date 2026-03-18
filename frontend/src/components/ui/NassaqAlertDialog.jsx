@@ -6,9 +6,8 @@ import {
   AlertDialogFooter,
   AlertDialogTitle,
   AlertDialogDescription,
-  AlertDialogAction,
-  AlertDialogCancel,
 } from './alert-dialog';
+import { Button } from './button';
 import { AlertTriangle, AlertCircle, CheckCircle, Info, XCircle, ShieldAlert } from 'lucide-react';
 
 const ALERT_TYPES = {
@@ -126,13 +125,15 @@ export const NassaqAlertProvider = ({ children }) => {
   }, []);
 
   const handleConfirm = useCallback(async () => {
-    if (alertState.onConfirm) await alertState.onConfirm();
     closeAlert();
+    if (alertState.onConfirm) {
+      await alertState.onConfirm();
+    }
   }, [alertState.onConfirm, closeAlert]);
 
   const handleCancel = useCallback(() => {
-    if (alertState.onCancel) alertState.onCancel();
     closeAlert();
+    if (alertState.onCancel) alertState.onCancel();
   }, [alertState.onCancel, closeAlert]);
 
   const config = ALERT_TYPES[alertState.type] || ALERT_TYPES.warning;
@@ -141,7 +142,7 @@ export const NassaqAlertProvider = ({ children }) => {
   return (
     <NassaqAlertContext.Provider value={{ showAlert, nassaqWarning, nassaqError, nassaqSuccess, nassaqInfo, nassaqConfirm }}>
       {children}
-      <AlertDialog open={alertState.open} onOpenChange={(open) => { if (!open) handleCancel(); }}>
+      <AlertDialog open={alertState.open} onOpenChange={(open) => { if (!open) closeAlert(); }}>
         <AlertDialogContent className="max-w-md rounded-2xl p-0 overflow-hidden border-0 shadow-2xl" dir="rtl">
           <div className={`${config.bgColor} ${config.borderColor} border-b px-6 pt-6 pb-4`}>
             <AlertDialogHeader className="flex flex-row items-center gap-3 space-y-0">
@@ -163,19 +164,20 @@ export const NassaqAlertProvider = ({ children }) => {
           </div>
 
           <AlertDialogFooter className="px-6 pb-5 gap-2 flex-row-reverse sm:flex-row-reverse">
-            <AlertDialogAction
+            <Button
               onClick={handleConfirm}
               className={`${config.buttonClass} rounded-xl px-6 py-2.5 text-sm font-bold font-cairo shadow-md hover:shadow-lg transition-all`}
             >
               {alertState.confirmText}
-            </AlertDialogAction>
+            </Button>
             {alertState.showCancel && (
-              <AlertDialogCancel
+              <Button
+                variant="outline"
                 onClick={handleCancel}
                 className="rounded-xl px-6 py-2.5 text-sm font-medium font-cairo border-gray-200 hover:bg-gray-50 mt-0"
               >
                 {alertState.cancelText}
-              </AlertDialogCancel>
+              </Button>
             )}
           </AlertDialogFooter>
         </AlertDialogContent>
