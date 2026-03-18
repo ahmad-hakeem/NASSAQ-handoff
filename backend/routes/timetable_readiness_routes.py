@@ -15,7 +15,10 @@ from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 from datetime import datetime, timezone
 from enum import Enum
-import logging
+import logging, os
+
+_JWT_SECRET = os.environ.get('JWT_SECRET_KEY', '')
+_JWT_ALGORITHM = os.environ.get('JWT_ALGORITHM', 'HS256')
 
 logger = logging.getLogger("nassaq.timetable_readiness_routes")
 
@@ -100,14 +103,14 @@ async def _extract_school_id(x_school_context, authorization):
         try:
             import jwt
             token = authorization.replace("Bearer ", "")
-            payload = jwt.decode(token, options={"verify_signature": False})
-            school_id = payload.get("school_id")
+            payload = jwt.decode(token, _JWT_SECRET, algorithms=[_JWT_ALGORITHM])
+            school_id = payload.get("school_id") or payload.get("tenant_id")
             if not school_id:
                 user_id = payload.get("sub")
                 if user_id:
-                    user = await db.users.find_one({"id": user_id}, {"_id": 0, "school_id": 1})
+                    user = await db.users.find_one({"id": user_id}, {"_id": 0, "school_id": 1, "tenant_id": 1})
                     if user:
-                        school_id = user.get("school_id")
+                        school_id = user.get("tenant_id") or user.get("school_id")
         except Exception:
             pass
     return school_id

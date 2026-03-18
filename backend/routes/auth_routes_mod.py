@@ -34,7 +34,9 @@ router = APIRouter()
 # ============== AUTH ROUTES ==============
 @router.post("/auth/register", response_model=TokenResponse)
 async def register(user_data: UserCreate):
-    # Check if email exists
+    user_data.role = UserRole.STUDENT
+    user_data.tenant_id = None
+
     existing = await db.users.find_one({"email": user_data.email})
     if existing:
         raise HTTPException(status_code=400, detail="البريد الإلكتروني مسجل مسبقاً")

@@ -8,7 +8,10 @@ from fastapi import APIRouter, HTTPException, Header, Depends, Query
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
 from datetime import datetime, timezone
-import uuid
+import uuid, os
+
+_JWT_SECRET = os.environ.get('JWT_SECRET_KEY', '')
+_JWT_ALGORITHM = os.environ.get('JWT_ALGORITHM', 'HS256')
 
 router = APIRouter(prefix="/principal/timetable", tags=["Principal Timetable"])
 
@@ -167,7 +170,7 @@ async def get_school_id(x_school_context: str = Header(default=None, alias="X-Sc
         try:
             import jwt
             token = authorization.replace("Bearer ", "")
-            payload = jwt.decode(token, options={"verify_signature": False})
+            payload = jwt.decode(token, _JWT_SECRET, algorithms=[_JWT_ALGORITHM])
             school_id = payload.get("school_id") or payload.get("tenant_id")
             if school_id:
                 return school_id
@@ -1131,9 +1134,9 @@ async def publish_version(
         try:
             import jwt
             token = authorization.replace("Bearer ", "")
-            payload = jwt.decode(token, options={"verify_signature": False})
+            payload = jwt.decode(token, _JWT_SECRET, algorithms=[_JWT_ALGORITHM])
             publisher_info = payload.get("sub") or "principal"
-            user_doc = await db.users.find_one({"email": publisher_info})
+            user_doc = await db.users.find_one({"id": publisher_info})
             if user_doc:
                 publisher_name = user_doc.get("full_name") or user_doc.get("name") or publisher_info
         except Exception:
