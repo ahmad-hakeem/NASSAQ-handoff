@@ -549,13 +549,17 @@ async def upload_user_image(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
     """Upload user profile image (base64)"""
+    MAX_B64_LENGTH = 3 * 1024 * 1024
+    if len(data.image_data) > MAX_B64_LENGTH:
+        raise HTTPException(status_code=413, detail="حجم الصورة كبير جداً (الحد الأقصى 2MB)")
+
+    allowed_prefixes = ("data:image/jpeg;base64,", "data:image/png;base64,", "data:image/webp;base64,")
+    if not data.image_data.startswith(allowed_prefixes):
+        raise HTTPException(status_code=400, detail="صيغة الصورة غير مدعومة (فقط JPEG, PNG, WEBP)")
+
     user = await db.users.find_one({"id": user_id})
     if not user:
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")
-    
-    # Validate base64 image
-    if not data.image_data.startswith("data:image/"):
-        raise HTTPException(status_code=400, detail="صيغة الصورة غير صحيحة")
     
     await db.users.update_one(
         {"id": user_id},
@@ -748,16 +752,13 @@ async def upload_user_avatar(
         
         if not image_data:
             raise HTTPException(status_code=400, detail="لم يتم إرسال صورة")
-        
-        # Validate it's a base64 data URL
-        if not image_data.startswith("data:image/"):
-            raise HTTPException(status_code=400, detail="صيغة الصورة غير صالحة")
-        
-        # Extract mime type and validate
-        mime_type = image_data.split(";")[0].split(":")[1] if ";" in image_data else ""
-        allowed_types = ["image/jpeg", "image/jpg", "image/png", "image/webp"]
-        
-        if mime_type not in allowed_types:
+
+        MAX_B64_LENGTH = 3 * 1024 * 1024
+        if len(image_data) > MAX_B64_LENGTH:
+            raise HTTPException(status_code=413, detail="حجم الصورة كبير جداً (الحد الأقصى 2MB)")
+
+        allowed_prefixes = ("data:image/jpeg;base64,", "data:image/png;base64,", "data:image/webp;base64,", "data:image/jpg;base64,")
+        if not image_data.startswith(allowed_prefixes):
             raise HTTPException(status_code=400, detail="صيغة الصورة غير مدعومة. الصيغ المدعومة: jpg, jpeg, png, webp")
         
         # Save avatar URL (base64 data URL)
