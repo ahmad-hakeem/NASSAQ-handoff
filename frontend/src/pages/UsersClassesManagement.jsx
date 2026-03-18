@@ -18,7 +18,7 @@ import {
   Download, FileSpreadsheet, FileUp, FileDown, Save, Key, UserX,
   Sparkles, X, AlertTriangle, Wrench, ArrowRight, Clock,
   UserCircle, ChevronRight, ExternalLink, Zap, BarChart3,
-  LayoutGrid, List, Heart, Shield
+  LayoutGrid, List, Heart, Shield, ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -406,7 +406,7 @@ const TeacherCard = ({ teacher, isRTL, onEdit, onDelete, onView, onAction, viewM
   );
 };
 
-const ParentCard = ({ parent, isRTL, onView, onAction, viewMode = 'grid' }) => {
+const ParentCard = ({ parent, isRTL, onView, onAction, onDelete, viewMode = 'grid' }) => {
   const t = THEME_COLORS.parent;
   if (viewMode === 'list') {
     return (
@@ -452,6 +452,14 @@ const ParentCard = ({ parent, isRTL, onView, onAction, viewMode = 'grid' }) => {
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => onAction(parent, 'reset-password')}><Key className="h-3.5 w-3.5 me-2" />{isRTL ? 'إعادة تعيين كلمة المرور' : 'Reset Password'}</DropdownMenuItem>
+                </>
+              )}
+              {onDelete && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => onDelete(parent)} className="text-red-600 focus:text-red-700 focus:bg-red-50">
+                    <Trash2 className="h-3.5 w-3.5 me-2" />{isRTL ? 'حذف نهائي' : 'Delete Permanently'}
+                  </DropdownMenuItem>
                 </>
               )}
             </DropdownMenuContent>
@@ -777,6 +785,7 @@ export default function UsersClassesManagement() {
   const [activeTab, setActiveTab] = useState(searchParams.get('filter') || 'students');
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState('grid');
+  const [sortBy, setSortBy] = useState('name_asc');
 
   const [students, setStudents] = useState([]);
   const [teachers, setTeachers] = useState([]);
@@ -920,6 +929,47 @@ export default function UsersClassesManagement() {
     }
   };
 
+  const applySorting = useCallback((list, type) => {
+    const sorted = [...list];
+    const [field, dir] = sortBy.split('_');
+    const asc = dir === 'asc';
+    sorted.sort((a, b) => {
+      let valA, valB;
+      if (field === 'name') {
+        valA = (type === 'class' ? a.name : a.full_name) || '';
+        valB = (type === 'class' ? b.name : b.full_name) || '';
+        return asc ? valA.localeCompare(valB, 'ar') : valB.localeCompare(valA, 'ar');
+      }
+      if (field === 'date') {
+        valA = a.created_at || a.createdAt || '';
+        valB = b.created_at || b.createdAt || '';
+        return asc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+      }
+      if (field === 'email') {
+        valA = a.email || '';
+        valB = b.email || '';
+        return asc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+      }
+      if (field === 'number') {
+        valA = a.student_number || '';
+        valB = b.student_number || '';
+        return asc ? valA.localeCompare(valB, undefined, { numeric: true }) : valB.localeCompare(valA, undefined, { numeric: true });
+      }
+      if (field === 'grade') {
+        valA = a.grade_level || '';
+        valB = b.grade_level || '';
+        return asc ? valA.localeCompare(valB, 'ar') : valB.localeCompare(valA, 'ar');
+      }
+      if (field === 'capacity') {
+        valA = a.student_count || 0;
+        valB = b.student_count || 0;
+        return asc ? valA - valB : valB - valA;
+      }
+      return 0;
+    });
+    return sorted;
+  }, [sortBy]);
+
   const filteredStudents = useMemo(() => {
     let list = students;
     if (activeFilter === 'noClass') list = studentsNoClass;
@@ -930,8 +980,8 @@ export default function UsersClassesManagement() {
       const q = searchQuery.toLowerCase();
       list = list.filter(s => s.full_name?.toLowerCase().includes(q) || s.student_number?.toLowerCase().includes(q) || s.email?.toLowerCase().includes(q));
     }
-    return list;
-  }, [students, searchQuery, activeFilter, studentsNoClass, studentsNoParent, suspendedStudents]);
+    return applySorting(list, 'student');
+  }, [students, searchQuery, activeFilter, studentsNoClass, studentsNoParent, suspendedStudents, applySorting]);
 
   const filteredTeachers = useMemo(() => {
     let list = teachers;
@@ -941,8 +991,8 @@ export default function UsersClassesManagement() {
       const q = searchQuery.toLowerCase();
       list = list.filter(t => t.full_name?.toLowerCase().includes(q) || t.email?.toLowerCase().includes(q) || t.specialization?.toLowerCase().includes(q));
     }
-    return list;
-  }, [teachers, searchQuery, activeFilter, teachersNoSubject]);
+    return applySorting(list, 'teacher');
+  }, [teachers, searchQuery, activeFilter, teachersNoSubject, applySorting]);
 
   const filteredParents = useMemo(() => {
     let list = parents;
@@ -950,8 +1000,8 @@ export default function UsersClassesManagement() {
       const q = searchQuery.toLowerCase();
       list = list.filter(p => p.full_name?.toLowerCase().includes(q) || p.phone?.toLowerCase().includes(q) || p.email?.toLowerCase().includes(q));
     }
-    return list;
-  }, [parents, searchQuery]);
+    return applySorting(list, 'parent');
+  }, [parents, searchQuery, applySorting]);
 
   const filteredClasses = useMemo(() => {
     let list = classes;
@@ -960,8 +1010,8 @@ export default function UsersClassesManagement() {
       const q = searchQuery.toLowerCase();
       list = list.filter(c => c.name?.toLowerCase().includes(q));
     }
-    return list;
-  }, [classes, searchQuery, activeFilter, overCapClasses]);
+    return applySorting(list, 'class');
+  }, [classes, searchQuery, activeFilter, overCapClasses, applySorting]);
 
   const handleAddSelect = (type) => {
     setShowAddPicker(false);
@@ -978,12 +1028,25 @@ export default function UsersClassesManagement() {
   };
 
   const handleDelete = (item, type) => {
-    const msg = isRTL ? `هل أنت متأكد من حذف ${type === 'student' ? 'الطالب' : type === 'teacher' ? 'المعلم' : 'الفصل'}؟` : `Are you sure you want to delete this ${type}?`;
+    const typeLabels = { student: isRTL ? 'الطالب' : 'student', teacher: isRTL ? 'المعلم' : 'teacher', parent: isRTL ? 'ولي الأمر' : 'parent', class: isRTL ? 'الفصل' : 'class' };
+    const msg = isRTL
+      ? `هل أنت متأكد من حذف ${typeLabels[type]}؟ سيتم حذف جميع البيانات المرتبطة نهائياً.`
+      : `Are you sure you want to delete this ${type}? All related data will be permanently removed.`;
     nassaqConfirm(msg, async () => {
       try {
-        const ep = type === 'student' ? `/students/${item.id}` : type === 'teacher' ? `/teachers/${item.id}` : `/classes/${item.id}`;
-        await api.delete(ep);
-        toast.success(isRTL ? 'تم الحذف بنجاح' : 'Deleted successfully');
+        const endpoints = { student: `/students/${item.id}`, teacher: `/teachers/${item.id}`, parent: `/parents/${item.id}`, class: `/classes/${item.id}` };
+        const ep = endpoints[type];
+        const res = await api.delete(ep);
+        const cleanup = res.data?.cleanup;
+        let successMsg = isRTL ? 'تم الحذف بنجاح' : 'Deleted successfully';
+        if (cleanup) {
+          const parts = [];
+          Object.entries(cleanup).forEach(([key, val]) => {
+            if (val > 0) parts.push(`${key}: ${val}`);
+          });
+          if (parts.length > 0) successMsg += ` (${parts.join(', ')})`;
+        }
+        toast.success(successMsg);
         fetchAllData();
       } catch (error) {
         let errMsg = isRTL ? 'فشل الحذف' : 'Delete failed';
@@ -992,7 +1055,7 @@ export default function UsersClassesManagement() {
         }
         nassaqError(errMsg);
       }
-    }, { title: isRTL ? 'تأكيد الحذف' : 'Confirm Delete', confirmText: isRTL ? 'نعم، احذف' : 'Yes, Delete', cancelText: isRTL ? 'إلغاء' : 'Cancel' });
+    }, { title: isRTL ? 'تأكيد الحذف النهائي' : 'Confirm Permanent Delete', confirmText: isRTL ? 'نعم، احذف نهائياً' : 'Yes, Delete Permanently', cancelText: isRTL ? 'إلغاء' : 'Cancel' });
   };
 
   const handleView = (item, type) => {
@@ -1261,7 +1324,7 @@ export default function UsersClassesManagement() {
                 onView={(t) => handleView(t, 'teacher')} onAction={(t, a) => handleAccountAction(t, a, 'teacher')} />
             ) : type === 'parents' ? (
               <ParentCard key={item.id} parent={item} isRTL={isRTL} viewMode="list"
-                onView={(p) => handleView(p, 'parent')} onAction={(p, a) => handleAccountAction(p, a, 'parent')} />
+                onView={(p) => handleView(p, 'parent')} onAction={(p, a) => handleAccountAction(p, a, 'parent')} onDelete={(p) => handleDelete(p, 'parent')} />
             ) : (
               <ClassCard key={item.id} classItem={item} isRTL={isRTL} viewMode="list"
                 onEdit={(c) => handleEdit(c, 'class')} onDelete={(c) => handleDelete(c, 'class')}
@@ -1285,7 +1348,7 @@ export default function UsersClassesManagement() {
               onView={(t) => handleView(t, 'teacher')} onAction={(t, a) => handleAccountAction(t, a, 'teacher')} />
           ) : type === 'parents' ? (
             <ParentCard key={item.id} parent={item} isRTL={isRTL}
-              onView={(p) => handleView(p, 'parent')} onAction={(p, a) => handleAccountAction(p, a, 'parent')} />
+              onView={(p) => handleView(p, 'parent')} onAction={(p, a) => handleAccountAction(p, a, 'parent')} onDelete={(p) => handleDelete(p, 'parent')} />
           ) : (
             <ClassCard key={item.id} classItem={item} isRTL={isRTL}
               onEdit={(c) => handleEdit(c, 'class')} onDelete={(c) => handleDelete(c, 'class')}
@@ -1379,6 +1442,57 @@ export default function UsersClassesManagement() {
             </Tabs>
 
             <div className="flex items-center gap-2 ms-auto">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="rounded-xl h-10 gap-2 px-3">
+                    <ArrowUpDown className="h-4 w-4" />
+                    <span className="text-xs hidden sm:inline">
+                      {sortBy === 'name_asc' ? (isRTL ? 'أبجدي أ-ي' : 'A-Z') :
+                       sortBy === 'name_desc' ? (isRTL ? 'أبجدي ي-أ' : 'Z-A') :
+                       sortBy === 'date_desc' ? (isRTL ? 'الأحدث أولاً' : 'Newest') :
+                       sortBy === 'date_asc' ? (isRTL ? 'الأقدم أولاً' : 'Oldest') :
+                       sortBy === 'number_asc' ? (isRTL ? 'رقم الطالب ↑' : 'Number ↑') :
+                       sortBy === 'grade_asc' ? (isRTL ? 'المرحلة ↑' : 'Grade ↑') :
+                       sortBy === 'capacity_desc' ? (isRTL ? 'الأكثر طلاباً' : 'Most Students') :
+                       (isRTL ? 'ترتيب' : 'Sort')}
+                    </span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem onClick={() => setSortBy('name_asc')} className={sortBy === 'name_asc' ? 'bg-accent' : ''}>
+                    <ArrowUp className="h-3.5 w-3.5 me-2" />{isRTL ? 'أبجدي أ → ي' : 'Alphabetical A → Z'}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setSortBy('name_desc')} className={sortBy === 'name_desc' ? 'bg-accent' : ''}>
+                    <ArrowDown className="h-3.5 w-3.5 me-2" />{isRTL ? 'أبجدي ي → أ' : 'Alphabetical Z → A'}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setSortBy('date_desc')} className={sortBy === 'date_desc' ? 'bg-accent' : ''}>
+                    <Clock className="h-3.5 w-3.5 me-2" />{isRTL ? 'الأحدث أولاً' : 'Newest First'}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setSortBy('date_asc')} className={sortBy === 'date_asc' ? 'bg-accent' : ''}>
+                    <Clock className="h-3.5 w-3.5 me-2" />{isRTL ? 'الأقدم أولاً' : 'Oldest First'}
+                  </DropdownMenuItem>
+                  {activeTab === 'students' && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => setSortBy('number_asc')} className={sortBy === 'number_asc' ? 'bg-accent' : ''}>
+                        <Hash className="h-3.5 w-3.5 me-2" />{isRTL ? 'رقم الطالب' : 'Student Number'}
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                  {activeTab === 'classes' && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => setSortBy('grade_asc')} className={sortBy === 'grade_asc' ? 'bg-accent' : ''}>
+                        <GraduationCap className="h-3.5 w-3.5 me-2" />{isRTL ? 'حسب المرحلة' : 'By Grade Level'}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setSortBy('capacity_desc')} className={sortBy === 'capacity_desc' ? 'bg-accent' : ''}>
+                        <Users className="h-3.5 w-3.5 me-2" />{isRTL ? 'الأكثر طلاباً' : 'Most Students'}
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
               <div className="flex items-center bg-muted/50 rounded-lg p-0.5">
                 <Button variant={viewMode === 'grid' ? 'default' : 'ghost'} size="icon" className="h-8 w-8 rounded-md"
                   onClick={() => setViewMode('grid')} title={isRTL ? 'عرض شبكي' : 'Grid View'}>

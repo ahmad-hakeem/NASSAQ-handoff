@@ -81,7 +81,7 @@ export const TeachersPage = () => {
   const [submitting, setSubmitting] = useState(false);
   
   // Check if user is a school-level user (not platform admin)
-  const { nassaqError, nassaqWarning } = useNassaqAlert();
+  const { nassaqError, nassaqWarning, nassaqConfirm } = useNassaqAlert();
   const isSchoolLevel = user?.role && !user.role.startsWith('platform_');
   const userSchoolId = user?.tenant_id;
   
@@ -179,17 +179,25 @@ export const TeachersPage = () => {
   };
 
   const handleDeleteTeacher = async (teacherId) => {
-    if (!confirm(isRTL ? 'هل أنت متأكد من حذف هذا المعلم؟' : 'Are you sure you want to delete this teacher?')) {
-      return;
-    }
-    
-    try {
-      await api.delete(`/teachers/${teacherId}`);
-      toast.success(isRTL ? 'تم حذف المعلم' : 'Teacher deleted');
-      setTeachers(prev => prev.filter(t => t.id !== teacherId));
-    } catch (error) {
-      nassaqError(isRTL ? 'فشل حذف المعلم' : 'Failed to delete teacher');
-    }
+    nassaqConfirm(
+      isRTL ? 'هل أنت متأكد من حذف هذا المعلم؟ سيتم حذف جميع البيانات المرتبطة نهائياً.' : 'Are you sure you want to delete this teacher? All related data will be permanently removed.',
+      async () => {
+        try {
+          const res = await api.delete(`/teachers/${teacherId}`);
+          const cleanup = res.data?.cleanup;
+          let msg = isRTL ? 'تم حذف المعلم بنجاح' : 'Teacher deleted successfully';
+          if (cleanup) {
+            const parts = Object.entries(cleanup).filter(([_, v]) => v > 0).map(([k, v]) => `${k}: ${v}`);
+            if (parts.length > 0) msg += ` (${parts.join(', ')})`;
+          }
+          toast.success(msg);
+          setTeachers(prev => prev.filter(t => t.id !== teacherId));
+        } catch (error) {
+          nassaqError(error.response?.data?.detail || (isRTL ? 'فشل حذف المعلم' : 'Failed to delete teacher'));
+        }
+      },
+      { title: isRTL ? 'تأكيد الحذف النهائي' : 'Confirm Permanent Delete', confirmText: isRTL ? 'نعم، احذف نهائياً' : 'Yes, Delete Permanently', cancelText: isRTL ? 'إلغاء' : 'Cancel' }
+    );
   };
 
   const filteredTeachers = teachers.filter(teacher => {
@@ -198,7 +206,7 @@ export const TeachersPage = () => {
                          teacher.specialization.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesSchool = selectedSchool === 'all' || teacher.school_id === selectedSchool;
     return matchesSearch && matchesSchool;
-  });
+  }).sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '', 'ar'));
 
   const getSchoolName = (schoolId) => {
     const school = schools.find(s => s.id === schoolId);

@@ -70,7 +70,7 @@ export const ClassesPage = () => {
   const [submitting, setSubmitting] = useState(false);
   
   // Check if user is a school-level user (not platform admin)
-  const { nassaqError, nassaqWarning } = useNassaqAlert();
+  const { nassaqError, nassaqWarning, nassaqConfirm } = useNassaqAlert();
   const isSchoolLevel = user?.role && !user.role.startsWith('platform_');
   const userSchoolId = user?.tenant_id;
   
@@ -170,17 +170,25 @@ export const ClassesPage = () => {
   };
 
   const handleDeleteClass = async (classId) => {
-    if (!confirm(isRTL ? 'هل أنت متأكد من حذف هذا الفصل؟' : 'Are you sure you want to delete this class?')) {
-      return;
-    }
-    
-    try {
-      await api.delete(`/classes/${classId}`);
-      toast.success(isRTL ? 'تم حذف الفصل' : 'Class deleted');
-      setClasses(prev => prev.filter(c => c.id !== classId));
-    } catch (error) {
-      nassaqError(isRTL ? 'فشل حذف الفصل' : 'Failed to delete class');
-    }
+    nassaqConfirm(
+      isRTL ? 'هل أنت متأكد من حذف هذا الفصل؟ سيتم حذف جميع البيانات المرتبطة نهائياً.' : 'Are you sure you want to delete this class? All related data will be permanently removed.',
+      async () => {
+        try {
+          const res = await api.delete(`/classes/${classId}`);
+          const cleanup = res.data?.cleanup;
+          let msg = isRTL ? 'تم حذف الفصل بنجاح' : 'Class deleted successfully';
+          if (cleanup) {
+            const parts = Object.entries(cleanup).filter(([_, v]) => v > 0).map(([k, v]) => `${k}: ${v}`);
+            if (parts.length > 0) msg += ` (${parts.join(', ')})`;
+          }
+          toast.success(msg);
+          setClasses(prev => prev.filter(c => c.id !== classId));
+        } catch (error) {
+          nassaqError(error.response?.data?.detail || (isRTL ? 'فشل حذف الفصل' : 'Failed to delete class'));
+        }
+      },
+      { title: isRTL ? 'تأكيد الحذف النهائي' : 'Confirm Permanent Delete', confirmText: isRTL ? 'نعم، احذف نهائياً' : 'Yes, Delete Permanently', cancelText: isRTL ? 'إلغاء' : 'Cancel' }
+    );
   };
 
   const filteredClasses = classes.filter(cls => {
@@ -188,7 +196,7 @@ export const ClassesPage = () => {
                          cls.grade_level.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesSchool = selectedSchool === 'all' || cls.school_id === selectedSchool;
     return matchesSearch && matchesSchool;
-  });
+  }).sort((a, b) => a.name.localeCompare(b.name, 'ar'));
 
   const getSchoolName = (schoolId) => {
     const school = schools.find(s => s.id === schoolId);
