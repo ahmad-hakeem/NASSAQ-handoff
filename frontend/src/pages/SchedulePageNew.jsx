@@ -123,21 +123,25 @@ const SessionCard = ({ session, viewMode, onClick, isDraggable, onDragStart, isD
 
 // ─── Empty Cell ───────────────────────────────────────────────────────────
 const EmptyCell = ({ isDropTarget, isGap }) => (
-  <div className={`w-full min-h-[80px] rounded-xl border-2 border-dashed
+  <div className={`w-full min-h-[80px] rounded-xl border-2 border-dashed relative
     flex flex-col items-center justify-center gap-1 transition-all duration-200
     ${isDropTarget
       ? 'border-[#46C1BE] bg-[#46C1BE]/10 shadow-inner scale-[1.02]'
       : isGap
-        ? 'border-amber-300 bg-amber-50/70 hover:border-amber-400 hover:bg-amber-50'
+        ? 'border-red-300 bg-gradient-to-b from-red-50 to-amber-50/80 hover:border-red-400 hover:shadow-md'
         : 'border-slate-200 bg-slate-50/50 hover:border-slate-300 hover:bg-slate-50'}`}>
     {isDropTarget
       ? <span className="text-[#46C1BE] text-[10px] font-bold select-none">انقل هنا ↓</span>
       : isGap
         ? <>
-            <svg className="h-4 w-4 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <div className="absolute top-1 left-1 w-4 h-4 rounded-full bg-red-500 flex items-center justify-center animate-pulse">
+              <span className="text-white text-[8px] font-black">!</span>
+            </div>
+            <svg className="h-5 w-5 text-red-400 mb-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <path d="M12 9v4m0 4h.01M12 2a10 10 0 100 20 10 10 0 000-20z" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
-            <span className="text-amber-500 text-[9px] font-bold select-none leading-tight text-center">حصة فارغة</span>
+            <span className="text-red-600 text-[10px] font-extrabold select-none leading-tight text-center">غير مستوفية</span>
+            <span className="text-red-400 text-[8px] font-medium select-none">تحتاج تعيين مادة</span>
           </>
         : <span className="text-slate-300 text-[10px] select-none">—</span>}
   </div>
@@ -497,7 +501,7 @@ export default function SchedulePageNew() {
 
   const criticalGaps = useMemo(() => {
     return Object.entries(periodGaps)
-      .filter(([_, g]) => g.empty >= 3)
+      .filter(([_, g]) => g.empty >= 1)
       .sort((a, b) => b[1].empty - a[1].empty);
   }, [periodGaps]);
 
@@ -746,41 +750,66 @@ export default function SchedulePageNew() {
           )}
 
           {/* ── COVERAGE GAPS WARNING ─────────────────────────────── */}
-          {criticalGaps.length > 0 && selectedTimetableId && gridSessions.length > 0 && (
-            <Card className="border border-amber-200 bg-amber-50/60 shadow-sm overflow-hidden">
-              <div className="px-5 py-3 flex items-start gap-3">
-                <div className="w-9 h-9 rounded-lg bg-amber-100 flex items-center justify-center shrink-0 mt-0.5">
-                  <AlertTriangle className="h-5 w-5 text-amber-600" />
+          {criticalGaps.length > 0 && selectedTimetableId && gridSessions.length > 0 && (() => {
+            const totalEmpty = criticalGaps.reduce((s, [_, g]) => s + g.empty, 0);
+            const isSevere = criticalGaps.some(([_, g]) => g.empty >= 4);
+            const borderColor = isSevere ? 'border-red-300' : 'border-amber-300';
+            const bgColor = isSevere ? 'bg-red-50/70' : 'bg-amber-50/60';
+            const iconBg = isSevere ? 'bg-red-100' : 'bg-amber-100';
+            const iconColor = isSevere ? 'text-red-600' : 'text-amber-600';
+            return (
+            <Card className={`border-2 ${borderColor} ${bgColor} shadow-md overflow-hidden`}>
+              <div className="px-5 py-4 flex items-start gap-3">
+                <div className={`w-10 h-10 rounded-xl ${iconBg} flex items-center justify-center shrink-0 mt-0.5 ${isSevere ? 'animate-pulse' : ''}`}>
+                  <AlertTriangle className={`h-5 w-5 ${iconColor}`} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h3 className="font-bold text-sm text-amber-800 mb-1">حصص غير مستوفية</h3>
-                  <p className="text-xs text-amber-700 mb-2">
-                    الحصص التالية تحتوي على خانات فارغة لم يتم تعبئتها بعد التوليد:
+                  <div className="flex items-center gap-2 mb-1">
+                    <h3 className={`font-bold text-sm ${isSevere ? 'text-red-800' : 'text-amber-800'}`}>
+                      ⚠️ حصص غير مستوفية — {totalEmpty} خانة فارغة
+                    </h3>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${isSevere ? 'bg-red-200 text-red-700' : 'bg-amber-200 text-amber-700'}`}>
+                      {criticalGaps.length} {criticalGaps.length === 1 ? 'حصة' : 'حصص'}
+                    </span>
+                  </div>
+                  <p className={`text-xs ${isSevere ? 'text-red-700' : 'text-amber-700'} mb-3`}>
+                    الحصص التالية تحتوي على خانات فارغة لم يتم تعيين مواد لها بعد التوليد. يجب ملؤها لاكتمال الجدول:
                   </p>
                   <div className="flex flex-wrap gap-2">
-                    {criticalGaps.map(([periodNum, gap]) => (
+                    {criticalGaps.map(([periodNum, gap]) => {
+                      const severity = gap.empty === DAYS.length ? 'full' : gap.empty >= 3 ? 'high' : 'low';
+                      return (
                       <div
                         key={periodNum}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border
-                          ${gap.empty >= 4
-                            ? 'bg-red-100 text-red-700 border-red-200'
-                            : 'bg-amber-100 text-amber-700 border-amber-200'}`}
+                        className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold border-2 shadow-sm
+                          ${severity === 'full'
+                            ? 'bg-red-100 text-red-700 border-red-300 ring-1 ring-red-200'
+                            : severity === 'high'
+                              ? 'bg-red-50 text-red-600 border-red-200'
+                              : 'bg-amber-100 text-amber-700 border-amber-300'}`}
                       >
-                        <span className={`w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold ${gap.empty >= 4 ? 'bg-red-200 text-red-800' : 'bg-amber-200 text-amber-800'}`}>
+                        <span className={`w-6 h-6 rounded-lg flex items-center justify-center text-[11px] font-black
+                          ${severity === 'full' ? 'bg-red-500 text-white' : severity === 'high' ? 'bg-red-200 text-red-800' : 'bg-amber-200 text-amber-800'}`}>
                           {periodNum}
                         </span>
-                        الحصة {periodNum}: {gap.empty} من {gap.total} أيام فارغة
-                        {gap.empty === DAYS.length && <span className="text-[9px] opacity-70 mr-1">(فارغة بالكامل)</span>}
+                        <div className="flex flex-col leading-tight">
+                          <span>الحصة {periodNum}: {gap.empty} من {gap.total} فارغة</span>
+                          {severity === 'full' && <span className="text-[9px] text-red-500 font-medium">فارغة بالكامل — لم يتم تعيين أي مادة</span>}
+                          {severity === 'high' && <span className="text-[9px] text-red-400 font-medium">أغلب الأيام فارغة</span>}
+                        </div>
                       </div>
-                    ))}
+                    );})}
                   </div>
-                  <p className="text-[10px] text-amber-600 mt-2">
-                    💡 يمكنك سحب وإفلات حصص أخرى لملء الخانات الفارغة، أو إعادة التوليد بعد تعديل ساعات المنهج
-                  </p>
+                  <div className={`mt-3 p-2 rounded-lg ${isSevere ? 'bg-red-100/60' : 'bg-amber-100/60'} flex items-start gap-2`}>
+                    <span className="text-sm mt-0.5">💡</span>
+                    <p className={`text-[11px] ${isSevere ? 'text-red-700' : 'text-amber-700'} leading-relaxed`}>
+                      اسحب حصص من أيام أخرى لملء الخانات الفارغة، أو أعد التوليد بعد التأكد من أن ساعات المنهج المُدخلة تغطي جميع الحصص.
+                    </p>
+                  </div>
                 </div>
               </div>
             </Card>
-          )}
+          );})()}
 
           {/* ── TIMETABLE GRID ──────────────────────────────────────── */}
           {timeSlots.length > 0 && selectedTimetableId && (
@@ -854,17 +883,18 @@ export default function SchedulePageNew() {
                       const isEven        = periodIdx % 2 === 0;
 
                       const rowGap = periodGaps[slotPeriodNum];
-                      const isRowCritical = rowGap && rowGap.empty >= 3;
+                      const isRowCritical = rowGap && rowGap.empty >= 1;
+                      const isRowSevere = rowGap && rowGap.empty >= 4;
 
                       return (
                         <tr
                           key={slot.id}
-                          className={`border-b border-slate-100 ${isRowCritical ? 'bg-amber-50/30' : isEven ? '' : 'bg-slate-50/40'} hover:bg-blue-50/20 transition-colors group`}
+                          className={`border-b ${isRowSevere ? 'border-red-200 bg-red-50/40' : isRowCritical ? 'border-amber-200 bg-amber-50/30' : 'border-slate-100'} ${!isRowCritical && (isEven ? '' : 'bg-slate-50/40')} hover:bg-blue-50/20 transition-colors group`}
                         >
                           {/* Period Label */}
-                          <td className={`p-2 border-l border-slate-200 group-hover:bg-blue-50/30 transition-colors ${isRowCritical ? 'bg-amber-50/50' : 'bg-white'}`}>
+                          <td className={`p-2 border-l border-slate-200 group-hover:bg-blue-50/30 transition-colors ${isRowSevere ? 'bg-red-50/70' : isRowCritical ? 'bg-amber-50/50' : 'bg-white'}`}>
                             <div className="text-center">
-                              <div className={`w-8 h-8 rounded-lg font-bold text-sm flex items-center justify-center mx-auto mb-1 ${isRowCritical ? 'bg-amber-100 text-amber-700 ring-1 ring-amber-300' : 'bg-[#1C3D74]/10 text-[#1C3D74]'}`}>
+                              <div className={`w-8 h-8 rounded-lg font-bold text-sm flex items-center justify-center mx-auto mb-1 ${isRowSevere ? 'bg-red-100 text-red-700 ring-2 ring-red-300' : isRowCritical ? 'bg-amber-100 text-amber-700 ring-1 ring-amber-300' : 'bg-[#1C3D74]/10 text-[#1C3D74]'}`}>
                                 {slotPeriodNum}
                               </div>
                               <p className="text-[9px] text-slate-400 font-mono leading-none">
@@ -874,9 +904,14 @@ export default function SchedulePageNew() {
                                 {slot.end_time?.substring(0, 5)}
                               </p>
                               {rowGap && (
-                                <p className={`text-[8px] mt-0.5 font-bold ${rowGap.empty >= 3 ? 'text-amber-600' : 'text-slate-400'}`}>
-                                  {rowGap.filled}/{rowGap.total}
-                                </p>
+                                <div className="mt-1">
+                                  <p className={`text-[9px] font-bold ${isRowSevere ? 'text-red-600' : 'text-amber-600'}`}>
+                                    {rowGap.filled}/{rowGap.total}
+                                  </p>
+                                  <p className={`text-[7px] font-medium ${isRowSevere ? 'text-red-400' : 'text-amber-400'}`}>
+                                    ناقص
+                                  </p>
+                                </div>
                               )}
                             </div>
                           </td>
