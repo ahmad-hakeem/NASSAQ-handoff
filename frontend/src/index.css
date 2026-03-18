@@ -162,6 +162,16 @@
     .sidebar-item-inactive {
         @apply text-white/70 hover:bg-white/10 hover:text-white;
     }
+
+    .nassaq-pattern {
+        background-size: 600px auto;
+        background-repeat: repeat;
+    }
+    
+    .nassaq-pattern-cover {
+        background-size: cover;
+        background-position: center;
+    }
 }
 
 @layer utilities {

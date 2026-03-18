@@ -643,6 +643,7 @@ export const AIInsightsPage = () => {
           <div className="ai-slide-in">
             <div className="relative overflow-hidden rounded-3xl shadow-2xl">
               <div className="absolute inset-0 bg-gradient-to-br from-brand-navy via-brand-navy-dark to-brand-purple/90" />
+              <div className="absolute inset-0 nassaq-pattern opacity-[0.07]" style={{ backgroundImage: "url('/nassaq-pattern.png')" }} />
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_10%_90%,rgba(70,193,190,0.2),transparent_50%)]" />
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_90%_10%,rgba(97,80,144,0.2),transparent_50%)]" />
 

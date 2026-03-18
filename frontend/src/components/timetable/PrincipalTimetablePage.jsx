@@ -823,6 +823,7 @@ const PrincipalTimetablePage = () => {
 
           {/* ═══════════════ HERO HEADER ═══════════════ */}
           <div className="relative overflow-hidden rounded-2xl bg-gradient-to-l from-[#1a1f4e] via-[#252b6e] to-[#2d3594] p-6 text-white shadow-xl">
+            <div className="absolute inset-0 nassaq-pattern opacity-[0.05]" style={{ backgroundImage: "url('/nassaq-pattern.png')" }} />
             <div className="absolute inset-0 opacity-10">
               <div className="absolute top-0 left-0 w-40 h-40 bg-white/20 rounded-full -translate-x-1/2 -translate-y-1/2" />
               <div className="absolute bottom-0 right-0 w-60 h-60 bg-white/10 rounded-full translate-x-1/4 translate-y-1/4" />

@@ -112,6 +112,7 @@ const SchoolDayProgress = ({ isRTL, schoolContext, isImpersonating }) => {
 
   return (
     <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-brand-navy via-brand-navy/95 to-brand-turquoise/80 p-6 text-white">
+      <div className="absolute inset-0 nassaq-pattern opacity-[0.05]" style={{ backgroundImage: "url('/nassaq-pattern.png')" }} />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_50%,rgba(255,255,255,0.05),transparent)]" />
       <div className="relative z-10">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">

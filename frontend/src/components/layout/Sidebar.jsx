@@ -785,13 +785,14 @@ export const Sidebar = ({ children }) => {
       <aside
         data-testid="sidebar"
         className={`
-          fixed inset-y-0 z-40 bg-brand-navy
+          fixed inset-y-0 z-40 bg-brand-navy overflow-hidden
           transition-all duration-300 ease-in-out
           ${isRTL ? 'right-0' : 'left-0'}
           ${collapsed ? 'w-20' : 'w-72'}
           ${mobileOpen ? 'translate-x-0' : isRTL ? 'translate-x-full lg:translate-x-0' : '-translate-x-full lg:translate-x-0'}
         `}
       >
+        <div className="absolute inset-0 nassaq-pattern opacity-[0.03] pointer-events-none" style={{ backgroundImage: "url('/nassaq-pattern.png')" }} />
         <SidebarContent />
       </aside>
 
