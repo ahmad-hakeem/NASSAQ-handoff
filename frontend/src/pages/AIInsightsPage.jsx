@@ -77,7 +77,7 @@ const AnimatedGauge = ({ score, size = 180, label }) => {
         <span className="text-4xl font-bold font-cairo bg-gradient-to-br from-brand-turquoise via-white to-brand-purple bg-clip-text text-transparent">
           {animatedScore}
         </span>
-        <span className="text-[10px] text-white/70 font-tajawal">{label}</span>
+        <span className="text-[10px] text-white font-tajawal">{label}</span>
       </div>
     </div>
   );
@@ -661,7 +661,7 @@ export const AIInsightsPage = () => {
                       <div className="w-7 h-7 rounded-full overflow-hidden flex-shrink-0">
                         <img src={HAKIM_AVATAR} alt="حكيم" className="hakim-img w-full h-full object-contain" />
                       </div>
-                      <span className="text-[11px] font-tajawal text-white/80 font-medium">
+                      <span className="text-[11px] font-tajawal text-white font-medium">
                         {isRTL ? 'تحليل مدعوم بحكيم AI' : 'Powered by Hakim AI'}
                       </span>
                       <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -670,7 +670,7 @@ export const AIInsightsPage = () => {
                     <h2 className="text-2xl lg:text-3xl font-bold font-cairo text-white mb-2 leading-tight">
                       {isRTL ? 'مؤشر الأداء الذكي' : 'Smart Performance Index'}
                     </h2>
-                    <p className="text-xs text-white/60 font-tajawal max-w-md leading-relaxed">
+                    <p className="text-sm text-white font-tajawal max-w-md leading-relaxed">
                       {isRTL
                         ? 'تقييم شامل لأداء المدرسة بناءً على تحليل الذكاء الاصطناعي'
                         : 'Comprehensive school performance based on AI analysis'}
@@ -689,7 +689,7 @@ export const AIInsightsPage = () => {
                         <span className={`text-base font-bold font-cairo ${insights.trend === 'up' ? 'text-emerald-400' : 'text-red-400'}`}>
                           {insights.trend_value}%
                         </span>
-                        <span className="text-[10px] text-white/60 font-tajawal">
+                        <span className="text-[10px] text-white font-tajawal">
                           {isRTL ? 'مقارنة بالشهر الماضي' : 'vs last month'}
                         </span>
                       </div>
