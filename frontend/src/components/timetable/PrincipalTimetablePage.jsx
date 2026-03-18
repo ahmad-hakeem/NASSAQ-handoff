@@ -1559,8 +1559,8 @@ const PrincipalTimetablePage = () => {
             <div className="flex justify-center mb-5">
               <div className="relative">
                 <div className="absolute -inset-5 rounded-full bg-violet-400/20 blur-2xl animate-pulse" />
-                <div className="relative w-40 h-40 rounded-full overflow-hidden border-4 border-violet-300/50 shadow-2xl shadow-violet-500/30 bg-gradient-to-br from-violet-50 to-cyan-50 p-3">
-                  <img src="/hakim-poses/clapping-celebration.png" alt="حكيم" className="hakim-img w-full h-full object-contain drop-shadow-lg" style={{ animation: 'hakimGenSuccess 1.5s ease-in-out infinite' }} />
+                <div className="relative w-56 h-56 rounded-full overflow-hidden border-4 border-violet-300/50 shadow-2xl shadow-violet-500/30 bg-gradient-to-br from-violet-50 to-cyan-50 p-3">
+                  <img src="/hakim-poses/congratulating-student.png" alt="حكيم" className="hakim-img w-full h-full object-contain drop-shadow-lg" style={{ animation: 'hakimGenSuccess 1.5s ease-in-out infinite' }} />
                 </div>
                 <div className="absolute -top-3 -right-3 w-11 h-11 rounded-full bg-yellow-400 flex items-center justify-center shadow-lg animate-bounce text-xl">🎉</div>
                 <div className="absolute -bottom-2 -left-2 w-9 h-9 rounded-full bg-violet-300 flex items-center justify-center shadow-lg animate-bounce text-lg" style={{ animationDelay: '0.3s' }}>✨</div>
