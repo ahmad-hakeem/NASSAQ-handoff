@@ -454,27 +454,56 @@ async def delete_student(
     student_id: str,
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
-    """Delete student (soft delete)"""
+    """Delete student — full removal from system"""
     student = await db.students.find_one({"id": student_id}, {"_id": 0})
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
     
-    await db.students.update_one({"id": student_id}, {"$set": {"is_active": False}})
-    
-    # Update school student count
+    school_id = student.get("school_id")
+    class_id = student.get("class_id")
+    user_id = student.get("user_id")
+
+    cleanup = {}
+    await db.students.delete_one({"id": student_id})
+
     await db.schools.update_one(
-        {"id": student.get("school_id")},
+        {"id": school_id},
         {"$inc": {"current_students": -1}}
     )
-    
-    # Update class student count if assigned
-    if student.get("class_id"):
+    if class_id:
         await db.classes.update_one(
-            {"id": student.get("class_id")},
+            {"id": class_id},
             {"$inc": {"current_students": -1}}
         )
-    
-    return {"message": "تم حذف الطالب"}
+
+    r = await db.attendance.delete_many({"student_id": student_id})
+    cleanup["attendance"] = r.deleted_count
+    r = await db.session_attendance.delete_many({"student_id": student_id})
+    cleanup["session_attendance"] = r.deleted_count
+    r = await db.grades.delete_many({"student_id": student_id})
+    cleanup["grades"] = r.deleted_count
+    r = await db.student_daily_scores.delete_many({"student_id": student_id})
+    cleanup["student_daily_scores"] = r.deleted_count
+    r = await db.student_score_ledger.delete_many({"student_id": student_id})
+    cleanup["student_score_ledger"] = r.deleted_count
+    r = await db.student_skills.delete_many({"student_id": student_id})
+    cleanup["student_skills"] = r.deleted_count
+    r = await db.behaviour_records.delete_many({"student_id": student_id})
+    cleanup["behaviour_records"] = r.deleted_count
+    r = await db.session_interactions.delete_many({"student_id": student_id})
+    cleanup["session_interactions"] = r.deleted_count
+    r = await db.guardian_links.delete_many({"student_id": student_id})
+    cleanup["guardian_links"] = r.deleted_count
+    r = await db.user_relationships.delete_many({"$or": [{"source_id": student_id}, {"target_id": student_id}]})
+    cleanup["user_relationships"] = r.deleted_count
+
+    if user_id:
+        await db.users.delete_one({"id": user_id})
+        await db.user_roles.delete_many({"user_id": user_id})
+        await db.user_identities.delete_many({"user_id": user_id})
+        cleanup["user_account"] = 1
+
+    return {"message": "تم حذف الطالب وجميع بياناته من النظام بالكامل", "success": True, "cleanup": cleanup}
 
 
 
@@ -1062,13 +1091,43 @@ async def delete_class(
     class_id: str,
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
-    """Delete class (soft delete)"""
+    """Delete class — full removal from system"""
     class_doc = await db.classes.find_one({"id": class_id}, {"_id": 0})
     if not class_doc:
         raise HTTPException(status_code=404, detail="الفصل غير موجود")
     
-    await db.classes.update_one({"id": class_id}, {"$set": {"is_active": False}})
-    return {"message": "تم حذف الفصل"}
+    student_count = await db.students.count_documents({"class_id": class_id, "is_active": {"$ne": False}})
+    if student_count > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=f"لا يمكن حذف الفصل لوجود {student_count} طالب مرتبط به. يرجى نقل الطلاب أولاً."
+        )
+    
+    school_id = class_doc.get("school_id")
+    cleanup = {}
+    await db.classes.delete_one({"id": class_id})
+    r = await db.teacher_assignments.delete_many({"class_id": class_id})
+    cleanup["teacher_assignments"] = r.deleted_count
+    r = await db.teacher_class_assignments.delete_many({"class_id": class_id})
+    cleanup["teacher_class_assignments"] = r.deleted_count
+    r = await db.class_subjects.delete_many({"class_id": class_id})
+    cleanup["class_subjects"] = r.deleted_count
+    r = await db.timetable_sessions.delete_many({"class_id": class_id})
+    cleanup["timetable_sessions"] = r.deleted_count
+    r = await db.class_sessions.delete_many({"class_id": class_id})
+    cleanup["class_sessions"] = r.deleted_count
+    r = await db.attendance.delete_many({"class_id": class_id})
+    cleanup["attendance"] = r.deleted_count
+    r = await db.session_attendance.delete_many({"class_id": class_id})
+    cleanup["session_attendance"] = r.deleted_count
+    r = await db.assessments.delete_many({"class_id": class_id})
+    cleanup["assessments"] = r.deleted_count
+    r = await db.grades.delete_many({"class_id": class_id})
+    cleanup["grades"] = r.deleted_count
+    r = await db.behaviour_records.delete_many({"class_id": class_id})
+    cleanup["behaviour_records"] = r.deleted_count
+
+    return {"message": "تم حذف الفصل وجميع البيانات المرتبطة به بنجاح", "success": True, "cleanup": cleanup}
 
 
 
@@ -3481,21 +3540,46 @@ async def delete_teacher(
     teacher_id: str,
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
-    """Delete teacher (soft delete)"""
+    """Delete teacher — full removal from system"""
     teacher = await db.teachers.find_one({"id": teacher_id}, {"_id": 0})
     if not teacher:
         raise HTTPException(status_code=404, detail="المعلم غير موجود")
     
-    await db.teachers.update_one({"id": teacher_id}, {"$set": {"is_active": False}})
-    await db.users.update_one({"id": teacher.get("user_id")}, {"$set": {"is_active": False}})
-    
-    # Update school teacher count
+    school_id = teacher.get("school_id")
+    user_id = teacher.get("user_id")
+
+    cleanup = {}
+    await db.teachers.delete_one({"id": teacher_id})
+
     await db.schools.update_one(
-        {"id": teacher.get("school_id")},
+        {"id": school_id},
         {"$inc": {"current_teachers": -1}}
     )
-    
-    return {"message": "تم حذف المعلم"}
+
+    r = await db.teacher_assignments.delete_many({"teacher_id": teacher_id})
+    cleanup["teacher_assignments"] = r.deleted_count
+    r = await db.teacher_class_assignments.delete_many({"teacher_id": teacher_id})
+    cleanup["teacher_class_assignments"] = r.deleted_count
+    r = await db.teacher_subjects.delete_many({"teacher_id": teacher_id})
+    cleanup["teacher_subjects"] = r.deleted_count
+    r = await db.teacher_attendance.delete_many({"teacher_id": teacher_id})
+    cleanup["teacher_attendance"] = r.deleted_count
+    r = await db.timetable_sessions.delete_many({"teacher_id": teacher_id})
+    cleanup["timetable_sessions"] = r.deleted_count
+    r = await db.class_sessions.delete_many({"teacher_id": teacher_id})
+    cleanup["class_sessions"] = r.deleted_count
+    r = await db.session_event_log.delete_many({"teacher_id": teacher_id})
+    cleanup["session_event_log"] = r.deleted_count
+    r = await db.user_relationships.delete_many({"$or": [{"source_id": teacher_id}, {"target_id": teacher_id}]})
+    cleanup["user_relationships"] = r.deleted_count
+
+    if user_id:
+        await db.users.delete_one({"id": user_id})
+        await db.user_roles.delete_many({"user_id": user_id})
+        await db.user_identities.delete_many({"user_id": user_id})
+        cleanup["user_account"] = 1
+
+    return {"message": "تم حذف المعلم وجميع بياناته من النظام بالكامل", "success": True, "cleanup": cleanup}
 
 
 @router.delete("/parents/{parent_id}")
@@ -3503,13 +3587,31 @@ async def delete_parent(
     parent_id: str,
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
+    """Delete parent — full removal from system"""
     tenant_id = current_user.get("tenant_id")
     parent = await db.parents.find_one({"id": parent_id, "tenant_id": tenant_id}, {"_id": 0})
     if not parent:
         raise HTTPException(status_code=404, detail="ولي الأمر غير موجود")
 
-    await db.parents.update_one({"id": parent_id}, {"$set": {"is_active": False, "status": "closed"}})
-    if parent.get("user_id"):
-        await db.users.update_one({"id": parent["user_id"]}, {"$set": {"is_active": False, "status": "closed"}})
+    user_id = parent.get("user_id")
 
-    return {"message": "تم حذف ولي الأمر"}
+    cleanup = {}
+    await db.parents.delete_one({"id": parent_id})
+
+    r = await db.guardian_links.delete_many({"parent_id": parent_id})
+    cleanup["guardian_links"] = r.deleted_count
+    r = await db.user_relationships.delete_many({"$or": [{"source_id": parent_id}, {"target_id": parent_id}]})
+    cleanup["user_relationships"] = r.deleted_count
+
+    await db.students.update_many(
+        {"parent_ids": parent_id},
+        {"$pull": {"parent_ids": parent_id}}
+    )
+
+    if user_id:
+        await db.users.delete_one({"id": user_id})
+        await db.user_roles.delete_many({"user_id": user_id})
+        await db.user_identities.delete_many({"user_id": user_id})
+        cleanup["user_account"] = 1
+
+    return {"message": "تم حذف ولي الأمر وجميع بياناته من النظام بالكامل", "success": True, "cleanup": cleanup}

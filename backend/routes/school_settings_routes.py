@@ -538,7 +538,6 @@ def setup_school_settings_routes(db, get_current_user, require_roles, UserRole):
         if not existing:
             raise HTTPException(status_code=404, detail="الفصل غير موجود")
         
-        # Check if has students
         student_count = existing.get("student_count", 0)
         if student_count > 0:
             raise HTTPException(
@@ -546,11 +545,31 @@ def setup_school_settings_routes(db, get_current_user, require_roles, UserRole):
                 detail=f"لا يمكن حذف الفصل لوجود {student_count} طالب مرتبط به. يرجى نقل الطلاب أولاً."
             )
         
+        cleanup = {}
         await db.classes.delete_one({"id": class_id})
-        # Also remove teacher assignments for this class
-        await db.teacher_assignments.delete_many({"class_id": class_id, "school_id": school_id})
-        await log_audit(school_id, current_user, "DELETE", "class", class_id, {})
+        r = await db.teacher_assignments.delete_many({"class_id": class_id, "school_id": school_id})
+        cleanup["teacher_assignments"] = r.deleted_count
+        r = await db.teacher_class_assignments.delete_many({"class_id": class_id})
+        cleanup["teacher_class_assignments"] = r.deleted_count
+        r = await db.class_subjects.delete_many({"class_id": class_id})
+        cleanup["class_subjects"] = r.deleted_count
+        r = await db.timetable_sessions.delete_many({"class_id": class_id})
+        cleanup["timetable_sessions"] = r.deleted_count
+        r = await db.class_sessions.delete_many({"class_id": class_id})
+        cleanup["class_sessions"] = r.deleted_count
+        r = await db.attendance.delete_many({"class_id": class_id})
+        cleanup["attendance"] = r.deleted_count
+        r = await db.session_attendance.delete_many({"class_id": class_id})
+        cleanup["session_attendance"] = r.deleted_count
+        r = await db.assessments.delete_many({"class_id": class_id})
+        cleanup["assessments"] = r.deleted_count
+        r = await db.grades.delete_many({"class_id": class_id})
+        cleanup["grades"] = r.deleted_count
+        r = await db.behaviour_records.delete_many({"class_id": class_id})
+        cleanup["behaviour_records"] = r.deleted_count
+
+        await log_audit(school_id, current_user, "DELETE", "class", class_id, {"cleanup": cleanup})
         
-        return {"success": True, "message": "تم حذف الفصل بنجاح"}
+        return {"success": True, "message": "تم حذف الفصل وجميع البيانات المرتبطة به بنجاح", "cleanup": cleanup}
 
     return router
