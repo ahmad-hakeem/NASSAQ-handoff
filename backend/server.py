@@ -50,7 +50,9 @@ app = FastAPI(
 
 from middleware.rate_limiter import RateLimitMiddleware
 from middleware.error_handler import ErrorHandlerMiddleware
+from middleware.nosql_sanitizer import NoSQLSanitizerMiddleware
 app.add_middleware(ErrorHandlerMiddleware)
+app.add_middleware(NoSQLSanitizerMiddleware)
 app.add_middleware(RateLimitMiddleware)
 
 from config import config as _cfg

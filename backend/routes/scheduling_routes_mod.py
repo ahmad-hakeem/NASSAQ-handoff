@@ -1729,14 +1729,17 @@ async def generate_timetable_smart(
     try:
         body = await request.json()
         school_id = body.get("school_id")
-        use_baseline = body.get("use_baseline", False)
+        use_baseline = bool(body.get("use_baseline", False))
         
         if not school_id:
-            # Try to get from headers or user context
             school_id = request.headers.get("X-School-Context") or current_user.get("tenant_id")
         
         if not school_id:
             raise HTTPException(status_code=400, detail="school_id مطلوب")
+
+        if not isinstance(school_id, str):
+            raise HTTPException(status_code=400, detail="school_id يجب أن يكون نصاً")
+        school_id = str(school_id).strip()
         
         # Get school settings
         settings = await db.school_settings.find_one({"school_id": school_id}, {"_id": 0})
