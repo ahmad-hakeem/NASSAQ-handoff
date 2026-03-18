@@ -227,9 +227,9 @@ const TimetableGenerationJourney = ({
           {allCompleted ? (
             <div className="flex flex-col items-center text-center py-4">
               <div className="relative mb-4">
-                <div className="absolute -inset-4 rounded-full bg-white/20 blur-xl animate-pulse" />
-                <div className="relative w-40 h-40 rounded-full overflow-hidden border-4 border-white/40 shadow-2xl bg-gradient-to-br from-emerald-50 to-cyan-50 p-2">
-                  <img src="/hakim-poses/clapping-celebration.png" alt="حكيم" className="hakim-img w-full h-full object-contain drop-shadow-lg" style={{ animation: 'hakimCelebrateHero 1.5s ease-in-out infinite' }} />
+                <div className="absolute -inset-6 rounded-full bg-white/20 blur-xl animate-pulse" />
+                <div className="relative w-56 h-56 rounded-full overflow-hidden border-4 border-white/40 shadow-2xl bg-gradient-to-br from-emerald-50 to-cyan-50 p-3">
+                  <img src="/hakim-poses/congratulating-student.png" alt="حكيم" className="hakim-img w-full h-full object-contain drop-shadow-lg" style={{ animation: 'hakimCelebrateHero 1.5s ease-in-out infinite' }} />
                 </div>
                 <div className="absolute -top-2 -right-2 w-10 h-10 rounded-full bg-yellow-400 flex items-center justify-center shadow-lg animate-bounce text-xl">🎉</div>
                 <div className="absolute -bottom-1 -left-2 w-8 h-8 rounded-full bg-emerald-300 flex items-center justify-center shadow-lg animate-bounce text-lg" style={{ animationDelay: '0.3s' }}>⭐</div>
