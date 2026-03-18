@@ -449,6 +449,71 @@ async def update_student(
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
     return {"message": "تم تحديث بيانات الطالب وحفظها في قاعدة البيانات بنجاح", "success": True}
 
+@router.post("/students/transfer-class")
+async def transfer_student_class(
+    request: Request,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
+):
+    body = await request.json()
+    student_id = body.get("student_id")
+    target_class_id = body.get("target_class_id")
+    if not student_id or not target_class_id:
+        raise HTTPException(status_code=400, detail="student_id و target_class_id مطلوبان")
+
+    school_id = current_user.get("tenant_id") or current_user.get("school_id")
+    if not school_id:
+        raise HTTPException(status_code=400, detail="سياق المدرسة مطلوب")
+
+    student = await db.students.find_one({"id": student_id, "school_id": school_id}, {"_id": 0})
+    if not student:
+        raise HTTPException(status_code=404, detail="الطالب غير موجود")
+
+    target_class = await db.classes.find_one({"id": target_class_id, "school_id": school_id}, {"_id": 0})
+    if not target_class:
+        raise HTTPException(status_code=404, detail="الفصل المستهدف غير موجود")
+
+    old_class_id = student.get("class_id")
+    if old_class_id == target_class_id:
+        return {"success": True, "message": "الطالب موجود بالفعل في هذا الفصل"}
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db.students.update_one(
+        {"id": student_id, "school_id": school_id},
+        {"$set": {
+            "class_id": target_class_id,
+            "class_name": target_class.get("name_ar") or target_class.get("name", ""),
+            "updated_at": now
+        }}
+    )
+
+    if old_class_id:
+        await db.classes.update_one(
+            {"id": old_class_id, "school_id": school_id},
+            {"$pull": {"student_ids": student_id}}
+        )
+        old_count = await db.students.count_documents({"class_id": old_class_id, "school_id": school_id})
+        await db.classes.update_one(
+            {"id": old_class_id, "school_id": school_id},
+            {"$set": {"student_count": old_count}}
+        )
+
+    await db.classes.update_one(
+        {"id": target_class_id, "school_id": school_id},
+        {"$addToSet": {"student_ids": student_id}}
+    )
+    new_count = await db.students.count_documents({"class_id": target_class_id, "school_id": school_id})
+    await db.classes.update_one(
+        {"id": target_class_id, "school_id": school_id},
+        {"$set": {"student_count": new_count}}
+    )
+
+    student_name = student.get("full_name", "")
+    target_name = target_class.get("name_ar") or target_class.get("name", "")
+    return {
+        "success": True,
+        "message": f"تم نقل الطالب {student_name} إلى الفصل {target_name} بنجاح"
+    }
+
 @router.delete("/students/{student_id}")
 async def delete_student(
     student_id: str,

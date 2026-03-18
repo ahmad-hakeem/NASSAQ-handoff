@@ -37,6 +37,7 @@ import CreateClassWizard from '../components/wizards/CreateClassWizard';
 import StudentProfileDialog from '../components/management/StudentProfileDialog';
 import TeacherProfileDialog from '../components/management/TeacherProfileDialog';
 import ParentProfileDialog from '../components/management/ParentProfileDialog';
+import StudentClassGrid from '../components/management/StudentClassGrid';
 
 const THEME_COLORS = {
   student: {
@@ -1094,6 +1095,35 @@ export default function UsersClassesManagement() {
     }
   };
 
+  const handleTransferStudent = async (studentId, targetClassId, studentName, className) => {
+    const movingStudent = students.find(s => s.id === studentId);
+    const oldClassId = movingStudent?.class_id;
+    try {
+      const headers = {};
+      if (isImpersonating && schoolContext?.school_id) headers['X-School-Context'] = schoolContext.school_id;
+      const res = await api.post('/students/transfer-class', { student_id: studentId, target_class_id: targetClassId }, { headers });
+      if (res.data?.success) {
+        toast.success(isRTL ? `تم نقل ${studentName} إلى ${className}` : `${studentName} transferred to ${className}`);
+        setStudents(prev => prev.map(s => s.id === studentId ? { ...s, class_id: targetClassId, class_name: className } : s));
+        setClasses(prev => prev.map(c => {
+          if (c.id === targetClassId) {
+            const ids = new Set(c.student_ids || []);
+            ids.add(studentId);
+            return { ...c, student_count: ids.size, student_ids: [...ids] };
+          }
+          if (oldClassId && c.id === oldClassId) {
+            const ids = (c.student_ids || []).filter(id => id !== studentId);
+            return { ...c, student_count: ids.length, student_ids: ids };
+          }
+          return c;
+        }));
+      }
+    } catch (error) {
+      const msg = error.response?.data?.detail;
+      nassaqError(typeof msg === 'string' ? msg : (isRTL ? 'فشل نقل الطالب' : 'Failed to transfer student'));
+    }
+  };
+
   const clearFilter = () => setActiveFilter(null);
 
   const handleHakimAction = (action, data) => {
@@ -1289,9 +1319,30 @@ export default function UsersClassesManagement() {
     }
   };
 
+  const isSchoolAdmin = user?.role === 'school_admin' || user?.role === 'school_principal' || user?.role === 'platform_admin';
+
+  const renderStudentsSection = () => {
+    return (
+      <StudentClassGrid
+        students={filteredStudents}
+        classes={classes}
+        isRTL={isRTL}
+        searchQuery={searchQuery}
+        onView={(s) => handleView(s, 'student')}
+        onEdit={(s) => handleEdit(s, 'student')}
+        onDelete={(s) => handleDelete(s, 'student')}
+        onAction={(s, a) => handleAccountAction(s, a, 'student')}
+        onTransferStudent={handleTransferStudent}
+        canDrag={isSchoolAdmin}
+      />
+    );
+  };
+
   const renderSection = (type) => {
-    const items = type === 'students' ? filteredStudents : type === 'teachers' ? filteredTeachers : type === 'parents' ? filteredParents : filteredClasses;
-    const EmptyIcon = type === 'students' ? GraduationCap : type === 'teachers' ? UserCheck : type === 'parents' ? Heart : Building2;
+    if (type === 'students') return renderStudentsSection();
+
+    const items = type === 'teachers' ? filteredTeachers : type === 'parents' ? filteredParents : filteredClasses;
+    const EmptyIcon = type === 'teachers' ? UserCheck : type === 'parents' ? Heart : Building2;
 
     if (items.length === 0) {
       return (
@@ -1314,11 +1365,7 @@ export default function UsersClassesManagement() {
       return (
         <div className="space-y-2">
           {items.map(item => (
-            type === 'students' ? (
-              <StudentCard key={item.id} student={item} isRTL={isRTL} viewMode="list"
-                onEdit={(s) => handleEdit(s, 'student')} onDelete={(s) => handleDelete(s, 'student')}
-                onView={(s) => handleView(s, 'student')} onAction={(s, a) => handleAccountAction(s, a, 'student')} />
-            ) : type === 'teachers' ? (
+            type === 'teachers' ? (
               <TeacherCard key={item.id} teacher={item} isRTL={isRTL} viewMode="list"
                 onEdit={(t) => handleEdit(t, 'teacher')} onDelete={(t) => handleDelete(t, 'teacher')}
                 onView={(t) => handleView(t, 'teacher')} onAction={(t, a) => handleAccountAction(t, a, 'teacher')} />
@@ -1338,11 +1385,7 @@ export default function UsersClassesManagement() {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
         {items.map(item => (
-          type === 'students' ? (
-            <StudentCard key={item.id} student={item} isRTL={isRTL}
-              onEdit={(s) => handleEdit(s, 'student')} onDelete={(s) => handleDelete(s, 'student')}
-              onView={(s) => handleView(s, 'student')} onAction={(s, a) => handleAccountAction(s, a, 'student')} />
-          ) : type === 'teachers' ? (
+          type === 'teachers' ? (
             <TeacherCard key={item.id} teacher={item} isRTL={isRTL}
               onEdit={(t) => handleEdit(t, 'teacher')} onDelete={(t) => handleDelete(t, 'teacher')}
               onView={(t) => handleView(t, 'teacher')} onAction={(t, a) => handleAccountAction(t, a, 'teacher')} />

@@ -113,6 +113,16 @@ Each fix report must include: root cause, why it wasn't caught before, what chan
 - `GET /admin/notifications/stats` - Notification counts
 - `POST /admin/ai-operation/{type}` - AI operations (diagnosis, data_quality, etc.)
 
+### Users & Classes Management (`/admin/users-management` - UsersClassesManagement.jsx)
+- Tabs: Students, Parents, Teachers, Classes, Import/Export
+- **Students Tab**: Class-grouped grid view (`StudentClassGrid.jsx`) — students organized by class in collapsible columns
+- **Drag & Drop Transfer**: School admins (school_admin/school_principal/platform_admin) can drag students between class columns to transfer
+- **Transfer API**: `POST /api/students/transfer-class` — updates student.class_id + class.student_ids arrays + student_count atomically
+- Unassigned students (no class_id) shown in amber warning column at top
+- Search filters within each class column
+- StudentCard actions: View Profile, Edit, Reset Password, Delete
+- Hakim AI insights panel: auto-detects students without class, without parent, suspended accounts, over-capacity classes
+
 ## Hakim AI Character — Dynamic Interactive System
 
 Hakim is the AI intelligence layer of NASSAQ — a living, context-aware assistant that reacts dynamically to pages, events, and user actions. All images replaced with new chain-free versions.
