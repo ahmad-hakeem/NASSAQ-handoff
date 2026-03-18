@@ -12,16 +12,14 @@ import { Textarea } from '../../components/ui/textarea';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import {
-  ClipboardCheck, Users, Check, X, Clock, AlertCircle,
-  Loader2, RefreshCw, Save, CheckCircle2, Calendar
+  ClipboardCheck, Users, Check, X,
+  Loader2, Save, CheckCircle2
 } from 'lucide-react';
 import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 
 const ATTENDANCE_STATUS = {
   present: { label: 'حاضر', labelEn: 'Present', color: 'bg-green-100 text-green-700 border-green-300', icon: Check },
   absent: { label: 'غائب', labelEn: 'Absent', color: 'bg-red-100 text-red-700 border-red-300', icon: X },
-  late: { label: 'متأخر', labelEn: 'Late', color: 'bg-amber-100 text-amber-700 border-amber-300', icon: Clock },
-  excused: { label: 'مستأذن', labelEn: 'Excused', color: 'bg-blue-100 text-blue-700 border-blue-300', icon: AlertCircle },
 };
 
 export default function TeacherAttendanceManagePage() {
@@ -97,7 +95,8 @@ export default function TeacherAttendanceManagePage() {
       // Initialize attendance state
       const initialAttendance = {};
       studentsList.forEach(student => {
-        initialAttendance[student.id] = existingAttendance[student.id] || 'present';
+        const raw = existingAttendance[student.id];
+        initialAttendance[student.id] = raw === 'absent' ? 'absent' : 'present';
       });
       setAttendance(initialAttendance);
       
@@ -159,10 +158,8 @@ export default function TeacherAttendanceManagePage() {
 
   const stats = {
     total: students.length,
-    present: Object.values(attendance).filter(s => s === 'present').length,
+    present: Object.values(attendance).filter(s => s !== 'absent').length,
     absent: Object.values(attendance).filter(s => s === 'absent').length,
-    late: Object.values(attendance).filter(s => s === 'late').length,
-    excused: Object.values(attendance).filter(s => s === 'excused').length,
   };
 
   return (
@@ -227,7 +224,7 @@ export default function TeacherAttendanceManagePage() {
 
         {/* Stats Summary */}
         <div className="p-4 border-b">
-          <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             <div className="p-3 rounded-xl bg-gray-100 text-center">
               <div className="text-2xl font-bold">{stats.total}</div>
               <div className="text-xs text-muted-foreground">{isRTL ? 'الإجمالي' : 'Total'}</div>
@@ -239,14 +236,6 @@ export default function TeacherAttendanceManagePage() {
             <div className="p-3 rounded-xl bg-red-100 text-center">
               <div className="text-2xl font-bold text-red-700">{stats.absent}</div>
               <div className="text-xs text-red-600">{isRTL ? 'غائب' : 'Absent'}</div>
-            </div>
-            <div className="p-3 rounded-xl bg-amber-100 text-center">
-              <div className="text-2xl font-bold text-amber-700">{stats.late}</div>
-              <div className="text-xs text-amber-600">{isRTL ? 'متأخر' : 'Late'}</div>
-            </div>
-            <div className="p-3 rounded-xl bg-blue-100 text-center">
-              <div className="text-2xl font-bold text-blue-700">{stats.excused}</div>
-              <div className="text-xs text-blue-600">{isRTL ? 'مستأذن' : 'Excused'}</div>
             </div>
           </div>
         </div>
@@ -273,48 +262,36 @@ export default function TeacherAttendanceManagePage() {
             </Card>
           ) : (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {students.map((student, idx) => (
-                <Card 
-                  key={student.id} 
-                  className={`transition-all ${ATTENDANCE_STATUS[attendance[student.id]]?.color.replace('text-', 'border-').split(' ')[2]}`}
-                  data-testid={`student-card-${student.id}`}
-                >
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-3 mb-3">
-                      <Avatar className="h-12 w-12">
-                        <AvatarImage src={student.avatar_url} />
-                        <AvatarFallback className="bg-brand-navy text-white">
-                          {student.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2) || (idx + 1)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium truncate">{student.full_name || `طالب ${idx + 1}`}</p>
-                        <p className="text-xs text-muted-foreground">{student.student_id || `#${idx + 1}`}</p>
+              {students.map((student, idx) => {
+                const isAbsent = attendance[student.id] === 'absent';
+                const statusCfg = ATTENDANCE_STATUS[isAbsent ? 'absent' : 'present'];
+                return (
+                  <Card 
+                    key={student.id} 
+                    className={`transition-all cursor-pointer active:scale-[0.97] ${statusCfg.color.split(' ')[2]}`}
+                    data-testid={`student-card-${student.id}`}
+                    onClick={() => handleStatusChange(student.id, isAbsent ? 'present' : 'absent')}
+                  >
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-3">
+                        <Avatar className={`h-12 w-12 ${isAbsent ? 'opacity-50 grayscale' : ''}`}>
+                          <AvatarImage src={student.avatar_url} />
+                          <AvatarFallback className="bg-brand-navy text-white">
+                            {student.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2) || (idx + 1)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <p className={`font-medium truncate ${isAbsent ? 'line-through opacity-60' : ''}`}>{student.full_name || `طالب ${idx + 1}`}</p>
+                          <p className="text-xs text-muted-foreground">{student.student_id || `#${idx + 1}`}</p>
+                        </div>
+                        <Badge className={statusCfg.color}>
+                          {isRTL ? statusCfg.label : statusCfg.labelEn}
+                        </Badge>
                       </div>
-                      <Badge className={ATTENDANCE_STATUS[attendance[student.id]]?.color}>
-                        {isRTL ? ATTENDANCE_STATUS[attendance[student.id]]?.label : ATTENDANCE_STATUS[attendance[student.id]]?.labelEn}
-                      </Badge>
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-1">
-                      {Object.entries(ATTENDANCE_STATUS).map(([key, value]) => {
-                        const Icon = value.icon;
-                        return (
-                          <Button
-                            key={key}
-                            variant={attendance[student.id] === key ? "default" : "outline"}
-                            size="sm"
-                            className={`text-xs min-h-[44px] sm:min-h-[36px] ${attendance[student.id] === key ? value.color : ''}`}
-                            onClick={() => handleStatusChange(student.id, key)}
-                          >
-                            <Icon className="h-3.5 w-3.5 me-0.5" />
-                            {isRTL ? value.label.slice(0, 3) : value.labelEn.slice(0, 3)}
-                          </Button>
-                        );
-                      })}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           )}
         </div>
@@ -328,7 +305,7 @@ export default function TeacherAttendanceManagePage() {
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-4 py-4">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+              <div className="grid grid-cols-2 gap-2 text-center">
                 <div className="p-2 rounded bg-green-100">
                   <div className="font-bold text-green-700">{stats.present}</div>
                   <div className="text-xs">{isRTL ? 'حاضر' : 'Present'}</div>
@@ -336,14 +313,6 @@ export default function TeacherAttendanceManagePage() {
                 <div className="p-2 rounded bg-red-100">
                   <div className="font-bold text-red-700">{stats.absent}</div>
                   <div className="text-xs">{isRTL ? 'غائب' : 'Absent'}</div>
-                </div>
-                <div className="p-2 rounded bg-amber-100">
-                  <div className="font-bold text-amber-700">{stats.late}</div>
-                  <div className="text-xs">{isRTL ? 'متأخر' : 'Late'}</div>
-                </div>
-                <div className="p-2 rounded bg-blue-100">
-                  <div className="font-bold text-blue-700">{stats.excused}</div>
-                  <div className="text-xs">{isRTL ? 'مستأذن' : 'Excused'}</div>
                 </div>
               </div>
               <div>

@@ -6,10 +6,10 @@ import { Badge } from '../../components/ui/badge';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import {
-  Users, CheckCircle2, Clock, Loader2, Play,
-  ArrowRight, UserCheck, UserX, Calendar, Sun, Moon,
+  Users, CheckCircle2, Loader2, Play,
+  ArrowRight, UserCheck, UserX, Sun, Moon,
   LayoutGrid, List, BookOpen, Sparkles, GraduationCap,
-  AlertCircle, ChevronDown
+  AlertCircle
 } from 'lucide-react';
 
 const STATUS_CONFIG = {
@@ -22,16 +22,6 @@ const STATUS_CONFIG = {
     label: 'غائب', labelEn: 'Absent', short: 'غ', emoji: '❌',
     dark: { ring: 'ring-red-400', bg: 'bg-red-500', text: 'text-red-400', card: 'border-red-500/30 bg-red-500/10', glow: 'shadow-red-500/20' },
     light: { ring: 'ring-red-500', bg: 'bg-red-500', text: 'text-red-700', card: 'border-red-300 bg-red-50', glow: 'shadow-red-200/40' },
-  },
-  late: {
-    label: 'متأخر', labelEn: 'Late', short: 'م', emoji: '⏰',
-    dark: { ring: 'ring-amber-400', bg: 'bg-amber-500', text: 'text-amber-400', card: 'border-amber-500/30 bg-amber-500/10', glow: 'shadow-amber-500/20' },
-    light: { ring: 'ring-amber-500', bg: 'bg-amber-500', text: 'text-amber-700', card: 'border-amber-300 bg-amber-50', glow: 'shadow-amber-200/40' },
-  },
-  excused: {
-    label: 'مستأذن', labelEn: 'Excused', short: 'أ', emoji: '📋',
-    dark: { ring: 'ring-sky-400', bg: 'bg-sky-500', text: 'text-sky-400', card: 'border-sky-500/30 bg-sky-500/10', glow: 'shadow-sky-500/20' },
-    light: { ring: 'ring-sky-500', bg: 'bg-sky-500', text: 'text-sky-700', card: 'border-sky-300 bg-sky-50', glow: 'shadow-sky-200/40' },
   },
 };
 
@@ -168,7 +158,7 @@ export default function SessionStartPage() {
     const res = await api.get(`/session/${sid}/students`);
     const list = (res.data?.students || []).map(s => ({
       ...s,
-      attendance_status: s.attendance_status || 'present',
+      attendance_status: s.attendance_status === 'absent' ? 'absent' : 'present',
     }));
     setStudents(list);
   };
@@ -231,10 +221,8 @@ export default function SessionStartPage() {
 
   const stats = useMemo(() => ({
     total: students.length,
-    present: students.filter(s => s.attendance_status === 'present').length,
+    present: students.filter(s => s.attendance_status !== 'absent').length,
     absent: students.filter(s => s.attendance_status === 'absent').length,
-    late: students.filter(s => s.attendance_status === 'late').length,
-    excused: students.filter(s => s.attendance_status === 'excused').length,
   }), [students]);
 
   const theme = isDark ? 'dark' : 'light';
@@ -402,12 +390,10 @@ export default function SessionStartPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-4 gap-3 mb-5">
+            <div className="grid grid-cols-2 gap-3 mb-5">
               {[
-                { key: 'present', icon: UserCheck, label: 'حاضر', gradient: 'from-emerald-500 to-emerald-600', iconColor: 'text-emerald-500', numColor: isDark ? 'text-emerald-400' : 'text-emerald-600' },
-                { key: 'absent', icon: UserX, label: 'غائب', gradient: 'from-red-500 to-red-600', iconColor: 'text-red-500', numColor: isDark ? 'text-red-400' : 'text-red-600' },
-                { key: 'late', icon: Clock, label: 'متأخر', gradient: 'from-amber-500 to-amber-600', iconColor: 'text-amber-500', numColor: isDark ? 'text-amber-400' : 'text-amber-600' },
-                { key: 'excused', icon: Calendar, label: 'مستأذن', gradient: 'from-sky-500 to-sky-600', iconColor: 'text-sky-500', numColor: isDark ? 'text-sky-400' : 'text-sky-600' },
+                { key: 'present', icon: UserCheck, label: 'حاضر', gradient: 'from-emerald-500 to-emerald-600', numColor: isDark ? 'text-emerald-400' : 'text-emerald-600' },
+                { key: 'absent', icon: UserX, label: 'غائب', gradient: 'from-red-500 to-red-600', numColor: isDark ? 'text-red-400' : 'text-red-600' },
               ].map(s => (
                 <div key={s.key} className={`${t.statBg} rounded-xl p-3 text-center border transition-all duration-300 hover:scale-[1.02]`}>
                   <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${s.gradient} flex items-center justify-center mx-auto mb-2 shadow-sm`}>
@@ -422,8 +408,6 @@ export default function SessionStartPage() {
             <div className={`h-3 ${t.progressBg} rounded-full overflow-hidden flex transition-colors duration-300`}>
               {stats.total > 0 && <>
                 <div className="bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all duration-500 rounded-s-full" style={{ width: `${(stats.present / stats.total) * 100}%` }} />
-                <div className="bg-gradient-to-r from-amber-500 to-amber-400 transition-all duration-500" style={{ width: `${(stats.late / stats.total) * 100}%` }} />
-                <div className="bg-gradient-to-r from-sky-500 to-sky-400 transition-all duration-500" style={{ width: `${(stats.excused / stats.total) * 100}%` }} />
                 <div className="bg-gradient-to-r from-red-500 to-red-400 transition-all duration-500 rounded-e-full" style={{ width: `${(stats.absent / stats.total) * 100}%` }} />
               </>}
             </div>
@@ -474,7 +458,7 @@ export default function SessionStartPage() {
                 <span className={`${t.text} text-sm font-cairo font-bold`}>الطلاب ({stats.total})</span>
                 <div className={`flex-1 h-px ${t.divider}`} />
                 <span className={`${t.textMuted} text-[10px] font-cairo flex items-center gap-1`}>
-                  <ChevronDown className="h-3 w-3" /> اضغط للتغيير
+                  اضغط على الطالب لتسجيل غياب
                 </span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -553,85 +537,58 @@ function GenderSection({ students, gender, label, theme, t, isDark, onUpdate }) 
 }
 
 function StudentCard({ student, index, onUpdate, theme, t, isDark }) {
-  const [open, setOpen] = useState(false);
   const status = student.attendance_status || 'present';
-  const cfg = STATUS_CONFIG[status];
+  const isAbsent = status === 'absent';
+  const cfg = STATUS_CONFIG[isAbsent ? 'absent' : 'present'];
   const style = cfg[theme] || cfg.dark;
 
   const avatarSrc = student.avatar_url || getAvatarSvg(student.gender || 'male', index);
   const isFemale = student.gender === 'female';
 
-  const handleSelect = (s) => {
-    onUpdate(student.id, s);
-    setOpen(false);
+  const handleToggle = () => {
+    onUpdate(student.id, isAbsent ? 'present' : 'absent');
   };
 
   return (
-    <div
-      className={`rounded-xl border ${style.card} overflow-hidden transition-all duration-200 shadow-md ${style.glow} ${open ? 'scale-[1.01]' : ''}`}
+    <button
+      onClick={handleToggle}
+      className={`w-full rounded-xl border ${style.card} overflow-hidden transition-all duration-200 shadow-md ${style.glow} active:scale-[0.97] flex items-center gap-3 p-3 text-start`}
     >
-      <button
-        className="w-full flex items-center gap-3 p-3 text-start"
-        onClick={() => setOpen(o => !o)}
-      >
-        <div className="relative flex-shrink-0">
-          <div className={`w-12 h-12 rounded-full ring-2 ${style.ring} ring-offset-2 ${t.ringOffset} overflow-hidden transition-all`}>
-            <img
-              src={avatarSrc}
-              alt={student.full_name}
-              className="w-full h-full object-cover"
-              onError={(e) => {
-                e.target.src = getAvatarSvg(student.gender || 'male', index);
-              }}
-            />
-          </div>
-          <div className={`absolute -bottom-0.5 -end-0.5 w-5 h-5 rounded-full ${style.bg} flex items-center justify-center border-2 ${isDark ? 'border-slate-900' : 'border-white'} shadow-sm`}>
-            <span className="text-white text-[8px] font-bold">{cfg.short}</span>
-          </div>
+      <div className="relative flex-shrink-0">
+        <div className={`w-12 h-12 rounded-full ring-2 ${style.ring} ring-offset-2 ${t.ringOffset} overflow-hidden transition-all ${isAbsent ? 'opacity-50 grayscale' : ''}`}>
+          <img
+            src={avatarSrc}
+            alt={student.full_name}
+            className="w-full h-full object-cover"
+            onError={(e) => {
+              e.target.src = getAvatarSvg(student.gender || 'male', index);
+            }}
+          />
         </div>
-
-        <div className="flex-1 min-w-0">
-          <p className={`${t.text} font-medium text-sm truncate font-cairo`}>
-            {student.full_name || `طالب ${index + 1}`}
-          </p>
-          <div className="flex items-center gap-2 mt-0.5">
-            <span className={`${t.textMuted} text-xs font-mono`}>{student.student_code}</span>
-            {student.gender && (
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-cairo ${
-                isFemale
-                  ? (isDark ? 'bg-pink-500/15 text-pink-400' : 'bg-pink-100 text-pink-600')
-                  : (isDark ? 'bg-sky-500/15 text-sky-400' : 'bg-sky-100 text-sky-600')
-              }`}>
-                {isFemale ? 'طالبة' : 'طالب'}
-              </span>
-            )}
-          </div>
+        <div className={`absolute -bottom-0.5 -end-0.5 w-5 h-5 rounded-full ${style.bg} flex items-center justify-center border-2 ${isDark ? 'border-slate-900' : 'border-white'} shadow-sm`}>
+          <span className="text-white text-[8px] font-bold">{cfg.short}</span>
         </div>
+      </div>
 
-        <Badge className={`${style.bg} text-white text-xs font-cairo shadow-sm`}>{cfg.label}</Badge>
-      </button>
-
-      {open && (
-        <div className={`px-3 pb-3 pt-2 flex flex-wrap gap-2 border-t ${isDark ? 'border-white/5' : 'border-gray-100'}`}>
-          {Object.entries(STATUS_CONFIG).map(([key, val]) => {
-            const isActive = status === key;
-            const valStyle = val[theme] || val.dark;
-            return (
-              <button
-                key={key}
-                onClick={() => handleSelect(key)}
-                className={`px-4 py-2.5 rounded-lg text-xs font-medium font-cairo border transition-all active:scale-95 flex items-center gap-1.5 ${
-                  isActive
-                    ? `${valStyle.bg} text-white border-transparent shadow-md`
-                    : `${isDark ? 'bg-white/5 text-white/60 border-white/10 hover:bg-white/10' : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'}`
-                }`}
-              >
-                <span>{val.emoji}</span> {val.label}
-              </button>
-            );
-          })}
+      <div className="flex-1 min-w-0">
+        <p className={`${t.text} font-medium text-sm truncate font-cairo ${isAbsent ? 'line-through opacity-60' : ''}`}>
+          {student.full_name || `طالب ${index + 1}`}
+        </p>
+        <div className="flex items-center gap-2 mt-0.5">
+          <span className={`${t.textMuted} text-xs font-mono`}>{student.student_code}</span>
+          {student.gender && (
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-cairo ${
+              isFemale
+                ? (isDark ? 'bg-pink-500/15 text-pink-400' : 'bg-pink-100 text-pink-600')
+                : (isDark ? 'bg-sky-500/15 text-sky-400' : 'bg-sky-100 text-sky-600')
+            }`}>
+              {isFemale ? 'طالبة' : 'طالب'}
+            </span>
+          )}
         </div>
-      )}
-    </div>
+      </div>
+
+      <Badge className={`${style.bg} text-white text-xs font-cairo shadow-sm`}>{cfg.label}</Badge>
+    </button>
   );
 }
