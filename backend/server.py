@@ -22,7 +22,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("nassaq")
 
-from fastapi import FastAPI, APIRouter, Depends
+from fastapi import FastAPI, APIRouter, Depends, Request
 from starlette.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
 from typing import List, Optional, Any, Union
@@ -54,6 +54,14 @@ from middleware.nosql_sanitizer import NoSQLSanitizerMiddleware
 app.add_middleware(ErrorHandlerMiddleware)
 app.add_middleware(NoSQLSanitizerMiddleware)
 app.add_middleware(RateLimitMiddleware)
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    return response
 
 from config import config as _cfg
 _cors_origins = _cfg.CORS_ORIGINS
