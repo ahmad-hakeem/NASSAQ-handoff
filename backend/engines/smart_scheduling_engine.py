@@ -2044,12 +2044,14 @@ class SmartSchedulingEngine:
             
             capacity_issues = self._analyze_capacity_issues(demands, resources, settings, optimized_sessions)
             
+            auto_name = f"الجدول المدرسي - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
             timetable_doc = {
                 "id": timetable_id,
                 "school_id": school_id,
                 "academic_year_id": academic_year_id,
                 "term_id": term_id,
-                "name": f"الجدول المدرسي - {datetime.now().strftime('%Y-%m-%d')}",
+                "name": auto_name,
+                "version_name": auto_name,
                 "status": TimetableStatus.DRAFT.value,
                 "version_number": 1,
                 "is_published": False,
