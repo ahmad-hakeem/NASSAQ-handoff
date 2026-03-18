@@ -2,7 +2,6 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import { Footer } from '../components/layout/Footer';
 import { HakimAssistant } from '../components/hakim/HakimAssistant';
-import { HERO_POSES } from '../components/hakim/hakimPoses';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
 import { Link } from 'react-router-dom';
@@ -40,32 +39,8 @@ import {
 const LOGO_WHITE = 'https://customer-assets.emergentagent.com/job_f5ea20bb-5cf5-462f-a7f0-958201e27f89/artifacts/q04svb5j_Nassaq%20LinkedIn%20Logo%20White.png';
 const BG_PATTERN = '/nassaq-pattern.png';
 const HAKIM_CHARACTER = '/hakim-poses/friendly-greeting.png';
+const HAKIM_HERO_WELCOME = '/hakim-poses/welcome.png';
 
-function useHeroHakimRotation(interval = 7000) {
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [nextIndex, setNextIndex] = useState(null);
-  const [transitioning, setTransitioning] = useState(false);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      const next = (currentIndex + 1) % HERO_POSES.length;
-      setNextIndex(next);
-      setTransitioning(true);
-      setTimeout(() => {
-        setCurrentIndex(next);
-        setNextIndex(null);
-        setTransitioning(false);
-      }, 900);
-    }, interval);
-    return () => clearInterval(timer);
-  }, [interval, currentIndex]);
-
-  return {
-    currentSrc: HERO_POSES[currentIndex],
-    nextSrc: nextIndex !== null ? HERO_POSES[nextIndex] : null,
-    transitioning,
-  };
-}
 
 function useTypedText(texts, speed = 40, pauseBetween = 3000) {
   const [display, setDisplay] = useState('');
@@ -187,7 +162,8 @@ export const LandingPage = () => {
   const [aiPaused, setAIPaused] = useState(false);
   const [ecosystemPaused, setEcosystemPaused] = useState(false);
 
-  const heroHakim = useHeroHakimRotation(7000);
+  // Fixed welcome pose for hero (no rotation)
+  const heroHakim = { currentSrc: HAKIM_HERO_WELCOME };
 
   const [platformStats, setPlatformStats] = useState({
     schools: 0,
@@ -599,22 +575,7 @@ export const LandingPage = () => {
                     alt={isRTL ? 'حكيم' : 'Hakim'}
                     className="hakim-img absolute inset-0 w-full h-full object-contain"
                     data-testid="hakim-avatar"
-                    style={{
-                      opacity: heroHakim.transitioning ? 0 : 1,
-                      transition: 'opacity 0.9s cubic-bezier(0.4, 0, 0.2, 1)',
-                    }}
                   />
-                  {heroHakim.nextSrc && (
-                    <img
-                      src={heroHakim.nextSrc}
-                      alt={isRTL ? 'حكيم' : 'Hakim'}
-                      className="hakim-img absolute inset-0 w-full h-full object-contain"
-                      style={{
-                        opacity: heroHakim.transitioning ? 1 : 0,
-                        transition: 'opacity 0.9s cubic-bezier(0.4, 0, 0.2, 1)',
-                      }}
-                    />
-                  )}
                 </div>
 
                 <div className="relative z-20 w-full">
