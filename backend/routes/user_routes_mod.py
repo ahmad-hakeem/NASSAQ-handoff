@@ -266,12 +266,18 @@ async def update_user_status(
     is_active: bool,
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
-    result = await db.users.update_one(
+    user = await db.users.find_one({"id": user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="المستخدم غير موجود")
+
+    if current_user.get("role") != UserRole.PLATFORM_ADMIN.value:
+        if user.get("tenant_id") != current_user.get("tenant_id"):
+            raise HTTPException(status_code=403, detail="غير مصرح لك بتعديل بيانات هذا المستخدم")
+
+    await db.users.update_one(
         {"id": user_id},
         {"$set": {"is_active": is_active, "updated_at": datetime.now(timezone.utc).isoformat()}}
     )
-    if result.modified_count == 0:
-        raise HTTPException(status_code=404, detail="المستخدم غير موجود")
     return {"message": "تم تحديث حالة المستخدم"}
 
 
@@ -420,7 +426,11 @@ async def reset_user_password(
     user = await db.users.find_one({"id": user_id})
     if not user:
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")
-    
+
+    if current_user.get("role") != UserRole.PLATFORM_ADMIN.value:
+        if user.get("tenant_id") != current_user.get("tenant_id"):
+            raise HTTPException(status_code=403, detail="غير مصرح لك بتعديل بيانات هذا المستخدم")
+
     await db.users.update_one(
         {"id": user_id},
         {"$set": {
@@ -456,7 +466,11 @@ async def suspend_user(
     user = await db.users.find_one({"id": user_id})
     if not user:
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")
-    
+
+    if current_user.get("role") != UserRole.PLATFORM_ADMIN.value:
+        if user.get("tenant_id") != current_user.get("tenant_id"):
+            raise HTTPException(status_code=403, detail="غير مصرح لك بتعديل بيانات هذا المستخدم")
+
     # Cannot suspend platform_admin
     if user.get("role") == "platform_admin":
         raise HTTPException(status_code=400, detail="لا يمكن تعليق حساب مدير المنصة")
