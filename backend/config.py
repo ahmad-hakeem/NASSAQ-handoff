@@ -41,7 +41,7 @@ class NassaqConfig:
         if cls.is_production() and cls.JWT_SECRET and len(cls.JWT_SECRET) < 32:
             raise ValueError("JWT_SECRET_KEY too short for production (min 32 chars)")
         if cls.is_production() and cls.CORS_ORIGINS == ["*"]:
-            issues.append("CORS_ORIGINS should not be '*' in production")
+            raise ValueError("CORS_ORIGINS must be explicitly set in production (wildcard '*' is not allowed)")
         if cls.is_production() and cls.DEBUG:
             issues.append("DEBUG should be false in production")
         return issues
