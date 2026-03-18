@@ -1,40 +1,34 @@
 const HAKIM_POSES = {
   'friendly-greeting': '/hakim-poses/friendly-greeting.png',
   'hand-wave-greeting': '/hakim-poses/hand-wave-greeting.png',
-  'introducing-system': '/hakim-poses/introducing-system.png',
   'inviting-to-begin': '/hakim-poses/inviting-to-begin.png',
   'open-hands-welcoming': '/hakim-poses/open-hands-welcoming.png',
   'pointing-to-start': '/hakim-poses/pointing-to-start.png',
   'slight-bow-greeting': '/hakim-poses/slight-bow-greeting.png',
-  'support': '/hakim-poses/support.png',
   'welcome': '/hakim-poses/welcome.png',
   'explaining-concept': '/hakim-poses/explaining-concept.png',
   'giving-instructions': '/hakim-poses/giving-instructions.png',
-  'pointing-to-board': '/hakim-poses/pointing-to-board.png',
-  'teacher-helper': '/hakim-poses/teacher-helper.png',
-  'teaching': '/hakim-poses/teaching.png',
   'ai-thinking': '/hakim-poses/ai-thinking.png',
-  'analyzing-data': '/hakim-poses/analyzing-data.png',
+  'ai-thinking-2': '/hakim-poses/ai-thinking-2.png',
   'attention-gesture': '/hakim-poses/attention-gesture.png',
   'clapping-celebration': '/hakim-poses/clapping-celebration.png',
   'congratulating-student': '/hakim-poses/congratulating-student.png',
   'detecting-patterns': '/hakim-poses/detecting-patterns.png',
   'listening': '/hakim-poses/listening.png',
-  'looking-at-charts': '/hakim-poses/looking-at-charts.png',
   'motivating': '/hakim-poses/motivating.png',
   'positive-feedback': '/hakim-poses/positive-feedback.png',
 };
 
 const POSE_CATEGORIES = {
-  welcome: ['friendly-greeting', 'hand-wave-greeting', 'open-hands-welcoming', 'welcome', 'slight-bow-greeting', 'introducing-system'],
-  onboarding: ['giving-instructions', 'explaining-concept', 'support', 'teacher-helper', 'inviting-to-begin', 'pointing-to-start'],
-  teaching: ['teaching', 'teacher-helper', 'pointing-to-board', 'explaining-concept'],
-  analysis: ['ai-thinking', 'analyzing-data', 'looking-at-charts', 'detecting-patterns'],
-  alert: ['attention-gesture', 'support', 'explaining-concept'],
-  listening: ['listening', 'explaining-concept', 'support'],
+  welcome: ['friendly-greeting', 'hand-wave-greeting', 'open-hands-welcoming', 'welcome', 'slight-bow-greeting'],
+  onboarding: ['giving-instructions', 'explaining-concept', 'inviting-to-begin', 'pointing-to-start'],
+  teaching: ['giving-instructions', 'explaining-concept', 'pointing-to-start'],
+  analysis: ['ai-thinking', 'ai-thinking-2', 'detecting-patterns'],
+  alert: ['attention-gesture', 'explaining-concept'],
+  listening: ['listening', 'explaining-concept'],
   success: ['positive-feedback', 'motivating', 'congratulating-student', 'clapping-celebration'],
   celebration: ['clapping-celebration', 'congratulating-student', 'positive-feedback'],
-  guidance: ['explaining-concept', 'giving-instructions', 'pointing-to-board', 'support'],
+  guidance: ['explaining-concept', 'giving-instructions', 'inviting-to-begin'],
 };
 
 const CONTEXT_MAP = {
@@ -92,8 +86,16 @@ const CONTEXT_MAP = {
   '/parent/messages': 'guidance',
 };
 
-function getRandomFromArray(arr) {
-  return arr[Math.floor(Math.random() * arr.length)];
+const _lastUsed = {};
+
+function getRandomNonRepeat(arr, contextKey) {
+  if (!arr || arr.length === 0) return null;
+  if (arr.length === 1) return arr[0];
+  const last = _lastUsed[contextKey];
+  const filtered = arr.filter(item => item !== last);
+  const pick = filtered[Math.floor(Math.random() * filtered.length)];
+  _lastUsed[contextKey] = pick;
+  return pick;
 }
 
 export function getPoseForContext(context) {
@@ -101,7 +103,7 @@ export function getPoseForContext(context) {
     ? context
     : null;
   if (category) {
-    const poseKey = getRandomFromArray(POSE_CATEGORIES[category]);
+    const poseKey = getRandomNonRepeat(POSE_CATEGORIES[category], `ctx_${category}`);
     return HAKIM_POSES[poseKey];
   }
   return HAKIM_POSES['friendly-greeting'];
@@ -126,9 +128,16 @@ export function getPose(poseKey) {
 export function getRandomPoseFromCategory(category) {
   const poses = POSE_CATEGORIES[category];
   if (!poses || poses.length === 0) return HAKIM_POSES['friendly-greeting'];
-  const key = getRandomFromArray(poses);
+  const key = getRandomNonRepeat(poses, `cat_${category}`);
   return HAKIM_POSES[key];
 }
+
+export const HERO_POSES = [
+  '/hakim-poses/welcome.png',
+  '/hakim-poses/slight-bow-greeting.png',
+  '/hakim-poses/pointing-to-start.png',
+  '/hakim-poses/friendly-greeting.png',
+];
 
 export { HAKIM_POSES, POSE_CATEGORIES, CONTEXT_MAP };
 export default HAKIM_POSES;

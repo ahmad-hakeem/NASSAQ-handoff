@@ -113,35 +113,43 @@ Each fix report must include: root cause, why it wasn't caught before, what chan
 - `GET /admin/notifications/stats` - Notification counts
 - `POST /admin/ai-operation/{type}` - AI operations (diagnosis, data_quality, etc.)
 
-## Hakim AI Character Reaction System
+## Hakim AI Character — Dynamic Interactive System
 
-Hakim is the AI intelligence layer of NASSAQ — a living assistant that reacts to context, events, and user actions across the platform.
+Hakim is the AI intelligence layer of NASSAQ — a living, context-aware assistant that reacts dynamically to pages, events, and user actions. All images replaced with new chain-free versions.
 
-### Pose Assets (24 transparent PNGs in `frontend/public/hakim-poses/`)
-- **Welcome**: friendly-greeting, hand-wave-greeting, open-hands-welcoming, welcome, slight-bow-greeting, introducing-system
-- **Teaching**: teaching, teacher-helper, pointing-to-board, explaining-concept
-- **Guidance**: giving-instructions, support, inviting-to-begin, pointing-to-start, listening
-- **Analysis**: ai-thinking, analyzing-data, looking-at-charts, detecting-patterns
+### Dynamic Behavior
+- **Context-based pose selection**: Pose changes based on current page, user role, and system events
+- **Non-repeat random variation**: Same pose never shown twice in a row per context (tracked via `_lastUsed` map)
+- **Smooth crossfade transitions**: 0.4-0.5s opacity transitions between pose changes
+- **Idle breathing animation**: Subtle scale(1.012) + translateY(-5px) breathing cycle on idle
+- **Landing hero rotation**: 4 poses cycle every 6s with crossfade (welcome, slight-bow, pointing-to-start, friendly-greeting)
+
+### Pose Assets (`frontend/public/hakim-poses/`)
+- **Welcome**: friendly-greeting, hand-wave-greeting, open-hands-welcoming, welcome, slight-bow-greeting
+- **Teaching**: giving-instructions, explaining-concept, pointing-to-start
+- **Analysis**: ai-thinking, ai-thinking-2, detecting-patterns
 - **Alert**: attention-gesture
+- **Listening**: listening, explaining-concept
 - **Success**: positive-feedback, motivating, congratulating-student, clapping-celebration
+- **Guidance**: explaining-concept, giving-instructions, inviting-to-begin
 
 ### Key Components
-- `frontend/src/components/hakim/hakimPoses.js` — Pose registry, context-to-pose mapping, category system
-- `frontend/src/components/hakim/HakimReaction.jsx` — Reusable component with 3 animation levels (idle float, interaction bounce, celebration)
-- `frontend/src/components/hakim/HakimAssistant.jsx` — Global floating chat widget (uses contextual poses based on current page)
-- `frontend/src/components/timetable/HakimCharacter.jsx` — Timetable-specific Hakim (state-based poses)
+- `frontend/src/components/hakim/hakimPoses.js` — Pose registry with non-repeat selection, HERO_POSES export, context-to-category mapping
+- `frontend/src/components/hakim/HakimReaction.jsx` — Reusable component with 3 animation levels (idle breathing, interaction bounce, celebration)
+- `frontend/src/components/hakim/HakimAssistant.jsx` — Global floating chat widget (contextual pose per page, state-driven avatar: idle/listening/thinking/responding)
+- `frontend/src/components/timetable/HakimCharacter.jsx` — Timetable-specific Hakim with dynamic state-to-category pose mapping and fade transitions
 
 ### Pose Context Mapping
-- Landing/Login → welcome category (greeting poses)
-- Dashboards/Analytics → analysis category (thinking, charts, patterns)
-- Teaching/Sessions → teaching category (teaching, board, helper)
-- Management → guidance category (instructions, support)
-- Success states → success/celebration category (feedback, clapping)
+- Landing/Login → welcome category (greeting poses, hero rotates 4 images)
+- Dashboards/Analytics → analysis category (thinking, detecting patterns)
+- Teaching/Sessions → teaching category (instructions, explaining, pointing)
+- Management → guidance category (explaining, instructions, inviting)
+- Success states → success/celebration category (feedback, clapping, motivating)
 
 ### Usage
 ```jsx
 import HakimReaction, { ANIMATION_LEVEL } from '../components/hakim/HakimReaction';
-import { getPose, getPoseForPath, getRandomPoseFromCategory } from '../components/hakim/hakimPoses';
+import { getPose, getPoseForPath, getRandomPoseFromCategory, HERO_POSES } from '../components/hakim/hakimPoses';
 
 <HakimReaction pose="ai-thinking" size="lg" message="أحلل البيانات..." animationLevel={ANIMATION_LEVEL.INTERACTION} />
 <HakimReaction category="success" size="md" animationLevel={ANIMATION_LEVEL.CELEBRATION} rotatePoses />

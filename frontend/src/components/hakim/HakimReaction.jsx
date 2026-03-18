@@ -49,7 +49,7 @@ const HakimReaction = ({
         if (!mountedRef.current) return;
         setCurrentPose(getRandomPoseFromCategory(category));
         setFadeIn(true);
-      }, 300);
+      }, 400);
     }, rotateInterval);
     return () => clearInterval(rotationRef.current);
   }, [rotatePoses, category, rotateInterval]);
@@ -78,7 +78,7 @@ const HakimReaction = ({
     <div className={`inline-flex flex-col items-center gap-2 relative ${className}`} dir="rtl">
       <style>{`
         .hakim-idle-anim {
-          animation: hakimRxFloat 4s ease-in-out infinite;
+          animation: hakimRxBreathe 4s ease-in-out infinite;
         }
         .hakim-interact-anim {
           animation: hakimRxBounce 2s ease-in-out infinite;
@@ -88,15 +88,15 @@ const HakimReaction = ({
         }
         .hakim-pose-fade-in {
           opacity: 1;
-          transition: opacity 0.3s ease-in-out;
+          transition: opacity 0.4s ease-in-out;
         }
         .hakim-pose-fade-out {
           opacity: 0;
-          transition: opacity 0.3s ease-in-out;
+          transition: opacity 0.4s ease-in-out;
         }
-        @keyframes hakimRxFloat {
-          0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(-8px); }
+        @keyframes hakimRxBreathe {
+          0%, 100% { transform: translateY(0) scale(1); }
+          50% { transform: translateY(-5px) scale(1.012); }
         }
         @keyframes hakimRxBounce {
           0%, 100% { transform: translateY(0) scale(1); }

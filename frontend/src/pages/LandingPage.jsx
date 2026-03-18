@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import { Footer } from '../components/layout/Footer';
 import { HakimAssistant } from '../components/hakim/HakimAssistant';
+import { HERO_POSES } from '../components/hakim/hakimPoses';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
 import { Link } from 'react-router-dom';
@@ -39,6 +40,22 @@ import {
 const LOGO_WHITE = 'https://customer-assets.emergentagent.com/job_f5ea20bb-5cf5-462f-a7f0-958201e27f89/artifacts/q04svb5j_Nassaq%20LinkedIn%20Logo%20White.png';
 const BG_PATTERN = 'https://customer-assets.emergentagent.com/job_f5ea20bb-5cf5-462f-a7f0-958201e27f89/artifacts/1itjy61q_Nassaq%20Background.png';
 const HAKIM_CHARACTER = '/hakim-poses/friendly-greeting.png';
+
+function useHeroHakimRotation(interval = 6000) {
+  const [index, setIndex] = useState(0);
+  const [visible, setVisible] = useState(true);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setVisible(false);
+      setTimeout(() => {
+        setIndex(prev => (prev + 1) % HERO_POSES.length);
+        setVisible(true);
+      }, 500);
+    }, interval);
+    return () => clearInterval(timer);
+  }, [interval]);
+  return { src: HERO_POSES[index], visible };
+}
 
 function useTypedText(texts, speed = 40, pauseBetween = 3000) {
   const [display, setDisplay] = useState('');
@@ -159,6 +176,8 @@ export const LandingPage = () => {
   const [journeyPaused, setJourneyPaused] = useState(false);
   const [aiPaused, setAIPaused] = useState(false);
   const [ecosystemPaused, setEcosystemPaused] = useState(false);
+
+  const heroHakim = useHeroHakimRotation(6000);
 
   const [platformStats, setPlatformStats] = useState({
     schools: 0,
@@ -565,11 +584,15 @@ export const LandingPage = () => {
             <div className={`flex flex-col items-center justify-end ${isRTL ? 'lg:order-2' : 'lg:order-2'}`}>
               <div className="relative w-full max-w-md flex flex-col items-center">
                 <img
-                  src="/hakim-poses/welcome.png"
+                  src={heroHakim.src}
                   alt={isRTL ? 'حكيم' : 'Hakim'}
                   className="relative z-10 w-72 h-auto lg:w-96 object-contain mb-[-40px]"
                   data-testid="hakim-avatar"
-                  style={{ filter: 'drop-shadow(0 20px 40px rgba(56,189,248,0.15))' }}
+                  style={{
+                    filter: 'drop-shadow(0 20px 40px rgba(56,189,248,0.15))',
+                    opacity: heroHakim.visible ? 1 : 0,
+                    transition: 'opacity 0.5s ease-in-out',
+                  }}
                 />
 
                 <div className="relative z-20 w-full">
@@ -1022,7 +1045,7 @@ export const LandingPage = () => {
 
                 <div className="flex items-start gap-3">
                   <div className="relative flex-shrink-0">
-                    <img src="/hakim-poses/teaching.png" alt={isRTL ? 'حكيم' : 'Hakim'} className="w-16 h-16 rounded-xl object-contain border-2 border-brand-purple/40 shadow-lg bg-gradient-to-br from-violet-50 to-cyan-50 p-1" />
+                    <img src="/hakim-poses/giving-instructions.png" alt={isRTL ? 'حكيم' : 'Hakim'} className="w-16 h-16 rounded-xl object-contain border-2 border-brand-purple/40 shadow-lg bg-gradient-to-br from-violet-50 to-cyan-50 p-1" />
                     <div className="absolute -bottom-1 -end-1 w-5 h-5 rounded-md bg-brand-purple flex items-center justify-center border border-card">
                       <Brain className="h-2.5 w-2.5 text-white" />
                     </div>
