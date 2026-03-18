@@ -209,6 +209,14 @@ import { getPose, getPoseForPath, getRandomPoseFromCategory, HERO_POSES } from '
   - `/smart-scheduling/sessions/swap` — validates cross-timetable (400), teacher/class conflicts for both directions (409), published guard (400), tenant ownership (403), swaps all fields (day, period, time_slot_id, start/end times)
 - **PrincipalTimetablePage.jsx** — also has D&D via TimetableGridSection (uses `/principal/timetable/sessions/swap` and `/sessions/move` endpoints)
 
+## Unfilled Period Visual Warnings (SchedulePageNew)
+- **periodGaps** (`useMemo`): Per-period gap analysis — counts filled/empty days for each period row, normalized with `Number()` for type safety
+- **criticalGaps**: Periods with 3+ empty days (sorted by severity) → shown in amber warning card above the grid
+- **EmptyCell `isGap` prop**: Empty cells in partially-filled periods show amber border + warning icon + "حصة فارغة" label instead of plain dash
+- **Period label badge**: Rows with gaps show filled/total ratio (e.g., "2/5"); critical rows (≥3 empty) get amber styling on the period number badge
+- **Coverage gaps warning panel**: Card with `AlertTriangle` icon listing critical periods, with red accent for ≥4 empty days, amber for 3; includes drag-and-drop hint
+- **Guard**: Warnings only appear when `gridSessions.length > 0` (sessions exist but have gaps, not "nothing generated yet")
+
 ## Timetable Period Distribution
 The scheduling engine uses contiguous-fill scoring to distribute sessions evenly across all periods:
 - **No period bias**: Periods 3-5 no longer receive a fixed +10 bonus

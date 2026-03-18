@@ -3,7 +3,7 @@
  * نَسَّق | NASSAQ School Management System
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Sidebar } from '../components/layout/Sidebar';
 import { useAuth } from '../contexts/AuthContext';
@@ -122,15 +122,24 @@ const SessionCard = ({ session, viewMode, onClick, isDraggable, onDragStart, isD
 };
 
 // ─── Empty Cell ───────────────────────────────────────────────────────────
-const EmptyCell = ({ isDropTarget }) => (
+const EmptyCell = ({ isDropTarget, isGap }) => (
   <div className={`w-full min-h-[80px] rounded-xl border-2 border-dashed
-    flex items-center justify-center transition-all duration-200
+    flex flex-col items-center justify-center gap-1 transition-all duration-200
     ${isDropTarget
       ? 'border-[#46C1BE] bg-[#46C1BE]/10 shadow-inner scale-[1.02]'
-      : 'border-slate-200 bg-slate-50/50 hover:border-slate-300 hover:bg-slate-50'}`}>
+      : isGap
+        ? 'border-amber-300 bg-amber-50/70 hover:border-amber-400 hover:bg-amber-50'
+        : 'border-slate-200 bg-slate-50/50 hover:border-slate-300 hover:bg-slate-50'}`}>
     {isDropTarget
       ? <span className="text-[#46C1BE] text-[10px] font-bold select-none">انقل هنا ↓</span>
-      : <span className="text-slate-300 text-[10px] select-none">—</span>}
+      : isGap
+        ? <>
+            <svg className="h-4 w-4 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 9v4m0 4h.01M12 2a10 10 0 100 20 10 10 0 000-20z" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            <span className="text-amber-500 text-[9px] font-bold select-none leading-tight text-center">حصة فارغة</span>
+          </>
+        : <span className="text-slate-300 text-[10px] select-none">—</span>}
   </div>
 );
 
@@ -463,6 +472,35 @@ export default function SchedulePageNew() {
   const coveragePct    = totalPossible > 0 ? Math.round((gridSessions.length / totalPossible) * 100) : 0;
   const uniqueSubjects = [...new Set(gridSessions.map(s => s.subject_name).filter(Boolean))];
 
+  const periodGaps = useMemo(() => {
+    if (!currentFilter || periodSlots.length === 0 || gridSessions.length === 0) return {};
+    const gaps = {};
+    periodSlots.forEach(slot => {
+      const pNum = Number(slot.period_number || slot.slot_number);
+      if (!pNum) return;
+      let filledCount = 0;
+      DAYS.forEach(day => {
+        const has = gridSessions.some(s => {
+          const dayMatch = (s.day_of_week || s.day) === day.key;
+          const periodMatch = Number(s.period_number) === pNum || Number(s.slot_number) === pNum;
+          return dayMatch && periodMatch;
+        });
+        if (has) filledCount++;
+      });
+      const emptyCount = DAYS.length - filledCount;
+      if (emptyCount > 0) {
+        gaps[pNum] = { filled: filledCount, empty: emptyCount, total: DAYS.length, pct: Math.round((filledCount / DAYS.length) * 100) };
+      }
+    });
+    return gaps;
+  }, [gridSessions, periodSlots, currentFilter]);
+
+  const criticalGaps = useMemo(() => {
+    return Object.entries(periodGaps)
+      .filter(([_, g]) => g.empty >= 3)
+      .sort((a, b) => b[1].empty - a[1].empty);
+  }, [periodGaps]);
+
   // ── Loading Screen ──────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -707,6 +745,43 @@ export default function SchedulePageNew() {
             </Card>
           )}
 
+          {/* ── COVERAGE GAPS WARNING ─────────────────────────────── */}
+          {criticalGaps.length > 0 && selectedTimetableId && gridSessions.length > 0 && (
+            <Card className="border border-amber-200 bg-amber-50/60 shadow-sm overflow-hidden">
+              <div className="px-5 py-3 flex items-start gap-3">
+                <div className="w-9 h-9 rounded-lg bg-amber-100 flex items-center justify-center shrink-0 mt-0.5">
+                  <AlertTriangle className="h-5 w-5 text-amber-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-bold text-sm text-amber-800 mb-1">حصص غير مستوفية</h3>
+                  <p className="text-xs text-amber-700 mb-2">
+                    الحصص التالية تحتوي على خانات فارغة لم يتم تعبئتها بعد التوليد:
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {criticalGaps.map(([periodNum, gap]) => (
+                      <div
+                        key={periodNum}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border
+                          ${gap.empty >= 4
+                            ? 'bg-red-100 text-red-700 border-red-200'
+                            : 'bg-amber-100 text-amber-700 border-amber-200'}`}
+                      >
+                        <span className={`w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold ${gap.empty >= 4 ? 'bg-red-200 text-red-800' : 'bg-amber-200 text-amber-800'}`}>
+                          {periodNum}
+                        </span>
+                        الحصة {periodNum}: {gap.empty} من {gap.total} أيام فارغة
+                        {gap.empty === DAYS.length && <span className="text-[9px] opacity-70 mr-1">(فارغة بالكامل)</span>}
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-amber-600 mt-2">
+                    💡 يمكنك سحب وإفلات حصص أخرى لملء الخانات الفارغة، أو إعادة التوليد بعد تعديل ساعات المنهج
+                  </p>
+                </div>
+              </div>
+            </Card>
+          )}
+
           {/* ── TIMETABLE GRID ──────────────────────────────────────── */}
           {timeSlots.length > 0 && selectedTimetableId && (
             <Card className="border border-slate-200 shadow-sm overflow-hidden" data-testid="schedule-page-new">
@@ -778,15 +853,18 @@ export default function SchedulePageNew() {
                       const periodIdx     = periodSlots.findIndex(s => s.id === slot.id);
                       const isEven        = periodIdx % 2 === 0;
 
+                      const rowGap = periodGaps[slotPeriodNum];
+                      const isRowCritical = rowGap && rowGap.empty >= 3;
+
                       return (
                         <tr
                           key={slot.id}
-                          className={`border-b border-slate-100 ${isEven ? '' : 'bg-slate-50/40'} hover:bg-blue-50/20 transition-colors group`}
+                          className={`border-b border-slate-100 ${isRowCritical ? 'bg-amber-50/30' : isEven ? '' : 'bg-slate-50/40'} hover:bg-blue-50/20 transition-colors group`}
                         >
                           {/* Period Label */}
-                          <td className="p-2 border-l border-slate-200 bg-white group-hover:bg-blue-50/30 transition-colors">
+                          <td className={`p-2 border-l border-slate-200 group-hover:bg-blue-50/30 transition-colors ${isRowCritical ? 'bg-amber-50/50' : 'bg-white'}`}>
                             <div className="text-center">
-                              <div className="w-8 h-8 rounded-lg bg-[#1C3D74]/10 text-[#1C3D74] font-bold text-sm flex items-center justify-center mx-auto mb-1">
+                              <div className={`w-8 h-8 rounded-lg font-bold text-sm flex items-center justify-center mx-auto mb-1 ${isRowCritical ? 'bg-amber-100 text-amber-700 ring-1 ring-amber-300' : 'bg-[#1C3D74]/10 text-[#1C3D74]'}`}>
                                 {slotPeriodNum}
                               </div>
                               <p className="text-[9px] text-slate-400 font-mono leading-none">
@@ -795,6 +873,11 @@ export default function SchedulePageNew() {
                               <p className="text-[9px] text-slate-300 font-mono">
                                 {slot.end_time?.substring(0, 5)}
                               </p>
+                              {rowGap && (
+                                <p className={`text-[8px] mt-0.5 font-bold ${rowGap.empty >= 3 ? 'text-amber-600' : 'text-slate-400'}`}>
+                                  {rowGap.filled}/{rowGap.total}
+                                </p>
+                              )}
                             </div>
                           </td>
 
@@ -803,6 +886,7 @@ export default function SchedulePageNew() {
                             const session = getSessionForCell(day.key, slotPeriodNum, currentFilter);
                             const cellKey = `${day.key}-${slotPeriodNum}`;
                             const isTarget = dropTargetCell === cellKey;
+                            const isCellGap = !session && rowGap && gridSessions.length > 0;
                             return (
                               <td
                                 key={`${day.key}-${slot.id}`}
@@ -823,7 +907,7 @@ export default function SchedulePageNew() {
                                     isDragging={draggingSessionId === session.id}
                                   />
                                 ) : (
-                                  <EmptyCell isDropTarget={isTarget} />
+                                  <EmptyCell isDropTarget={isTarget} isGap={isCellGap} />
                                 )}
                               </td>
                             );
