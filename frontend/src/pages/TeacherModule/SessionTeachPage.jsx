@@ -1762,7 +1762,7 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
             تصدير التقرير
           </button>
           <button
-            onClick={() => navigate('/teacher/sessions')}
+            onClick={() => navigate('/teacher/classes?tab=sessions')}
             className="h-11 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-cairo font-bold text-sm flex items-center justify-center gap-2 transition-all"
           >
             <History className="h-4 w-4" />

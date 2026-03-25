@@ -381,12 +381,6 @@ export const Sidebar = ({ children }) => {
         roles: ['teacher'],
       },
       {
-        icon: ClipboardList,
-        label: isRTL ? 'إدارة الحصص' : 'Session Management',
-        href: '/teacher/sessions',
-        roles: ['teacher'],
-      },
-      {
         icon: BookOpen,
         label: isRTL ? 'فصولي' : 'My Classes',
         href: '/teacher/classes',

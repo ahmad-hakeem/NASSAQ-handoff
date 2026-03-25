@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Sidebar } from '../../components/layout/Sidebar';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
@@ -23,6 +23,7 @@ import {
   ChevronLeft, Star, AlertTriangle, CheckCircle2,
   ArrowUpDown
 } from 'lucide-react';
+import SessionsManageTab from './SessionsManageTab';
 
 
 const DAY_AR = {
@@ -48,6 +49,8 @@ const getGradeColor = (grade) => GRADE_COLORS[String(grade)] || GRADE_COLORS['1'
 export default function TeacherClassesPage() {
   const { user, api, isRTL } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get('tab') === 'sessions' ? 'sessions' : 'classes';
   const [loading, setLoading] = useState(true);
   const [classes, setClasses] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -57,6 +60,10 @@ export default function TeacherClassesPage() {
 
   const { nassaqError } = useNassaqAlert();
   const teacherId = user?.teacher_id || user?.id;
+
+  const handleTabChange = (tab) => {
+    setSearchParams(tab === 'sessions' ? { tab: 'sessions' } : {});
+  };
 
   const fetchClasses = useCallback(async () => {
     if (!teacherId) return;
@@ -353,59 +360,99 @@ export default function TeacherClassesPage() {
                   {isRTL ? 'فصولي' : 'My Classes'}
                 </h1>
                 <p className="text-sm text-muted-foreground mt-0.5 font-tajawal">
-                  {isRTL ? 'إدارة ومتابعة الفصول المسندة إليك' : 'Manage and track your assigned classes'}
+                  {isRTL ? 'إدارة ومتابعة الفصول والحصص' : 'Manage and track your classes and sessions'}
                 </p>
               </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <div className="relative">
-                  <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder={isRTL ? 'بحث في الفصول أو المواد...' : 'Search classes or subjects...'}
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="ps-9 w-full sm:w-[220px] h-9"
-                  />
-                </div>
-                <Select value={gradeFilter} onValueChange={setGradeFilter}>
-                  <SelectTrigger className="w-[130px] h-9">
-                    <SelectValue placeholder={isRTL ? 'المرحلة' : 'Grade'} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">{isRTL ? 'جميع المراحل' : 'All Grades'}</SelectItem>
-                    {grades.map(g => (
-                      <SelectItem key={g} value={String(g)}>
-                        {isRTL ? `الصف ${g}` : `Grade ${g}`}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <div className="flex items-center border rounded-lg overflow-hidden h-9">
-                  <Button
-                    variant={viewMode === 'card' ? 'default' : 'ghost'}
-                    size="sm"
-                    className="h-full rounded-none px-2.5"
-                    onClick={() => setViewMode('card')}
-                  >
-                    <LayoutGrid className="h-4 w-4" />
+              {activeTab === 'classes' && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="relative">
+                    <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder={isRTL ? 'بحث في الفصول أو المواد...' : 'Search classes or subjects...'}
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="ps-9 w-full sm:w-[220px] h-9"
+                    />
+                  </div>
+                  <Select value={gradeFilter} onValueChange={setGradeFilter}>
+                    <SelectTrigger className="w-[130px] h-9">
+                      <SelectValue placeholder={isRTL ? 'المرحلة' : 'Grade'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{isRTL ? 'جميع المراحل' : 'All Grades'}</SelectItem>
+                      {grades.map(g => (
+                        <SelectItem key={g} value={String(g)}>
+                          {isRTL ? `الصف ${g}` : `Grade ${g}`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="flex items-center border rounded-lg overflow-hidden h-9">
+                    <Button
+                      variant={viewMode === 'card' ? 'default' : 'ghost'}
+                      size="sm"
+                      className="h-full rounded-none px-2.5"
+                      onClick={() => setViewMode('card')}
+                    >
+                      <LayoutGrid className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant={viewMode === 'table' ? 'default' : 'ghost'}
+                      size="sm"
+                      className="h-full rounded-none px-2.5"
+                      onClick={() => setViewMode('table')}
+                    >
+                      <List className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <Button variant="outline" size="sm" className="h-9" onClick={fetchClasses} disabled={loading}>
+                    <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                   </Button>
-                  <Button
-                    variant={viewMode === 'table' ? 'default' : 'ghost'}
-                    size="sm"
-                    className="h-full rounded-none px-2.5"
-                    onClick={() => setViewMode('table')}
-                  >
-                    <List className="h-4 w-4" />
-                  </Button>
                 </div>
-                <Button variant="outline" size="sm" className="h-9" onClick={fetchClasses} disabled={loading}>
-                  <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                </Button>
-              </div>
+              )}
             </div>
+          </div>
+          <div className="px-4 sm:px-6 flex gap-0 border-t border-border/30">
+            <button
+              onClick={() => handleTabChange('classes')}
+              className={`px-5 py-2.5 text-sm font-medium font-cairo transition-all relative ${
+                activeTab === 'classes'
+                  ? 'text-brand-navy dark:text-brand-turquoise'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <span className="flex items-center gap-1.5">
+                <GraduationCap className="h-4 w-4" />
+                {isRTL ? 'فصولي' : 'My Classes'}
+              </span>
+              {activeTab === 'classes' && (
+                <span className="absolute bottom-0 inset-x-0 h-0.5 bg-brand-turquoise rounded-full" />
+              )}
+            </button>
+            <button
+              onClick={() => handleTabChange('sessions')}
+              className={`px-5 py-2.5 text-sm font-medium font-cairo transition-all relative ${
+                activeTab === 'sessions'
+                  ? 'text-brand-navy dark:text-brand-turquoise'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <span className="flex items-center gap-1.5">
+                <ClipboardCheck className="h-4 w-4" />
+                {isRTL ? 'إدارة الحصص' : 'Session Management'}
+              </span>
+              {activeTab === 'sessions' && (
+                <span className="absolute bottom-0 inset-x-0 h-0.5 bg-brand-turquoise rounded-full" />
+              )}
+            </button>
           </div>
         </div>
 
         <div className="px-4 sm:px-6 py-4 space-y-4">
+        {activeTab === 'sessions' ? (
+          <SessionsManageTab />
+        ) : (
+          <>
           {!loading && stats && (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
               {[
@@ -505,6 +552,8 @@ export default function TeacherClassesPage() {
               )}
             </>
           )}
+          </>
+        )}
         </div>
       </div>
     </Sidebar>

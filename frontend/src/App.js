@@ -49,7 +49,6 @@ import {
   TeacherAssessmentsPage,
   TeacherBehaviorPage,
   TeacherStudentsPage,
-  TeacherSessionsManagePage,
   TeacherAchievementsPage,
   TeacherCommunicationPage,
   TeacherReportsPage,
@@ -494,11 +493,7 @@ function AppRoutes() {
       />
       <Route
         path="/teacher/sessions"
-        element={
-          <ProtectedRoute allowedRoles={['teacher']}>
-            <TeacherSessionsManagePage />
-          </ProtectedRoute>
-        }
+        element={<Navigate to="/teacher/classes?tab=sessions" replace />}
       />
       <Route
         path="/teacher/achievements"
