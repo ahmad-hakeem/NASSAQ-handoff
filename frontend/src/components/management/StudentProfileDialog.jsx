@@ -18,7 +18,7 @@ import {
   User, BookOpen, Shield, TrendingUp, Brain, FileText, Edit, Save, X,
   Phone, Mail, Hash, Calendar, MapPin, AlertTriangle, CheckCircle, Loader2,
   Key, UserX, UserCheck, Trash2, ArrowRightLeft, Star, Activity, Target,
-  Sparkles, Clock, ChevronDown, ChevronUp, Stethoscope, Rocket, Zap
+  Sparkles, Clock, ChevronDown, ChevronUp, Stethoscope, Rocket, Zap, Download
 } from 'lucide-react';
 
 const HAKIM_POSES = {
@@ -60,7 +60,7 @@ const PLAN_CONFIG = {
   },
 };
 
-const HakimPlanCard = ({ type, plan, isRTL, loading, onGenerate }) => {
+const HakimPlanCard = ({ type, plan, isRTL, loading, onGenerate, onExport }) => {
   const [stepsOpen, setStepsOpen] = useState(true);
   const cfg = PLAN_CONFIG[type];
   const Icon = cfg.icon;
@@ -136,7 +136,18 @@ const HakimPlanCard = ({ type, plan, isRTL, loading, onGenerate }) => {
                 <span className="text-[10px] text-muted-foreground">({plan.steps.length} {isRTL ? 'خطوات' : 'steps'})</span>
               )}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
+              {onExport && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => { e.stopPropagation(); onExport(type); }}
+                  className="h-6 px-2 text-[10px] gap-1 text-brand-turquoise hover:text-brand-turquoise"
+                >
+                  <Download className="h-3 w-3" />
+                  {isRTL ? 'تصدير' : 'Export'}
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="sm"
@@ -216,6 +227,7 @@ export default function StudentProfileDialog({ open, onClose, student, classes =
   const [enrichmentPlan, setEnrichmentPlan] = useState(null);
   const [loadingRemedial, setLoadingRemedial] = useState(false);
   const [loadingEnrichment, setLoadingEnrichment] = useState(false);
+  const [exportingPlan, setExportingPlan] = useState(false);
 
   useEffect(() => {
     if (student && open) {
@@ -267,6 +279,35 @@ export default function StudentProfileDialog({ open, onClose, student, classes =
       nassaqError(isRTL ? 'فشل في توليد الخطة. يرجى المحاولة مرة أخرى.' : 'Failed to generate plan. Please try again.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleExportPlan = async (planType) => {
+    if (!student?.id) return;
+    const payload = { plan_type: planType };
+    if (planType === 'remedial' || planType === 'both') payload.remedial_plan = remedialPlan;
+    if (planType === 'enrichment' || planType === 'both') payload.enrichment_plan = enrichmentPlan;
+
+    setExportingPlan(true);
+    try {
+      const res = await api.post(`/export/student-plans/${student.id}`, payload, { responseType: 'blob' });
+      const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const safeName = (student.full_name || 'student').replace(/\s+/g, '_');
+      const date = new Date().toISOString().split('T')[0];
+      const suffix = planType === 'remedial' ? 'Remedial_Plan' : planType === 'enrichment' ? 'Enrichment_Plan' : 'Plans';
+      a.href = url;
+      a.download = `${safeName}_${suffix}_${date}.docx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+      toast.success(isRTL ? 'تم تصدير الخطة بنجاح' : 'Plan exported successfully');
+    } catch {
+      nassaqError(isRTL ? 'فشل تصدير الخطة. يرجى المحاولة مرة أخرى.' : 'Failed to export plan. Please try again.');
+    } finally {
+      setExportingPlan(false);
     }
   };
 
@@ -617,6 +658,7 @@ export default function StudentProfileDialog({ open, onClose, student, classes =
                   isRTL={isRTL}
                   loading={loadingRemedial}
                   onGenerate={() => generatePlan('remedial')}
+                  onExport={remedialPlan ? handleExportPlan : null}
                 />
 
                 <HakimPlanCard
@@ -625,7 +667,20 @@ export default function StudentProfileDialog({ open, onClose, student, classes =
                   isRTL={isRTL}
                   loading={loadingEnrichment}
                   onGenerate={() => generatePlan('enrichment')}
+                  onExport={enrichmentPlan ? handleExportPlan : null}
                 />
+
+                {remedialPlan && enrichmentPlan && (
+                  <Button
+                    variant="outline"
+                    className="w-full gap-2 border-brand-navy/20 text-brand-navy hover:bg-brand-navy/5"
+                    onClick={() => handleExportPlan('both')}
+                    disabled={exportingPlan}
+                  >
+                    {exportingPlan ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                    {isRTL ? 'تصدير الخطتين معاً (Word)' : 'Export Both Plans (Word)'}
+                  </Button>
+                )}
               </>
             ) : (
               <Card className="p-8 text-center">

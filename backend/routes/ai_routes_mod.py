@@ -1270,6 +1270,258 @@ async def hakim_student_ai_plans(
     }
 
 
+@router.post("/export/student-plans/{student_id}")
+async def export_student_plans_docx(
+    student_id: str,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+):
+    from docx import Document
+    from docx.shared import Inches, Pt, Cm, RGBColor, Emu
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.enum.table import WD_TABLE_ALIGNMENT
+    from docx.oxml.ns import qn, nsdecls
+    from docx.oxml import parse_xml
+
+    body = await request.json()
+    plan_type = body.get("plan_type", "both")
+    remedial_plan = body.get("remedial_plan")
+    enrichment_plan = body.get("enrichment_plan")
+
+    if plan_type == "remedial" and not remedial_plan:
+        raise HTTPException(400, "الخطة العلاجية غير متوفرة")
+    if plan_type == "enrichment" and not enrichment_plan:
+        raise HTTPException(400, "الخطة الإثرائية غير متوفرة")
+    if plan_type == "both" and not remedial_plan and not enrichment_plan:
+        raise HTTPException(400, "لا توجد خطط للتصدير")
+
+    school_id = current_user.get("tenant_id")
+    student = await db.students.find_one({"id": student_id, "school_id": school_id}, {"_id": 0})
+    if not student:
+        raise HTTPException(404, "الطالب غير موجود")
+
+    school = await db.schools.find_one({"id": school_id}, {"_id": 0})
+    school_name = school.get("name", "") if school else ""
+
+    teacher_name = ""
+    user_role = current_user.get("role", "")
+    if user_role == "teacher":
+        teacher_doc = await db.teachers.find_one({"user_id": current_user.get("sub")}, {"_id": 0})
+        teacher_name = teacher_doc.get("full_name", "") if teacher_doc else current_user.get("full_name", "")
+    else:
+        teacher_name = current_user.get("full_name", user_role)
+
+    student_name = student.get("full_name", "")
+    export_date = datetime.now().strftime("%Y-%m-%d")
+
+    plan_label_map = {
+        "remedial": "الخطة العلاجية",
+        "enrichment": "الخطة الإثرائية",
+        "both": "الخطة العلاجية والإثرائية",
+    }
+    plan_label = plan_label_map.get(plan_type, "الخطة")
+
+    doc = Document()
+
+    style = doc.styles['Normal']
+    font = style.font
+    font.name = 'Arial'
+    font.size = Pt(11)
+    font.rtl = True
+
+    for section in doc.sections:
+        section.top_margin = Cm(1.5)
+        section.bottom_margin = Cm(1.5)
+        section.left_margin = Cm(2)
+        section.right_margin = Cm(2)
+        section_properties = section._sectPr
+        bidi = parse_xml('<w:bidi {} />'.format(nsdecls('w')))
+        section_properties.append(bidi)
+
+    BRAND_NAVY = RGBColor(0x1C, 0x3D, 0x74)
+    BRAND_TURQUOISE = RGBColor(0x46, 0xC1, 0xBE)
+    BRAND_PURPLE = RGBColor(0x61, 0x50, 0x90)
+    REMEDIAL_COLOR = RGBColor(0xE1, 0x4D, 0x2A)
+    ENRICHMENT_COLOR = RGBColor(0x10, 0xB9, 0x81)
+    WHITE = RGBColor(0xFF, 0xFF, 0xFF)
+    DARK_GRAY = RGBColor(0x33, 0x33, 0x33)
+    MED_GRAY = RGBColor(0x66, 0x66, 0x66)
+
+    header_table = doc.add_table(rows=1, cols=1)
+    header_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    header_cell = header_table.cell(0, 0)
+    header_cell._element.get_or_add_tcPr().append(
+        parse_xml(f'<w:shd {nsdecls("w")} w:fill="1C3D74"/>')
+    )
+
+    p = header_cell.paragraphs[0]
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = p.add_run("نَسَّق  |  NASSAQ")
+    run.font.size = Pt(22)
+    run.font.bold = True
+    run.font.color.rgb = WHITE
+
+    p2 = header_cell.add_paragraph()
+    p2.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run2 = p2.add_run(plan_label)
+    run2.font.size = Pt(14)
+    run2.font.color.rgb = RGBColor(0xA0, 0xD0, 0xD0)
+    run2.font.bold = True
+
+    doc.add_paragraph()
+
+    info_table = doc.add_table(rows=4, cols=2)
+    info_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    info_table.autofit = True
+
+    info_data = [
+        ("اسم المدرسة", school_name),
+        ("اسم المعلم", teacher_name),
+        ("اسم الطالب", student_name),
+        ("تاريخ التصدير", export_date),
+    ]
+    for i, (label, value) in enumerate(info_data):
+        label_cell = info_table.cell(i, 1)
+        value_cell = info_table.cell(i, 0)
+
+        lp = label_cell.paragraphs[0]
+        lp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        lr = lp.add_run(f"{label}:")
+        lr.font.bold = True
+        lr.font.size = Pt(11)
+        lr.font.color.rgb = BRAND_NAVY
+
+        vp = value_cell.paragraphs[0]
+        vp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        vr = vp.add_run(value)
+        vr.font.size = Pt(11)
+        vr.font.color.rgb = DARK_GRAY
+
+    for row in info_table.rows:
+        for cell in row.cells:
+            for p in cell.paragraphs:
+                p.paragraph_format.space_before = Pt(2)
+                p.paragraph_format.space_after = Pt(2)
+
+    def add_divider():
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = p.add_run("─" * 60)
+        run.font.color.rgb = RGBColor(0xCC, 0xCC, 0xCC)
+        run.font.size = Pt(8)
+
+    def add_plan_section(plan, plan_type_key):
+        color = REMEDIAL_COLOR if plan_type_key == "remedial" else ENRICHMENT_COLOR
+        type_label = "الخطة العلاجية" if plan_type_key == "remedial" else "الخطة الإثرائية"
+        icon_char = "🩺" if plan_type_key == "remedial" else "🚀"
+
+        add_divider()
+
+        title_p = doc.add_paragraph()
+        title_p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        title_run = title_p.add_run(f"  {icon_char}  {plan.get('title', type_label)}")
+        title_run.font.size = Pt(16)
+        title_run.font.bold = True
+        title_run.font.color.rgb = color
+
+        summary = plan.get("summary", "")
+        if summary:
+            sp = doc.add_paragraph()
+            sp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            sr = sp.add_run(summary)
+            sr.font.size = Pt(11)
+            sr.font.color.rgb = MED_GRAY
+            sr.font.italic = True
+
+        steps = plan.get("steps", [])
+        if steps:
+            steps_heading = doc.add_paragraph()
+            steps_heading.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            sh_run = steps_heading.add_run("خطوات التنفيذ:")
+            sh_run.font.size = Pt(13)
+            sh_run.font.bold = True
+            sh_run.font.color.rgb = BRAND_NAVY
+            steps_heading.paragraph_format.space_before = Pt(12)
+
+            steps_table = doc.add_table(rows=len(steps) + 1, cols=4)
+            steps_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+            steps_table.autofit = True
+
+            headers = ["المسؤول", "المدة", "الوصف", "الخطوة"]
+            for j, h in enumerate(headers):
+                cell = steps_table.cell(0, j)
+                cell._element.get_or_add_tcPr().append(
+                    parse_xml(f'<w:shd {nsdecls("w")} w:fill="1C3D74"/>')
+                )
+                p = cell.paragraphs[0]
+                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                r = p.add_run(h)
+                r.font.bold = True
+                r.font.size = Pt(10)
+                r.font.color.rgb = WHITE
+
+            for idx, step in enumerate(steps):
+                row_cells = steps_table.row_cells(idx + 1)
+                values = [
+                    step.get("responsible", "—"),
+                    step.get("duration", "—"),
+                    step.get("description", "—"),
+                    step.get("title", f"خطوة {idx + 1}"),
+                ]
+                bg_hex = "F9FAFB" if idx % 2 == 0 else "FFFFFF"
+                for j, val in enumerate(values):
+                    cell = row_cells[j]
+                    cell._element.get_or_add_tcPr().append(
+                        parse_xml(f'<w:shd {nsdecls("w")} w:fill="{bg_hex}"/>')
+                    )
+                    p = cell.paragraphs[0]
+                    p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                    r = p.add_run(val)
+                    r.font.size = Pt(10)
+                    r.font.color.rgb = DARK_GRAY
+
+        outcome = plan.get("expected_outcome", "")
+        if outcome:
+            doc.add_paragraph()
+            outcome_p = doc.add_paragraph()
+            outcome_p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            ol = outcome_p.add_run("النتيجة المتوقعة: ")
+            ol.font.bold = True
+            ol.font.size = Pt(11)
+            ol.font.color.rgb = color
+            ov = outcome_p.add_run(outcome)
+            ov.font.size = Pt(11)
+            ov.font.color.rgb = DARK_GRAY
+
+    if plan_type in ("remedial", "both") and remedial_plan:
+        add_plan_section(remedial_plan, "remedial")
+
+    if plan_type in ("enrichment", "both") and enrichment_plan:
+        add_plan_section(enrichment_plan, "enrichment")
+
+    add_divider()
+    footer_p = doc.add_paragraph()
+    footer_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    fr = footer_p.add_run(f"تم التصدير من نظام نَسَّق  •  {export_date}")
+    fr.font.size = Pt(9)
+    fr.font.color.rgb = RGBColor(0x99, 0x99, 0x99)
+    fr.font.italic = True
+
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+
+    safe_name = student_name.replace(" ", "_")
+    type_suffix = {"remedial": "Remedial_Plan", "enrichment": "Enrichment_Plan", "both": "Plans"}
+    filename = f"{safe_name}_{type_suffix.get(plan_type, 'Plan')}_{export_date}.docx"
+
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+
 # ============== GRADE DECLINE DETECTION ==============
 
 @router.get("/hakim/student/{student_id}/grade-trend")
