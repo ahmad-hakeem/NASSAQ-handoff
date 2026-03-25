@@ -6,4 +6,6 @@ export { default as ChildBehaviorPage } from './ChildBehaviorPage';
 export { default as ChildHomeworkPage } from './ChildHomeworkPage';
 export { default as ParentReportsPage } from './ParentReportsPage';
 export { default as ParentMessagesPage } from './ParentMessagesPage';
+export { default as ParentAbsenceExcusePage } from './ParentAbsenceExcusePage';
+export { default as ParentMeetingRequestPage } from './ParentMeetingRequestPage';
 export { default as ParentSettingsPage } from './ParentSettingsPage';

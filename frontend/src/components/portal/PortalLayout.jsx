@@ -27,6 +27,7 @@ import {
   BarChart3,
   Trophy,
   FileText,
+  CalendarCheck,
 } from 'lucide-react';
 
 const LOGO_WHITE = 'https://customer-assets.emergentagent.com/job_f5ea20bb-5cf5-462f-a7f0-958201e27f89/artifacts/q04svb5j_Nassaq%20LinkedIn%20Logo%20White.png';
@@ -63,7 +64,9 @@ export const PortalLayout = ({ children, portalType = 'student' }) => {
   const parentMenuItems = [
     { icon: Home, label: isRTL ? 'الرئيسية' : 'Home', href: '/parent' },
     { icon: Users, label: isRTL ? 'أبنائي' : 'My Children', href: '/parent/children' },
-    { icon: FileText, label: isRTL ? 'التقارير' : 'Reports', href: '/parent/reports' },
+    { icon: FileText, label: isRTL ? 'عذر غياب' : 'Absence Excuse', href: '/parent/absence-excuse' },
+    { icon: CalendarCheck, label: isRTL ? 'طلب اجتماع' : 'Meeting Request', href: '/parent/meeting-request' },
+    { icon: BarChart3, label: isRTL ? 'التقارير' : 'Reports', href: '/parent/reports' },
     { icon: MessageSquare, label: isRTL ? 'التواصل' : 'Messages', href: '/parent/messages' },
     { icon: Bell, label: isRTL ? 'الإشعارات' : 'Notifications', href: '/notifications' },
     { icon: Settings, label: isRTL ? 'الإعدادات' : 'Settings', href: '/parent/settings' },

@@ -106,6 +106,8 @@ import {
   ChildHomeworkPage,
   ParentReportsPage,
   ParentMessagesPage,
+  ParentAbsenceExcusePage,
+  ParentMeetingRequestPage,
   ParentSettingsPage
 } from "./pages/ParentPortal";
 
@@ -664,6 +666,22 @@ function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={['parent']}>
             <ParentMessagesPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/parent/absence-excuse"
+        element={
+          <ProtectedRoute allowedRoles={['parent']}>
+            <ParentAbsenceExcusePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/parent/meeting-request"
+        element={
+          <ProtectedRoute allowedRoles={['parent']}>
+            <ParentMeetingRequestPage />
           </ProtectedRoute>
         }
       />

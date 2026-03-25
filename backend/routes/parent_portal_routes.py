@@ -852,4 +852,108 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
 
         return {"reports": reports, "total": len(reports)}
 
+    # ============= ABSENCE EXCUSES =============
+
+    @router.post("/absence-excuse")
+    async def submit_absence_excuse(
+        data: dict,
+        current_user: dict = Depends(require_roles([UserRole.PARENT]))
+    ):
+        parent_id = current_user.get("id")
+        school_id = current_user.get("tenant_id")
+
+        child_id = data.get("child_id")
+        absence_date = data.get("absence_date")
+        reason = data.get("reason", "").strip()
+
+        if not child_id or not absence_date or not reason:
+            raise HTTPException(status_code=400, detail="child_id, absence_date, and reason are required")
+
+        children = await _find_children(parent_id, current_user.get("phone"), school_id)
+        child_ids = [c.get("id") for c in children]
+        if child_id not in child_ids:
+            raise HTTPException(status_code=403, detail="Child not linked to this parent")
+
+        child = next((c for c in children if c.get("id") == child_id), {})
+
+        excuse = {
+            "id": str(uuid.uuid4()),
+            "parent_id": parent_id,
+            "parent_name": current_user.get("full_name", ""),
+            "child_id": child_id,
+            "child_name": child.get("full_name", child.get("name", "")),
+            "school_id": school_id,
+            "absence_date": absence_date,
+            "reason": reason,
+            "attachment_url": data.get("attachment_url"),
+            "attachment_name": data.get("attachment_name"),
+            "status": "pending",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await db.absence_excuses.insert_one(excuse)
+        excuse.pop("_id", None)
+        return {"message": "تم إرسال العذر بنجاح", "excuse": excuse}
+
+    @router.get("/absence-excuses")
+    async def get_absence_excuses(
+        current_user: dict = Depends(require_roles([UserRole.PARENT]))
+    ):
+        parent_id = current_user.get("id")
+        excuses = await db.absence_excuses.find(
+            {"parent_id": parent_id},
+            {"_id": 0}
+        ).sort("created_at", -1).to_list(100)
+        return {"excuses": excuses, "total": len(excuses)}
+
+    # ============= MEETING REQUESTS =============
+
+    @router.post("/meeting-request")
+    async def submit_meeting_request(
+        data: dict,
+        current_user: dict = Depends(require_roles([UserRole.PARENT]))
+    ):
+        parent_id = current_user.get("id")
+        school_id = current_user.get("tenant_id")
+
+        preferred_date = data.get("preferred_date")
+        preferred_time = data.get("preferred_time")
+        topic = data.get("topic", "").strip()
+        contact_preference = data.get("contact_preference", "in_person")
+
+        if not preferred_date or not topic:
+            raise HTTPException(status_code=400, detail="preferred_date and topic are required")
+
+        meeting = {
+            "id": str(uuid.uuid4()),
+            "parent_id": parent_id,
+            "parent_name": current_user.get("full_name", ""),
+            "parent_phone": current_user.get("phone", ""),
+            "parent_email": current_user.get("email", ""),
+            "school_id": school_id,
+            "preferred_date": preferred_date,
+            "preferred_time": preferred_time or "",
+            "topic": topic,
+            "details": data.get("details", "").strip(),
+            "contact_preference": contact_preference,
+            "status": "pending",
+            "admin_notes": "",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await db.meeting_requests.insert_one(meeting)
+        meeting.pop("_id", None)
+        return {"message": "تم إرسال طلب الاجتماع بنجاح", "meeting": meeting}
+
+    @router.get("/meeting-requests")
+    async def get_meeting_requests(
+        current_user: dict = Depends(require_roles([UserRole.PARENT]))
+    ):
+        parent_id = current_user.get("id")
+        meetings = await db.meeting_requests.find(
+            {"parent_id": parent_id},
+            {"_id": 0}
+        ).sort("created_at", -1).to_list(100)
+        return {"meetings": meetings, "total": len(meetings)}
+
     return router
