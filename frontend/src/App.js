@@ -90,7 +90,6 @@ import {
   StudentSchedulePage,
   StudentGradesPage,
   StudentAttendancePage,
-  StudentHomeworkPage,
   StudentProfilePage,
   StudentProgressPage,
   StudentAchievementsPage
@@ -568,14 +567,6 @@ function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={['student']}>
             <StudentAttendancePage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/student/homework"
-        element={
-          <ProtectedRoute allowedRoles={['student']}>
-            <StudentHomeworkPage />
           </ProtectedRoute>
         }
       />

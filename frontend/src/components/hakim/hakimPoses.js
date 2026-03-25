@@ -78,7 +78,6 @@ const CONTEXT_MAP = {
   '/teacher/settings': 'guidance',
   '/student': 'guidance',
   '/student/grades': 'analysis',
-  '/student/homework': 'teaching',
   '/student/achievements': 'success',
   '/student/progress': 'analysis',
   '/parent': 'guidance',

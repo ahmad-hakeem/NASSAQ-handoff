@@ -10,7 +10,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar'
 import axios from 'axios';
 import {
   User, GraduationCap, MapPin, Calendar, CheckCircle,
-  TrendingUp, Star, Award, Mail, Phone, Hash
+  TrendingUp, Star, Award, Mail, Phone, Hash, Activity
 } from 'lucide-react';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
@@ -20,21 +20,25 @@ const StudentProfilePage = () => {
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState(null);
+  const [activities, setActivities] = useState([]);
 
   useEffect(() => {
-    const fetchProfile = async () => {
+    const fetchData = async () => {
       try {
-        const res = await axios.get(`${API_URL}/api/student-portal/profile`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        setProfile(res.data);
+        const headers = { Authorization: `Bearer ${token}` };
+        const [profileRes, actRes] = await Promise.all([
+          axios.get(`${API_URL}/api/student-portal/profile`, { headers }),
+          axios.get(`${API_URL}/api/student-portal/activities`, { headers }).catch(() => ({ data: { activities: [] } })),
+        ]);
+        setProfile(profileRes.data);
+        setActivities(actRes.data?.activities || []);
       } catch (err) {
         console.error('Error fetching profile:', err);
       } finally {
         setLoading(false);
       }
     };
-    fetchProfile();
+    fetchData();
   }, [token]);
 
   if (loading) {
@@ -195,6 +199,58 @@ const StudentProfilePage = () => {
                 </div>
               )}
             </div>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-2xl border-0 shadow-sm">
+          <CardContent className="p-4 space-y-3">
+            <h2 className="font-bold text-lg font-cairo flex items-center gap-2">
+              <Activity className="h-5 w-5 text-purple-600" />
+              {isRTL ? 'الأنشطة المشارك بها' : 'Activities Participated In'}
+            </h2>
+
+            {activities.length > 0 ? (
+              <div className="space-y-2">
+                {activities.map((activity, idx) => (
+                  <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+                    <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0">
+                      <Activity className="h-5 w-5 text-purple-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm truncate">{activity.name}</p>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="h-3 w-3" />
+                          {activity.date?.slice(0, 10)}
+                        </span>
+                        <Badge className={`border-0 text-[10px] px-1.5 py-0 ${
+                          activity.type === 'sports' ? 'bg-green-100 text-green-700' :
+                          activity.type === 'cultural' ? 'bg-blue-100 text-blue-700' :
+                          activity.type === 'scientific' ? 'bg-purple-100 text-purple-700' :
+                          activity.type === 'social' ? 'bg-amber-100 text-amber-700' :
+                          activity.type === 'artistic' ? 'bg-pink-100 text-pink-700' :
+                          activity.type === 'volunteer' ? 'bg-teal-100 text-teal-700' :
+                          'bg-gray-100 text-gray-700'
+                        }`}>
+                          {activity.type === 'sports' ? (isRTL ? 'رياضي' : 'Sports') :
+                           activity.type === 'cultural' ? (isRTL ? 'ثقافي' : 'Cultural') :
+                           activity.type === 'scientific' ? (isRTL ? 'علمي' : 'Scientific') :
+                           activity.type === 'social' ? (isRTL ? 'اجتماعي' : 'Social') :
+                           activity.type === 'artistic' ? (isRTL ? 'فني' : 'Artistic') :
+                           activity.type === 'volunteer' ? (isRTL ? 'تطوعي' : 'Volunteer') :
+                           (isRTL ? 'أخرى' : 'Other')}
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-6 text-muted-foreground">
+                <Activity className="h-10 w-10 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">{isRTL ? 'لا توجد أنشطة مسجلة' : 'No activities recorded'}</p>
+              </div>
+            )}
           </CardContent>
         </Card>
 

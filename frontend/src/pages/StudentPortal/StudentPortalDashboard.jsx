@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import PortalLayout from '../../components/portal/PortalLayout';
@@ -9,13 +9,11 @@ import { Progress } from '../../components/ui/progress';
 import { ScrollArea } from '../../components/ui/scroll-area';
 import { Skeleton } from '../../components/ui/skeleton';
 import { Button } from '../../components/ui/button';
-import { toast } from 'sonner';
 import axios from 'axios';
 import {
-  GraduationCap, Calendar, BookOpen, Clock, CheckCircle,
-  AlertCircle, Bell, TrendingUp, MapPin, FileText, Award,
-  Star, Trophy, ClipboardList, Sparkles, MessageSquare,
-  ChevronLeft, Play
+  GraduationCap, Calendar, Clock, CheckCircle,
+  AlertCircle, Bell, TrendingUp, MapPin, Award,
+  Star, Trophy, Sparkles
 } from 'lucide-react';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
@@ -25,11 +23,10 @@ import { formatHijriDate } from '../../utils/hijriDate';
 const StudentPortalDashboard = () => {
   const { token } = useAuth();
   const { isRTL } = useTheme();
-  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [dashboard, setDashboard] = useState(null);
   const [points, setPoints] = useState(null);
-  const [assignments, setAssignments] = useState(null);
+  const [activities, setActivities] = useState(null);
   const [error, setError] = useState(false);
 
   useEffect(() => {
@@ -37,14 +34,14 @@ const StudentPortalDashboard = () => {
       setError(false);
       try {
         const headers = { Authorization: `Bearer ${token}` };
-        const [dashRes, pointsRes, assignRes] = await Promise.all([
+        const [dashRes, pointsRes, actRes] = await Promise.all([
           axios.get(`${API_URL}/api/student-portal/dashboard`, { headers }),
           axios.get(`${API_URL}/api/student-portal/points`, { headers }).catch(() => ({ data: null })),
-          axios.get(`${API_URL}/api/student-portal/assignments`, { headers }).catch(() => ({ data: null })),
+          axios.get(`${API_URL}/api/student-portal/activities`, { headers }).catch(() => ({ data: { activities: [] } })),
         ]);
         setDashboard(dashRes.data);
         setPoints(pointsRes.data);
-        setAssignments(assignRes.data);
+        setActivities(actRes.data);
       } catch (err) {
         console.error('Error fetching dashboard:', err);
         setError(true);
@@ -93,24 +90,24 @@ const StudentPortalDashboard = () => {
     );
   }
 
-  const getStatusBadge = (status) => {
+  const getActivityTypeBadge = (type) => {
     const map = {
-      pending: { label: isRTL ? 'لم يبدأ' : 'Not Started', cls: 'bg-gray-100 text-gray-700' },
-      submitted: { label: isRTL ? 'تم التسليم' : 'Submitted', cls: 'bg-green-100 text-green-700' },
-      graded: { label: isRTL ? 'تم التصحيح' : 'Graded', cls: 'bg-blue-100 text-blue-700' },
-      late: { label: isRTL ? 'متأخر' : 'Late', cls: 'bg-red-100 text-red-700' },
+      sports: { label: isRTL ? 'رياضي' : 'Sports', cls: 'bg-green-100 text-green-700' },
+      cultural: { label: isRTL ? 'ثقافي' : 'Cultural', cls: 'bg-blue-100 text-blue-700' },
+      scientific: { label: isRTL ? 'علمي' : 'Scientific', cls: 'bg-purple-100 text-purple-700' },
+      social: { label: isRTL ? 'اجتماعي' : 'Social', cls: 'bg-amber-100 text-amber-700' },
+      artistic: { label: isRTL ? 'فني' : 'Artistic', cls: 'bg-pink-100 text-pink-700' },
+      volunteer: { label: isRTL ? 'تطوعي' : 'Volunteer', cls: 'bg-teal-100 text-teal-700' },
+      other: { label: isRTL ? 'أخرى' : 'Other', cls: 'bg-gray-100 text-gray-700' },
     };
-    const s = map[status] || map.pending;
+    const s = map[type] || map.other;
     return <Badge className={`${s.cls} border-0 text-xs`}>{s.label}</Badge>;
   };
 
-  const pendingTasks = assignments?.assignments?.filter(a => a.status === 'pending') || [];
+  const activityList = activities?.activities || [];
   const todaySchedule = dashboard?.today_schedule || [];
 
   const hakimMessages = [];
-  if (pendingTasks.length > 0) {
-    hakimMessages.push(isRTL ? `لديك ${pendingTasks.length} واجب لم يتم حله بعد.` : `You have ${pendingTasks.length} pending homework.`);
-  }
   if (dashboard?.attendance?.rate < 90) {
     hakimMessages.push(isRTL ? 'حاول تحسين نسبة حضورك للحصول على نقاط إضافية.' : 'Try to improve your attendance to earn extra points.');
   }
@@ -275,56 +272,48 @@ const StudentPortalDashboard = () => {
             </CardContent>
           </Card>
 
-          {/* Panel 3: Today's Tasks */}
+          {/* Panel 3: Activities Participated In */}
           <Card className="rounded-2xl border-0 shadow-sm">
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center justify-between text-base">
                 <div className="flex items-center gap-2">
-                  <ClipboardList className="h-5 w-5 text-purple-600" />
-                  {isRTL ? 'مهام اليوم' : "Today's Tasks"}
+                  <Award className="h-5 w-5 text-purple-600" />
+                  {isRTL ? 'الأنشطة المشارك بها' : 'Activities'}
                 </div>
-                <Link to="/student/homework" className="text-xs text-purple-600 hover:underline">
-                  {isRTL ? 'كل الواجبات' : 'All Homework'}
-                </Link>
+                <span className="text-xs text-muted-foreground">
+                  {activityList.length} {isRTL ? 'نشاط' : 'total'}
+                </span>
               </CardTitle>
             </CardHeader>
             <CardContent>
               <ScrollArea className="h-[280px]">
-                {assignments?.assignments?.length > 0 ? (
+                {activityList.length > 0 ? (
                   <div className="space-y-2">
-                    {assignments.assignments.slice(0, 8).map((task, idx) => (
+                    {activityList.slice(0, 8).map((activity, idx) => (
                       <div
                         key={idx}
                         className="p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-all"
                       >
                         <div className="flex items-center justify-between mb-2">
-                          <p className="font-medium text-sm truncate flex-1">{task.title}</p>
-                          {getStatusBadge(task.status)}
+                          <p className="font-medium text-sm truncate flex-1">{activity.name}</p>
+                          {getActivityTypeBadge(activity.type)}
                         </div>
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
                           <span className="flex items-center gap-1">
-                            <BookOpen className="h-3 w-3" />
-                            {task.subject_name || task.subject_id}
+                            <Calendar className="h-3 w-3" />
+                            {activity.date?.slice(0, 10)}
                           </span>
-                          <span>{task.due_date?.slice(0, 10)}</span>
+                          {activity.description && (
+                            <span className="truncate max-w-[150px]">{activity.description}</span>
+                          )}
                         </div>
-                        {task.status === 'pending' && (
-                          <Button
-                            size="sm"
-                            className="mt-2 w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8"
-                            onClick={() => navigate('/student/homework')}
-                          >
-                            <Play className="h-3 w-3 me-1" />
-                            {isRTL ? 'ابدأ الآن' : 'Start Now'}
-                          </Button>
-                        )}
                       </div>
                     ))}
                   </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                    <ClipboardList className="h-12 w-12 mb-3 opacity-30" />
-                    <p className="text-sm">{isRTL ? 'لا توجد مهام حالياً' : 'No tasks right now'}</p>
+                    <Award className="h-12 w-12 mb-3 opacity-30" />
+                    <p className="text-sm">{isRTL ? 'لا توجد أنشطة حالياً' : 'No activities yet'}</p>
                   </div>
                 )}
               </ScrollArea>
@@ -407,7 +396,7 @@ const StudentPortalDashboard = () => {
                 <div className="flex flex-wrap gap-2">
                   {[
                     isRTL ? 'كيف أحسن مستواي؟' : 'How to improve?',
-                    isRTL ? 'ما الواجبات المتبقية؟' : 'Pending homework?',
+                    isRTL ? 'ما أنشطتي؟' : 'My activities?',
                     isRTL ? 'ما ترتيبي؟' : 'My rank?',
                   ].map((q, i) => (
                     <button

@@ -543,6 +543,35 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
             }
         }
     
+    # ============= ACTIVITIES =============
+
+    @router.get("/activities")
+    async def get_student_activities(
+        current_user: dict = Depends(require_roles([UserRole.STUDENT]))
+    ):
+        student_id = current_user.get("student_id") or current_user.get("id")
+        school_id = current_user.get("tenant_id")
+
+        query = {"student_id": student_id}
+        if school_id:
+            query["school_id"] = school_id
+
+        raw = await db.student_activities.find(
+            query, {"_id": 0}
+        ).sort("date", -1).to_list(100)
+
+        activities = []
+        for a in raw:
+            activities.append({
+                "id": a.get("id"),
+                "name": a.get("name", ""),
+                "type": a.get("type", "other"),
+                "date": a.get("date", ""),
+                "description": a.get("description", ""),
+            })
+
+        return {"activities": activities, "total": len(activities)}
+
     # ============= POINTS & GAMIFICATION =============
     
     @router.get("/points")

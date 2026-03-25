@@ -17,7 +17,6 @@ import {
   Bell,
   User,
   LogOut,
-  ClipboardList,
   Users,
   MessageSquare,
   Settings,
@@ -52,7 +51,6 @@ export const PortalLayout = ({ children, portalType = 'student' }) => {
   const studentMenuItems = [
     { icon: Home, label: isRTL ? 'الرئيسية' : 'Home', href: '/student' },
     { icon: Calendar, label: isRTL ? 'الجدول' : 'Schedule', href: '/student/schedule' },
-    { icon: ClipboardList, label: isRTL ? 'الواجبات' : 'Homework', href: '/student/homework' },
     { icon: BookOpen, label: isRTL ? 'الدرجات' : 'Grades', href: '/student/grades' },
     { icon: CheckCircle, label: isRTL ? 'الحضور' : 'Attendance', href: '/student/attendance' },
     { icon: User, label: isRTL ? 'ملفي' : 'Profile', href: '/student/profile' },

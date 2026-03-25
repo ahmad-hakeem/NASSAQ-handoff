@@ -8,7 +8,7 @@ import { Skeleton } from '../../components/ui/skeleton';
 import axios from 'axios';
 import {
   CheckCircle, BookOpen, Users, Heart, TrendingUp,
-  ClipboardList, BarChart3, AlertCircle
+  BarChart3, AlertCircle
 } from 'lucide-react';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
@@ -78,7 +78,7 @@ const StudentProgressPage = () => {
     );
   }
 
-  const { attendance, academics, homework, participation, behaviour } = progress;
+  const { attendance, academics, participation, behaviour } = progress;
 
   return (
     <PortalLayout portalType="student">
@@ -108,16 +108,6 @@ const StudentProgressPage = () => {
           detail={isRTL
             ? `${academics?.total_grades || 0} تقييم`
             : `${academics?.total_grades || 0} assessments`}
-        />
-
-        <ProgressCard
-          icon={ClipboardList}
-          title={isRTL ? 'نسبة حل الواجبات' : 'Homework Completion'}
-          value={homework?.rate || 0}
-          color="purple"
-          detail={isRTL
-            ? `تم تسليم ${homework?.submitted || 0} من ${homework?.total || 0}`
-            : `Submitted ${homework?.submitted || 0} of ${homework?.total || 0}`}
         />
 
         <ProgressCard
