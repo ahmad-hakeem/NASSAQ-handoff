@@ -1798,6 +1798,61 @@ async def record_student_behaviour(
     return result
 
 
+@router.post("/session/{session_id}/homework")
+async def record_homework_status(
+    session_id: str,
+    data: dict = Body(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    تسجيل حالة الواجب (حل / ما حل)
+    Record homework status (done / not_done) for a single student
+    """
+    await _verify_session_owner(session_id, current_user)
+    teacher_id = current_user.get("teacher_id") or current_user["id"]
+    result = await session_engine.record_homework(
+        session_id=session_id,
+        student_id=data.get("student_id"),
+        status=data.get("status", "done"),
+        teacher_id=teacher_id
+    )
+    return result
+
+
+@router.get("/session/{session_id}/homework")
+async def get_homework_statuses(
+    session_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    جلب حالات الواجب لجميع الطلاب
+    Get homework statuses for all students in session
+    """
+    await _verify_session_owner(session_id, current_user)
+    statuses = await session_engine.get_homework_statuses(session_id)
+    return {"statuses": statuses}
+
+
+@router.post("/session/{session_id}/homework/bulk")
+async def bulk_record_homework(
+    session_id: str,
+    data: dict = Body(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    حفظ حالات الواجب لجميع الطلاب دفعة واحدة
+    Bulk save homework statuses
+    """
+    await _verify_session_owner(session_id, current_user)
+    teacher_id = current_user.get("teacher_id") or current_user["id"]
+    result = await session_engine.bulk_record_homework(
+        session_id=session_id,
+        records=data.get("records", []),
+        teacher_id=teacher_id
+    )
+    return result
+
+
 @router.post("/session/{session_id}/seating")
 async def update_seating_order(
     session_id: str,

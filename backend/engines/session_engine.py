@@ -70,6 +70,7 @@ class EventType(str, Enum):
     PARTICIPATION_RECORDED = "participation_recorded"
     BEHAVIOUR_RECORDED = "behaviour_recorded"
     SKILL_RECORDED = "skill_recorded"
+    HOMEWORK_RECORDED = "homework_recorded"
     NOTE_ADDED = "note_added"
     SEATING_UPDATED = "seating_updated"
     MODE_CHANGED = "mode_changed"
@@ -937,6 +938,89 @@ class TeacherSessionEngine:
             "score_change": score_change
         }
     
+    # ---------- Homework Tracking ----------
+
+    async def record_homework(
+        self,
+        session_id: str,
+        student_id: str,
+        status: str,
+        teacher_id: str
+    ) -> Dict[str, Any]:
+        if not student_id:
+            raise HTTPException(status_code=400, detail="student_id مطلوب")
+        if status not in ("done", "not_done"):
+            raise HTTPException(status_code=400, detail="الحالة يجب أن تكون done أو not_done")
+        att = await self.db.session_attendance.find_one(
+            {"session_id": session_id, "student_id": student_id}, {"_id": 0, "student_id": 1}
+        )
+        if not att:
+            raise HTTPException(status_code=400, detail="الطالب ليس في هذه الحصة")
+        now = datetime.now(timezone.utc)
+        await self.db.session_homework.update_one(
+            {"session_id": session_id, "student_id": student_id},
+            {"$set": {
+                "session_id": session_id,
+                "student_id": student_id,
+                "status": status,
+                "recorded_by": teacher_id,
+                "recorded_at": now.isoformat()
+            }},
+            upsert=True
+        )
+        await self._log_event(
+            session_id=session_id,
+            event_type=EventType.HOMEWORK_RECORDED.value,
+            actor_id=teacher_id,
+            student_id=student_id,
+            new_value=status
+        )
+        return {"message": "تم تسجيل حالة الواجب", "student_id": student_id, "status": status}
+
+    async def get_homework_statuses(self, session_id: str) -> Dict[str, str]:
+        records = await self.db.session_homework.find(
+            {"session_id": session_id}, {"_id": 0, "student_id": 1, "status": 1}
+        ).to_list(200)
+        return {r["student_id"]: r["status"] for r in records}
+
+    async def bulk_record_homework(
+        self,
+        session_id: str,
+        records: list,
+        teacher_id: str
+    ) -> Dict[str, Any]:
+        if not records:
+            return {"message": "لا توجد سجلات", "done": 0, "not_done": 0}
+        for rec in records:
+            if not rec.get("student_id") or rec.get("status") not in ("done", "not_done"):
+                raise HTTPException(status_code=400, detail="بيانات غير صالحة: كل سجل يجب أن يحتوي student_id وstatus (done/not_done)")
+        now = datetime.now(timezone.utc)
+        from pymongo import UpdateOne
+        ops = []
+        for rec in records:
+            ops.append(UpdateOne(
+                {"session_id": session_id, "student_id": rec["student_id"]},
+                {"$set": {
+                    "session_id": session_id,
+                    "student_id": rec["student_id"],
+                    "status": rec["status"],
+                    "recorded_by": teacher_id,
+                    "recorded_at": now.isoformat()
+                }},
+                upsert=True
+            ))
+        if ops:
+            await self.db.session_homework.bulk_write(ops)
+        done = sum(1 for r in records if r["status"] == "done")
+        not_done = sum(1 for r in records if r["status"] == "not_done")
+        await self._log_event(
+            session_id=session_id,
+            event_type=EventType.HOMEWORK_RECORDED.value,
+            actor_id=teacher_id,
+            metadata={"done": done, "not_done": not_done, "total": len(records)}
+        )
+        return {"message": "تم حفظ حالات الواجب", "done": done, "not_done": not_done}
+
     # ---------- Session Review & End ----------
 
     async def get_review_preview(self, session_id: str, teacher_id: str) -> SessionReviewPreview:

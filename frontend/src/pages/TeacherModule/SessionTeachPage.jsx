@@ -81,9 +81,10 @@ export default function SessionTeachPage() {
   const [flashId, setFlashId] = useState(null);
   const [showHakim, setShowHakim] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState(null);
-  const [actionTab, setActionTab] = useState('question'); // question | participation | behaviour | skill
+  const [actionTab, setActionTab] = useState('question'); // question | participation | behaviour | skill | homework
   const [behaviourCategory, setBehaviourCategory] = useState('positive');
   const [behaviourNote, setBehaviourNote] = useState('');
+  const [homeworkStatuses, setHomeworkStatuses] = useState({});
   const [skillTypes, setSkillTypes] = useState([]);
   const [skillNote, setSkillNote] = useState('');
   const [showEndDialog, setShowEndDialog] = useState(false);
@@ -130,7 +131,11 @@ export default function SessionTeachPage() {
         if (res.data.start_time) setStartTime(res.data.start_time);
         if (res.data.interaction_mode) {
           const found = MODES.find(m => m.id === res.data.interaction_mode);
-          if (found) setMode(found);
+          if (found) {
+            setMode(found);
+            setActionTab(getTabForMode(found.id));
+            if (found.id === 'homework') loadHomeworkStatuses();
+          }
         }
         if (res.data.stats) {
           setStats({
@@ -268,8 +273,43 @@ export default function SessionTeachPage() {
   const getTabForMode = (modeId) => {
     if (modeId === 'quiz') return 'question';
     if (modeId === 'review') return 'participation';
-    if (modeId === 'homework') return 'behaviour';
+    if (modeId === 'homework') return 'homework';
     return 'question';
+  };
+
+  const [homeworkLoading, setHomeworkLoading] = useState(false);
+
+  const loadHomeworkStatuses = async () => {
+    setHomeworkLoading(true);
+    try {
+      const res = await api.get(`/session/${sessionId}/homework`);
+      setHomeworkStatuses(res.data?.statuses || {});
+    } catch {
+      nassaqError('خطأ في تحميل حالات الواجب');
+    } finally {
+      setHomeworkLoading(false);
+    }
+  };
+
+  const toggleHomework = async (studentId) => {
+    const current = homeworkStatuses[studentId];
+    const newStatus = current === 'done' ? 'not_done' : 'done';
+    setHomeworkStatuses(prev => ({ ...prev, [studentId]: newStatus }));
+    try {
+      await api.post(`/session/${sessionId}/homework`, {
+        student_id: studentId,
+        status: newStatus
+      });
+      const studentName = students.find(s => s.id === studentId)?.full_name?.split(' ')[0] || '';
+      if (newStatus === 'done') {
+        toast.success(`✅ حل — ${studentName}`);
+      } else {
+        toast.success(`❌ ما حل — ${studentName}`);
+      }
+    } catch {
+      setHomeworkStatuses(prev => ({ ...prev, [studentId]: current || 'not_done' }));
+      nassaqError('خطأ في تحديث حالة الواجب');
+    }
   };
 
   const handleSetMode = async (m) => {
@@ -278,6 +318,7 @@ export default function SessionTeachPage() {
       await api.post(`/session/${sessionId}/mode`, { mode: m.id });
       setMode(m);
       setActionTab(getTabForMode(m.id));
+      if (m.id === 'homework') loadHomeworkStatuses();
       toast.success(`تم تفعيل نمط: ${m.label}`, { id: 'session-mode' });
     } catch {
       nassaqError('خطأ في تحديد النمط');
@@ -689,7 +730,7 @@ export default function SessionTeachPage() {
                   mode.id === 'homework' ? 'text-blue-300' : 'text-amber-300'
                 }`}>
                   {mode.id === 'review' ? 'نمط المراجعة — مراجعة الدرس والمشاركة الصفية' :
-                   mode.id === 'homework' ? 'نمط الواجب — متابعة الواجبات وتقييم السلوك' :
+                   mode.id === 'homework' ? 'نمط الواجب — متابعة حل الواجبات (حل / ما حل)' :
                    'نمط الاختبار — أسئلة سريعة وتقييم الإجابات'}
                 </span>
               </div>
@@ -794,7 +835,8 @@ export default function SessionTeachPage() {
                 {[
                   { id: 'question', label: 'سؤال', icon: MessageCircle, forMode: 'quiz' },
                   { id: 'participation', label: 'مشاركة', icon: Hand, forMode: 'review' },
-                  { id: 'behaviour', label: 'سلوك', icon: ThumbsUp, forMode: 'homework' },
+                  { id: 'homework', label: 'واجب', icon: ClipboardCheck, forMode: 'homework' },
+                  { id: 'behaviour', label: 'سلوك', icon: ThumbsUp },
                   { id: 'skill', label: 'مهارة', icon: Star },
                 ].map(tab => {
                   const isRecommended = tab.forMode && mode?.id === tab.forMode;
@@ -856,6 +898,57 @@ export default function SessionTeachPage() {
                         onClick={() => recordParticipation(p)}
                       />
                     ))}
+                  </div>
+                )}
+
+                {actionTab === 'homework' && (
+                  <div className="space-y-2">
+                    {homeworkLoading ? (
+                      <div className="flex items-center justify-center py-6">
+                        <Loader2 className="h-6 w-6 animate-spin text-blue-400" />
+                      </div>
+                    ) : <>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-white/60 text-xs font-cairo">اضغط على الطالب لتبديل حالة الواجب</span>
+                      <span className="text-blue-400 text-xs font-bold font-cairo">
+                        {Object.values(homeworkStatuses).filter(s => s === 'done').length}/{students.filter(s => s.attendance_status === 'present').length} حل
+                      </span>
+                    </div>
+                    <div className="max-h-[300px] overflow-y-auto space-y-1.5 scrollbar-thin">
+                      {students.filter(s => s.attendance_status === 'present').map(student => {
+                        const isDone = homeworkStatuses[student.id] === 'done';
+                        return (
+                          <button
+                            key={student.id}
+                            onClick={() => toggleHomework(student.id)}
+                            className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-all active:scale-[0.97] ${
+                              isDone
+                                ? 'bg-green-600/20 border border-green-500/30'
+                                : 'bg-white/5 border border-white/10 hover:border-white/20'
+                            }`}
+                          >
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
+                              isDone ? 'bg-green-600 text-white' : 'bg-white/10 text-white/40'
+                            }`}>
+                              {isDone ? '✅' : '❌'}
+                            </div>
+                            <span className={`flex-1 text-start text-sm font-cairo truncate ${
+                              isDone ? 'text-white' : 'text-white/50 line-through'
+                            }`}>
+                              {student.full_name || 'طالب'}
+                            </span>
+                            <span className={`text-xs font-bold font-cairo px-2 py-0.5 rounded-full ${
+                              isDone
+                                ? 'bg-green-500/20 text-green-400'
+                                : 'bg-red-500/20 text-red-400'
+                            }`}>
+                              {isDone ? 'حل' : 'ما حل'}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    </>}
                   </div>
                 )}
 
