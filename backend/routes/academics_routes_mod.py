@@ -374,6 +374,23 @@ async def get_class_students(
     cls = await db.classes.find_one({"id": class_id}, {"_id": 0, "name": 1})
     class_name = cls.get("name") if cls else None
 
+    students_missing_parent = [s["id"] for s in students if not s.get("parent_id") and s.get("parent_phone")]
+    parent_lookup = {}
+    if students_missing_parent:
+        parent_links = await db.parent_student_links.find(
+            {"student_id": {"$in": students_missing_parent}}, {"_id": 0, "student_id": 1, "parent_id": 1}
+        ).to_list(500)
+        for link in parent_links:
+            parent_lookup[link["student_id"]] = link.get("parent_id")
+        if not parent_lookup:
+            parent_users = await db.users.find(
+                {"role": "parent", "student_ids": {"$in": students_missing_parent}}, {"_id": 0, "id": 1, "student_ids": 1}
+            ).to_list(500)
+            for pu in parent_users:
+                for sid in (pu.get("student_ids") or []):
+                    if sid in students_missing_parent:
+                        parent_lookup[sid] = pu["id"]
+
     result = []
     for s in students:
         s["class_name"] = class_name
@@ -381,6 +398,8 @@ async def get_class_students(
             s["full_name"] = s["full_name_ar"]
         if hasattr(s.get("created_at"), "isoformat"):
             s["created_at"] = s["created_at"].isoformat()
+        if not s.get("parent_id") and s["id"] in parent_lookup:
+            s["parent_id"] = parent_lookup[s["id"]]
         result.append(StudentResponse(**s))
 
     return result
@@ -831,9 +850,14 @@ async def create_student_with_wizard(
     
     # Update student with parent info
     if parent_doc:
+        parent_user_doc = await db.users.find_one(
+            {"parent_id": parent_doc.get("id"), "role": "parent"},
+            {"_id": 0, "id": 1}
+        )
         await db.students.update_one(
             {"id": student_id},
             {"$set": {
+                "parent_id": parent_user_doc.get("id") if parent_user_doc else parent_doc.get("id"),
                 "parent_name": parent_doc.get("full_name"),
                 "parent_phone": parent_doc.get("phone"),
             }}

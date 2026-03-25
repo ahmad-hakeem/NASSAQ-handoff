@@ -328,6 +328,7 @@ class StudentResponse(BaseModel):
     grade: Optional[str] = None
     class_id: Optional[str] = None
     school_id: str
+    parent_id: Optional[str] = None
     parent_phone: Optional[str] = None
     parent_email: Optional[str] = None
     parent_name: Optional[str] = None

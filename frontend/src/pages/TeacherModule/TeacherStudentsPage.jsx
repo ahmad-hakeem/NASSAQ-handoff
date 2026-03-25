@@ -12,12 +12,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/ta
 import { Progress } from '../../components/ui/progress';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
+import { Textarea } from '../../components/ui/textarea';
+import { DialogFooter } from '../../components/ui/dialog';
 import {
   Users, Search, Loader2, RefreshCw, Eye, GraduationCap,
   Phone, Mail, ClipboardCheck, FileText, TrendingUp, Star,
   BookOpen, Calendar, ChevronLeft, BarChart3, Brain, Target,
   CheckCircle, AlertTriangle, Sparkles, ArrowUpCircle, ArrowDownCircle,
-  Lightbulb, Activity
+  Lightbulb, Activity, MessageSquare, Send
 } from 'lucide-react';
 import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 
@@ -34,6 +36,11 @@ export default function TeacherStudentsPage() {
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [aiInsights, setAiInsights] = useState(null);
   const [loadingAI, setLoadingAI] = useState(false);
+  const [showMessageDialog, setShowMessageDialog] = useState(false);
+  const [messageTarget, setMessageTarget] = useState(null);
+  const [messageSubject, setMessageSubject] = useState('');
+  const [messageBody, setMessageBody] = useState('');
+  const [sendingMessage, setSendingMessage] = useState(false);
 
   const { nassaqError, nassaqWarning } = useNassaqAlert();
   const teacherId = user?.teacher_id || user?.id;
@@ -128,6 +135,45 @@ export default function TeacherStudentsPage() {
       console.error('Error:', error);
     } finally {
       setLoadingDetails(false);
+    }
+  };
+
+  const openMessageParent = (e, student) => {
+    e.stopPropagation();
+    if (!student.parent_id) {
+      nassaqError(isRTL ? 'لا يوجد ولي أمر مرتبط بهذا الطالب' : 'No parent linked to this student');
+      return;
+    }
+    setMessageTarget(student);
+    setMessageSubject('');
+    setMessageBody('');
+    setShowMessageDialog(true);
+  };
+
+  const handleSendParentMessage = async () => {
+    if (!messageSubject.trim() || !messageBody.trim()) {
+      nassaqError(isRTL ? 'يرجى ملء الموضوع والرسالة' : 'Please fill in subject and message');
+      return;
+    }
+    setSendingMessage(true);
+    try {
+      await api.post('/messages', {
+        sender_id: teacherId,
+        sender_type: 'teacher',
+        recipient_ids: [messageTarget.parent_id],
+        type: 'follow_up',
+        subject: messageSubject.trim(),
+        body: messageBody.trim(),
+        student_id: messageTarget.id,
+        student_name: messageTarget.full_name,
+        class_id: selectedClass
+      });
+      toast.success(isRTL ? 'تم إرسال الرسالة لولي الأمر بنجاح' : 'Message sent to parent successfully');
+      setShowMessageDialog(false);
+    } catch (error) {
+      nassaqError(isRTL ? 'خطأ في إرسال الرسالة' : 'Error sending message');
+    } finally {
+      setSendingMessage(false);
     }
   };
 
@@ -285,12 +331,93 @@ export default function TeacherStudentsPage() {
                       </div>
                       <Progress value={student.average_grade || 0} className="h-2" />
                     </div>
+
+                    {student.parent_id && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full mt-3 text-xs gap-1.5 border-brand-turquoise/30 text-brand-navy hover:bg-brand-turquoise/10 hover:border-brand-turquoise"
+                        onClick={(e) => openMessageParent(e, student)}
+                      >
+                        <MessageSquare className="h-3.5 w-3.5" />
+                        {isRTL ? 'مراسلة ولي الأمر' : 'Message Parent'}
+                      </Button>
+                    )}
                   </CardContent>
                 </Card>
               ))}
             </div>
           )}
         </div>
+
+        {/* Message Parent Dialog */}
+        <Dialog open={showMessageDialog} onOpenChange={setShowMessageDialog}>
+          <DialogContent className="w-[95vw] max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="font-cairo flex items-center gap-2">
+                <MessageSquare className="h-5 w-5 text-brand-turquoise" />
+                {isRTL ? 'مراسلة ولي أمر' : 'Message Parent'}
+              </DialogTitle>
+            </DialogHeader>
+            {messageTarget && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
+                  <Avatar className="h-10 w-10">
+                    <AvatarFallback className="bg-brand-navy text-white">
+                      {messageTarget.full_name?.charAt(0)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <p className="font-medium text-sm">{messageTarget.full_name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {isRTL ? 'ولي الأمر' : 'Parent'}: {messageTarget.parent_name || messageTarget.parent_id}
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium mb-1.5 block">
+                    {isRTL ? 'الموضوع' : 'Subject'}
+                  </label>
+                  <Input
+                    value={messageSubject}
+                    onChange={(e) => setMessageSubject(e.target.value)}
+                    placeholder={isRTL ? 'أدخل موضوع الرسالة...' : 'Enter message subject...'}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium mb-1.5 block">
+                    {isRTL ? 'الرسالة' : 'Message'}
+                  </label>
+                  <Textarea
+                    value={messageBody}
+                    onChange={(e) => setMessageBody(e.target.value)}
+                    placeholder={isRTL ? 'اكتب رسالتك لولي الأمر...' : 'Type your message to the parent...'}
+                    rows={5}
+                  />
+                </div>
+              </div>
+            )}
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => setShowMessageDialog(false)}>
+                {isRTL ? 'إلغاء' : 'Cancel'}
+              </Button>
+              <Button
+                className="bg-brand-turquoise hover:bg-brand-turquoise/90 gap-1.5"
+                onClick={handleSendParentMessage}
+                disabled={sendingMessage}
+              >
+                {sendingMessage ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+                {isRTL ? 'إرسال' : 'Send'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Student Details Dialog */}
         <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
@@ -304,12 +431,23 @@ export default function TeacherStudentsPage() {
                         {selectedStudent.full_name?.charAt(0)}
                       </AvatarFallback>
                     </Avatar>
-                    <div>
+                    <div className="flex-1">
                       <p>{selectedStudent.full_name}</p>
                       <p className="text-sm text-muted-foreground font-normal">
                         {selectedStudent.student_id}
                       </p>
                     </div>
+                    {selectedStudent.parent_id && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-xs gap-1.5 border-brand-turquoise/30 text-brand-navy hover:bg-brand-turquoise/10"
+                        onClick={(e) => { setShowDetailsDialog(false); openMessageParent(e, selectedStudent); }}
+                      >
+                        <MessageSquare className="h-3.5 w-3.5" />
+                        {isRTL ? 'مراسلة ولي الأمر' : 'Message Parent'}
+                      </Button>
+                    )}
                   </>
                 )}
               </DialogTitle>

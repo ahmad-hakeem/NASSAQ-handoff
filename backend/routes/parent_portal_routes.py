@@ -429,7 +429,8 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         messages = await db.messages.find({
             "$or": [
                 {"sender_id": parent_id},
-                {"receiver_id": parent_id}
+                {"receiver_id": parent_id},
+                {"recipient_ids": parent_id}
             ]
         }).sort("created_at", -1).limit(50).to_list(50)
 
@@ -438,11 +439,14 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
                 {
                     "id": m.get("id"),
                     "subject": m.get("subject"),
-                    "content": m.get("content"),
+                    "content": m.get("content") or m.get("body", ""),
                     "sender_id": m.get("sender_id"),
                     "sender_name": m.get("sender_name"),
+                    "sender_type": m.get("sender_type"),
                     "receiver_id": m.get("receiver_id"),
                     "receiver_name": m.get("receiver_name"),
+                    "student_name": m.get("student_name"),
+                    "type": m.get("type"),
                     "is_sent": m.get("sender_id") == parent_id,
                     "read_status": m.get("read_status", False),
                     "created_at": m.get("created_at")
