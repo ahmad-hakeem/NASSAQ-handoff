@@ -18,7 +18,7 @@ import {
   Download, FileSpreadsheet, FileUp, FileDown, Save, Key, UserX,
   Sparkles, X, AlertTriangle, Wrench, ArrowRight, Clock,
   UserCircle, ChevronRight, ExternalLink, Zap, BarChart3,
-  LayoutGrid, List, Heart, Shield, ArrowUpDown, ArrowUp, ArrowDown
+  LayoutGrid, List, Heart, Shield, ArrowUpDown, ArrowUp, ArrowDown, Star
 } from 'lucide-react';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -787,6 +787,7 @@ export default function UsersClassesManagement() {
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState('grid');
   const [sortBy, setSortBy] = useState('name_asc');
+  const [studentSubTab, setStudentSubTab] = useState('all');
 
   const [students, setStudents] = useState([]);
   const [teachers, setTeachers] = useState([]);
@@ -984,6 +985,14 @@ export default function UsersClassesManagement() {
     return applySorting(list, 'student');
   }, [students, searchQuery, activeFilter, studentsNoClass, studentsNoParent, suspendedStudents, applySorting]);
 
+  const giftedStudents = useMemo(() => filteredStudents.filter(s => s.is_gifted), [filteredStudents]);
+  const otherStudents = useMemo(() => filteredStudents.filter(s => !s.is_gifted), [filteredStudents]);
+  const displayedStudents = useMemo(() => {
+    if (studentSubTab === 'gifted') return giftedStudents;
+    if (studentSubTab === 'other') return otherStudents;
+    return filteredStudents;
+  }, [studentSubTab, filteredStudents, giftedStudents, otherStudents]);
+
   const filteredTeachers = useMemo(() => {
     let list = teachers;
     if (activeFilter === 'noSubject') list = teachersNoSubject;
@@ -1169,6 +1178,7 @@ export default function UsersClassesManagement() {
         if (editFormData.phone) updateData.phone = editFormData.phone;
         if (editFormData.class_id) updateData.class_id = editFormData.class_id;
         if (editFormData.gender) updateData.gender = editFormData.gender;
+        if (typeof editFormData.is_gifted === 'boolean') updateData.is_gifted = editFormData.is_gifted;
         if (typeof editFormData.is_active === 'boolean') updateData.is_active = editFormData.is_active;
       } else if (selectedItemType === 'teacher') {
         const name = editFormData.full_name || editFormData.full_name_ar;
@@ -1322,19 +1332,62 @@ export default function UsersClassesManagement() {
   const isSchoolAdmin = user?.role === 'school_admin' || user?.role === 'school_principal' || user?.role === 'platform_admin';
 
   const renderStudentsSection = () => {
+    const subTabs = [
+      { key: 'all', label: isRTL ? 'جميع الطلاب' : 'All Students', icon: Users, count: filteredStudents.length },
+      { key: 'gifted', label: isRTL ? 'الطلاب الموهوبين' : 'Gifted Students', icon: Star, count: giftedStudents.length },
+      { key: 'other', label: isRTL ? 'الطلاب الآخرون' : 'Other Students', icon: GraduationCap, count: otherStudents.length },
+    ];
+
     return (
-      <StudentClassGrid
-        students={filteredStudents}
-        classes={classes}
-        isRTL={isRTL}
-        searchQuery={searchQuery}
-        onView={(s) => handleView(s, 'student')}
-        onEdit={(s) => handleEdit(s, 'student')}
-        onDelete={(s) => handleDelete(s, 'student')}
-        onAction={(s, a) => handleAccountAction(s, a, 'student')}
-        onTransferStudent={handleTransferStudent}
-        canDrag={isSchoolAdmin}
-      />
+      <div className="space-y-4">
+        <div className="flex items-center gap-1.5 p-1 bg-muted/50 rounded-xl w-fit">
+          {subTabs.map(tab => {
+            const Icon = tab.icon;
+            const isActive = studentSubTab === tab.key;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setStudentSubTab(tab.key)}
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-medium transition-all duration-200
+                  ${isActive
+                    ? tab.key === 'gifted'
+                      ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-md shadow-amber-500/20'
+                      : 'bg-white dark:bg-gray-800 text-foreground shadow-md'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-white/50 dark:hover:bg-gray-800/50'}`}
+              >
+                <Icon className={`h-3.5 w-3.5 ${isActive && tab.key === 'gifted' ? 'fill-white' : tab.key === 'gifted' && !isActive ? 'text-amber-500 fill-amber-500' : ''}`} />
+                {tab.label}
+                <Badge variant="secondary" className={`ms-1 h-4.5 text-[10px] px-1.5 rounded-full
+                  ${isActive && tab.key === 'gifted' ? 'bg-white/20 text-white border-0' : isActive ? 'bg-muted' : 'bg-transparent'}`}>
+                  {tab.count}
+                </Badge>
+              </button>
+            );
+          })}
+        </div>
+
+        {studentSubTab === 'gifted' && giftedStudents.length > 0 && (
+          <div className="flex items-center gap-2 p-2.5 px-4 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/40">
+            <Star className="h-4 w-4 text-amber-500 fill-amber-500 shrink-0" />
+            <span className="text-xs text-amber-700 dark:text-amber-300">
+              {isRTL ? `${giftedStudents.length} طالب موهوب مسجّل` : `${giftedStudents.length} gifted student${giftedStudents.length !== 1 ? 's' : ''} enrolled`}
+            </span>
+          </div>
+        )}
+
+        <StudentClassGrid
+          students={displayedStudents}
+          classes={classes}
+          isRTL={isRTL}
+          searchQuery={searchQuery}
+          onView={(s) => handleView(s, 'student')}
+          onEdit={(s) => handleEdit(s, 'student')}
+          onDelete={(s) => handleDelete(s, 'student')}
+          onAction={(s, a) => handleAccountAction(s, a, 'student')}
+          onTransferStudent={handleTransferStudent}
+          canDrag={isSchoolAdmin}
+        />
+      </div>
     );
   };
 
@@ -1929,13 +1982,30 @@ export default function UsersClassesManagement() {
                   </>
                 )}
                 {selectedItemType === 'student' && (
-                  <div className="space-y-2">
-                    <Label>{isRTL ? 'الفصل' : 'Class'}</Label>
-                    <Select value={editFormData.class_id || ''} onValueChange={(v) => setEditFormData({ ...editFormData, class_id: v })}>
-                      <SelectTrigger><SelectValue placeholder={isRTL ? 'اختر فصل' : 'Select class'} /></SelectTrigger>
-                      <SelectContent>{classes.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </div>
+                  <>
+                    <div className="space-y-2">
+                      <Label>{isRTL ? 'الفصل' : 'Class'}</Label>
+                      <Select value={editFormData.class_id || ''} onValueChange={(v) => setEditFormData({ ...editFormData, class_id: v })}>
+                        <SelectTrigger><SelectValue placeholder={isRTL ? 'اختر فصل' : 'Select class'} /></SelectTrigger>
+                        <SelectContent>{classes.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex items-center justify-between p-3 rounded-xl border border-amber-200/60 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-800/40">
+                      <div className="flex items-center gap-2">
+                        <Star className={`h-4 w-4 ${editFormData.is_gifted ? 'text-amber-500 fill-amber-500' : 'text-muted-foreground'}`} />
+                        <Label className="cursor-pointer">{isRTL ? 'طالب موهوب' : 'Gifted Student'}</Label>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={!!editFormData.is_gifted}
+                        onClick={() => setEditFormData({ ...editFormData, is_gifted: !editFormData.is_gifted })}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${editFormData.is_gifted ? 'bg-amber-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+                      >
+                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm ${editFormData.is_gifted ? 'translate-x-6 rtl:-translate-x-6' : 'translate-x-1 rtl:-translate-x-1'}`} />
+                      </button>
+                    </div>
+                  </>
                 )}
                 {selectedItemType === 'teacher' && (
                   <div className="space-y-2"><Label>{isRTL ? 'التخصص' : 'Specialization'}</Label><Input value={editFormData.specialization || ''} onChange={(e) => setEditFormData({ ...editFormData, specialization: e.target.value })} /></div>

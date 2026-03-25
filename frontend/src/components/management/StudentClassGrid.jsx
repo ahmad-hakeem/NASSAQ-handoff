@@ -9,7 +9,7 @@ import {
 import {
   GraduationCap, MoreHorizontal, Eye, Edit, Key, UserX, UserCheck,
   Trash2, Users, ChevronDown, ChevronUp, GripVertical, ArrowRightLeft,
-  BookOpen, Building2, AlertTriangle
+  BookOpen, Building2, AlertTriangle, Star
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -68,11 +68,21 @@ const DraggableStudentChip = ({ student, isRTL, onView, onEdit, onDelete, onActi
       {canDrag && (
         <GripVertical className="h-3.5 w-3.5 text-muted-foreground/30 group-hover:text-muted-foreground/60 shrink-0 transition-colors" />
       )}
-      <div className="w-8 h-8 rounded-full overflow-hidden shrink-0 ring-2 ring-offset-1 ring-brand-navy/10">
+      <div className={`relative w-8 h-8 rounded-full overflow-hidden shrink-0 ring-2 ring-offset-1 ${student.is_gifted ? 'ring-amber-400' : 'ring-brand-navy/10'}`}>
         {isFemale ? FEMALE_AVATAR : MALE_AVATAR}
+        {student.is_gifted && (
+          <div className="absolute -top-0.5 -end-0.5 w-3.5 h-3.5 rounded-full bg-amber-400 flex items-center justify-center shadow-sm">
+            <Star className="h-2 w-2 text-white fill-white" />
+          </div>
+        )}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-xs font-semibold truncate leading-tight">{student.full_name}</p>
+        <div className="flex items-center gap-1">
+          <p className="text-xs font-semibold truncate leading-tight">{student.full_name}</p>
+          {student.is_gifted && (
+            <Star className="h-3 w-3 text-amber-500 fill-amber-500 shrink-0" />
+          )}
+        </div>
         <p className="text-[10px] text-muted-foreground font-mono truncate">{student.student_number || student.id?.slice(0, 8)}</p>
       </div>
       <Badge variant={student.is_active !== false ? 'default' : 'destructive'}

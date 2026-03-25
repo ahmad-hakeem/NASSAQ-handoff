@@ -202,6 +202,7 @@ async def create_student(
         "gender": student_data.gender,
         "parent_phone": student_data.parent_phone,
         "parent_name": student_data.parent_name,
+        "is_gifted": bool(getattr(student_data, 'is_gifted', False)),
         "is_active": True,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()
@@ -460,6 +461,8 @@ async def update_student(
         update_fields["parent_phone"] = student_data.parent_phone
     if student_data.parent_name is not None:
         update_fields["parent_name"] = student_data.parent_name
+    if student_data.is_gifted is not None:
+        update_fields["is_gifted"] = student_data.is_gifted
     if student_data.is_active is not None:
         update_fields["is_active"] = student_data.is_active
     
