@@ -42,6 +42,13 @@ class ErrorBoundary extends React.Component {
               <p className="text-gray-500 dark:text-gray-400 text-sm">
                 نعتذر عن هذا الخطأ. يرجى إعادة تحميل الصفحة أو العودة للرئيسية.
               </p>
+              {process.env.NODE_ENV !== 'production' && this.state.error && (
+                <pre className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg text-xs text-red-700 dark:text-red-300 overflow-auto max-h-40 text-left" dir="ltr">
+                  {this.state.error.toString()}
+                  {'\n'}
+                  {this.state.error.stack}
+                </pre>
+              )}
             </div>
 
             <div className="flex gap-3 justify-center">
