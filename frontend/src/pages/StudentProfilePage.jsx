@@ -287,6 +287,20 @@ export default function StudentProfilePage() {
   const [savingCharacterTrait, setSavingCharacterTrait] = useState(false);
   const [newCharacterTrait, setNewCharacterTrait] = useState('');
 
+  const [activities, setActivities] = useState([]);
+  const [certificates, setCertificates] = useState([]);
+  const [loadingActivities, setLoadingActivities] = useState(false);
+  const [activityModalOpen, setActivityModalOpen] = useState(false);
+  const [editingActivity, setEditingActivity] = useState(null);
+  const [activityForm, setActivityForm] = useState({ name: '', name_en: '', activity_type: 'academic', date: '', role: '', description: '' });
+  const [savingActivity, setSavingActivity] = useState(false);
+  const [certificateModalOpen, setCertificateModalOpen] = useState(false);
+  const [editingCertificate, setEditingCertificate] = useState(null);
+  const [certificateForm, setCertificateForm] = useState({ title: '', title_en: '', date: '', issuing_body: '', description: '' });
+  const [savingCertificate, setSavingCertificate] = useState(false);
+  const [planHistory, setPlanHistory] = useState([]);
+  const [loadingPlanHistory, setLoadingPlanHistory] = useState(false);
+
   const [attendanceHistory, setAttendanceHistory] = useState([]);
   const [loadingAttendanceHistory, setLoadingAttendanceHistory] = useState(false);
   const [gradesDetail, setGradesDetail] = useState(null);
@@ -468,8 +482,12 @@ export default function StudentProfilePage() {
       fetchBehaviourTypes();
     } else if (activeTab === 'talents') {
       fetchGlobalTalents();
+    } else if (activeTab === 'activities') {
+      fetchActivities();
+    } else if (activeTab === 'plans') {
+      fetchPlanHistory();
     }
-  }, [activeTab, student, overviewLoaded, fetchAttendance, fetchAttendanceHistory, fetchRiskData, fetchHomeworkRate, fetchGradesDetail, fetchBehaviourRecords, fetchBehaviourTypes, fetchGlobalTalents, fetchClassDetail]);
+  }, [activeTab, student, overviewLoaded, fetchAttendance, fetchAttendanceHistory, fetchRiskData, fetchHomeworkRate, fetchGradesDetail, fetchBehaviourRecords, fetchBehaviourTypes, fetchGlobalTalents, fetchClassDetail, fetchActivities, fetchPlanHistory]);
 
   const generatePlan = async (planType) => {
     if (!studentId) return;
@@ -549,6 +567,114 @@ export default function StudentProfilePage() {
       setExportingPlan(false);
     }
   };
+
+  const ACTIVITY_TYPE_OPTIONS = [
+    { value: 'academic', ar: 'أكاديمي', en: 'Academic', icon: '📚', color: 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300' },
+    { value: 'sports', ar: 'رياضي', en: 'Sports', icon: '⚽', color: 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300' },
+    { value: 'arts', ar: 'فنون', en: 'Arts', icon: '🎨', color: 'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300' },
+    { value: 'community', ar: 'مجتمعي', en: 'Community', icon: '🤝', color: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300' },
+    { value: 'scientific', ar: 'علمي', en: 'Scientific', icon: '🔬', color: 'bg-cyan-100 text-cyan-700 border-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-300' },
+    { value: 'cultural', ar: 'ثقافي', en: 'Cultural', icon: '📖', color: 'bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-900/30 dark:text-rose-300' },
+    { value: 'other', ar: 'أخرى', en: 'Other', icon: '📌', color: 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-900/30 dark:text-gray-300' },
+  ];
+
+  const fetchActivities = useCallback(async () => {
+    if (!studentId || !tenantId) return;
+    setLoadingActivities(true);
+    try {
+      const [actRes, certRes] = await Promise.all([
+        api.get(`/activities/student/${studentId}?school_id=${tenantId}`, { headers }),
+        api.get(`/activities/certificates/student/${studentId}?school_id=${tenantId}`, { headers }),
+      ]);
+      setActivities(actRes.data || []);
+      setCertificates(certRes.data || []);
+    } catch { }
+    setLoadingActivities(false);
+  }, [studentId, tenantId]);
+
+  const openActivityModal = (act = null) => {
+    setEditingActivity(act);
+    setActivityForm(act ? { name: act.name || '', name_en: act.name_en || '', activity_type: act.activity_type || 'academic', date: act.date || '', role: act.role || '', description: act.description || '' }
+      : { name: '', name_en: '', activity_type: 'academic', date: new Date().toISOString().split('T')[0], role: '', description: '' });
+    setActivityModalOpen(true);
+  };
+
+  const handleSaveActivity = async () => {
+    if (!activityForm.name.trim()) return nassaqError(isRTL ? 'يرجى إدخال اسم النشاط' : 'Please enter activity name');
+    setSavingActivity(true);
+    try {
+      if (editingActivity) {
+        await api.put(`/activities/${editingActivity.id}`, activityForm, { headers });
+      } else {
+        await api.post(`/activities/student/${studentId}?school_id=${tenantId}`, activityForm, { headers });
+      }
+      toast.success(isRTL ? 'تم حفظ النشاط' : 'Activity saved');
+      setActivityModalOpen(false);
+      fetchActivities();
+    } catch { nassaqError(isRTL ? 'فشل في حفظ النشاط' : 'Failed to save activity'); }
+    setSavingActivity(false);
+  };
+
+  const handleDeleteActivity = async (act) => {
+    const ok = await nassaqConfirm(isRTL ? 'هل تريد حذف هذا النشاط؟' : 'Delete this activity?');
+    if (!ok) return;
+    try {
+      await api.delete(`/activities/${act.id}`, { headers });
+      toast.success(isRTL ? 'تم حذف النشاط' : 'Activity deleted');
+      fetchActivities();
+    } catch { nassaqError(isRTL ? 'فشل في حذف النشاط' : 'Failed to delete activity'); }
+  };
+
+  const openCertificateModal = (cert = null) => {
+    setEditingCertificate(cert);
+    setCertificateForm(cert ? { title: cert.title || '', title_en: cert.title_en || '', date: cert.date || '', issuing_body: cert.issuing_body || '', description: cert.description || '' }
+      : { title: '', title_en: '', date: new Date().toISOString().split('T')[0], issuing_body: '', description: '' });
+    setCertificateModalOpen(true);
+  };
+
+  const handleSaveCertificate = async () => {
+    if (!certificateForm.title.trim()) return nassaqError(isRTL ? 'يرجى إدخال عنوان الشهادة' : 'Please enter certificate title');
+    setSavingCertificate(true);
+    try {
+      if (editingCertificate) {
+        await api.put(`/activities/certificates/${editingCertificate.id}`, certificateForm, { headers });
+      } else {
+        await api.post(`/activities/certificates/student/${studentId}?school_id=${tenantId}`, certificateForm, { headers });
+      }
+      toast.success(isRTL ? 'تم حفظ الشهادة' : 'Certificate saved');
+      setCertificateModalOpen(false);
+      fetchActivities();
+    } catch { nassaqError(isRTL ? 'فشل في حفظ الشهادة' : 'Failed to save certificate'); }
+    setSavingCertificate(false);
+  };
+
+  const handleDeleteCertificate = async (cert) => {
+    const ok = await nassaqConfirm(isRTL ? 'هل تريد حذف هذه الشهادة؟' : 'Delete this certificate?');
+    if (!ok) return;
+    try {
+      await api.delete(`/activities/certificates/${cert.id}`, { headers });
+      toast.success(isRTL ? 'تم حذف الشهادة' : 'Certificate deleted');
+      fetchActivities();
+    } catch { nassaqError(isRTL ? 'فشل في حذف الشهادة' : 'Failed to delete certificate'); }
+  };
+
+  const involvementScore = useMemo(() => {
+    const total = activities.length + certificates.length;
+    if (total === 0) return { level: 'low', label: isRTL ? 'منخفض' : 'Low', percent: 5, color: 'bg-gray-400' };
+    if (total <= 2) return { level: 'moderate', label: isRTL ? 'متوسط' : 'Moderate', percent: 35, color: 'bg-yellow-500' };
+    if (total <= 5) return { level: 'active', label: isRTL ? 'نشط' : 'Active', percent: 65, color: 'bg-green-500' };
+    return { level: 'highly_active', label: isRTL ? 'نشط جداً' : 'Highly Active', percent: 90, color: 'bg-emerald-500' };
+  }, [activities.length, certificates.length, isRTL]);
+
+  const fetchPlanHistory = useCallback(async () => {
+    if (!studentId) return;
+    setLoadingPlanHistory(true);
+    try {
+      const res = await api.get(`/hakim/student/${studentId}/plan-history`, { headers });
+      setPlanHistory(res.data || []);
+    } catch { }
+    setLoadingPlanHistory(false);
+  }, [studentId]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -1965,11 +2091,123 @@ export default function StudentProfilePage() {
                 </Card>
               </TabsContent>
 
-              {/* ===== ACTIVITIES TAB (Placeholder) ===== */}
-              <TabsContent value="activities" className="mt-6">
+              {/* ===== ACTIVITIES TAB ===== */}
+              <TabsContent value="activities" className="mt-6 space-y-4">
+                {/* Involvement Score */}
+                <Card className="bg-gradient-to-r from-brand-turquoise/5 to-brand-navy/5 dark:from-brand-turquoise/10 dark:to-brand-navy/10 border-brand-turquoise/20">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-bold text-sm font-cairo flex items-center gap-2">
+                        <Zap className="h-4 w-4 text-brand-turquoise" />
+                        {isRTL ? 'مؤشر المشاركة اللاصفية' : 'Extracurricular Involvement'}
+                      </h3>
+                      <Badge className={`${involvementScore.color} text-white border-0 text-xs font-cairo`}>{involvementScore.label}</Badge>
+                    </div>
+                    <Progress value={involvementScore.percent} className="h-2" />
+                    <p className="text-[11px] text-muted-foreground mt-1.5 font-cairo">
+                      {isRTL ? `${activities.length} أنشطة · ${certificates.length} شهادات/جوائز` : `${activities.length} activities · ${certificates.length} certificates/awards`}
+                    </p>
+                  </CardContent>
+                </Card>
+
+                {/* Activities List */}
                 <Card>
-                  <CardContent className="p-6">
-                    <EmptyState icon={Medal} message={isRTL ? 'قسم الأنشطة والإنجازات قيد التطوير' : 'Activities & Achievements section coming soon'}  />
+                  <CardContent className="p-6 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-bold text-base font-cairo flex items-center gap-2">
+                        <Medal className="h-5 w-5 text-brand-navy" />
+                        {isRTL ? 'الأنشطة' : 'Activities'}
+                      </h3>
+                      {(user?.role === 'school_admin' || user?.role === 'admin' || user?.role === 'super_admin' || isTeacher) && (
+                        <Button size="sm" onClick={() => openActivityModal()} className="bg-brand-navy hover:bg-brand-navy/90 text-white gap-1 font-cairo">
+                          <Plus className="h-4 w-4" /> {isRTL ? 'إضافة نشاط' : 'Add Activity'}
+                        </Button>
+                      )}
+                    </div>
+                    {loadingActivities ? (
+                      <div className="space-y-3">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}</div>
+                    ) : activities.length === 0 ? (
+                      <EmptyState icon={Medal} message={isRTL ? 'لا توجد أنشطة مسجلة بعد' : 'No activities recorded yet'} actionLabel={isRTL ? 'إضافة نشاط' : 'Add Activity'} onAction={() => openActivityModal()} />
+                    ) : (
+                      <div className="space-y-2">
+                        {activities.map(act => {
+                          const typeOpt = ACTIVITY_TYPE_OPTIONS.find(o => o.value === act.activity_type) || ACTIVITY_TYPE_OPTIONS[6];
+                          return (
+                            <div key={act.id} className="flex items-center gap-3 p-3 rounded-xl border hover:shadow-sm transition-all">
+                              <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0 border ${typeOpt.color}`}>
+                                {typeOpt.icon}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-semibold text-sm font-cairo truncate">{act.name}</span>
+                                  <Badge variant="outline" className={`text-[10px] ${typeOpt.color}`}>{isRTL ? typeOpt.ar : typeOpt.en}</Badge>
+                                </div>
+                                <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                                  {act.date && <span className="flex items-center gap-1"><Calendar className="h-3 w-3" />{act.date}</span>}
+                                  {act.role && <span className="flex items-center gap-1"><User className="h-3 w-3" />{act.role}</span>}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openActivityModal(act)}><Edit className="h-3.5 w-3.5" /></Button>
+                                {(user?.role === 'school_admin' || user?.role === 'admin' || user?.role === 'super_admin') && (
+                                  <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-700" onClick={() => handleDeleteActivity(act)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Certificates & Awards */}
+                <Card>
+                  <CardContent className="p-6 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-bold text-base font-cairo flex items-center gap-2">
+                        <Trophy className="h-5 w-5 text-amber-500" />
+                        {isRTL ? 'الشهادات والجوائز' : 'Certificates & Awards'}
+                      </h3>
+                      {(user?.role === 'school_admin' || user?.role === 'admin' || user?.role === 'super_admin' || isTeacher) && (
+                        <Button size="sm" onClick={() => openCertificateModal()} className="bg-amber-500 hover:bg-amber-600 text-white gap-1 font-cairo">
+                          <Plus className="h-4 w-4" /> {isRTL ? 'إضافة شهادة' : 'Add Certificate'}
+                        </Button>
+                      )}
+                    </div>
+                    {loadingActivities ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{[...Array(2)].map((_, i) => <Skeleton key={i} className="h-32 rounded-xl" />)}</div>
+                    ) : certificates.length === 0 ? (
+                      <EmptyState icon={Trophy} message={isRTL ? 'لا توجد شهادات أو جوائز بعد' : 'No certificates or awards yet'} actionLabel={isRTL ? 'إضافة شهادة' : 'Add Certificate'} onAction={() => openCertificateModal()} />
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {certificates.map(cert => (
+                          <Card key={cert.id} className="border-amber-200/50 dark:border-amber-800/30 bg-gradient-to-br from-amber-50/50 to-yellow-50/30 dark:from-amber-950/10 dark:to-yellow-950/10 overflow-hidden">
+                            <CardContent className="p-4">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <div className="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
+                                      <Trophy className="h-4 w-4 text-amber-600" />
+                                    </div>
+                                    <h4 className="font-semibold text-sm font-cairo truncate">{cert.title}</h4>
+                                  </div>
+                                  {cert.issuing_body && <p className="text-xs text-muted-foreground font-cairo mt-1 flex items-center gap-1"><GraduationCap className="h-3 w-3" />{cert.issuing_body}</p>}
+                                  {cert.description && <p className="text-xs text-muted-foreground font-cairo mt-1 line-clamp-2">{cert.description}</p>}
+                                  {cert.date && <p className="text-[11px] text-muted-foreground font-cairo mt-2 flex items-center gap-1"><Calendar className="h-3 w-3" />{cert.date}</p>}
+                                </div>
+                                <div className="flex flex-col gap-1 flex-shrink-0">
+                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openCertificateModal(cert)}><Edit className="h-3.5 w-3.5" /></Button>
+                                  {(user?.role === 'school_admin' || user?.role === 'admin' || user?.role === 'super_admin') && (
+                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-700" onClick={() => handleDeleteCertificate(cert)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                                  )}
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </TabsContent>
@@ -1996,6 +2234,46 @@ export default function StudentProfilePage() {
                     {isRTL ? 'تصدير الخطتين معاً' : 'Export Both Plans'}
                   </Button>
                 )}
+
+                {/* Plan History Log */}
+                <Card>
+                  <CardContent className="p-6 space-y-3">
+                    <h3 className="font-bold text-base font-cairo flex items-center gap-2">
+                      <Clock className="h-5 w-5 text-brand-purple" />
+                      {isRTL ? 'سجل الخطط السابقة' : 'Plan History Log'}
+                    </h3>
+                    {loadingPlanHistory ? (
+                      <div className="space-y-2">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-14 rounded-xl" />)}</div>
+                    ) : planHistory.length === 0 ? (
+                      <EmptyState icon={Clock} message={isRTL ? 'لا يوجد سجل خطط سابقة بعد' : 'No plan history yet'} />
+                    ) : (
+                      <div className="space-y-2">
+                        {planHistory.map((entry, i) => {
+                          const hasRemedial = !!entry.plans?.remedial_plan;
+                          const hasEnrichment = !!entry.plans?.enrichment_plan;
+                          return (
+                            <div key={entry.id || i} className="flex items-center gap-3 p-3 rounded-xl border hover:bg-muted/20 transition-colors">
+                              <div className="w-8 h-8 rounded-lg bg-brand-purple/10 flex items-center justify-center flex-shrink-0">
+                                <FileText className="h-4 w-4 text-brand-purple" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  {hasRemedial && <Badge variant="outline" className="text-[10px] border-rose-200 text-rose-600 dark:border-rose-800 dark:text-rose-400">{isRTL ? 'علاجية' : 'Remedial'}</Badge>}
+                                  {hasEnrichment && <Badge variant="outline" className="text-[10px] border-emerald-200 text-emerald-600 dark:border-emerald-800 dark:text-emerald-400">{isRTL ? 'إثرائية' : 'Enrichment'}</Badge>}
+                                  <Badge variant="outline" className="text-[10px]">{entry.plan_source === 'ai' ? 'AI' : isRTL ? 'افتراضي' : 'Fallback'}</Badge>
+                                </div>
+                                <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                                  <span className="flex items-center gap-1"><Calendar className="h-3 w-3" />{entry.generated_at?.split('T')[0]}</span>
+                                  {entry.generated_by_name && <span className="flex items-center gap-1"><User className="h-3 w-3" />{entry.generated_by_name}</span>}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
               </TabsContent>
 
               {/* ===== LONGITUDINAL RECORD TAB (Placeholder) ===== */}
@@ -2244,6 +2522,95 @@ export default function StudentProfilePage() {
               {exportingPlan ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               {isRTL ? 'تحميل' : 'Download'}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== ACTIVITY MODAL ===== */}
+      <Dialog open={activityModalOpen} onOpenChange={setActivityModalOpen}>
+        <DialogContent className="sm:max-w-md" dir={isRTL ? 'rtl' : 'ltr'}>
+          <DialogHeader>
+            <DialogTitle className="font-cairo flex items-center gap-2">
+              <Medal className="h-5 w-5 text-brand-navy" />
+              {editingActivity ? (isRTL ? 'تعديل النشاط' : 'Edit Activity') : (isRTL ? 'إضافة نشاط' : 'Add Activity')}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label className="font-cairo text-sm">{isRTL ? 'اسم النشاط' : 'Activity Name'} *</Label>
+              <Input value={activityForm.name} onChange={e => setActivityForm(prev => ({ ...prev, name: e.target.value }))} className="mt-1 font-cairo" placeholder={isRTL ? 'مثال: مسابقة الرياضيات' : 'e.g. Math Competition'} />
+            </div>
+            <div>
+              <Label className="font-cairo text-sm">{isRTL ? 'نوع النشاط' : 'Activity Type'}</Label>
+              <Select value={activityForm.activity_type} onValueChange={v => setActivityForm(prev => ({ ...prev, activity_type: v }))}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {ACTIVITY_TYPE_OPTIONS.map(opt => (
+                    <SelectItem key={opt.value} value={opt.value}><span className="font-cairo">{opt.icon} {isRTL ? opt.ar : opt.en}</span></SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="font-cairo text-sm">{isRTL ? 'التاريخ' : 'Date'}</Label>
+                <Input type="date" value={activityForm.date} onChange={e => setActivityForm(prev => ({ ...prev, date: e.target.value }))} className="mt-1" />
+              </div>
+              <div>
+                <Label className="font-cairo text-sm">{isRTL ? 'الدور / المركز' : 'Role / Position'}</Label>
+                <Input value={activityForm.role} onChange={e => setActivityForm(prev => ({ ...prev, role: e.target.value }))} className="mt-1 font-cairo" placeholder={isRTL ? 'مثال: مشارك' : 'e.g. Participant'} />
+              </div>
+            </div>
+            <div>
+              <Label className="font-cairo text-sm">{isRTL ? 'وصف' : 'Description'}</Label>
+              <Textarea value={activityForm.description} onChange={e => setActivityForm(prev => ({ ...prev, description: e.target.value }))} className="mt-1 font-cairo" rows={2} />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setActivityModalOpen(false)} className="font-cairo">{isRTL ? 'إلغاء' : 'Cancel'}</Button>
+              <Button onClick={handleSaveActivity} disabled={savingActivity} className="bg-brand-navy hover:bg-brand-navy/90 text-white font-cairo gap-1.5">
+                {savingActivity ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                {isRTL ? 'حفظ' : 'Save'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== CERTIFICATE MODAL ===== */}
+      <Dialog open={certificateModalOpen} onOpenChange={setCertificateModalOpen}>
+        <DialogContent className="sm:max-w-md" dir={isRTL ? 'rtl' : 'ltr'}>
+          <DialogHeader>
+            <DialogTitle className="font-cairo flex items-center gap-2">
+              <Trophy className="h-5 w-5 text-amber-500" />
+              {editingCertificate ? (isRTL ? 'تعديل الشهادة' : 'Edit Certificate') : (isRTL ? 'إضافة شهادة / جائزة' : 'Add Certificate / Award')}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label className="font-cairo text-sm">{isRTL ? 'العنوان' : 'Title'} *</Label>
+              <Input value={certificateForm.title} onChange={e => setCertificateForm(prev => ({ ...prev, title: e.target.value }))} className="mt-1 font-cairo" placeholder={isRTL ? 'مثال: شهادة تفوق' : 'e.g. Excellence Award'} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="font-cairo text-sm">{isRTL ? 'التاريخ' : 'Date'}</Label>
+                <Input type="date" value={certificateForm.date} onChange={e => setCertificateForm(prev => ({ ...prev, date: e.target.value }))} className="mt-1" />
+              </div>
+              <div>
+                <Label className="font-cairo text-sm">{isRTL ? 'الجهة المانحة' : 'Issuing Body'}</Label>
+                <Input value={certificateForm.issuing_body} onChange={e => setCertificateForm(prev => ({ ...prev, issuing_body: e.target.value }))} className="mt-1 font-cairo" placeholder={isRTL ? 'مثال: وزارة التعليم' : 'e.g. Ministry of Education'} />
+              </div>
+            </div>
+            <div>
+              <Label className="font-cairo text-sm">{isRTL ? 'وصف' : 'Description'}</Label>
+              <Textarea value={certificateForm.description} onChange={e => setCertificateForm(prev => ({ ...prev, description: e.target.value }))} className="mt-1 font-cairo" rows={2} />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setCertificateModalOpen(false)} className="font-cairo">{isRTL ? 'إلغاء' : 'Cancel'}</Button>
+              <Button onClick={handleSaveCertificate} disabled={savingCertificate} className="bg-amber-500 hover:bg-amber-600 text-white font-cairo gap-1.5">
+                {savingCertificate ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                {isRTL ? 'حفظ' : 'Save'}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

@@ -652,6 +652,7 @@ from routes.search_directory_routes_mod import router as search_directory_mod_ro
 from routes.event_workflow_routes_mod import router as event_workflow_mod_router
 from routes.relationship_routes_mod import router as relationship_mod_router
 from routes.consent_privacy_routes_mod import router as consent_privacy_mod_router
+from routes.activities_routes_mod import router as activities_mod_router
 
 api_router.include_router(auth_mod_router)
 api_router.include_router(user_mod_router)
@@ -678,6 +679,7 @@ api_router.include_router(search_directory_mod_router)
 api_router.include_router(event_workflow_mod_router)
 api_router.include_router(relationship_mod_router)
 api_router.include_router(consent_privacy_mod_router)
+api_router.include_router(activities_mod_router)
 
 from routes.principal_management_routes import router as principal_mgmt_router
 api_router.include_router(principal_mgmt_router)

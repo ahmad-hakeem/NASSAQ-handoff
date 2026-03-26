@@ -1258,6 +1258,22 @@ async def hakim_student_ai_plans(
             }
         }
 
+    generated_at = datetime.now(timezone.utc).isoformat()
+    history_doc = {
+        "id": str(uuid.uuid4()),
+        "student_id": student_id,
+        "school_id": school_id,
+        "plans": plans,
+        "plan_source": plan_source,
+        "generated_by": current_user.get("user_id"),
+        "generated_by_name": current_user.get("full_name", ""),
+        "generated_at": generated_at,
+    }
+    try:
+        await db.plan_history.insert_one(history_doc)
+    except Exception as e:
+        print(f"[WARN] Failed to save plan history: {e}")
+
     return {
         "success": True,
         "student_name": student_name,
@@ -1266,8 +1282,24 @@ async def hakim_student_ai_plans(
         "weaknesses": weaknesses,
         "plans": plans,
         "plan_source": plan_source,
-        "generated_at": datetime.now(timezone.utc).isoformat()
+        "generated_at": generated_at
     }
+
+
+@router.get("/hakim/student/{student_id}/plan-history")
+async def get_student_plan_history(
+    student_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    school_id = current_user.get("tenant_id")
+    if not school_id:
+        raise HTTPException(400, "لم يتم تحديد المدرسة")
+    records = await db.plan_history.find(
+        {"student_id": student_id, "school_id": school_id}
+    ).sort("generated_at", -1).to_list(50)
+    for r in records:
+        r.pop("_id", None)
+    return records
 
 
 @router.post("/export/student-plans/{student_id}")
