@@ -1890,4 +1890,662 @@ async def hakim_periodic_scan_by_school(
     return await hakim_engine.run_periodic_scan(school_id, days)
 
 
+@router.get("/student/{student_id}/longitudinal")
+async def get_student_longitudinal(
+    student_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    school_id = current_user.get("tenant_id")
+    student = await db.students.find_one({"id": student_id, "school_id": school_id}, {"_id": 0})
+    if not student:
+        raise HTTPException(404, "الطالب غير موجود")
 
+    attendance_records = await db.attendance.find(
+        {"student_id": student_id, "school_id": school_id}
+    ).to_list(10000)
+
+    behaviour_records = await db.behaviour_records.find(
+        {"student_id": student_id, "school_id": school_id}
+    ).to_list(5000)
+
+    activities = await db.student_activities.find(
+        {"student_id": student_id, "school_id": school_id}
+    ).to_list(500)
+
+    certificates = await db.student_certificates.find(
+        {"student_id": student_id, "school_id": school_id}
+    ).to_list(500)
+
+    grades_records = await db.grades.find(
+        {"student_id": student_id, "school_id": school_id}
+    ).to_list(5000)
+
+    skill_records = await db.student_skills.find(
+        {"student_id": student_id, "school_id": school_id}
+    ).to_list(2000)
+
+    classes = await db.classes.find({"school_id": school_id}, {"_id": 0}).to_list(500)
+    class_map = {c["id"]: c.get("name", "") for c in classes}
+
+    teachers = await db.teachers.find({"school_id": school_id}, {"_id": 0}).to_list(500)
+    teacher_map = {t.get("id", ""): t.get("full_name", "") for t in teachers}
+
+    def extract_year(date_str):
+        if not date_str:
+            return None
+        try:
+            if isinstance(date_str, str):
+                for fmt in ["%Y-%m-%dT%H:%M:%S", "%Y-%m-%d", "%Y-%m-%dT%H:%M:%S.%f"]:
+                    try:
+                        return datetime.strptime(date_str[:19], fmt[:len(date_str[:19])]).year
+                    except ValueError:
+                        continue
+                if len(date_str) >= 4 and date_str[:4].isdigit():
+                    return int(date_str[:4])
+            return None
+        except Exception:
+            return None
+
+    years_set = set()
+    for r in attendance_records:
+        y = extract_year(r.get("date"))
+        if y:
+            years_set.add(y)
+    for r in behaviour_records:
+        y = extract_year(r.get("incident_date") or r.get("created_at"))
+        if y:
+            years_set.add(y)
+    for r in grades_records:
+        y = extract_year(r.get("recorded_at") or r.get("created_at"))
+        if y:
+            years_set.add(y)
+    for r in activities:
+        y = extract_year(r.get("date") or r.get("created_at"))
+        if y:
+            years_set.add(y)
+    for r in certificates:
+        y = extract_year(r.get("date") or r.get("created_at"))
+        if y:
+            years_set.add(y)
+
+    if not years_set:
+        years_set.add(datetime.now().year)
+
+    timeline = []
+    for year in sorted(years_set):
+        yr_attendance = [r for r in attendance_records if extract_year(r.get("date")) == year]
+        present = sum(1 for r in yr_attendance if r.get("status") in ("present", "late"))
+        total_att = len(yr_attendance) if yr_attendance else 1
+        att_rate = round((present / total_att) * 100, 1) if total_att > 0 else 0
+
+        yr_behaviour = [r for r in behaviour_records if extract_year(r.get("incident_date") or r.get("created_at")) == year]
+        pos_count = sum(1 for r in yr_behaviour if r.get("category") == "positive")
+        neg_count = sum(1 for r in yr_behaviour if r.get("category") == "negative")
+
+        yr_grades = [r for r in grades_records if extract_year(r.get("recorded_at") or r.get("created_at")) == year]
+        avg_grade = 0
+        if yr_grades:
+            percentages = [g.get("percentage", 0) for g in yr_grades if g.get("percentage") is not None]
+            if percentages:
+                avg_grade = round(sum(percentages) / len(percentages), 1)
+
+        yr_activities = [a for a in activities if extract_year(a.get("date") or a.get("created_at")) == year]
+        yr_certificates = [c for c in certificates if extract_year(c.get("date") or c.get("created_at")) == year]
+
+        achievements = []
+        for c in yr_certificates:
+            achievements.append(c.get("title", ""))
+        for a in yr_activities:
+            if a.get("name"):
+                achievements.append(a.get("name", ""))
+
+        top_talents = student.get("talents", [])[:3]
+
+        class_name = class_map.get(student.get("class_id", ""), "")
+
+        timeline.append({
+            "year": year,
+            "academic_year": f"{year}-{year+1}",
+            "grade": student.get("grade", ""),
+            "class_name": class_name,
+            "teacher": "",
+            "attendance_rate": att_rate,
+            "top_talents": top_talents,
+            "behaviour_positive": pos_count,
+            "behaviour_negative": neg_count,
+            "achievements": achievements[:5],
+            "academic_average": avg_grade,
+            "activities_count": len(yr_activities),
+            "certificates_count": len(yr_certificates),
+        })
+
+    skill_growth = {}
+    for sr in skill_records:
+        skill_name = sr.get("skill_name", "")
+        y = extract_year(sr.get("recorded_at") or sr.get("created_at"))
+        level = sr.get("level", 0)
+        if skill_name and y:
+            if skill_name not in skill_growth:
+                skill_growth[skill_name] = {}
+            if y not in skill_growth[skill_name] or level > skill_growth[skill_name][y]:
+                skill_growth[skill_name][y] = level
+
+    skill_growth_data = []
+    for skill_name, year_data in skill_growth.items():
+        data_points = [{"year": y, "level": lvl} for y, lvl in sorted(year_data.items())]
+        skill_growth_data.append({"skill": skill_name, "data": data_points})
+
+    total_records = len(attendance_records) + len(grades_records) + len(behaviour_records) + len(activities) + len(certificates)
+    talent_list = student.get("talents", [])
+
+    academic_score = min(100, round(sum(g.get("percentage", 0) for g in grades_records[-20:]) / max(len(grades_records[-20:]), 1)))
+    behaviour_score_val = min(100, max(0, 50 + (sum(1 for b in behaviour_records if b.get("category") == "positive") - sum(1 for b in behaviour_records if b.get("category") == "negative")) * 5))
+    leadership_score = min(100, len([a for a in activities if a.get("role") and "leader" in (a.get("role", "").lower() + a.get("activity_type", "").lower())]) * 20 + len(certificates) * 10)
+    social_score = min(100, len(activities) * 8 + (sum(1 for b in behaviour_records if b.get("category") == "positive") * 3))
+
+    cluster_scores = []
+    stem_signals = sum(1 for t in talent_list if t in ("scientific", "technological", "academically_gifted"))
+    arts_signals = sum(1 for t in talent_list if t in ("artistic", "musical", "literary"))
+    business_signals = sum(1 for t in talent_list if t in ("leadership", "entrepreneurial"))
+
+    if stem_signals > 0 or academic_score > 60:
+        cluster_scores.append({
+            "name_ar": "العلوم والتكنولوجيا (STEM)",
+            "name_en": "Science & Technology (STEM)",
+            "match": min(95, stem_signals * 25 + academic_score // 3),
+            "reason_ar": "بناءً على المواهب العلمية والأداء الأكاديمي",
+            "reason_en": "Based on scientific talents and academic performance",
+        })
+    if arts_signals > 0 or any(a.get("activity_type") in ("arts", "cultural") for a in activities):
+        cluster_scores.append({
+            "name_ar": "الفنون والإبداع",
+            "name_en": "Arts & Creative",
+            "match": min(95, arts_signals * 25 + len([a for a in activities if a.get("activity_type") in ("arts", "cultural")]) * 10),
+            "reason_ar": "بناءً على المواهب الفنية والأنشطة الإبداعية",
+            "reason_en": "Based on artistic talents and creative activities",
+        })
+    if business_signals > 0 or leadership_score > 30:
+        cluster_scores.append({
+            "name_ar": "الأعمال والقيادة",
+            "name_en": "Business & Leadership",
+            "match": min(95, business_signals * 25 + leadership_score // 3),
+            "reason_ar": "بناءً على المهارات القيادية والأنشطة المجتمعية",
+            "reason_en": "Based on leadership skills and community activities",
+        })
+    if len(cluster_scores) < 3:
+        defaults = [
+            {"name_ar": "العلوم والتكنولوجيا (STEM)", "name_en": "Science & Technology (STEM)", "match": max(20, academic_score // 3), "reason_ar": "بناءً على الأداء الأكاديمي", "reason_en": "Based on academic performance"},
+            {"name_ar": "الفنون والإبداع", "name_en": "Arts & Creative", "match": 15, "reason_ar": "لا توجد بيانات كافية بعد", "reason_en": "Insufficient data yet"},
+            {"name_ar": "الأعمال والقيادة", "name_en": "Business & Leadership", "match": 15, "reason_ar": "لا توجد بيانات كافية بعد", "reason_en": "Insufficient data yet"},
+        ]
+        existing_names = {c["name_en"] for c in cluster_scores}
+        for d in defaults:
+            if d["name_en"] not in existing_names and len(cluster_scores) < 3:
+                cluster_scores.append(d)
+
+    cluster_scores.sort(key=lambda c: c["match"], reverse=True)
+
+    return {
+        "timeline": timeline,
+        "skill_growth": skill_growth_data,
+        "readiness": {
+            "academic": academic_score,
+            "social_emotional": social_score,
+            "leadership": leadership_score,
+            "career_alignment": max(c["match"] for c in cluster_scores) if cluster_scores else 0,
+        },
+        "career_clusters": cluster_scores[:3],
+        "total_data_points": total_records,
+    }
+
+
+@router.post("/export/student-profile/{student_id}")
+async def export_student_full_profile_docx(
+    student_id: str,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+):
+    from docx import Document
+    from docx.shared import Inches, Pt, Cm, RGBColor, Emu
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.enum.table import WD_TABLE_ALIGNMENT
+    from docx.oxml.ns import qn, nsdecls
+    from docx.oxml import parse_xml
+
+    body = await request.json()
+    sections = body.get("sections", [])
+
+    school_id = current_user.get("tenant_id")
+    student = await db.students.find_one({"id": student_id, "school_id": school_id}, {"_id": 0})
+    if not student:
+        raise HTTPException(404, "الطالب غير موجود")
+
+    school = await db.schools.find_one({"id": school_id}, {"_id": 0})
+    school_name = school.get("name", "") if school else ""
+    class_name = ""
+    if student.get("class_id"):
+        cls = await db.classes.find_one({"id": student["class_id"], "school_id": school_id}, {"_id": 0})
+        class_name = cls.get("name", "") if cls else ""
+
+    export_date = datetime.now().strftime("%Y-%m-%d")
+    exported_by = current_user.get("full_name", current_user.get("role", ""))
+
+    doc = Document()
+    style = doc.styles['Normal']
+    style.font.name = 'Arial'
+    style.font.size = Pt(11)
+
+    section = doc.sections[0]
+    section.top_margin = Cm(1.5)
+    section.bottom_margin = Cm(1.5)
+    section.left_margin = Cm(2)
+    section.right_margin = Cm(2)
+    sectPr = section._sectPr
+    bidi_elem = parse_xml(f'<w:bidi {nsdecls("w")} />')
+    sectPr.append(bidi_elem)
+
+    def add_header_block():
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = p.add_run("نَسَّق | NASSAQ")
+        run.bold = True
+        run.font.size = Pt(20)
+        run.font.color.rgb = RGBColor(0x1C, 0x3D, 0x74)
+
+        p2 = doc.add_paragraph()
+        p2.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run2 = p2.add_run(school_name)
+        run2.bold = True
+        run2.font.size = Pt(14)
+        run2.font.color.rgb = RGBColor(0x46, 0xC1, 0xBE)
+
+        p3 = doc.add_paragraph()
+        p3.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run3 = p3.add_run("الملف الشامل للطالب — Student Full Profile")
+        run3.font.size = Pt(12)
+        run3.font.color.rgb = RGBColor(0x61, 0x50, 0x90)
+
+        info_table = doc.add_table(rows=1, cols=4)
+        info_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        cells = info_table.rows[0].cells
+        cells[0].text = f"الطالب: {student.get('full_name', '')}"
+        cells[1].text = f"الرقم: {student.get('student_number', '')}"
+        cells[2].text = f"الصف: {student.get('grade', '')} - {class_name}"
+        cells[3].text = f"التاريخ: {export_date}"
+        for cell in cells:
+            for par in cell.paragraphs:
+                par.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                for r in par.runs:
+                    r.font.size = Pt(9)
+        doc.add_paragraph()
+
+    def add_section_title(title):
+        p = doc.add_paragraph()
+        run = p.add_run(f"■ {title}")
+        run.bold = True
+        run.font.size = Pt(14)
+        run.font.color.rgb = RGBColor(0x1C, 0x3D, 0x74)
+        p_fmt = p.paragraph_format
+        p_fmt.space_before = Pt(12)
+        p_fmt.space_after = Pt(6)
+
+    def add_key_value(key, value):
+        p = doc.add_paragraph()
+        kr = p.add_run(f"{key}: ")
+        kr.bold = True
+        kr.font.size = Pt(10)
+        kr.font.color.rgb = RGBColor(0x1C, 0x3D, 0x74)
+        vr = p.add_run(str(value) if value else "—")
+        vr.font.size = Pt(10)
+
+    add_header_block()
+
+    if "personal" in sections:
+        add_section_title("المعلومات الشخصية وولي الأمر — Personal & Guardian Info")
+        add_key_value("الاسم الكامل", student.get("full_name", ""))
+        add_key_value("الاسم بالعربي", student.get("name_ar", ""))
+        add_key_value("الجنس", student.get("gender", ""))
+        add_key_value("تاريخ الميلاد", student.get("date_of_birth", ""))
+        add_key_value("الرقم الوطني", student.get("national_id", ""))
+        add_key_value("البريد الإلكتروني", student.get("email", ""))
+        add_key_value("رقم ولي الأمر", student.get("parent_phone", ""))
+        add_key_value("اسم ولي الأمر", student.get("parent_name", ""))
+        add_key_value("بريد ولي الأمر", student.get("parent_email", ""))
+        doc.add_paragraph()
+
+    if "academic" in sections:
+        add_section_title("الأداء الأكاديمي — Academic Performance")
+        att_records = await db.attendance.find({"student_id": student_id, "school_id": school_id}).to_list(5000)
+        total_att = len(att_records)
+        present_c = sum(1 for r in att_records if r.get("status") in ("present", "late"))
+        att_rate = round((present_c / max(total_att, 1)) * 100, 1)
+        add_key_value("نسبة الحضور", f"{att_rate}%")
+
+        gr = await db.grades.find({"student_id": student_id, "school_id": school_id}).to_list(5000)
+        if gr:
+            percs = [g.get("percentage", 0) for g in gr if g.get("percentage") is not None]
+            avg = round(sum(percs) / max(len(percs), 1), 1) if percs else 0
+            add_key_value("المعدل الأكاديمي", f"{avg}%")
+            add_key_value("عدد التقييمات", len(gr))
+        doc.add_paragraph()
+
+    if "talents" in sections:
+        add_section_title("المواهب والمهارات — Talents & Skills")
+        talents = student.get("talents", [])
+        if talents:
+            add_key_value("المواهب", "، ".join(talents))
+        else:
+            add_key_value("المواهب", "لا توجد مواهب مسجلة")
+        char_traits = student.get("character_traits", [])
+        if char_traits:
+            add_key_value("السمات الشخصية", "، ".join(char_traits))
+        doc.add_paragraph()
+
+    if "behaviour" in sections:
+        add_section_title("السلوك — Behavior Record")
+        beh = await db.behaviour_records.find({"student_id": student_id, "school_id": school_id}).sort("incident_date", -1).to_list(500)
+        pos = sum(1 for b in beh if b.get("category") == "positive")
+        neg = sum(1 for b in beh if b.get("category") == "negative")
+        add_key_value("إجمالي السجلات", len(beh))
+        add_key_value("إيجابي", pos)
+        add_key_value("سلبي", neg)
+        if beh:
+            table = doc.add_table(rows=1, cols=4)
+            table.style = 'Table Grid'
+            hdr = table.rows[0].cells
+            hdr[0].text = "التاريخ"
+            hdr[1].text = "العنوان"
+            hdr[2].text = "التصنيف"
+            hdr[3].text = "النقاط"
+            for h in hdr:
+                for p in h.paragraphs:
+                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    for r in p.runs:
+                        r.bold = True
+                        r.font.size = Pt(9)
+            for b in beh[:30]:
+                row = table.add_row().cells
+                row[0].text = str(b.get("incident_date", ""))[:10]
+                row[1].text = b.get("title", "")
+                row[2].text = b.get("category", "")
+                row[3].text = str(b.get("points", 0))
+                for cell in row:
+                    for p in cell.paragraphs:
+                        for r in p.runs:
+                            r.font.size = Pt(8)
+        doc.add_paragraph()
+
+    if "activities" in sections:
+        add_section_title("الأنشطة والإنجازات — Activities & Achievements")
+        acts = await db.student_activities.find({"student_id": student_id, "school_id": school_id}).to_list(200)
+        certs = await db.student_certificates.find({"student_id": student_id, "school_id": school_id}).to_list(200)
+        add_key_value("عدد الأنشطة", len(acts))
+        add_key_value("عدد الشهادات", len(certs))
+        if acts:
+            for a in acts:
+                p = doc.add_paragraph()
+                run = p.add_run(f"• {a.get('name', '')} ({a.get('activity_type', '')}) — {a.get('date', '')}")
+                run.font.size = Pt(9)
+        if certs:
+            p = doc.add_paragraph()
+            run = p.add_run("الشهادات والجوائز:")
+            run.bold = True
+            run.font.size = Pt(10)
+            for c in certs:
+                p = doc.add_paragraph()
+                run = p.add_run(f"🏆 {c.get('title', '')} — {c.get('issuing_body', '')} ({c.get('date', '')})")
+                run.font.size = Pt(9)
+        doc.add_paragraph()
+
+    if "plans" in sections:
+        add_section_title("الخطط العلاجية والإثرائية — Plans")
+        plans = await db.student_ai_plans.find_one({"student_id": student_id, "school_id": school_id}, {"_id": 0})
+        if plans:
+            rp = plans.get("remedial_plan")
+            ep = plans.get("enrichment_plan")
+            if rp:
+                p = doc.add_paragraph()
+                run = p.add_run("الخطة العلاجية:")
+                run.bold = True
+                run.font.size = Pt(11)
+                run.font.color.rgb = RGBColor(0xE1, 0x4D, 0x2A)
+                if isinstance(rp, dict):
+                    for key in ["title", "objective", "duration"]:
+                        if rp.get(key):
+                            add_key_value(key, rp[key])
+                    steps = rp.get("steps", [])
+                    for i, step in enumerate(steps, 1):
+                        if isinstance(step, dict):
+                            p = doc.add_paragraph()
+                            run = p.add_run(f"  {i}. {step.get('title', '')} — {step.get('description', '')}")
+                            run.font.size = Pt(9)
+            if ep:
+                p = doc.add_paragraph()
+                run = p.add_run("الخطة الإثرائية:")
+                run.bold = True
+                run.font.size = Pt(11)
+                run.font.color.rgb = RGBColor(0x10, 0xB9, 0x81)
+                if isinstance(ep, dict):
+                    for key in ["title", "objective", "duration"]:
+                        if ep.get(key):
+                            add_key_value(key, ep[key])
+                    steps = ep.get("steps", [])
+                    for i, step in enumerate(steps, 1):
+                        if isinstance(step, dict):
+                            p = doc.add_paragraph()
+                            run = p.add_run(f"  {i}. {step.get('title', '')} — {step.get('description', '')}")
+                            run.font.size = Pt(9)
+        else:
+            add_key_value("الخطط", "لا توجد خطط مسجلة")
+        doc.add_paragraph()
+
+    if "longitudinal" in sections:
+        add_section_title("السجل التراكمي — Longitudinal Summary")
+        add_key_value("الصف الحالي", f"{student.get('grade', '')} - {class_name}")
+        add_key_value("حالة الطالب", "نشط" if student.get("is_active") != False else "معلق")
+        talents = student.get("talents", [])
+        add_key_value("المواهب", "، ".join(talents) if talents else "—")
+        doc.add_paragraph()
+
+    footer_p = doc.add_paragraph()
+    footer_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    fr = footer_p.add_run(f"تم التصدير بواسطة: {exported_by} | التاريخ: {export_date} | نَسَّق NASSAQ")
+    fr.font.size = Pt(8)
+    fr.font.color.rgb = RGBColor(0x99, 0x99, 0x99)
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    filename = f"NASSAQ_Profile_{student.get('full_name', 'student')}_{export_date}.docx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
+    )
+
+
+@router.post("/export/student-profile/{student_id}/pdf")
+async def export_student_full_profile_pdf(
+    student_id: str,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+):
+    import arabic_reshaper
+    from bidi.algorithm import get_display
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import cm
+    from reportlab.lib.colors import HexColor, white, black
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+
+    try:
+        pdfmetrics.registerFont(TTFont('DejaVuSans', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'))
+        pdfmetrics.registerFont(TTFont('DejaVuSans-Bold', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'))
+    except Exception:
+        pass
+
+    def ar(text):
+        if not text:
+            return ""
+        try:
+            reshaped = arabic_reshaper.reshape(str(text))
+            return get_display(reshaped)
+        except Exception:
+            return str(text)
+
+    body = await request.json()
+    sections = body.get("sections", [])
+
+    school_id = current_user.get("tenant_id")
+    student = await db.students.find_one({"id": student_id, "school_id": school_id}, {"_id": 0})
+    if not student:
+        raise HTTPException(404, "الطالب غير موجود")
+
+    school = await db.schools.find_one({"id": school_id}, {"_id": 0})
+    school_name = school.get("name", "") if school else ""
+    class_name = ""
+    if student.get("class_id"):
+        cls = await db.classes.find_one({"id": student["class_id"], "school_id": school_id}, {"_id": 0})
+        class_name = cls.get("name", "") if cls else ""
+
+    export_date = datetime.now().strftime("%Y-%m-%d")
+    exported_by = current_user.get("full_name", current_user.get("role", ""))
+
+    NAVY = HexColor("#1C3D74")
+    TURQUOISE = HexColor("#46C1BE")
+    LIGHT_GRAY = HexColor("#F3F4F6")
+
+    style_title = ParagraphStyle('PTitle', fontName='DejaVuSans-Bold', fontSize=18, alignment=TA_CENTER, textColor=white, leading=24)
+    style_subtitle = ParagraphStyle('PSubtitle', fontName='DejaVuSans-Bold', fontSize=12, alignment=TA_CENTER, textColor=TURQUOISE, leading=16)
+    style_section = ParagraphStyle('PSection', fontName='DejaVuSans-Bold', fontSize=13, alignment=TA_RIGHT, textColor=NAVY, leading=18)
+    style_label = ParagraphStyle('PLabel', fontName='DejaVuSans-Bold', fontSize=10, alignment=TA_RIGHT, textColor=NAVY, leading=14)
+    style_value = ParagraphStyle('PValue', fontName='DejaVuSans', fontSize=10, alignment=TA_RIGHT, textColor=HexColor("#333333"), leading=14)
+    style_body = ParagraphStyle('PBody', fontName='DejaVuSans', fontSize=9, alignment=TA_RIGHT, textColor=HexColor("#333333"), leading=13)
+    style_footer = ParagraphStyle('PFooter', fontName='DejaVuSans', fontSize=8, alignment=TA_CENTER, textColor=HexColor("#999999"), leading=10)
+
+    elements = []
+
+    header_data = [[Paragraph(ar("NASSAQ | نَسَّق"), style_title)]]
+    header_table = Table(header_data, colWidths=[17*cm])
+    header_table.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,-1), NAVY), ('TOPPADDING', (0,0), (-1,-1), 14), ('BOTTOMPADDING', (0,0), (-1,-1), 14)]))
+    elements.append(header_table)
+    elements.append(Spacer(1, 6))
+
+    sub_data = [[Paragraph(ar(school_name), style_subtitle)]]
+    sub_table = Table(sub_data, colWidths=[17*cm])
+    sub_table.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,-1), HexColor("#1C3D74CC")), ('TOPPADDING', (0,0), (-1,-1), 6), ('BOTTOMPADDING', (0,0), (-1,-1), 6)]))
+    elements.append(sub_table)
+    elements.append(Spacer(1, 10))
+
+    info_text = f"{ar(student.get('full_name', ''))} | {ar(student.get('grade', ''))} - {ar(class_name)} | {export_date}"
+    elements.append(Paragraph(info_text, ParagraphStyle('Info', fontName='DejaVuSans', fontSize=10, alignment=TA_CENTER, textColor=HexColor("#555555"), leading=14)))
+    elements.append(Spacer(1, 10))
+    elements.append(HRFlowable(width="100%", thickness=1, color=TURQUOISE))
+    elements.append(Spacer(1, 10))
+
+    def pdf_section(title):
+        elements.append(Spacer(1, 8))
+        elements.append(Paragraph(ar(f"■ {title}"), style_section))
+        elements.append(HRFlowable(width="100%", thickness=0.5, color=LIGHT_GRAY))
+        elements.append(Spacer(1, 4))
+
+    def pdf_kv(key, value):
+        elements.append(Paragraph(f"{ar(str(value) if value else '—')} :{ar(key)}", style_value))
+
+    if "personal" in sections:
+        pdf_section("المعلومات الشخصية وولي الأمر")
+        pdf_kv("الاسم الكامل", student.get("full_name", ""))
+        pdf_kv("الاسم بالعربي", student.get("name_ar", ""))
+        pdf_kv("الجنس", student.get("gender", ""))
+        pdf_kv("تاريخ الميلاد", student.get("date_of_birth", ""))
+        pdf_kv("رقم ولي الأمر", student.get("parent_phone", ""))
+        pdf_kv("بريد ولي الأمر", student.get("parent_email", ""))
+
+    if "academic" in sections:
+        pdf_section("الأداء الأكاديمي")
+        att_records = await db.attendance.find({"student_id": student_id, "school_id": school_id}).to_list(5000)
+        total_att = len(att_records)
+        present_c = sum(1 for r in att_records if r.get("status") in ("present", "late"))
+        att_rate = round((present_c / max(total_att, 1)) * 100, 1)
+        pdf_kv("نسبة الحضور", f"{att_rate}%")
+        gr = await db.grades.find({"student_id": student_id, "school_id": school_id}).to_list(5000)
+        if gr:
+            percs = [g.get("percentage", 0) for g in gr if g.get("percentage") is not None]
+            avg = round(sum(percs) / max(len(percs), 1), 1) if percs else 0
+            pdf_kv("المعدل الأكاديمي", f"{avg}%")
+
+    if "talents" in sections:
+        pdf_section("المواهب والمهارات")
+        talents = student.get("talents", [])
+        pdf_kv("المواهب", "، ".join(talents) if talents else "لا توجد")
+        char_traits = student.get("character_traits", [])
+        if char_traits:
+            pdf_kv("السمات الشخصية", "، ".join(char_traits))
+
+    if "behaviour" in sections:
+        pdf_section("السلوك")
+        beh = await db.behaviour_records.find({"student_id": student_id, "school_id": school_id}).to_list(500)
+        pos = sum(1 for b in beh if b.get("category") == "positive")
+        neg = sum(1 for b in beh if b.get("category") == "negative")
+        pdf_kv("إجمالي السجلات", len(beh))
+        pdf_kv("إيجابي", pos)
+        pdf_kv("سلبي", neg)
+
+    if "activities" in sections:
+        pdf_section("الأنشطة والإنجازات")
+        acts = await db.student_activities.find({"student_id": student_id, "school_id": school_id}).to_list(200)
+        certs = await db.student_certificates.find({"student_id": student_id, "school_id": school_id}).to_list(200)
+        pdf_kv("عدد الأنشطة", len(acts))
+        pdf_kv("عدد الشهادات", len(certs))
+        for a in acts:
+            elements.append(Paragraph(ar(f"• {a.get('name', '')} ({a.get('activity_type', '')})"), style_body))
+        for c in certs:
+            elements.append(Paragraph(ar(f"🏆 {c.get('title', '')} — {c.get('issuing_body', '')}"), style_body))
+
+    if "plans" in sections:
+        pdf_section("الخطط العلاجية والإثرائية")
+        plans = await db.student_ai_plans.find_one({"student_id": student_id, "school_id": school_id}, {"_id": 0})
+        if plans:
+            rp = plans.get("remedial_plan")
+            ep = plans.get("enrichment_plan")
+            if rp and isinstance(rp, dict):
+                elements.append(Paragraph(ar("الخطة العلاجية:"), style_label))
+                if rp.get("title"):
+                    pdf_kv("العنوان", rp["title"])
+                if rp.get("objective"):
+                    pdf_kv("الهدف", rp["objective"])
+            if ep and isinstance(ep, dict):
+                elements.append(Paragraph(ar("الخطة الإثرائية:"), style_label))
+                if ep.get("title"):
+                    pdf_kv("العنوان", ep["title"])
+                if ep.get("objective"):
+                    pdf_kv("الهدف", ep["objective"])
+        else:
+            pdf_kv("الخطط", "لا توجد خطط مسجلة")
+
+    if "longitudinal" in sections:
+        pdf_section("السجل التراكمي")
+        pdf_kv("الصف الحالي", f"{student.get('grade', '')} - {class_name}")
+        pdf_kv("حالة الطالب", "نشط" if student.get("is_active") != False else "معلق")
+        talents = student.get("talents", [])
+        pdf_kv("المواهب", "، ".join(talents) if talents else "—")
+
+    elements.append(Spacer(1, 20))
+    elements.append(HRFlowable(width="100%", thickness=0.5, color=LIGHT_GRAY))
+    elements.append(Spacer(1, 4))
+    elements.append(Paragraph(f"{ar(f'تم التصدير بواسطة: {exported_by}')} | {export_date} | NASSAQ", style_footer))
+
+    buf = io.BytesIO()
+    pdf_doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=1.5*cm, bottomMargin=1.5*cm, leftMargin=2*cm, rightMargin=2*cm)
+    pdf_doc.build(elements)
+    buf.seek(0)
+
+    filename = f"NASSAQ_Profile_{student.get('full_name', 'student')}_{export_date}.pdf"
+    return StreamingResponse(
+        buf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
+    )

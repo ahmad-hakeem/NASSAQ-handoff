@@ -765,9 +765,10 @@ Sub-pages (accessible from within classes/sessions, not top-level sidebar):
   - `academic`: Attendance details (4-stat grid), grades with progress bar, AI risk analysis with breakdown & factors
   - `talents`: Current talents with remove buttons, predefined talent buttons, school talents, custom talent input
   - `behaviour`: Summary stats (4 cards), behavior log with color-coded records, add/edit/delete actions
-  - `activities`: Placeholder — coming soon
-  - `plans`: Hakim AI plans (remedial + enrichment) with generate, export, redo
-  - `longitudinal`: Placeholder — coming soon
+  - `activities`: Involvement score bar, activities list with type badges (7 types: academic/sports/arts/community/scientific/cultural/other), certificates/awards visual cards, add/edit/delete modals (admin+teacher can add/edit, admin-only can delete)
+  - `plans`: Hakim AI plans (remedial + enrichment) with generate, export, redo; plan history log showing previous generations
+  - `longitudinal`: Full Longitudinal Record tab with year-by-year vertical timeline, skill growth line chart (Recharts), 4 readiness indicators (academic, social-emotional, leadership, career alignment), 3 career cluster cards with match percentages, vision statement banner
+- **Full Profile Export**: "Export Full Profile" button in hero section opens modal with 7 section checkboxes (personal, academic, talents, behaviour, activities, plans, longitudinal) + PDF/Word format selection. Backend endpoints: `POST /hakim/export/student-profile/{id}` (DOCX) and `/pdf` (PDF)
 - **Edit Profile Modal** (replaces old Info/Guardian tabs): Personal info fields + guardian info fields in a single dialog
 - **Skeleton Loaders**: All data sections show skeleton placeholders while loading
 - **EmptyState Component**: Consistent empty state with icon, message, and optional action button
@@ -776,8 +777,11 @@ Sub-pages (accessible from within classes/sessions, not top-level sidebar):
 - **Role-based**: `isTeacher` hides account actions dropdown and behavior delete buttons
 - **Breadcrumbs**: User Management > Class Name > Student Name in sticky header
 - **Back button**: Returns to fromPath > resolvedClassId class page > users-management fallback
-- **Export modal**: Plan type selection (Remedial/Enrichment/Both), format (PDF/Word)
+- **Export Plan modal**: Plan type selection (Remedial/Enrichment/Both), format (PDF/Word)
+- **Export Full Profile modal**: Section checkboxes (personal/academic/talents/behaviour/activities/plans/longitudinal), format (PDF/Word)
 - **Tab values**: `overview` (default), `academic`, `talents`, `behaviour`, `activities`, `plans`, `longitudinal`
+- **Backend endpoints**: Activities CRUD in `activities_routes_mod.py`, longitudinal + profile export in `ai_routes_mod.py`
+- **Tenant scoping**: All backend queries enforce `school_id` from `current_user.tenant_id` for multi-tenant isolation
 
 ## School Admin Class Detail Page
 - **Route**: `/admin/classes/:classId` and `/principal/classes/:classId`

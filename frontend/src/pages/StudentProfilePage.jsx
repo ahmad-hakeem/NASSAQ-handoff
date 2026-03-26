@@ -22,7 +22,7 @@ import {
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip as RechartsTooltip, Cell, RadarChart, PolarGrid,
-  PolarAngleAxis, PolarRadiusAxis, Radar
+  PolarAngleAxis, PolarRadiusAxis, Radar, LineChart, Line, Legend
 } from 'recharts';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
@@ -36,7 +36,7 @@ import {
   AlertTriangle, Zap, Heart, Plus, XCircle,
   ThumbsUp, ThumbsDown, MessageSquare, Trophy,
   MoreVertical, Eye, BarChart3, ScrollText, Send,
-  Medal, ClipboardList
+  Medal, ClipboardList, TrendingUp, Briefcase, Award, Crown, Layers, CheckSquare
 } from 'lucide-react';
 
 const TALENT_OPTIONS = [
@@ -301,6 +301,14 @@ export default function StudentProfilePage() {
   const [planHistory, setPlanHistory] = useState([]);
   const [loadingPlanHistory, setLoadingPlanHistory] = useState(false);
 
+  const [longitudinalData, setLongitudinalData] = useState(null);
+  const [loadingLongitudinal, setLoadingLongitudinal] = useState(false);
+
+  const [profileExportModalOpen, setProfileExportModalOpen] = useState(false);
+  const [profileExportSections, setProfileExportSections] = useState(['personal', 'academic', 'talents', 'behaviour', 'activities', 'plans', 'longitudinal']);
+  const [profileExportFormat, setProfileExportFormat] = useState('pdf');
+  const [exportingProfile, setExportingProfile] = useState(false);
+
   const [attendanceHistory, setAttendanceHistory] = useState([]);
   const [loadingAttendanceHistory, setLoadingAttendanceHistory] = useState(false);
   const [gradesDetail, setGradesDetail] = useState(null);
@@ -486,8 +494,10 @@ export default function StudentProfilePage() {
       fetchActivities();
     } else if (activeTab === 'plans') {
       fetchPlanHistory();
+    } else if (activeTab === 'longitudinal') {
+      fetchLongitudinal();
     }
-  }, [activeTab, student, overviewLoaded, fetchAttendance, fetchAttendanceHistory, fetchRiskData, fetchHomeworkRate, fetchGradesDetail, fetchBehaviourRecords, fetchBehaviourTypes, fetchGlobalTalents, fetchClassDetail, fetchActivities, fetchPlanHistory]);
+  }, [activeTab, student, overviewLoaded, fetchAttendance, fetchAttendanceHistory, fetchRiskData, fetchHomeworkRate, fetchGradesDetail, fetchBehaviourRecords, fetchBehaviourTypes, fetchGlobalTalents, fetchClassDetail, fetchActivities, fetchPlanHistory, fetchLongitudinal]);
 
   const generatePlan = async (planType) => {
     if (!studentId) return;
@@ -591,6 +601,56 @@ export default function StudentProfilePage() {
     } catch { }
     setLoadingActivities(false);
   }, [studentId, tenantId]);
+
+  const fetchLongitudinal = useCallback(async () => {
+    if (!studentId) return;
+    setLoadingLongitudinal(true);
+    try {
+      const res = await api.get(`/hakim/student/${studentId}/longitudinal`, { headers });
+      setLongitudinalData(res.data);
+    } catch {
+      setLongitudinalData(null);
+    }
+    setLoadingLongitudinal(false);
+  }, [studentId]);
+
+  const handleExportFullProfile = async () => {
+    if (!studentId || profileExportSections.length === 0) return;
+    setExportingProfile(true);
+    try {
+      const isPdf = profileExportFormat === 'pdf';
+      const url = isPdf ? `/hakim/export/student-profile/${studentId}/pdf` : `/hakim/export/student-profile/${studentId}`;
+      const response = await fetch(`${api.defaults.baseURL}${url}`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sections: profileExportSections }),
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Export failed');
+      }
+      const blob = await response.blob();
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      const ext = isPdf ? 'pdf' : 'docx';
+      link.download = `NASSAQ_Profile_${student?.full_name || 'student'}.${ext}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(link.href);
+      toast.success(isRTL ? 'تم تصدير الملف الشامل بنجاح' : 'Full profile exported successfully');
+      setProfileExportModalOpen(false);
+    } catch (err) {
+      nassaqError(isRTL ? `فشل التصدير: ${err.message}` : `Export failed: ${err.message}`);
+    }
+    setExportingProfile(false);
+  };
+
+  const toggleProfileSection = (section) => {
+    setProfileExportSections(prev =>
+      prev.includes(section) ? prev.filter(s => s !== section) : [...prev, section]
+    );
+  };
 
   const openActivityModal = (act = null) => {
     setEditingActivity(act);
@@ -1234,6 +1294,9 @@ export default function StudentProfilePage() {
                   <div className="flex items-center gap-2 mt-4 flex-wrap">
                     <Button size="sm" variant="secondary" className="gap-1.5 text-xs bg-white/10 hover:bg-white/20 text-white border-white/20 backdrop-blur-sm" onClick={() => { setFormData({ ...student }); setEditProfileOpen(true); }}>
                       <Edit className="h-3.5 w-3.5" /> {isRTL ? 'تعديل الملف' : 'Edit Profile'}
+                    </Button>
+                    <Button size="sm" variant="secondary" className="gap-1.5 text-xs bg-white/10 hover:bg-white/20 text-white border-white/20 backdrop-blur-sm" onClick={() => setProfileExportModalOpen(true)}>
+                      <Download className="h-3.5 w-3.5" /> {isRTL ? 'تصدير الملف الشامل' : 'Export Full Profile'}
                     </Button>
                     {(remedialPlan || enrichmentPlan) && (
                       <Button size="sm" variant="secondary" className="gap-1.5 text-xs bg-white/10 hover:bg-white/20 text-white border-white/20 backdrop-blur-sm" onClick={() => openExportModal('both')}>
@@ -2276,13 +2339,211 @@ export default function StudentProfilePage() {
                 </Card>
               </TabsContent>
 
-              {/* ===== LONGITUDINAL RECORD TAB (Placeholder) ===== */}
-              <TabsContent value="longitudinal" className="mt-6">
-                <Card>
-                  <CardContent className="p-6">
-                    <EmptyState icon={ScrollText} message={isRTL ? 'السجل التراكمي قيد التطوير' : 'Longitudinal Record section coming soon'} />
-                  </CardContent>
-                </Card>
+              {/* ===== LONGITUDINAL RECORD TAB ===== */}
+              <TabsContent value="longitudinal" className="mt-6 space-y-6">
+                {loadingLongitudinal ? (
+                  <div className="space-y-4">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-32 rounded-xl" />)}</div>
+                ) : !longitudinalData ? (
+                  <Card><CardContent className="p-6"><EmptyState icon={ScrollText} message={isRTL ? 'لا توجد بيانات تراكمية' : 'No longitudinal data available'} /></CardContent></Card>
+                ) : (
+                  <>
+                    {/* Student Journey Timeline */}
+                    <Card className="border-0 shadow-md dark:bg-gray-900/50">
+                      <CardContent className="p-6">
+                        <h3 className="font-bold text-lg font-cairo flex items-center gap-2 mb-6">
+                          <Layers className="h-5 w-5 text-brand-navy" />
+                          {isRTL ? 'المسيرة الدراسية' : 'Student Journey Timeline'}
+                        </h3>
+                        <div className="relative">
+                          <div className={`absolute ${isRTL ? 'right-4' : 'left-4'} top-0 bottom-0 w-0.5 bg-gradient-to-b from-brand-navy via-brand-turquoise to-brand-purple`} />
+                          <div className="space-y-6">
+                            {(longitudinalData.timeline || []).map((entry, idx) => (
+                              <div key={entry.year} className={`relative ${isRTL ? 'pr-12' : 'pl-12'}`}>
+                                <div className={`absolute ${isRTL ? 'right-1' : 'left-1'} top-2 w-7 h-7 rounded-full bg-gradient-to-br from-brand-navy to-brand-turquoise flex items-center justify-center text-white text-xs font-bold shadow-lg z-10`}>
+                                  {idx + 1}
+                                </div>
+                                <Card className={`border transition-all hover:shadow-md ${idx === (longitudinalData.timeline || []).length - 1 ? 'ring-2 ring-brand-turquoise/40' : ''}`}>
+                                  <CardContent className="p-4">
+                                    <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                                      <div className="flex items-center gap-2">
+                                        <Badge className="bg-brand-navy/10 text-brand-navy border-brand-navy/20 font-bold">{entry.academic_year}</Badge>
+                                        {entry.grade && <Badge variant="outline" className="font-cairo text-xs">{entry.grade}</Badge>}
+                                        {entry.class_name && <span className="text-xs text-muted-foreground font-cairo">{entry.class_name}</span>}
+                                      </div>
+                                      {idx === (longitudinalData.timeline || []).length - 1 && (
+                                        <Badge className="bg-brand-turquoise/10 text-brand-turquoise border-brand-turquoise/20 text-xs">{isRTL ? 'الحالي' : 'Current'}</Badge>
+                                      )}
+                                    </div>
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                      <div className="text-center p-2 rounded-lg bg-blue-50 dark:bg-blue-950/20">
+                                        <div className="text-lg font-bold text-blue-600">{entry.attendance_rate}%</div>
+                                        <div className="text-[10px] text-muted-foreground font-cairo">{isRTL ? 'الحضور' : 'Attendance'}</div>
+                                      </div>
+                                      <div className="text-center p-2 rounded-lg bg-purple-50 dark:bg-purple-950/20">
+                                        <div className="text-lg font-bold text-purple-600">{entry.academic_average}%</div>
+                                        <div className="text-[10px] text-muted-foreground font-cairo">{isRTL ? 'المعدل' : 'Average'}</div>
+                                      </div>
+                                      <div className="text-center p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/20">
+                                        <div className="text-lg font-bold text-emerald-600">{entry.behaviour_positive}</div>
+                                        <div className="text-[10px] text-muted-foreground font-cairo">{isRTL ? 'سلوك إيجابي' : 'Positive'}</div>
+                                      </div>
+                                      <div className="text-center p-2 rounded-lg bg-rose-50 dark:bg-rose-950/20">
+                                        <div className="text-lg font-bold text-rose-600">{entry.behaviour_negative}</div>
+                                        <div className="text-[10px] text-muted-foreground font-cairo">{isRTL ? 'سلوك سلبي' : 'Negative'}</div>
+                                      </div>
+                                    </div>
+                                    {entry.top_talents?.length > 0 && (
+                                      <div className="mt-3 flex items-center gap-1.5 flex-wrap">
+                                        <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+                                        {entry.top_talents.map((t, ti) => {
+                                          const opt = TALENT_OPTIONS.find(o => o.value === t);
+                                          return <Badge key={ti} variant="outline" className={`text-[10px] px-1.5 py-0 ${opt?.color || ''}`}>{isRTL ? (opt?.ar || t) : (opt?.en || t)}</Badge>;
+                                        })}
+                                      </div>
+                                    )}
+                                    {entry.achievements?.length > 0 && (
+                                      <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+                                        <Trophy className="h-3.5 w-3.5 text-amber-500" />
+                                        {entry.achievements.slice(0, 3).map((a, ai) => (
+                                          <span key={ai} className="text-[11px] text-muted-foreground font-cairo bg-amber-50 dark:bg-amber-950/20 px-2 py-0.5 rounded-full">{a}</span>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </CardContent>
+                                </Card>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Skill Growth Tracker */}
+                    {longitudinalData.skill_growth?.length > 0 && (
+                      <Card className="border-0 shadow-md dark:bg-gray-900/50">
+                        <CardContent className="p-6">
+                          <h3 className="font-bold text-lg font-cairo flex items-center gap-2 mb-4">
+                            <TrendingUp className="h-5 w-5 text-brand-turquoise" />
+                            {isRTL ? 'تطور المهارات' : 'Skill Growth Tracker'}
+                          </h3>
+                          <div className="h-72">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <LineChart data={(() => {
+                                const allYears = new Set();
+                                longitudinalData.skill_growth.forEach(s => s.data.forEach(d => allYears.add(d.year)));
+                                const years = [...allYears].sort();
+                                return years.map(year => {
+                                  const point = { year };
+                                  longitudinalData.skill_growth.forEach(s => {
+                                    const found = s.data.find(d => d.year === year);
+                                    point[s.skill] = found ? found.level : null;
+                                  });
+                                  return point;
+                                });
+                              })()}>
+                                <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                                <XAxis dataKey="year" />
+                                <YAxis domain={[0, 5]} />
+                                <RechartsTooltip />
+                                <Legend />
+                                {longitudinalData.skill_growth.map((s, i) => {
+                                  const colors = ['#1C3D74', '#46C1BE', '#615090', '#E14D2A', '#10B981', '#F59E0B', '#EC4899'];
+                                  return <Line key={s.skill} type="monotone" dataKey={s.skill} stroke={colors[i % colors.length]} strokeWidth={2} dot={{ r: 4 }} connectNulls />;
+                                })}
+                              </LineChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {/* Readiness Indicators */}
+                    <Card className="border-0 shadow-md dark:bg-gray-900/50">
+                      <CardContent className="p-6">
+                        <h3 className="font-bold text-lg font-cairo flex items-center gap-2 mb-2">
+                          <Target className="h-5 w-5 text-brand-purple" />
+                          {isRTL ? 'مؤشرات الاستعداد' : 'Readiness Indicators'}
+                        </h3>
+                        <p className="text-xs text-muted-foreground font-cairo mb-5 bg-amber-50 dark:bg-amber-950/20 p-2 rounded-lg border border-amber-200 dark:border-amber-800">
+                          {isRTL
+                            ? 'هذه المؤشرات مبنية على البيانات التراكمية وستكون مدعومة بالذكاء الاصطناعي في إصدار مستقبلي من نَسَّق.'
+                            : 'These indicators are based on cumulative data and will be AI-powered in a future version of NASSAQ.'}
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          {[
+                            { key: 'academic', icon: GraduationCap, label_ar: 'الاستعداد الأكاديمي', label_en: 'Academic Readiness', emoji: '🎓', color: 'blue' },
+                            { key: 'social_emotional', icon: Heart, label_ar: 'الاستعداد الاجتماعي-العاطفي', label_en: 'Social-Emotional Readiness', emoji: '🤝', color: 'emerald' },
+                            { key: 'leadership', icon: Crown, label_ar: 'إمكانات القيادة', label_en: 'Leadership Potential', emoji: '👑', color: 'amber' },
+                            { key: 'career_alignment', icon: Briefcase, label_ar: 'التوافق المهني', label_en: 'Career Alignment', emoji: '💼', color: 'purple' },
+                          ].map(indicator => {
+                            const score = longitudinalData.readiness?.[indicator.key] || 0;
+                            const colorMap = { blue: 'bg-blue-500', emerald: 'bg-emerald-500', amber: 'bg-amber-500', purple: 'bg-purple-500' };
+                            const bgMap = { blue: 'bg-blue-50 dark:bg-blue-950/20', emerald: 'bg-emerald-50 dark:bg-emerald-950/20', amber: 'bg-amber-50 dark:bg-amber-950/20', purple: 'bg-purple-50 dark:bg-purple-950/20' };
+                            return (
+                              <div key={indicator.key} className={`p-4 rounded-xl border ${bgMap[indicator.color]}`}>
+                                <div className="flex items-center gap-2 mb-3">
+                                  <span className="text-xl">{indicator.emoji}</span>
+                                  <span className="font-semibold text-sm font-cairo">{isRTL ? indicator.label_ar : indicator.label_en}</span>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  <div className="flex-1">
+                                    <Progress value={score} className="h-3" />
+                                  </div>
+                                  <span className="font-bold text-lg min-w-[3rem] text-end">{score}%</span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Career Clusters */}
+                    <Card className="border-0 shadow-md dark:bg-gray-900/50">
+                      <CardContent className="p-6">
+                        <h3 className="font-bold text-lg font-cairo flex items-center gap-2 mb-2">
+                          <Briefcase className="h-5 w-5 text-brand-navy" />
+                          {isRTL ? 'المجالات المهنية المقترحة' : 'Career Clusters'}
+                        </h3>
+                        <p className="text-xs text-muted-foreground font-cairo mb-5 bg-blue-50 dark:bg-blue-950/20 p-2 rounded-lg border border-blue-200 dark:border-blue-800">
+                          {isRTL ? 'مؤشرات مبكرة للميول المهنية — تتحسن مع تراكم البيانات' : 'Early career affinity indicators — data builds over time'}
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                          {(longitudinalData.career_clusters || []).map((cluster, idx) => {
+                            const clusterColors = ['from-blue-500 to-cyan-500', 'from-purple-500 to-pink-500', 'from-amber-500 to-orange-500'];
+                            const clusterBgs = ['bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800', 'bg-purple-50 dark:bg-purple-950/20 border-purple-200 dark:border-purple-800', 'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800'];
+                            return (
+                              <div key={idx} className={`p-4 rounded-xl border ${clusterBgs[idx % 3]} relative overflow-hidden`}>
+                                <div className={`absolute top-0 ${isRTL ? 'right-0' : 'left-0'} w-1 h-full bg-gradient-to-b ${clusterColors[idx % 3]}`} />
+                                <div className="flex items-center justify-between mb-2">
+                                  <h4 className="font-bold text-sm font-cairo">{isRTL ? cluster.name_ar : cluster.name_en}</h4>
+                                  <Badge className={`bg-gradient-to-r ${clusterColors[idx % 3]} text-white border-0 text-xs`}>{cluster.match}%</Badge>
+                                </div>
+                                <Progress value={cluster.match} className="h-2 mb-2" />
+                                <p className="text-[11px] text-muted-foreground font-cairo leading-relaxed">
+                                  {isRTL ? cluster.reason_ar : cluster.reason_en}
+                                </p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Vision Statement Banner */}
+                    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-brand-navy via-brand-purple to-brand-navy p-6 text-center">
+                      <div className="absolute inset-0 nassaq-pattern opacity-5" />
+                      <div className="relative z-10">
+                        <Sparkles className="h-8 w-8 text-brand-turquoise mx-auto mb-3" />
+                        <p className="text-white/90 font-cairo text-sm leading-relaxed max-w-2xl mx-auto">
+                          {isRTL
+                            ? 'كل نقطة بيانات يتم تسجيلها اليوم تبني مستقبل هذا الطالب. السجل التراكمي في نَسَّق سيدعم توصيات مهنية مدعومة بالذكاء الاصطناعي في المستقبل.'
+                            : "Every data point recorded today is building this student's future. NASSAQ's longitudinal record will power AI-driven career recommendations in the future."}
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                )}
               </TabsContent>
 
             </Tabs>
@@ -2611,6 +2872,75 @@ export default function StudentProfilePage() {
                 {isRTL ? 'حفظ' : 'Save'}
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== FULL PROFILE EXPORT MODAL ===== */}
+      <Dialog open={profileExportModalOpen} onOpenChange={setProfileExportModalOpen}>
+        <DialogContent className="sm:max-w-lg" dir={isRTL ? 'rtl' : 'ltr'}>
+          <DialogHeader>
+            <DialogTitle className="font-cairo flex items-center gap-2">
+              <Download className="h-5 w-5 text-brand-navy" />
+              {isRTL ? 'تصدير الملف الشامل' : 'Export Full Profile'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-5 pt-2">
+            <div className="space-y-2">
+              <Label className="text-sm font-medium font-cairo">{isRTL ? 'اختر الأقسام المطلوبة' : 'Select sections to include'}</Label>
+              <div className="space-y-2">
+                {[
+                  { key: 'personal', icon: User, label_ar: 'المعلومات الشخصية وولي الأمر', label_en: 'Personal & Guardian Info' },
+                  { key: 'academic', icon: BarChart3, label_ar: 'الأداء الأكاديمي', label_en: 'Academic Performance' },
+                  { key: 'talents', icon: Sparkles, label_ar: 'المواهب والمهارات', label_en: 'Talents & Skills' },
+                  { key: 'behaviour', icon: Heart, label_ar: 'السلوك', label_en: 'Behavior Record' },
+                  { key: 'activities', icon: Medal, label_ar: 'الأنشطة والإنجازات', label_en: 'Activities & Achievements' },
+                  { key: 'plans', icon: ClipboardList, label_ar: 'الخطط العلاجية / الإثرائية', label_en: 'Plans (Remedial / Enrichment)' },
+                  { key: 'longitudinal', icon: ScrollText, label_ar: 'السجل التراكمي', label_en: 'Longitudinal Summary' },
+                ].map(sec => {
+                  const Icon = sec.icon;
+                  const checked = profileExportSections.includes(sec.key);
+                  return (
+                    <label key={sec.key} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${checked ? 'border-brand-navy/30 bg-brand-navy/5 dark:border-brand-navy/50 dark:bg-brand-navy/10' : 'border-border hover:border-brand-navy/20'}`} onClick={() => toggleProfileSection(sec.key)}>
+                      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${checked ? 'bg-brand-navy border-brand-navy' : 'border-gray-300 dark:border-gray-600'}`}>
+                        {checked && <CheckSquare className="h-3.5 w-3.5 text-white" />}
+                      </div>
+                      <Icon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                      <span className="text-sm font-medium font-cairo">{isRTL ? sec.label_ar : sec.label_en}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-medium font-cairo">{isRTL ? 'صيغة الملف' : 'File Format'}</Label>
+              <RadioGroup value={profileExportFormat} onValueChange={setProfileExportFormat} className="grid grid-cols-2 gap-2">
+                <label className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border cursor-pointer transition-all ${profileExportFormat === 'pdf' ? 'border-red-300 bg-red-50/50 dark:border-red-700 dark:bg-red-950/20 ring-1 ring-red-200 dark:ring-red-800' : 'border-border hover:border-red-200'}`}>
+                  <RadioGroupItem value="pdf" className="sr-only" />
+                  <div className="w-10 h-10 rounded-lg bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+                    <span className="text-red-600 dark:text-red-400 font-bold text-xs">PDF</span>
+                  </div>
+                  <span className="text-xs font-medium">{isRTL ? 'ملف PDF' : 'PDF File'}</span>
+                </label>
+                <label className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border cursor-pointer transition-all ${profileExportFormat === 'docx' ? 'border-blue-300 bg-blue-50/50 dark:border-blue-700 dark:bg-blue-950/20 ring-1 ring-blue-200 dark:ring-blue-800' : 'border-border hover:border-blue-200'}`}>
+                  <RadioGroupItem value="docx" className="sr-only" />
+                  <div className="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                    <span className="text-blue-600 dark:text-blue-400 font-bold text-xs">DOCX</span>
+                  </div>
+                  <span className="text-xs font-medium">{isRTL ? 'ملف Word' : 'Word File'}</span>
+                </label>
+              </RadioGroup>
+            </div>
+
+            <Button
+              className="w-full gap-2 bg-brand-navy hover:bg-brand-navy/90 text-white"
+              onClick={handleExportFullProfile}
+              disabled={exportingProfile || profileExportSections.length === 0}
+            >
+              {exportingProfile ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              {isRTL ? 'إنشاء وتحميل' : 'Generate & Download'}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
