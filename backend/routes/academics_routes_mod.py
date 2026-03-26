@@ -424,7 +424,8 @@ async def get_student(student_id: str, current_user: dict = Depends(get_current_
     if not student.get("full_name") and student.get("full_name_ar"):
         student["full_name"] = student["full_name_ar"]
     
-    return StudentResponse(**student, class_name=class_name)
+    student["class_name"] = class_name
+    return StudentResponse(**student)
 
 @router.put("/students/{student_id}")
 async def update_student(

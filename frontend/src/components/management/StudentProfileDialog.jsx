@@ -14,6 +14,7 @@ import { useNassaqAlert } from '../ui/NassaqAlertDialog';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle
 } from '../ui/dialog';
+import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
 import {
   User, BookOpen, Shield, TrendingUp, Brain, FileText, Edit, Save, X,
   Phone, Mail, Hash, Calendar, MapPin, AlertTriangle, CheckCircle, Loader2,
@@ -228,6 +229,9 @@ export default function StudentProfileDialog({ open, onClose, student, classes =
   const [loadingRemedial, setLoadingRemedial] = useState(false);
   const [loadingEnrichment, setLoadingEnrichment] = useState(false);
   const [exportingPlan, setExportingPlan] = useState(false);
+  const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [exportPlanType, setExportPlanType] = useState('both');
+  const [exportFormat, setExportFormat] = useState('pdf');
 
   useEffect(() => {
     if (student && open) {
@@ -282,7 +286,13 @@ export default function StudentProfileDialog({ open, onClose, student, classes =
     }
   };
 
-  const handleExportPlan = async (planType) => {
+  const openExportModal = (planType) => {
+    setExportPlanType(planType || 'both');
+    setExportFormat('pdf');
+    setExportModalOpen(true);
+  };
+
+  const handleExportPlan = async (planType, format = 'docx') => {
     if (!student?.id) return;
     const payload = { plan_type: planType };
     if (planType === 'remedial' || planType === 'both') payload.remedial_plan = remedialPlan;
@@ -290,22 +300,52 @@ export default function StudentProfileDialog({ open, onClose, student, classes =
 
     setExportingPlan(true);
     try {
-      const res = await api.post(`/export/student-plans/${student.id}`, payload, { responseType: 'blob' });
-      const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+      const isPdf = format === 'pdf';
+      const endpoint = isPdf
+        ? `/export/student-plans/${student.id}/pdf`
+        : `/export/student-plans/${student.id}`;
+      const mimeType = isPdf
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      const ext = isPdf ? 'pdf' : 'docx';
+
+      const res = await api.post(endpoint, payload, { responseType: 'blob' });
+
+      if (res.data.type === 'application/json') {
+        const text = await res.data.text();
+        const errData = JSON.parse(text);
+        throw new Error(errData.detail || 'Export failed');
+      }
+
+      const blob = new Blob([res.data], { type: mimeType });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       const safeName = (student.full_name || 'student').replace(/\s+/g, '_');
       const date = new Date().toISOString().split('T')[0];
       const suffix = planType === 'remedial' ? 'Remedial_Plan' : planType === 'enrichment' ? 'Enrichment_Plan' : 'Plans';
       a.href = url;
-      a.download = `${safeName}_${suffix}_${date}.docx`;
+      a.download = `${safeName}_${suffix}_${date}.${ext}`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       a.remove();
       toast.success(isRTL ? 'تم تصدير الخطة بنجاح' : 'Plan exported successfully');
-    } catch {
-      nassaqError(isRTL ? 'فشل تصدير الخطة. يرجى المحاولة مرة أخرى.' : 'Failed to export plan. Please try again.');
+      setExportModalOpen(false);
+    } catch (err) {
+      console.error('Plan export error:', err);
+      let detail = err?.message || '';
+      if (err?.response?.data instanceof Blob) {
+        try {
+          const text = await err.response.data.text();
+          const parsed = JSON.parse(text);
+          detail = parsed.detail || detail;
+        } catch (_) {}
+      } else if (err?.response?.data?.detail) {
+        detail = err.response.data.detail;
+      }
+      nassaqError(isRTL
+        ? `فشل تصدير الخطة: ${detail || 'خطأ غير معروف'}`
+        : `Failed to export plan: ${detail || 'Unknown error'}`);
     } finally {
       setExportingPlan(false);
     }
@@ -421,6 +461,7 @@ export default function StudentProfileDialog({ open, onClose, student, classes =
   if (!student) return null;
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto p-0">
         <div className="bg-gradient-to-r from-brand-turquoise/10 to-brand-purple/10 p-6 border-b">
@@ -658,7 +699,7 @@ export default function StudentProfileDialog({ open, onClose, student, classes =
                   isRTL={isRTL}
                   loading={loadingRemedial}
                   onGenerate={() => generatePlan('remedial')}
-                  onExport={remedialPlan ? handleExportPlan : null}
+                  onExport={remedialPlan ? openExportModal : null}
                 />
 
                 <HakimPlanCard
@@ -667,18 +708,18 @@ export default function StudentProfileDialog({ open, onClose, student, classes =
                   isRTL={isRTL}
                   loading={loadingEnrichment}
                   onGenerate={() => generatePlan('enrichment')}
-                  onExport={enrichmentPlan ? handleExportPlan : null}
+                  onExport={enrichmentPlan ? openExportModal : null}
                 />
 
                 {remedialPlan && enrichmentPlan && (
                   <Button
                     variant="outline"
                     className="w-full gap-2 border-brand-navy/20 text-brand-navy hover:bg-brand-navy/5"
-                    onClick={() => handleExportPlan('both')}
+                    onClick={() => openExportModal('both')}
                     disabled={exportingPlan}
                   >
                     {exportingPlan ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                    {isRTL ? 'تصدير الخطتين معاً (Word)' : 'Export Both Plans (Word)'}
+                    {isRTL ? 'تصدير الخطتين معاً' : 'Export Both Plans'}
                   </Button>
                 )}
               </>
@@ -774,5 +815,72 @@ export default function StudentProfileDialog({ open, onClose, student, classes =
         </Tabs>
       </DialogContent>
     </Dialog>
+
+    <Dialog open={exportModalOpen} onOpenChange={setExportModalOpen}>
+      <DialogContent className="sm:max-w-md" dir={isRTL ? 'rtl' : 'ltr'}>
+        <DialogHeader>
+          <DialogTitle className="font-cairo flex items-center gap-2">
+            <Download className="h-5 w-5 text-brand-navy" />
+            {isRTL ? 'تصدير الخطة' : 'Export Plan'}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-5 pt-2">
+          <div className="space-y-2">
+            <Label className="text-sm font-medium font-cairo">{isRTL ? 'نوع الخطة' : 'Plan Type'}</Label>
+            <RadioGroup value={exportPlanType} onValueChange={setExportPlanType} className="space-y-2">
+              {remedialPlan && (
+                <label className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${exportPlanType === 'remedial' ? 'border-rose-300 bg-rose-50/50 dark:border-rose-700 dark:bg-rose-950/20' : 'border-border hover:border-rose-200'}`}>
+                  <RadioGroupItem value="remedial" />
+                  <Stethoscope className="h-4 w-4 text-rose-500 flex-shrink-0" />
+                  <span className="text-sm font-medium">{isRTL ? 'الخطة العلاجية' : 'Remedial Plan'}</span>
+                </label>
+              )}
+              {enrichmentPlan && (
+                <label className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${exportPlanType === 'enrichment' ? 'border-emerald-300 bg-emerald-50/50 dark:border-emerald-700 dark:bg-emerald-950/20' : 'border-border hover:border-emerald-200'}`}>
+                  <RadioGroupItem value="enrichment" />
+                  <Rocket className="h-4 w-4 text-emerald-500 flex-shrink-0" />
+                  <span className="text-sm font-medium">{isRTL ? 'الخطة الإثرائية' : 'Enrichment Plan'}</span>
+                </label>
+              )}
+              {remedialPlan && enrichmentPlan && (
+                <label className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${exportPlanType === 'both' ? 'border-brand-navy/30 bg-brand-navy/5 dark:border-brand-navy/50 dark:bg-brand-navy/10' : 'border-border hover:border-brand-navy/20'}`}>
+                  <RadioGroupItem value="both" />
+                  <FileText className="h-4 w-4 text-brand-navy flex-shrink-0" />
+                  <span className="text-sm font-medium">{isRTL ? 'الخطتين معاً' : 'Both Plans'}</span>
+                </label>
+              )}
+            </RadioGroup>
+          </div>
+          <div className="space-y-2">
+            <Label className="text-sm font-medium font-cairo">{isRTL ? 'صيغة الملف' : 'File Format'}</Label>
+            <RadioGroup value={exportFormat} onValueChange={setExportFormat} className="grid grid-cols-2 gap-2">
+              <label className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border cursor-pointer transition-all ${exportFormat === 'pdf' ? 'border-red-300 bg-red-50/50 dark:border-red-700 dark:bg-red-950/20 ring-1 ring-red-200 dark:ring-red-800' : 'border-border hover:border-red-200'}`}>
+                <RadioGroupItem value="pdf" className="sr-only" />
+                <div className="w-10 h-10 rounded-lg bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+                  <span className="text-red-600 dark:text-red-400 font-bold text-xs">PDF</span>
+                </div>
+                <span className="text-xs font-medium">{isRTL ? 'ملف PDF' : 'PDF File'}</span>
+              </label>
+              <label className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border cursor-pointer transition-all ${exportFormat === 'docx' ? 'border-blue-300 bg-blue-50/50 dark:border-blue-700 dark:bg-blue-950/20 ring-1 ring-blue-200 dark:ring-blue-800' : 'border-border hover:border-blue-200'}`}>
+                <RadioGroupItem value="docx" className="sr-only" />
+                <div className="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                  <span className="text-blue-600 dark:text-blue-400 font-bold text-xs">DOCX</span>
+                </div>
+                <span className="text-xs font-medium">{isRTL ? 'ملف Word' : 'Word File'}</span>
+              </label>
+            </RadioGroup>
+          </div>
+          <Button
+            className="w-full gap-2 bg-brand-navy hover:bg-brand-navy/90 text-white"
+            onClick={() => handleExportPlan(exportPlanType, exportFormat)}
+            disabled={exportingPlan}
+          >
+            {exportingPlan ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            {isRTL ? 'تحميل' : 'Download'}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }

@@ -1303,6 +1303,17 @@ async def export_student_plans_docx(
     school = await db.schools.find_one({"id": school_id}, {"_id": 0})
     school_name = school.get("name", "") if school else ""
 
+    class_name = ""
+    class_id = student.get("class_id")
+    if class_id:
+        class_doc = await db.classes.find_one({"id": class_id}, {"_id": 0})
+        class_name = class_doc.get("name", "") if class_doc else ""
+
+    academic_year_name = ""
+    ay_doc = await db.academic_years.find_one({"school_id": school_id, "is_current": True}, {"_id": 0})
+    if ay_doc:
+        academic_year_name = ay_doc.get("name", "")
+
     teacher_name = ""
     user_role = current_user.get("role", "")
     if user_role == "teacher":
@@ -1312,6 +1323,7 @@ async def export_student_plans_docx(
         teacher_name = current_user.get("full_name", user_role)
 
     student_name = student.get("full_name", "")
+    student_grade = student.get("grade", "")
     export_date = datetime.now().strftime("%Y-%m-%d")
 
     plan_label_map = {
@@ -1370,16 +1382,19 @@ async def export_student_plans_docx(
 
     doc.add_paragraph()
 
-    info_table = doc.add_table(rows=4, cols=2)
+    info_items = [
+        ("اسم المدرسة", school_name or "—"),
+        ("السنة الدراسية", academic_year_name or "—"),
+        ("اسم الطالب", student_name or "—"),
+        ("الصف / الفصل", f"{student_grade} — {class_name}".strip(" —") if (student_grade or class_name) else "—"),
+        ("اسم المعلم", teacher_name or "—"),
+        ("تاريخ التصدير", export_date),
+    ]
+    info_table = doc.add_table(rows=len(info_items), cols=2)
     info_table.alignment = WD_TABLE_ALIGNMENT.CENTER
     info_table.autofit = True
 
-    info_data = [
-        ("اسم المدرسة", school_name),
-        ("اسم المعلم", teacher_name),
-        ("اسم الطالب", student_name),
-        ("تاريخ التصدير", export_date),
-    ]
+    info_data = info_items
     for i, (label, value) in enumerate(info_data):
         label_cell = info_table.cell(i, 1)
         value_cell = info_table.cell(i, 0)
@@ -1521,6 +1536,257 @@ async def export_student_plans_docx(
     return StreamingResponse(
         buffer,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"}
+    )
+
+
+@router.post("/export/student-plans/{student_id}/pdf")
+async def export_student_plans_pdf(
+    student_id: str,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+):
+    import arabic_reshaper
+    from bidi.algorithm import get_display
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import cm, mm
+    from reportlab.lib.colors import HexColor, white, black
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+        HRFlowable, KeepTogether
+    )
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+
+    try:
+        pdfmetrics.registerFont(TTFont('DejaVuSans', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'))
+        pdfmetrics.registerFont(TTFont('DejaVuSans-Bold', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'))
+    except Exception:
+        pass
+
+    def ar(text):
+        if not text:
+            return ""
+        try:
+            reshaped = arabic_reshaper.reshape(str(text))
+            return get_display(reshaped)
+        except Exception:
+            return str(text)
+
+    body = await request.json()
+    plan_type = body.get("plan_type", "both")
+    remedial_plan = body.get("remedial_plan")
+    enrichment_plan = body.get("enrichment_plan")
+
+    if plan_type == "remedial" and not remedial_plan:
+        raise HTTPException(400, "الخطة العلاجية غير متوفرة")
+    if plan_type == "enrichment" and not enrichment_plan:
+        raise HTTPException(400, "الخطة الإثرائية غير متوفرة")
+    if plan_type == "both" and not remedial_plan and not enrichment_plan:
+        raise HTTPException(400, "لا توجد خطط للتصدير")
+
+    school_id = current_user.get("tenant_id")
+    student = await db.students.find_one({"id": student_id, "school_id": school_id}, {"_id": 0})
+    if not student:
+        raise HTTPException(404, "الطالب غير موجود")
+
+    school = await db.schools.find_one({"id": school_id}, {"_id": 0})
+    school_name = school.get("name", "") if school else ""
+
+    class_name = ""
+    class_id = student.get("class_id")
+    if class_id:
+        class_doc = await db.classes.find_one({"id": class_id}, {"_id": 0})
+        class_name = class_doc.get("name", "") if class_doc else ""
+
+    academic_year_name = ""
+    ay_doc = await db.academic_years.find_one({"school_id": school_id, "is_current": True}, {"_id": 0})
+    if ay_doc:
+        academic_year_name = ay_doc.get("name", "")
+
+    teacher_name = ""
+    user_role = current_user.get("role", "")
+    if user_role == "teacher":
+        teacher_doc = await db.teachers.find_one({"user_id": current_user.get("sub")}, {"_id": 0})
+        teacher_name = teacher_doc.get("full_name", "") if teacher_doc else current_user.get("full_name", "")
+    else:
+        teacher_name = current_user.get("full_name", user_role)
+
+    student_name = student.get("full_name", "")
+    student_grade = student.get("grade", "")
+    export_date = datetime.now().strftime("%Y-%m-%d")
+
+    plan_label_map = {
+        "remedial": "الخطة العلاجية",
+        "enrichment": "الخطة الإثرائية",
+        "both": "الخطة العلاجية والإثرائية",
+    }
+    plan_label = plan_label_map.get(plan_type, "الخطة")
+
+    NAVY = HexColor("#1C3D74")
+    TURQUOISE = HexColor("#46C1BE")
+    REMEDIAL_CLR = HexColor("#E14D2A")
+    ENRICHMENT_CLR = HexColor("#10B981")
+    LIGHT_GRAY = HexColor("#F3F4F6")
+    MED_GRAY_CLR = HexColor("#666666")
+    DARK_GRAY_CLR = HexColor("#333333")
+
+    style_title = ParagraphStyle('Title', fontName='DejaVuSans-Bold', fontSize=18, alignment=TA_CENTER, textColor=white, leading=24)
+    style_subtitle = ParagraphStyle('Subtitle', fontName='DejaVuSans-Bold', fontSize=12, alignment=TA_CENTER, textColor=HexColor("#A0D0D0"), leading=16)
+    style_label = ParagraphStyle('Label', fontName='DejaVuSans-Bold', fontSize=10, alignment=TA_RIGHT, textColor=NAVY, leading=14)
+    style_value = ParagraphStyle('Value', fontName='DejaVuSans', fontSize=10, alignment=TA_RIGHT, textColor=DARK_GRAY_CLR, leading=14)
+    style_section = ParagraphStyle('Section', fontName='DejaVuSans-Bold', fontSize=14, alignment=TA_RIGHT, textColor=NAVY, leading=18)
+    style_body = ParagraphStyle('Body', fontName='DejaVuSans', fontSize=10, alignment=TA_RIGHT, textColor=DARK_GRAY_CLR, leading=14, wordWrap='RTL')
+    style_body_italic = ParagraphStyle('BodyItalic', fontName='DejaVuSans', fontSize=10, alignment=TA_RIGHT, textColor=MED_GRAY_CLR, leading=14)
+    style_footer = ParagraphStyle('Footer', fontName='DejaVuSans', fontSize=8, alignment=TA_CENTER, textColor=MED_GRAY_CLR, leading=12)
+    style_table_header = ParagraphStyle('TH', fontName='DejaVuSans-Bold', fontSize=9, alignment=TA_CENTER, textColor=white, leading=12)
+    style_table_cell = ParagraphStyle('TD', fontName='DejaVuSans', fontSize=9, alignment=TA_RIGHT, textColor=DARK_GRAY_CLR, leading=12)
+
+    story = []
+
+    header_data = [[Paragraph(ar("NASSAQ  |  نَسَّق"), style_title)],
+                    [Paragraph(ar(plan_label), style_subtitle)]]
+    header_table = Table(header_data, colWidths=[17*cm])
+    header_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), NAVY),
+        ('TOPPADDING', (0, 0), (-1, 0), 14),
+        ('BOTTOMPADDING', (0, -1), (-1, -1), 10),
+        ('LEFTPADDING', (0, 0), (-1, -1), 10),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+        ('ROUNDEDCORNERS', [6, 6, 0, 0]),
+    ]))
+    story.append(header_table)
+    story.append(Spacer(1, 12))
+
+    grade_class = f"{student_grade} — {class_name}".strip(" —") if (student_grade or class_name) else "—"
+    info_rows = [
+        [Paragraph(ar(school_name or "—"), style_value), Paragraph(ar("اسم المدرسة"), style_label)],
+        [Paragraph(ar(academic_year_name or "—"), style_value), Paragraph(ar("السنة الدراسية"), style_label)],
+        [Paragraph(ar(student_name or "—"), style_value), Paragraph(ar("اسم الطالب"), style_label)],
+        [Paragraph(ar(grade_class), style_value), Paragraph(ar("الصف / الفصل"), style_label)],
+        [Paragraph(ar(teacher_name or "—"), style_value), Paragraph(ar("اسم المعلم"), style_label)],
+        [Paragraph(ar(export_date), style_value), Paragraph(ar("تاريخ التصدير"), style_label)],
+    ]
+    info_tbl = Table(info_rows, colWidths=[11*cm, 6*cm])
+    info_tbl.setStyle(TableStyle([
+        ('GRID', (0, 0), (-1, -1), 0.5, HexColor("#DDDDDD")),
+        ('BACKGROUND', (1, 0), (1, -1), LIGHT_GRAY),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('LEFTPADDING', (0, 0), (-1, -1), 8),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+    ]))
+    story.append(info_tbl)
+
+    def add_plan_section(plan, plan_type_key):
+        color = REMEDIAL_CLR if plan_type_key == "remedial" else ENRICHMENT_CLR
+        type_label = "الخطة العلاجية" if plan_type_key == "remedial" else "الخطة الإثرائية"
+
+        story.append(Spacer(1, 16))
+        story.append(HRFlowable(width="100%", thickness=1, color=HexColor("#CCCCCC")))
+        story.append(Spacer(1, 10))
+
+        section_style = ParagraphStyle('PlanTitle', fontName='DejaVuSans-Bold', fontSize=14, alignment=TA_RIGHT, textColor=color, leading=18)
+        title_text = plan.get("title", type_label) if plan else type_label
+        story.append(Paragraph(ar(title_text), section_style))
+        story.append(Spacer(1, 6))
+
+        summary = plan.get("summary", "") if plan else ""
+        if summary:
+            story.append(Paragraph(ar(summary), style_body_italic))
+            story.append(Spacer(1, 8))
+
+        goals = plan.get("goals", []) if plan else []
+        if goals:
+            story.append(Paragraph(ar("الأهداف:"), style_section))
+            story.append(Spacer(1, 4))
+            for g in goals:
+                goal_text = g if isinstance(g, str) else g.get("description", str(g))
+                story.append(Paragraph(ar(f"• {goal_text}"), style_body))
+            story.append(Spacer(1, 8))
+
+        steps = plan.get("steps", []) if plan else []
+        if steps:
+            story.append(Paragraph(ar("خطوات التنفيذ:"), style_section))
+            story.append(Spacer(1, 6))
+
+            step_headers = [
+                Paragraph(ar("المسؤول"), style_table_header),
+                Paragraph(ar("المدة"), style_table_header),
+                Paragraph(ar("الوصف"), style_table_header),
+                Paragraph(ar("الخطوة"), style_table_header),
+            ]
+            step_rows = [step_headers]
+            for idx, step in enumerate(steps):
+                step_rows.append([
+                    Paragraph(ar(step.get("responsible", "—")), style_table_cell),
+                    Paragraph(ar(step.get("duration", "—")), style_table_cell),
+                    Paragraph(ar(step.get("description", "—")), style_table_cell),
+                    Paragraph(ar(step.get("title", f"خطوة {idx + 1}")), style_table_cell),
+                ])
+
+            step_tbl = Table(step_rows, colWidths=[3.5*cm, 3*cm, 7*cm, 3.5*cm])
+            step_style_cmds = [
+                ('BACKGROUND', (0, 0), (-1, 0), NAVY),
+                ('TEXTCOLOR', (0, 0), (-1, 0), white),
+                ('GRID', (0, 0), (-1, -1), 0.5, HexColor("#DDDDDD")),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('TOPPADDING', (0, 0), (-1, -1), 4),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+                ('LEFTPADDING', (0, 0), (-1, -1), 6),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+            ]
+            for idx in range(1, len(step_rows)):
+                bg = LIGHT_GRAY if idx % 2 == 1 else white
+                step_style_cmds.append(('BACKGROUND', (0, idx), (-1, idx), bg))
+            step_tbl.setStyle(TableStyle(step_style_cmds))
+            story.append(step_tbl)
+
+        notes = plan.get("notes", "") if plan else ""
+        if notes:
+            story.append(Spacer(1, 8))
+            story.append(Paragraph(ar(f"ملاحظات: {notes}"), style_body))
+
+        outcome = plan.get("expected_outcome", "") if plan else ""
+        if outcome:
+            story.append(Spacer(1, 8))
+            outcome_style = ParagraphStyle('Outcome', fontName='DejaVuSans-Bold', fontSize=10, alignment=TA_RIGHT, textColor=color, leading=14)
+            story.append(Paragraph(ar(f"النتيجة المتوقعة: {outcome}"), outcome_style))
+
+    if plan_type in ("remedial", "both") and remedial_plan:
+        add_plan_section(remedial_plan, "remedial")
+
+    if plan_type in ("enrichment", "both") and enrichment_plan:
+        add_plan_section(enrichment_plan, "enrichment")
+
+    story.append(Spacer(1, 20))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=HexColor("#CCCCCC")))
+    story.append(Spacer(1, 6))
+    story.append(Paragraph(ar(f"تم التصدير من نظام نَسَّق  •  {export_date}"), style_footer))
+
+    buffer = io.BytesIO()
+    pdf_doc = SimpleDocTemplate(
+        buffer, pagesize=A4,
+        topMargin=1.5*cm, bottomMargin=1.5*cm,
+        leftMargin=2*cm, rightMargin=2*cm,
+        title=plan_label, author="NASSAQ"
+    )
+    pdf_doc.build(story)
+    buffer.seek(0)
+
+    safe_name = student_name.replace(" ", "_")
+    type_suffix = {"remedial": "Remedial_Plan", "enrichment": "Enrichment_Plan", "both": "Plans"}
+    filename = f"{safe_name}_{type_suffix.get(plan_type, 'Plan')}_{export_date}.pdf"
+
+    from urllib.parse import quote
+    encoded_filename = quote(filename)
+
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"}
     )
 
