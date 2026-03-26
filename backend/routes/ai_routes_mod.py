@@ -1515,10 +1515,13 @@ async def export_student_plans_docx(
     type_suffix = {"remedial": "Remedial_Plan", "enrichment": "Enrichment_Plan", "both": "Plans"}
     filename = f"{safe_name}_{type_suffix.get(plan_type, 'Plan')}_{export_date}.docx"
 
+    from urllib.parse import quote
+    encoded_filename = quote(filename)
+
     return StreamingResponse(
         buffer,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"}
     )
 
 

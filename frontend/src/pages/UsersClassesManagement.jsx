@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Sidebar } from '../components/layout/Sidebar';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
@@ -780,6 +780,7 @@ export default function UsersClassesManagement() {
   const { user, api, schoolContext, isImpersonating } = useAuth();
   const { isRTL, toggleTheme, toggleLanguage, isDark } = useTheme();
   const { nassaqConfirm, nassaqError, nassaqWarning } = useNassaqAlert();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [loading, setLoading] = useState(true);
@@ -1072,6 +1073,10 @@ export default function UsersClassesManagement() {
     if (type === 'student') { setSelectedStudent(item); setStudentProfileOpen(true); }
     else if (type === 'teacher') { setSelectedTeacher(item); setTeacherProfileOpen(true); }
     else if (type === 'parent') { setSelectedParent(item); setParentProfileOpen(true); }
+    else if (type === 'class') {
+      const prefix = user?.role === 'school_principal' ? '/principal' : '/admin';
+      navigate(`${prefix}/classes/${item.id}`);
+    }
     else { setSelectedItem(item); setSelectedItemType(type); setViewDialogOpen(true); }
   };
 

@@ -748,4 +748,12 @@ Sub-pages (accessible from within classes/sessions, not top-level sidebar):
 ## Dependencies
 
 - Frontend: React 19, react-router-dom v7, Radix UI, Tailwind CSS, recharts, axios, @dnd-kit
-- Backend: FastAPI, motor (MongoDB async), PyJWT, bcrypt, qrcode, pandas, google-generativeai, reportlab, xlsxwriter, psutil
+- Backend: FastAPI, motor (MongoDB async), PyJWT, bcrypt, qrcode, pandas, google-generativeai, reportlab, xlsxwriter, psutil, python-docx
+
+## School Admin Class Detail Page
+- **Route**: `/admin/classes/:classId` and `/principal/classes/:classId`
+- **Component**: `ClassDetailPage.jsx`
+- **Navigation**: Clicking any class card in UsersClassesManagement navigates to this dedicated page (replaces old dialog)
+- **Features**: Class header (name, grade, teacher, capacity bar, academic year), student list with grid/list toggle, gifted/other/all sub-tabs, search bar, add student button, export class list, StudentProfileDialog for viewing student details
+- **Back navigation**: Button + breadcrumb trail (User Management > Class Name), browser back button works
+- **API endpoints used**: `GET /classes/{class_id}`, `GET /classes/{class_id}/students`, `GET /classes`, `GET /reference/grades`
