@@ -3714,3 +3714,51 @@ async def delete_parent(
         cleanup["user_account"] = 1
 
     return {"message": "تم حذف ولي الأمر وجميع بياناته من النظام بالكامل", "success": True, "cleanup": cleanup}
+
+
+# ============== GLOBAL TALENTS ==============
+
+@router.get("/talents")
+async def get_global_talents(
+    current_user: dict = Depends(get_current_user)
+):
+    tenant_id = current_user.get("tenant_id")
+    query = {"$or": [{"is_global": True}]}
+    if tenant_id:
+        query["$or"].append({"tenant_id": tenant_id})
+    talents = await db.global_talents.find(query, {"_id": 0}).sort("name_ar", 1).to_list(500)
+    return {"talents": talents}
+
+
+@router.post("/talents")
+async def create_custom_talent(
+    data: dict = Body(...),
+    current_user: dict = Depends(require_roles([UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.TEACHER]))
+):
+    name_ar = data.get("name_ar", "").strip()
+    name_en = data.get("name_en", "").strip()
+    if not name_ar:
+        raise HTTPException(400, "اسم الموهبة بالعربية مطلوب")
+    tenant_id = current_user.get("tenant_id")
+    value_key = re.sub(r'\s+', '_', name_ar).lower()
+    existing = await db.global_talents.find_one({
+        "$or": [
+            {"name_ar": name_ar, "$or": [{"is_global": True}, {"tenant_id": tenant_id}]},
+            {"value": value_key, "$or": [{"is_global": True}, {"tenant_id": tenant_id}]}
+        ]
+    })
+    if existing:
+        raise HTTPException(400, "هذه الموهبة موجودة بالفعل")
+    talent_doc = {
+        "id": str(uuid.uuid4()),
+        "value": value_key,
+        "name_ar": name_ar,
+        "name_en": name_en or name_ar,
+        "tenant_id": tenant_id,
+        "is_global": False,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_by": current_user["id"]
+    }
+    await db.global_talents.insert_one(talent_doc)
+    talent_doc.pop("_id", None)
+    return talent_doc

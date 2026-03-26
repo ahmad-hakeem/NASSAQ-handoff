@@ -419,7 +419,7 @@ async def update_behaviour_record(
     record_id: str,
     updates: dict,
     force: bool = False,
-    current_user: dict = Depends(require_roles([UserRole.TEACHER, UserRole.SCHOOL_PRINCIPAL]))
+    current_user: dict = Depends(require_roles([UserRole.TEACHER, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
     """Update a behaviour record"""
     now = datetime.now(timezone.utc).isoformat()
@@ -444,6 +444,19 @@ async def update_behaviour_record(
     await db.behaviour_records.update_one({"id": record_id}, {"$set": updates})
     
     return await db.behaviour_records.find_one({"id": record_id}, {"_id": 0})
+
+
+@router.delete("/behaviour-records/{record_id}")
+async def delete_behaviour_record(
+    record_id: str,
+    current_user: dict = Depends(require_roles([UserRole.TEACHER, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
+):
+    tenant_id = current_user.get("tenant_id")
+    record = await db.behaviour_records.find_one({"id": record_id, "tenant_id": tenant_id}, {"_id": 0})
+    if not record:
+        raise HTTPException(status_code=404, detail="سجل السلوك غير موجود")
+    await db.behaviour_records.delete_one({"id": record_id, "tenant_id": tenant_id})
+    return {"detail": "تم حذف السجل بنجاح", "id": record_id}
 
 
 @router.post("/behaviour-records/{record_id}/principal-review")

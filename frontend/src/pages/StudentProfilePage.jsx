@@ -22,8 +22,10 @@ import {
   Star, Loader2, Activity, Target, Sparkles, Clock, Key, UserX,
   UserCheck, Trash2, Download, Sun, Moon, Globe, GraduationCap,
   Stethoscope, Rocket, ChevronDown, ChevronUp, CheckCircle,
-  AlertTriangle, Zap, Heart, Award, Plus, XCircle
+  AlertTriangle, Zap, Heart, Award, Plus, XCircle,
+  ThumbsUp, ThumbsDown, MessageSquare, Palette, Trophy, Lightbulb, Mic, Code, MoreHorizontal
 } from 'lucide-react';
+import { Textarea } from '../components/ui/textarea';
 
 const TALENT_OPTIONS = [
   { value: 'academically_gifted', ar: 'متفوق أكاديمياً', en: 'Academically Gifted', color: 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700' },
@@ -266,6 +268,21 @@ export default function StudentProfilePage() {
   const [exportFormat, setExportFormat] = useState('pdf');
   const [actionLoading, setActionLoading] = useState('');
 
+  const [behaviourRecords, setBehaviourRecords] = useState([]);
+  const [behaviourSummary, setBehaviourSummary] = useState(null);
+  const [loadingBehaviour, setLoadingBehaviour] = useState(false);
+  const [behaviourTypes, setBehaviourTypes] = useState([]);
+  const [behaviourModalOpen, setBehaviourModalOpen] = useState(false);
+  const [editingBehaviour, setEditingBehaviour] = useState(null);
+  const [behaviourForm, setBehaviourForm] = useState({ category: 'positive', title: '', description: '', incident_date: new Date().toISOString().split('T')[0], behaviour_type_id: '' });
+  const [savingBehaviour, setSavingBehaviour] = useState(false);
+
+  const [globalTalents, setGlobalTalents] = useState([]);
+  const [loadingGlobalTalents, setLoadingGlobalTalents] = useState(false);
+  const [customTalentName, setCustomTalentName] = useState('');
+  const [addingCustomTalent, setAddingCustomTalent] = useState(false);
+  const [savingTalent, setSavingTalent] = useState(false);
+
   const headers = useMemo(() => {
     const h = {};
     const token = localStorage.getItem('nassaq_token');
@@ -345,13 +362,57 @@ export default function StudentProfilePage() {
     }
   }, [api, studentId, headers]);
 
+  const tenantId = useMemo(() => user?.tenant_id || localStorage.getItem('nassaq_tenant_id'), [user?.tenant_id]);
+
+  const fetchBehaviourRecords = useCallback(async () => {
+    if (!studentId || !tenantId) return;
+    setLoadingBehaviour(true);
+    try {
+      const res = await api.get(`/behaviour-records/student/${studentId}?school_id=${tenantId}&limit=100`, { headers });
+      setBehaviourRecords(res.data?.records || []);
+      setBehaviourSummary(res.data?.summary || null);
+    } catch {
+      setBehaviourRecords([]);
+      setBehaviourSummary(null);
+    } finally {
+      setLoadingBehaviour(false);
+    }
+  }, [api, studentId, tenantId, headers]);
+
+  const fetchBehaviourTypes = useCallback(async () => {
+    if (!tenantId) return;
+    try {
+      const res = await api.get(`/behaviour-types?school_id=${tenantId}`, { headers });
+      setBehaviourTypes(res.data?.behaviour_types || []);
+    } catch {
+      setBehaviourTypes([]);
+    }
+  }, [api, tenantId, headers]);
+
+  const fetchGlobalTalents = useCallback(async () => {
+    setLoadingGlobalTalents(true);
+    try {
+      const res = await api.get('/talents', { headers });
+      setGlobalTalents(res.data?.talents || []);
+    } catch {
+      setGlobalTalents([]);
+    } finally {
+      setLoadingGlobalTalents(false);
+    }
+  }, [api, headers]);
+
   useEffect(() => {
     if (activeTab === 'academic') {
       fetchAttendance();
       fetchRiskData();
       fetchHomeworkRate();
+    } else if (activeTab === 'behaviour') {
+      fetchBehaviourRecords();
+      fetchBehaviourTypes();
+    } else if (activeTab === 'talents') {
+      fetchGlobalTalents();
     }
-  }, [activeTab, fetchAttendance, fetchRiskData, fetchHomeworkRate]);
+  }, [activeTab, fetchAttendance, fetchRiskData, fetchHomeworkRate, fetchBehaviourRecords, fetchBehaviourTypes, fetchGlobalTalents]);
 
   const generatePlan = async (planType) => {
     if (!studentId) return;
@@ -529,6 +590,131 @@ export default function StudentProfilePage() {
     }
   };
 
+  const openBehaviourModal = (record = null) => {
+    if (record) {
+      setEditingBehaviour(record);
+      setBehaviourForm({
+        category: record.category || 'positive',
+        title: record.title || '',
+        description: record.description || '',
+        incident_date: record.incident_date || new Date().toISOString().split('T')[0],
+        behaviour_type_id: record.behaviour_type_id || '',
+      });
+    } else {
+      setEditingBehaviour(null);
+      setBehaviourForm({ category: 'positive', title: '', description: '', incident_date: new Date().toISOString().split('T')[0], behaviour_type_id: '' });
+    }
+    setBehaviourModalOpen(true);
+  };
+
+  const handleSaveBehaviour = async () => {
+    if (!behaviourForm.title.trim()) {
+      nassaqError(isRTL ? 'يرجى إدخال عنوان السلوك' : 'Please enter a behavior title');
+      return;
+    }
+    if (!behaviourForm.behaviour_type_id) {
+      nassaqError(isRTL ? 'يرجى اختيار نوع السلوك' : 'Please select a behavior type');
+      return;
+    }
+    setSavingBehaviour(true);
+    try {
+      if (editingBehaviour) {
+        await api.put(`/behaviour-records/${editingBehaviour.id}?force=true`, {
+          title: behaviourForm.title,
+          description: behaviourForm.description,
+          incident_date: behaviourForm.incident_date,
+          category: behaviourForm.category,
+          behaviour_type_id: behaviourForm.behaviour_type_id,
+        }, { headers });
+        toast.success(isRTL ? 'تم تعديل السجل بنجاح' : 'Record updated successfully');
+      } else {
+        await api.post(`/behaviour-records?school_id=${tenantId}`, {
+          student_id: studentId,
+          behaviour_type_id: behaviourForm.behaviour_type_id,
+          title: behaviourForm.title,
+          description: behaviourForm.description,
+          incident_date: behaviourForm.incident_date,
+          category: behaviourForm.category,
+        }, { headers });
+        toast.success(isRTL ? 'تم إضافة السجل بنجاح' : 'Record added successfully');
+      }
+      setBehaviourModalOpen(false);
+      fetchBehaviourRecords();
+    } catch (err) {
+      const msg = err.response?.data?.detail;
+      nassaqError(typeof msg === 'string' ? msg : (isRTL ? 'فشلت العملية' : 'Operation failed'));
+    } finally {
+      setSavingBehaviour(false);
+    }
+  };
+
+  const handleDeleteBehaviour = (record) => {
+    nassaqConfirm(
+      isRTL ? 'هل أنت متأكد من حذف هذا السجل؟' : 'Are you sure you want to delete this record?',
+      async () => {
+        try {
+          await api.delete(`/behaviour-records/${record.id}`, { headers });
+          toast.success(isRTL ? 'تم حذف السجل' : 'Record deleted');
+          fetchBehaviourRecords();
+        } catch {
+          nassaqError(isRTL ? 'فشل حذف السجل' : 'Failed to delete record');
+        }
+      },
+      { title: isRTL ? 'تأكيد الحذف' : 'Confirm Delete', confirmText: isRTL ? 'نعم، احذف' : 'Yes, Delete', cancelText: isRTL ? 'إلغاء' : 'Cancel' }
+    );
+  };
+
+  const handleAddTalent = async (talentValue) => {
+    if (!student || !talentValue) return;
+    const currentTalents = student.talents || [];
+    if (currentTalents.includes(talentValue)) return;
+    setSavingTalent(true);
+    try {
+      const newTalents = [...currentTalents, talentValue];
+      await api.put(`/students/${student.id}`, { talents: newTalents }, { headers });
+      toast.success(isRTL ? 'تمت إضافة الموهبة' : 'Talent added');
+      fetchStudent();
+    } catch (err) {
+      const msg = err.response?.data?.detail;
+      nassaqError(typeof msg === 'string' ? msg : (isRTL ? 'فشلت الإضافة' : 'Failed to add talent'));
+    } finally {
+      setSavingTalent(false);
+    }
+  };
+
+  const handleRemoveTalent = async (talentValue) => {
+    if (!student) return;
+    const currentTalents = student.talents || [];
+    const newTalents = currentTalents.filter(t => t !== talentValue);
+    setSavingTalent(true);
+    try {
+      await api.put(`/students/${student.id}`, { talents: newTalents }, { headers });
+      toast.success(isRTL ? 'تمت إزالة الموهبة' : 'Talent removed');
+      fetchStudent();
+    } catch {
+      nassaqError(isRTL ? 'فشلت الإزالة' : 'Failed to remove talent');
+    } finally {
+      setSavingTalent(false);
+    }
+  };
+
+  const handleAddCustomTalent = async () => {
+    if (!customTalentName.trim()) return;
+    setAddingCustomTalent(true);
+    try {
+      const res = await api.post('/talents', { name_ar: customTalentName.trim(), name_en: customTalentName.trim() }, { headers });
+      const newTalent = res.data;
+      setCustomTalentName('');
+      fetchGlobalTalents();
+      await handleAddTalent(newTalent.value || newTalent.name_ar);
+    } catch (err) {
+      const msg = err.response?.data?.detail;
+      nassaqError(typeof msg === 'string' ? msg : (isRTL ? 'فشلت إضافة الموهبة المخصصة' : 'Failed to add custom talent'));
+    } finally {
+      setAddingCustomTalent(false);
+    }
+  };
+
   const handleBack = () => {
     if (fromPath) {
       navigate(fromPath);
@@ -689,7 +875,7 @@ export default function StudentProfilePage() {
           </div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid grid-cols-4 mb-4">
+            <TabsList className="grid grid-cols-6 mb-4">
               <TabsTrigger value="info" className="text-xs gap-1">
                 <User className="h-3.5 w-3.5" /> {isRTL ? 'البيانات' : 'Info'}
               </TabsTrigger>
@@ -698,6 +884,12 @@ export default function StudentProfilePage() {
               </TabsTrigger>
               <TabsTrigger value="academic" className="text-xs gap-1">
                 <Brain className="h-3.5 w-3.5" /> {isRTL ? 'الأكاديمي' : 'Academic'}
+              </TabsTrigger>
+              <TabsTrigger value="talents" className="text-xs gap-1">
+                <Sparkles className="h-3.5 w-3.5" /> {isRTL ? 'المواهب' : 'Talents'}
+              </TabsTrigger>
+              <TabsTrigger value="behaviour" className="text-xs gap-1">
+                <Activity className="h-3.5 w-3.5" /> {isRTL ? 'السلوك' : 'Behavior'}
               </TabsTrigger>
               <TabsTrigger value="actions" className="text-xs gap-1">
                 <Shield className="h-3.5 w-3.5" /> {isRTL ? 'إجراءات' : 'Actions'}
@@ -1053,6 +1245,293 @@ export default function StudentProfilePage() {
                   {isRTL ? 'تصدير الخطتين معاً' : 'Export Both Plans'}
                 </Button>
               )}
+            </TabsContent>
+
+            {/* ===== TALENTS TAB ===== */}
+            <TabsContent value="talents">
+              <Card>
+                <CardContent className="p-6 space-y-6">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-bold text-base font-cairo flex items-center gap-2">
+                      <Sparkles className="h-5 w-5 text-brand-turquoise" />
+                      {isRTL ? 'مواهب الطالب' : 'Student Talents'}
+                    </h3>
+                    {student?.is_gifted && (
+                      <Badge className="bg-gradient-to-r from-yellow-400 to-amber-500 text-white border-0 px-3 py-1 font-cairo">
+                        <Trophy className="h-3.5 w-3.5 ml-1" />
+                        {isRTL ? 'طالب موهوب' : 'Gifted Student'}
+                      </Badge>
+                    )}
+                  </div>
+
+                  {/* Current talents */}
+                  <div>
+                    <Label className="text-sm font-cairo mb-3 block text-muted-foreground">{isRTL ? 'المواهب الحالية' : 'Current Talents'}</Label>
+                    {(student?.talents?.length > 0) ? (
+                      <div className="flex flex-wrap gap-2">
+                        {student.talents.map(t => {
+                          const opt = TALENT_OPTIONS.find(o => o.value === t);
+                          return (
+                            <Badge key={t} variant="outline" className={`px-3 py-1.5 text-sm font-cairo cursor-default flex items-center gap-1.5 ${opt?.color || 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600'}`}>
+                              {opt ? (isRTL ? opt.ar : opt.en) : t}
+                              <button onClick={() => handleRemoveTalent(t)} disabled={savingTalent} className="hover:text-red-500 transition-colors rounded-full p-0.5">
+                                <XCircle className="h-3.5 w-3.5" />
+                              </button>
+                            </Badge>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground italic font-cairo">{isRTL ? 'لم يتم تحديد مواهب بعد' : 'No talents selected yet'}</p>
+                    )}
+                  </div>
+
+                  {/* Add from predefined list */}
+                  <div>
+                    <Label className="text-sm font-cairo mb-3 block text-muted-foreground">{isRTL ? 'إضافة موهبة' : 'Add Talent'}</Label>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {TALENT_OPTIONS.filter(o => !(student?.talents || []).includes(o.value)).map(opt => (
+                        <Button
+                          key={opt.value}
+                          variant="outline"
+                          size="sm"
+                          disabled={savingTalent}
+                          onClick={() => handleAddTalent(opt.value)}
+                          className={`text-xs font-cairo justify-start gap-1.5 ${opt.color}`}
+                        >
+                          <Plus className="h-3 w-3" />
+                          {isRTL ? opt.ar : opt.en}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Add from global / custom */}
+                  {globalTalents.length > 0 && (
+                    <div>
+                      <Label className="text-sm font-cairo mb-3 block text-muted-foreground">{isRTL ? 'مواهب المدرسة' : 'School Talents'}</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {globalTalents.filter(gt => !(student?.talents || []).includes(gt.value) && !TALENT_OPTIONS.some(o => o.value === gt.value)).map(gt => (
+                          <Button key={gt.id} variant="outline" size="sm" disabled={savingTalent} onClick={() => handleAddTalent(gt.value)} className="text-xs font-cairo gap-1.5">
+                            <Plus className="h-3 w-3" /> {gt.name_ar}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Custom talent input */}
+                  <div>
+                    <Label className="text-sm font-cairo mb-2 block text-muted-foreground">{isRTL ? 'إضافة موهبة مخصصة' : 'Add Custom Talent'}</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        value={customTalentName}
+                        onChange={e => setCustomTalentName(e.target.value)}
+                        placeholder={isRTL ? 'اكتب اسم الموهبة...' : 'Type talent name...'}
+                        className="flex-1 text-sm font-cairo"
+                        onKeyDown={e => e.key === 'Enter' && handleAddCustomTalent()}
+                      />
+                      <Button size="sm" disabled={addingCustomTalent || !customTalentName.trim()} onClick={handleAddCustomTalent} className="bg-brand-turquoise hover:bg-brand-turquoise/90 text-white">
+                        {addingCustomTalent ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {loadingGlobalTalents && (
+                    <div className="flex justify-center py-4">
+                      <Loader2 className="h-6 w-6 animate-spin text-brand-turquoise" />
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* ===== BEHAVIOUR TAB ===== */}
+            <TabsContent value="behaviour">
+              <div className="space-y-4">
+                {/* Behaviour Summary */}
+                {behaviourSummary && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <Card className="border-green-200 dark:border-green-800">
+                      <CardContent className="p-4 text-center">
+                        <ThumbsUp className="h-5 w-5 mx-auto mb-1 text-green-500" />
+                        <div className="text-2xl font-bold text-green-600">{behaviourSummary.positive_count || 0}</div>
+                        <p className="text-xs text-muted-foreground font-cairo">{isRTL ? 'إيجابي' : 'Positive'}</p>
+                      </CardContent>
+                    </Card>
+                    <Card className="border-red-200 dark:border-red-800">
+                      <CardContent className="p-4 text-center">
+                        <ThumbsDown className="h-5 w-5 mx-auto mb-1 text-red-500" />
+                        <div className="text-2xl font-bold text-red-600">{behaviourSummary.negative_count || 0}</div>
+                        <p className="text-xs text-muted-foreground font-cairo">{isRTL ? 'سلبي' : 'Negative'}</p>
+                      </CardContent>
+                    </Card>
+                    <Card className="border-blue-200 dark:border-blue-800">
+                      <CardContent className="p-4 text-center">
+                        <Activity className="h-5 w-5 mx-auto mb-1 text-blue-500" />
+                        <div className="text-2xl font-bold text-blue-600">{behaviourSummary.total_points || 0}</div>
+                        <p className="text-xs text-muted-foreground font-cairo">{isRTL ? 'النقاط' : 'Points'}</p>
+                      </CardContent>
+                    </Card>
+                    <Card className="border-purple-200 dark:border-purple-800">
+                      <CardContent className="p-4 text-center">
+                        <MessageSquare className="h-5 w-5 mx-auto mb-1 text-purple-500" />
+                        <div className="text-2xl font-bold text-purple-600">{behaviourSummary.total_records || behaviourRecords.length}</div>
+                        <p className="text-xs text-muted-foreground font-cairo">{isRTL ? 'إجمالي' : 'Total'}</p>
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
+
+                {/* Add Record Button */}
+                <div className="flex items-center justify-between">
+                  <h3 className="font-bold text-base font-cairo flex items-center gap-2">
+                    <Activity className="h-5 w-5 text-brand-navy" />
+                    {isRTL ? 'سجل السلوك' : 'Behavior Log'}
+                  </h3>
+                  <Button size="sm" onClick={() => openBehaviourModal()} className="bg-brand-navy hover:bg-brand-navy/90 text-white gap-1 font-cairo">
+                    <Plus className="h-4 w-4" /> {isRTL ? 'إضافة سجل' : 'Add Record'}
+                  </Button>
+                </div>
+
+                {loadingBehaviour ? (
+                  <div className="flex justify-center py-8">
+                    <Loader2 className="h-8 w-8 animate-spin text-brand-turquoise" />
+                  </div>
+                ) : behaviourRecords.length === 0 ? (
+                  <Card>
+                    <CardContent className="p-8 text-center">
+                      <Activity className="h-12 w-12 mx-auto mb-3 text-muted-foreground/30" />
+                      <p className="text-muted-foreground font-cairo">{isRTL ? 'لا توجد سجلات سلوكية بعد' : 'No behavior records yet'}</p>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div className="space-y-3">
+                    {behaviourRecords.map(rec => {
+                      const catColors = {
+                        positive: 'border-l-green-500 bg-green-50/50 dark:bg-green-900/10',
+                        negative: 'border-l-red-500 bg-red-50/50 dark:bg-red-900/10',
+                        neutral: 'border-l-gray-400 bg-gray-50/50 dark:bg-gray-900/10'
+                      };
+                      const catIcons = { positive: ThumbsUp, negative: ThumbsDown, neutral: MessageSquare };
+                      const CatIcon = catIcons[rec.category] || MessageSquare;
+                      const severityColors = {
+                        minor: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+                        moderate: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300',
+                        major: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
+                        severe: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+                      };
+                      const statusColors = {
+                        pending: 'bg-yellow-100 text-yellow-700',
+                        reviewed: 'bg-blue-100 text-blue-700',
+                        escalated: 'bg-red-100 text-red-700',
+                        resolved: 'bg-green-100 text-green-700',
+                        archived: 'bg-gray-100 text-gray-700',
+                      };
+                      return (
+                        <Card key={rec.id} className={`border-l-4 ${catColors[rec.category] || catColors.neutral}`}>
+                          <CardContent className="p-4">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                  <CatIcon className={`h-4 w-4 flex-shrink-0 ${rec.category === 'positive' ? 'text-green-500' : rec.category === 'negative' ? 'text-red-500' : 'text-gray-400'}`} />
+                                  <span className="font-semibold text-sm font-cairo truncate">{rec.title}</span>
+                                  {rec.points != null && (
+                                    <Badge variant="outline" className={`text-xs ${rec.points > 0 ? 'text-green-600 border-green-300' : rec.points < 0 ? 'text-red-600 border-red-300' : 'text-gray-500 border-gray-300'}`}>
+                                      {rec.points > 0 ? '+' : ''}{rec.points}
+                                    </Badge>
+                                  )}
+                                  {rec.severity && <Badge className={`text-xs ${severityColors[rec.severity] || ''}`}>{rec.severity}</Badge>}
+                                  {rec.status && <Badge className={`text-xs ${statusColors[rec.status] || ''}`}>{rec.status}</Badge>}
+                                </div>
+                                {rec.description && <p className="text-xs text-muted-foreground font-cairo mt-1 line-clamp-2">{rec.description}</p>}
+                                <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+                                  <span className="flex items-center gap-1"><Calendar className="h-3 w-3" />{rec.incident_date || rec.created_at?.split('T')[0]}</span>
+                                  {rec.reported_by_name && <span className="flex items-center gap-1"><User className="h-3 w-3" />{rec.reported_by_name}</span>}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openBehaviourModal(rec)}>
+                                  <Edit className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-700" onClick={() => handleDeleteBehaviour(rec)}>
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Behaviour Add/Edit Modal */}
+              <Dialog open={behaviourModalOpen} onOpenChange={setBehaviourModalOpen}>
+                <DialogContent className="sm:max-w-md" dir={isRTL ? 'rtl' : 'ltr'}>
+                  <DialogHeader>
+                    <DialogTitle className="font-cairo">{editingBehaviour ? (isRTL ? 'تعديل سجل السلوك' : 'Edit Behavior Record') : (isRTL ? 'إضافة سجل سلوك' : 'Add Behavior Record')}</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 py-2">
+                    <div>
+                      <Label className="font-cairo text-sm">{isRTL ? 'نوع السلوك' : 'Behavior Type'}</Label>
+                      <Select value={behaviourForm.behaviour_type_id} onValueChange={v => {
+                        const bt = behaviourTypes.find(bt => bt.id === v);
+                        setBehaviourForm(prev => ({
+                          ...prev,
+                          behaviour_type_id: v,
+                          title: bt?.name_ar || prev.title,
+                          category: bt?.category || prev.category,
+                        }));
+                      }}>
+                        <SelectTrigger className="mt-1"><SelectValue placeholder={isRTL ? 'اختر النوع...' : 'Select type...'} /></SelectTrigger>
+                        <SelectContent>
+                          {behaviourTypes.map(bt => {
+                            const pts = bt.default_points ?? bt.points;
+                            return (
+                              <SelectItem key={bt.id} value={bt.id}>
+                                <span className="font-cairo">{bt.name_ar || bt.name_en}</span>
+                                {pts != null && <span className={`mr-2 text-xs ${pts > 0 ? 'text-green-600' : pts < 0 ? 'text-red-600' : ''}`}> ({pts > 0 ? '+' : ''}{pts})</span>}
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="font-cairo text-sm">{isRTL ? 'التصنيف' : 'Category'}</Label>
+                      <Select value={behaviourForm.category} onValueChange={v => setBehaviourForm(prev => ({ ...prev, category: v }))}>
+                        <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="positive"><span className="font-cairo text-green-600">{isRTL ? 'إيجابي' : 'Positive'}</span></SelectItem>
+                          <SelectItem value="negative"><span className="font-cairo text-red-600">{isRTL ? 'سلبي' : 'Negative'}</span></SelectItem>
+                          <SelectItem value="neutral"><span className="font-cairo text-gray-500">{isRTL ? 'محايد' : 'Neutral'}</span></SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="font-cairo text-sm">{isRTL ? 'العنوان' : 'Title'}</Label>
+                      <Input value={behaviourForm.title} onChange={e => setBehaviourForm(prev => ({ ...prev, title: e.target.value }))} className="mt-1 font-cairo" placeholder={isRTL ? 'عنوان السلوك...' : 'Behavior title...'} />
+                    </div>
+                    <div>
+                      <Label className="font-cairo text-sm">{isRTL ? 'الوصف' : 'Description'}</Label>
+                      <Textarea value={behaviourForm.description} onChange={e => setBehaviourForm(prev => ({ ...prev, description: e.target.value }))} className="mt-1 font-cairo" rows={3} placeholder={isRTL ? 'تفاصيل إضافية...' : 'Additional details...'} />
+                    </div>
+                    <div>
+                      <Label className="font-cairo text-sm">{isRTL ? 'تاريخ الحادثة' : 'Incident Date'}</Label>
+                      <Input type="date" value={behaviourForm.incident_date} onChange={e => setBehaviourForm(prev => ({ ...prev, incident_date: e.target.value }))} className="mt-1" />
+                    </div>
+                    <div className="flex justify-end gap-2 pt-2">
+                      <Button variant="outline" onClick={() => setBehaviourModalOpen(false)} className="font-cairo">{isRTL ? 'إلغاء' : 'Cancel'}</Button>
+                      <Button onClick={handleSaveBehaviour} disabled={savingBehaviour} className="bg-brand-navy hover:bg-brand-navy/90 text-white font-cairo gap-1">
+                        {savingBehaviour ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                        {editingBehaviour ? (isRTL ? 'تحديث' : 'Update') : (isRTL ? 'حفظ' : 'Save')}
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
             </TabsContent>
 
             <TabsContent value="actions">
