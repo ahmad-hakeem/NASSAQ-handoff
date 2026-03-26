@@ -21,7 +21,8 @@ import {
 } from '../components/ui/dropdown-menu';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip as RechartsTooltip, Cell
+  Tooltip as RechartsTooltip, Cell, RadarChart, PolarGrid,
+  PolarAngleAxis, PolarRadiusAxis, Radar
 } from 'recharts';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
@@ -282,6 +283,9 @@ export default function StudentProfilePage() {
   const [savingTalent, setSavingTalent] = useState(false);
 
   const [overviewLoaded, setOverviewLoaded] = useState(false);
+  const [behaviourPage, setBehaviourPage] = useState(1);
+  const [savingCharacterTrait, setSavingCharacterTrait] = useState(false);
+  const [newCharacterTrait, setNewCharacterTrait] = useState('');
 
   const [attendanceHistory, setAttendanceHistory] = useState([]);
   const [loadingAttendanceHistory, setLoadingAttendanceHistory] = useState(false);
@@ -758,6 +762,38 @@ export default function StudentProfilePage() {
     }
   };
 
+  const handleAddCharacterTrait = async (trait) => {
+    if (!student || !trait.trim()) return;
+    const current = student.character_traits || [];
+    if (current.includes(trait.trim())) return;
+    setSavingCharacterTrait(true);
+    try {
+      await api.put(`/students/${student.id}`, { character_traits: [...current, trait.trim()] }, { headers });
+      toast.success(isRTL ? 'تمت إضافة السمة' : 'Trait added');
+      fetchStudent();
+      setNewCharacterTrait('');
+    } catch {
+      nassaqError(isRTL ? 'فشلت الإضافة' : 'Failed to add trait');
+    } finally {
+      setSavingCharacterTrait(false);
+    }
+  };
+
+  const handleRemoveCharacterTrait = async (trait) => {
+    if (!student) return;
+    const current = student.character_traits || [];
+    setSavingCharacterTrait(true);
+    try {
+      await api.put(`/students/${student.id}`, { character_traits: current.filter(t => t !== trait) }, { headers });
+      toast.success(isRTL ? 'تمت إزالة السمة' : 'Trait removed');
+      fetchStudent();
+    } catch {
+      nassaqError(isRTL ? 'فشلت الإزالة' : 'Failed to remove trait');
+    } finally {
+      setSavingCharacterTrait(false);
+    }
+  };
+
   const handleBack = () => {
     if (fromPath) {
       navigate(fromPath);
@@ -845,6 +881,74 @@ export default function StudentProfilePage() {
     if (!Array.isArray(grades)) return [];
     return grades;
   }, [gradesDetail]);
+
+  const radarChartData = useMemo(() => {
+    if (!student) return [];
+    const talents = student.talents || [];
+    const dims = [
+      { key: 'academic', ar: 'أكاديمي', en: 'Academic', match: ['academically_gifted', 'scientific'] },
+      { key: 'creative', ar: 'إبداعي', en: 'Creative', match: ['artistic', 'musical', 'literary'] },
+      { key: 'athletic', ar: 'رياضي', en: 'Athletic', match: ['athletic'] },
+      { key: 'technical', ar: 'تقني', en: 'Technical', match: ['technological', 'scientific'] },
+      { key: 'social', ar: 'اجتماعي', en: 'Social', match: ['leadership'] },
+      { key: 'leadership', ar: 'قيادي', en: 'Leadership', match: ['leadership'] },
+    ];
+    return dims.map(d => {
+      const matchCount = talents.filter(t => d.match.includes(t)).length;
+      const base = matchCount > 0 ? Math.min(40 + matchCount * 30, 100) : 10;
+      return { dimension: isRTL ? d.ar : d.en, value: base, fullMark: 100 };
+    });
+  }, [student, isRTL]);
+
+  const behaviourTrendData = useMemo(() => {
+    if (!behaviourRecords || behaviourRecords.length === 0) return [];
+    const monthly = {};
+    behaviourRecords.forEach(r => {
+      const d = r.incident_date || r.created_at?.split('T')[0] || '';
+      if (!d) return;
+      const month = d.substring(0, 7);
+      if (!monthly[month]) monthly[month] = { month, positive: 0, negative: 0 };
+      if (r.category === 'positive') monthly[month].positive++;
+      else if (r.category === 'negative') monthly[month].negative++;
+    });
+    return Object.values(monthly).sort((a, b) => a.month.localeCompare(b.month));
+  }, [behaviourRecords]);
+
+  const BEHAVIOUR_PAGE_SIZE = 10;
+  const behaviourTotalPages = Math.max(1, Math.ceil(behaviourRecords.length / BEHAVIOUR_PAGE_SIZE));
+  useEffect(() => {
+    setBehaviourPage(p => Math.min(p, Math.max(1, Math.ceil(behaviourRecords.length / BEHAVIOUR_PAGE_SIZE))));
+  }, [behaviourRecords.length]);
+  const paginatedBehaviourRecords = useMemo(() => {
+    const start = (behaviourPage - 1) * BEHAVIOUR_PAGE_SIZE;
+    return behaviourRecords.slice(start, start + BEHAVIOUR_PAGE_SIZE);
+  }, [behaviourRecords, behaviourPage]);
+
+  const CAREER_AFFINITY_MAP = {
+    academically_gifted: { ar: 'البحث العلمي', en: 'Research' },
+    scientific: { ar: 'الهندسة والطب', en: 'Engineering & Medicine' },
+    artistic: { ar: 'الفنون والتصميم', en: 'Arts & Design' },
+    musical: { ar: 'الموسيقى والأداء', en: 'Music & Performance' },
+    literary: { ar: 'الكتابة والإعلام', en: 'Writing & Media' },
+    athletic: { ar: 'الرياضة والتدريب', en: 'Sports & Coaching' },
+    technological: { ar: 'التقنية والبرمجة', en: 'Technology & Programming' },
+    leadership: { ar: 'الإدارة والقيادة', en: 'Management & Leadership' },
+  };
+
+  const CHARACTER_TRAIT_OPTIONS = [
+    { ar: 'مسؤول', en: 'Responsible' },
+    { ar: 'متعاطف', en: 'Empathetic' },
+    { ar: 'مبدع', en: 'Creative' },
+    { ar: 'قيادي', en: 'Leader' },
+    { ar: 'مثابر', en: 'Persistent' },
+    { ar: 'فضولي', en: 'Curious' },
+    { ar: 'متعاون', en: 'Collaborative' },
+    { ar: 'منضبط', en: 'Disciplined' },
+    { ar: 'صادق', en: 'Honest' },
+    { ar: 'متفائل', en: 'Optimistic' },
+    { ar: 'محترم', en: 'Respectful' },
+    { ar: 'كريم', en: 'Generous' },
+  ];
 
   const TABS = [
     { value: 'overview', label_ar: 'نظرة عامة', label_en: 'Overview', icon: Eye },
@@ -1521,7 +1625,8 @@ export default function StudentProfilePage() {
               </TabsContent>
 
               {/* ===== TALENTS TAB ===== */}
-              <TabsContent value="talents" className="mt-6">
+              <TabsContent value="talents" className="mt-6 space-y-4">
+                {/* Talent Badges Section */}
                 <Card>
                   <CardContent className="p-6 space-y-6">
                     <div className="flex items-center justify-between">
@@ -1540,16 +1645,18 @@ export default function StudentProfilePage() {
                     <div>
                       <Label className="text-sm font-cairo mb-3 block text-muted-foreground">{isRTL ? 'المواهب الحالية' : 'Current Talents'}</Label>
                       {(student?.talents?.length > 0) ? (
-                        <div className="flex flex-wrap gap-2">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                           {student.talents.map(t => {
                             const opt = TALENT_OPTIONS.find(o => o.value === t);
                             return (
-                              <Badge key={t} variant="outline" className={`px-3 py-1.5 text-sm font-cairo cursor-default flex items-center gap-1.5 ${opt?.color || 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600'}`}>
-                                {opt ? (isRTL ? opt.ar : opt.en) : t}
-                                <button onClick={() => handleRemoveTalent(t)} disabled={savingTalent} className="hover:text-red-500 transition-colors rounded-full p-0.5">
+                              <div key={t} className={`relative p-3 rounded-xl border text-center transition-all hover:shadow-sm ${opt?.color || 'bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600'}`}>
+                                <button onClick={() => handleRemoveTalent(t)} disabled={savingTalent}
+                                  className="absolute top-1.5 end-1.5 hover:text-red-500 transition-colors rounded-full p-0.5 opacity-50 hover:opacity-100">
                                   <XCircle className="h-3.5 w-3.5" />
                                 </button>
-                              </Badge>
+                                <Star className="h-5 w-5 mx-auto mb-1.5 fill-current opacity-60" />
+                                <p className="text-sm font-cairo font-medium">{opt ? (isRTL ? opt.ar : opt.en) : t}</p>
+                              </div>
                             );
                           })}
                         </div>
@@ -1601,22 +1708,79 @@ export default function StudentProfilePage() {
                     )}
                   </CardContent>
                 </Card>
+
+                {/* Skills Radar Chart */}
+                <Card>
+                  <CardContent className="p-6">
+                    <h3 className="font-bold text-base font-cairo flex items-center gap-2 mb-4">
+                      <Target className="h-5 w-5 text-brand-purple" />
+                      {isRTL ? 'خريطة المهارات' : 'Skills Radar'}
+                    </h3>
+                    {(student?.talents?.length > 0) ? (
+                      <div className="h-72">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <RadarChart cx="50%" cy="50%" outerRadius="75%" data={radarChartData}>
+                            <PolarGrid strokeDasharray="3 3" />
+                            <PolarAngleAxis dataKey="dimension" tick={{ fontSize: 11, fontFamily: 'Cairo' }} />
+                            <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fontSize: 9 }} />
+                            <Radar name={isRTL ? 'المهارات' : 'Skills'} dataKey="value" stroke="#46C1BE" fill="#46C1BE" fillOpacity={0.3} strokeWidth={2} />
+                          </RadarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    ) : (
+                      <EmptyState icon={Target} message={isRTL ? 'أضف مواهب لعرض خريطة المهارات' : 'Add talents to see skills radar'} />
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Future Career Affinity */}
+                <Card className="border-brand-purple/20 bg-gradient-to-r from-brand-purple/5 to-brand-navy/5 dark:from-brand-purple/10 dark:to-brand-navy/10">
+                  <CardContent className="p-6">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="font-bold text-base font-cairo flex items-center gap-2">
+                        <Rocket className="h-5 w-5 text-brand-purple" />
+                        {isRTL ? 'مؤشرات المسار المهني' : 'Career Affinity Indicators'}
+                      </h3>
+                      <Badge variant="outline" className="text-[10px] border-dashed text-muted-foreground">
+                        {isRTL ? 'مؤشرات أولية' : 'Early Indicators'}
+                      </Badge>
+                    </div>
+                    {(student?.talents?.length > 0) ? (
+                      <div className="space-y-3">
+                        <div className="flex flex-wrap gap-2">
+                          {student.talents.map(t => CAREER_AFFINITY_MAP[t]).filter(Boolean).filter((v, i, a) => a.findIndex(x => x.en === v.en) === i).map((career, i) => (
+                            <Badge key={i} className="bg-brand-purple/10 text-brand-purple border-brand-purple/20 px-3 py-1.5 font-cairo">
+                              <GraduationCap className="h-3.5 w-3.5 me-1.5" />
+                              {isRTL ? career.ar : career.en}
+                            </Badge>
+                          ))}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground font-cairo flex items-center gap-1.5 mt-2 p-2 bg-muted/30 rounded-lg">
+                          <Brain className="h-3.5 w-3.5 text-brand-purple shrink-0" />
+                          {isRTL ? 'مؤشرات أولية — ليست نهائية. هذا القسم سيعمل بالذكاء الاصطناعي في إصدار مستقبلي.' : 'Early Indicators — Not Final. This section will be AI-powered in a future version.'}
+                        </p>
+                      </div>
+                    ) : (
+                      <EmptyState icon={Rocket} message={isRTL ? 'أضف مواهب لعرض مؤشرات المسار المهني' : 'Add talents to see career affinity'} />
+                    )}
+                  </CardContent>
+                </Card>
               </TabsContent>
 
               {/* ===== BEHAVIOUR TAB ===== */}
               <TabsContent value="behaviour" className="mt-6 space-y-4">
+                {/* Summary Counter Cards */}
                 {behaviourSummary && (
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-3 gap-3">
                     {[
-                      { icon: ThumbsUp, value: behaviourSummary.positive_count || 0, label: isRTL ? 'إيجابي' : 'Positive', color: 'text-green-500', border: 'border-green-200 dark:border-green-800' },
-                      { icon: ThumbsDown, value: behaviourSummary.negative_count || 0, label: isRTL ? 'سلبي' : 'Negative', color: 'text-red-500', border: 'border-red-200 dark:border-red-800' },
-                      { icon: Activity, value: behaviourSummary.total_points || 0, label: isRTL ? 'النقاط' : 'Points', color: 'text-blue-500', border: 'border-blue-200 dark:border-blue-800' },
-                      { icon: MessageSquare, value: behaviourSummary.total_records || behaviourRecords.length, label: isRTL ? 'إجمالي' : 'Total', color: 'text-purple-500', border: 'border-purple-200 dark:border-purple-800' },
+                      { icon: ThumbsUp, value: behaviourSummary.positive_count || 0, label: isRTL ? 'إيجابي' : 'Positive', color: 'text-green-500', bg: 'bg-green-50 dark:bg-green-950/20', border: 'border-green-200 dark:border-green-800' },
+                      { icon: ThumbsDown, value: behaviourSummary.negative_count || 0, label: isRTL ? 'سلبي' : 'Negative', color: 'text-red-500', bg: 'bg-red-50 dark:bg-red-950/20', border: 'border-red-200 dark:border-red-800' },
+                      { icon: MessageSquare, value: behaviourSummary.total_records || behaviourRecords.length, label: isRTL ? 'إجمالي السجلات' : 'Total Records', color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-950/20', border: 'border-blue-200 dark:border-blue-800' },
                     ].map((s, i) => (
-                      <Card key={i} className={s.border}>
+                      <Card key={i} className={`${s.border} ${s.bg}`}>
                         <CardContent className="p-4 text-center">
                           <s.icon className={`h-5 w-5 mx-auto mb-1 ${s.color}`} />
-                          <div className={`text-2xl font-bold ${s.color}`}>{s.value}</div>
+                          <div className={`text-2xl font-bold font-cairo ${s.color}`}>{s.value}</div>
                           <p className="text-xs text-muted-foreground font-cairo">{s.label}</p>
                         </CardContent>
                       </Card>
@@ -1624,84 +1788,181 @@ export default function StudentProfilePage() {
                   </div>
                 )}
 
-                <div className="flex items-center justify-between">
-                  <h3 className="font-bold text-base font-cairo flex items-center gap-2">
-                    <Activity className="h-5 w-5 text-brand-navy" />
-                    {isRTL ? 'سجل السلوك' : 'Behavior Log'}
-                  </h3>
-                  <Button size="sm" onClick={() => openBehaviourModal()} className="bg-brand-navy hover:bg-brand-navy/90 text-white gap-1 font-cairo">
-                    <Plus className="h-4 w-4" /> {isRTL ? 'إضافة سجل' : 'Add Record'}
-                  </Button>
-                </div>
-
-                {loadingBehaviour ? (
-                  <div className="space-y-3">
-                    {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
-                  </div>
-                ) : behaviourRecords.length === 0 ? (
-                  <EmptyState icon={Activity} message={isRTL ? 'لا توجد سجلات سلوكية بعد' : 'No behavior records yet'} actionLabel={isRTL ? 'إضافة سجل' : 'Add Record'} onAction={() => openBehaviourModal()} />
-                ) : (
-                  <div className="space-y-3">
-                    {behaviourRecords.map(rec => {
-                      const catColors = {
-                        positive: 'border-l-green-500 bg-green-50/50 dark:bg-green-900/10',
-                        negative: 'border-l-red-500 bg-red-50/50 dark:bg-red-900/10',
-                        neutral: 'border-l-gray-400 bg-gray-50/50 dark:bg-gray-900/10'
-                      };
-                      const catIcons = { positive: ThumbsUp, negative: ThumbsDown, neutral: MessageSquare };
-                      const CatIcon = catIcons[rec.category] || MessageSquare;
-                      const severityColors = {
-                        minor: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
-                        moderate: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300',
-                        major: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
-                        severe: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
-                      };
-                      const statusColors = {
-                        pending: 'bg-yellow-100 text-yellow-700',
-                        reviewed: 'bg-blue-100 text-blue-700',
-                        escalated: 'bg-red-100 text-red-700',
-                        resolved: 'bg-green-100 text-green-700',
-                        archived: 'bg-gray-100 text-gray-700',
-                      };
-                      return (
-                        <Card key={rec.id} className={`border-l-4 ${catColors[rec.category] || catColors.neutral}`}>
-                          <CardContent className="p-4">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                  <CatIcon className={`h-4 w-4 flex-shrink-0 ${rec.category === 'positive' ? 'text-green-500' : rec.category === 'negative' ? 'text-red-500' : 'text-gray-400'}`} />
-                                  <span className="font-semibold text-sm font-cairo truncate">{rec.title}</span>
-                                  {rec.points != null && (
-                                    <Badge variant="outline" className={`text-xs ${rec.points > 0 ? 'text-green-600 border-green-300' : rec.points < 0 ? 'text-red-600 border-red-300' : 'text-gray-500 border-gray-300'}`}>
-                                      {rec.points > 0 ? '+' : ''}{rec.points}
-                                    </Badge>
-                                  )}
-                                  {rec.severity && <Badge className={`text-xs ${severityColors[rec.severity] || ''}`}>{rec.severity}</Badge>}
-                                  {rec.status && <Badge className={`text-xs ${statusColors[rec.status] || ''}`}>{rec.status}</Badge>}
-                                </div>
-                                {rec.description && <p className="text-xs text-muted-foreground font-cairo mt-1 line-clamp-2">{rec.description}</p>}
-                                <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
-                                  <span className="flex items-center gap-1"><Calendar className="h-3 w-3" />{rec.incident_date || rec.created_at?.split('T')[0]}</span>
-                                  {rec.reported_by_name && <span className="flex items-center gap-1"><User className="h-3 w-3" />{rec.reported_by_name}</span>}
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-1 flex-shrink-0">
-                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openBehaviourModal(rec)}>
-                                  <Edit className="h-3.5 w-3.5" />
-                                </Button>
-                                {!isTeacher && (
-                                  <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-700" onClick={() => handleDeleteBehaviour(rec)}>
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </Button>
-                                )}
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      );
-                    })}
-                  </div>
+                {/* Behavior Trend Chart */}
+                {behaviourTrendData.length > 0 && (
+                  <Card>
+                    <CardContent className="p-6">
+                      <h3 className="font-bold text-base font-cairo flex items-center gap-2 mb-4">
+                        <BarChart3 className="h-5 w-5 text-brand-navy" />
+                        {isRTL ? 'اتجاه السلوك الشهري' : 'Monthly Behavior Trend'}
+                      </h3>
+                      <div className="h-52">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={behaviourTrendData} barGap={4}>
+                            <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                            <XAxis dataKey="month" tick={{ fontSize: 11 }} tickFormatter={v => v.substring(5)} />
+                            <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                            <RechartsTooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} />
+                            <Bar dataKey="positive" name={isRTL ? 'إيجابي' : 'Positive'} fill="#22c55e" radius={[4, 4, 0, 0]} />
+                            <Bar dataKey="negative" name={isRTL ? 'سلبي' : 'Negative'} fill="#ef4444" radius={[4, 4, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </CardContent>
+                  </Card>
                 )}
+
+                {/* Behavior Log */}
+                <Card>
+                  <CardContent className="p-6 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-bold text-base font-cairo flex items-center gap-2">
+                        <Activity className="h-5 w-5 text-brand-navy" />
+                        {isRTL ? 'سجل السلوك' : 'Behavior Log'}
+                      </h3>
+                      <Button size="sm" onClick={() => openBehaviourModal()} className="bg-brand-navy hover:bg-brand-navy/90 text-white gap-1 font-cairo">
+                        <Plus className="h-4 w-4" /> {isRTL ? 'إضافة سجل' : 'Add Record'}
+                      </Button>
+                    </div>
+
+                    {loadingBehaviour ? (
+                      <div className="space-y-3">
+                        {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
+                      </div>
+                    ) : behaviourRecords.length === 0 ? (
+                      <EmptyState icon={Activity} message={isRTL ? 'لا توجد سجلات سلوكية بعد' : 'No behavior records yet'} actionLabel={isRTL ? 'إضافة سجل' : 'Add Record'} onAction={() => openBehaviourModal()} />
+                    ) : (
+                      <>
+                        <div className="space-y-3">
+                          {paginatedBehaviourRecords.map(rec => {
+                            const catColors = {
+                              positive: 'border-s-green-500 bg-green-50/50 dark:bg-green-900/10',
+                              negative: 'border-s-red-500 bg-red-50/50 dark:bg-red-900/10',
+                              neutral: 'border-s-gray-400 bg-gray-50/50 dark:bg-gray-900/10'
+                            };
+                            const catIcons = { positive: ThumbsUp, negative: ThumbsDown, neutral: MessageSquare };
+                            const CatIcon = catIcons[rec.category] || MessageSquare;
+                            const severityColors = {
+                              minor: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+                              moderate: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300',
+                              major: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
+                              severe: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+                            };
+                            const statusColors = {
+                              pending: 'bg-yellow-100 text-yellow-700',
+                              reviewed: 'bg-blue-100 text-blue-700',
+                              escalated: 'bg-red-100 text-red-700',
+                              resolved: 'bg-green-100 text-green-700',
+                              archived: 'bg-gray-100 text-gray-700',
+                            };
+                            return (
+                              <Card key={rec.id} className={`border-s-4 ${catColors[rec.category] || catColors.neutral}`}>
+                                <CardContent className="p-4">
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                        <CatIcon className={`h-4 w-4 flex-shrink-0 ${rec.category === 'positive' ? 'text-green-500' : rec.category === 'negative' ? 'text-red-500' : 'text-gray-400'}`} />
+                                        <span className="font-semibold text-sm font-cairo truncate">{rec.title}</span>
+                                        {rec.points != null && (
+                                          <Badge variant="outline" className={`text-xs ${rec.points > 0 ? 'text-green-600 border-green-300' : rec.points < 0 ? 'text-red-600 border-red-300' : 'text-gray-500 border-gray-300'}`}>
+                                            {rec.points > 0 ? '+' : ''}{rec.points}
+                                          </Badge>
+                                        )}
+                                        {rec.severity && <Badge className={`text-xs ${severityColors[rec.severity] || ''}`}>{rec.severity}</Badge>}
+                                        {rec.status && <Badge className={`text-xs ${statusColors[rec.status] || ''}`}>{rec.status}</Badge>}
+                                      </div>
+                                      {rec.description && <p className="text-xs text-muted-foreground font-cairo mt-1 line-clamp-2">{rec.description}</p>}
+                                      <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+                                        <span className="flex items-center gap-1"><Calendar className="h-3 w-3" />{rec.incident_date || rec.created_at?.split('T')[0]}</span>
+                                        {rec.reported_by_name && <span className="flex items-center gap-1"><User className="h-3 w-3" />{rec.reported_by_name}</span>}
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-1 flex-shrink-0">
+                                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openBehaviourModal(rec)}>
+                                        <Edit className="h-3.5 w-3.5" />
+                                      </Button>
+                                      {!isTeacher && (
+                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-700" onClick={() => handleDeleteBehaviour(rec)}>
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                        </Button>
+                                      )}
+                                    </div>
+                                  </div>
+                                </CardContent>
+                              </Card>
+                            );
+                          })}
+                        </div>
+                        {behaviourTotalPages > 1 && (
+                          <div className="flex items-center justify-center gap-2 pt-2">
+                            <Button variant="outline" size="sm" disabled={behaviourPage <= 1} onClick={() => setBehaviourPage(p => p - 1)} className="font-cairo">
+                              {isRTL ? <ArrowRight className="h-4 w-4" /> : <ArrowLeft className="h-4 w-4" />}
+                            </Button>
+                            <span className="text-sm text-muted-foreground font-cairo tabular-nums">{behaviourPage} / {behaviourTotalPages}</span>
+                            <Button variant="outline" size="sm" disabled={behaviourPage >= behaviourTotalPages} onClick={() => setBehaviourPage(p => p + 1)} className="font-cairo">
+                              {isRTL ? <ArrowLeft className="h-4 w-4" /> : <ArrowRight className="h-4 w-4" />}
+                            </Button>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Character Traits Section */}
+                <Card>
+                  <CardContent className="p-6 space-y-4">
+                    <h3 className="font-bold text-base font-cairo flex items-center gap-2">
+                      <Heart className="h-5 w-5 text-rose-500" />
+                      {isRTL ? 'السمات الشخصية' : 'Character Traits'}
+                    </h3>
+                    <p className="text-xs text-muted-foreground font-cairo">
+                      {isRTL ? 'سمات إيجابية يضيفها المعلمون لوصف شخصية الطالب' : 'Positive personality tags added by teachers to describe the student'}
+                    </p>
+
+                    {(student?.character_traits?.length > 0) ? (
+                      <div className="flex flex-wrap gap-2">
+                        {student.character_traits.map(trait => (
+                          <Badge key={trait} className="bg-gradient-to-r from-rose-50 to-purple-50 dark:from-rose-950/20 dark:to-purple-950/20 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 px-3 py-1.5 font-cairo text-sm">
+                            {trait}
+                            <button onClick={() => handleRemoveCharacterTrait(trait)} disabled={savingCharacterTrait}
+                              className="ms-1.5 hover:text-red-500 transition-colors">
+                              <XCircle className="h-3.5 w-3.5" />
+                            </button>
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <EmptyState icon={Heart} message={isRTL ? 'لم يتم إضافة سمات شخصية بعد' : 'No character traits added yet'} />
+                    )}
+
+                    <div>
+                      <Label className="text-sm font-cairo mb-2 block text-muted-foreground">{isRTL ? 'إضافة سمة' : 'Add Trait'}</Label>
+                      <div className="flex flex-wrap gap-1.5 mb-3">
+                        {CHARACTER_TRAIT_OPTIONS
+                          .filter(opt => !(student?.character_traits || []).includes(isRTL ? opt.ar : opt.en))
+                          .map(opt => (
+                            <Button key={opt.en} variant="outline" size="sm" disabled={savingCharacterTrait}
+                              onClick={() => handleAddCharacterTrait(isRTL ? opt.ar : opt.en)}
+                              className="text-xs font-cairo gap-1 h-7 px-2.5 hover:bg-rose-50 hover:border-rose-200 dark:hover:bg-rose-950/20">
+                              <Plus className="h-3 w-3" /> {isRTL ? opt.ar : opt.en}
+                            </Button>
+                          ))}
+                      </div>
+                      <div className="flex gap-2">
+                        <Input value={newCharacterTrait} onChange={e => setNewCharacterTrait(e.target.value)}
+                          placeholder={isRTL ? 'أو اكتب سمة مخصصة...' : 'Or type a custom trait...'}
+                          className="flex-1 text-sm font-cairo"
+                          onKeyDown={e => e.key === 'Enter' && handleAddCharacterTrait(newCharacterTrait)} />
+                        <Button size="sm" disabled={savingCharacterTrait || !newCharacterTrait.trim()}
+                          onClick={() => handleAddCharacterTrait(newCharacterTrait)}
+                          className="bg-rose-500 hover:bg-rose-600 text-white">
+                          {savingCharacterTrait ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
               </TabsContent>
 
               {/* ===== ACTIVITIES TAB (Placeholder) ===== */}
