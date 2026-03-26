@@ -318,6 +318,7 @@ class StudentCreate(BaseModel):
     parent_email: Optional[EmailStr] = None
     parent_name: Optional[str] = None
     is_gifted: Optional[bool] = False
+    talents: Optional[List[str]] = []
 
 class StudentResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -334,6 +335,7 @@ class StudentResponse(BaseModel):
     parent_email: Optional[str] = None
     parent_name: Optional[str] = None
     is_gifted: Optional[bool] = False
+    talents: Optional[List[str]] = []
     is_active: bool = True
     created_at: Optional[str] = None
     qr_code: Optional[str] = None
@@ -361,6 +363,7 @@ class StudentUpdate(BaseModel):
     parent_email: Optional[EmailStr] = None
     parent_name: Optional[str] = None
     is_gifted: Optional[bool] = None
+    talents: Optional[List[str]] = None
     is_active: Optional[bool] = None
 
 class ClassUpdate(BaseModel):

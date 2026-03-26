@@ -750,6 +750,16 @@ Sub-pages (accessible from within classes/sessions, not top-level sidebar):
 - Frontend: React 19, react-router-dom v7, Radix UI, Tailwind CSS, recharts, axios, @dnd-kit
 - Backend: FastAPI, motor (MongoDB async), PyJWT, bcrypt, qrcode, pandas, google-generativeai, reportlab, xlsxwriter, psutil, python-docx
 
+## Student Profile Page (Full Dedicated Page)
+- **Route**: `/admin/students/:studentId` and `/principal/students/:studentId`
+- **Component**: `StudentProfilePage.jsx`
+- **Navigation**: Clicking any student name from ClassDetailPage or UsersClassesManagement navigates to this page (replaces old dialog)
+- **Sections**: Student Info (name, ID, grade, class, gender, DOB, email, phone, status, talents), Guardian Info (name, phone, email, relationship), Academic Details (attendance summary, AI risk analysis, Hakim plans with export), Actions (reset password, suspend/activate, delete)
+- **Talent Tags**: Multi-select talent system with auto-toggle of is_gifted flag. Options: Academically Gifted, Artistic, Athletic, Scientific, Leadership, Literary, Musical, Technological
+- **Backend**: `talents: List[str]` field on StudentCreate/Update/Response models. When talents change, is_gifted auto-set based on whether talents array is non-empty
+- **Breadcrumbs**: User Management > Class Name > Student Name (dynamic based on navigation context)
+- **Back button**: Returns to the class page or user management page based on navigation source
+
 ## School Admin Class Detail Page
 - **Route**: `/admin/classes/:classId` and `/principal/classes/:classId`
 - **Component**: `ClassDetailPage.jsx`

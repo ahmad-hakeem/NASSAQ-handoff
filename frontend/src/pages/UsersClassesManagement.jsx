@@ -34,7 +34,6 @@ import { NotificationBell } from '../components/notifications/NotificationBell';
 import AddStudentWizard from '../components/wizards/AddStudentWizard';
 import { AddTeacherWizard } from '../components/wizards/AddTeacherWizard';
 import CreateClassWizard from '../components/wizards/CreateClassWizard';
-import StudentProfileDialog from '../components/management/StudentProfileDialog';
 import TeacherProfileDialog from '../components/management/TeacherProfileDialog';
 import ParentProfileDialog from '../components/management/ParentProfileDialog';
 import StudentClassGrid from '../components/management/StudentClassGrid';
@@ -819,8 +818,6 @@ export default function UsersClassesManagement() {
   const [viewClassForm, setViewClassForm] = useState({});
   const [viewClassSaving, setViewClassSaving] = useState(false);
 
-  const [studentProfileOpen, setStudentProfileOpen] = useState(false);
-  const [selectedStudent, setSelectedStudent] = useState(null);
   const [teacherProfileOpen, setTeacherProfileOpen] = useState(false);
   const [selectedTeacher, setSelectedTeacher] = useState(null);
   const [parentProfileOpen, setParentProfileOpen] = useState(false);
@@ -1070,11 +1067,15 @@ export default function UsersClassesManagement() {
   };
 
   const handleView = (item, type) => {
-    if (type === 'student') { setSelectedStudent(item); setStudentProfileOpen(true); }
+    const prefix = user?.role === 'school_principal' ? '/principal' : '/admin';
+    if (type === 'student') {
+      navigate(`${prefix}/students/${item.id}`, {
+        state: { fromPath: `${prefix}/users-management?filter=students` }
+      });
+    }
     else if (type === 'teacher') { setSelectedTeacher(item); setTeacherProfileOpen(true); }
     else if (type === 'parent') { setSelectedParent(item); setParentProfileOpen(true); }
     else if (type === 'class') {
-      const prefix = user?.role === 'school_principal' ? '/principal' : '/admin';
       navigate(`${prefix}/classes/${item.id}`);
     }
     else { setSelectedItem(item); setSelectedItemType(type); setViewDialogOpen(true); }
@@ -1779,14 +1780,6 @@ export default function UsersClassesManagement() {
             onSuccess={handleClassCreated}
           />
         )}
-
-        <StudentProfileDialog
-          open={studentProfileOpen}
-          onClose={() => setStudentProfileOpen(false)}
-          student={selectedStudent}
-          classes={classes}
-          onRefresh={fetchAllData}
-        />
 
         <TeacherProfileDialog
           open={teacherProfileOpen}

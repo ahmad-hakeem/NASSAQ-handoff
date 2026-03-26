@@ -21,6 +21,7 @@ import PrincipalDashboard from "./pages/PrincipalDashboard";
 import { TeachersPage } from "./pages/TeachersPage";
 import UsersClassesManagement from "./pages/UsersClassesManagement";
 import ClassDetailPage from "./pages/ClassDetailPage";
+import AdminStudentProfilePage from "./pages/StudentProfilePage";
 import { StudentsPage } from "./pages/StudentsPage";
 import { ClassesPage } from "./pages/ClassesPage";
 import { SubjectsPage } from "./pages/SubjectsPage";
@@ -782,6 +783,22 @@ function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={['school_principal', 'school_admin', 'school_sub_admin']}>
             <ClassDetailPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/students/:studentId"
+        element={
+          <ProtectedRoute allowedRoles={['school_principal', 'school_admin', 'school_sub_admin']}>
+            <AdminStudentProfilePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/principal/students/:studentId"
+        element={
+          <ProtectedRoute allowedRoles={['school_principal', 'school_admin', 'school_sub_admin']}>
+            <AdminStudentProfilePage />
           </ProtectedRoute>
         }
       />

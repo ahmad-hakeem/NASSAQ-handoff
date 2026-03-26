@@ -20,7 +20,6 @@ import {
   DropdownMenuTrigger, DropdownMenuSeparator
 } from '../components/ui/dropdown-menu';
 import { NotificationBell } from '../components/notifications/NotificationBell';
-import StudentProfileDialog from '../components/management/StudentProfileDialog';
 import AddStudentWizard from '../components/wizards/AddStudentWizard';
 
 const CartoonMaleAvatar = ({ name, size = 'md' }) => {
@@ -171,6 +170,18 @@ const StudentCard = ({ student, isRTL, onView, onEdit, onDelete, onAction, viewM
                 {student.is_gifted && <Star className="h-3 w-3 text-amber-500 fill-amber-500 shrink-0" />}
               </h3>
               <p className="text-[10px] text-muted-foreground font-mono">{student.student_number || student.id?.slice(0, 8)}</p>
+              {student.talents?.length > 0 && (
+                <div className="flex flex-wrap gap-0.5 mt-1">
+                  {student.talents.slice(0, 2).map(t => (
+                    <span key={t} className="text-[8px] px-1.5 py-0 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 border border-amber-200 dark:border-amber-700">
+                      {t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).substring(0, 12)}
+                    </span>
+                  ))}
+                  {student.talents.length > 2 && (
+                    <span className="text-[8px] px-1 text-amber-600 dark:text-amber-400">+{student.talents.length - 2}</span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
           <DropdownMenu>
@@ -233,8 +244,6 @@ export default function ClassDetailPage() {
   const [viewMode, setViewMode] = useState('grid');
   const [studentSubTab, setStudentSubTab] = useState('all');
 
-  const [selectedStudent, setSelectedStudent] = useState(null);
-  const [studentProfileOpen, setStudentProfileOpen] = useState(false);
   const [showStudentWizard, setShowStudentWizard] = useState(false);
   const [grades, setGrades] = useState([]);
 
@@ -287,14 +296,20 @@ export default function ClassDetailPage() {
     return filteredStudents;
   }, [studentSubTab, filteredStudents, giftedStudents, otherStudents]);
 
+  const rolePrefix = user?.role === 'school_principal' ? '/principal' : '/admin';
+
+  const navigateToStudent = (student) => {
+    navigate(`${rolePrefix}/students/${student.id}`, {
+      state: { classId, className: classData?.name, fromPath: `${rolePrefix}/classes/${classId}` }
+    });
+  };
+
   const handleView = (student) => {
-    setSelectedStudent(student);
-    setStudentProfileOpen(true);
+    navigateToStudent(student);
   };
 
   const handleEdit = (student) => {
-    setSelectedStudent(student);
-    setStudentProfileOpen(true);
+    navigateToStudent(student);
   };
 
   const handleDelete = async (student) => {
@@ -583,14 +598,6 @@ export default function ClassDetailPage() {
             </div>
           )}
         </main>
-
-        <StudentProfileDialog
-          open={studentProfileOpen}
-          onClose={() => { setStudentProfileOpen(false); setSelectedStudent(null); }}
-          student={selectedStudent}
-          classes={classes}
-          onRefresh={fetchData}
-        />
 
         <AddStudentWizard
           open={showStudentWizard}

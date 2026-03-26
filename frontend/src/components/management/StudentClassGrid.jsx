@@ -83,7 +83,14 @@ const DraggableStudentChip = ({ student, isRTL, onView, onEdit, onDelete, onActi
             <Star className="h-3 w-3 text-amber-500 fill-amber-500 shrink-0" />
           )}
         </div>
-        <p className="text-[10px] text-muted-foreground font-mono truncate">{student.student_number || student.id?.slice(0, 8)}</p>
+        <div className="flex items-center gap-1 min-w-0">
+          <p className="text-[10px] text-muted-foreground font-mono truncate">{student.student_number || student.id?.slice(0, 8)}</p>
+          {student.talents?.length > 0 && (
+            <span className="text-[9px] text-amber-600 dark:text-amber-400 truncate">
+              {student.talents.length > 1 ? `+${student.talents.length}` : ''}
+            </span>
+          )}
+        </div>
       </div>
       <Badge variant={student.is_active !== false ? 'default' : 'destructive'}
         className={`text-[9px] h-4 rounded-full border-0 px-1.5 shrink-0 ${student.is_active !== false ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : ''}`}>
