@@ -472,6 +472,42 @@ export default function StudentProfilePage() {
     }
   }, [api, classId, student?.class_id, headers]);
 
+  const fetchActivities = useCallback(async () => {
+    if (!studentId || !tenantId) return;
+    setLoadingActivities(true);
+    try {
+      const [actRes, certRes] = await Promise.all([
+        api.get(`/activities/student/${studentId}?school_id=${tenantId}`, { headers }),
+        api.get(`/activities/certificates/student/${studentId}?school_id=${tenantId}`, { headers }),
+      ]);
+      setActivities(actRes.data || []);
+      setCertificates(certRes.data || []);
+    } catch { }
+    setLoadingActivities(false);
+  }, [studentId, tenantId]);
+
+  const fetchLongitudinal = useCallback(async () => {
+    if (!studentId) return;
+    setLoadingLongitudinal(true);
+    try {
+      const res = await api.get(`/hakim/student/${studentId}/longitudinal`, { headers });
+      setLongitudinalData(res.data);
+    } catch {
+      setLongitudinalData(null);
+    }
+    setLoadingLongitudinal(false);
+  }, [studentId]);
+
+  const fetchPlanHistory = useCallback(async () => {
+    if (!studentId) return;
+    setLoadingPlanHistory(true);
+    try {
+      const res = await api.get(`/hakim/student/${studentId}/plan-history`, { headers });
+      setPlanHistory(res.data || []);
+    } catch { }
+    setLoadingPlanHistory(false);
+  }, [studentId]);
+
   useEffect(() => {
     if (activeTab === 'overview' && !overviewLoaded && student) {
       fetchAttendance();
@@ -588,32 +624,6 @@ export default function StudentProfilePage() {
     { value: 'other', ar: 'أخرى', en: 'Other', icon: '📌', color: 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-900/30 dark:text-gray-300' },
   ];
 
-  const fetchActivities = useCallback(async () => {
-    if (!studentId || !tenantId) return;
-    setLoadingActivities(true);
-    try {
-      const [actRes, certRes] = await Promise.all([
-        api.get(`/activities/student/${studentId}?school_id=${tenantId}`, { headers }),
-        api.get(`/activities/certificates/student/${studentId}?school_id=${tenantId}`, { headers }),
-      ]);
-      setActivities(actRes.data || []);
-      setCertificates(certRes.data || []);
-    } catch { }
-    setLoadingActivities(false);
-  }, [studentId, tenantId]);
-
-  const fetchLongitudinal = useCallback(async () => {
-    if (!studentId) return;
-    setLoadingLongitudinal(true);
-    try {
-      const res = await api.get(`/hakim/student/${studentId}/longitudinal`, { headers });
-      setLongitudinalData(res.data);
-    } catch {
-      setLongitudinalData(null);
-    }
-    setLoadingLongitudinal(false);
-  }, [studentId]);
-
   const handleExportFullProfile = async () => {
     if (!studentId || profileExportSections.length === 0) return;
     setExportingProfile(true);
@@ -725,16 +735,6 @@ export default function StudentProfilePage() {
     if (total <= 5) return { level: 'active', label: isRTL ? 'نشط' : 'Active', percent: 65, color: 'bg-green-500' };
     return { level: 'highly_active', label: isRTL ? 'نشط جداً' : 'Highly Active', percent: 90, color: 'bg-emerald-500' };
   }, [activities.length, certificates.length, isRTL]);
-
-  const fetchPlanHistory = useCallback(async () => {
-    if (!studentId) return;
-    setLoadingPlanHistory(true);
-    try {
-      const res = await api.get(`/hakim/student/${studentId}/plan-history`, { headers });
-      setPlanHistory(res.data || []);
-    } catch { }
-    setLoadingPlanHistory(false);
-  }, [studentId]);
 
   const handleSave = async () => {
     setSaving(true);
