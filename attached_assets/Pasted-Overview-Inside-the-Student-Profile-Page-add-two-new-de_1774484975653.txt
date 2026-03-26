@@ -1,0 +1,113 @@
+Overview
+Inside the Student Profile Page, add two new dedicated tabs:
+
+"Talents" tab (المواهب)
+"Behavior" tab (السلوك)
+
+These tabs must appear in the student profile tab navigation alongside any existing tabs.
+
+Tab 1: Talents (المواهب)
+Display:
+
+Show all talents currently assigned to the student as visual tag/badge cards
+Each talent badge should display the talent name and a relevant icon if possible
+If no talents are assigned yet, show an empty state message: "No talents added yet"
+
+Add Talent:
+
+A clearly visible "+ Add Talent" button
+Clicking it opens a modal or inline dropdown with a predefined talent list to choose from
+Examples in the predefined list:
+
+Academic Excellence (التفوق الأكاديمي)
+Arts & Creativity (الفنون والإبداع)
+Athletics & Sports (الرياضة)
+Science & Innovation (العلوم والابتكار)
+Leadership (القيادة)
+Technology & Programming (التقنية والبرمجة)
+Music (الموسيقى)
+Public Speaking (الخطابة)
+Other (أخرى)
+
+
+
+Add Custom Talent:
+
+If the talent is not in the predefined list, user can type a custom talent name and add it to both the student's profile AND the global talent list for future use
+Custom talents persist and appear in the dropdown for all future students
+
+Edit / Remove Talent:
+
+Each talent badge has a small remove (×) button to delete it from the student's profile
+Removing a talent from the student does NOT delete it from the global predefined list
+
+Gifted Flag Logic:
+
+If the student has at least one talent, isGifted = true automatically
+If all talents are removed, isGifted reverts to false
+This update must reflect immediately in the student list view (badge visibility)
+
+
+Tab 2: Behavior (السلوك)
+Display:
+
+Show a chronological log of all behavior records added to the student
+Each record card displays:
+
+Behavior type: Positive (إيجابي) or Negative (سلبي) — shown with color coding:
+
+✅ Positive = Green badge
+❌ Negative = Red badge
+
+
+Behavior title / category
+Description / notes
+Date added
+Added by (teacher name or admin)
+
+
+If no records exist, show empty state: "No behavior records yet"
+
+Add Behavior Record:
+
+A clearly visible "+ Add Behavior" button
+Opens a modal with the following fields:
+
+Type: Toggle or radio button — Positive / Negative
+Category: Dropdown with predefined options based on type:
+
+Positive examples: Helping others, Academic improvement, Active participation, Punctuality, Creativity
+Negative examples: Disrupting class, Absence without excuse, Incomplete homework, Disrespect, Bullying
+
+
+Custom category: Free text option if not in list
+Description / Notes: Text area for details
+Date: Auto-filled with today's date, but editable
+
+
+Submit button saves the record and it appears immediately in the log
+
+Edit / Delete Behavior Record:
+
+Each record has an edit and delete icon
+Deleting asks for confirmation before removing
+Editing reopens the same modal pre-filled with existing data
+
+Summary Counter (top of Behavior tab):
+
+Display a simple summary row at the top:
+
+✅ Total Positive Records: X
+❌ Total Negative Records: X
+
+
+This gives a quick behavioral snapshot at a glance
+
+
+Technical Notes
+
+Both tabs must work in School Admin account and Teacher account (wherever the student profile is accessible)
+All data must be persisted to the database — not local state only
+RTL Arabic layout throughout
+Talent and behavior data should also be included in the exported plan documents (PDF / Word) as additional sections
+Behavior log should be paginated or scrollable if records exceed 10 entries

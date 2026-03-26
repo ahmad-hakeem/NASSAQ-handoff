@@ -327,13 +327,19 @@ class StudentResponse(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     student_number: Optional[str] = None
+    national_id: Optional[str] = None
     grade: Optional[str] = None
     class_id: Optional[str] = None
+    class_name: Optional[str] = None
+    section: Optional[str] = None
     school_id: str
+    gender: Optional[str] = None
+    date_of_birth: Optional[str] = None
     parent_id: Optional[str] = None
     parent_phone: Optional[str] = None
     parent_email: Optional[str] = None
     parent_name: Optional[str] = None
+    parent_relationship: Optional[str] = None
     is_gifted: Optional[bool] = False
     talents: Optional[List[str]] = []
     is_active: bool = True
@@ -355,6 +361,7 @@ class StudentUpdate(BaseModel):
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
     student_number: Optional[str] = None
+    national_id: Optional[str] = None
     grade: Optional[str] = None
     class_id: Optional[str] = None
     date_of_birth: Optional[str] = None
@@ -362,6 +369,7 @@ class StudentUpdate(BaseModel):
     parent_phone: Optional[str] = None
     parent_email: Optional[EmailStr] = None
     parent_name: Optional[str] = None
+    parent_relationship: Optional[str] = None
     is_gifted: Optional[bool] = None
     talents: Optional[List[str]] = None
     is_active: Optional[bool] = None

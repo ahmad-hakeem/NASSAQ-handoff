@@ -753,12 +753,18 @@ Sub-pages (accessible from within classes/sessions, not top-level sidebar):
 ## Student Profile Page (Full Dedicated Page)
 - **Route**: `/admin/students/:studentId` and `/principal/students/:studentId`
 - **Component**: `StudentProfilePage.jsx`
-- **Navigation**: Clicking any student name from ClassDetailPage or UsersClassesManagement navigates to this page (replaces old dialog)
-- **Sections**: Student Info (name, ID, grade, class, gender, DOB, email, phone, status, talents), Guardian Info (name, phone, email, relationship), Academic Details (attendance summary, AI risk analysis, Hakim plans with export), Actions (reset password, suspend/activate, delete)
+- **Navigation**: Clicking any student name from ClassDetailPage or UsersClassesManagement navigates to this page (replaces old dialog). Both pass `classId`, `className`, `fromPath` in navigation state.
+- **4 Tabs**:
+  - **Info Tab**: Full name, student number, national ID (editable), grade & class selector, gender, DOB, email, phone, academic status badge, talent tags with multi-select
+  - **Guardian Tab**: Parent/guardian name, phone, email (all editable), relationship dropdown (father/mother/guardian/brother/sister/uncle/other), empty state with "Add Guardian Info" button
+  - **Academic Tab**: Attendance summary (present/absent/late/excused counts), grades & performance (overall average from `/grades/student/{id}`), AI risk analysis & Hakim plans with export modal (PDF/Word)
+  - **Actions Tab**: Reset password, suspend/activate, delete account
 - **Talent Tags**: Multi-select talent system with auto-toggle of is_gifted flag. Options: Academically Gifted, Artistic, Athletic, Scientific, Leadership, Literary, Musical, Technological
-- **Backend**: `talents: List[str]` field on StudentCreate/Update/Response models. When talents change, is_gifted auto-set based on whether talents array is non-empty
-- **Breadcrumbs**: User Management > Class Name > Student Name (dynamic based on navigation context)
-- **Back button**: Returns to the class page or user management page based on navigation source
+- **Backend fields**: StudentResponse includes `gender`, `date_of_birth`, `national_id`, `class_name`, `section`, `parent_relationship`. StudentUpdate includes `national_id`, `parent_relationship`, `parent_email`.
+- **Breadcrumbs**: User Management > Class Name > Student Name (resolves className from state, classObj lookup, or student.class_name API field)
+- **Back button**: Returns to the class page (fromPath > resolvedClassId > users-management fallback)
+- **Export modal**: Plan type selection (Remedial/Enrichment/Both), format (PDF/Word), filename preview, blob error parsing
+- **Responsive**: Full mobile + desktop support, sidebar collapses, grid adjusts
 
 ## School Admin Class Detail Page
 - **Route**: `/admin/classes/:classId` and `/principal/classes/:classId`

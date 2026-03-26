@@ -238,7 +238,7 @@ export default function StudentProfilePage() {
   const { nassaqConfirm, nassaqError, nassaqWarning } = useNassaqAlert();
 
   const classId = location.state?.classId;
-  const className = location.state?.className;
+  const classNameFromState = location.state?.className;
   const fromPath = location.state?.fromPath;
 
   const [student, setStudent] = useState(null);
@@ -251,6 +251,8 @@ export default function StudentProfilePage() {
 
   const [attendanceSummary, setAttendanceSummary] = useState(null);
   const [loadingAttendance, setLoadingAttendance] = useState(false);
+  const [homeworkRate, setHomeworkRate] = useState(null);
+  const [loadingHomework, setLoadingHomework] = useState(false);
 
   const [riskData, setRiskData] = useState(null);
   const [loadingRisk, setLoadingRisk] = useState(false);
@@ -321,12 +323,35 @@ export default function StudentProfilePage() {
     }
   }, [api, studentId, headers]);
 
+  const fetchHomeworkRate = useCallback(async () => {
+    if (!studentId) return;
+    setLoadingHomework(true);
+    try {
+      const res = await api.get(`/grades/student/${studentId}`, { headers });
+      const data = res.data;
+      const grades = data?.grades || [];
+      const stats = data?.statistics;
+      if (grades.length > 0) {
+        const graded = grades.filter(g => g.score !== null && g.score !== undefined).length;
+        const avgScore = stats?.overall_average ? Math.round(stats.overall_average) : (graded > 0 ? Math.round(grades.reduce((sum, g) => sum + (g.percentage || g.score || 0), 0) / graded) : 0);
+        setHomeworkRate({ completed: graded, total: grades.length, rate: avgScore });
+      } else {
+        setHomeworkRate(null);
+      }
+    } catch {
+      setHomeworkRate(null);
+    } finally {
+      setLoadingHomework(false);
+    }
+  }, [api, studentId, headers]);
+
   useEffect(() => {
     if (activeTab === 'academic') {
       fetchAttendance();
       fetchRiskData();
+      fetchHomeworkRate();
     }
-  }, [activeTab, fetchAttendance, fetchRiskData]);
+  }, [activeTab, fetchAttendance, fetchRiskData, fetchHomeworkRate]);
 
   const generatePlan = async (planType) => {
     if (!studentId) return;
@@ -430,6 +455,9 @@ export default function StudentProfilePage() {
       if (formData.date_of_birth !== undefined && formData.date_of_birth !== student.date_of_birth) updateData.date_of_birth = formData.date_of_birth;
       if (formData.parent_name !== undefined && formData.parent_name !== student.parent_name) updateData.parent_name = formData.parent_name;
       if (formData.parent_phone !== undefined && formData.parent_phone !== student.parent_phone) updateData.parent_phone = formData.parent_phone;
+      if (formData.parent_email !== undefined && formData.parent_email !== student.parent_email) updateData.parent_email = formData.parent_email;
+      if (formData.parent_relationship !== undefined && formData.parent_relationship !== student.parent_relationship) updateData.parent_relationship = formData.parent_relationship;
+      if (formData.national_id !== undefined && formData.national_id !== student.national_id) updateData.national_id = formData.national_id;
 
       const currentTalents = JSON.stringify(formData.talents || []);
       const originalTalents = JSON.stringify(student.talents || []);
@@ -504,8 +532,8 @@ export default function StudentProfilePage() {
   const handleBack = () => {
     if (fromPath) {
       navigate(fromPath);
-    } else if (classId) {
-      navigate(`${rolePrefix}/classes/${classId}`);
+    } else if (resolvedClassId) {
+      navigate(`${rolePrefix}/classes/${resolvedClassId}`);
     } else {
       navigate(`${rolePrefix}/users-management?filter=students`);
     }
@@ -527,6 +555,8 @@ export default function StudentProfilePage() {
   const BackArrow = isRTL ? ArrowRight : ArrowLeft;
 
   const classObj = classes.find(c => c.id === student?.class_id);
+  const resolvedClassName = classObj?.name || classNameFromState || student?.class_name;
+  const resolvedClassId = classId || student?.class_id;
 
   if (loading) {
     return (
@@ -572,11 +602,11 @@ export default function StudentProfilePage() {
                   <button onClick={() => navigate(`${rolePrefix}/users-management?filter=students`)} className="hover:text-foreground transition-colors">
                     {isRTL ? 'إدارة المستخدمين' : 'User Management'}
                   </button>
-                  {className && (
+                  {resolvedClassName && (
                     <>
                       <ChevronRight className="h-3 w-3" />
-                      <button onClick={() => classId && navigate(`${rolePrefix}/classes/${classId}`)} className="hover:text-foreground transition-colors">
-                        {className}
+                      <button onClick={() => resolvedClassId && navigate(`${rolePrefix}/classes/${resolvedClassId}`)} className="hover:text-foreground transition-colors">
+                        {resolvedClassName}
                       </button>
                     </>
                   )}
@@ -618,12 +648,12 @@ export default function StudentProfilePage() {
                     {student.grade && (
                       <Badge variant="outline" className="text-xs">
                         <GraduationCap className="h-3 w-3 me-1" />
-                        {student.grade} {classObj ? `- ${classObj.name}` : student.section ? `- ${student.section}` : ''}
+                        {student.grade} {resolvedClassName ? `- ${resolvedClassName}` : student.section ? `- ${student.section}` : ''}
                       </Badge>
                     )}
                   </div>
                 </div>
-                <p className="text-sm text-muted-foreground">{student.student_number || student.id?.slice(0, 8)}</p>
+                <p className="text-sm text-muted-foreground">{student.student_number || student.national_id || student.id?.slice(0, 8)}</p>
                 {(student.talents?.length > 0) && (
                   <div className="flex flex-wrap gap-1.5 mt-2">
                     {student.talents.map(t => {
@@ -691,8 +721,16 @@ export default function StudentProfilePage() {
                       )}
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="text-xs text-muted-foreground">{isRTL ? 'رقم الطالب / الهوية' : 'Student ID / National ID'}</Label>
-                      <p className="font-medium text-sm flex items-center gap-1.5"><Hash className="h-3.5 w-3.5 text-muted-foreground" /> {student.student_number || student.national_id || '-'}</p>
+                      <Label className="text-xs text-muted-foreground">{isRTL ? 'رقم الطالب' : 'Student Number'}</Label>
+                      <p className="font-medium text-sm flex items-center gap-1.5"><Hash className="h-3.5 w-3.5 text-muted-foreground" /> {student.student_number || '-'}</p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">{isRTL ? 'رقم الهوية الوطنية' : 'National ID'}</Label>
+                      {editing ? (
+                        <Input value={formData.national_id || ''} onChange={(e) => setFormData({ ...formData, national_id: e.target.value })} placeholder={isRTL ? 'رقم الهوية' : 'National ID'} />
+                      ) : (
+                        <p className="font-medium text-sm flex items-center gap-1.5"><Hash className="h-3.5 w-3.5 text-muted-foreground" /> {student.national_id || '-'}</p>
+                      )}
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-xs text-muted-foreground">{isRTL ? 'الصف والفصل' : 'Grade & Class'}</Label>
@@ -709,7 +747,7 @@ export default function StudentProfilePage() {
                       ) : (
                         <p className="font-medium text-sm flex items-center gap-1.5">
                           <BookOpen className="h-3.5 w-3.5 text-muted-foreground" />
-                          {student.grade || '-'} {classObj ? `- ${classObj.name}` : student.section ? `- ${student.section}` : ''}
+                          {student.grade || '-'} {resolvedClassName ? `- ${resolvedClassName}` : student.section ? `- ${student.section}` : ''}
                         </p>
                       )}
                     </div>
@@ -815,13 +853,36 @@ export default function StudentProfilePage() {
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-xs text-muted-foreground">{isRTL ? 'البريد الإلكتروني' : 'Email'}</Label>
-                      <p className="font-medium text-sm flex items-center gap-1.5">
-                        <Mail className="h-3.5 w-3.5 text-muted-foreground" /> {student.parent_email || '-'}
-                      </p>
+                      {editing ? (
+                        <Input type="email" value={formData.parent_email || ''} onChange={(e) => setFormData({ ...formData, parent_email: e.target.value })} placeholder={isRTL ? 'البريد الإلكتروني لولي الأمر' : 'Guardian email'} />
+                      ) : (
+                        <p className="font-medium text-sm flex items-center gap-1.5">
+                          <Mail className="h-3.5 w-3.5 text-muted-foreground" /> {student.parent_email || '-'}
+                        </p>
+                      )}
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-xs text-muted-foreground">{isRTL ? 'صلة القرابة' : 'Relationship'}</Label>
-                      <p className="font-medium text-sm">{student.parent_relationship || (isRTL ? 'ولي أمر' : 'Parent/Guardian')}</p>
+                      {editing ? (
+                        <Select value={formData.parent_relationship || ''} onValueChange={(v) => setFormData({ ...formData, parent_relationship: v })}>
+                          <SelectTrigger><SelectValue placeholder={isRTL ? 'اختر صلة القرابة' : 'Select relationship'} /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="father">{isRTL ? 'أب' : 'Father'}</SelectItem>
+                            <SelectItem value="mother">{isRTL ? 'أم' : 'Mother'}</SelectItem>
+                            <SelectItem value="guardian">{isRTL ? 'ولي أمر' : 'Guardian'}</SelectItem>
+                            <SelectItem value="brother">{isRTL ? 'أخ' : 'Brother'}</SelectItem>
+                            <SelectItem value="sister">{isRTL ? 'أخت' : 'Sister'}</SelectItem>
+                            <SelectItem value="uncle">{isRTL ? 'عم / خال' : 'Uncle'}</SelectItem>
+                            <SelectItem value="other">{isRTL ? 'أخرى' : 'Other'}</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <p className="font-medium text-sm">{
+                          student.parent_relationship ?
+                            ({ father: isRTL ? 'أب' : 'Father', mother: isRTL ? 'أم' : 'Mother', guardian: isRTL ? 'ولي أمر' : 'Guardian', brother: isRTL ? 'أخ' : 'Brother', sister: isRTL ? 'أخت' : 'Sister', uncle: isRTL ? 'عم / خال' : 'Uncle', other: isRTL ? 'أخرى' : 'Other' }[student.parent_relationship] || student.parent_relationship)
+                          : (isRTL ? 'ولي أمر' : 'Parent/Guardian')
+                        }</p>
+                      )}
                     </div>
                   </div>
                   {!student.parent_name && !editing && (
@@ -862,6 +923,39 @@ export default function StudentProfilePage() {
                     </div>
                   ) : (
                     <p className="text-sm text-muted-foreground text-center py-4">{isRTL ? 'لا توجد بيانات حضور' : 'No attendance data available'}</p>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="p-6 space-y-4">
+                  <h3 className="font-bold text-base font-cairo flex items-center gap-2">
+                    <CheckCircle className="h-5 w-5 text-indigo-500" />
+                    {isRTL ? 'الأداء الأكاديمي والدرجات' : 'Grades & Academic Performance'}
+                  </h3>
+                  {loadingHomework ? (
+                    <div className="flex justify-center py-4"><Loader2 className="h-5 w-5 animate-spin text-brand-turquoise" /></div>
+                  ) : homeworkRate ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1">
+                          <Progress value={homeworkRate.rate} className={`h-3 rounded-full bg-gray-100 dark:bg-gray-800 ${homeworkRate.rate >= 80 ? '[&>div]:bg-green-500' : homeworkRate.rate >= 50 ? '[&>div]:bg-amber-500' : '[&>div]:bg-red-500'}`} />
+                        </div>
+                        <span className={`text-lg font-bold font-cairo tabular-nums ${homeworkRate.rate >= 80 ? 'text-green-600' : homeworkRate.rate >= 50 ? 'text-amber-600' : 'text-red-600'}`}>{homeworkRate.rate}%</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="text-center p-3 bg-green-50 dark:bg-green-950/20 rounded-xl">
+                          <p className="text-xl font-bold font-cairo text-green-600">{homeworkRate.completed}</p>
+                          <p className="text-xs text-muted-foreground mt-1">{isRTL ? 'درجات مسجلة' : 'Graded'}</p>
+                        </div>
+                        <div className="text-center p-3 bg-gray-50 dark:bg-gray-800/30 rounded-xl">
+                          <p className="text-xl font-bold font-cairo text-gray-600">{homeworkRate.total}</p>
+                          <p className="text-xs text-muted-foreground mt-1">{isRTL ? 'إجمالي التقييمات' : 'Total Assessments'}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground text-center py-4">{isRTL ? 'لا توجد درجات مسجلة بعد' : 'No grades recorded yet'}</p>
                   )}
                 </CardContent>
               </Card>

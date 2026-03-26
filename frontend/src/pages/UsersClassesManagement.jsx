@@ -1069,8 +1069,13 @@ export default function UsersClassesManagement() {
   const handleView = (item, type) => {
     const prefix = user?.role === 'school_principal' ? '/principal' : '/admin';
     if (type === 'student') {
+      const cls = classes.find(c => c.id === item.class_id);
       navigate(`${prefix}/students/${item.id}`, {
-        state: { fromPath: `${prefix}/users-management?filter=students` }
+        state: {
+          classId: item.class_id,
+          className: cls?.name || item.class_name,
+          fromPath: `${prefix}/users-management?filter=students`
+        }
       });
     }
     else if (type === 'teacher') { setSelectedTeacher(item); setTeacherProfileOpen(true); }
