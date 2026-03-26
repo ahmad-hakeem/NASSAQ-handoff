@@ -750,21 +750,34 @@ Sub-pages (accessible from within classes/sessions, not top-level sidebar):
 - Frontend: React 19, react-router-dom v7, Radix UI, Tailwind CSS, recharts, axios, @dnd-kit
 - Backend: FastAPI, motor (MongoDB async), PyJWT, bcrypt, qrcode, pandas, google-generativeai, reportlab, xlsxwriter, psutil, python-docx
 
-## Student Profile Page (Full Dedicated Page)
+## Student Profile Page (Full Dedicated Page — Redesigned)
 - **Route**: `/admin/students/:studentId` and `/principal/students/:studentId`
-- **Component**: `StudentProfilePage.jsx`
-- **Navigation**: Clicking any student name from ClassDetailPage or UsersClassesManagement navigates to this page (replaces old dialog). Both pass `classId`, `className`, `fromPath` in navigation state.
-- **4 Tabs**:
-  - **Info Tab**: Full name, student number, national ID (editable), grade & class selector, gender, DOB, email, phone, academic status badge, talent tags with multi-select
-  - **Guardian Tab**: Parent/guardian name, phone, email (all editable), relationship dropdown (father/mother/guardian/brother/sister/uncle/other), empty state with "Add Guardian Info" button
-  - **Academic Tab**: Attendance summary (present/absent/late/excused counts), grades & performance (overall average from `/grades/student/{id}`), AI risk analysis & Hakim plans with export modal (PDF/Word)
-  - **Actions Tab**: Reset password, suspend/activate, delete account
-- **Talent Tags**: Multi-select talent system with auto-toggle of is_gifted flag. Options: Academically Gifted, Artistic, Athletic, Scientific, Leadership, Literary, Musical, Technological
-- **Backend fields**: StudentResponse includes `gender`, `date_of_birth`, `national_id`, `class_name`, `section`, `parent_relationship`. StudentUpdate includes `national_id`, `parent_relationship`, `parent_email`.
-- **Breadcrumbs**: User Management > Class Name > Student Name (resolves className from state, classObj lookup, or student.class_name API field)
-- **Back button**: Returns to the class page (fromPath > resolvedClassId > users-management fallback)
-- **Export modal**: Plan type selection (Remedial/Enrichment/Both), format (PDF/Word), filename preview, blob error parsing
-- **Responsive**: Full mobile + desktop support, sidebar collapses, grid adjusts
+- **Component**: `StudentProfilePage.jsx` (imported as `AdminStudentProfilePage` in App.js)
+- **Navigation**: Clicking any student name from ClassDetailPage or UsersClassesManagement navigates to this page. Both pass `classId`, `className`, `fromPath` in navigation state.
+- **Hero Section** (dark navy-to-purple gradient, always visible):
+  - Large circular avatar (initials, gradient bg, gold ring for gifted students)
+  - Student name, grade/class subtitle, student ID (mono font)
+  - Gifted badge (gold gradient), Active/Suspended status badge
+  - Action buttons: Edit Profile (opens modal), Export Plan, Message Parent (WhatsApp), Account Actions dropdown (reset password, suspend/activate, delete — hidden for teachers)
+  - Quick Stats Bar: 5 stat cards (Attendance %, Performance %, Talents count, Activities count, Positive Behavior count) with skeleton loaders
+- **7 Tabs** (scrollable horizontally via ScrollArea):
+  - `overview`: Student info summary, guardian info, attendance/performance/behavior cards, talents preview
+  - `academic`: Attendance details (4-stat grid), grades with progress bar, AI risk analysis with breakdown & factors
+  - `talents`: Current talents with remove buttons, predefined talent buttons, school talents, custom talent input
+  - `behaviour`: Summary stats (4 cards), behavior log with color-coded records, add/edit/delete actions
+  - `activities`: Placeholder — coming soon
+  - `plans`: Hakim AI plans (remedial + enrichment) with generate, export, redo
+  - `longitudinal`: Placeholder — coming soon
+- **Edit Profile Modal** (replaces old Info/Guardian tabs): Personal info fields + guardian info fields in a single dialog
+- **Skeleton Loaders**: All data sections show skeleton placeholders while loading
+- **EmptyState Component**: Consistent empty state with icon, message, and optional action button
+- **DataField Component**: Consistent read-only field display with icon and empty fallback
+- **overviewLoaded flag**: Prevents re-fetching overview data on tab switches (resets on studentId change)
+- **Role-based**: `isTeacher` hides account actions dropdown and behavior delete buttons
+- **Breadcrumbs**: User Management > Class Name > Student Name in sticky header
+- **Back button**: Returns to fromPath > resolvedClassId class page > users-management fallback
+- **Export modal**: Plan type selection (Remedial/Enrichment/Both), format (PDF/Word)
+- **Tab values**: `overview` (default), `academic`, `talents`, `behaviour`, `activities`, `plans`, `longitudinal`
 
 ## School Admin Class Detail Page
 - **Route**: `/admin/classes/:classId` and `/principal/classes/:classId`

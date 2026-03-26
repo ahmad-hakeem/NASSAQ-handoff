@@ -13,6 +13,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { RadioGroup, RadioGroupItem } from '../components/ui/radio-group';
+import { Skeleton } from '../components/ui/skeleton';
+import { Textarea } from '../components/ui/textarea';
+import { ScrollArea, ScrollBar } from '../components/ui/scroll-area';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger
+} from '../components/ui/dropdown-menu';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
 import { NotificationBell } from '../components/notifications/NotificationBell';
@@ -22,10 +28,11 @@ import {
   Star, Loader2, Activity, Target, Sparkles, Clock, Key, UserX,
   UserCheck, Trash2, Download, Sun, Moon, Globe, GraduationCap,
   Stethoscope, Rocket, ChevronDown, ChevronUp, CheckCircle,
-  AlertTriangle, Zap, Heart, Award, Plus, XCircle,
-  ThumbsUp, ThumbsDown, MessageSquare, Palette, Trophy, Lightbulb, Mic, Code, MoreHorizontal
+  AlertTriangle, Zap, Heart, Plus, XCircle,
+  ThumbsUp, ThumbsDown, MessageSquare, Trophy,
+  MoreVertical, Eye, BarChart3, ScrollText, Send,
+  Medal, ClipboardList
 } from 'lucide-react';
-import { Textarea } from '../components/ui/textarea';
 
 const TALENT_OPTIONS = [
   { value: 'academically_gifted', ar: 'متفوق أكاديمياً', en: 'Academically Gifted', color: 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700' },
@@ -172,64 +179,51 @@ const HakimPlanCard = ({ type, plan, isRTL, loading, onGenerate, onExport }) => 
   );
 };
 
-const TalentSelector = ({ talents = [], onChange, isRTL, editing }) => {
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const available = TALENT_OPTIONS.filter(t => !talents.includes(t.value));
+const StatCard = ({ icon: Icon, value, label, color, bg, loading }) => (
+  <div className={`flex flex-col items-center justify-center p-3 rounded-xl ${bg} min-w-[100px]`}>
+    {loading ? (
+      <>
+        <Skeleton className="h-4 w-4 mb-1.5 rounded-full" />
+        <Skeleton className="h-6 w-10 mb-1" />
+        <Skeleton className="h-3 w-16" />
+      </>
+    ) : (
+      <>
+        <Icon className={`h-4 w-4 mb-1 ${color}`} />
+        <p className={`text-lg font-bold font-cairo tabular-nums ${color}`}>{value ?? '-'}</p>
+        <p className="text-[10px] text-muted-foreground font-cairo leading-tight text-center">{label}</p>
+      </>
+    )}
+  </div>
+);
 
-  if (!editing) {
-    if (!talents.length) return null;
-    return (
-      <div className="flex flex-wrap gap-1.5">
-        {talents.map(t => {
-          const cfg = getTalentConfig(t);
-          return (
-            <Badge key={t} variant="outline" className={`text-[11px] px-2 py-0.5 border ${cfg.color}`}>
-              <Star className="h-3 w-3 me-1 fill-current" />
-              {isRTL ? cfg.ar : cfg.en}
-            </Badge>
-          );
-        })}
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap gap-1.5">
-        {talents.map(t => {
-          const cfg = getTalentConfig(t);
-          return (
-            <Badge key={t} variant="outline" className={`text-[11px] px-2 py-0.5 border ${cfg.color} cursor-pointer hover:opacity-80`}
-              onClick={() => onChange(talents.filter(x => x !== t))}>
-              {isRTL ? cfg.ar : cfg.en}
-              <XCircle className="h-3 w-3 ms-1" />
-            </Badge>
-          );
-        })}
-      </div>
-      {available.length > 0 && (
-        <div className="relative">
-          <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => setDropdownOpen(!dropdownOpen)}>
-            <Plus className="h-3 w-3" />
-            {isRTL ? 'إضافة موهبة' : 'Add Talent'}
-          </Button>
-          {dropdownOpen && (
-            <div className="absolute z-50 mt-1 w-56 rounded-lg border bg-popover shadow-lg p-1 max-h-48 overflow-y-auto">
-              {available.map(opt => (
-                <button key={opt.value}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-xs rounded-md hover:bg-muted transition-colors text-start"
-                  onClick={() => { onChange([...talents, opt.value]); setDropdownOpen(false); }}>
-                  <Star className="h-3 w-3 text-amber-500" />
-                  {isRTL ? opt.ar : opt.en}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+const EmptyState = ({ icon: Icon, message, actionLabel, onAction }) => (
+  <div className="text-center py-8">
+    <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-muted/40 flex items-center justify-center">
+      <Icon className="h-8 w-8 text-muted-foreground/30" />
     </div>
-  );
-};
+    <p className="text-sm text-muted-foreground font-cairo">{message}</p>
+    {actionLabel && onAction && (
+      <Button variant="outline" size="sm" className="mt-3 font-cairo" onClick={onAction}>
+        <Plus className="h-3.5 w-3.5 me-1" /> {actionLabel}
+      </Button>
+    )}
+  </div>
+);
+
+const DataField = ({ label, value, icon: Icon, empty }) => (
+  <div className="space-y-1">
+    <p className="text-[11px] text-muted-foreground font-cairo">{label}</p>
+    {value ? (
+      <p className="text-sm font-medium flex items-center gap-1.5">
+        {Icon && <Icon className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />}
+        {value}
+      </p>
+    ) : (
+      <p className="text-sm text-muted-foreground/60 italic font-cairo">{empty || '—'}</p>
+    )}
+  </div>
+);
 
 export default function StudentProfilePage() {
   const { studentId } = useParams();
@@ -245,11 +239,11 @@ export default function StudentProfilePage() {
 
   const [student, setStudent] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({});
-  const [activeTab, setActiveTab] = useState('info');
+  const [activeTab, setActiveTab] = useState('overview');
   const [classes, setClasses] = useState([]);
+  const [editProfileOpen, setEditProfileOpen] = useState(false);
 
   const [attendanceSummary, setAttendanceSummary] = useState(null);
   const [loadingAttendance, setLoadingAttendance] = useState(false);
@@ -283,6 +277,8 @@ export default function StudentProfilePage() {
   const [addingCustomTalent, setAddingCustomTalent] = useState(false);
   const [savingTalent, setSavingTalent] = useState(false);
 
+  const [overviewLoaded, setOverviewLoaded] = useState(false);
+
   const headers = useMemo(() => {
     const h = {};
     const token = localStorage.getItem('nassaq_token');
@@ -293,6 +289,8 @@ export default function StudentProfilePage() {
   }, [user?.tenant_id]);
 
   const rolePrefix = user?.role === 'school_principal' ? '/principal' : '/admin';
+  const tenantId = useMemo(() => user?.tenant_id || localStorage.getItem('nassaq_tenant_id'), [user?.tenant_id]);
+  const isTeacher = user?.role === 'teacher';
 
   const fetchStudent = useCallback(async () => {
     setLoading(true);
@@ -313,6 +311,8 @@ export default function StudentProfilePage() {
   }, [api, studentId, headers, isRTL, nassaqError]);
 
   useEffect(() => { fetchStudent(); }, [fetchStudent]);
+
+  useEffect(() => { setOverviewLoaded(false); }, [studentId]);
 
   const fetchAttendance = useCallback(async () => {
     if (!studentId) return;
@@ -362,8 +362,6 @@ export default function StudentProfilePage() {
     }
   }, [api, studentId, headers]);
 
-  const tenantId = useMemo(() => user?.tenant_id || localStorage.getItem('nassaq_tenant_id'), [user?.tenant_id]);
-
   const fetchBehaviourRecords = useCallback(async () => {
     if (!studentId || !tenantId) return;
     setLoadingBehaviour(true);
@@ -402,7 +400,12 @@ export default function StudentProfilePage() {
   }, [api, headers]);
 
   useEffect(() => {
-    if (activeTab === 'academic') {
+    if (activeTab === 'overview' && !overviewLoaded && student) {
+      fetchAttendance();
+      fetchHomeworkRate();
+      fetchBehaviourRecords();
+      setOverviewLoaded(true);
+    } else if (activeTab === 'academic') {
       fetchAttendance();
       fetchRiskData();
       fetchHomeworkRate();
@@ -412,7 +415,7 @@ export default function StudentProfilePage() {
     } else if (activeTab === 'talents') {
       fetchGlobalTalents();
     }
-  }, [activeTab, fetchAttendance, fetchRiskData, fetchHomeworkRate, fetchBehaviourRecords, fetchBehaviourTypes, fetchGlobalTalents]);
+  }, [activeTab, student, overviewLoaded, fetchAttendance, fetchRiskData, fetchHomeworkRate, fetchBehaviourRecords, fetchBehaviourTypes, fetchGlobalTalents]);
 
   const generatePlan = async (planType) => {
     if (!studentId) return;
@@ -453,22 +456,15 @@ export default function StudentProfilePage() {
     setExportingPlan(true);
     try {
       const isPdf = format === 'pdf';
-      const url = isPdf
-        ? `/export/student-plans/${studentId}/pdf`
-        : `/export/student-plans/${studentId}`;
-      const mimeType = isPdf
-        ? 'application/pdf'
-        : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      const url = isPdf ? `/export/student-plans/${studentId}/pdf` : `/export/student-plans/${studentId}`;
+      const mimeType = isPdf ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
       const ext = isPdf ? 'pdf' : 'docx';
-
       const res = await api.post(url, payload, { headers, responseType: 'blob' });
-
       if (res.data.type === 'application/json') {
         const text = await res.data.text();
         const errData = JSON.parse(text);
         throw new Error(errData.detail || 'Export failed');
       }
-
       const blob = new Blob([res.data], { type: mimeType });
       const blobUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -484,7 +480,6 @@ export default function StudentProfilePage() {
       toast.success(isRTL ? 'تم تصدير الخطة بنجاح' : 'Plan exported successfully');
       setExportModalOpen(false);
     } catch (err) {
-      console.error('Plan export error:', err);
       let detail = err?.message || '';
       if (err?.response?.data instanceof Blob) {
         try {
@@ -495,9 +490,7 @@ export default function StudentProfilePage() {
       } else if (err?.response?.data?.detail) {
         detail = err.response.data.detail;
       }
-      nassaqError(isRTL
-        ? `فشل تصدير الخطة: ${detail || 'خطأ غير معروف'}`
-        : `Failed to export plan: ${detail || 'Unknown error'}`);
+      nassaqError(isRTL ? `فشل تصدير الخطة: ${detail || 'خطأ غير معروف'}` : `Failed to export plan: ${detail || 'Unknown error'}`);
     } finally {
       setExportingPlan(false);
     }
@@ -534,7 +527,7 @@ export default function StudentProfilePage() {
 
       await api.put(`/students/${student.id}`, updateData, { headers });
       toast.success(isRTL ? 'تم حفظ بيانات الطالب بنجاح' : 'Student data saved successfully');
-      setEditing(false);
+      setEditProfileOpen(false);
       fetchStudent();
     } catch (error) {
       const msg = error.response?.data?.detail;
@@ -744,13 +737,60 @@ export default function StudentProfilePage() {
   const resolvedClassName = classObj?.name || classNameFromState || student?.class_name;
   const resolvedClassId = classId || student?.class_id;
 
+  const attendanceRate = useMemo(() => {
+    if (!attendanceSummary) return null;
+    const present = attendanceSummary.present_count ?? attendanceSummary.present ?? 0;
+    const total = (attendanceSummary.total_days ?? attendanceSummary.total ?? 0);
+    return total > 0 ? Math.round((present / total) * 100) : 0;
+  }, [attendanceSummary]);
+
+  const positiveBehaviourCount = behaviourSummary?.positive_count || 0;
+
+  const TABS = [
+    { value: 'overview', label_ar: 'نظرة عامة', label_en: 'Overview', icon: Eye },
+    { value: 'academic', label_ar: 'الأداء الأكاديمي', label_en: 'Academic', icon: BarChart3 },
+    { value: 'talents', label_ar: 'المواهب والمهارات', label_en: 'Talents & Skills', icon: Sparkles },
+    { value: 'behaviour', label_ar: 'السلوك والشخصية', label_en: 'Behavior', icon: Heart },
+    { value: 'activities', label_ar: 'الأنشطة والإنجازات', label_en: 'Activities', icon: Medal },
+    { value: 'plans', label_ar: 'الخطط', label_en: 'Plans', icon: ClipboardList },
+    { value: 'longitudinal', label_ar: 'السجل التراكمي', label_en: 'Record', icon: ScrollText },
+  ];
+
   if (loading) {
     return (
       <div className="flex min-h-screen bg-background">
         <Sidebar />
-        <div className="flex-1 flex items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-brand-turquoise" />
-        </div>
+        <main className="flex-1 overflow-auto">
+          <div className="p-6 max-w-6xl mx-auto space-y-6">
+            <div className="flex items-center gap-4 mb-4">
+              <Skeleton className="h-9 w-9 rounded-full" />
+              <div className="space-y-2 flex-1">
+                <Skeleton className="h-5 w-48" />
+                <Skeleton className="h-3 w-72" />
+              </div>
+            </div>
+            <div className="rounded-2xl border bg-gradient-to-r from-brand-turquoise/5 to-brand-purple/5 p-6">
+              <div className="flex items-start gap-5">
+                <Skeleton className="h-24 w-24 rounded-full" />
+                <div className="flex-1 space-y-3">
+                  <Skeleton className="h-7 w-56" />
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-3 w-24" />
+                </div>
+              </div>
+              <div className="grid grid-cols-5 gap-3 mt-6">
+                {[...Array(5)].map((_, i) => (
+                  <Skeleton key={i} className="h-20 rounded-xl" />
+                ))}
+              </div>
+            </div>
+            <Skeleton className="h-10 w-full rounded-lg" />
+            <div className="grid grid-cols-2 gap-4">
+              <Skeleton className="h-40 rounded-xl" />
+              <Skeleton className="h-40 rounded-xl" />
+            </div>
+          </div>
+        </main>
       </div>
     );
   }
@@ -772,34 +812,34 @@ export default function StudentProfilePage() {
     );
   }
 
+  const relationshipMap = { father: isRTL ? 'أب' : 'Father', mother: isRTL ? 'أم' : 'Mother', guardian: isRTL ? 'ولي أمر' : 'Guardian', brother: isRTL ? 'أخ' : 'Brother', sister: isRTL ? 'أخت' : 'Sister', uncle: isRTL ? 'عم / خال' : 'Uncle', other: isRTL ? 'أخرى' : 'Other' };
+
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar />
       <main className="flex-1 overflow-auto">
+        {/* ===== STICKY HEADER ===== */}
         <header className="sticky top-0 z-30 backdrop-blur-xl bg-background/80 border-b px-4 md:px-6 py-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between max-w-6xl mx-auto">
             <div className="flex items-center gap-3">
               <Button variant="ghost" size="icon" className="h-9 w-9" onClick={handleBack}>
                 <BackArrow className="h-5 w-5" />
               </Button>
-              <div>
-                <h1 className="text-lg font-bold font-cairo">{student.full_name}</h1>
-                <nav className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <button onClick={() => navigate(`${rolePrefix}/users-management?filter=students`)} className="hover:text-foreground transition-colors">
-                    {isRTL ? 'إدارة المستخدمين' : 'User Management'}
-                  </button>
-                  {resolvedClassName && (
-                    <>
-                      <ChevronRight className="h-3 w-3" />
-                      <button onClick={() => resolvedClassId && navigate(`${rolePrefix}/classes/${resolvedClassId}`)} className="hover:text-foreground transition-colors">
-                        {resolvedClassName}
-                      </button>
-                    </>
-                  )}
-                  <ChevronRight className="h-3 w-3" />
-                  <span className="text-foreground font-medium">{student.full_name}</span>
-                </nav>
-              </div>
+              <nav className="flex items-center gap-1 text-xs text-muted-foreground">
+                <button onClick={() => navigate(`${rolePrefix}/users-management?filter=students`)} className="hover:text-foreground transition-colors font-cairo">
+                  {isRTL ? 'إدارة المستخدمين' : 'User Management'}
+                </button>
+                {resolvedClassName && (
+                  <>
+                    <ChevronRight className="h-3 w-3" />
+                    <button onClick={() => resolvedClassId && navigate(`${rolePrefix}/classes/${resolvedClassId}`)} className="hover:text-foreground transition-colors font-cairo">
+                      {resolvedClassName}
+                    </button>
+                  </>
+                )}
+                <ChevronRight className="h-3 w-3" />
+                <span className="text-foreground font-medium font-cairo">{student.full_name}</span>
+              </nav>
             </div>
             <div className="flex items-center gap-2">
               <NotificationBell />
@@ -813,577 +853,525 @@ export default function StudentProfilePage() {
           </div>
         </header>
 
-        <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-6">
-          <div className="bg-gradient-to-r from-brand-turquoise/10 to-brand-purple/10 dark:from-brand-turquoise/5 dark:to-brand-purple/5 rounded-2xl border p-6">
-            <div className="flex flex-col sm:flex-row items-start gap-4">
-              <div className={`relative w-20 h-20 rounded-full bg-gradient-to-br from-brand-turquoise to-brand-purple flex items-center justify-center shadow-lg ${student.is_gifted ? 'ring-3 ring-amber-400 ring-offset-2' : ''}`}>
-                <span className="text-white font-bold text-3xl">{student.full_name?.charAt(0)}</span>
-                {student.is_gifted && (
-                  <div className="absolute -top-1 -end-1 w-6 h-6 rounded-full bg-amber-400 flex items-center justify-center shadow-md">
-                    <Star className="h-3.5 w-3.5 text-white fill-white" />
+        <div className="max-w-6xl mx-auto">
+          {/* ===== HERO SECTION ===== */}
+          <div className="relative overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-br from-brand-navy via-brand-navy/95 to-brand-purple opacity-95" />
+            <div className="absolute inset-0 opacity-5" style={{ backgroundImage: 'url(/nassaq-pattern.png)', backgroundSize: '200px' }} />
+            <div className="relative px-4 md:px-8 py-6 md:py-8">
+              <div className="flex flex-col md:flex-row items-start gap-5">
+                {/* Avatar */}
+                <div className="relative flex-shrink-0">
+                  <div className={`w-24 h-24 md:w-28 md:h-28 rounded-full bg-gradient-to-br from-brand-turquoise to-brand-purple/80 flex items-center justify-center shadow-xl border-4 border-white/20 ${student.is_gifted ? 'ring-4 ring-amber-400/60 ring-offset-2 ring-offset-brand-navy' : ''}`}>
+                    <span className="text-white font-bold text-4xl md:text-5xl font-cairo">{student.full_name?.charAt(0)}</span>
                   </div>
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
-                  <h2 className="text-2xl font-bold font-cairo">{student.full_name}</h2>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Badge variant={student.is_active !== false ? 'default' : 'destructive'} className="text-xs">
-                      {student.is_active !== false ? (isRTL ? 'نشط' : 'Active') : (isRTL ? 'معلق' : 'Suspended')}
-                    </Badge>
-                    {student.grade && (
-                      <Badge variant="outline" className="text-xs">
-                        <GraduationCap className="h-3 w-3 me-1" />
-                        {student.grade} {resolvedClassName ? `- ${resolvedClassName}` : student.section ? `- ${student.section}` : ''}
-                      </Badge>
-                    )}
-                  </div>
+                  {student.is_gifted && (
+                    <div className="absolute -top-1 -end-1 w-8 h-8 rounded-full bg-gradient-to-br from-yellow-400 to-amber-500 flex items-center justify-center shadow-lg border-2 border-white/30">
+                      <Star className="h-4 w-4 text-white fill-white" />
+                    </div>
+                  )}
                 </div>
-                <p className="text-sm text-muted-foreground">{student.student_number || student.national_id || student.id?.slice(0, 8)}</p>
-                {(student.talents?.length > 0) && (
-                  <div className="flex flex-wrap gap-1.5 mt-2">
-                    {student.talents.map(t => {
-                      const cfg = getTalentConfig(t);
-                      return (
-                        <Badge key={t} variant="outline" className={`text-[11px] px-2 py-0.5 border ${cfg.color}`}>
-                          <Star className="h-3 w-3 me-1 fill-current" />
-                          {isRTL ? cfg.ar : cfg.en}
+
+                {/* Name & Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-col sm:flex-row sm:items-start gap-3 mb-2">
+                    <div className="flex-1 min-w-0">
+                      <h1 className="text-2xl md:text-3xl font-bold text-white font-cairo leading-tight">{student.full_name}</h1>
+                      <p className="text-white/70 text-sm mt-1 font-cairo flex items-center gap-2 flex-wrap">
+                        <GraduationCap className="h-4 w-4" />
+                        {student.grade || '-'} {resolvedClassName ? `— ${resolvedClassName}` : student.section ? `— ${student.section}` : ''}
+                      </p>
+                      <p className="text-white/50 text-xs mt-1 font-mono tracking-wider">
+                        {student.student_number || student.national_id || `ID: ${student.id?.slice(0, 8)}`}
+                      </p>
+                    </div>
+
+                    {/* Badges */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {student.is_gifted && (
+                        <Badge className="bg-gradient-to-r from-yellow-400 to-amber-500 text-white border-0 px-3 py-1.5 font-cairo shadow-lg text-xs">
+                          <Star className="h-3.5 w-3.5 fill-white me-1" />
+                          {isRTL ? 'طالب موهوب' : 'Gifted'}
                         </Badge>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                {!editing ? (
-                  <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
-                    <Edit className="h-3.5 w-3.5 me-1" /> {isRTL ? 'تعديل' : 'Edit'}
-                  </Button>
-                ) : (
-                  <>
-                    <Button size="sm" onClick={handleSave} disabled={saving}>
-                      {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin me-1" /> : <Save className="h-3.5 w-3.5 me-1" />}
-                      {isRTL ? 'حفظ' : 'Save'}
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => { setEditing(false); setFormData({ ...student }); }}>
-                      <X className="h-3.5 w-3.5" />
-                    </Button>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid grid-cols-6 mb-4">
-              <TabsTrigger value="info" className="text-xs gap-1">
-                <User className="h-3.5 w-3.5" /> {isRTL ? 'البيانات' : 'Info'}
-              </TabsTrigger>
-              <TabsTrigger value="guardian" className="text-xs gap-1">
-                <Heart className="h-3.5 w-3.5" /> {isRTL ? 'ولي الأمر' : 'Guardian'}
-              </TabsTrigger>
-              <TabsTrigger value="academic" className="text-xs gap-1">
-                <Brain className="h-3.5 w-3.5" /> {isRTL ? 'الأكاديمي' : 'Academic'}
-              </TabsTrigger>
-              <TabsTrigger value="talents" className="text-xs gap-1">
-                <Sparkles className="h-3.5 w-3.5" /> {isRTL ? 'المواهب' : 'Talents'}
-              </TabsTrigger>
-              <TabsTrigger value="behaviour" className="text-xs gap-1">
-                <Activity className="h-3.5 w-3.5" /> {isRTL ? 'السلوك' : 'Behavior'}
-              </TabsTrigger>
-              <TabsTrigger value="actions" className="text-xs gap-1">
-                <Shield className="h-3.5 w-3.5" /> {isRTL ? 'إجراءات' : 'Actions'}
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="info">
-              <Card>
-                <CardContent className="p-6 space-y-6">
-                  <h3 className="font-bold text-base font-cairo flex items-center gap-2">
-                    <User className="h-5 w-5 text-brand-turquoise" />
-                    {isRTL ? 'بيانات الطالب' : 'Student Information'}
-                  </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-muted-foreground">{isRTL ? 'الاسم الكامل' : 'Full Name'}</Label>
-                      {editing ? (
-                        <Input value={formData.full_name || ''} onChange={(e) => setFormData({ ...formData, full_name: e.target.value })} />
-                      ) : (
-                        <p className="font-medium text-sm">{student.full_name}</p>
                       )}
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-muted-foreground">{isRTL ? 'رقم الطالب' : 'Student Number'}</Label>
-                      <p className="font-medium text-sm flex items-center gap-1.5"><Hash className="h-3.5 w-3.5 text-muted-foreground" /> {student.student_number || '-'}</p>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-muted-foreground">{isRTL ? 'رقم الهوية الوطنية' : 'National ID'}</Label>
-                      {editing ? (
-                        <Input value={formData.national_id || ''} onChange={(e) => setFormData({ ...formData, national_id: e.target.value })} placeholder={isRTL ? 'رقم الهوية' : 'National ID'} />
-                      ) : (
-                        <p className="font-medium text-sm flex items-center gap-1.5"><Hash className="h-3.5 w-3.5 text-muted-foreground" /> {student.national_id || '-'}</p>
-                      )}
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-muted-foreground">{isRTL ? 'الصف والفصل' : 'Grade & Class'}</Label>
-                      {editing ? (
-                        <div className="flex gap-2">
-                          <Input value={formData.grade || ''} onChange={(e) => setFormData({ ...formData, grade: e.target.value })} placeholder={isRTL ? 'الصف' : 'Grade'} className="flex-1" />
-                          <Select value={formData.class_id || ''} onValueChange={(v) => setFormData({ ...formData, class_id: v })}>
-                            <SelectTrigger className="flex-1"><SelectValue placeholder={isRTL ? 'الفصل' : 'Class'} /></SelectTrigger>
-                            <SelectContent>
-                              {classes.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      ) : (
-                        <p className="font-medium text-sm flex items-center gap-1.5">
-                          <BookOpen className="h-3.5 w-3.5 text-muted-foreground" />
-                          {student.grade || '-'} {resolvedClassName ? `- ${resolvedClassName}` : student.section ? `- ${student.section}` : ''}
-                        </p>
-                      )}
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-muted-foreground">{isRTL ? 'الجنس' : 'Gender'}</Label>
-                      {editing ? (
-                        <Select value={formData.gender || ''} onValueChange={(v) => setFormData({ ...formData, gender: v })}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="male">{isRTL ? 'ذكر' : 'Male'}</SelectItem>
-                            <SelectItem value="female">{isRTL ? 'أنثى' : 'Female'}</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <p className="font-medium text-sm">
-                          {student.gender === 'male' ? (isRTL ? 'ذكر' : 'Male') : student.gender === 'female' ? (isRTL ? 'أنثى' : 'Female') : '-'}
-                        </p>
-                      )}
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-muted-foreground">{isRTL ? 'تاريخ الميلاد' : 'Date of Birth'}</Label>
-                      {editing ? (
-                        <Input type="date" value={formData.date_of_birth || ''} onChange={(e) => setFormData({ ...formData, date_of_birth: e.target.value })} />
-                      ) : (
-                        <p className="font-medium text-sm flex items-center gap-1.5">
-                          <Calendar className="h-3.5 w-3.5 text-muted-foreground" /> {student.date_of_birth || '-'}
-                        </p>
-                      )}
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-muted-foreground">{isRTL ? 'البريد الإلكتروني' : 'Email'}</Label>
-                      {editing ? (
-                        <Input value={formData.email || ''} onChange={(e) => setFormData({ ...formData, email: e.target.value })} />
-                      ) : (
-                        <p className="font-medium text-sm flex items-center gap-1.5"><Mail className="h-3.5 w-3.5 text-muted-foreground" /> {student.email || '-'}</p>
-                      )}
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-muted-foreground">{isRTL ? 'الهاتف' : 'Phone'}</Label>
-                      {editing ? (
-                        <Input value={formData.phone || ''} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} />
-                      ) : (
-                        <p className="font-medium text-sm flex items-center gap-1.5"><Phone className="h-3.5 w-3.5 text-muted-foreground" /> {student.phone || '-'}</p>
-                      )}
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-muted-foreground">{isRTL ? 'الحالة الأكاديمية' : 'Academic Status'}</Label>
-                      <Badge variant={student.is_active !== false ? 'default' : 'destructive'}>
+                      <Badge variant={student.is_active !== false ? 'default' : 'destructive'} className={`text-xs px-2.5 py-1 ${student.is_active !== false ? 'bg-emerald-500/20 text-emerald-200 border-emerald-400/30' : ''}`}>
                         {student.is_active !== false ? (isRTL ? 'نشط' : 'Active') : (isRTL ? 'معلق' : 'Suspended')}
                       </Badge>
                     </div>
                   </div>
 
-                  <div className="border-t pt-5 space-y-3">
-                    <h4 className="font-semibold text-sm font-cairo flex items-center gap-2">
-                      <Award className="h-4 w-4 text-amber-500" />
-                      {isRTL ? 'المواهب والتميز' : 'Talents & Gifts'}
-                      {student.is_gifted && (
-                        <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-[10px]">
-                          <Star className="h-3 w-3 me-0.5 fill-current" /> {isRTL ? 'موهوب' : 'Gifted'}
-                        </Badge>
-                      )}
-                    </h4>
-                    <TalentSelector
-                      talents={editing ? (formData.talents || []) : (student.talents || [])}
-                      onChange={(newTalents) => setFormData({ ...formData, talents: newTalents })}
-                      isRTL={isRTL}
-                      editing={editing}
-                    />
-                    {!editing && (!student.talents || student.talents.length === 0) && (
-                      <p className="text-xs text-muted-foreground">{isRTL ? 'لم يتم تحديد مواهب بعد' : 'No talents assigned yet'}</p>
+                  {/* Action Buttons */}
+                  <div className="flex items-center gap-2 mt-4 flex-wrap">
+                    <Button size="sm" variant="secondary" className="gap-1.5 text-xs bg-white/10 hover:bg-white/20 text-white border-white/20 backdrop-blur-sm" onClick={() => { setFormData({ ...student }); setEditProfileOpen(true); }}>
+                      <Edit className="h-3.5 w-3.5" /> {isRTL ? 'تعديل الملف' : 'Edit Profile'}
+                    </Button>
+                    {(remedialPlan || enrichmentPlan) && (
+                      <Button size="sm" variant="secondary" className="gap-1.5 text-xs bg-white/10 hover:bg-white/20 text-white border-white/20 backdrop-blur-sm" onClick={() => openExportModal('both')}>
+                        <Download className="h-3.5 w-3.5" /> {isRTL ? 'تصدير الخطة' : 'Export Plan'}
+                      </Button>
+                    )}
+                    {student.parent_phone && (
+                      <Button size="sm" variant="secondary" className="gap-1.5 text-xs bg-white/10 hover:bg-white/20 text-white border-white/20 backdrop-blur-sm" onClick={() => window.open(`https://wa.me/${student.parent_phone.replace(/\D/g, '')}`, '_blank')}>
+                        <Send className="h-3.5 w-3.5" /> {isRTL ? 'مراسلة ولي الأمر' : 'Message Parent'}
+                      </Button>
+                    )}
+                    {!isTeacher && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="sm" variant="secondary" className="gap-1 text-xs bg-white/10 hover:bg-white/20 text-white border-white/20 backdrop-blur-sm px-2">
+                            <MoreVertical className="h-3.5 w-3.5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align={isRTL ? 'start' : 'end'} className="w-52">
+                          <DropdownMenuItem onClick={() => handleAction('reset-password')} className="gap-2 font-cairo text-sm">
+                            <Key className="h-4 w-4 text-blue-500" /> {isRTL ? 'إعادة تعيين كلمة المرور' : 'Reset Password'}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleAction(student.is_active !== false ? 'suspend' : 'activate')} className="gap-2 font-cairo text-sm">
+                            {student.is_active !== false
+                              ? <><UserX className="h-4 w-4 text-amber-500" /> {isRTL ? 'تعليق الحساب' : 'Suspend'}</>
+                              : <><UserCheck className="h-4 w-4 text-green-500" /> {isRTL ? 'تفعيل الحساب' : 'Activate'}</>
+                            }
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => handleAction('delete')} className="gap-2 font-cairo text-sm text-red-600 focus:text-red-600">
+                            <Trash2 className="h-4 w-4" /> {isRTL ? 'حذف الحساب' : 'Delete Account'}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     )}
                   </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="guardian">
-              <Card>
-                <CardContent className="p-6 space-y-6">
-                  <h3 className="font-bold text-base font-cairo flex items-center gap-2">
-                    <Heart className="h-5 w-5 text-rose-500" />
-                    {isRTL ? 'بيانات ولي الأمر' : 'Guardian Information'}
-                  </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-muted-foreground">{isRTL ? 'اسم ولي الأمر' : 'Guardian Full Name'}</Label>
-                      {editing ? (
-                        <Input value={formData.parent_name || ''} onChange={(e) => setFormData({ ...formData, parent_name: e.target.value })} />
-                      ) : (
-                        <p className="font-medium text-sm">{student.parent_name || '-'}</p>
-                      )}
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-muted-foreground">{isRTL ? 'رقم الهاتف' : 'Phone Number'}</Label>
-                      {editing ? (
-                        <Input value={formData.parent_phone || ''} onChange={(e) => setFormData({ ...formData, parent_phone: e.target.value })} />
-                      ) : (
-                        <p className="font-medium text-sm flex items-center gap-1.5 direction-ltr">
-                          <Phone className="h-3.5 w-3.5 text-muted-foreground" /> {student.parent_phone || '-'}
-                        </p>
-                      )}
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-muted-foreground">{isRTL ? 'البريد الإلكتروني' : 'Email'}</Label>
-                      {editing ? (
-                        <Input type="email" value={formData.parent_email || ''} onChange={(e) => setFormData({ ...formData, parent_email: e.target.value })} placeholder={isRTL ? 'البريد الإلكتروني لولي الأمر' : 'Guardian email'} />
-                      ) : (
-                        <p className="font-medium text-sm flex items-center gap-1.5">
-                          <Mail className="h-3.5 w-3.5 text-muted-foreground" /> {student.parent_email || '-'}
-                        </p>
-                      )}
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-muted-foreground">{isRTL ? 'صلة القرابة' : 'Relationship'}</Label>
-                      {editing ? (
-                        <Select value={formData.parent_relationship || ''} onValueChange={(v) => setFormData({ ...formData, parent_relationship: v })}>
-                          <SelectTrigger><SelectValue placeholder={isRTL ? 'اختر صلة القرابة' : 'Select relationship'} /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="father">{isRTL ? 'أب' : 'Father'}</SelectItem>
-                            <SelectItem value="mother">{isRTL ? 'أم' : 'Mother'}</SelectItem>
-                            <SelectItem value="guardian">{isRTL ? 'ولي أمر' : 'Guardian'}</SelectItem>
-                            <SelectItem value="brother">{isRTL ? 'أخ' : 'Brother'}</SelectItem>
-                            <SelectItem value="sister">{isRTL ? 'أخت' : 'Sister'}</SelectItem>
-                            <SelectItem value="uncle">{isRTL ? 'عم / خال' : 'Uncle'}</SelectItem>
-                            <SelectItem value="other">{isRTL ? 'أخرى' : 'Other'}</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <p className="font-medium text-sm">{
-                          student.parent_relationship ?
-                            ({ father: isRTL ? 'أب' : 'Father', mother: isRTL ? 'أم' : 'Mother', guardian: isRTL ? 'ولي أمر' : 'Guardian', brother: isRTL ? 'أخ' : 'Brother', sister: isRTL ? 'أخت' : 'Sister', uncle: isRTL ? 'عم / خال' : 'Uncle', other: isRTL ? 'أخرى' : 'Other' }[student.parent_relationship] || student.parent_relationship)
-                          : (isRTL ? 'ولي أمر' : 'Parent/Guardian')
-                        }</p>
-                      )}
-                    </div>
-                  </div>
-                  {!student.parent_name && !editing && (
-                    <div className="text-center py-6">
-                      <Heart className="h-10 w-10 mx-auto text-muted-foreground/20 mb-2" />
-                      <p className="text-sm text-muted-foreground">{isRTL ? 'لم يتم إضافة بيانات ولي الأمر بعد' : 'No guardian info added yet'}</p>
-                      <Button variant="outline" size="sm" className="mt-3" onClick={() => { setEditing(true); setActiveTab('guardian'); }}>
-                        <Plus className="h-3.5 w-3.5 me-1" /> {isRTL ? 'إضافة بيانات ولي الأمر' : 'Add Guardian Info'}
-                      </Button>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="academic" className="space-y-4">
-              <Card>
-                <CardContent className="p-6 space-y-4">
-                  <h3 className="font-bold text-base font-cairo flex items-center gap-2">
-                    <Activity className="h-5 w-5 text-brand-turquoise" />
-                    {isRTL ? 'ملخص الحضور' : 'Attendance Summary'}
-                  </h3>
-                  {loadingAttendance ? (
-                    <div className="flex justify-center py-4"><Loader2 className="h-5 w-5 animate-spin text-brand-turquoise" /></div>
-                  ) : attendanceSummary ? (
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                      {[
-                        { label: isRTL ? 'حاضر' : 'Present', value: attendanceSummary.present_count ?? attendanceSummary.present ?? 0, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-950/20' },
-                        { label: isRTL ? 'غائب' : 'Absent', value: attendanceSummary.absent_count ?? attendanceSummary.absent ?? 0, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/20' },
-                        { label: isRTL ? 'متأخر' : 'Late', value: attendanceSummary.late_count ?? attendanceSummary.late ?? 0, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/20' },
-                        { label: isRTL ? 'بعذر' : 'Excused', value: attendanceSummary.excused_count ?? attendanceSummary.excused ?? 0, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/20' },
-                      ].map((item, i) => (
-                        <div key={i} className={`text-center p-4 rounded-xl ${item.bg}`}>
-                          <p className={`text-2xl font-bold font-cairo ${item.color}`}>{item.value}</p>
-                          <p className="text-xs text-muted-foreground mt-1">{item.label}</p>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground text-center py-4">{isRTL ? 'لا توجد بيانات حضور' : 'No attendance data available'}</p>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="p-6 space-y-4">
-                  <h3 className="font-bold text-base font-cairo flex items-center gap-2">
-                    <CheckCircle className="h-5 w-5 text-indigo-500" />
-                    {isRTL ? 'الأداء الأكاديمي والدرجات' : 'Grades & Academic Performance'}
-                  </h3>
-                  {loadingHomework ? (
-                    <div className="flex justify-center py-4"><Loader2 className="h-5 w-5 animate-spin text-brand-turquoise" /></div>
-                  ) : homeworkRate ? (
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-3">
-                        <div className="flex-1">
-                          <Progress value={homeworkRate.rate} className={`h-3 rounded-full bg-gray-100 dark:bg-gray-800 ${homeworkRate.rate >= 80 ? '[&>div]:bg-green-500' : homeworkRate.rate >= 50 ? '[&>div]:bg-amber-500' : '[&>div]:bg-red-500'}`} />
-                        </div>
-                        <span className={`text-lg font-bold font-cairo tabular-nums ${homeworkRate.rate >= 80 ? 'text-green-600' : homeworkRate.rate >= 50 ? 'text-amber-600' : 'text-red-600'}`}>{homeworkRate.rate}%</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="text-center p-3 bg-green-50 dark:bg-green-950/20 rounded-xl">
-                          <p className="text-xl font-bold font-cairo text-green-600">{homeworkRate.completed}</p>
-                          <p className="text-xs text-muted-foreground mt-1">{isRTL ? 'درجات مسجلة' : 'Graded'}</p>
-                        </div>
-                        <div className="text-center p-3 bg-gray-50 dark:bg-gray-800/30 rounded-xl">
-                          <p className="text-xl font-bold font-cairo text-gray-600">{homeworkRate.total}</p>
-                          <p className="text-xs text-muted-foreground mt-1">{isRTL ? 'إجمالي التقييمات' : 'Total Assessments'}</p>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground text-center py-4">{isRTL ? 'لا توجد درجات مسجلة بعد' : 'No grades recorded yet'}</p>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="p-6 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-bold text-base font-cairo flex items-center gap-2">
-                      <Brain className="h-5 w-5 text-brand-purple" />
-                      {isRTL ? 'التحليل الذكي والخطط' : 'AI Analysis & Plans'}
-                    </h3>
-                    <Button variant="ghost" size="sm" onClick={fetchRiskData} className="text-xs">
-                      <Activity className="h-3.5 w-3.5 me-1" /> {isRTL ? 'تحديث' : 'Refresh'}
-                    </Button>
-                  </div>
-
-                  {loadingRisk ? (
-                    <div className="flex justify-center py-6"><Loader2 className="h-6 w-6 animate-spin text-brand-turquoise" /></div>
-                  ) : riskData ? (
-                    <>
-                      <div className="bg-gradient-to-br from-brand-navy/5 to-brand-purple/5 dark:from-brand-navy/20 dark:to-brand-purple/10 p-4 rounded-xl">
-                        <div className="flex items-center justify-between mb-3">
-                          <h4 className="font-bold text-sm font-cairo">{isRTL ? 'مؤشر الأداء العام' : 'Overall Performance'}</h4>
-                          <Badge className={getRiskColor(riskData.risk_category)}>{getRiskLabel(riskData.risk_category)}</Badge>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <div className="flex-1">
-                            <Progress value={riskData.risk_score || 0} className={`h-3 rounded-full bg-gray-100 dark:bg-gray-800 ${getRiskBarColor(riskData.risk_category)}`} />
-                          </div>
-                          <span className="text-lg font-bold font-cairo tabular-nums">{Math.round(riskData.risk_score || 0)}%</span>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        {riskData.breakdown && Object.entries(riskData.breakdown).map(([key, val]) => {
-                          const labels = {
-                            attendance: { ar: 'الحضور', icon: <Calendar className="h-4 w-4" /> },
-                            participation: { ar: 'المشاركة', icon: <Zap className="h-4 w-4" /> },
-                            behaviour: { ar: 'السلوك', icon: <Shield className="h-4 w-4" /> },
-                            academic: { ar: 'الأكاديمي', icon: <BookOpen className="h-4 w-4" /> },
-                          };
-                          const lbl = labels[key] || { ar: key, icon: <Activity className="h-4 w-4" /> };
-                          const score = Math.round(typeof val === 'number' ? val : val?.score || 0);
-                          const scoreColor = score >= 80 ? 'text-green-600' : score >= 60 ? 'text-amber-600' : 'text-red-600';
-                          return (
-                            <div key={key} className="text-center p-3 bg-muted/30 rounded-xl">
-                              <div className="flex justify-center text-muted-foreground mb-1.5">{lbl.icon}</div>
-                              <p className={`text-xl font-bold font-cairo ${scoreColor}`}>{score}%</p>
-                              <p className="text-[11px] text-muted-foreground font-tajawal mt-0.5">{isRTL ? lbl.ar : key}</p>
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      {riskData.factors?.length > 0 && (
-                        <div className="space-y-2">
-                          <h4 className="text-sm font-medium flex items-center gap-2">
-                            <Target className="h-4 w-4 text-brand-turquoise" /> {isRTL ? 'نقاط الملاحظة' : 'Key Observations'}
-                          </h4>
-                          {riskData.factors.map((f, i) => (
-                            <div key={i} className="flex items-start gap-2 text-sm p-2.5 bg-amber-50/60 dark:bg-amber-950/10 rounded-lg border border-amber-100 dark:border-amber-800/20">
-                              <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
-                              <span className="text-sm">{f.message || f.message_ar || f}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <div className="text-center py-6">
-                      <Brain className="h-10 w-10 mx-auto text-muted-foreground/20 mb-2" />
-                      <p className="text-sm text-muted-foreground">{isRTL ? 'لا تتوفر بيانات تحليلية حالياً' : 'No analytics available yet'}</p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              <div className="relative my-2">
-                <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-dashed border-brand-purple/20" /></div>
-                <div className="relative flex justify-center">
-                  <span className="bg-background px-3 text-xs text-brand-purple font-cairo font-medium">{isRTL ? 'خطط حكيم الذكية' : 'Hakim AI Plans'}</span>
                 </div>
               </div>
 
-              <HakimPlanCard type="remedial" plan={remedialPlan} isRTL={isRTL} loading={loadingRemedial}
-                onGenerate={() => generatePlan('remedial')} onExport={remedialPlan ? openExportModal : null} />
+              {/* Quick Stats Bar */}
+              <div className="grid grid-cols-5 gap-2 md:gap-3 mt-6">
+                <StatCard icon={Calendar} value={attendanceRate != null ? `${attendanceRate}%` : null} label={isRTL ? 'نسبة الحضور' : 'Attendance'} color="text-emerald-300" bg="bg-white/10 backdrop-blur-sm" loading={loadingAttendance} />
+                <StatCard icon={CheckCircle} value={homeworkRate ? `${homeworkRate.rate}%` : null} label={isRTL ? 'معدل الأداء' : 'Performance'} color="text-blue-300" bg="bg-white/10 backdrop-blur-sm" loading={loadingHomework} />
+                <StatCard icon={Sparkles} value={student.talents?.length || 0} label={isRTL ? 'المواهب' : 'Talents'} color="text-purple-300" bg="bg-white/10 backdrop-blur-sm" loading={false} />
+                <StatCard icon={Trophy} value={0} label={isRTL ? 'الأنشطة' : 'Activities'} color="text-amber-300" bg="bg-white/10 backdrop-blur-sm" loading={false} />
+                <StatCard icon={ThumbsUp} value={positiveBehaviourCount} label={isRTL ? 'سلوك إيجابي' : 'Positive'} color="text-green-300" bg="bg-white/10 backdrop-blur-sm" loading={loadingBehaviour} />
+              </div>
+            </div>
+          </div>
 
-              <HakimPlanCard type="enrichment" plan={enrichmentPlan} isRTL={isRTL} loading={loadingEnrichment}
-                onGenerate={() => generatePlan('enrichment')} onExport={enrichmentPlan ? openExportModal : null} />
+          {/* ===== TABS ===== */}
+          <div className="px-4 md:px-8 pb-8">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-0">
+              <div className="sticky top-[57px] z-20 bg-background pt-3 pb-1 -mx-4 md:-mx-8 px-4 md:px-8 border-b">
+                <ScrollArea className="w-full" dir={isRTL ? 'rtl' : 'ltr'}>
+                  <TabsList className="inline-flex h-10 bg-transparent p-0 gap-0 w-full justify-start">
+                    {TABS.map(tab => (
+                      <TabsTrigger key={tab.value} value={tab.value}
+                        className="relative px-4 py-2.5 text-xs font-cairo gap-1.5 rounded-none border-b-2 border-transparent data-[state=active]:border-brand-turquoise data-[state=active]:text-brand-turquoise data-[state=active]:shadow-none bg-transparent whitespace-nowrap">
+                        <tab.icon className="h-3.5 w-3.5" />
+                        {isRTL ? tab.label_ar : tab.label_en}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                  <ScrollBar orientation="horizontal" />
+                </ScrollArea>
+              </div>
 
-              {remedialPlan && enrichmentPlan && (
-                <Button variant="outline" className="w-full gap-2 border-brand-navy/20 text-brand-navy hover:bg-brand-navy/5"
-                  onClick={() => openExportModal('both')} disabled={exportingPlan}>
-                  {exportingPlan ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                  {isRTL ? 'تصدير الخطتين معاً' : 'Export Both Plans'}
-                </Button>
-              )}
-            </TabsContent>
+              {/* ===== OVERVIEW TAB ===== */}
+              <TabsContent value="overview" className="mt-6 space-y-4">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {/* Student Info Card */}
+                  <Card>
+                    <CardContent className="p-5">
+                      <h3 className="font-bold text-sm font-cairo flex items-center gap-2 mb-4">
+                        <User className="h-4 w-4 text-brand-turquoise" />
+                        {isRTL ? 'بيانات الطالب' : 'Student Info'}
+                      </h3>
+                      <div className="grid grid-cols-2 gap-4">
+                        <DataField label={isRTL ? 'الاسم الكامل' : 'Full Name'} value={student.full_name} />
+                        <DataField label={isRTL ? 'رقم الهوية' : 'National ID'} value={student.national_id} icon={Hash} />
+                        <DataField label={isRTL ? 'البريد الإلكتروني' : 'Email'} value={student.email} icon={Mail} />
+                        <DataField label={isRTL ? 'الهاتف' : 'Phone'} value={student.phone} icon={Phone} />
+                        <DataField label={isRTL ? 'الجنس' : 'Gender'} value={student.gender === 'male' ? (isRTL ? 'ذكر' : 'Male') : student.gender === 'female' ? (isRTL ? 'أنثى' : 'Female') : null} />
+                        <DataField label={isRTL ? 'تاريخ الميلاد' : 'Date of Birth'} value={student.date_of_birth} icon={Calendar} />
+                      </div>
+                    </CardContent>
+                  </Card>
 
-            {/* ===== TALENTS TAB ===== */}
-            <TabsContent value="talents">
-              <Card>
-                <CardContent className="p-6 space-y-6">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-bold text-base font-cairo flex items-center gap-2">
-                      <Sparkles className="h-5 w-5 text-brand-turquoise" />
-                      {isRTL ? 'مواهب الطالب' : 'Student Talents'}
-                    </h3>
-                    {student?.is_gifted && (
-                      <Badge className="bg-gradient-to-r from-yellow-400 to-amber-500 text-white border-0 px-3 py-1 font-cairo">
-                        <Trophy className="h-3.5 w-3.5 ml-1" />
-                        {isRTL ? 'طالب موهوب' : 'Gifted Student'}
-                      </Badge>
-                    )}
-                  </div>
+                  {/* Guardian Card */}
+                  <Card>
+                    <CardContent className="p-5">
+                      <h3 className="font-bold text-sm font-cairo flex items-center gap-2 mb-4">
+                        <Heart className="h-4 w-4 text-rose-500" />
+                        {isRTL ? 'ولي الأمر' : 'Guardian'}
+                      </h3>
+                      {student.parent_name ? (
+                        <div className="grid grid-cols-2 gap-4">
+                          <DataField label={isRTL ? 'الاسم' : 'Name'} value={student.parent_name} />
+                          <DataField label={isRTL ? 'صلة القرابة' : 'Relationship'} value={relationshipMap[student.parent_relationship] || student.parent_relationship} />
+                          <DataField label={isRTL ? 'الهاتف' : 'Phone'} value={student.parent_phone} icon={Phone} />
+                          <DataField label={isRTL ? 'البريد' : 'Email'} value={student.parent_email} icon={Mail} />
+                        </div>
+                      ) : (
+                        <EmptyState icon={Heart} message={isRTL ? 'لم يتم إضافة بيانات ولي الأمر' : 'No guardian info added'} actionLabel={isRTL ? 'إضافة بيانات' : 'Add Info'} onAction={() => { setFormData({ ...student }); setEditProfileOpen(true); }} />
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
 
-                  {/* Current talents */}
-                  <div>
-                    <Label className="text-sm font-cairo mb-3 block text-muted-foreground">{isRTL ? 'المواهب الحالية' : 'Current Talents'}</Label>
-                    {(student?.talents?.length > 0) ? (
+                {/* Attendance & Performance Row */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <Card>
+                    <CardContent className="p-5">
+                      <h3 className="font-bold text-sm font-cairo flex items-center gap-2 mb-3">
+                        <Calendar className="h-4 w-4 text-green-500" />
+                        {isRTL ? 'ملخص الحضور' : 'Attendance'}
+                      </h3>
+                      {loadingAttendance ? (
+                        <div className="space-y-2">
+                          <Skeleton className="h-8 w-20 mx-auto" />
+                          <Skeleton className="h-3 w-full" />
+                        </div>
+                      ) : attendanceSummary ? (
+                        <div className="text-center">
+                          <p className={`text-3xl font-bold font-cairo ${attendanceRate >= 80 ? 'text-green-600' : attendanceRate >= 60 ? 'text-amber-600' : 'text-red-600'}`}>{attendanceRate}%</p>
+                          <Progress value={attendanceRate} className={`h-2 mt-2 ${attendanceRate >= 80 ? '[&>div]:bg-green-500' : attendanceRate >= 60 ? '[&>div]:bg-amber-500' : '[&>div]:bg-red-500'}`} />
+                          <div className="flex justify-between text-[10px] text-muted-foreground mt-2 font-cairo">
+                            <span>{isRTL ? 'حاضر' : 'Present'}: {attendanceSummary.present_count ?? attendanceSummary.present ?? 0}</span>
+                            <span>{isRTL ? 'غائب' : 'Absent'}: {attendanceSummary.absent_count ?? attendanceSummary.absent ?? 0}</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <EmptyState icon={Calendar} message={isRTL ? 'لا بيانات حضور' : 'No attendance data'} />
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardContent className="p-5">
+                      <h3 className="font-bold text-sm font-cairo flex items-center gap-2 mb-3">
+                        <BarChart3 className="h-4 w-4 text-blue-500" />
+                        {isRTL ? 'الأداء الأكاديمي' : 'Academic'}
+                      </h3>
+                      {loadingHomework ? (
+                        <div className="space-y-2">
+                          <Skeleton className="h-8 w-20 mx-auto" />
+                          <Skeleton className="h-3 w-full" />
+                        </div>
+                      ) : homeworkRate ? (
+                        <div className="text-center">
+                          <p className={`text-3xl font-bold font-cairo ${homeworkRate.rate >= 80 ? 'text-green-600' : homeworkRate.rate >= 50 ? 'text-amber-600' : 'text-red-600'}`}>{homeworkRate.rate}%</p>
+                          <Progress value={homeworkRate.rate} className={`h-2 mt-2 ${homeworkRate.rate >= 80 ? '[&>div]:bg-green-500' : homeworkRate.rate >= 50 ? '[&>div]:bg-amber-500' : '[&>div]:bg-red-500'}`} />
+                          <p className="text-[10px] text-muted-foreground mt-2 font-cairo">{homeworkRate.completed} / {homeworkRate.total} {isRTL ? 'تقييم' : 'assessments'}</p>
+                        </div>
+                      ) : (
+                        <EmptyState icon={BarChart3} message={isRTL ? 'لا درجات مسجلة' : 'No grades'} />
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardContent className="p-5">
+                      <h3 className="font-bold text-sm font-cairo flex items-center gap-2 mb-3">
+                        <ThumbsUp className="h-4 w-4 text-emerald-500" />
+                        {isRTL ? 'ملخص السلوك' : 'Behavior'}
+                      </h3>
+                      {loadingBehaviour ? (
+                        <div className="space-y-2">
+                          <Skeleton className="h-8 w-20 mx-auto" />
+                          <Skeleton className="h-3 w-full" />
+                        </div>
+                      ) : behaviourSummary ? (
+                        <div className="text-center space-y-2">
+                          <p className="text-3xl font-bold font-cairo text-brand-navy">{behaviourSummary.total_points || 0}</p>
+                          <p className="text-[10px] text-muted-foreground font-cairo">{isRTL ? 'إجمالي النقاط' : 'Total Points'}</p>
+                          <div className="flex justify-center gap-4 text-xs">
+                            <span className="text-green-600 font-cairo">+{behaviourSummary.positive_count || 0}</span>
+                            <span className="text-red-600 font-cairo">-{behaviourSummary.negative_count || 0}</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <EmptyState icon={ThumbsUp} message={isRTL ? 'لا سجلات سلوك' : 'No behavior records'} />
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Talents Preview */}
+                {(student.talents?.length > 0) && (
+                  <Card>
+                    <CardContent className="p-5">
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="font-bold text-sm font-cairo flex items-center gap-2">
+                          <Sparkles className="h-4 w-4 text-brand-turquoise" />
+                          {isRTL ? 'المواهب' : 'Talents'}
+                        </h3>
+                        <Button variant="ghost" size="sm" className="text-xs text-brand-turquoise" onClick={() => setActiveTab('talents')}>
+                          {isRTL ? 'عرض الكل' : 'View All'} <ChevronRight className="h-3 w-3 ms-1" />
+                        </Button>
+                      </div>
                       <div className="flex flex-wrap gap-2">
-                        {student.talents.map(t => {
-                          const opt = TALENT_OPTIONS.find(o => o.value === t);
+                        {student.talents.slice(0, 6).map(t => {
+                          const cfg = getTalentConfig(t);
                           return (
-                            <Badge key={t} variant="outline" className={`px-3 py-1.5 text-sm font-cairo cursor-default flex items-center gap-1.5 ${opt?.color || 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600'}`}>
-                              {opt ? (isRTL ? opt.ar : opt.en) : t}
-                              <button onClick={() => handleRemoveTalent(t)} disabled={savingTalent} className="hover:text-red-500 transition-colors rounded-full p-0.5">
-                                <XCircle className="h-3.5 w-3.5" />
-                              </button>
+                            <Badge key={t} variant="outline" className={`text-xs px-2.5 py-1 border ${cfg.color}`}>
+                              <Star className="h-3 w-3 me-1 fill-current" />
+                              {isRTL ? cfg.ar : cfg.en}
                             </Badge>
                           );
                         })}
+                        {student.talents.length > 6 && (
+                          <Badge variant="outline" className="text-xs px-2.5 py-1">+{student.talents.length - 6}</Badge>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </TabsContent>
+
+              {/* ===== ACADEMIC TAB ===== */}
+              <TabsContent value="academic" className="mt-6 space-y-4">
+                <Card>
+                  <CardContent className="p-6 space-y-4">
+                    <h3 className="font-bold text-base font-cairo flex items-center gap-2">
+                      <Activity className="h-5 w-5 text-brand-turquoise" />
+                      {isRTL ? 'ملخص الحضور' : 'Attendance Summary'}
+                    </h3>
+                    {loadingAttendance ? (
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
+                      </div>
+                    ) : attendanceSummary ? (
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        {[
+                          { label: isRTL ? 'حاضر' : 'Present', value: attendanceSummary.present_count ?? attendanceSummary.present ?? 0, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-950/20' },
+                          { label: isRTL ? 'غائب' : 'Absent', value: attendanceSummary.absent_count ?? attendanceSummary.absent ?? 0, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/20' },
+                          { label: isRTL ? 'متأخر' : 'Late', value: attendanceSummary.late_count ?? attendanceSummary.late ?? 0, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/20' },
+                          { label: isRTL ? 'بعذر' : 'Excused', value: attendanceSummary.excused_count ?? attendanceSummary.excused ?? 0, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/20' },
+                        ].map((item, i) => (
+                          <div key={i} className={`text-center p-4 rounded-xl ${item.bg}`}>
+                            <p className={`text-2xl font-bold font-cairo ${item.color}`}>{item.value}</p>
+                            <p className="text-xs text-muted-foreground mt-1">{item.label}</p>
+                          </div>
+                        ))}
                       </div>
                     ) : (
-                      <p className="text-sm text-muted-foreground italic font-cairo">{isRTL ? 'لم يتم تحديد مواهب بعد' : 'No talents selected yet'}</p>
+                      <EmptyState icon={Calendar} message={isRTL ? 'لا توجد بيانات حضور' : 'No attendance data available'} />
                     )}
-                  </div>
+                  </CardContent>
+                </Card>
 
-                  {/* Add from predefined list */}
-                  <div>
-                    <Label className="text-sm font-cairo mb-3 block text-muted-foreground">{isRTL ? 'إضافة موهبة' : 'Add Talent'}</Label>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                      {TALENT_OPTIONS.filter(o => !(student?.talents || []).includes(o.value)).map(opt => (
-                        <Button
-                          key={opt.value}
-                          variant="outline"
-                          size="sm"
-                          disabled={savingTalent}
-                          onClick={() => handleAddTalent(opt.value)}
-                          className={`text-xs font-cairo justify-start gap-1.5 ${opt.color}`}
-                        >
-                          <Plus className="h-3 w-3" />
-                          {isRTL ? opt.ar : opt.en}
-                        </Button>
-                      ))}
+                <Card>
+                  <CardContent className="p-6 space-y-4">
+                    <h3 className="font-bold text-base font-cairo flex items-center gap-2">
+                      <CheckCircle className="h-5 w-5 text-indigo-500" />
+                      {isRTL ? 'الأداء الأكاديمي والدرجات' : 'Grades & Academic Performance'}
+                    </h3>
+                    {loadingHomework ? (
+                      <div className="space-y-3">
+                        <Skeleton className="h-4 w-full rounded" />
+                        <div className="grid grid-cols-2 gap-3">
+                          <Skeleton className="h-20 rounded-xl" />
+                          <Skeleton className="h-20 rounded-xl" />
+                        </div>
+                      </div>
+                    ) : homeworkRate ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1">
+                            <Progress value={homeworkRate.rate} className={`h-3 rounded-full bg-gray-100 dark:bg-gray-800 ${homeworkRate.rate >= 80 ? '[&>div]:bg-green-500' : homeworkRate.rate >= 50 ? '[&>div]:bg-amber-500' : '[&>div]:bg-red-500'}`} />
+                          </div>
+                          <span className={`text-lg font-bold font-cairo tabular-nums ${homeworkRate.rate >= 80 ? 'text-green-600' : homeworkRate.rate >= 50 ? 'text-amber-600' : 'text-red-600'}`}>{homeworkRate.rate}%</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="text-center p-3 bg-green-50 dark:bg-green-950/20 rounded-xl">
+                            <p className="text-xl font-bold font-cairo text-green-600">{homeworkRate.completed}</p>
+                            <p className="text-xs text-muted-foreground mt-1">{isRTL ? 'درجات مسجلة' : 'Graded'}</p>
+                          </div>
+                          <div className="text-center p-3 bg-gray-50 dark:bg-gray-800/30 rounded-xl">
+                            <p className="text-xl font-bold font-cairo text-gray-600">{homeworkRate.total}</p>
+                            <p className="text-xs text-muted-foreground mt-1">{isRTL ? 'إجمالي التقييمات' : 'Total Assessments'}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <EmptyState icon={BarChart3} message={isRTL ? 'لا توجد درجات مسجلة بعد' : 'No grades recorded yet'} />
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="p-6 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-bold text-base font-cairo flex items-center gap-2">
+                        <Brain className="h-5 w-5 text-brand-purple" />
+                        {isRTL ? 'التحليل الذكي' : 'AI Analysis'}
+                      </h3>
+                      <Button variant="ghost" size="sm" onClick={fetchRiskData} className="text-xs">
+                        <Activity className="h-3.5 w-3.5 me-1" /> {isRTL ? 'تحديث' : 'Refresh'}
+                      </Button>
                     </div>
-                  </div>
+                    {loadingRisk ? (
+                      <div className="space-y-3">
+                        <Skeleton className="h-24 rounded-xl" />
+                        <div className="grid grid-cols-4 gap-3">
+                          {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
+                        </div>
+                      </div>
+                    ) : riskData ? (
+                      <>
+                        <div className="bg-gradient-to-br from-brand-navy/5 to-brand-purple/5 dark:from-brand-navy/20 dark:to-brand-purple/10 p-4 rounded-xl">
+                          <div className="flex items-center justify-between mb-3">
+                            <h4 className="font-bold text-sm font-cairo">{isRTL ? 'مؤشر الأداء العام' : 'Overall Performance'}</h4>
+                            <Badge className={getRiskColor(riskData.risk_category)}>{getRiskLabel(riskData.risk_category)}</Badge>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <div className="flex-1">
+                              <Progress value={riskData.risk_score || 0} className={`h-3 rounded-full bg-gray-100 dark:bg-gray-800 ${getRiskBarColor(riskData.risk_category)}`} />
+                            </div>
+                            <span className="text-lg font-bold font-cairo tabular-nums">{Math.round(riskData.risk_score || 0)}%</span>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          {riskData.breakdown && Object.entries(riskData.breakdown).map(([key, val]) => {
+                            const labels = {
+                              attendance: { ar: 'الحضور', icon: <Calendar className="h-4 w-4" /> },
+                              participation: { ar: 'المشاركة', icon: <Zap className="h-4 w-4" /> },
+                              behaviour: { ar: 'السلوك', icon: <Shield className="h-4 w-4" /> },
+                              academic: { ar: 'الأكاديمي', icon: <BookOpen className="h-4 w-4" /> },
+                            };
+                            const lbl = labels[key] || { ar: key, icon: <Activity className="h-4 w-4" /> };
+                            const score = Math.round(typeof val === 'number' ? val : val?.score || 0);
+                            const scoreColor = score >= 80 ? 'text-green-600' : score >= 60 ? 'text-amber-600' : 'text-red-600';
+                            return (
+                              <div key={key} className="text-center p-3 bg-muted/30 rounded-xl">
+                                <div className="flex justify-center text-muted-foreground mb-1.5">{lbl.icon}</div>
+                                <p className={`text-xl font-bold font-cairo ${scoreColor}`}>{score}%</p>
+                                <p className="text-[11px] text-muted-foreground font-tajawal mt-0.5">{isRTL ? lbl.ar : key}</p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {riskData.factors?.length > 0 && (
+                          <div className="space-y-2">
+                            <h4 className="text-sm font-medium flex items-center gap-2">
+                              <Target className="h-4 w-4 text-brand-turquoise" /> {isRTL ? 'نقاط الملاحظة' : 'Key Observations'}
+                            </h4>
+                            {riskData.factors.map((f, i) => (
+                              <div key={i} className="flex items-start gap-2 text-sm p-2.5 bg-amber-50/60 dark:bg-amber-950/10 rounded-lg border border-amber-100 dark:border-amber-800/20">
+                                <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+                                <span className="text-sm">{f.message || f.message_ar || f}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <EmptyState icon={Brain} message={isRTL ? 'لا تتوفر بيانات تحليلية حالياً' : 'No analytics available yet'} />
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
 
-                  {/* Add from global / custom */}
-                  {globalTalents.length > 0 && (
+              {/* ===== TALENTS TAB ===== */}
+              <TabsContent value="talents" className="mt-6">
+                <Card>
+                  <CardContent className="p-6 space-y-6">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-bold text-base font-cairo flex items-center gap-2">
+                        <Sparkles className="h-5 w-5 text-brand-turquoise" />
+                        {isRTL ? 'المواهب والمهارات' : 'Talents & Skills'}
+                      </h3>
+                      {student?.is_gifted && (
+                        <Badge className="bg-gradient-to-r from-yellow-400 to-amber-500 text-white border-0 px-3 py-1 font-cairo">
+                          <Trophy className="h-3.5 w-3.5 me-1" />
+                          {isRTL ? 'طالب موهوب' : 'Gifted Student'}
+                        </Badge>
+                      )}
+                    </div>
+
                     <div>
-                      <Label className="text-sm font-cairo mb-3 block text-muted-foreground">{isRTL ? 'مواهب المدرسة' : 'School Talents'}</Label>
-                      <div className="flex flex-wrap gap-2">
-                        {globalTalents.filter(gt => !(student?.talents || []).includes(gt.value) && !TALENT_OPTIONS.some(o => o.value === gt.value)).map(gt => (
-                          <Button key={gt.id} variant="outline" size="sm" disabled={savingTalent} onClick={() => handleAddTalent(gt.value)} className="text-xs font-cairo gap-1.5">
-                            <Plus className="h-3 w-3" /> {gt.name_ar}
+                      <Label className="text-sm font-cairo mb-3 block text-muted-foreground">{isRTL ? 'المواهب الحالية' : 'Current Talents'}</Label>
+                      {(student?.talents?.length > 0) ? (
+                        <div className="flex flex-wrap gap-2">
+                          {student.talents.map(t => {
+                            const opt = TALENT_OPTIONS.find(o => o.value === t);
+                            return (
+                              <Badge key={t} variant="outline" className={`px-3 py-1.5 text-sm font-cairo cursor-default flex items-center gap-1.5 ${opt?.color || 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600'}`}>
+                                {opt ? (isRTL ? opt.ar : opt.en) : t}
+                                <button onClick={() => handleRemoveTalent(t)} disabled={savingTalent} className="hover:text-red-500 transition-colors rounded-full p-0.5">
+                                  <XCircle className="h-3.5 w-3.5" />
+                                </button>
+                              </Badge>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <EmptyState icon={Sparkles} message={isRTL ? 'لم يتم تحديد مواهب بعد' : 'No talents selected yet'} />
+                      )}
+                    </div>
+
+                    <div>
+                      <Label className="text-sm font-cairo mb-3 block text-muted-foreground">{isRTL ? 'إضافة موهبة' : 'Add Talent'}</Label>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                        {TALENT_OPTIONS.filter(o => !(student?.talents || []).includes(o.value)).map(opt => (
+                          <Button key={opt.value} variant="outline" size="sm" disabled={savingTalent} onClick={() => handleAddTalent(opt.value)}
+                            className={`text-xs font-cairo justify-start gap-1.5 ${opt.color}`}>
+                            <Plus className="h-3 w-3" />
+                            {isRTL ? opt.ar : opt.en}
                           </Button>
                         ))}
                       </div>
                     </div>
-                  )}
 
-                  {/* Custom talent input */}
-                  <div>
-                    <Label className="text-sm font-cairo mb-2 block text-muted-foreground">{isRTL ? 'إضافة موهبة مخصصة' : 'Add Custom Talent'}</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        value={customTalentName}
-                        onChange={e => setCustomTalentName(e.target.value)}
-                        placeholder={isRTL ? 'اكتب اسم الموهبة...' : 'Type talent name...'}
-                        className="flex-1 text-sm font-cairo"
-                        onKeyDown={e => e.key === 'Enter' && handleAddCustomTalent()}
-                      />
-                      <Button size="sm" disabled={addingCustomTalent || !customTalentName.trim()} onClick={handleAddCustomTalent} className="bg-brand-turquoise hover:bg-brand-turquoise/90 text-white">
-                        {addingCustomTalent ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                      </Button>
+                    {globalTalents.length > 0 && (
+                      <div>
+                        <Label className="text-sm font-cairo mb-3 block text-muted-foreground">{isRTL ? 'مواهب المدرسة' : 'School Talents'}</Label>
+                        <div className="flex flex-wrap gap-2">
+                          {globalTalents.filter(gt => !(student?.talents || []).includes(gt.value) && !TALENT_OPTIONS.some(o => o.value === gt.value)).map(gt => (
+                            <Button key={gt.id} variant="outline" size="sm" disabled={savingTalent} onClick={() => handleAddTalent(gt.value)} className="text-xs font-cairo gap-1.5">
+                              <Plus className="h-3 w-3" /> {isRTL ? gt.name_ar : (gt.name_en || gt.name_ar)}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div>
+                      <Label className="text-sm font-cairo mb-2 block text-muted-foreground">{isRTL ? 'إضافة موهبة مخصصة' : 'Add Custom Talent'}</Label>
+                      <div className="flex gap-2">
+                        <Input value={customTalentName} onChange={e => setCustomTalentName(e.target.value)}
+                          placeholder={isRTL ? 'اكتب اسم الموهبة...' : 'Type talent name...'} className="flex-1 text-sm font-cairo"
+                          onKeyDown={e => e.key === 'Enter' && handleAddCustomTalent()} />
+                        <Button size="sm" disabled={addingCustomTalent || !customTalentName.trim()} onClick={handleAddCustomTalent} className="bg-brand-turquoise hover:bg-brand-turquoise/90 text-white">
+                          {addingCustomTalent ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                        </Button>
+                      </div>
                     </div>
-                  </div>
 
-                  {loadingGlobalTalents && (
-                    <div className="flex justify-center py-4">
-                      <Loader2 className="h-6 w-6 animate-spin text-brand-turquoise" />
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
+                    {loadingGlobalTalents && (
+                      <div className="flex justify-center py-4"><Loader2 className="h-6 w-6 animate-spin text-brand-turquoise" /></div>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
 
-            {/* ===== BEHAVIOUR TAB ===== */}
-            <TabsContent value="behaviour">
-              <div className="space-y-4">
-                {/* Behaviour Summary */}
+              {/* ===== BEHAVIOUR TAB ===== */}
+              <TabsContent value="behaviour" className="mt-6 space-y-4">
                 {behaviourSummary && (
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <Card className="border-green-200 dark:border-green-800">
-                      <CardContent className="p-4 text-center">
-                        <ThumbsUp className="h-5 w-5 mx-auto mb-1 text-green-500" />
-                        <div className="text-2xl font-bold text-green-600">{behaviourSummary.positive_count || 0}</div>
-                        <p className="text-xs text-muted-foreground font-cairo">{isRTL ? 'إيجابي' : 'Positive'}</p>
-                      </CardContent>
-                    </Card>
-                    <Card className="border-red-200 dark:border-red-800">
-                      <CardContent className="p-4 text-center">
-                        <ThumbsDown className="h-5 w-5 mx-auto mb-1 text-red-500" />
-                        <div className="text-2xl font-bold text-red-600">{behaviourSummary.negative_count || 0}</div>
-                        <p className="text-xs text-muted-foreground font-cairo">{isRTL ? 'سلبي' : 'Negative'}</p>
-                      </CardContent>
-                    </Card>
-                    <Card className="border-blue-200 dark:border-blue-800">
-                      <CardContent className="p-4 text-center">
-                        <Activity className="h-5 w-5 mx-auto mb-1 text-blue-500" />
-                        <div className="text-2xl font-bold text-blue-600">{behaviourSummary.total_points || 0}</div>
-                        <p className="text-xs text-muted-foreground font-cairo">{isRTL ? 'النقاط' : 'Points'}</p>
-                      </CardContent>
-                    </Card>
-                    <Card className="border-purple-200 dark:border-purple-800">
-                      <CardContent className="p-4 text-center">
-                        <MessageSquare className="h-5 w-5 mx-auto mb-1 text-purple-500" />
-                        <div className="text-2xl font-bold text-purple-600">{behaviourSummary.total_records || behaviourRecords.length}</div>
-                        <p className="text-xs text-muted-foreground font-cairo">{isRTL ? 'إجمالي' : 'Total'}</p>
-                      </CardContent>
-                    </Card>
+                    {[
+                      { icon: ThumbsUp, value: behaviourSummary.positive_count || 0, label: isRTL ? 'إيجابي' : 'Positive', color: 'text-green-500', border: 'border-green-200 dark:border-green-800' },
+                      { icon: ThumbsDown, value: behaviourSummary.negative_count || 0, label: isRTL ? 'سلبي' : 'Negative', color: 'text-red-500', border: 'border-red-200 dark:border-red-800' },
+                      { icon: Activity, value: behaviourSummary.total_points || 0, label: isRTL ? 'النقاط' : 'Points', color: 'text-blue-500', border: 'border-blue-200 dark:border-blue-800' },
+                      { icon: MessageSquare, value: behaviourSummary.total_records || behaviourRecords.length, label: isRTL ? 'إجمالي' : 'Total', color: 'text-purple-500', border: 'border-purple-200 dark:border-purple-800' },
+                    ].map((s, i) => (
+                      <Card key={i} className={s.border}>
+                        <CardContent className="p-4 text-center">
+                          <s.icon className={`h-5 w-5 mx-auto mb-1 ${s.color}`} />
+                          <div className={`text-2xl font-bold ${s.color}`}>{s.value}</div>
+                          <p className="text-xs text-muted-foreground font-cairo">{s.label}</p>
+                        </CardContent>
+                      </Card>
+                    ))}
                   </div>
                 )}
 
-                {/* Add Record Button */}
                 <div className="flex items-center justify-between">
                   <h3 className="font-bold text-base font-cairo flex items-center gap-2">
                     <Activity className="h-5 w-5 text-brand-navy" />
@@ -1395,16 +1383,11 @@ export default function StudentProfilePage() {
                 </div>
 
                 {loadingBehaviour ? (
-                  <div className="flex justify-center py-8">
-                    <Loader2 className="h-8 w-8 animate-spin text-brand-turquoise" />
+                  <div className="space-y-3">
+                    {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
                   </div>
                 ) : behaviourRecords.length === 0 ? (
-                  <Card>
-                    <CardContent className="p-8 text-center">
-                      <Activity className="h-12 w-12 mx-auto mb-3 text-muted-foreground/30" />
-                      <p className="text-muted-foreground font-cairo">{isRTL ? 'لا توجد سجلات سلوكية بعد' : 'No behavior records yet'}</p>
-                    </CardContent>
-                  </Card>
+                  <EmptyState icon={Activity} message={isRTL ? 'لا توجد سجلات سلوكية بعد' : 'No behavior records yet'} actionLabel={isRTL ? 'إضافة سجل' : 'Add Record'} onAction={() => openBehaviourModal()} />
                 ) : (
                   <div className="space-y-3">
                     {behaviourRecords.map(rec => {
@@ -1454,9 +1437,11 @@ export default function StudentProfilePage() {
                                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openBehaviourModal(rec)}>
                                   <Edit className="h-3.5 w-3.5" />
                                 </Button>
-                                <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-700" onClick={() => handleDeleteBehaviour(rec)}>
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </Button>
+                                {!isTeacher && (
+                                  <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-700" onClick={() => handleDeleteBehaviour(rec)}>
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                )}
                               </div>
                             </div>
                           </CardContent>
@@ -1465,131 +1450,227 @@ export default function StudentProfilePage() {
                     })}
                   </div>
                 )}
-              </div>
+              </TabsContent>
 
-              {/* Behaviour Add/Edit Modal */}
-              <Dialog open={behaviourModalOpen} onOpenChange={setBehaviourModalOpen}>
-                <DialogContent className="sm:max-w-md" dir={isRTL ? 'rtl' : 'ltr'}>
-                  <DialogHeader>
-                    <DialogTitle className="font-cairo">{editingBehaviour ? (isRTL ? 'تعديل سجل السلوك' : 'Edit Behavior Record') : (isRTL ? 'إضافة سجل سلوك' : 'Add Behavior Record')}</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4 py-2">
-                    <div>
-                      <Label className="font-cairo text-sm">{isRTL ? 'نوع السلوك' : 'Behavior Type'}</Label>
-                      <Select value={behaviourForm.behaviour_type_id} onValueChange={v => {
-                        const bt = behaviourTypes.find(bt => bt.id === v);
-                        setBehaviourForm(prev => ({
-                          ...prev,
-                          behaviour_type_id: v,
-                          title: bt?.name_ar || prev.title,
-                          category: bt?.category || prev.category,
-                        }));
-                      }}>
-                        <SelectTrigger className="mt-1"><SelectValue placeholder={isRTL ? 'اختر النوع...' : 'Select type...'} /></SelectTrigger>
-                        <SelectContent>
-                          {behaviourTypes.map(bt => {
-                            const pts = bt.default_points ?? bt.points;
-                            return (
-                              <SelectItem key={bt.id} value={bt.id}>
-                                <span className="font-cairo">{bt.name_ar || bt.name_en}</span>
-                                {pts != null && <span className={`mr-2 text-xs ${pts > 0 ? 'text-green-600' : pts < 0 ? 'text-red-600' : ''}`}> ({pts > 0 ? '+' : ''}{pts})</span>}
-                              </SelectItem>
-                            );
-                          })}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label className="font-cairo text-sm">{isRTL ? 'التصنيف' : 'Category'}</Label>
-                      <Select value={behaviourForm.category} onValueChange={v => setBehaviourForm(prev => ({ ...prev, category: v }))}>
-                        <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="positive"><span className="font-cairo text-green-600">{isRTL ? 'إيجابي' : 'Positive'}</span></SelectItem>
-                          <SelectItem value="negative"><span className="font-cairo text-red-600">{isRTL ? 'سلبي' : 'Negative'}</span></SelectItem>
-                          <SelectItem value="neutral"><span className="font-cairo text-gray-500">{isRTL ? 'محايد' : 'Neutral'}</span></SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label className="font-cairo text-sm">{isRTL ? 'العنوان' : 'Title'}</Label>
-                      <Input value={behaviourForm.title} onChange={e => setBehaviourForm(prev => ({ ...prev, title: e.target.value }))} className="mt-1 font-cairo" placeholder={isRTL ? 'عنوان السلوك...' : 'Behavior title...'} />
-                    </div>
-                    <div>
-                      <Label className="font-cairo text-sm">{isRTL ? 'الوصف' : 'Description'}</Label>
-                      <Textarea value={behaviourForm.description} onChange={e => setBehaviourForm(prev => ({ ...prev, description: e.target.value }))} className="mt-1 font-cairo" rows={3} placeholder={isRTL ? 'تفاصيل إضافية...' : 'Additional details...'} />
-                    </div>
-                    <div>
-                      <Label className="font-cairo text-sm">{isRTL ? 'تاريخ الحادثة' : 'Incident Date'}</Label>
-                      <Input type="date" value={behaviourForm.incident_date} onChange={e => setBehaviourForm(prev => ({ ...prev, incident_date: e.target.value }))} className="mt-1" />
-                    </div>
-                    <div className="flex justify-end gap-2 pt-2">
-                      <Button variant="outline" onClick={() => setBehaviourModalOpen(false)} className="font-cairo">{isRTL ? 'إلغاء' : 'Cancel'}</Button>
-                      <Button onClick={handleSaveBehaviour} disabled={savingBehaviour} className="bg-brand-navy hover:bg-brand-navy/90 text-white font-cairo gap-1">
-                        {savingBehaviour ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                        {editingBehaviour ? (isRTL ? 'تحديث' : 'Update') : (isRTL ? 'حفظ' : 'Save')}
-                      </Button>
-                    </div>
+              {/* ===== ACTIVITIES TAB (Placeholder) ===== */}
+              <TabsContent value="activities" className="mt-6">
+                <Card>
+                  <CardContent className="p-6">
+                    <EmptyState icon={Medal} message={isRTL ? 'قسم الأنشطة والإنجازات قيد التطوير' : 'Activities & Achievements section coming soon'}  />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              {/* ===== PLANS TAB ===== */}
+              <TabsContent value="plans" className="mt-6 space-y-4">
+                <div className="relative my-2">
+                  <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-dashed border-brand-purple/20" /></div>
+                  <div className="relative flex justify-center">
+                    <span className="bg-background px-3 text-xs text-brand-purple font-cairo font-medium">{isRTL ? 'خطط حكيم الذكية' : 'Hakim AI Plans'}</span>
                   </div>
-                </DialogContent>
-              </Dialog>
-            </TabsContent>
+                </div>
 
-            <TabsContent value="actions">
-              <Card>
-                <CardContent className="p-6 space-y-4">
-                  <h3 className="font-bold text-base font-cairo flex items-center gap-2">
-                    <Shield className="h-5 w-5 text-brand-navy" />
-                    {isRTL ? 'إجراءات الحساب' : 'Account Actions'}
-                  </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <Button variant="outline" className="justify-start h-auto py-3" onClick={() => handleAction('reset-password')} disabled={!!actionLoading}>
-                      <Key className="h-4 w-4 me-2 text-blue-500" />
-                      <div className="text-start">
-                        <p className="text-sm font-medium">{isRTL ? 'إعادة تعيين كلمة المرور' : 'Reset Password'}</p>
-                        <p className="text-xs text-muted-foreground">{isRTL ? 'إرسال كلمة مرور جديدة' : 'Send new password'}</p>
-                      </div>
-                      {actionLoading === 'reset-password' && <Loader2 className="h-4 w-4 animate-spin ms-auto" />}
-                    </Button>
+                <HakimPlanCard type="remedial" plan={remedialPlan} isRTL={isRTL} loading={loadingRemedial}
+                  onGenerate={() => generatePlan('remedial')} onExport={remedialPlan ? openExportModal : null} />
 
-                    {student.is_active !== false ? (
-                      <Button variant="outline" className="justify-start h-auto py-3 border-amber-200 hover:bg-amber-50"
-                        onClick={() => handleAction('suspend')} disabled={!!actionLoading}>
-                        <UserX className="h-4 w-4 me-2 text-amber-500" />
-                        <div className="text-start">
-                          <p className="text-sm font-medium">{isRTL ? 'تعليق الحساب' : 'Suspend Account'}</p>
-                          <p className="text-xs text-muted-foreground">{isRTL ? 'تعليق مؤقت للحساب' : 'Temporarily suspend'}</p>
-                        </div>
-                        {actionLoading === 'suspend' && <Loader2 className="h-4 w-4 animate-spin ms-auto" />}
-                      </Button>
-                    ) : (
-                      <Button variant="outline" className="justify-start h-auto py-3 border-green-200 hover:bg-green-50"
-                        onClick={() => handleAction('activate')} disabled={!!actionLoading}>
-                        <UserCheck className="h-4 w-4 me-2 text-green-500" />
-                        <div className="text-start">
-                          <p className="text-sm font-medium">{isRTL ? 'تفعيل الحساب' : 'Activate Account'}</p>
-                          <p className="text-xs text-muted-foreground">{isRTL ? 'إعادة تفعيل الحساب' : 'Re-activate account'}</p>
-                        </div>
-                        {actionLoading === 'activate' && <Loader2 className="h-4 w-4 animate-spin ms-auto" />}
-                      </Button>
-                    )}
+                <HakimPlanCard type="enrichment" plan={enrichmentPlan} isRTL={isRTL} loading={loadingEnrichment}
+                  onGenerate={() => generatePlan('enrichment')} onExport={enrichmentPlan ? openExportModal : null} />
 
-                    <Button variant="outline" className="justify-start h-auto py-3 border-red-200 hover:bg-red-50 sm:col-span-2"
-                      onClick={() => handleAction('delete')} disabled={!!actionLoading}>
-                      <Trash2 className="h-4 w-4 me-2 text-red-500" />
-                      <div className="text-start">
-                        <p className="text-sm font-medium text-red-600">{isRTL ? 'حذف الحساب نهائياً' : 'Delete Account Permanently'}</p>
-                        <p className="text-xs text-muted-foreground">{isRTL ? 'لا يمكن التراجع عن هذا الإجراء' : 'This action cannot be undone'}</p>
-                      </div>
-                      {actionLoading === 'delete' && <Loader2 className="h-4 w-4 animate-spin ms-auto" />}
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
+                {remedialPlan && enrichmentPlan && (
+                  <Button variant="outline" className="w-full gap-2 border-brand-navy/20 text-brand-navy hover:bg-brand-navy/5"
+                    onClick={() => openExportModal('both')} disabled={exportingPlan}>
+                    {exportingPlan ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                    {isRTL ? 'تصدير الخطتين معاً' : 'Export Both Plans'}
+                  </Button>
+                )}
+              </TabsContent>
+
+              {/* ===== LONGITUDINAL RECORD TAB (Placeholder) ===== */}
+              <TabsContent value="longitudinal" className="mt-6">
+                <Card>
+                  <CardContent className="p-6">
+                    <EmptyState icon={ScrollText} message={isRTL ? 'السجل التراكمي قيد التطوير' : 'Longitudinal Record section coming soon'} />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+            </Tabs>
+          </div>
         </div>
       </main>
 
+      {/* ===== EDIT PROFILE MODAL ===== */}
+      <Dialog open={editProfileOpen} onOpenChange={(open) => { setEditProfileOpen(open); if (!open) setFormData({ ...student }); }}>
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto" dir={isRTL ? 'rtl' : 'ltr'}>
+          <DialogHeader>
+            <DialogTitle className="font-cairo flex items-center gap-2">
+              <Edit className="h-5 w-5 text-brand-turquoise" />
+              {isRTL ? 'تعديل بيانات الطالب' : 'Edit Student Profile'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-6 py-2">
+            <div>
+              <h4 className="font-semibold text-sm font-cairo flex items-center gap-2 mb-4">
+                <User className="h-4 w-4 text-brand-turquoise" />
+                {isRTL ? 'البيانات الشخصية' : 'Personal Information'}
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-cairo">{isRTL ? 'الاسم الكامل' : 'Full Name'}</Label>
+                  <Input value={formData.full_name || ''} onChange={(e) => setFormData({ ...formData, full_name: e.target.value })} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-cairo">{isRTL ? 'رقم الهوية' : 'National ID'}</Label>
+                  <Input value={formData.national_id || ''} onChange={(e) => setFormData({ ...formData, national_id: e.target.value })} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-cairo">{isRTL ? 'البريد الإلكتروني' : 'Email'}</Label>
+                  <Input value={formData.email || ''} onChange={(e) => setFormData({ ...formData, email: e.target.value })} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-cairo">{isRTL ? 'الهاتف' : 'Phone'}</Label>
+                  <Input value={formData.phone || ''} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-cairo">{isRTL ? 'الجنس' : 'Gender'}</Label>
+                  <Select value={formData.gender || ''} onValueChange={(v) => setFormData({ ...formData, gender: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="male">{isRTL ? 'ذكر' : 'Male'}</SelectItem>
+                      <SelectItem value="female">{isRTL ? 'أنثى' : 'Female'}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-cairo">{isRTL ? 'تاريخ الميلاد' : 'Date of Birth'}</Label>
+                  <Input type="date" value={formData.date_of_birth || ''} onChange={(e) => setFormData({ ...formData, date_of_birth: e.target.value })} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-cairo">{isRTL ? 'الصف' : 'Grade'}</Label>
+                  <Input value={formData.grade || ''} onChange={(e) => setFormData({ ...formData, grade: e.target.value })} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-cairo">{isRTL ? 'الفصل' : 'Class'}</Label>
+                  <Select value={formData.class_id || ''} onValueChange={(v) => setFormData({ ...formData, class_id: v })}>
+                    <SelectTrigger><SelectValue placeholder={isRTL ? 'اختر الفصل' : 'Select Class'} /></SelectTrigger>
+                    <SelectContent>
+                      {classes.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t pt-4">
+              <h4 className="font-semibold text-sm font-cairo flex items-center gap-2 mb-4">
+                <Heart className="h-4 w-4 text-rose-500" />
+                {isRTL ? 'بيانات ولي الأمر' : 'Guardian Information'}
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-cairo">{isRTL ? 'اسم ولي الأمر' : 'Guardian Name'}</Label>
+                  <Input value={formData.parent_name || ''} onChange={(e) => setFormData({ ...formData, parent_name: e.target.value })} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-cairo">{isRTL ? 'صلة القرابة' : 'Relationship'}</Label>
+                  <Select value={formData.parent_relationship || ''} onValueChange={(v) => setFormData({ ...formData, parent_relationship: v })}>
+                    <SelectTrigger><SelectValue placeholder={isRTL ? 'اختر صلة القرابة' : 'Select'} /></SelectTrigger>
+                    <SelectContent>
+                      {Object.entries({ father: isRTL ? 'أب' : 'Father', mother: isRTL ? 'أم' : 'Mother', guardian: isRTL ? 'ولي أمر' : 'Guardian', brother: isRTL ? 'أخ' : 'Brother', sister: isRTL ? 'أخت' : 'Sister', uncle: isRTL ? 'عم / خال' : 'Uncle', other: isRTL ? 'أخرى' : 'Other' }).map(([k, v]) => (
+                        <SelectItem key={k} value={k}>{v}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-cairo">{isRTL ? 'هاتف ولي الأمر' : 'Guardian Phone'}</Label>
+                  <Input value={formData.parent_phone || ''} onChange={(e) => setFormData({ ...formData, parent_phone: e.target.value })} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-cairo">{isRTL ? 'بريد ولي الأمر' : 'Guardian Email'}</Label>
+                  <Input type="email" value={formData.parent_email || ''} onChange={(e) => setFormData({ ...formData, parent_email: e.target.value })} />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t">
+              <Button variant="outline" onClick={() => setEditProfileOpen(false)} className="font-cairo">{isRTL ? 'إلغاء' : 'Cancel'}</Button>
+              <Button onClick={handleSave} disabled={saving} className="bg-brand-navy hover:bg-brand-navy/90 text-white font-cairo gap-1.5">
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                {isRTL ? 'حفظ التعديلات' : 'Save Changes'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== BEHAVIOUR MODAL ===== */}
+      <Dialog open={behaviourModalOpen} onOpenChange={setBehaviourModalOpen}>
+        <DialogContent className="sm:max-w-md" dir={isRTL ? 'rtl' : 'ltr'}>
+          <DialogHeader>
+            <DialogTitle className="font-cairo">{editingBehaviour ? (isRTL ? 'تعديل سجل السلوك' : 'Edit Behavior Record') : (isRTL ? 'إضافة سجل سلوك' : 'Add Behavior Record')}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label className="font-cairo text-sm">{isRTL ? 'نوع السلوك' : 'Behavior Type'}</Label>
+              <Select value={behaviourForm.behaviour_type_id} onValueChange={v => {
+                const bt = behaviourTypes.find(bt => bt.id === v);
+                setBehaviourForm(prev => ({
+                  ...prev,
+                  behaviour_type_id: v,
+                  title: isRTL ? (bt?.name_ar || prev.title) : (bt?.name_en || bt?.name_ar || prev.title),
+                  category: bt?.category || prev.category,
+                }));
+              }}>
+                <SelectTrigger className="mt-1"><SelectValue placeholder={isRTL ? 'اختر النوع...' : 'Select type...'} /></SelectTrigger>
+                <SelectContent>
+                  {behaviourTypes.map(bt => {
+                    const pts = bt.default_points ?? bt.points;
+                    return (
+                      <SelectItem key={bt.id} value={bt.id}>
+                        <span className="font-cairo">{bt.name_ar || bt.name_en}</span>
+                        {pts != null && <span className={`mr-2 text-xs ${pts > 0 ? 'text-green-600' : pts < 0 ? 'text-red-600' : ''}`}> ({pts > 0 ? '+' : ''}{pts})</span>}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="font-cairo text-sm">{isRTL ? 'التصنيف' : 'Category'}</Label>
+              <Select value={behaviourForm.category} onValueChange={v => setBehaviourForm(prev => ({ ...prev, category: v }))}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="positive"><span className="font-cairo text-green-600">{isRTL ? 'إيجابي' : 'Positive'}</span></SelectItem>
+                  <SelectItem value="negative"><span className="font-cairo text-red-600">{isRTL ? 'سلبي' : 'Negative'}</span></SelectItem>
+                  <SelectItem value="neutral"><span className="font-cairo text-gray-500">{isRTL ? 'محايد' : 'Neutral'}</span></SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="font-cairo text-sm">{isRTL ? 'العنوان' : 'Title'}</Label>
+              <Input value={behaviourForm.title} onChange={e => setBehaviourForm(prev => ({ ...prev, title: e.target.value }))} className="mt-1 font-cairo" placeholder={isRTL ? 'عنوان السلوك...' : 'Behavior title...'} />
+            </div>
+            <div>
+              <Label className="font-cairo text-sm">{isRTL ? 'الوصف' : 'Description'}</Label>
+              <Textarea value={behaviourForm.description} onChange={e => setBehaviourForm(prev => ({ ...prev, description: e.target.value }))} className="mt-1 font-cairo" rows={3} placeholder={isRTL ? 'تفاصيل إضافية...' : 'Additional details...'} />
+            </div>
+            <div>
+              <Label className="font-cairo text-sm">{isRTL ? 'تاريخ الحادثة' : 'Incident Date'}</Label>
+              <Input type="date" value={behaviourForm.incident_date} onChange={e => setBehaviourForm(prev => ({ ...prev, incident_date: e.target.value }))} className="mt-1" />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setBehaviourModalOpen(false)} className="font-cairo">{isRTL ? 'إلغاء' : 'Cancel'}</Button>
+              <Button onClick={handleSaveBehaviour} disabled={savingBehaviour} className="bg-brand-navy hover:bg-brand-navy/90 text-white font-cairo gap-1">
+                {savingBehaviour ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                {editingBehaviour ? (isRTL ? 'تحديث' : 'Update') : (isRTL ? 'حفظ' : 'Save')}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== EXPORT PLAN MODAL ===== */}
       <Dialog open={exportModalOpen} onOpenChange={setExportModalOpen}>
         <DialogContent className="sm:max-w-md" dir={isRTL ? 'rtl' : 'ltr'}>
           <DialogHeader>
@@ -1646,18 +1727,7 @@ export default function StudentProfilePage() {
               </RadioGroup>
             </div>
 
-            <div className="bg-muted/30 rounded-lg p-3 text-xs text-muted-foreground space-y-1">
-              <p className="font-medium">{isRTL ? 'معاينة اسم الملف:' : 'File name preview:'}</p>
-              <p className="font-mono text-[11px] break-all direction-ltr">
-                {(student?.full_name || 'Student').replace(/\s+/g, '_')}_{exportPlanType === 'remedial' ? 'Remedial_Plan' : exportPlanType === 'enrichment' ? 'Enrichment_Plan' : 'Plans'}_{new Date().toISOString().split('T')[0]}.{exportFormat === 'pdf' ? 'pdf' : 'docx'}
-              </p>
-            </div>
-
-            <Button
-              className="w-full gap-2 bg-brand-navy hover:bg-brand-navy/90 text-white"
-              onClick={() => handleExportPlan(exportPlanType, exportFormat)}
-              disabled={exportingPlan}
-            >
+            <Button className="w-full gap-2 bg-brand-navy hover:bg-brand-navy/90 text-white" onClick={() => handleExportPlan(exportPlanType, exportFormat)} disabled={exportingPlan}>
               {exportingPlan ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               {isRTL ? 'تحميل' : 'Download'}
             </Button>

@@ -1,0 +1,81 @@
+PHASE 5: Longitudinal Record Tab & Full Profile Export
+Goal: Build the long-term career-readiness layer and complete export system
+
+5.1 Longitudinal Record Tab (السجل التراكمي)
+This is the most strategic tab — the foundation of the future career matching engine.
+Student Journey Timeline:
+
+Year-by-year vertical timeline from enrollment to current grade
+Each year card contains:
+
+Grade and class
+Assigned teacher
+Attendance rate for that year
+Top 3 talents that year
+Behavior summary (positive/negative count)
+Key achievements or awards
+Academic performance average
+
+
+
+Skill Growth Tracker (new):
+
+Line chart showing how each talent/skill proficiency has evolved across years
+One line per skill, color coded
+Shows clearly which skills are growing, stable, or inactive
+
+Readiness Indicators Section (new — AI-ready placeholder fields):
+Display four score indicators (visual gauge or progress bar style):
+
+🎓 Academic Readiness Score
+🤝 Social-Emotional Readiness Score
+👑 Leadership Potential Score
+💼 Career Alignment Score
+
+All labeled clearly as:
+"These indicators are based on cumulative data and will be AI-powered in a future version of NASSAQ."
+Career Clusters Section (new — placeholder):
+
+Based on all accumulated talent, behavior, achievement, and academic data
+Display 3 suggested career cluster cards:
+
+Cluster name (e.g., STEM / Arts / Business / Healthcare)
+Match strength percentage
+Brief explanation of why this cluster fits the student
+
+
+Labeled: "Early career affinity indicators — data builds over time"
+
+Vision Statement Banner (bottom of tab):
+A subtle, inspiring banner that reads:
+"Every data point recorded today is building this student's future. NASSAQ's longitudinal record will power AI-driven career recommendations in the future."
+
+5.2 Full Profile Export
+Add a "Export Full Profile" option to the hero section action buttons.
+When clicked, opens a modal with:
+
+Checkboxes to select which sections to include:
+
+☑ Personal & Guardian Info
+☑ Academic Performance
+☑ Talents & Skills
+☑ Behavior Record
+☑ Activities & Achievements
+☑ Plans (Remedial / Enrichment)
+☑ Longitudinal Summary
+
+
+Format selection: PDF / Word
+"Generate & Download" button
+
+The exported document must include:
+
+NASSAQ logo and school name in header
+Student name, ID, grade on every page
+All selected sections with clear headings
+Page numbers in footer
+Generation date and "Exported by" name
+
+
+Deliverable for Phase 5:
+Longitudinal Record tab fully built with timeline and charts. Full Profile Export working in both PDF and Word format. All previously built tabs integrated into the export document.
