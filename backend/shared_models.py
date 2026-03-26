@@ -345,6 +345,11 @@ class StudentResponse(BaseModel):
     is_active: bool = True
     created_at: Optional[str] = None
     qr_code: Optional[str] = None
+    nationality: Optional[str] = None
+    enrollment_date: Optional[str] = None
+    health_info: Optional[dict] = None
+    emergency_contact: Optional[str] = None
+    emergency_phone: Optional[str] = None
 
 class ClassCreate(BaseModel):
     name: str

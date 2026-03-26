@@ -19,6 +19,10 @@ import { ScrollArea, ScrollBar } from '../components/ui/scroll-area';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger
 } from '../components/ui/dropdown-menu';
+import {
+  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  Tooltip as RechartsTooltip, Cell
+} from 'recharts';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
 import { NotificationBell } from '../components/notifications/NotificationBell';
@@ -279,6 +283,12 @@ export default function StudentProfilePage() {
 
   const [overviewLoaded, setOverviewLoaded] = useState(false);
 
+  const [attendanceHistory, setAttendanceHistory] = useState([]);
+  const [loadingAttendanceHistory, setLoadingAttendanceHistory] = useState(false);
+  const [gradesDetail, setGradesDetail] = useState(null);
+  const [loadingGrades, setLoadingGrades] = useState(false);
+  const [classDetail, setClassDetail] = useState(null);
+
   const headers = useMemo(() => {
     const h = {};
     const token = localStorage.getItem('nassaq_token');
@@ -399,23 +409,63 @@ export default function StudentProfilePage() {
     }
   }, [api, headers]);
 
+  const fetchAttendanceHistory = useCallback(async () => {
+    if (!studentId) return;
+    setLoadingAttendanceHistory(true);
+    try {
+      const res = await api.get(`/attendance/student/${studentId}`, { headers });
+      setAttendanceHistory(res.data?.records || []);
+    } catch {
+      setAttendanceHistory([]);
+    } finally {
+      setLoadingAttendanceHistory(false);
+    }
+  }, [api, studentId, headers]);
+
+  const fetchGradesDetail = useCallback(async () => {
+    if (!studentId) return;
+    setLoadingGrades(true);
+    try {
+      const res = await api.get(`/grades/student/${studentId}`, { headers });
+      setGradesDetail(res.data);
+    } catch {
+      setGradesDetail(null);
+    } finally {
+      setLoadingGrades(false);
+    }
+  }, [api, studentId, headers]);
+
+  const fetchClassDetail = useCallback(async () => {
+    const cId = classId || student?.class_id;
+    if (!cId) return;
+    try {
+      const res = await api.get(`/classes/${cId}`, { headers });
+      setClassDetail(res.data);
+    } catch {
+      setClassDetail(null);
+    }
+  }, [api, classId, student?.class_id, headers]);
+
   useEffect(() => {
     if (activeTab === 'overview' && !overviewLoaded && student) {
       fetchAttendance();
       fetchHomeworkRate();
       fetchBehaviourRecords();
+      fetchClassDetail();
       setOverviewLoaded(true);
     } else if (activeTab === 'academic') {
       fetchAttendance();
+      fetchAttendanceHistory();
       fetchRiskData();
       fetchHomeworkRate();
+      fetchGradesDetail();
     } else if (activeTab === 'behaviour') {
       fetchBehaviourRecords();
       fetchBehaviourTypes();
     } else if (activeTab === 'talents') {
       fetchGlobalTalents();
     }
-  }, [activeTab, student, overviewLoaded, fetchAttendance, fetchRiskData, fetchHomeworkRate, fetchBehaviourRecords, fetchBehaviourTypes, fetchGlobalTalents]);
+  }, [activeTab, student, overviewLoaded, fetchAttendance, fetchAttendanceHistory, fetchRiskData, fetchHomeworkRate, fetchGradesDetail, fetchBehaviourRecords, fetchBehaviourTypes, fetchGlobalTalents, fetchClassDetail]);
 
   const generatePlan = async (planType) => {
     if (!studentId) return;
@@ -746,6 +796,56 @@ export default function StudentProfilePage() {
 
   const positiveBehaviourCount = behaviourSummary?.positive_count || 0;
 
+  const profileCompleteness = useMemo(() => {
+    if (!student) return { percent: 0, missing: [] };
+    const fields = [
+      { key: 'full_name', ar: 'الاسم الكامل', en: 'Full Name' },
+      { key: 'national_id', ar: 'رقم الهوية', en: 'National ID' },
+      { key: 'email', ar: 'البريد الإلكتروني', en: 'Email' },
+      { key: 'phone', ar: 'الهاتف', en: 'Phone' },
+      { key: 'gender', ar: 'الجنس', en: 'Gender' },
+      { key: 'date_of_birth', ar: 'تاريخ الميلاد', en: 'Date of Birth' },
+      { key: 'nationality', ar: 'الجنسية', en: 'Nationality' },
+      { key: 'parent_name', ar: 'اسم ولي الأمر', en: 'Guardian Name' },
+      { key: 'parent_phone', ar: 'هاتف ولي الأمر', en: 'Guardian Phone' },
+      { key: 'emergency_contact', ar: 'جهة اتصال الطوارئ', en: 'Emergency Contact' },
+      { key: 'emergency_phone', ar: 'هاتف الطوارئ', en: 'Emergency Phone' },
+    ];
+    const filled = fields.filter(f => {
+      const v = student[f.key];
+      return v !== null && v !== undefined && v !== '';
+    });
+    const missing = fields.filter(f => {
+      const v = student[f.key];
+      return v === null || v === undefined || v === '';
+    });
+    return { percent: Math.round((filled.length / fields.length) * 100), missing };
+  }, [student]);
+
+  const attendanceChartData = useMemo(() => {
+    if (!attendanceHistory || attendanceHistory.length === 0) return [];
+    const monthly = {};
+    attendanceHistory.forEach(r => {
+      const d = r.date || r.attendance_date;
+      if (!d) return;
+      const month = d.substring(0, 7);
+      if (!monthly[month]) monthly[month] = { month, present: 0, absent: 0, late: 0, excused: 0 };
+      const status = (r.status || '').toLowerCase();
+      if (status === 'present') monthly[month].present++;
+      else if (status === 'absent') monthly[month].absent++;
+      else if (status === 'late') monthly[month].late++;
+      else if (status === 'excused') monthly[month].excused++;
+    });
+    return Object.values(monthly).sort((a, b) => a.month.localeCompare(b.month));
+  }, [attendanceHistory]);
+
+  const subjectGrades = useMemo(() => {
+    if (!gradesDetail) return [];
+    const grades = gradesDetail.grades || gradesDetail.subjects || gradesDetail;
+    if (!Array.isArray(grades)) return [];
+    return grades;
+  }, [gradesDetail]);
+
   const TABS = [
     { value: 'overview', label_ar: 'نظرة عامة', label_en: 'Overview', icon: Eye },
     { value: 'academic', label_ar: 'الأداء الأكاديمي', label_en: 'Academic', icon: BarChart3 },
@@ -974,13 +1074,42 @@ export default function StudentProfilePage() {
 
               {/* ===== OVERVIEW TAB ===== */}
               <TabsContent value="overview" className="mt-6 space-y-4">
+                {/* Profile Completeness Bar */}
+                <Card className="border-brand-turquoise/20 bg-gradient-to-r from-brand-turquoise/5 to-brand-purple/5 dark:from-brand-turquoise/10 dark:to-brand-purple/10">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-bold text-sm font-cairo flex items-center gap-2">
+                        <CheckCircle className="h-4 w-4 text-brand-turquoise" />
+                        {isRTL ? 'اكتمال الملف الشخصي' : 'Profile Completeness'}
+                      </h3>
+                      <span className={`text-sm font-bold font-cairo tabular-nums ${profileCompleteness.percent === 100 ? 'text-green-600' : profileCompleteness.percent >= 70 ? 'text-brand-turquoise' : 'text-amber-600'}`}>{profileCompleteness.percent}%</span>
+                    </div>
+                    <Progress value={profileCompleteness.percent} className={`h-2.5 ${profileCompleteness.percent === 100 ? '[&>div]:bg-green-500' : profileCompleteness.percent >= 70 ? '[&>div]:bg-brand-turquoise' : '[&>div]:bg-amber-500'}`} />
+                    {profileCompleteness.missing.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-2.5">
+                        <span className="text-[11px] text-muted-foreground font-cairo">{isRTL ? 'ناقص:' : 'Missing:'}</span>
+                        {profileCompleteness.missing.slice(0, 4).map(f => (
+                          <Badge key={f.key} variant="outline" className="text-[10px] px-1.5 py-0 h-5 cursor-pointer hover:bg-brand-turquoise/10 border-dashed" onClick={() => { setFormData({ ...student }); setEditProfileOpen(true); }}>
+                            {isRTL ? f.ar : f.en}
+                          </Badge>
+                        ))}
+                        {profileCompleteness.missing.length > 4 && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 cursor-pointer hover:bg-brand-turquoise/10 border-dashed" onClick={() => { setFormData({ ...student }); setEditProfileOpen(true); }}>
+                            +{profileCompleteness.missing.length - 4}
+                          </Badge>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  {/* Student Info Card */}
+                  {/* Personal Info Card */}
                   <Card>
                     <CardContent className="p-5">
                       <h3 className="font-bold text-sm font-cairo flex items-center gap-2 mb-4">
                         <User className="h-4 w-4 text-brand-turquoise" />
-                        {isRTL ? 'بيانات الطالب' : 'Student Info'}
+                        {isRTL ? 'البيانات الشخصية' : 'Personal Info'}
                       </h3>
                       <div className="grid grid-cols-2 gap-4">
                         <DataField label={isRTL ? 'الاسم الكامل' : 'Full Name'} value={student.full_name} />
@@ -989,104 +1118,131 @@ export default function StudentProfilePage() {
                         <DataField label={isRTL ? 'الهاتف' : 'Phone'} value={student.phone} icon={Phone} />
                         <DataField label={isRTL ? 'الجنس' : 'Gender'} value={student.gender === 'male' ? (isRTL ? 'ذكر' : 'Male') : student.gender === 'female' ? (isRTL ? 'أنثى' : 'Female') : null} />
                         <DataField label={isRTL ? 'تاريخ الميلاد' : 'Date of Birth'} value={student.date_of_birth} icon={Calendar} />
+                        <DataField label={isRTL ? 'الجنسية' : 'Nationality'} value={student.nationality} icon={Globe} />
+                        <DataField label={isRTL ? 'تاريخ التسجيل' : 'Enrollment Date'} value={student.enrollment_date} icon={Calendar} />
                       </div>
                     </CardContent>
                   </Card>
 
-                  {/* Guardian Card */}
+                  {/* Guardian & Emergency Card */}
                   <Card>
                     <CardContent className="p-5">
                       <h3 className="font-bold text-sm font-cairo flex items-center gap-2 mb-4">
                         <Heart className="h-4 w-4 text-rose-500" />
-                        {isRTL ? 'ولي الأمر' : 'Guardian'}
+                        {isRTL ? 'ولي الأمر والطوارئ' : 'Guardian & Emergency'}
                       </h3>
                       {student.parent_name ? (
-                        <div className="grid grid-cols-2 gap-4">
-                          <DataField label={isRTL ? 'الاسم' : 'Name'} value={student.parent_name} />
-                          <DataField label={isRTL ? 'صلة القرابة' : 'Relationship'} value={relationshipMap[student.parent_relationship] || student.parent_relationship} />
-                          <DataField label={isRTL ? 'الهاتف' : 'Phone'} value={student.parent_phone} icon={Phone} />
-                          <DataField label={isRTL ? 'البريد' : 'Email'} value={student.parent_email} icon={Mail} />
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-2 gap-4">
+                            <DataField label={isRTL ? 'الاسم' : 'Name'} value={student.parent_name} />
+                            <DataField label={isRTL ? 'صلة القرابة' : 'Relationship'} value={relationshipMap[student.parent_relationship] || student.parent_relationship} />
+                            <DataField label={isRTL ? 'الهاتف' : 'Phone'} value={student.parent_phone} icon={Phone} />
+                            <DataField label={isRTL ? 'البريد' : 'Email'} value={student.parent_email} icon={Mail} />
+                          </div>
+                          {(student.emergency_contact || student.emergency_phone) && (
+                            <div className="border-t pt-3">
+                              <p className="text-[11px] text-muted-foreground font-cairo mb-2 flex items-center gap-1">
+                                <AlertTriangle className="h-3 w-3 text-amber-500" />
+                                {isRTL ? 'جهة اتصال الطوارئ' : 'Emergency Contact'}
+                              </p>
+                              <div className="grid grid-cols-2 gap-4">
+                                <DataField label={isRTL ? 'الاسم' : 'Name'} value={student.emergency_contact} />
+                                <DataField label={isRTL ? 'الهاتف' : 'Phone'} value={student.emergency_phone} icon={Phone} />
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <EmptyState icon={Heart} message={isRTL ? 'لم يتم إضافة بيانات ولي الأمر' : 'No guardian info added'} actionLabel={isRTL ? 'إضافة بيانات' : 'Add Info'} onAction={() => { setFormData({ ...student }); setEditProfileOpen(true); }} />
                       )}
                     </CardContent>
                   </Card>
-                </div>
 
-                {/* Attendance & Performance Row */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Academic Snapshot Card */}
                   <Card>
                     <CardContent className="p-5">
-                      <h3 className="font-bold text-sm font-cairo flex items-center gap-2 mb-3">
-                        <Calendar className="h-4 w-4 text-green-500" />
-                        {isRTL ? 'ملخص الحضور' : 'Attendance'}
+                      <h3 className="font-bold text-sm font-cairo flex items-center gap-2 mb-4">
+                        <GraduationCap className="h-4 w-4 text-brand-navy" />
+                        {isRTL ? 'لمحة أكاديمية' : 'Academic Snapshot'}
                       </h3>
-                      {loadingAttendance ? (
-                        <div className="space-y-2">
-                          <Skeleton className="h-8 w-20 mx-auto" />
-                          <Skeleton className="h-3 w-full" />
-                        </div>
-                      ) : attendanceSummary ? (
-                        <div className="text-center">
-                          <p className={`text-3xl font-bold font-cairo ${attendanceRate >= 80 ? 'text-green-600' : attendanceRate >= 60 ? 'text-amber-600' : 'text-red-600'}`}>{attendanceRate}%</p>
-                          <Progress value={attendanceRate} className={`h-2 mt-2 ${attendanceRate >= 80 ? '[&>div]:bg-green-500' : attendanceRate >= 60 ? '[&>div]:bg-amber-500' : '[&>div]:bg-red-500'}`} />
-                          <div className="flex justify-between text-[10px] text-muted-foreground mt-2 font-cairo">
-                            <span>{isRTL ? 'حاضر' : 'Present'}: {attendanceSummary.present_count ?? attendanceSummary.present ?? 0}</span>
-                            <span>{isRTL ? 'غائب' : 'Absent'}: {attendanceSummary.absent_count ?? attendanceSummary.absent ?? 0}</span>
+                      <div className="grid grid-cols-2 gap-4">
+                        <DataField label={isRTL ? 'الصف' : 'Class'} value={student.class_name || classNameFromState} icon={BookOpen} />
+                        <DataField label={isRTL ? 'معلم الفصل' : 'Homeroom Teacher'} value={classDetail?.homeroom_teacher_name} icon={User} />
+                        <div className="col-span-2 grid grid-cols-3 gap-3 pt-1">
+                          <div className="text-center p-2.5 bg-green-50 dark:bg-green-950/20 rounded-lg">
+                            <p className={`text-xl font-bold font-cairo ${attendanceRate !== null ? (attendanceRate >= 80 ? 'text-green-600' : attendanceRate >= 60 ? 'text-amber-600' : 'text-red-600') : 'text-muted-foreground'}`}>
+                              {loadingAttendance ? '...' : attendanceRate !== null ? `${attendanceRate}%` : '—'}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground font-cairo">{isRTL ? 'الحضور' : 'Attendance'}</p>
+                          </div>
+                          <div className="text-center p-2.5 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
+                            <p className={`text-xl font-bold font-cairo ${homeworkRate ? (homeworkRate.rate >= 80 ? 'text-green-600' : homeworkRate.rate >= 50 ? 'text-amber-600' : 'text-red-600') : 'text-muted-foreground'}`}>
+                              {loadingHomework ? '...' : homeworkRate ? `${homeworkRate.rate}%` : '—'}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground font-cairo">{isRTL ? 'الأكاديمي' : 'Academic'}</p>
+                          </div>
+                          <div className="text-center p-2.5 bg-purple-50 dark:bg-purple-950/20 rounded-lg">
+                            <p className="text-xl font-bold font-cairo text-brand-navy">
+                              {loadingBehaviour ? '...' : behaviourSummary ? (behaviourSummary.total_points || 0) : '—'}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground font-cairo">{isRTL ? 'السلوك' : 'Behavior'}</p>
                           </div>
                         </div>
-                      ) : (
-                        <EmptyState icon={Calendar} message={isRTL ? 'لا بيانات حضور' : 'No attendance data'} />
-                      )}
+                      </div>
                     </CardContent>
                   </Card>
 
+                  {/* Health & Notes Card */}
                   <Card>
                     <CardContent className="p-5">
-                      <h3 className="font-bold text-sm font-cairo flex items-center gap-2 mb-3">
-                        <BarChart3 className="h-4 w-4 text-blue-500" />
-                        {isRTL ? 'الأداء الأكاديمي' : 'Academic'}
+                      <h3 className="font-bold text-sm font-cairo flex items-center gap-2 mb-4">
+                        <Stethoscope className="h-4 w-4 text-rose-500" />
+                        {isRTL ? 'الصحة والملاحظات' : 'Health & Notes'}
                       </h3>
-                      {loadingHomework ? (
-                        <div className="space-y-2">
-                          <Skeleton className="h-8 w-20 mx-auto" />
-                          <Skeleton className="h-3 w-full" />
-                        </div>
-                      ) : homeworkRate ? (
-                        <div className="text-center">
-                          <p className={`text-3xl font-bold font-cairo ${homeworkRate.rate >= 80 ? 'text-green-600' : homeworkRate.rate >= 50 ? 'text-amber-600' : 'text-red-600'}`}>{homeworkRate.rate}%</p>
-                          <Progress value={homeworkRate.rate} className={`h-2 mt-2 ${homeworkRate.rate >= 80 ? '[&>div]:bg-green-500' : homeworkRate.rate >= 50 ? '[&>div]:bg-amber-500' : '[&>div]:bg-red-500'}`} />
-                          <p className="text-[10px] text-muted-foreground mt-2 font-cairo">{homeworkRate.completed} / {homeworkRate.total} {isRTL ? 'تقييم' : 'assessments'}</p>
+                      {student.health_info && Object.keys(student.health_info).length > 0 ? (
+                        <div className="space-y-3">
+                          {student.health_info.blood_type && (
+                            <DataField label={isRTL ? 'فصيلة الدم' : 'Blood Type'} value={student.health_info.blood_type} />
+                          )}
+                          {student.health_info.has_chronic_conditions && student.health_info.chronic_conditions && (
+                            <div>
+                              <p className="text-[11px] text-muted-foreground font-cairo mb-1">{isRTL ? 'أمراض مزمنة' : 'Chronic Conditions'}</p>
+                              <p className="text-sm font-cairo">{student.health_info.chronic_conditions}</p>
+                            </div>
+                          )}
+                          {student.health_info.has_allergies && student.health_info.allergies && (
+                            <div>
+                              <p className="text-[11px] text-muted-foreground font-cairo mb-1">{isRTL ? 'حساسية' : 'Allergies'}</p>
+                              <p className="text-sm font-cairo">{student.health_info.allergies}</p>
+                            </div>
+                          )}
+                          {student.health_info.has_disabilities && student.health_info.disabilities && (
+                            <div>
+                              <p className="text-[11px] text-muted-foreground font-cairo mb-1">{isRTL ? 'إعاقات' : 'Disabilities'}</p>
+                              <p className="text-sm font-cairo">{student.health_info.disabilities}</p>
+                            </div>
+                          )}
+                          {student.health_info.requires_special_care && student.health_info.special_care_notes && (
+                            <div className="p-2 bg-amber-50 dark:bg-amber-950/20 rounded-lg border border-amber-200 dark:border-amber-800/30">
+                              <p className="text-[11px] text-amber-600 font-cairo mb-1 flex items-center gap-1">
+                                <AlertTriangle className="h-3 w-3" />
+                                {isRTL ? 'ملاحظات رعاية خاصة' : 'Special Care Notes'}
+                              </p>
+                              <p className="text-sm font-cairo">{student.health_info.special_care_notes}</p>
+                            </div>
+                          )}
+                          {student.health_info.emergency_medical_notes && (
+                            <div className="p-2 bg-red-50 dark:bg-red-950/20 rounded-lg border border-red-200 dark:border-red-800/30">
+                              <p className="text-[11px] text-red-600 font-cairo mb-1 flex items-center gap-1">
+                                <Heart className="h-3 w-3" />
+                                {isRTL ? 'ملاحظات طبية طارئة' : 'Emergency Medical Notes'}
+                              </p>
+                              <p className="text-sm font-cairo">{student.health_info.emergency_medical_notes}</p>
+                            </div>
+                          )}
                         </div>
                       ) : (
-                        <EmptyState icon={BarChart3} message={isRTL ? 'لا درجات مسجلة' : 'No grades'} />
-                      )}
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardContent className="p-5">
-                      <h3 className="font-bold text-sm font-cairo flex items-center gap-2 mb-3">
-                        <ThumbsUp className="h-4 w-4 text-emerald-500" />
-                        {isRTL ? 'ملخص السلوك' : 'Behavior'}
-                      </h3>
-                      {loadingBehaviour ? (
-                        <div className="space-y-2">
-                          <Skeleton className="h-8 w-20 mx-auto" />
-                          <Skeleton className="h-3 w-full" />
-                        </div>
-                      ) : behaviourSummary ? (
-                        <div className="text-center space-y-2">
-                          <p className="text-3xl font-bold font-cairo text-brand-navy">{behaviourSummary.total_points || 0}</p>
-                          <p className="text-[10px] text-muted-foreground font-cairo">{isRTL ? 'إجمالي النقاط' : 'Total Points'}</p>
-                          <div className="flex justify-center gap-4 text-xs">
-                            <span className="text-green-600 font-cairo">+{behaviourSummary.positive_count || 0}</span>
-                            <span className="text-red-600 font-cairo">-{behaviourSummary.negative_count || 0}</span>
-                          </div>
-                        </div>
-                      ) : (
-                        <EmptyState icon={ThumbsUp} message={isRTL ? 'لا سجلات سلوك' : 'No behavior records'} />
+                        <EmptyState icon={Stethoscope} message={isRTL ? 'لا توجد بيانات صحية مسجلة' : 'No health info recorded'} actionLabel={isRTL ? 'إضافة بيانات' : 'Add Info'} onAction={() => { setFormData({ ...student }); setEditProfileOpen(true); }} />
                       )}
                     </CardContent>
                   </Card>
@@ -1126,6 +1282,7 @@ export default function StudentProfilePage() {
 
               {/* ===== ACADEMIC TAB ===== */}
               <TabsContent value="academic" className="mt-6 space-y-4">
+                {/* Attendance Summary + Chart */}
                 <Card>
                   <CardContent className="p-6 space-y-4">
                     <h3 className="font-bold text-base font-cairo flex items-center gap-2">
@@ -1137,18 +1294,44 @@ export default function StudentProfilePage() {
                         {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
                       </div>
                     ) : attendanceSummary ? (
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        {[
-                          { label: isRTL ? 'حاضر' : 'Present', value: attendanceSummary.present_count ?? attendanceSummary.present ?? 0, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-950/20' },
-                          { label: isRTL ? 'غائب' : 'Absent', value: attendanceSummary.absent_count ?? attendanceSummary.absent ?? 0, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/20' },
-                          { label: isRTL ? 'متأخر' : 'Late', value: attendanceSummary.late_count ?? attendanceSummary.late ?? 0, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/20' },
-                          { label: isRTL ? 'بعذر' : 'Excused', value: attendanceSummary.excused_count ?? attendanceSummary.excused ?? 0, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/20' },
-                        ].map((item, i) => (
-                          <div key={i} className={`text-center p-4 rounded-xl ${item.bg}`}>
-                            <p className={`text-2xl font-bold font-cairo ${item.color}`}>{item.value}</p>
-                            <p className="text-xs text-muted-foreground mt-1">{item.label}</p>
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          {[
+                            { label: isRTL ? 'حاضر' : 'Present', value: attendanceSummary.present_count ?? attendanceSummary.present ?? 0, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-950/20' },
+                            { label: isRTL ? 'غائب' : 'Absent', value: attendanceSummary.absent_count ?? attendanceSummary.absent ?? 0, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/20' },
+                            { label: isRTL ? 'متأخر' : 'Late', value: attendanceSummary.late_count ?? attendanceSummary.late ?? 0, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/20' },
+                            { label: isRTL ? 'بعذر' : 'Excused', value: attendanceSummary.excused_count ?? attendanceSummary.excused ?? 0, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/20' },
+                          ].map((item, i) => (
+                            <div key={i} className={`text-center p-4 rounded-xl ${item.bg}`}>
+                              <p className={`text-2xl font-bold font-cairo ${item.color}`}>{item.value}</p>
+                              <p className="text-xs text-muted-foreground mt-1">{item.label}</p>
+                            </div>
+                          ))}
+                        </div>
+                        {loadingAttendanceHistory ? (
+                          <div className="space-y-2 pt-2">
+                            <Skeleton className="h-4 w-32" />
+                            <Skeleton className="h-48 w-full rounded-xl" />
                           </div>
-                        ))}
+                        ) : attendanceChartData.length > 0 ? (
+                          <div>
+                            <h4 className="text-sm font-medium font-cairo mb-2">{isRTL ? 'الحضور الشهري' : 'Monthly Attendance'}</h4>
+                            <div className="h-52">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={attendanceChartData} barGap={2}>
+                                  <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                                  <XAxis dataKey="month" tick={{ fontSize: 11 }} tickFormatter={v => v.substring(5)} />
+                                  <YAxis tick={{ fontSize: 11 }} />
+                                  <RechartsTooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} />
+                                  <Bar dataKey="present" name={isRTL ? 'حاضر' : 'Present'} fill="#22c55e" radius={[3, 3, 0, 0]} />
+                                  <Bar dataKey="absent" name={isRTL ? 'غائب' : 'Absent'} fill="#ef4444" radius={[3, 3, 0, 0]} />
+                                  <Bar dataKey="late" name={isRTL ? 'متأخر' : 'Late'} fill="#f59e0b" radius={[3, 3, 0, 0]} />
+                                  <Bar dataKey="excused" name={isRTL ? 'بعذر' : 'Excused'} fill="#3b82f6" radius={[3, 3, 0, 0]} />
+                                </BarChart>
+                              </ResponsiveContainer>
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
                     ) : (
                       <EmptyState icon={Calendar} message={isRTL ? 'لا توجد بيانات حضور' : 'No attendance data available'} />
@@ -1156,45 +1339,114 @@ export default function StudentProfilePage() {
                   </CardContent>
                 </Card>
 
+                {/* Grades & Performance */}
                 <Card>
                   <CardContent className="p-6 space-y-4">
                     <h3 className="font-bold text-base font-cairo flex items-center gap-2">
                       <CheckCircle className="h-5 w-5 text-indigo-500" />
                       {isRTL ? 'الأداء الأكاديمي والدرجات' : 'Grades & Academic Performance'}
                     </h3>
-                    {loadingHomework ? (
+                    {loadingHomework || loadingGrades ? (
                       <div className="space-y-3">
                         <Skeleton className="h-4 w-full rounded" />
                         <div className="grid grid-cols-2 gap-3">
                           <Skeleton className="h-20 rounded-xl" />
                           <Skeleton className="h-20 rounded-xl" />
                         </div>
-                      </div>
-                    ) : homeworkRate ? (
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-3">
-                          <div className="flex-1">
-                            <Progress value={homeworkRate.rate} className={`h-3 rounded-full bg-gray-100 dark:bg-gray-800 ${homeworkRate.rate >= 80 ? '[&>div]:bg-green-500' : homeworkRate.rate >= 50 ? '[&>div]:bg-amber-500' : '[&>div]:bg-red-500'}`} />
-                          </div>
-                          <span className={`text-lg font-bold font-cairo tabular-nums ${homeworkRate.rate >= 80 ? 'text-green-600' : homeworkRate.rate >= 50 ? 'text-amber-600' : 'text-red-600'}`}>{homeworkRate.rate}%</span>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="text-center p-3 bg-green-50 dark:bg-green-950/20 rounded-xl">
-                            <p className="text-xl font-bold font-cairo text-green-600">{homeworkRate.completed}</p>
-                            <p className="text-xs text-muted-foreground mt-1">{isRTL ? 'درجات مسجلة' : 'Graded'}</p>
-                          </div>
-                          <div className="text-center p-3 bg-gray-50 dark:bg-gray-800/30 rounded-xl">
-                            <p className="text-xl font-bold font-cairo text-gray-600">{homeworkRate.total}</p>
-                            <p className="text-xs text-muted-foreground mt-1">{isRTL ? 'إجمالي التقييمات' : 'Total Assessments'}</p>
-                          </div>
-                        </div>
+                        <Skeleton className="h-48 rounded-xl" />
                       </div>
                     ) : (
-                      <EmptyState icon={BarChart3} message={isRTL ? 'لا توجد درجات مسجلة بعد' : 'No grades recorded yet'} />
+                      <div className="space-y-4">
+                        {homeworkRate && (
+                          <div className="space-y-3">
+                            <div className="flex items-center gap-3">
+                              <div className="flex-1">
+                                <Progress value={homeworkRate.rate} className={`h-3 rounded-full bg-gray-100 dark:bg-gray-800 ${homeworkRate.rate >= 80 ? '[&>div]:bg-green-500' : homeworkRate.rate >= 50 ? '[&>div]:bg-amber-500' : '[&>div]:bg-red-500'}`} />
+                              </div>
+                              <span className={`text-lg font-bold font-cairo tabular-nums ${homeworkRate.rate >= 80 ? 'text-green-600' : homeworkRate.rate >= 50 ? 'text-amber-600' : 'text-red-600'}`}>{homeworkRate.rate}%</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="text-center p-3 bg-green-50 dark:bg-green-950/20 rounded-xl">
+                                <p className="text-xl font-bold font-cairo text-green-600">{homeworkRate.completed}</p>
+                                <p className="text-xs text-muted-foreground mt-1">{isRTL ? 'درجات مسجلة' : 'Graded'}</p>
+                              </div>
+                              <div className="text-center p-3 bg-gray-50 dark:bg-gray-800/30 rounded-xl">
+                                <p className="text-xl font-bold font-cairo text-gray-600">{homeworkRate.total}</p>
+                                <p className="text-xs text-muted-foreground mt-1">{isRTL ? 'إجمالي التقييمات' : 'Total Assessments'}</p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        {subjectGrades.length > 0 && (
+                          <div>
+                            <h4 className="text-sm font-medium font-cairo mb-3 flex items-center gap-2">
+                              <BookOpen className="h-4 w-4 text-brand-navy" />
+                              {isRTL ? 'الدرجات حسب المادة' : 'Grades by Subject'}
+                            </h4>
+                            <div className="rounded-lg border overflow-hidden">
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                  <thead>
+                                    <tr className="bg-muted/50">
+                                      <th className="text-start p-3 font-medium font-cairo">{isRTL ? 'المادة' : 'Subject'}</th>
+                                      <th className="text-center p-3 font-medium font-cairo">{isRTL ? 'الدرجة' : 'Score'}</th>
+                                      <th className="text-center p-3 font-medium font-cairo">{isRTL ? 'من' : 'Out of'}</th>
+                                      <th className="text-center p-3 font-medium font-cairo">%</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {subjectGrades.map((g, i) => {
+                                      const score = g.score ?? g.grade ?? g.marks ?? 0;
+                                      const total = g.total ?? g.max_score ?? g.out_of ?? 100;
+                                      const pct = total > 0 ? Math.round((score / total) * 100) : 0;
+                                      return (
+                                        <tr key={i} className="border-t hover:bg-muted/20 transition-colors">
+                                          <td className="p-3 font-cairo">{g.subject_name || g.subject || g.name || `—`}</td>
+                                          <td className="p-3 text-center font-cairo tabular-nums font-medium">{score}</td>
+                                          <td className="p-3 text-center font-cairo tabular-nums text-muted-foreground">{total}</td>
+                                          <td className="p-3 text-center">
+                                            <span className={`font-bold font-cairo tabular-nums ${pct >= 80 ? 'text-green-600' : pct >= 60 ? 'text-amber-600' : 'text-red-600'}`}>{pct}%</span>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                            <div className="h-52 mt-4">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={subjectGrades.map(g => ({
+                                  name: (g.subject_name || g.subject || g.name || '').substring(0, 12),
+                                  score: g.score ?? g.grade ?? g.marks ?? 0,
+                                  total: g.total ?? g.max_score ?? g.out_of ?? 100,
+                                }))}>
+                                  <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                                  <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                                  <YAxis tick={{ fontSize: 11 }} />
+                                  <RechartsTooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} />
+                                  <Bar dataKey="score" name={isRTL ? 'الدرجة' : 'Score'} radius={[4, 4, 0, 0]}>
+                                    {subjectGrades.map((g, idx) => {
+                                      const score = g.score ?? g.grade ?? g.marks ?? 0;
+                                      const total = g.total ?? g.max_score ?? g.out_of ?? 100;
+                                      const pct = total > 0 ? (score / total) * 100 : 0;
+                                      return <Cell key={idx} fill={pct >= 80 ? '#22c55e' : pct >= 60 ? '#f59e0b' : '#ef4444'} />;
+                                    })}
+                                  </Bar>
+                                </BarChart>
+                              </ResponsiveContainer>
+                            </div>
+                          </div>
+                        )}
+                        {!homeworkRate && subjectGrades.length === 0 && (
+                          <EmptyState icon={BarChart3} message={isRTL ? 'لا توجد درجات مسجلة بعد' : 'No grades recorded yet'} />
+                        )}
+                      </div>
                     )}
                   </CardContent>
                 </Card>
 
+                {/* AI Analysis */}
                 <Card>
                   <CardContent className="p-6 space-y-4">
                     <div className="flex items-center justify-between">
