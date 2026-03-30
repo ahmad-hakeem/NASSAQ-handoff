@@ -6,7 +6,6 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Badge } from '../ui/badge';
 import { Textarea } from '../ui/textarea';
-import { ScrollArea } from '../ui/scroll-area';
 import { toast } from 'sonner';
 import {
   Select,
@@ -148,14 +147,13 @@ export default function CreateSchoolWizard({ open, onOpenChange, onSuccess, api,
     });
   }, []);
 
-  const scrollToFirstError = useCallback((errorKeys) => {
+  const focusFirstError = useCallback((errorKeys) => {
     if (!errorKeys.length) return;
     setTimeout(() => {
       const firstKey = errorKeys[0];
       const el = formRef.current?.querySelector(`[data-field="${firstKey}"]`);
       if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        const input = el.querySelector('input, textarea, select');
+        const input = el.querySelector('input, textarea, select, button');
         if (input) input.focus();
       }
     }, 100);
@@ -175,7 +173,7 @@ export default function CreateSchoolWizard({ open, onOpenChange, onSuccess, api,
           ? `يرجى تعبئة الحقول المطلوبة: ${Object.values(newErrors).join('، ')}`
           : `Please fill required fields: ${Object.values(newErrors).join(', ')}`
       );
-      scrollToFirstError(errorKeys);
+      focusFirstError(errorKeys);
     }
     return errorKeys.length === 0;
   };
@@ -202,7 +200,7 @@ export default function CreateSchoolWizard({ open, onOpenChange, onSuccess, api,
           ? `يرجى تصحيح البيانات التالية: ${Object.values(newErrors).join('، ')}`
           : `Please fix the following: ${Object.values(newErrors).join(', ')}`
       );
-      scrollToFirstError(errorKeys);
+      focusFirstError(errorKeys);
     }
     return errorKeys.length === 0;
   };
@@ -403,7 +401,7 @@ ${createdSchool?.tenant_code}
   
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-5xl h-auto max-h-[90vh] flex flex-col p-0 overflow-hidden" data-testid="create-school-wizard">
+      <DialogContent className="max-w-5xl md:h-[80vh] h-[90vh] flex flex-col p-0 overflow-hidden" data-testid="create-school-wizard">
         {!isComplete ? (
           <>
             {/* Header with Steps */}
@@ -442,29 +440,28 @@ ${createdSchool?.tenant_code}
               </div>
             </DialogHeader>
             
-            {/* Content */}
-            <ScrollArea className="flex-1 min-h-0 p-6" ref={formRef}>
-              {/* Step 1: School Profile */}
+            {/* Content — no-scroll on desktop, controlled scroll on mobile */}
+            <div className="flex-1 min-h-0 p-6 md:overflow-hidden overflow-y-auto" ref={formRef}>
+              {/* Step 1: School Profile — grid layout */}
               {currentStep === 1 && (
-                <div className="space-y-6" data-testid="wizard-step-1">
-                  <div className="text-center mb-6">
+                <div className="h-full flex flex-col" data-testid="wizard-step-1">
+                  <div className="text-center mb-4">
                     <h3 className="font-cairo text-lg font-bold">{isRTL ? 'بيانات المدرسة الأساسية' : 'Basic School Information'}</h3>
                     <p className="text-sm text-muted-foreground">{isRTL ? 'أدخل المعلومات الأساسية للمدرسة' : 'Enter the basic school information'}</p>
                   </div>
-                  
-                  {/* Logo Upload */}
-                  <div className="flex justify-center mb-6">
-                    <div className="relative">
-                      <div className={`w-32 h-32 rounded-2xl border-2 border-dashed flex items-center justify-center overflow-hidden transition-all ${
+
+                  <div className="flex gap-6 mb-4">
+                    <div className="relative flex-shrink-0">
+                      <div className={`w-24 h-24 rounded-2xl border-2 border-dashed flex items-center justify-center overflow-hidden transition-all ${
                         schoolData.logoPreview ? 'border-brand-turquoise bg-brand-turquoise/5' : 'border-muted-foreground/30 hover:border-brand-turquoise/50'
                       }`}>
                         {schoolData.logoPreview ? (
                           <img src={schoolData.logoPreview} alt="School Logo" className="w-full h-full object-cover" />
                         ) : (
-                          <div className="text-center p-4">
-                            <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                            <span className="text-xs text-muted-foreground">{isRTL ? 'رفع الشعار' : 'Upload Logo'}</span>
-                            <Badge variant="outline" className="text-[10px] mt-1 block">{isRTL ? 'اختياري' : 'Optional'}</Badge>
+                          <div className="text-center p-2">
+                            <Upload className="h-6 w-6 mx-auto text-muted-foreground mb-1" />
+                            <span className="text-[10px] text-muted-foreground leading-tight block">{isRTL ? 'رفع الشعار' : 'Upload Logo'}</span>
+                            <Badge variant="outline" className="text-[9px] mt-0.5 block">{isRTL ? 'اختياري' : 'Optional'}</Badge>
                           </div>
                         )}
                       </div>
@@ -475,33 +472,26 @@ ${createdSchool?.tenant_code}
                         className="absolute inset-0 opacity-0 cursor-pointer"
                         data-testid="logo-upload"
                       />
-                      {!schoolData.logoPreview && (
-                        <p className="text-xs text-muted-foreground text-center mt-2">
-                          {isRTL ? 'سيتم إنشاء شعار مؤقت تلقائياً' : 'A temporary logo will be generated'}
-                        </p>
-                      )}
+                    </div>
+
+                    <div className="flex-1 space-y-1.5" data-field="name">
+                      <Label className="flex items-center gap-2">
+                        {isRTL ? 'اسم المدرسة' : 'School Name'}
+                        <Badge variant="destructive" className="text-[10px]">{isRTL ? 'إجباري' : 'Required'}</Badge>
+                      </Label>
+                      <Input
+                        value={schoolData.name}
+                        onChange={(e) => { setSchoolData({ ...schoolData, name: e.target.value }); clearFieldError('name'); }}
+                        placeholder={isRTL ? 'مثال: مدرسة النور الأهلية' : 'e.g., Al-Noor Private School'}
+                        className={errors.name ? 'border-red-500' : ''}
+                        data-testid="school-name-input"
+                      />
+                      {errors.name && <p className="text-sm text-red-500 font-medium">{errors.name}</p>}
                     </div>
                   </div>
-                  
-                  {/* School Name */}
-                  <div className="space-y-2" data-field="name">
-                    <Label className="flex items-center gap-2">
-                      {isRTL ? 'اسم المدرسة' : 'School Name'}
-                      <Badge variant="destructive" className="text-[10px]">{isRTL ? 'إجباري' : 'Required'}</Badge>
-                    </Label>
-                    <Input
-                      value={schoolData.name}
-                      onChange={(e) => { setSchoolData({ ...schoolData, name: e.target.value }); clearFieldError('name'); }}
-                      placeholder={isRTL ? 'مثال: مدرسة النور الأهلية' : 'e.g., Al-Noor Private School'}
-                      className={errors.name ? 'border-red-500' : ''}
-                      data-testid="school-name-input"
-                    />
-                    {errors.name && <p className="text-sm text-red-500 font-medium">{errors.name}</p>}
-                  </div>
-                  
-                  {/* Country & City */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2" data-field="country">
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div className="space-y-1.5" data-field="country">
                       <Label className="flex items-center gap-2">
                         <Globe className="h-4 w-4" />
                         {isRTL ? 'الدولة' : 'Country'}
@@ -521,8 +511,8 @@ ${createdSchool?.tenant_code}
                       </Select>
                       {errors.country && <p className="text-sm text-red-500 font-medium">{errors.country}</p>}
                     </div>
-                    
-                    <div className="space-y-2" data-field="city">
+
+                    <div className="space-y-1.5" data-field="city">
                       <Label className="flex items-center gap-2">
                         <MapPin className="h-4 w-4" />
                         {isRTL ? 'المدينة' : 'City'}
@@ -544,42 +534,39 @@ ${createdSchool?.tenant_code}
                       </Select>
                       {errors.city && <p className="text-sm text-red-500 font-medium">{errors.city}</p>}
                     </div>
-                  </div>
-                  
-                  {/* Address */}
-                  <div className="space-y-2" data-field="address">
-                    <Label className="flex items-center gap-2">
-                      <FileText className="h-4 w-4" />
-                      {isRTL ? 'العنوان التفصيلي' : 'Detailed Address'}
-                      <Badge variant="destructive" className="text-[10px]">{isRTL ? 'إجباري' : 'Required'}</Badge>
-                    </Label>
-                    <Textarea
-                      value={schoolData.address}
-                      onChange={(e) => { setSchoolData({ ...schoolData, address: e.target.value }); clearFieldError('address'); }}
-                      placeholder={isRTL ? 'الحي، الشارع، المبنى...' : 'District, Street, Building...'}
-                      className={errors.address ? 'border-red-500' : ''}
-                      rows={2}
-                      data-testid="address-input"
-                    />
-                    {errors.address && <p className="text-sm text-red-500 font-medium">{errors.address}</p>}
+
+                    <div className="space-y-1.5" data-field="address">
+                      <Label className="flex items-center gap-2">
+                        <FileText className="h-4 w-4" />
+                        {isRTL ? 'العنوان التفصيلي' : 'Address'}
+                        <Badge variant="destructive" className="text-[10px]">{isRTL ? 'إجباري' : 'Required'}</Badge>
+                      </Label>
+                      <Input
+                        value={schoolData.address}
+                        onChange={(e) => { setSchoolData({ ...schoolData, address: e.target.value }); clearFieldError('address'); }}
+                        placeholder={isRTL ? 'الحي، الشارع، المبنى...' : 'District, Street, Building...'}
+                        className={errors.address ? 'border-red-500' : ''}
+                        data-testid="address-input"
+                      />
+                      {errors.address && <p className="text-sm text-red-500 font-medium">{errors.address}</p>}
+                    </div>
                   </div>
                 </div>
               )}
-              
-              {/* Step 2: Operating Settings */}
+
+              {/* Step 2: Operating Settings — 3-col grid */}
               {currentStep === 2 && (
-                <div className="space-y-6" data-testid="wizard-step-2">
-                  <div className="text-center mb-6">
+                <div className="h-full flex flex-col" data-testid="wizard-step-2">
+                  <div className="text-center mb-4">
                     <h3 className="font-cairo text-lg font-bold">{isRTL ? 'إعدادات التشغيل الخاصة بالمدرسة' : 'School Operating Settings'}</h3>
                     <p className="text-sm text-muted-foreground">{isRTL ? 'حدد الإعدادات الافتراضية للمدرسة' : 'Set the default settings for the school'}</p>
                   </div>
-                  
-                  <div className="grid grid-cols-2 gap-6">
-                    {/* Language */}
-                    <div className="space-y-2">
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div className="space-y-1.5">
                       <Label className="flex items-center gap-2">
                         <Languages className="h-4 w-4" />
-                        {isRTL ? 'اللغة الافتراضية للنظام' : 'Default System Language'}
+                        {isRTL ? 'اللغة الافتراضية' : 'Default Language'}
                       </Label>
                       <Select value={settingsData.defaultLanguage} onValueChange={(v) => setSettingsData({ ...settingsData, defaultLanguage: v })}>
                         <SelectTrigger data-testid="language-select">
@@ -590,11 +577,10 @@ ${createdSchool?.tenant_code}
                           <SelectItem value="en">English (LTR)</SelectItem>
                         </SelectContent>
                       </Select>
-                      <p className="text-xs text-muted-foreground">{isRTL ? 'يمكن لكل مستخدم داخل المدرسة اختيار لغته' : 'Each user can choose their language'}</p>
+                      <p className="text-xs text-muted-foreground">{isRTL ? 'يمكن لكل مستخدم اختيار لغته' : 'Each user can choose their language'}</p>
                     </div>
-                    
-                    {/* Calendar */}
-                    <div className="space-y-2">
+
+                    <div className="space-y-1.5">
                       <Label className="flex items-center gap-2">
                         <Calendar className="h-4 w-4" />
                         {isRTL ? 'نظام التقويم' : 'Calendar System'}
@@ -612,9 +598,8 @@ ${createdSchool?.tenant_code}
                         </SelectContent>
                       </Select>
                     </div>
-                    
-                    {/* School Type */}
-                    <div className="space-y-2">
+
+                    <div className="space-y-1.5">
                       <Label className="flex items-center gap-2">
                         <Building2 className="h-4 w-4" />
                         {isRTL ? 'نوع المدرسة' : 'School Type'}
@@ -632,9 +617,10 @@ ${createdSchool?.tenant_code}
                         </SelectContent>
                       </Select>
                     </div>
-                    
-                    {/* Educational Stage */}
-                    <div className="space-y-2">
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div className="space-y-1.5">
                       <Label className="flex items-center gap-2">
                         <GraduationCap className="h-4 w-4" />
                         {isRTL ? 'المرحلة التعليمية' : 'Educational Stage'}
@@ -652,9 +638,8 @@ ${createdSchool?.tenant_code}
                         </SelectContent>
                       </Select>
                     </div>
-                    
-                    {/* Assessment System */}
-                    <div className="space-y-2 col-span-2">
+
+                    <div className="space-y-1.5">
                       <Label className="flex items-center gap-2">
                         <Award className="h-4 w-4" />
                         {isRTL ? 'نظام التقييم' : 'Assessment System'}
@@ -672,13 +657,12 @@ ${createdSchool?.tenant_code}
                         </SelectContent>
                       </Select>
                       <p className="text-xs text-muted-foreground">
-                        {isRTL ? 'سيتم ربط نظام التقييم تلقائياً مع قواعد الاختبارات ونماذج التقارير' : 'Assessment system will be linked to test rules and report templates'}
+                        {isRTL ? 'سيتم ربط نظام التقييم تلقائياً مع قواعد الاختبارات' : 'Assessment will be linked to test rules'}
                       </p>
                     </div>
                   </div>
-                  
-                  {/* Reset to defaults button */}
-                  <div className="flex justify-center pt-4">
+
+                  <div className="flex justify-center">
                     <Button variant="outline" size="sm" onClick={resetSettingsToDefault} className="text-muted-foreground">
                       <RotateCcw className="h-4 w-4 me-2" />
                       {isRTL ? 'إعادة الإعدادات للوضع الافتراضي' : 'Reset to Defaults'}
@@ -686,35 +670,51 @@ ${createdSchool?.tenant_code}
                   </div>
                 </div>
               )}
-              
-              {/* Step 3: Principal Account */}
+
+              {/* Step 3: Principal — 2-col grid with inline info */}
               {currentStep === 3 && (
-                <div className="space-y-6" data-testid="wizard-step-3">
-                  <div className="text-center mb-6">
+                <div className="h-full flex flex-col" data-testid="wizard-step-3">
+                  <div className="text-center mb-4">
                     <h3 className="font-cairo text-lg font-bold">{isRTL ? 'إنشاء حساب مدير المدرسة' : 'Create School Principal Account'}</h3>
                     <p className="text-sm text-muted-foreground">{isRTL ? 'أدخل بيانات مدير المدرسة المسؤول' : 'Enter the principal information'}</p>
                   </div>
-                  
-                  {/* Full Name */}
-                  <div className="space-y-2" data-field="fullName">
-                    <Label className="flex items-center gap-2">
-                      <User className="h-4 w-4" />
-                      {isRTL ? 'اسم المدير المسؤول' : 'Principal Name'}
-                      <Badge variant="destructive" className="text-[10px]">{isRTL ? 'إجباري' : 'Required'}</Badge>
-                    </Label>
-                    <Input
-                      value={principalData.fullName}
-                      onChange={(e) => { setPrincipalData({ ...principalData, fullName: e.target.value }); clearFieldError('fullName'); }}
-                      placeholder={isRTL ? 'الاسم الكامل' : 'Full Name'}
-                      className={errors.fullName ? 'border-red-500' : ''}
-                      data-testid="principal-name-input"
-                    />
-                    {errors.fullName && <p className="text-sm text-red-500 font-medium">{errors.fullName}</p>}
-                  </div>
-                  
-                  {/* Phone Numbers */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2" data-field="primaryPhone">
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div className="space-y-1.5" data-field="fullName">
+                      <Label className="flex items-center gap-2">
+                        <User className="h-4 w-4" />
+                        {isRTL ? 'اسم المدير المسؤول' : 'Principal Name'}
+                        <Badge variant="destructive" className="text-[10px]">{isRTL ? 'إجباري' : 'Required'}</Badge>
+                      </Label>
+                      <Input
+                        value={principalData.fullName}
+                        onChange={(e) => { setPrincipalData({ ...principalData, fullName: e.target.value }); clearFieldError('fullName'); }}
+                        placeholder={isRTL ? 'الاسم الكامل' : 'Full Name'}
+                        className={errors.fullName ? 'border-red-500' : ''}
+                        data-testid="principal-name-input"
+                      />
+                      {errors.fullName && <p className="text-sm text-red-500 font-medium">{errors.fullName}</p>}
+                    </div>
+
+                    <div className="space-y-1.5" data-field="email">
+                      <Label className="flex items-center gap-2">
+                        <Mail className="h-4 w-4" />
+                        {isRTL ? 'البريد الإلكتروني' : 'Email Address'}
+                        <Badge variant="destructive" className="text-[10px]">{isRTL ? 'إجباري' : 'Required'}</Badge>
+                      </Label>
+                      <Input
+                        type="email"
+                        value={principalData.email}
+                        onChange={(e) => { setPrincipalData({ ...principalData, email: e.target.value }); clearFieldError('email'); }}
+                        placeholder="principal@school.com"
+                        className={errors.email ? 'border-red-500' : ''}
+                        dir="ltr"
+                        data-testid="principal-email-input"
+                      />
+                      {errors.email && <p className="text-sm text-red-500 font-medium">{errors.email}</p>}
+                    </div>
+
+                    <div className="space-y-1.5" data-field="primaryPhone">
                       <Label className="flex items-center gap-2">
                         <Phone className="h-4 w-4" />
                         {isRTL ? 'رقم التواصل الرئيسي' : 'Primary Phone'}
@@ -730,8 +730,8 @@ ${createdSchool?.tenant_code}
                       />
                       {errors.primaryPhone && <p className="text-sm text-red-500 font-medium">{errors.primaryPhone}</p>}
                     </div>
-                    
-                    <div className="space-y-2">
+
+                    <div className="space-y-1.5">
                       <Label className="flex items-center gap-2">
                         <Phone className="h-4 w-4" />
                         {isRTL ? 'رقم تواصل إضافي' : 'Secondary Phone'}
@@ -746,113 +746,90 @@ ${createdSchool?.tenant_code}
                       />
                     </div>
                   </div>
-                  
-                  {/* Email */}
-                  <div className="space-y-2" data-field="email">
-                    <Label className="flex items-center gap-2">
-                      <Mail className="h-4 w-4" />
-                      {isRTL ? 'البريد الإلكتروني' : 'Email Address'}
-                      <Badge variant="destructive" className="text-[10px]">{isRTL ? 'إجباري' : 'Required'}</Badge>
-                    </Label>
-                    <Input
-                      type="email"
-                      value={principalData.email}
-                      onChange={(e) => { setPrincipalData({ ...principalData, email: e.target.value }); clearFieldError('email'); }}
-                      placeholder="principal@school.com"
-                      className={errors.email ? 'border-red-500' : ''}
-                      dir="ltr"
-                      data-testid="principal-email-input"
-                    />
-                    {errors.email && <p className="text-sm text-red-500 font-medium">{errors.email}</p>}
+
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
+                    <p className="text-sm text-blue-800 mb-1">
+                      <Sparkles className="h-4 w-4 inline-block me-2" />
+                      {isRTL
+                        ? 'سيتم إنشاء كلمة مرور مؤقتة تلقائياً. يجب على المدير تغييرها عند أول تسجيل دخول.'
+                        : 'A temporary password will be generated automatically. The principal must change it on first login.'
+                      }
+                    </p>
+                    <div className="flex flex-wrap gap-x-6 gap-y-0.5 text-xs text-blue-700 mt-1">
+                      <span>• {isRTL ? 'لا يسمح بتكرار رقم الهاتف' : 'No duplicate phones'}</span>
+                      <span>• {isRTL ? 'لا يسمح بتكرار البريد الإلكتروني' : 'No duplicate emails'}</span>
+                      <span>• {isRTL ? 'الدور: مدير المدرسة' : 'Role: School Principal'}</span>
+                    </div>
                   </div>
-                  
-                  {/* Validation Rules Info */}
-                  <Card className="bg-blue-50 border border-blue-200">
-                    <CardContent className="p-4">
-                      <p className="text-sm text-blue-800">
-                        <Sparkles className="h-4 w-4 inline-block me-2" />
-                        {isRTL 
-                          ? 'سيتم إنشاء كلمة مرور مؤقتة تلقائياً. يجب على المدير تغييرها عند أول تسجيل دخول.'
-                          : 'A temporary password will be generated automatically. The principal must change it on first login.'
-                        }
-                      </p>
-                      <div className="mt-3 text-xs text-blue-700 space-y-1">
-                        <p>• {isRTL ? 'لا يسمح بتكرار رقم الهاتف داخل المنصة' : 'Phone numbers cannot be duplicated'}</p>
-                        <p>• {isRTL ? 'لا يسمح بتكرار البريد الإلكتروني داخل المنصة' : 'Email addresses cannot be duplicated'}</p>
-                        <p>• {isRTL ? 'سيتم تعيين الدور تلقائياً: مدير المدرسة (School Principal)' : 'Role will be assigned: School Principal'}</p>
-                      </div>
-                    </CardContent>
-                  </Card>
                 </div>
               )}
-              
-              {/* Step 4: Review */}
+
+              {/* Step 4: Review — 3-col compact cards */}
               {currentStep === 4 && (
-                <div className="space-y-6" data-testid="wizard-step-4">
-                  <div className="text-center mb-6">
+                <div className="h-full flex flex-col" data-testid="wizard-step-4">
+                  <div className="text-center mb-4">
                     <h3 className="font-cairo text-lg font-bold">{isRTL ? 'مراجعة البيانات' : 'Review Information'}</h3>
                     <p className="text-sm text-muted-foreground">{isRTL ? 'راجع جميع البيانات قبل إنشاء المدرسة' : 'Review all information before creating the school'}</p>
                   </div>
-                  
-                  {/* School Info */}
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm flex items-center gap-2">
-                        <Building2 className="h-4 w-4 text-brand-turquoise" />
-                        {isRTL ? 'بيانات المدرسة' : 'School Information'}
-                        <Button variant="ghost" size="sm" onClick={() => setCurrentStep(1)} className="ms-auto h-6 text-xs text-brand-turquoise hover:text-brand-turquoise">
-                          {isRTL ? 'تعديل' : 'Edit'}
-                        </Button>
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="grid grid-cols-2 gap-4 text-sm">
-                      <div><span className="text-muted-foreground">{isRTL ? 'الاسم:' : 'Name:'}</span> <strong>{schoolData.name}</strong></div>
-                      <div><span className="text-muted-foreground">{isRTL ? 'الدولة:' : 'Country:'}</span> <strong>{COUNTRIES.find(c => c.code === schoolData.country)?.name}</strong></div>
-                      <div><span className="text-muted-foreground">{isRTL ? 'المدينة:' : 'City:'}</span> <strong>{schoolData.city}</strong></div>
-                      <div><span className="text-muted-foreground">{isRTL ? 'العنوان:' : 'Address:'}</span> <strong>{schoolData.address}</strong></div>
-                    </CardContent>
-                  </Card>
-                  
-                  {/* Settings */}
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm flex items-center gap-2">
-                        <GraduationCap className="h-4 w-4 text-brand-purple" />
-                        {isRTL ? 'إعدادات التشغيل' : 'Operating Settings'}
-                        <Button variant="ghost" size="sm" onClick={() => setCurrentStep(2)} className="ms-auto h-6 text-xs text-brand-turquoise hover:text-brand-turquoise">
-                          {isRTL ? 'تعديل' : 'Edit'}
-                        </Button>
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="grid grid-cols-2 gap-4 text-sm">
-                      <div><span className="text-muted-foreground">{isRTL ? 'اللغة:' : 'Language:'}</span> <strong>{settingsData.defaultLanguage === 'ar' ? 'العربية' : 'English'}</strong></div>
-                      <div><span className="text-muted-foreground">{isRTL ? 'التقويم:' : 'Calendar:'}</span> <strong>{CALENDAR_SYSTEMS.find(c => c.value === settingsData.calendarSystem)?.label}</strong></div>
-                      <div><span className="text-muted-foreground">{isRTL ? 'النوع:' : 'Type:'}</span> <strong>{SCHOOL_TYPES.find(t => t.value === settingsData.schoolType)?.label}</strong></div>
-                      <div><span className="text-muted-foreground">{isRTL ? 'المرحلة:' : 'Stage:'}</span> <strong>{EDUCATIONAL_STAGES.find(s => s.value === settingsData.educationalStage)?.label}</strong></div>
-                      <div className="col-span-2"><span className="text-muted-foreground">{isRTL ? 'نظام التقييم:' : 'Assessment:'}</span> <strong>{ASSESSMENT_SYSTEMS.find(a => a.value === settingsData.assessmentSystem)?.label}</strong></div>
-                    </CardContent>
-                  </Card>
-                  
-                  {/* Principal */}
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm flex items-center gap-2">
-                        <User className="h-4 w-4 text-green-500" />
-                        {isRTL ? 'مدير المدرسة' : 'School Principal'}
-                        <Button variant="ghost" size="sm" onClick={() => setCurrentStep(3)} className="ms-auto h-6 text-xs text-brand-turquoise hover:text-brand-turquoise">
-                          {isRTL ? 'تعديل' : 'Edit'}
-                        </Button>
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="grid grid-cols-2 gap-4 text-sm">
-                      <div><span className="text-muted-foreground">{isRTL ? 'الاسم:' : 'Name:'}</span> <strong>{principalData.fullName}</strong></div>
-                      <div><span className="text-muted-foreground">{isRTL ? 'الهاتف:' : 'Phone:'}</span> <strong dir="ltr">{principalData.primaryPhone}</strong></div>
-                      <div className="col-span-2"><span className="text-muted-foreground">{isRTL ? 'البريد:' : 'Email:'}</span> <strong dir="ltr">{principalData.email}</strong></div>
-                    </CardContent>
-                  </Card>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <Card>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-sm flex items-center gap-2">
+                          <Building2 className="h-4 w-4 text-brand-turquoise" />
+                          {isRTL ? 'بيانات المدرسة' : 'School Info'}
+                          <Button variant="ghost" size="sm" onClick={() => setCurrentStep(1)} className="ms-auto h-5 text-[11px] text-brand-turquoise hover:text-brand-turquoise px-1">
+                            {isRTL ? 'تعديل' : 'Edit'}
+                          </Button>
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3 space-y-2 text-sm">
+                        <div><span className="text-muted-foreground">{isRTL ? 'الاسم:' : 'Name:'}</span> <strong>{schoolData.name}</strong></div>
+                        <div><span className="text-muted-foreground">{isRTL ? 'الدولة:' : 'Country:'}</span> <strong>{COUNTRIES.find(c => c.code === schoolData.country)?.name}</strong></div>
+                        <div><span className="text-muted-foreground">{isRTL ? 'المدينة:' : 'City:'}</span> <strong>{schoolData.city}</strong></div>
+                        <div><span className="text-muted-foreground">{isRTL ? 'العنوان:' : 'Address:'}</span> <strong>{schoolData.address}</strong></div>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-sm flex items-center gap-2">
+                          <GraduationCap className="h-4 w-4 text-brand-purple" />
+                          {isRTL ? 'الإعدادات' : 'Settings'}
+                          <Button variant="ghost" size="sm" onClick={() => setCurrentStep(2)} className="ms-auto h-5 text-[11px] text-brand-turquoise hover:text-brand-turquoise px-1">
+                            {isRTL ? 'تعديل' : 'Edit'}
+                          </Button>
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3 space-y-2 text-sm">
+                        <div><span className="text-muted-foreground">{isRTL ? 'اللغة:' : 'Lang:'}</span> <strong>{settingsData.defaultLanguage === 'ar' ? 'العربية' : 'English'}</strong></div>
+                        <div><span className="text-muted-foreground">{isRTL ? 'التقويم:' : 'Cal:'}</span> <strong>{CALENDAR_SYSTEMS.find(c => c.value === settingsData.calendarSystem)?.label}</strong></div>
+                        <div><span className="text-muted-foreground">{isRTL ? 'النوع:' : 'Type:'}</span> <strong>{SCHOOL_TYPES.find(t => t.value === settingsData.schoolType)?.label}</strong></div>
+                        <div><span className="text-muted-foreground">{isRTL ? 'المرحلة:' : 'Stage:'}</span> <strong>{EDUCATIONAL_STAGES.find(s => s.value === settingsData.educationalStage)?.label}</strong></div>
+                        <div><span className="text-muted-foreground">{isRTL ? 'التقييم:' : 'Assess:'}</span> <strong>{ASSESSMENT_SYSTEMS.find(a => a.value === settingsData.assessmentSystem)?.label}</strong></div>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader className="py-2 px-3">
+                        <CardTitle className="text-sm flex items-center gap-2">
+                          <User className="h-4 w-4 text-green-500" />
+                          {isRTL ? 'المدير' : 'Principal'}
+                          <Button variant="ghost" size="sm" onClick={() => setCurrentStep(3)} className="ms-auto h-5 text-[11px] text-brand-turquoise hover:text-brand-turquoise px-1">
+                            {isRTL ? 'تعديل' : 'Edit'}
+                          </Button>
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-3 pb-3 space-y-2 text-sm">
+                        <div><span className="text-muted-foreground">{isRTL ? 'الاسم:' : 'Name:'}</span> <strong>{principalData.fullName}</strong></div>
+                        <div><span className="text-muted-foreground">{isRTL ? 'الهاتف:' : 'Phone:'}</span> <strong dir="ltr">{principalData.primaryPhone}</strong></div>
+                        <div><span className="text-muted-foreground">{isRTL ? 'البريد:' : 'Email:'}</span> <strong dir="ltr" className="break-all">{principalData.email}</strong></div>
+                      </CardContent>
+                    </Card>
+                  </div>
                 </div>
               )}
-            </ScrollArea>
+            </div>
             
             {/* Footer Actions */}
             <div className="p-4 border-t bg-background flex-shrink-0">
