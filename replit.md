@@ -85,6 +85,21 @@ Each fix report must include: root cause, why it wasn't caught before, what chan
 - **Backend**: FastAPI (Python), MongoDB (motor), JWT auth — port 8000
 - **Database**: MongoDB at `localhost:27017`, DB: `test_database`
 
+### Unified Approval Engine
+- **Backend**: `backend/engines/approval_engine.py` — handler registry pattern; `approval_handlers.py` — Teacher + School handlers
+- **Registration**: `POST /registration-requests` saves to `registration_requests` collection with `account_type` + `status: pending_review`
+- **Approval**: `POST /registration-requests/{id}/approve` dispatches by `account_type` to registered handler
+- **Admin query**: `GET /registration-requests?account_type=school|teacher` returns filtered requests
+- **Frontend**: `UsersManagement.jsx` uses `APPROVAL_TYPE_CONFIG` — data-driven tabs, cards, dialogs for all request types
+- **State**: `requestsByType` map replaces separate `teacherRequests`/`schoolRequests`; `fetchAllRequests()` loads all types
+- **Extensibility**: To add new type — create handler class, register in `server.py`, add config entry in `APPROVAL_TYPE_CONFIG`
+
+### Form System Architecture
+- **Location**: `frontend/src/components/forms/`
+- **Components**: `FormContainer` (state + steps), `FormStep` (field rendering), `FormField` (unified input), `FormGrid` (responsive layout), `FormSection` (grouping), `StepIndicator` (progress), `StickyActionBar` (always-visible actions)
+- **Rules**: Max 6-8 fields/step, no desktop scroll, auto-validation per step, data persists across steps
+- **Usage**: Import from `components/forms`, define steps array with field configs, pass to `FormContainer`
+
 ## Platform Admin Pages (Redesigned)
 
 ### Command Center (`/admin` - AdminDashboard.jsx)

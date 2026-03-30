@@ -18,6 +18,14 @@ from engines.audit_engine import AuditLogEngine
 from engines.teacher_registration_engine import TeacherRegistrationEngine
 from engines.student_management_engine import StudentManagementEngine
 from engines.session_engine import TeacherSessionEngine, session_router
+def _get_approval_engine():
+    from engines.approval_engine import approval_engine
+    return approval_engine
+
+def _get_approval_classes():
+    from engines.approval_engine import ApprovalEngine, ApprovalHandler, ApprovalResult
+    from engines.approval_handlers import TeacherApprovalHandler, SchoolApprovalHandler
+    return ApprovalEngine, ApprovalHandler, ApprovalResult, TeacherApprovalHandler, SchoolApprovalHandler
 
 __all__ = [
     # Core Identity & Access
@@ -48,4 +56,8 @@ __all__ = [
     # Teacher Session
     "TeacherSessionEngine",
     "session_router",
+    
+    # Unified Approval Framework (lazy-loaded to avoid circular imports)
+    "_get_approval_engine",
+    "_get_approval_classes",
 ]

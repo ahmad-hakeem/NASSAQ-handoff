@@ -1,0 +1,198 @@
+Task: UX Fix — Eliminate Scroll in School Creation Flow and Redesign Layout for Full Visibility
+
+Severity: HIGH (Core UX issue affecting usability and clarity)
+
+Problem Description:
+In the school creation flow (Platform Admin → Create School), the current UI requires scrolling (Scroll down) across steps.
+
+This creates:
+- Poor visibility of important fields
+- Weak control over the full form
+- Fragmented user experience
+- Reduced clarity during multi-step input
+
+Required Behavior:
+I do NOT want any vertical scrolling inside the school creation flow.
+
+At any step:
+- All required inputs and actions must be fully visible within the screen viewport
+- The user should NOT need to scroll to complete a step
+
+--------------------------------------------------
+1) CORE UX REQUIREMENT
+--------------------------------------------------
+
+Each step in the school creation flow must:
+- Fit entirely within a single screen (viewport height)
+- Show all fields clearly
+- Show navigation buttons (Next / Back / Submit) without scrolling
+- Maintain visual clarity and hierarchy
+
+No hidden inputs below the fold.
+No required field should be off-screen.
+
+--------------------------------------------------
+2) APPROVED UX SOLUTION APPROACHES
+--------------------------------------------------
+
+You may use one or a combination of the following strategies:
+
+A) Smart Step Segmentation
+- Reduce number of fields per step
+- Split overloaded steps into smaller logical steps
+- Each step should contain only essential grouped inputs
+
+B) Grid-Based Layout
+- Use multi-column layout (2 or 3 columns depending on screen width)
+- Arrange fields horizontally instead of stacking vertically
+- Use responsive grid:
+  - Desktop: 2–3 columns
+  - Tablet: 2 columns
+  - Mobile: optimized stacking but still minimal scroll
+
+C) Compact Input Design
+- Reduce vertical spacing where possible (without harming readability)
+- Use inline labels or floating labels
+- Group related fields in cards/sections
+
+D) Sectioned Cards
+- Divide step into clear sections (e.g. School Info / Contact Info / Principal Info)
+- Each section compact and structured
+
+E) Sticky Action Bar
+- Keep navigation buttons (Next / Back / Submit) fixed and always visible
+- Do not require scrolling to reach action buttons
+
+--------------------------------------------------
+3) STRICT PROHIBITIONS
+--------------------------------------------------
+
+- Do NOT rely on vertical scroll as a solution
+- Do NOT shrink UI to the point of harming readability
+- Do NOT hide required fields behind collapsible sections unless clearly visible
+- Do NOT overload a single step with too many fields
+
+--------------------------------------------------
+4) RESPONSIVENESS REQUIREMENTS
+--------------------------------------------------
+
+The layout must adapt intelligently:
+
+Desktop:
+- Full no-scroll experience (mandatory)
+
+Tablet:
+- Prefer no scroll, allow minimal controlled scroll only if absolutely necessary
+
+Mobile:
+- Optimize to minimize scroll as much as possible
+- Prioritize clarity over strict no-scroll if needed
+- Still aim for step clarity and reduced scrolling
+
+--------------------------------------------------
+5) VISUAL HIERARCHY REQUIREMENTS
+--------------------------------------------------
+
+Each step must clearly communicate:
+- Step title
+- Step description (if needed)
+- Grouped inputs
+- Required vs optional fields
+- Clear navigation controls
+
+Use:
+- cards with proper spacing
+- clear section headers
+- consistent alignment
+- clean visual grouping
+
+--------------------------------------------------
+6) MULTI-STEP FLOW IMPROVEMENTS
+--------------------------------------------------
+
+Enhance the stepper experience:
+
+- Show current step clearly
+- Show total number of steps
+- Allow backward navigation without losing data
+- Maintain state properly between steps
+
+Optional enhancement:
+- Step progress indicator (e.g. Step 2 of 5)
+
+--------------------------------------------------
+7) TECHNICAL IMPLEMENTATION REQUIREMENTS
+--------------------------------------------------
+
+Frontend:
+- Refactor layout using grid/flex (Tailwind or equivalent)
+- Ensure container height respects viewport (vh-based layout if needed)
+- Avoid overflow-y scroll in main form container
+- Use responsive breakpoints properly
+
+State Management:
+- Ensure splitting steps does not break form state
+- Ensure data persists across steps
+- Validate per step before moving forward
+
+--------------------------------------------------
+8) VALIDATION BEHAVIOR
+--------------------------------------------------
+
+- Validate fields within the visible step only
+- Highlight errors clearly within the same screen
+- Do NOT require scrolling to see validation errors
+
+--------------------------------------------------
+9) TESTING REQUIREMENTS (MANDATORY)
+--------------------------------------------------
+
+After implementation:
+
+1. Desktop:
+- Open each step
+- Confirm no vertical scroll exists
+- Confirm all fields visible
+- Confirm action buttons visible
+
+2. Tablet:
+- Confirm layout adapts properly
+- Confirm minimal or no scroll
+
+3. Mobile:
+- Confirm usability remains strong
+- Confirm layout remains readable and structured
+
+4. Edge Cases:
+- Long input values
+- Validation errors
+- Dynamic fields if any
+
+--------------------------------------------------
+10) OUTPUT REQUIRED
+--------------------------------------------------
+
+Provide:
+
+1. Explanation of layout strategy used (grid / step split / hybrid)
+2. Which steps were restructured or split
+3. Screens/components modified
+4. Before vs After behavior summary
+5. Confirmation that desktop flow is 100% no-scroll
+6. Any trade-offs made for mobile responsiveness
+
+--------------------------------------------------
+11) CRITICAL REQUIREMENT
+--------------------------------------------------
+
+This is NOT a visual tweak.
+This is a UX redesign.
+
+Goal:
+Make the school creation flow feel:
+- clear
+- controlled
+- professional
+- frictionless
+
+The user must always feel that everything is in front of them without searching or scrolling.

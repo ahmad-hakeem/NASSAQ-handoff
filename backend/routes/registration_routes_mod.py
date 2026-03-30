@@ -250,531 +250,105 @@ async def update_registration_request_status(
     return {"message": "تم تحديث حالة الطلب"}
 
 
-def generate_teacher_id():
-    """Generate unique Teacher ID like TCH-948271"""
-    import random
-    return f"TCH-{random.randint(100000, 999999)}"
-
-def generate_qr_code_data(teacher_id: str, user_id: str):
-    """Generate QR code data for teacher"""
-    import base64
-    import json
-    qr_data = {
-        "type": "teacher",
-        "teacher_id": teacher_id,
-        "user_id": user_id,
-        "platform": "NASSAQ"
-    }
-    # Encode as base64 JSON
-    return base64.b64encode(json.dumps(qr_data).encode()).decode()
-
-def generate_secure_password(length=10):
-    """Generate a secure random password"""
-    import secrets
-    import string
-    alphabet = string.ascii_letters + string.digits + "!@#$%"
-    password = ''.join(secrets.choice(alphabet) for _ in range(length))
-    return password
+@router.get("/approval-types")
+async def get_approval_types(
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+):
+    """Get all registered approval request types and their display metadata"""
+    from engines.approval_engine import approval_engine
+    return {"types": approval_engine.get_registered_types()}
 
 
 @router.post("/registration-requests/{request_id}/approve")
-async def approve_teacher_request(
+async def approve_request_unified(
     request_id: str,
-    data: ApproveRequestData,
+    data: ApproveRequestData = ApproveRequestData(),
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
     """
-    Approve a teacher registration request:
-    1. Validate the request exists and is pending
-    2. Check for duplicate email/phone/national_id
-    3. Create user account
-    4. Generate Teacher ID
-    5. Generate QR Code
-    6. Create login credentials
-    7. Update request status
-    8. Return credentials to admin
+    Unified approval endpoint — dispatches to the correct handler
+    based on the request's account_type field.
     """
-    # Step 1: Get the request
-    request = await db.registration_requests.find_one({"id": request_id}, {"_id": 0})
-    if not request:
-        raise HTTPException(status_code=404, detail="طلب التسجيل غير موجود")
-    
-    if request.get("status") not in ["pending", "pending_review"]:
-        raise HTTPException(status_code=400, detail="هذا الطلب تم معالجته مسبقاً")
-    
-    # Step 2: Validate - Check for duplicates
-    email = request.get("email")
-    phone = request.get("phone")
-    national_id = request.get("national_id")
-    
-    if email:
-        existing_email = await db.users.find_one({"email": email})
-        if existing_email:
-            raise HTTPException(status_code=400, detail="يوجد حساب مسجل مسبقًا بنفس البريد الإلكتروني")
-    
-    if phone:
-        existing_phone = await db.users.find_one({"phone": phone})
-        if existing_phone:
-            raise HTTPException(status_code=400, detail="يوجد حساب مسجل مسبقًا بنفس رقم الهاتف")
-    
-    if national_id:
-        existing_id = await db.users.find_one({"national_id": national_id})
-        if existing_id:
-            raise HTTPException(status_code=400, detail="يوجد حساب مسجل مسبقًا بنفس رقم الهوية")
-    
-    # Step 3: Create user account
-    user_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
-    temp_password = generate_secure_password()
-    
-    new_user = {
-        "id": user_id,
-        "email": email,
-        "password_hash": hash_password(temp_password),
-        "full_name": request.get("full_name"),
-        "role": "teacher",
-        "phone": phone,
-        "national_id": national_id,
-        "region": None,
-        "city": None,
-        "educational_department": None,
-        "school_name_ar": request.get("school_mentioned"),
-        "permissions": ["view_own_profile", "manage_own_classes", "view_own_students", "take_attendance"],
-        "is_active": True,
-        "must_change_password": True,
-        "preferred_language": "ar",
-        "preferred_theme": "light",
-        "created_at": now,
-        "updated_at": now,
-        "created_by": current_user["id"],
-        "account_type": "independent_teacher"
-    }
-    
-    await db.users.insert_one(new_user)
-    
-    # Step 4: Generate Teacher ID
-    teacher_id = generate_teacher_id()
-    
-    # Step 5: Generate QR Code
-    qr_code = generate_qr_code_data(teacher_id, user_id)
-    
-    # Save teacher record
-    teacher_record = {
-        "id": str(uuid.uuid4()),
-        "user_id": user_id,
-        "teacher_id": teacher_id,
-        "full_name": request.get("full_name"),
-        "email": email,
-        "phone": phone,
-        "specialization": request.get("subject") or request.get("specialization"),
-        "educational_level": request.get("educational_level"),
-        "years_of_experience": int(request.get("years_of_experience") or 0),
-        "school_id": None,  # Independent teacher
-        "qr_code": qr_code,
-        "is_active": True,
-        "created_at": now,
-        "created_by": current_user["id"]
-    }
-    await db.teachers.insert_one(teacher_record)
-    
-    # Save QR code record
-    qr_record = {
-        "id": str(uuid.uuid4()),
-        "user_id": user_id,
-        "teacher_id": teacher_id,
-        "qr_data": qr_code,
-        "created_at": now
-    }
-    await db.teacher_qr_codes.insert_one(qr_record)
-    
-    # Step 7: Update request status
-    await db.registration_requests.update_one(
-        {"id": request_id},
-        {
-            "$set": {
-                "status": "approved",
-                "approved_by": current_user["id"],
-                "approved_by_name": current_user.get("full_name"),
-                "approved_at": now,
-                "updated_at": now
-            }
-        }
-    )
-    
-    # Audit log
-    audit_log = {
-        "id": str(uuid.uuid4()),
-        "action": "teacher_request_approved",
-        "action_by": current_user["id"],
-        "action_by_name": current_user.get("full_name", ""),
-        "target_type": "registration_request",
-        "target_id": request_id,
-        "target_name": request.get("full_name"),
-        "details": {
-            "user_id": user_id,
-            "teacher_id": teacher_id,
-            "email": email
-        },
-        "timestamp": now
-    }
-    await db.audit_logs.insert_one(audit_log)
-    
-    # Step 8: Generate message template
-    login_url = "https://nassaqapp.com/login"
-    message_template = f"""مرحبًا،
-
-تم قبول طلب إنشاء حسابك على منصة نَسَّق | NASSAQ.
-
-بيانات الدخول الخاصة بك:
-
-البريد الإلكتروني:
-{email}
-
-كلمة المرور المؤقتة:
-{temp_password}
-
-معرف المعلم الخاص بك:
-{teacher_id}
-
-يرجى تسجيل الدخول وتغيير كلمة المرور عند أول دخول.
-
-رابط الدخول:
-{login_url}
-
-مع تحيات فريق نَسَّق | NASSAQ"""
-    
-    return {
+    from engines.approval_engine import approval_engine
+    result = await approval_engine.approve(request_id, current_user)
+    if not result.success:
+        raise HTTPException(status_code=400, detail=result.message)
+    response = {
         "success": True,
-        "message": "تم إنشاء حساب المعلم بنجاح",
-        "user_id": user_id,
-        "teacher_id": teacher_id,
-        "email": email,
-        "temporary_password": temp_password,
-        "qr_code": qr_code,
-        "message_template": message_template
+        "message": result.message,
+        "request_type": result.request_type,
+        **result.created_entities,
     }
+    if result.credentials:
+        response["credentials"] = result.credentials
+        response["temporary_password"] = result.credentials.get("temporary_password")
+        response["email"] = result.credentials.get("email")
+    if result.message_template:
+        response["message_template"] = result.message_template
+    return response
 
 
 @router.post("/registration-requests/{request_id}/approve-school")
-async def approve_school_request(
+async def approve_school_request_compat(
     request_id: str,
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
-    request = await db.registration_requests.find_one({"id": request_id}, {"_id": 0})
-    if not request:
-        raise HTTPException(status_code=404, detail="طلب التسجيل غير موجود")
-
-    if request.get("account_type") != "school":
-        raise HTTPException(status_code=400, detail="هذا الطلب ليس طلب تسجيل مدرسة")
-
-    if request.get("status") not in ["pending", "pending_review"]:
-        raise HTTPException(status_code=400, detail="هذا الطلب تم معالجته مسبقاً")
-
-    school_email = request.get("school_email") or request.get("email")
-    school_phone = request.get("school_phone") or request.get("phone")
-    school_name = request.get("school_name", "")
-    principal_name = request.get("full_name", "")
-
-    if school_email:
-        existing_email = await db.users.find_one({"email": school_email})
-        if existing_email:
-            raise HTTPException(status_code=400, detail="يوجد حساب مسجل مسبقًا بنفس البريد الإلكتروني")
-
-    now = datetime.now(timezone.utc).isoformat()
-    year_suffix = datetime.now().strftime("%y")
-    country_code = "SA"
-    last_school = await db.schools.find_one(
-        {"code": {"$regex": f"^NSS-{country_code}-{year_suffix}-"}},
-        sort=[("code", -1)]
-    )
-    if last_school and last_school.get("code"):
-        try:
-            last_num = int(last_school["code"].split("-")[-1])
-            next_num = last_num + 1
-        except (ValueError, IndexError):
-            next_num = 1
-    else:
-        next_num = 1
-    school_code = f"NSS-{country_code}-{year_suffix}-{str(next_num).zfill(4)}"
-
-    existing_code = await db.schools.find_one({"code": school_code})
-    if existing_code:
-        school_code = f"NSS-{country_code}-{year_suffix}-{str(next_num + 1).zfill(4)}"
-
-    school_id = str(uuid.uuid4())
-    capacity_raw = request.get("student_capacity", "500")
-    try:
-        student_capacity = int(capacity_raw)
-    except (ValueError, TypeError):
-        student_capacity = 500
-
-    school_doc = {
-        "id": school_id,
-        "name": school_name,
-        "name_ar": school_name,
-        "name_en": "",
-        "code": school_code,
-        "email": school_email or f"school-{school_code.lower()}@nassaq.com",
-        "phone": school_phone,
-        "address": request.get("school_address", ""),
-        "city": request.get("school_city", ""),
-        "region": "",
-        "country": "SA",
-        "logo_url": None,
-        "status": "active",
-        "student_capacity": student_capacity,
-        "current_students": 0,
-        "current_teachers": 0,
-        "language": "ar",
-        "calendar_system": "hijri_gregorian",
-        "school_type": request.get("school_type", "public"),
-        "stage": "primary",
-        "principal_name": principal_name,
-        "principal_email": school_email,
-        "principal_phone": school_phone,
-        "created_at": now,
-        "updated_at": now,
-        "created_by": current_user.get("id", current_user.get("user_id"))
-    }
-    await db.schools.insert_one(school_doc)
-
-    temp_password = generate_secure_password(12)
-    principal_id = str(uuid.uuid4())
-    principal_doc = {
-        "id": principal_id,
-        "email": school_email,
-        "password_hash": hash_password(temp_password),
-        "full_name": principal_name,
-        "full_name_en": None,
-        "role": "school_principal",
-        "tenant_id": school_id,
-        "phone": school_phone,
-        "avatar_url": None,
-        "is_active": True,
-        "must_change_password": True,
-        "preferred_language": "ar",
-        "preferred_theme": "light",
-        "permissions": ["manage_school", "manage_teachers", "manage_students", "view_reports", "manage_settings"],
-        "created_at": now,
-        "updated_at": now,
-        "created_by": current_user.get("id", current_user.get("user_id"))
-    }
-    await db.users.insert_one(principal_doc)
-
-    default_settings = await db.default_settings.find_one({"id": "default-school-settings"}, {"_id": 0})
-    if default_settings:
-        school_settings = {
-            "id": f"settings-{school_id}",
-            "school_id": school_id,
-            "working_days": default_settings.get("working_days"),
-            "working_days_ar": default_settings.get("working_days_ar"),
-            "working_days_en": default_settings.get("working_days_en"),
-            "weekend_days_ar": default_settings.get("weekend_days_ar"),
-            "weekend_days_en": default_settings.get("weekend_days_en"),
-            "periods_per_day": default_settings.get("periods_per_day"),
-            "period_duration_minutes": default_settings.get("period_duration_minutes"),
-            "break_duration_minutes": default_settings.get("break_duration_minutes"),
-            "prayer_duration_minutes": default_settings.get("prayer_duration_minutes"),
-            "school_day_start": default_settings.get("school_day_start"),
-            "school_day_end": default_settings.get("school_day_end"),
-            "time_slots": default_settings.get("time_slots"),
-            "education_track": "track-general",
-            "created_at": now,
-            "updated_at": now
-        }
-        await db.school_settings.insert_one(school_settings)
-
-    await db.registration_requests.update_one(
-        {"id": request_id},
-        {
-            "$set": {
-                "status": "approved",
-                "approved_by": current_user["id"],
-                "approved_by_name": current_user.get("full_name"),
-                "approved_at": now,
-                "updated_at": now,
-                "school_id": school_id,
-                "principal_user_id": principal_id,
-                "school_code": school_code
-            }
-        }
-    )
-
-    audit_log = {
-        "id": str(uuid.uuid4()),
-        "action": "school_request_approved",
-        "action_by": current_user["id"],
-        "action_by_name": current_user.get("full_name", ""),
-        "target_type": "registration_request",
-        "target_id": request_id,
-        "target_name": school_name,
-        "details": {
-            "school_id": school_id,
-            "school_code": school_code,
-            "principal_id": principal_id,
-            "principal_email": school_email
-        },
-        "timestamp": now
-    }
-    await db.audit_logs.insert_one(audit_log)
-
-    login_url = "https://nassaqapp.com/login"
-    message_template = f"""مرحبًا {principal_name}،
-
-تم قبول طلب تسجيل مدرستكم "{school_name}" على منصة نَسَّق | NASSAQ.
-
-بيانات الدخول الخاصة بك:
-
-البريد الإلكتروني:
-{school_email}
-
-كلمة المرور المؤقتة:
-{temp_password}
-
-رمز المدرسة:
-{school_code}
-
-يرجى تسجيل الدخول وتغيير كلمة المرور عند أول دخول.
-
-رابط الدخول:
-{login_url}
-
-مع تحيات فريق نَسَّق | NASSAQ"""
-
-    logger.info(f"School registration approved: {school_name} (code: {school_code}, principal: {school_email})")
-
-    return {
+    """Backward-compatible alias — routes to unified approve"""
+    from engines.approval_engine import approval_engine
+    result = await approval_engine.approve(request_id, current_user)
+    if not result.success:
+        raise HTTPException(status_code=400, detail=result.message)
+    response = {
         "success": True,
-        "message": "تم إنشاء المدرسة وحساب المدير بنجاح",
-        "school_id": school_id,
-        "school_code": school_code,
-        "principal_id": principal_id,
-        "email": school_email,
-        "temporary_password": temp_password,
-        "message_template": message_template
+        "message": result.message,
+        "request_type": result.request_type,
+        **result.created_entities,
     }
+    if result.credentials:
+        response["credentials"] = result.credentials
+        response["temporary_password"] = result.credentials.get("temporary_password")
+        response["email"] = result.credentials.get("email")
+    if result.message_template:
+        response["message_template"] = result.message_template
+    return response
 
 
 @router.post("/registration-requests/{request_id}/reject")
-async def reject_teacher_request(
+async def reject_request_unified(
     request_id: str,
     data: RejectRequestData,
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
     """
-    Reject a teacher registration request:
-    1. Update request status to rejected
-    2. Save rejection reason
-    3. Log the action
+    Unified rejection endpoint — works for any request type.
     """
     if not data.reason or len(data.reason.strip()) < 5:
         raise HTTPException(status_code=400, detail="يرجى إدخال سبب الرفض")
-    
-    request = await db.registration_requests.find_one({"id": request_id}, {"_id": 0})
-    if not request:
-        raise HTTPException(status_code=404, detail="طلب التسجيل غير موجود")
-    
-    if request.get("status") == "approved":
-        raise HTTPException(status_code=400, detail="لا يمكن رفض طلب تم قبوله مسبقاً")
-    
-    now = datetime.now(timezone.utc).isoformat()
-    
-    await db.registration_requests.update_one(
-        {"id": request_id},
-        {
-            "$set": {
-                "status": "rejected",
-                "rejection_reason": data.reason,
-                "rejected_by": current_user["id"],
-                "rejected_by_name": current_user.get("full_name"),
-                "rejected_at": now,
-                "updated_at": now
-            }
-        }
-    )
-    
-    # Audit log
-    audit_log = {
-        "id": str(uuid.uuid4()),
-        "action": "teacher_request_rejected",
-        "action_by": current_user["id"],
-        "action_by_name": current_user.get("full_name", ""),
-        "target_type": "registration_request",
-        "target_id": request_id,
-        "target_name": request.get("full_name"),
-        "details": {
-            "reason": data.reason
-        },
-        "timestamp": now
-    }
-    await db.audit_logs.insert_one(audit_log)
-    
-    return {
-        "success": True,
-        "message": "تم رفض الطلب بنجاح",
-        "rejection_reason": data.reason
-    }
+
+    from engines.approval_engine import approval_engine
+    result = await approval_engine.reject(request_id, data.reason.strip(), current_user)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("detail", "خطأ غير متوقع"))
+    return result
 
 
 @router.post("/registration-requests/{request_id}/request-info")
-async def request_more_info(
+async def request_more_info_unified(
     request_id: str,
     data: RequestMoreInfoData,
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
     """
-    Request additional information from the teacher:
-    1. Update request status to more_info_requested
-    2. Save the message
-    3. Log the action
+    Unified info-request endpoint — works for any request type.
     """
     if not data.message or len(data.message.strip()) < 10:
         raise HTTPException(status_code=400, detail="يرجى إدخال المعلومات المطلوبة بشكل واضح")
-    
-    request = await db.registration_requests.find_one({"id": request_id}, {"_id": 0})
-    if not request:
-        raise HTTPException(status_code=404, detail="طلب التسجيل غير موجود")
-    
-    if request.get("status") in ["approved", "rejected"]:
-        raise HTTPException(status_code=400, detail="لا يمكن طلب معلومات لطلب تم معالجته")
-    
-    now = datetime.now(timezone.utc).isoformat()
-    
-    await db.registration_requests.update_one(
-        {"id": request_id},
-        {
-            "$set": {
-                "status": "more_info_requested",
-                "additional_info_request": data.message,
-                "info_requested_by": current_user["id"],
-                "info_requested_by_name": current_user.get("full_name"),
-                "info_requested_at": now,
-                "updated_at": now
-            }
-        }
-    )
-    
-    # Audit log
-    audit_log = {
-        "id": str(uuid.uuid4()),
-        "action": "teacher_request_info_requested",
-        "action_by": current_user["id"],
-        "action_by_name": current_user.get("full_name", ""),
-        "target_type": "registration_request",
-        "target_id": request_id,
-        "target_name": request.get("full_name"),
-        "details": {
-            "message": data.message
-        },
-        "timestamp": now
-    }
-    await db.audit_logs.insert_one(audit_log)
-    
-    return {
-        "success": True,
-        "message": "تم إرسال طلب المعلومات الإضافية",
-        "info_requested": data.message
-    }
+
+    from engines.approval_engine import approval_engine
+    result = await approval_engine.request_info(request_id, data.message.strip(), current_user)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("detail", "خطأ غير متوقع"))
+    return result
 
 
 @router.post("/registration-requests/{request_id}/submit-info")
@@ -791,7 +365,7 @@ async def submit_additional_info(
     if not request:
         raise HTTPException(status_code=404, detail="طلب التسجيل غير موجود")
     
-    if request.get("status") != "more_info_requested":
+    if request.get("status") not in ("more_info_requested", "info_required"):
         raise HTTPException(status_code=400, detail="لا يوجد طلب معلومات معلق")
     
     now = datetime.now(timezone.utc).isoformat()

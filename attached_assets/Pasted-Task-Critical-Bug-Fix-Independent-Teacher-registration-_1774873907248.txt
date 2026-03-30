@@ -1,0 +1,285 @@
+Task: Critical Bug Fix — Independent Teacher registration from Login page "تسجيل جديد" still does NOT appear in Platform Admin → "إدارة المستخدمين" for approval
+
+Severity: CRITICAL
+This bug breaks the approval workflow for independent teachers inside NASSAQ.
+
+Problem Description:
+The issue is still not resolved.
+
+When a new Independent Teacher registers through:
+Login Page → "تسجيل جديد"
+
+the registration request still does NOT appear inside the Platform Admin account under:
+"إدارة المستخدمين"
+
+This means the newly registered independent teacher is not entering the approval workflow correctly, and Platform Admin cannot review or approve the request.
+
+Expected Behavior:
+Any new Independent Teacher registration submitted through the public Login page → "تسجيل جديد" must:
+
+1. Be saved immediately in the unified database
+2. Be classified correctly as an independent teacher registration request
+3. Be assigned the correct pending approval status
+4. Automatically appear in Platform Admin → "إدارة المستخدمين"
+5. Specifically appear under the correct approval tab:
+   - "طلبات المعلمين المستقلين"
+6. Remain visible after page refresh / reload
+7. Be available for approval / rejection by Platform Admin
+
+--------------------------------------------------
+1) ROOT ISSUE TO SOLVE
+--------------------------------------------------
+
+The independent teacher registration flow from the public Login page is still not properly connected to the admin approval system.
+
+This must be fixed permanently.
+
+Do NOT patch this visually.
+Do NOT fake this with frontend-only state.
+Do NOT create a temporary workaround.
+
+Fix the real root cause across:
+- frontend
+- backend
+- DB persistence
+- approval request creation
+- admin listing/query logic
+- request classification
+- status assignment
+
+--------------------------------------------------
+2) INVESTIGATION SCOPE (MANDATORY)
+--------------------------------------------------
+
+You must trace the full end-to-end flow:
+
+A) Public Registration Entry Point
+- Login page
+- "تسجيل جديد" flow
+- role/type selection
+- independent teacher registration form
+- final submit action
+
+B) Frontend Submission
+Check:
+- final payload
+- request type sent
+- endpoint called
+- whether independent teacher registration is being sent as:
+  - direct user creation
+  - approval request
+  - wrong request type
+  - incomplete payload
+
+C) Backend Handling
+Check:
+- endpoint receiving the public registration
+- whether it creates:
+  - ApprovalRequest
+  - active teacher user directly
+  - partial user record only
+- whether request_type is set correctly
+- whether status is set correctly
+- whether required fields are missing
+- whether teacher registration is being saved into the wrong collection/table
+
+D) Unified Database
+Check whether the independent teacher registration:
+- is not saved at all
+- is saved but in wrong structure
+- is saved without pending status
+- is saved as active entity instead of approval request
+- is saved correctly but not queryable by admin queue
+- is missing request_type = independent_teacher_registration
+- is missing classification needed for "طلبات المعلمين المستقلين"
+
+E) Platform Admin Query / UI
+Check:
+- endpoint used by "إدارة المستخدمين"
+- endpoint used by "طلبات المعلمين المستقلين"
+- query filters
+- type filter
+- status filter
+- source filter
+- whether teacher requests are being filtered out incorrectly
+
+--------------------------------------------------
+3) MOST LIKELY ROOT CAUSES TO CHECK
+--------------------------------------------------
+
+You MUST explicitly investigate these possibilities:
+
+1. Public independent teacher registration is not creating an ApprovalRequest at all
+2. It is creating a user only, not a teacher request
+3. It is creating an active teacher entity directly instead of pending approval request
+4. request_type is missing or wrong
+5. status is missing or not equal to pending_approval
+6. source field is wrong, causing queue filtering failure
+7. record is saved in DB but admin listing query excludes it
+8. admin UI is calling wrong endpoint or wrong filter
+9. public registration schema differs from admin approval schema
+10. payload normalization is broken between public registration and approval system
+
+--------------------------------------------------
+4) REQUIRED FIX
+--------------------------------------------------
+
+Implement the fix so that:
+
+A) Public independent teacher registration from Login page always creates:
+- an ApprovalRequest record
+- request_type = independent_teacher_registration
+- source = public_signup (or equivalent standardized source)
+- status = pending_approval
+
+B) The request is saved immediately in the unified database
+
+C) The request becomes automatically visible in:
+Platform Admin → "إدارة المستخدمين" → "طلبات المعلمين المستقلين"
+
+D) Platform Admin can then:
+- view details
+- approve
+- reject
+
+E) No direct activation of teacher account should happen before approval unless your architecture intentionally supports draft/pre-created entities, and even then the approval request must still exist and remain visible
+
+--------------------------------------------------
+5) DATA MODEL REQUIREMENTS
+--------------------------------------------------
+
+Ensure the created request contains all required fields needed for approval visibility and processing, such as:
+
+- id
+- request_type = independent_teacher_registration
+- source = public_signup
+- status = pending_approval
+- full_name
+- email
+- phone
+- specialization / subjects if applicable
+- submitted_at
+- payload_snapshot / normalized_payload
+- created_at
+- updated_at
+
+If your current model differs, that is acceptable only if:
+- it is consistent
+- it is queryable
+- it supports the admin approval queue cleanly
+
+--------------------------------------------------
+6) ADMIN QUEUE REQUIREMENTS
+--------------------------------------------------
+
+In Platform Admin → "إدارة المستخدمين"
+
+The tab "طلبات المعلمين المستقلين" must:
+- load pending independent teacher registration requests from DB
+- show latest requests first
+- support refresh persistence
+- show enough metadata for admin review
+- allow approval/rejection actions
+
+The issue must be fixed both at:
+- data level
+- listing/query level
+- UI rendering level
+
+--------------------------------------------------
+7) DEBUGGING / TRACEABILITY REQUIREMENT
+--------------------------------------------------
+
+Because this issue has persisted, add clear structured debugging to this flow:
+
+Log these events:
+- public_independent_teacher_registration_started
+- public_independent_teacher_registration_payload_built
+- public_independent_teacher_registration_submitted
+- approval_request_created
+- approval_request_creation_failed
+- independent_teacher_request_queue_loaded
+- independent_teacher_request_filtered_out
+- approval_tab_rendered
+
+Each log should include:
+- request_id / trace_id
+- request_type
+- status
+- source
+- applicant email
+- linked entity IDs if any
+- failure reason if applicable
+
+Do not use random console logs.
+Use the structured debug framework.
+
+--------------------------------------------------
+8) TESTING REQUIREMENTS (MANDATORY)
+--------------------------------------------------
+
+After the fix, test these exact scenarios:
+
+Scenario 1:
+- Go to Login page
+- Click "تسجيل جديد"
+- Register a new Independent Teacher
+- Submit successfully
+
+Verify:
+1. ApprovalRequest is created in DB
+2. request_type = independent_teacher_registration
+3. status = pending_approval
+4. source = public_signup
+5. request appears in Platform Admin → إدارة المستخدمين → طلبات المعلمين المستقلين
+
+Scenario 2:
+- Refresh Platform Admin page
+Verify:
+- the request is still visible
+
+Scenario 3:
+- Approve the request
+Verify:
+- teacher activation flow works correctly
+- role assignment is correct
+- request status becomes approved
+
+Scenario 4:
+- Reject another request
+Verify:
+- request status becomes rejected
+- historical trace remains
+
+Scenario 5:
+- Check edge cases:
+  - incomplete public registration payload
+  - duplicate email
+  - invalid request type
+  - failed DB write
+  - failed queue load
+
+--------------------------------------------------
+9) OUTPUT REQUIRED
+--------------------------------------------------
+
+After implementation, provide:
+
+1. Exact root cause of why independent teacher registration from Login page was not appearing
+2. Exact fix implemented
+3. Files/components/endpoints modified
+4. DB model/path where the request is now stored
+5. Admin queue logic used to load "طلبات المعلمين المستقلين"
+6. Confirmation of test results
+7. Any migration or normalization applied to old pending records
+
+--------------------------------------------------
+10) CRITICAL REQUIREMENTS
+--------------------------------------------------
+
+- This issue must be solved permanently
+- Do NOT implement a UI-only fake solution
+- Do NOT create records that are invisible to admin
+- Do NOT bypass the Approval Engine
+- Do NOT mark the task complete unless the request actually appears in "طلبات المعلمين المستقلين" after a real public registration test
+- Treat this as a root-cause production bug, not a cosmetic issue

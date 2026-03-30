@@ -96,6 +96,12 @@ async def startup_tasks():
     except Exception as e:
         logger.warning(f"Index creation on startup: {e}")
 
+    from engines.approval_engine import approval_engine
+    from engines.approval_handlers import TeacherApprovalHandler, SchoolApprovalHandler
+    approval_engine.register(TeacherApprovalHandler())
+    approval_engine.register(SchoolApprovalHandler())
+    logger.info(f"Approval engine initialized with {len(approval_engine.get_registered_types())} handler(s)")
+
     from seeds.timetable_hard_constraints import seed_hard_constraints
     try:
         result = await seed_hard_constraints(db)

@@ -2,7 +2,7 @@
 NASSAQ Shared Pydantic Models
 All Pydantic models shared across route modules.
 """
-from pydantic import BaseModel, Field, ConfigDict, EmailStr
+from pydantic import BaseModel, Field, ConfigDict, EmailStr, model_validator
 from typing import List, Optional, Any, Union
 from datetime import datetime, timezone
 from enum import Enum
@@ -258,7 +258,14 @@ class RejectRequestData(BaseModel):
     reason: str
 
 class RequestMoreInfoData(BaseModel):
-    questions: str
+    message: str = ""
+    questions: str = ""
+
+    @model_validator(mode="after")
+    def normalize_message(self):
+        if not self.message and self.questions:
+            self.message = self.questions
+        return self
 
 class TeacherApprovalResult(BaseModel):
     success: bool
