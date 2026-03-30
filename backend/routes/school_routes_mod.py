@@ -114,20 +114,18 @@ async def create_school(
     
     # Create principal account if email provided
     if school_data.principal_email and school_data.principal_name:
-        # Generate temporary password
         import secrets
         import string
         chars = string.ascii_letters + string.digits + "@#$"
         temp_password = ''.join(secrets.choice(chars) for _ in range(12))
         
-        # Hash password
-        hashed_password = bcrypt.hashpw(temp_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        hashed_password = hash_password(temp_password)
         
         principal_id = str(uuid.uuid4())
         principal_doc = {
             "id": principal_id,
             "email": school_data.principal_email,
-            "password": hashed_password,
+            "password_hash": hashed_password,
             "full_name": school_data.principal_name,
             "full_name_en": None,
             "role": UserRole.SCHOOL_PRINCIPAL.value,
