@@ -455,6 +455,206 @@ async def approve_teacher_request(
     }
 
 
+@router.post("/registration-requests/{request_id}/approve-school")
+async def approve_school_request(
+    request_id: str,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+):
+    request = await db.registration_requests.find_one({"id": request_id}, {"_id": 0})
+    if not request:
+        raise HTTPException(status_code=404, detail="طلب التسجيل غير موجود")
+
+    if request.get("account_type") != "school":
+        raise HTTPException(status_code=400, detail="هذا الطلب ليس طلب تسجيل مدرسة")
+
+    if request.get("status") not in ["pending", "pending_review"]:
+        raise HTTPException(status_code=400, detail="هذا الطلب تم معالجته مسبقاً")
+
+    school_email = request.get("school_email") or request.get("email")
+    school_phone = request.get("school_phone") or request.get("phone")
+    school_name = request.get("school_name", "")
+    principal_name = request.get("full_name", "")
+
+    if school_email:
+        existing_email = await db.users.find_one({"email": school_email})
+        if existing_email:
+            raise HTTPException(status_code=400, detail="يوجد حساب مسجل مسبقًا بنفس البريد الإلكتروني")
+
+    now = datetime.now(timezone.utc).isoformat()
+    year_suffix = datetime.now().strftime("%y")
+    country_code = "SA"
+    last_school = await db.schools.find_one(
+        {"code": {"$regex": f"^NSS-{country_code}-{year_suffix}-"}},
+        sort=[("code", -1)]
+    )
+    if last_school and last_school.get("code"):
+        try:
+            last_num = int(last_school["code"].split("-")[-1])
+            next_num = last_num + 1
+        except (ValueError, IndexError):
+            next_num = 1
+    else:
+        next_num = 1
+    school_code = f"NSS-{country_code}-{year_suffix}-{str(next_num).zfill(4)}"
+
+    existing_code = await db.schools.find_one({"code": school_code})
+    if existing_code:
+        school_code = f"NSS-{country_code}-{year_suffix}-{str(next_num + 1).zfill(4)}"
+
+    school_id = str(uuid.uuid4())
+    capacity_raw = request.get("student_capacity", "500")
+    try:
+        student_capacity = int(capacity_raw)
+    except (ValueError, TypeError):
+        student_capacity = 500
+
+    school_doc = {
+        "id": school_id,
+        "name": school_name,
+        "name_ar": school_name,
+        "name_en": "",
+        "code": school_code,
+        "email": school_email or f"school-{school_code.lower()}@nassaq.com",
+        "phone": school_phone,
+        "address": request.get("school_address", ""),
+        "city": request.get("school_city", ""),
+        "region": "",
+        "country": "SA",
+        "logo_url": None,
+        "status": "active",
+        "student_capacity": student_capacity,
+        "current_students": 0,
+        "current_teachers": 0,
+        "language": "ar",
+        "calendar_system": "hijri_gregorian",
+        "school_type": request.get("school_type", "public"),
+        "stage": "primary",
+        "principal_name": principal_name,
+        "principal_email": school_email,
+        "principal_phone": school_phone,
+        "created_at": now,
+        "updated_at": now,
+        "created_by": current_user.get("id", current_user.get("user_id"))
+    }
+    await db.schools.insert_one(school_doc)
+
+    temp_password = generate_secure_password(12)
+    principal_id = str(uuid.uuid4())
+    principal_doc = {
+        "id": principal_id,
+        "email": school_email,
+        "password_hash": hash_password(temp_password),
+        "full_name": principal_name,
+        "full_name_en": None,
+        "role": "school_principal",
+        "tenant_id": school_id,
+        "phone": school_phone,
+        "avatar_url": None,
+        "is_active": True,
+        "must_change_password": True,
+        "preferred_language": "ar",
+        "preferred_theme": "light",
+        "permissions": ["manage_school", "manage_teachers", "manage_students", "view_reports", "manage_settings"],
+        "created_at": now,
+        "updated_at": now,
+        "created_by": current_user.get("id", current_user.get("user_id"))
+    }
+    await db.users.insert_one(principal_doc)
+
+    default_settings = await db.default_settings.find_one({"id": "default-school-settings"}, {"_id": 0})
+    if default_settings:
+        school_settings = {
+            "id": f"settings-{school_id}",
+            "school_id": school_id,
+            "working_days": default_settings.get("working_days"),
+            "working_days_ar": default_settings.get("working_days_ar"),
+            "working_days_en": default_settings.get("working_days_en"),
+            "weekend_days_ar": default_settings.get("weekend_days_ar"),
+            "weekend_days_en": default_settings.get("weekend_days_en"),
+            "periods_per_day": default_settings.get("periods_per_day"),
+            "period_duration_minutes": default_settings.get("period_duration_minutes"),
+            "break_duration_minutes": default_settings.get("break_duration_minutes"),
+            "prayer_duration_minutes": default_settings.get("prayer_duration_minutes"),
+            "school_day_start": default_settings.get("school_day_start"),
+            "school_day_end": default_settings.get("school_day_end"),
+            "time_slots": default_settings.get("time_slots"),
+            "education_track": "track-general",
+            "created_at": now,
+            "updated_at": now
+        }
+        await db.school_settings.insert_one(school_settings)
+
+    await db.registration_requests.update_one(
+        {"id": request_id},
+        {
+            "$set": {
+                "status": "approved",
+                "approved_by": current_user["id"],
+                "approved_by_name": current_user.get("full_name"),
+                "approved_at": now,
+                "updated_at": now,
+                "school_id": school_id,
+                "principal_user_id": principal_id,
+                "school_code": school_code
+            }
+        }
+    )
+
+    audit_log = {
+        "id": str(uuid.uuid4()),
+        "action": "school_request_approved",
+        "action_by": current_user["id"],
+        "action_by_name": current_user.get("full_name", ""),
+        "target_type": "registration_request",
+        "target_id": request_id,
+        "target_name": school_name,
+        "details": {
+            "school_id": school_id,
+            "school_code": school_code,
+            "principal_id": principal_id,
+            "principal_email": school_email
+        },
+        "timestamp": now
+    }
+    await db.audit_logs.insert_one(audit_log)
+
+    login_url = "https://nassaqapp.com/login"
+    message_template = f"""مرحبًا {principal_name}،
+
+تم قبول طلب تسجيل مدرستكم "{school_name}" على منصة نَسَّق | NASSAQ.
+
+بيانات الدخول الخاصة بك:
+
+البريد الإلكتروني:
+{school_email}
+
+كلمة المرور المؤقتة:
+{temp_password}
+
+رمز المدرسة:
+{school_code}
+
+يرجى تسجيل الدخول وتغيير كلمة المرور عند أول دخول.
+
+رابط الدخول:
+{login_url}
+
+مع تحيات فريق نَسَّق | NASSAQ"""
+
+    logger.info(f"School registration approved: {school_name} (code: {school_code}, principal: {school_email})")
+
+    return {
+        "success": True,
+        "message": "تم إنشاء المدرسة وحساب المدير بنجاح",
+        "school_id": school_id,
+        "school_code": school_code,
+        "principal_id": principal_id,
+        "email": school_email,
+        "temporary_password": temp_password,
+        "message_template": message_template
+    }
+
+
 @router.post("/registration-requests/{request_id}/reject")
 async def reject_teacher_request(
     request_id: str,
