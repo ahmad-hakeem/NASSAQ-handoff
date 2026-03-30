@@ -90,9 +90,11 @@ export default function UsersManagement() {
   const [schoolUsers, setSchoolUsers] = useState({}); // Users grouped by school
   const [schools, setSchools] = useState([]); // List of schools
   const [teacherRequests, setTeacherRequests] = useState([]);
+  const [schoolRequests, setSchoolRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('users');
-  const [requestStatusFilter, setRequestStatusFilter] = useState('all'); // Filter for teacher requests
+  const [requestStatusFilter, setRequestStatusFilter] = useState('all');
+  const [schoolRequestStatusFilter, setSchoolRequestStatusFilter] = useState('all');
   
   // Stats
   const [stats, setStats] = useState({
@@ -129,6 +131,10 @@ export default function UsersManagement() {
   const [showRejectRequest, setShowRejectRequest] = useState(null);
   const [showMoreInfoRequest, setShowMoreInfoRequest] = useState(null);
   const [showApproveConfirm, setShowApproveConfirm] = useState(null);
+  const [showSchoolApproveConfirm, setShowSchoolApproveConfirm] = useState(null);
+  const [showSchoolApproveSuccess, setShowSchoolApproveSuccess] = useState(null);
+  const [showSchoolRejectRequest, setShowSchoolRejectRequest] = useState(null);
+  const [schoolRejectionReason, setSchoolRejectionReason] = useState('');
   
   // Selection
   const [selectedUsers, setSelectedUsers] = useState([]);
@@ -268,7 +274,7 @@ export default function UsersManagement() {
       // Update pending requests count in stats
       setStats(prev => ({
         ...prev,
-        pendingRequests: requests.filter(r => r.status === 'pending' || r.status === 'info_required').length,
+        pendingRequests: requests.filter(r => r.status === 'pending' || r.status === 'pending_review' || r.status === 'info_required').length,
         approvedRequests: requests.filter(r => r.status === 'approved').length,
         rejectedRequests: requests.filter(r => r.status === 'rejected').length,
       }));
@@ -285,6 +291,23 @@ export default function UsersManagement() {
     }
   }, [api]);
   
+  const fetchSchoolRequests = useCallback(async () => {
+    try {
+      const response = await api.get('/api/registration-requests', {
+        params: { account_type: 'school' }
+      });
+      const requests = response.data?.requests || response.data || [];
+      setSchoolRequests(requests);
+      setStats(prev => ({
+        ...prev,
+        pendingSchoolRequests: requests.filter(r => r.status === 'pending' || r.status === 'pending_review').length,
+      }));
+    } catch (error) {
+      console.error('Error fetching school requests:', error);
+      setSchoolRequests([]);
+    }
+  }, [api]);
+
   // Fetch schools and their users
   const fetchSchoolUsers = useCallback(async () => {
     try {
@@ -351,16 +374,22 @@ export default function UsersManagement() {
     }
   }, [api]);
   
-  // Filter teacher requests based on selected status
   const filteredTeacherRequests = useMemo(() => {
     if (requestStatusFilter === 'all') return teacherRequests;
+    if (requestStatusFilter === 'pending') return teacherRequests.filter(r => r.status === 'pending' || r.status === 'pending_review');
     return teacherRequests.filter(r => r.status === requestStatusFilter);
   }, [teacherRequests, requestStatusFilter]);
+
+  const filteredSchoolRequests = useMemo(() => {
+    if (schoolRequestStatusFilter === 'all') return schoolRequests;
+    if (schoolRequestStatusFilter === 'pending') return schoolRequests.filter(r => r.status === 'pending' || r.status === 'pending_review');
+    return schoolRequests.filter(r => r.status === schoolRequestStatusFilter);
+  }, [schoolRequests, schoolRequestStatusFilter]);
   
-  // Initial fetch - only runs once
   useEffect(() => {
     fetchUsers();
     fetchTeacherRequests();
+    fetchSchoolRequests();
     fetchSchoolUsers();
     fetchCommandCenterStats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -522,7 +551,52 @@ export default function UsersManagement() {
     setMoreInfoMessage('');
   };
   
-  // Generate temp password
+  const handleApproveSchoolRequest = async (request) => {
+    try {
+      const response = await api.post(`/api/registration-requests/${request.id}/approve-school`);
+      if (response.data?.success) {
+        setShowSchoolApproveSuccess({
+          ...request,
+          school_id: response.data.school_id,
+          school_code: response.data.school_code,
+          principal_id: response.data.principal_id,
+          email: response.data.email,
+          temp_password: response.data.temporary_password,
+          message_template: response.data.message_template,
+        });
+        toast.success('تم الموافقة على طلب المدرسة وإنشاء الحساب بنجاح');
+        fetchSchoolRequests();
+        fetchSchoolUsers();
+      }
+    } catch (error) {
+      console.error('Error approving school request:', error);
+      const errorMessage = error.response?.data?.detail || 'حدث خطأ أثناء الموافقة على طلب المدرسة';
+      nassaqError(errorMessage);
+    }
+  };
+
+  const handleRejectSchoolRequest = async (request) => {
+    if (!schoolRejectionReason || schoolRejectionReason.trim().length < 5) {
+      nassaqError('يرجى إدخال سبب الرفض');
+      return;
+    }
+    try {
+      const response = await api.post(`/api/registration-requests/${request.id}/reject`, {
+        reason: schoolRejectionReason
+      });
+      if (response.data?.success) {
+        toast.success('تم رفض طلب المدرسة');
+        fetchSchoolRequests();
+      }
+    } catch (error) {
+      console.error('Error rejecting school request:', error);
+      const errorMessage = error.response?.data?.detail || 'حدث خطأ أثناء رفض الطلب';
+      nassaqError(errorMessage);
+    }
+    setShowSchoolRejectRequest(null);
+    setSchoolRejectionReason('');
+  };
+
   const generateTempPassword = () => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789@#$!';
     let password = '';
@@ -714,7 +788,7 @@ export default function UsersManagement() {
                 <div className="flex items-center justify-between flex-row-reverse">
                   <div className="text-right">
                     <p className="text-yellow-600 text-xs">طلبات معلقة</p>
-                    <p className="text-xl font-bold text-yellow-700">{stats.pendingRequests}</p>
+                    <p className="text-xl font-bold text-yellow-700">{(stats.pendingRequests || 0) + (stats.pendingSchoolRequests || 0)}</p>
                   </div>
                   <Clock className="h-6 w-6 text-yellow-200" />
                 </div>
@@ -737,21 +811,30 @@ export default function UsersManagement() {
           
           {/* Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full max-w-2xl grid-cols-3 mb-4">
-              <TabsTrigger value="users" className="font-cairo">
+            <TabsList className="grid w-full max-w-3xl grid-cols-4 mb-4">
+              <TabsTrigger value="users" className="font-cairo text-xs sm:text-sm">
                 <Users className="h-4 w-4 ms-2" />
-                المستخدمين
+                مستخدمين
               </TabsTrigger>
-              <TabsTrigger value="school-users" className="font-cairo">
+              <TabsTrigger value="school-users" className="font-cairo text-xs sm:text-sm">
                 <Building2 className="h-4 w-4 ms-2" />
                 مستخدمو المدارس
               </TabsTrigger>
-              <TabsTrigger value="requests" className="font-cairo relative">
+              <TabsTrigger value="requests" className="font-cairo relative text-xs sm:text-sm">
                 <FileText className="h-4 w-4 ms-2" />
                 طلبات المعلمين المستقلين
-                {teacherRequests.filter(r => r.status === 'pending' || r.status === 'info_required').length > 0 && (
+                {teacherRequests.filter(r => r.status === 'pending' || r.status === 'pending_review' || r.status === 'info_required').length > 0 && (
                   <span className="absolute -top-1 -start-1 w-5 h-5 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center">
-                    {teacherRequests.filter(r => r.status === 'pending' || r.status === 'info_required').length}
+                    {teacherRequests.filter(r => r.status === 'pending' || r.status === 'pending_review' || r.status === 'info_required').length}
+                  </span>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="school-requests" className="font-cairo relative text-xs sm:text-sm">
+                <School className="h-4 w-4 ms-2" />
+                طلبات المدارس
+                {schoolRequests.filter(r => r.status === 'pending' || r.status === 'pending_review').length > 0 && (
+                  <span className="absolute -top-1 -start-1 w-5 h-5 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center">
+                    {schoolRequests.filter(r => r.status === 'pending' || r.status === 'pending_review').length}
                   </span>
                 )}
               </TabsTrigger>
@@ -1252,8 +1335,7 @@ export default function UsersManagement() {
                                 </div>
                               </div>
                               
-                              {/* Action Buttons - Show only for pending/info_required */}
-                              {(request.status === 'pending' || request.status === 'info_required') && (
+                              {(request.status === 'pending' || request.status === 'pending_review' || request.status === 'info_required') && (
                                 <div className="flex flex-wrap lg:flex-col gap-2">
                                   <Button 
                                     className="bg-green-600 hover:bg-green-700 flex-1 lg:flex-none"
@@ -1280,6 +1362,160 @@ export default function UsersManagement() {
                                   >
                                     <Info className="h-4 w-4 ms-2" />
                                     طلب معلومات
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );})}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* School Requests Tab */}
+            <TabsContent value="school-requests" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between flex-row-reverse">
+                    <CardTitle className="font-cairo flex items-center gap-2 flex-row-reverse">
+                      <School className="h-5 w-5 text-brand-navy" />
+                      طلبات تسجيل المدارس
+                    </CardTitle>
+                    <div className="flex gap-2 flex-wrap">
+                      {[
+                        { id: 'all', name: 'جميع الطلبات', color: '' },
+                        { id: 'approved', name: 'المعتمدة', color: 'bg-green-500' },
+                        { id: 'pending', name: 'قيد المراجعة', color: 'bg-yellow-500' },
+                        { id: 'rejected', name: 'المرفوضة', color: 'bg-red-500' },
+                      ].map((status) => (
+                        <Button
+                          key={status.id}
+                          variant={schoolRequestStatusFilter === status.id ? 'default' : 'outline'}
+                          size="sm"
+                          className={`text-xs ${schoolRequestStatusFilter === status.id ? status.color + ' text-white' : ''}`}
+                          onClick={() => setSchoolRequestStatusFilter(status.id)}
+                        >
+                          {status.name}
+                          {status.id !== 'all' && (
+                            <Badge variant="secondary" className="ms-1 h-5 w-5 p-0 flex items-center justify-center text-[10px]">
+                              {status.id === 'pending' 
+                                ? schoolRequests.filter(r => r.status === 'pending' || r.status === 'pending_review').length
+                                : schoolRequests.filter(r => r.status === status.id).length}
+                            </Badge>
+                          )}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {filteredSchoolRequests.length === 0 ? (
+                    <div className="py-12 text-center">
+                      <School className="h-16 w-16 mx-auto text-muted-foreground/30 mb-4" />
+                      <h3 className="font-bold text-lg mb-2">لا توجد طلبات</h3>
+                      <p className="text-muted-foreground">
+                        {schoolRequestStatusFilter === 'all'
+                          ? 'لا توجد طلبات تسجيل مدارس حالياً'
+                          : `لا توجد طلبات في الحالة المحددة`}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {filteredSchoolRequests.map((request) => {
+                        const isPending = request.status === 'pending' || request.status === 'pending_review';
+                        const isApproved = request.status === 'approved';
+                        const isRejected = request.status === 'rejected';
+                        return (
+                        <Card
+                          key={request.id}
+                          className={`border-2 ${
+                            isApproved ? 'border-green-200 bg-green-50/30' :
+                            isRejected ? 'border-red-200 bg-red-50/30' :
+                            'border-yellow-200 bg-yellow-50/30'
+                          }`}
+                        >
+                          <CardContent className="p-4">
+                            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                              <div className="flex-1 space-y-3">
+                                <div className="flex items-center gap-3 flex-row-reverse justify-end">
+                                  <div className="text-right">
+                                    <h4 className="font-bold text-lg">{request.school_name || 'بدون اسم'}</h4>
+                                    <Badge className={`${
+                                      isApproved ? 'bg-green-500' :
+                                      isRejected ? 'bg-red-500' :
+                                      'bg-yellow-500'
+                                    } text-white text-xs mt-1`}>
+                                      {isApproved ? 'معتمد' : isRejected ? 'مرفوض' : 'قيد المراجعة'}
+                                    </Badge>
+                                  </div>
+                                  <Avatar className="h-12 w-12 border-2">
+                                    <AvatarFallback className="bg-teal-500 text-white">
+                                      <School className="h-6 w-6" />
+                                    </AvatarFallback>
+                                  </Avatar>
+                                </div>
+
+                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
+                                  <div className="flex items-center gap-2 flex-row-reverse">
+                                    <span className="text-muted-foreground">مدير المدرسة:</span>
+                                    <span className="font-medium">{request.full_name}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 flex-row-reverse">
+                                    <span className="text-muted-foreground">البريد:</span>
+                                    <span className="font-medium" dir="ltr">{request.school_email || request.email}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 flex-row-reverse">
+                                    <span className="text-muted-foreground">الهاتف:</span>
+                                    <span className="font-medium" dir="ltr">{request.school_phone || request.phone}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 flex-row-reverse">
+                                    <span className="text-muted-foreground">المدينة:</span>
+                                    <span className="font-medium">{request.school_city || '-'}</span>
+                                  </div>
+                                  {request.school_address && (
+                                    <div className="flex items-center gap-2 flex-row-reverse col-span-2">
+                                      <span className="text-muted-foreground">العنوان:</span>
+                                      <span className="font-medium">{request.school_address}</span>
+                                    </div>
+                                  )}
+                                  <div className="flex items-center gap-2 flex-row-reverse">
+                                    <span className="text-muted-foreground">تاريخ الطلب:</span>
+                                    <span className="font-medium">{formatDate(request.created_at)}</span>
+                                  </div>
+                                  {request.school_code && (
+                                    <div className="flex items-center gap-2 flex-row-reverse">
+                                      <span className="text-muted-foreground">رمز المدرسة:</span>
+                                      <span className="font-mono font-bold text-brand-navy">{request.school_code}</span>
+                                    </div>
+                                  )}
+                                  {request.rejection_reason && (
+                                    <div className="flex items-center gap-2 flex-row-reverse col-span-2">
+                                      <span className="text-muted-foreground">سبب الرفض:</span>
+                                      <span className="font-medium text-red-600">{request.rejection_reason}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {isPending && (
+                                <div className="flex flex-wrap lg:flex-col gap-2">
+                                  <Button
+                                    className="bg-green-600 hover:bg-green-700 flex-1 lg:flex-none"
+                                    onClick={() => setShowSchoolApproveConfirm(request)}
+                                  >
+                                    <CheckCircle2 className="h-4 w-4 ms-2" />
+                                    موافقة
+                                  </Button>
+                                  <Button
+                                    variant="destructive"
+                                    className="flex-1 lg:flex-none"
+                                    onClick={() => setShowSchoolRejectRequest(request)}
+                                  >
+                                    <XCircle className="h-4 w-4 ms-2" />
+                                    رفض
                                   </Button>
                                 </div>
                               )}
@@ -1797,6 +2033,161 @@ export default function UsersManagement() {
           </DialogContent>
         </Dialog>
         
+        {/* School Approve Confirmation Dialog */}
+        <Dialog open={!!showSchoolApproveConfirm} onOpenChange={() => setShowSchoolApproveConfirm(null)}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 flex-row-reverse justify-end text-green-600">
+                <CheckCircle2 className="h-5 w-5" />
+                تأكيد الموافقة على طلب تسجيل المدرسة
+              </DialogTitle>
+              <DialogDescription className="text-right">
+                سيتم إنشاء المدرسة وحساب المدير — هل أنت متأكد؟
+              </DialogDescription>
+            </DialogHeader>
+            {showSchoolApproveConfirm && (
+              <div className="space-y-4">
+                <div className="p-4 bg-muted/30 rounded-xl space-y-2 text-right">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold">{showSchoolApproveConfirm.school_name}</span>
+                    <span className="text-muted-foreground">اسم المدرسة:</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>{showSchoolApproveConfirm.full_name}</span>
+                    <span className="text-muted-foreground">مدير المدرسة:</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span dir="ltr">{showSchoolApproveConfirm.school_email || showSchoolApproveConfirm.email}</span>
+                    <span className="text-muted-foreground">البريد:</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span dir="ltr">{showSchoolApproveConfirm.school_phone || showSchoolApproveConfirm.phone}</span>
+                    <span className="text-muted-foreground">الهاتف:</span>
+                  </div>
+                  {showSchoolApproveConfirm.school_city && (
+                    <div className="flex items-center justify-between">
+                      <span>{showSchoolApproveConfirm.school_city}</span>
+                      <span className="text-muted-foreground">المدينة:</span>
+                    </div>
+                  )}
+                </div>
+                <p className="text-sm text-muted-foreground text-center">
+                  سيتم إنشاء المدرسة وحساب المدير وتوليد بيانات الدخول المؤقتة
+                </p>
+              </div>
+            )}
+            <DialogFooter className="flex-row-reverse gap-2">
+              <Button variant="outline" onClick={() => setShowSchoolApproveConfirm(null)}>إلغاء</Button>
+              <Button
+                className="bg-green-600 hover:bg-green-700"
+                onClick={() => {
+                  handleApproveSchoolRequest(showSchoolApproveConfirm);
+                  setShowSchoolApproveConfirm(null);
+                }}
+              >
+                <CheckCircle2 className="h-4 w-4 ms-2" />
+                تأكيد الموافقة
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* School Approve Success Dialog */}
+        <Dialog open={!!showSchoolApproveSuccess} onOpenChange={() => setShowSchoolApproveSuccess(null)}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 flex-row-reverse justify-end text-green-600">
+                <CheckCircle2 className="h-6 w-6" />
+                تم إنشاء المدرسة بنجاح!
+              </DialogTitle>
+            </DialogHeader>
+            {showSchoolApproveSuccess && (
+              <div className="space-y-4">
+                <div className="p-4 bg-green-50 rounded-xl border border-green-200">
+                  <h4 className="font-bold text-green-800 mb-2 text-right">بيانات المدرسة والمدير:</h4>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center justify-between">
+                      <Button variant="ghost" size="sm" onClick={() => copyToClipboard(showSchoolApproveSuccess.school_code)}>
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                      <div className="text-right">
+                        <span className="text-muted-foreground">رمز المدرسة: </span>
+                        <span className="font-mono font-bold text-brand-navy">{showSchoolApproveSuccess.school_code}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <Button variant="ghost" size="sm" onClick={() => copyToClipboard(showSchoolApproveSuccess.email)}>
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                      <div className="text-right">
+                        <span className="text-muted-foreground">البريد: </span>
+                        <span className="font-mono" dir="ltr">{showSchoolApproveSuccess.email}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <Button variant="ghost" size="sm" onClick={() => copyToClipboard(showSchoolApproveSuccess.temp_password)}>
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                      <div className="text-right">
+                        <span className="text-muted-foreground">كلمة المرور: </span>
+                        <span className="font-mono font-bold text-brand-navy">{showSchoolApproveSuccess.temp_password}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground text-center">
+                  يمكنك نسخ البيانات وإرسالها لمدير المدرسة عبر البريد أو الرسائل
+                </p>
+              </div>
+            )}
+            <DialogFooter>
+              <Button onClick={() => setShowSchoolApproveSuccess(null)} className="w-full">
+                <Check className="h-4 w-4 ms-2" />
+                تم
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* School Reject Dialog */}
+        <Dialog open={!!showSchoolRejectRequest} onOpenChange={() => setShowSchoolRejectRequest(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 flex-row-reverse justify-end text-red-600">
+                <XCircle className="h-5 w-5" />
+                رفض طلب مدرسة {showSchoolRejectRequest?.school_name}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label className="text-right block">سبب الرفض *</Label>
+                <Textarea
+                  value={schoolRejectionReason}
+                  onChange={(e) => setSchoolRejectionReason(e.target.value)}
+                  className="rounded-xl text-right min-h-[100px]"
+                  placeholder="اكتب سبب رفض طلب المدرسة..."
+                />
+                <div className="flex flex-wrap gap-2 mt-2">
+                  <Button variant="outline" size="sm" onClick={() => setSchoolRejectionReason('بيانات المدرسة غير مكتملة')}>بيانات غير مكتملة</Button>
+                  <Button variant="outline" size="sm" onClick={() => setSchoolRejectionReason('المدرسة مسجلة مسبقاً')}>مدرسة مسجلة مسبقاً</Button>
+                  <Button variant="outline" size="sm" onClick={() => setSchoolRejectionReason('بيانات المدير غير صحيحة')}>بيانات غير صحيحة</Button>
+                </div>
+              </div>
+            </div>
+            <DialogFooter className="flex-row-reverse gap-2">
+              <Button variant="outline" onClick={() => setShowSchoolRejectRequest(null)}>إلغاء</Button>
+              <Button
+                variant="destructive"
+                onClick={() => handleRejectSchoolRequest(showSchoolRejectRequest)}
+                disabled={!schoolRejectionReason.trim()}
+              >
+                <XCircle className="h-4 w-4 ms-2" />
+                رفض وإرسال
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         {/* Create User Wizard */}
         <CreateUserWizard
           open={showCreateWizard}

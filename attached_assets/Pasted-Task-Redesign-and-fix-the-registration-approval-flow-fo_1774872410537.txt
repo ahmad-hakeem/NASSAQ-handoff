@@ -1,0 +1,404 @@
+Task: Redesign and fix the registration approval flow for new Schools and Independent Teachers in NASSAQ, and enforce correct unified database behavior
+
+Severity: HIGH
+This affects platform governance, onboarding logic, user approval workflow, and data consistency.
+
+Problem Statement:
+Currently, any new registration coming from:
+1) a new School
+2) an Independent Teacher
+
+must automatically appear inside the Platform Admin account for review and approval.
+
+This behavior is currently missing / incomplete / inconsistent and must be implemented and fixed properly.
+
+Required Product Behavior:
+Any new registration through the public "تسجيل جديد" flow must NOT disappear or remain outside Platform Admin visibility.
+
+Instead, it must automatically appear in Platform Admin under "إدارة المستخدمين" inside a NEW dedicated tab structure.
+
+--------------------------------------------------
+1) REQUIRED UI CHANGE IN PLATFORM ADMIN
+--------------------------------------------------
+
+In Platform Admin → page "إدارة المستخدمين"
+
+Add a new tab next to the existing tabs:
+- مستخدمين
+- مستخدمو المدارس
+- طلبات المعلمين المستقلين
+
+Add a NEW tab:
+- طلبات المدارس
+
+This new tab must show all newly registered schools that are waiting for review/approval by Platform Admin.
+
+Final required tabs:
+1. مستخدمين
+2. مستخدمو المدارس
+3. طلبات المعلمين المستقلين
+4. طلبات المدارس
+
+Meaning of each tab:
+- مستخدمين:
+  General system/platform users as per current logic
+- مستخدمو المدارس:
+  Users already associated with approved/active schools
+- طلبات المعلمين المستقلين:
+  New independent teacher registration requests awaiting approval
+- طلبات المدارس:
+  New school registration requests awaiting approval
+
+--------------------------------------------------
+2) REQUIRED APPROVAL LOGIC
+--------------------------------------------------
+
+A) New School Registration:
+When a new school registers through "تسجيل جديد":
+- The request must be saved in the unified database immediately
+- The school request must appear automatically in:
+  Platform Admin → إدارة المستخدمين → طلبات المدارس
+- The record must have a clear status such as:
+  pending_approval
+  or equivalent standardized status
+- Platform Admin must be able to:
+  - approve
+  - reject
+  - optionally mark under review if this status exists in your architecture
+
+B) New Independent Teacher Registration:
+When an independent teacher registers through "تسجيل جديد":
+- The request must be saved in the unified database immediately
+- The request must appear automatically in:
+  Platform Admin → إدارة المستخدمين → طلبات المعلمين المستقلين
+- The record must carry the proper pending status
+- Platform Admin must be able to:
+  - approve
+  - reject
+  - optionally mark under review
+
+--------------------------------------------------
+3) CRITICAL SYSTEM RULE
+--------------------------------------------------
+
+NO new registration should bypass the unified database.
+NO new registration should exist only in frontend state.
+NO new registration should be invisible to Platform Admin.
+
+Every registration must be written immediately and consistently into the centralized unified database with the correct entity relationships and approval status.
+
+--------------------------------------------------
+4) REQUIRED UNIFIED DATABASE BEHAVIOR
+--------------------------------------------------
+
+You must define and enforce the correct system behavior for storing ALL registration requests inside the unified database.
+
+The system must behave as follows:
+
+A) Single Source of Truth
+The database must be the single source of truth for:
+- school registration requests
+- independent teacher registration requests
+- principal accounts
+- school entities
+- approval statuses
+- role assignment readiness
+- tenant readiness / activation state
+
+B) On registration submission, the system must persist data immediately
+When any registration form is submitted successfully:
+- data must be stored immediately in DB
+- request must get a unique ID
+- request must get a type
+- request must get a status
+- request must get timestamps
+- request must become visible in the correct Platform Admin approval tab
+
+C) No hidden temporary logic
+Do not rely on:
+- temporary frontend cache
+- only local component state
+- only session state
+- incomplete draft objects without DB persistence
+unless explicitly intended as draft mode
+
+D) Status-driven workflow
+Each registration request must have an explicit lifecycle state.
+
+Recommended statuses:
+- pending_approval
+- under_review
+- approved
+- rejected
+- archived (optional)
+
+E) Clear entity separation
+The system must distinguish clearly between:
+1. registration request record
+2. actual approved system entity
+
+Example:
+- A school registration request is not yet the same as a fully active approved school tenant
+- An independent teacher request is not yet the same as an active approved teacher account with full permissions
+
+This distinction is essential.
+
+--------------------------------------------------
+5) RECOMMENDED DATA MODEL / ENTITY LOGIC
+--------------------------------------------------
+
+Implement or align the system around a proper approval-driven model.
+
+For School Registration:
+Store at minimum:
+
+SchoolRegistrationRequest:
+- id
+- request_type = school
+- school_name
+- school_name_ar if applicable
+- principal_name
+- principal_email
+- principal_phone
+- school_phone
+- school_address
+- city
+- country
+- requested_plan if applicable
+- registration_source = public_signup
+- status = pending_approval
+- submitted_at
+- reviewed_at
+- reviewed_by
+- review_notes
+- linked_school_id (null until approved if that is your architecture)
+- linked_principal_user_id (may be pre-created or null depending on architecture)
+- payload_snapshot / normalized data object
+- created_at
+- updated_at
+
+For Independent Teacher Registration:
+IndependentTeacherRegistrationRequest:
+- id
+- request_type = independent_teacher
+- full_name
+- email
+- phone
+- specialization / subjects if applicable
+- city / country if applicable
+- registration_source = public_signup
+- status = pending_approval
+- submitted_at
+- reviewed_at
+- reviewed_by
+- review_notes
+- linked_user_id (null until approved if needed)
+- payload_snapshot / normalized data object
+- created_at
+- updated_at
+
+Important:
+If your current architecture uses existing collections/tables instead of separate request tables, that is acceptable ONLY if the logic is clean, explicit, and approval-safe.
+But the approval state must remain fully traceable and not ambiguous.
+
+--------------------------------------------------
+6) APPROVAL ACTION BEHAVIOR
+--------------------------------------------------
+
+A) When Platform Admin approves a school request:
+The system must do all required activation logic safely:
+- create or finalize school entity
+- create or finalize tenant / SchoolId
+- create or activate principal user
+- link principal to school
+- move request status to approved
+- ensure school appears in correct admin school views
+- ensure approved users move into the correct user lists
+
+B) When Platform Admin rejects a school request:
+- request status becomes rejected
+- review metadata saved
+- no active school tenant should be created unless architecture intentionally pre-created draft entities
+- rejected request must remain traceable historically
+
+C) When Platform Admin approves an independent teacher request:
+- create or activate teacher user account
+- assign correct role
+- status becomes approved
+- ensure visibility in correct user management views
+
+D) When Platform Admin rejects an independent teacher request:
+- request status becomes rejected
+- save reviewed_by, reviewed_at, notes
+- keep historical trace
+
+--------------------------------------------------
+7) REQUIRED PAGE / TAB BEHAVIOR
+--------------------------------------------------
+
+On "إدارة المستخدمين":
+The new tab "طلبات المدارس" must include:
+- school name
+- principal name
+- email
+- phone
+- submitted date
+- status
+- quick actions:
+  - approve
+  - reject
+  - view details
+
+The tab "طلبات المعلمين المستقلين" must include equivalent data relevant to teachers.
+
+Both tabs should support:
+- filtering by status
+- search
+- sorting by latest submitted
+- viewing request details
+- clear empty state if no requests exist
+
+--------------------------------------------------
+8) REQUIRED BACKEND LOGIC
+--------------------------------------------------
+
+You must fix and implement all backend logic needed for this workflow.
+
+Check and enforce:
+1. Registration endpoint stores request correctly
+2. Request type is correctly classified:
+   - school
+   - independent_teacher
+3. Status defaults to pending_approval
+4. Platform Admin listing endpoint returns correct pending requests
+5. Approval/rejection endpoints are implemented safely
+6. Approval performs all downstream entity creation/linking consistently
+7. No orphan entities
+8. No partial approval flow
+9. Proper validation and error handling
+
+--------------------------------------------------
+9) REQUIRED FRONTEND LOGIC
+--------------------------------------------------
+
+You must also fix and implement frontend behavior:
+
+1. Public registration flow:
+- submit correctly to backend
+- show success message indicating request is submitted for review
+- do not pretend the account is active if approval is still pending
+
+2. Platform Admin:
+- add new tab "طلبات المدارس"
+- load data from correct endpoint
+- show statuses and actions
+- update UI immediately after approval/rejection
+- handle loading, empty, error, and success states clearly
+
+--------------------------------------------------
+10) REQUIRED UNIFIED DATABASE PRINCIPLES
+--------------------------------------------------
+
+The unified database must follow these rules:
+
+1. Every new registration is recorded centrally
+2. Every request has unique identity and lifecycle state
+3. Every approval action is traceable
+4. No data duplication without purpose
+5. No mixing between pending requests and active production entities unless explicitly modeled
+6. Every approved entity must map cleanly to:
+   - user
+   - role
+   - school if applicable
+   - tenant if applicable
+7. Every rejected request must remain historically visible for audit and admin review
+8. Timestamps and reviewed metadata are mandatory
+9. Request records must be queryable by type and status
+10. Platform Admin must always have visibility over all pending requests
+
+--------------------------------------------------
+11) ROOT-CAUSE ANALYSIS REQUIREMENT
+--------------------------------------------------
+
+Before implementing, investigate whether the current problem comes from:
+- missing DB persistence
+- request saved but filtered out
+- wrong status value
+- missing admin tab / endpoint
+- school registration directly creating entity without approval workflow
+- teacher request not categorized correctly
+- inconsistent data model between school and teacher registrations
+- frontend posting wrong request type
+- backend not normalizing payload correctly
+
+Fix the ROOT CAUSE, not only the display issue.
+
+--------------------------------------------------
+12) TESTING REQUIREMENTS (MANDATORY)
+--------------------------------------------------
+
+After implementation, test all of the following:
+
+A) New School Registration:
+1. Submit a new school from public registration
+2. Confirm request is stored in DB
+3. Confirm status = pending_approval
+4. Confirm request appears in:
+   Platform Admin → إدارة المستخدمين → طلبات المدارس
+
+B) Approve School Request:
+1. Approve from Platform Admin
+2. Confirm school entity becomes active/finalized
+3. Confirm principal is linked correctly
+4. Confirm tenant / SchoolId is valid
+5. Confirm request status becomes approved
+
+C) Reject School Request:
+1. Reject from Platform Admin
+2. Confirm request status becomes rejected
+3. Confirm no invalid active tenant is created
+
+D) New Independent Teacher Registration:
+1. Submit via public registration
+2. Confirm request saved in DB
+3. Confirm request appears in:
+   Platform Admin → إدارة المستخدمين → طلبات المعلمين المستقلين
+
+E) Approve / Reject Independent Teacher Request:
+1. Confirm lifecycle works correctly
+2. Confirm role activation is correct
+3. Confirm rejected state is traceable
+
+F) Refresh / Reload:
+- data must persist correctly
+- requests must remain visible in correct tab
+
+G) Edge Cases:
+- duplicate email
+- incomplete payload
+- approval failure
+- partial DB write prevention
+- invalid request type
+
+--------------------------------------------------
+13) OUTPUT REQUIRED
+--------------------------------------------------
+
+After implementation, provide:
+
+1. Root cause of the current issue
+2. Final proposed approval architecture
+3. Exact DB/entity model used
+4. Exact files/components/endpoints modified
+5. How school requests are stored
+6. How independent teacher requests are stored
+7. How approval converts request into active entity
+8. Test results for all scenarios
+9. Any migration or normalization done to old data
+
+CRITICAL REQUIREMENTS:
+- This must be solved permanently, not visually patched
+- Do not implement a fake tab without real DB-backed logic
+- Do not mix pending requests with active entities carelessly
+- Do not allow registrations to become invisible to Platform Admin
+- The solution must be scalable, structured, and production-safe
