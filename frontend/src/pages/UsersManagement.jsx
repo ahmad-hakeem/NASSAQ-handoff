@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { Sidebar } from '../components/layout/Sidebar';
 import { Button } from '../components/ui/button';
@@ -178,16 +178,25 @@ const APPROVAL_TYPE_CONFIG = {
 
 export default function UsersManagement() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { nassaqError, nassaqWarning } = useNassaqAlert();
   const isRTL = true;
   
+  const initialTab = useMemo(() => {
+    const tabParam = searchParams.get('tab');
+    if (!tabParam) return 'users';
+    const validTabs = ['users', 'school-users', ...Object.values(APPROVAL_TYPE_CONFIG).map(c => c.tabValue)];
+    return validTabs.includes(tabParam) ? tabParam : 'users';
+  }, [searchParams]);
+  
   // State
   const [users, setUsers] = useState([]);
-  const [schoolUsers, setSchoolUsers] = useState({}); // Users grouped by school
-  const [schools, setSchools] = useState([]); // List of schools
+  const [schoolUsers, setSchoolUsers] = useState({});
+  const [schools, setSchools] = useState([]);
   const [requestsByType, setRequestsByType] = useState({});
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('users');
+  const [activeTab, setActiveTab] = useState(initialTab);
+  useEffect(() => { setActiveTab(initialTab); }, [initialTab]);
   const [requestFilters, setRequestFilters] = useState({});
   
   // Stats
@@ -353,13 +362,17 @@ export default function UsersManagement() {
   
   const fetchRequestsByType = useCallback(async (requestType) => {
     try {
+      console.log(`[NASSAQ:ApprovalQueue] Fetching requests for type="${requestType}"`);
       const response = await api.get('/api/registration-requests', {
         params: { account_type: requestType }
       });
       const requests = response.data?.requests || response.data || [];
+      console.log(`[NASSAQ:ApprovalQueue] Loaded ${requests.length} request(s) for type="${requestType}"`, 
+        requests.map(r => ({ id: r.id?.substring(0,8), status: r.status, name: r.full_name || r.school_name }))
+      );
       setRequestsByType(prev => ({ ...prev, [requestType]: requests }));
     } catch (error) {
-      console.error(`Error fetching ${requestType} requests:`, error);
+      console.error(`[NASSAQ:ApprovalQueue] FAILED to fetch ${requestType} requests:`, error?.response?.status, error?.message);
       setRequestsByType(prev => ({ ...prev, [requestType]: [] }));
     }
   }, [api]);

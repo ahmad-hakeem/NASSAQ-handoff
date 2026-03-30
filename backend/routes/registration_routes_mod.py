@@ -145,6 +145,7 @@ async def create_registration_request(request_data: RegistrationRequest):
     }
     
     await db.registration_requests.insert_one(request_doc)
+    logger.info(f"[ApprovalQueue] Created registration request id={request_id[:8]}… type={request_data.account_type} status=pending_review")
 
     try:
         audit_entry = {
@@ -221,6 +222,7 @@ async def get_registration_requests(
         query["account_type"] = account_type
     
     requests = await db.registration_requests.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    logger.info(f"[ApprovalQueue] GET /registration-requests query={query} → {len(requests)} result(s)")
     return {"requests": requests, "total": len(requests)}
 
 @router.get("/registration-requests/{request_id}")
