@@ -1,6 +1,6 @@
 """
 NASSAQ Route Module: Registration requests
-Auto-consolidated during Phase 8 modularization.
+Unified Approval Engine API endpoints.
 """
 from fastapi import APIRouter, HTTPException, Depends, status, Header, Query, Body, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -31,9 +31,7 @@ router = APIRouter()
 
 
 
-# ============== HELPER: FUZZY SCHOOL NAME MATCHING ==============
 def _normalize_arabic(text: str) -> str:
-    """Normalize Arabic text for fuzzy comparison"""
     if not text:
         return ""
     text = text.strip()
@@ -44,7 +42,6 @@ def _normalize_arabic(text: str) -> str:
     return text.lower()
 
 def _fuzzy_similarity(a: str, b: str) -> float:
-    """Simple fuzzy similarity ratio between two strings (0-1)"""
     a, b = _normalize_arabic(a), _normalize_arabic(b)
     if not a or not b:
         return 0.0
@@ -61,7 +58,6 @@ def _fuzzy_similarity(a: str, b: str) -> float:
 
 @router.get("/registration-requests/check-school-name")
 async def check_school_name(name: str = Query(..., min_length=2)):
-    """Check if a similar school name already exists (fuzzy match)"""
     normalized = _normalize_arabic(name)
     if len(normalized) < 2:
         return {"similar_schools": [], "is_duplicate": False}
@@ -103,7 +99,6 @@ async def check_school_name(name: str = Query(..., min_length=2)):
     }
 
 
-# ============== REGISTRATION REQUESTS ROUTES ==============
 @router.post("/registration-requests", response_model=RegistrationRequestResponse)
 async def create_registration_request(request_data: RegistrationRequest):
     """Create a new registration request for admin review"""
@@ -136,16 +131,36 @@ async def create_registration_request(request_data: RegistrationRequest):
 
     request_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
+    submission_data = request_data.model_dump()
+
     request_doc = {
         "id": request_id,
-        **request_data.model_dump(),
+        **submission_data,
         "status": "pending_review",
+        "source": "public_signup",
+        "payload_snapshot": submission_data,
+        "linked_entity_type": None,
+        "linked_entity_id": None,
+        "linked_user_id": None,
+        "linked_school_id": None,
+        "review_notes": None,
+        "reviewed_at": None,
+        "reviewed_by": None,
+        "priority": "normal",
         "created_at": now,
         "updated_at": now
     }
     
     await db.registration_requests.insert_one(request_doc)
-    logger.info(f"[ApprovalQueue] Created registration request id={request_id[:8]}… type={request_data.account_type} status=pending_review")
+    logger.info(f"[ApprovalQueue] Created registration request id={request_id[:8]}… type={request_data.account_type} status=pending_review source=public_signup")
+
+    try:
+        from engines.approval_engine import _emit_event, _get_db
+        await _emit_event(_get_db(), "approval_request_created", request_id, request_data.account_type,
+                          status_after="pending_review",
+                          details={"source": "public_signup"})
+    except Exception as e:
+        logger.error(f"Failed to emit request_created event: {e}")
 
     try:
         audit_entry = {
@@ -158,9 +173,7 @@ async def create_registration_request(request_data: RegistrationRequest):
             "actor_id": None,
             "details": {
                 "account_type": request_data.account_type,
-                "phone": request_data.phone,
-                "email": request_data.email,
-                "school_name": request_data.school_name
+                "source": "public_signup",
             },
             "timestamp": now,
             "created_at": now
@@ -212,14 +225,17 @@ async def create_registration_request(request_data: RegistrationRequest):
 async def get_registration_requests(
     status: Optional[str] = None,
     account_type: Optional[str] = None,
+    source: Optional[str] = None,
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
-    """Get all registration requests (admin only)"""
+    """Get all registration requests (admin only) with optional filters"""
     query = {}
     if status:
         query["status"] = status
     if account_type:
         query["account_type"] = account_type
+    if source:
+        query["source"] = source
     
     requests = await db.registration_requests.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
     logger.info(f"[ApprovalQueue] GET /registration-requests query={query} → {len(requests)} result(s)")
@@ -230,26 +246,12 @@ async def get_registration_request(
     request_id: str,
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
-    """Get a single registration request by ID"""
-    request = await db.registration_requests.find_one({"id": request_id}, {"_id": 0})
-    if not request:
+    """Get a single registration request with full details, review history, and lifecycle events"""
+    from engines.approval_engine import approval_engine
+    details = await approval_engine.get_request_details(request_id)
+    if not details:
         raise HTTPException(status_code=404, detail="طلب التسجيل غير موجود")
-    return request
-
-@router.put("/registration-requests/{request_id}/status")
-async def update_registration_request_status(
-    request_id: str,
-    status: str,
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
-):
-    """Update registration request status (admin only) - Simple status update"""
-    result = await db.registration_requests.update_one(
-        {"id": request_id},
-        {"$set": {"status": status, "updated_at": datetime.now(timezone.utc).isoformat()}}
-    )
-    if result.modified_count == 0:
-        raise HTTPException(status_code=404, detail="طلب التسجيل غير موجود")
-    return {"message": "تم تحديث حالة الطلب"}
+    return details
 
 
 @router.get("/approval-types")
@@ -272,7 +274,8 @@ async def approve_request_unified(
     based on the request's account_type field.
     """
     from engines.approval_engine import approval_engine
-    result = await approval_engine.approve(request_id, current_user)
+    notes = data.admin_note or ''
+    result = await approval_engine.approve(request_id, current_user, notes=notes)
     if not result.success:
         raise HTTPException(status_code=400, detail=result.message)
     response = {
@@ -321,14 +324,59 @@ async def reject_request_unified(
     data: RejectRequestData,
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
-    """
-    Unified rejection endpoint — works for any request type.
-    """
+    """Unified rejection endpoint — works for any request type."""
     if not data.reason or len(data.reason.strip()) < 5:
         raise HTTPException(status_code=400, detail="يرجى إدخال سبب الرفض")
 
     from engines.approval_engine import approval_engine
     result = await approval_engine.reject(request_id, data.reason.strip(), current_user)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("detail", "خطأ غير متوقع"))
+    return result
+
+
+@router.post("/registration-requests/{request_id}/under-review")
+async def mark_under_review_unified(
+    request_id: str,
+    data: dict = Body(default={}),
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+):
+    """Mark a request as under review"""
+    notes = (data.get("notes") or "").strip()
+
+    from engines.approval_engine import approval_engine
+    result = await approval_engine.mark_under_review(request_id, notes, current_user)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("detail", "خطأ غير متوقع"))
+    return result
+
+
+@router.post("/registration-requests/{request_id}/archive")
+async def archive_request_unified(
+    request_id: str,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+):
+    """Archive a completed (approved/rejected) request"""
+    from engines.approval_engine import approval_engine
+    result = await approval_engine.archive(request_id, current_user)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("detail", "خطأ غير متوقع"))
+    return result
+
+
+@router.post("/registration-requests/{request_id}/cancel")
+async def cancel_request_unified(
+    request_id: str,
+    data: dict = Body(default={}),
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+):
+    """Cancel a pending request"""
+    reason = (data.get("reason") or "").strip()
+    if len(reason) < 5:
+        raise HTTPException(status_code=400, detail="يرجى إدخال سبب الإلغاء")
+
+    from engines.approval_engine import approval_engine
+    result = await approval_engine.cancel(request_id, reason, current_user)
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("detail", "خطأ غير متوقع"))
     return result
@@ -340,9 +388,7 @@ async def request_more_info_unified(
     data: RequestMoreInfoData,
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
-    """
-    Unified info-request endpoint — works for any request type.
-    """
+    """Unified info-request endpoint — works for any request type."""
     if not data.message or len(data.message.strip()) < 10:
         raise HTTPException(status_code=400, detail="يرجى إدخال المعلومات المطلوبة بشكل واضح")
 
@@ -359,40 +405,85 @@ async def submit_additional_info(
     info: dict
 ):
     """
-    Submit additional information (called by teacher):
-    1. Update request with new info
-    2. Change status to pending_review
+    Submit additional information (called by applicant):
+    Transition from info_required → pending_review
     """
+    from engines.approval_engine import validate_transition
+
     request = await db.registration_requests.find_one({"id": request_id}, {"_id": 0})
     if not request:
         raise HTTPException(status_code=404, detail="طلب التسجيل غير موجود")
     
-    if request.get("status") not in ("more_info_requested", "info_required"):
+    current_status = request.get("status", "")
+    valid, err_msg = validate_transition(current_status, "pending_review")
+    if not valid:
         raise HTTPException(status_code=400, detail="لا يوجد طلب معلومات معلق")
     
     now = datetime.now(timezone.utc).isoformat()
     
+    ALLOWED_INFO_FIELDS = {"national_id", "email", "phone", "specialization", "subject"}
     update_data = {
         "status": "pending_review",
-        "additional_info_response": info.get("response", ""),
+        "additional_info_response": str(info.get("response", ""))[:2000],
         "additional_info_submitted_at": now,
         "updated_at": now
     }
     
-    # Update any provided fields
-    for key in ["national_id", "email", "phone", "specialization", "subject"]:
+    for key in ALLOWED_INFO_FIELDS:
         if info.get(key):
-            update_data[key] = info[key]
+            update_data[key] = str(info[key])[:200]
     
-    await db.registration_requests.update_one(
-        {"id": request_id},
+    update_result = await db.registration_requests.update_one(
+        {"id": request_id, "status": current_status},
         {"$set": update_data}
     )
+    if update_result.modified_count == 0:
+        raise HTTPException(status_code=409, detail="الطلب تغيّرت حالته — يرجى المحاولة مرة أخرى")
+
+    try:
+        from engines.approval_engine import _emit_event, _get_db
+        await _emit_event(_get_db(), "approval_request_info_submitted", request_id,
+                          request.get("account_type", "unknown"),
+                          status_before=current_status, status_after="pending_review")
+    except Exception:
+        pass
     
     return {
         "success": True,
         "message": "تم إرسال المعلومات الإضافية بنجاح وسيتم مراجعة طلبك قريباً"
     }
+
+
+@router.get("/approval-queue")
+async def get_approval_queue(
+    status: Optional[str] = None,
+    request_type: Optional[str] = None,
+    source: Optional[str] = None,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+):
+    """Consolidated approval queue endpoint"""
+    from engines.approval_engine import approval_engine
+    filters = {}
+    if status:
+        filters["status"] = status
+    if request_type:
+        filters["request_type"] = request_type
+    if source:
+        filters["source"] = source
+    result = await approval_engine.get_queue(filters)
+    return result
+
+
+@router.get("/approval-events/{request_id}")
+async def get_approval_events(
+    request_id: str,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+):
+    """Get lifecycle events for a specific approval request"""
+    events = await db.approval_events.find(
+        {"request_id": request_id}, {"_id": 0}
+    ).sort("timestamp", -1).to_list(100)
+    return {"events": events, "total": len(events)}
 
 
 @router.post("/student-enrollment")
@@ -421,6 +512,7 @@ async def create_student_enrollment(
         "previous_school": data.get("previous_school"),
         "health_notes": data.get("health_notes"),
         "status": "pending",
+        "source": "parent_portal",
         "submitted_by": current_user["id"],
         "submitted_at": now,
         "updated_at": now

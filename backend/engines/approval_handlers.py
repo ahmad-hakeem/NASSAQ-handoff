@@ -8,7 +8,8 @@ Each handler converts a pending registration request into active entities.
 To add a new request type:
 1. Create a class extending ApprovalHandler
 2. Implement create_entities()
-3. Register in server.py via approval_engine.register()
+3. Optionally implement verify_after_approve()
+4. Register in server.py via approval_engine.register()
 """
 
 from datetime import datetime, timezone
@@ -200,6 +201,25 @@ class TeacherApprovalHandler(ApprovalHandler):
             message_template=message_template,
         )
 
+    async def verify_after_approve(self, request: dict, result: ApprovalResult) -> Optional[str]:
+        database = _get_db()
+        user_id = result.created_entities.get("user_id")
+        teacher_id = result.created_entities.get("teacher_id")
+
+        user = await database.users.find_one({"id": user_id})
+        if not user:
+            return f"Post-approval verification failed: user {user_id} not found in users collection"
+
+        if not user.get("is_active"):
+            return f"Post-approval verification failed: user {user_id} is not active"
+
+        teacher = await database.teachers.find_one({"teacher_id": teacher_id})
+        if not teacher:
+            return f"Post-approval verification failed: teacher record {teacher_id} not found"
+
+        logger.info(f"Teacher verification passed: user_id={user_id}, teacher_id={teacher_id}")
+        return None
+
 
 class SchoolApprovalHandler(ApprovalHandler):
     request_type = "school"
@@ -389,3 +409,28 @@ class SchoolApprovalHandler(ApprovalHandler):
             },
             message_template=message_template,
         )
+
+    async def verify_after_approve(self, request: dict, result: ApprovalResult) -> Optional[str]:
+        database = _get_db()
+        school_id = result.created_entities.get("school_id")
+        principal_id = result.created_entities.get("principal_id")
+
+        school = await database.schools.find_one({"id": school_id})
+        if not school:
+            return f"Post-approval verification failed: school {school_id} not found"
+
+        if school.get("status") != "active":
+            return f"Post-approval verification failed: school {school_id} is not active"
+
+        principal = await database.users.find_one({"id": principal_id})
+        if not principal:
+            return f"Post-approval verification failed: principal user {principal_id} not found"
+
+        if principal.get("tenant_id") != school_id:
+            return f"Post-approval verification failed: principal not linked to school"
+
+        if not principal.get("is_active"):
+            return f"Post-approval verification failed: principal user is not active"
+
+        logger.info(f"School verification passed: school_id={school_id}, principal_id={principal_id}")
+        return None

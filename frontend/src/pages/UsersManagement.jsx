@@ -73,13 +73,15 @@ const ACCOUNT_STATUSES = [
 
 const REQUEST_STATUSES = [
   { id: 'all', name: 'جميع الطلبات', name_en: 'All Requests', color: '' },
-  { id: 'approved', name: 'المعتمدين', name_en: 'Approved', color: 'bg-green-500' },
   { id: 'pending', name: 'قيد الاعتماد', name_en: 'Pending Review', color: 'bg-yellow-500' },
+  { id: 'under_review', name: 'تحت المراجعة', name_en: 'Under Review', color: 'bg-orange-500' },
   { id: 'info_required', name: 'بانتظار معلومات', name_en: 'Info Required', color: 'bg-blue-500' },
+  { id: 'approved', name: 'المعتمدين', name_en: 'Approved', color: 'bg-green-500' },
   { id: 'rejected', name: 'المرفوضين', name_en: 'Rejected', color: 'bg-red-500' },
+  { id: 'archived', name: 'مؤرشف', name_en: 'Archived', color: 'bg-gray-500' },
 ];
 
-const PENDING_STATUSES = ['pending', 'pending_review', 'info_required'];
+const PENDING_STATUSES = ['pending', 'pending_review', 'under_review', 'info_required', 'more_info_requested'];
 
 const APPROVAL_TYPE_CONFIG = {
   teacher: {
@@ -144,12 +146,7 @@ const APPROVAL_TYPE_CONFIG = {
     rejectTitle: (r) => `رفض طلب مدرسة ${r?.school_name || ''}`,
     quickReasons: ['بيانات المدرسة غير مكتملة', 'المدرسة مسجلة مسبقاً', 'بيانات المدير غير صحيحة'],
     showMoreInfoAction: false,
-    statusFilters: [
-      { id: 'all', name: 'جميع الطلبات', color: '' },
-      { id: 'approved', name: 'المعتمدة', color: 'bg-green-500' },
-      { id: 'pending', name: 'قيد المراجعة', color: 'bg-yellow-500' },
-      { id: 'rejected', name: 'المرفوضة', color: 'bg-red-500' },
-    ],
+    statusFilters: REQUEST_STATUSES,
     confirmFields: (r) => [
       { label: 'اسم المدرسة', value: r.school_name },
       { label: 'مدير المدرسة', value: r.full_name },
@@ -613,6 +610,46 @@ export default function UsersManagement() {
     }
     setShowMoreInfoRequest(null);
     setMoreInfoMessage('');
+  };
+
+  const handleMarkUnderReview = async (request, requestType) => {
+    try {
+      const response = await api.post(`/api/registration-requests/${request.id}/under-review`, {
+        notes: '',
+      });
+      if (response.data?.success) {
+        toast.success('تم وضع الطلب تحت المراجعة');
+        fetchRequestsByType(requestType);
+      }
+    } catch (error) {
+      console.error(`Error marking ${requestType} request under review:`, error);
+      nassaqError(error.response?.data?.detail || 'حدث خطأ أثناء تحديث حالة الطلب');
+    }
+  };
+
+  const handleArchiveRequest = async (request, requestType) => {
+    try {
+      const response = await api.post(`/api/registration-requests/${request.id}/archive`);
+      if (response.data?.success) {
+        toast.success('تم أرشفة الطلب');
+        fetchRequestsByType(requestType);
+      }
+    } catch (error) {
+      console.error(`Error archiving ${requestType} request:`, error);
+      nassaqError(error.response?.data?.detail || 'حدث خطأ أثناء أرشفة الطلب');
+    }
+  };
+
+  const [requestDetailsDialog, setRequestDetailsDialog] = useState(null);
+
+  const handleViewRequestDetails = async (request) => {
+    try {
+      const response = await api.get(`/api/registration-requests/${request.id}`);
+      setRequestDetailsDialog(response.data);
+    } catch (error) {
+      console.error('Error fetching request details:', error);
+      nassaqError('حدث خطأ أثناء تحميل تفاصيل الطلب');
+    }
   };
 
   const generateTempPassword = () => {
@@ -1265,7 +1302,7 @@ export default function UsersManagement() {
                               {status.id !== 'all' && (
                                 <Badge variant="secondary" className="ms-1 h-5 w-5 p-0 flex items-center justify-center text-[10px]">
                                   {status.id === 'pending'
-                                    ? requests.filter(r => r.status === 'pending' || r.status === 'pending_review').length
+                                    ? requests.filter(r => PENDING_STATUSES.includes(r.status)).length
                                     : requests.filter(r => r.status === status.id).length}
                                 </Badge>
                               )}
@@ -1287,18 +1324,19 @@ export default function UsersManagement() {
                         <div className="space-y-4">
                           {filtered.map((request) => {
                             const isPending = PENDING_STATUSES.includes(request.status);
-                            const statusLabel = request.status === 'approved' ? 'معتمد'
-                              : request.status === 'rejected' ? 'مرفوض'
-                              : request.status === 'info_required' ? 'بانتظار معلومات'
-                              : 'قيد المراجعة';
-                            const statusColor = request.status === 'approved' ? 'bg-green-500'
-                              : request.status === 'rejected' ? 'bg-red-500'
-                              : request.status === 'info_required' ? 'bg-blue-500'
-                              : 'bg-yellow-500';
-                            const borderClass = request.status === 'approved' ? 'border-green-200 bg-green-50/30'
-                              : request.status === 'rejected' ? 'border-red-200 bg-red-50/30'
-                              : request.status === 'info_required' ? 'border-blue-200 bg-blue-50/30'
-                              : 'border-yellow-200 bg-yellow-50/30';
+                            const STATUS_MAP = {
+                              approved: { label: 'معتمد', color: 'bg-green-500', border: 'border-green-200 bg-green-50/30' },
+                              rejected: { label: 'مرفوض', color: 'bg-red-500', border: 'border-red-200 bg-red-50/30' },
+                              under_review: { label: 'تحت المراجعة', color: 'bg-orange-500', border: 'border-orange-200 bg-orange-50/30' },
+                              info_required: { label: 'بانتظار معلومات', color: 'bg-blue-500', border: 'border-blue-200 bg-blue-50/30' },
+                              more_info_requested: { label: 'بانتظار معلومات', color: 'bg-blue-500', border: 'border-blue-200 bg-blue-50/30' },
+                              archived: { label: 'مؤرشف', color: 'bg-gray-500', border: 'border-gray-200 bg-gray-50/30' },
+                              cancelled: { label: 'ملغي', color: 'bg-gray-400', border: 'border-gray-200 bg-gray-50/30' },
+                            };
+                            const statusInfo = STATUS_MAP[request.status] || { label: 'قيد المراجعة', color: 'bg-yellow-500', border: 'border-yellow-200 bg-yellow-50/30' };
+                            const statusLabel = statusInfo.label;
+                            const statusColor = statusInfo.color;
+                            const borderClass = statusInfo.border;
                             const fields = config.cardFields(request);
                             return (
                               <Card key={request.id} className={`border-2 ${borderClass}`}>
@@ -1327,35 +1365,71 @@ export default function UsersManagement() {
                                         ))}
                                       </div>
                                     </div>
-                                    {isPending && (
-                                      <div className="flex flex-wrap lg:flex-col gap-2">
-                                        <Button
-                                          className="bg-green-600 hover:bg-green-700 flex-1 lg:flex-none"
-                                          onClick={() => setApprovalConfirm({ request, requestType })}
-                                        >
-                                          <CheckCircle2 className="h-4 w-4 ms-2" />
-                                          موافقة
-                                        </Button>
-                                        <Button
-                                          variant="destructive"
-                                          className="flex-1 lg:flex-none"
-                                          onClick={() => setRejectDialog({ request, requestType })}
-                                        >
-                                          <XCircle className="h-4 w-4 ms-2" />
-                                          رفض
-                                        </Button>
-                                        {config.showMoreInfoAction && (
+                                    <div className="flex flex-wrap lg:flex-col gap-2">
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="flex-1 lg:flex-none"
+                                        onClick={() => handleViewRequestDetails(request)}
+                                      >
+                                        <Eye className="h-4 w-4 ms-2" />
+                                        تفاصيل
+                                      </Button>
+                                      {isPending && (
+                                        <>
                                           <Button
-                                            variant="outline"
-                                            className="flex-1 lg:flex-none"
-                                            onClick={() => setShowMoreInfoRequest(request)}
+                                            size="sm"
+                                            className="bg-green-600 hover:bg-green-700 flex-1 lg:flex-none"
+                                            onClick={() => setApprovalConfirm({ request, requestType })}
                                           >
-                                            <Info className="h-4 w-4 ms-2" />
-                                            طلب معلومات
+                                            <CheckCircle2 className="h-4 w-4 ms-2" />
+                                            موافقة
                                           </Button>
-                                        )}
-                                      </div>
-                                    )}
+                                          {request.status !== 'under_review' && (
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              className="flex-1 lg:flex-none border-orange-400 text-orange-600 hover:bg-orange-50"
+                                              onClick={() => handleMarkUnderReview(request, requestType)}
+                                            >
+                                              <Clock className="h-4 w-4 ms-2" />
+                                              تحت المراجعة
+                                            </Button>
+                                          )}
+                                          <Button
+                                            size="sm"
+                                            variant="destructive"
+                                            className="flex-1 lg:flex-none"
+                                            onClick={() => setRejectDialog({ request, requestType })}
+                                          >
+                                            <XCircle className="h-4 w-4 ms-2" />
+                                            رفض
+                                          </Button>
+                                          {config.showMoreInfoAction && (
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              className="flex-1 lg:flex-none"
+                                              onClick={() => setShowMoreInfoRequest(request)}
+                                            >
+                                              <Info className="h-4 w-4 ms-2" />
+                                              طلب معلومات
+                                            </Button>
+                                          )}
+                                        </>
+                                      )}
+                                      {(request.status === 'approved' || request.status === 'rejected') && (
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="flex-1 lg:flex-none"
+                                          onClick={() => handleArchiveRequest(request, requestType)}
+                                        >
+                                          <Archive className="h-4 w-4 ms-2" />
+                                          أرشفة
+                                        </Button>
+                                      )}
+                                    </div>
                                   </div>
                                 </CardContent>
                               </Card>
@@ -1839,6 +1913,151 @@ export default function UsersManagement() {
                 <Send className="h-4 w-4 ms-2" />
                 إرسال الطلب
               </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Request Details Dialog */}
+        <Dialog open={!!requestDetailsDialog} onOpenChange={() => setRequestDetailsDialog(null)}>
+          <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto" dir="rtl">
+            <DialogHeader>
+              <DialogTitle className="font-cairo flex items-center gap-2 flex-row-reverse justify-end">
+                <FileText className="h-5 w-5 text-brand-navy" />
+                تفاصيل الطلب
+              </DialogTitle>
+              <DialogDescription className="text-right">
+                {requestDetailsDialog?.account_type === 'teacher' ? 'طلب تسجيل معلم مستقل' : 
+                 requestDetailsDialog?.account_type === 'school' ? 'طلب تسجيل مدرسة' : 'طلب تسجيل'}
+              </DialogDescription>
+            </DialogHeader>
+            {requestDetailsDialog && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <Badge className={
+                    requestDetailsDialog.status === 'approved' ? 'bg-green-100 text-green-800' :
+                    requestDetailsDialog.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                    requestDetailsDialog.status === 'under_review' ? 'bg-orange-100 text-orange-800' :
+                    requestDetailsDialog.status === 'info_required' ? 'bg-blue-100 text-blue-800' :
+                    requestDetailsDialog.status === 'archived' ? 'bg-gray-100 text-gray-800' :
+                    'bg-yellow-100 text-yellow-800'
+                  }>
+                    {requestDetailsDialog.status === 'approved' ? 'معتمد' :
+                     requestDetailsDialog.status === 'rejected' ? 'مرفوض' :
+                     requestDetailsDialog.status === 'under_review' ? 'تحت المراجعة' :
+                     requestDetailsDialog.status === 'info_required' ? 'بانتظار معلومات' :
+                     requestDetailsDialog.status === 'archived' ? 'مؤرشف' :
+                     requestDetailsDialog.status === 'cancelled' ? 'ملغي' :
+                     'قيد الاعتماد'}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">{requestDetailsDialog.id?.substring(0, 8)}…</span>
+                </div>
+
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-cairo">بيانات المتقدم</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      {requestDetailsDialog.full_name && (
+                        <div><span className="text-muted-foreground">الاسم:</span> <span className="font-medium">{requestDetailsDialog.full_name}</span></div>
+                      )}
+                      {requestDetailsDialog.school_name && (
+                        <div><span className="text-muted-foreground">المدرسة:</span> <span className="font-medium">{requestDetailsDialog.school_name}</span></div>
+                      )}
+                      {(requestDetailsDialog.email || requestDetailsDialog.school_email) && (
+                        <div><span className="text-muted-foreground">البريد:</span> <span className="font-medium" dir="ltr">{requestDetailsDialog.school_email || requestDetailsDialog.email}</span></div>
+                      )}
+                      {(requestDetailsDialog.phone || requestDetailsDialog.school_phone) && (
+                        <div><span className="text-muted-foreground">الهاتف:</span> <span className="font-medium" dir="ltr">{requestDetailsDialog.school_phone || requestDetailsDialog.phone}</span></div>
+                      )}
+                      {requestDetailsDialog.subject && (
+                        <div><span className="text-muted-foreground">المادة:</span> <span className="font-medium">{requestDetailsDialog.subject}</span></div>
+                      )}
+                      {requestDetailsDialog.specialization && (
+                        <div><span className="text-muted-foreground">التخصص:</span> <span className="font-medium">{requestDetailsDialog.specialization}</span></div>
+                      )}
+                      {requestDetailsDialog.school_city && (
+                        <div><span className="text-muted-foreground">المدينة:</span> <span className="font-medium">{requestDetailsDialog.school_city}</span></div>
+                      )}
+                      {requestDetailsDialog.source && (
+                        <div><span className="text-muted-foreground">المصدر:</span> <span className="font-medium">{requestDetailsDialog.source === 'public_signup' ? 'تسجيل عام' : requestDetailsDialog.source}</span></div>
+                      )}
+                      <div><span className="text-muted-foreground">تاريخ الطلب:</span> <span className="font-medium">{formatDate(requestDetailsDialog.created_at)}</span></div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {requestDetailsDialog.linked_entity_id && (
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm font-cairo text-green-700">الكيان المنشأ</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        {requestDetailsDialog.linked_entity_type && (
+                          <div><span className="text-muted-foreground">النوع:</span> <span className="font-medium">{requestDetailsDialog.linked_entity_type}</span></div>
+                        )}
+                        {requestDetailsDialog.linked_school_id && (
+                          <div><span className="text-muted-foreground">معرف المدرسة:</span> <span className="font-medium font-mono text-xs" dir="ltr">{requestDetailsDialog.linked_school_id?.substring(0, 8)}…</span></div>
+                        )}
+                        {requestDetailsDialog.linked_user_id && (
+                          <div><span className="text-muted-foreground">معرف المستخدم:</span> <span className="font-medium font-mono text-xs" dir="ltr">{requestDetailsDialog.linked_user_id?.substring(0, 8)}…</span></div>
+                        )}
+                        {requestDetailsDialog.linked_school_code && (
+                          <div><span className="text-muted-foreground">رمز المدرسة:</span> <span className="font-medium font-mono">{requestDetailsDialog.linked_school_code}</span></div>
+                        )}
+                        {requestDetailsDialog.approved_by_name && (
+                          <div><span className="text-muted-foreground">وافق عليه:</span> <span className="font-medium">{requestDetailsDialog.approved_by_name}</span></div>
+                        )}
+                        {requestDetailsDialog.approved_at && (
+                          <div><span className="text-muted-foreground">تاريخ الموافقة:</span> <span className="font-medium">{formatDate(requestDetailsDialog.approved_at)}</span></div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {requestDetailsDialog.rejection_reason && (
+                  <Card className="border-red-200">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm font-cairo text-red-700">سبب الرفض</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-sm">{requestDetailsDialog.rejection_reason}</p>
+                      {requestDetailsDialog.rejected_by_name && (
+                        <p className="text-xs text-muted-foreground mt-2">بواسطة: {requestDetailsDialog.rejected_by_name} — {formatDate(requestDetailsDialog.rejected_at)}</p>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
+
+                {requestDetailsDialog.review_history?.length > 0 && (
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm font-cairo">سجل المراجعة</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {requestDetailsDialog.review_history.map((entry, idx) => (
+                          <div key={idx} className="flex items-start gap-3 text-sm border-b pb-2 last:border-0">
+                            <div className="flex-1">
+                              <div className="font-medium">{entry.action_by_name || 'النظام'}</div>
+                              <div className="text-muted-foreground text-xs">
+                                {entry.action?.replace(/_/g, ' ')} — {formatDate(entry.timestamp)}
+                              </div>
+                              {entry.details?.reason && <div className="text-xs mt-1">{entry.details.reason}</div>}
+                              {entry.details?.notes && <div className="text-xs mt-1">{entry.details.notes}</div>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setRequestDetailsDialog(null)}>إغلاق</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

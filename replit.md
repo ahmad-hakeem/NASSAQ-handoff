@@ -86,12 +86,17 @@ Each fix report must include: root cause, why it wasn't caught before, what chan
 - **Database**: MongoDB at `localhost:27017`, DB: `test_database`
 
 ### Unified Approval Engine
-- **Backend**: `backend/engines/approval_engine.py` — handler registry pattern; `approval_handlers.py` — Teacher + School handlers
-- **Registration**: `POST /registration-requests` saves to `registration_requests` collection with `account_type` + `status: pending_review`
-- **Approval**: `POST /registration-requests/{id}/approve` dispatches by `account_type` to registered handler
-- **Admin query**: `GET /registration-requests?account_type=school|teacher` returns filtered requests
-- **Frontend**: `UsersManagement.jsx` uses `APPROVAL_TYPE_CONFIG` — data-driven tabs, cards, dialogs for all request types
-- **State**: `requestsByType` map replaces separate `teacherRequests`/`schoolRequests`; `fetchAllRequests()` loads all types
+- **Backend**: `backend/engines/approval_engine.py` — handler registry + transition validation + structured event logging
+- **Handlers**: `backend/engines/approval_handlers.py` — Teacher + School handlers with `verify_after_approve()`
+- **Routes**: `backend/routes/registration_routes_mod.py` — all approval API endpoints
+- **Status Lifecycle**: `pending_review` → `under_review` → `approved`/`rejected` → `archived`. Also: `info_required` (from pending/under_review), `cancelled` (from pending states). Terminal: `{approved, rejected, cancelled, archived}`
+- **Transition Validation**: `VALID_TRANSITIONS` matrix in engine; `validate_transition()` blocks all invalid status changes
+- **Actions**: `approve`, `reject`, `mark_under_review`, `archive`, `cancel` — all with audit logging + lifecycle events
+- **Event Logging**: `approval_events` collection — structured lifecycle events via `_emit_event()` for all state changes
+- **Enriched Data Model**: Requests store `source`, `payload_snapshot`, `linked_entity_type/id`, `review_notes`, `priority`
+- **Post-Approval Verification**: `verify_after_approve()` checks entity creation succeeded; handler errors caught to prevent false approvals
+- **API Endpoints**: `POST /{id}/approve`, `POST /{id}/reject`, `POST /{id}/under-review`, `POST /{id}/archive`, `POST /{id}/cancel`, `GET /approval-queue`, `GET /approval-events/{id}`
+- **Frontend**: `UsersManagement.jsx` — request details dialog with review history + lifecycle events, action buttons for under-review/archive, status badges for all statuses
 - **Extensibility**: To add new type — create handler class, register in `server.py`, add config entry in `APPROVAL_TYPE_CONFIG`
 
 ### Form System Architecture
