@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sidebar } from '../components/layout/Sidebar';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -13,7 +13,8 @@ import axios from 'axios';
 import { toast } from 'sonner';
 import {
   Brain, Send, ArrowRight, Monitor, Loader2, CheckCircle2,
-  User, FileText, Sparkles, Wand2,
+  User, FileText, Sparkles, Wand2, MessageCircle, Zap,
+  Eye, Shield, Lightbulb, ThumbsUp, ArrowLeft,
 } from 'lucide-react';
 
 const authHeaders = () => {
@@ -125,6 +126,33 @@ const ACCOUNT_PAGES = {
   ],
 };
 
+const HAKIM_STEP_MESSAGES = [
+  [
+    { text: 'أهلاً! أنا حكيم، مساعدك الذكي 🧠', mood: 'wave' },
+    { text: 'أخبرني من أنت ونوع التحدي وسأساعدك في توجيهه للفريق المناسب', mood: 'think' },
+    { text: 'كلما كانت المعلومات دقيقة، كان تحليلي أفضل!', mood: 'tip' },
+  ],
+  [
+    { text: 'ممتاز! الآن صف التحدي بالتفصيل ✍️', mood: 'ready' },
+    { text: 'استخدم زر "تحسين بحكيم" وسأعيد صياغة النص ليكون أوضح', mood: 'tip' },
+    { text: 'الوصف الدقيق يساعدني في اكتشاف التحديات المشابهة', mood: 'think' },
+  ],
+  [
+    { text: 'راجع البيانات قبل الإرسال 👀', mood: 'review' },
+    { text: 'بمجرد الإرسال سأحلل التحدي وأقترح الأولوية والفريق المناسب', mood: 'ready' },
+    { text: 'سأبحث أيضاً عن تحديات مشابهة سابقة!', mood: 'think' },
+  ],
+];
+
+const HAKIM_MOOD_ICONS = {
+  wave: '👋',
+  think: '🤔',
+  tip: '💡',
+  ready: '✨',
+  review: '📋',
+  happy: '😊',
+  analyzing: '🔍',
+};
 
 export function ProductHubSubmitPage() {
   const { user } = useAuth();
@@ -133,6 +161,10 @@ export function ProductHubSubmitPage() {
   const [submitting, setSubmitting] = useState(false);
   const [step, setStep] = useState(0);
   const [improvingField, setImprovingField] = useState(null);
+  const [hakimMsgIndex, setHakimMsgIndex] = useState(0);
+  const [hakimVisible, setHakimVisible] = useState(true);
+  const [hakimTyping, setHakimTyping] = useState(false);
+  const [hakimReaction, setHakimReaction] = useState(null);
 
   const [form, setForm] = useState({
     issue_type: '',
@@ -154,7 +186,6 @@ export function ProductHubSubmitPage() {
     additional_info: '',
   });
 
-
   useEffect(() => {
     axios.get('/api/product-hub/config', { headers: authHeaders() })
       .then(r => setConfig(r.data))
@@ -167,6 +198,30 @@ export function ProductHubSubmitPage() {
     }
   }, [user]);
 
+  useEffect(() => {
+    setHakimMsgIndex(0);
+    setHakimTyping(true);
+    const t = setTimeout(() => setHakimTyping(false), 800);
+    return () => clearTimeout(t);
+  }, [step]);
+
+  useEffect(() => {
+    const msgs = HAKIM_STEP_MESSAGES[step] || [];
+    if (msgs.length <= 1) return;
+    const interval = setInterval(() => {
+      setHakimTyping(true);
+      setTimeout(() => {
+        setHakimMsgIndex(prev => (prev + 1) % msgs.length);
+        setHakimTyping(false);
+      }, 600);
+    }, 6000);
+    return () => clearInterval(interval);
+  }, [step]);
+
+  const triggerHakimReaction = useCallback((type) => {
+    setHakimReaction(type);
+    setTimeout(() => setHakimReaction(null), 2500);
+  }, []);
 
   const handleChange = (field, value) => {
     setForm(f => ({ ...f, [field]: value }));
@@ -174,6 +229,7 @@ export function ProductHubSubmitPage() {
 
   const handleAccountTypeChange = (value) => {
     setForm(f => ({ ...f, account_type: value, page: '' }));
+    triggerHakimReaction('account_selected');
   };
 
   const availablePages = ACCOUNT_PAGES[form.account_type] || [];
@@ -193,15 +249,17 @@ export function ProductHubSubmitPage() {
       if (res.data.improved_text && res.data.improved_text !== text.trim()) {
         setForm(f => ({ ...f, [fieldName]: res.data.improved_text }));
         toast.success('حكيم حسّن النص بنجاح');
+        triggerHakimReaction('improved');
       } else {
         toast.success('النص واضح ولا يحتاج تحسين');
+        triggerHakimReaction('already_good');
       }
     } catch {
       toast.error('فشل تحسين النص');
     } finally {
       setImprovingField(null);
     }
-  }, [form]);
+  }, [form, triggerHakimReaction]);
 
   const validateStep = (stepIdx) => {
     if (stepIdx === 0) {
@@ -222,6 +280,7 @@ export function ProductHubSubmitPage() {
     const err = validateStep(step);
     if (err) { toast.error(err); return; }
     setStep(s => Math.min(STEPS.length - 1, s + 1));
+    triggerHakimReaction('step_done');
   };
 
   const goPrev = () => setStep(s => Math.max(0, s - 1));
@@ -264,6 +323,26 @@ export function ProductHubSubmitPage() {
       setSubmitting(false);
     }
   };
+
+  const stepProgress = useMemo(() => {
+    const fields0 = [form.employee_name?.trim().length >= 3, !!form.issue_type, !!form.account_type];
+    const fields1 = [!!form.title?.trim(), !!form.page?.trim(), !!form.current_behavior?.trim(), !!form.expected_behavior?.trim()];
+    const done0 = fields0.filter(Boolean).length;
+    const done1 = fields1.filter(Boolean).length;
+    if (step === 0) return { filled: done0, total: fields0.length };
+    if (step === 1) return { filled: done1, total: fields1.length };
+    return { filled: done0 + done1, total: fields0.length + fields1.length };
+  }, [step, form]);
+
+  const currentHakimMsg = HAKIM_STEP_MESSAGES[step]?.[hakimMsgIndex] || HAKIM_STEP_MESSAGES[0][0];
+
+  const hakimReactionText = useMemo(() => {
+    if (hakimReaction === 'improved') return { text: 'تم التحسين بنجاح! 🎯', color: 'text-emerald-600' };
+    if (hakimReaction === 'already_good') return { text: 'النص ممتاز كما هو 👌', color: 'text-blue-600' };
+    if (hakimReaction === 'step_done') return { text: 'أحسنت! إلى الخطوة التالية 🚀', color: 'text-brand-turquoise' };
+    if (hakimReaction === 'account_selected') return { text: 'سأعرض لك الصفحات المتاحة ✨', color: 'text-brand-purple' };
+    return null;
+  }, [hakimReaction]);
 
   return (
     <Sidebar>
@@ -310,6 +389,18 @@ export function ProductHubSubmitPage() {
               );
             })}
           </div>
+
+          <HakimCompanion
+            message={currentHakimMsg}
+            typing={hakimTyping}
+            reaction={hakimReactionText}
+            visible={hakimVisible}
+            onToggle={() => setHakimVisible(v => !v)}
+            progress={stepProgress}
+            step={step}
+            improving={!!improvingField}
+            submitting={submitting}
+          />
 
           {step === 0 && (
             <Card className="border shadow-sm rounded-xl">
@@ -365,6 +456,13 @@ export function ProductHubSubmitPage() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                {form.issue_type && form.account_type && (
+                  <HakimContextualTip
+                    issueType={form.issue_type}
+                    accountType={form.account_type}
+                  />
+                )}
               </CardContent>
             </Card>
           )}
@@ -378,58 +476,17 @@ export function ProductHubSubmitPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-5">
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <Label className="text-sm font-medium">
-                      عنوان التحدي <span className="text-red-500">*</span>
-                    </Label>
-                    <button
-                      type="button"
-                      onClick={() => improveWithHakim('title')}
-                      disabled={improvingField === 'title' || !form.title || form.title.trim().length < 5}
-                      className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-medium transition-all ${
-                        improvingField === 'title'
-                          ? 'bg-brand-turquoise/10 text-brand-turquoise cursor-wait'
-                          : form.title && form.title.trim().length >= 5
-                            ? 'bg-gradient-to-l from-brand-turquoise/10 to-brand-purple/10 text-brand-navy hover:from-brand-turquoise/20 hover:to-brand-purple/20 border border-brand-turquoise/20 hover:border-brand-turquoise/40 hover:shadow-sm cursor-pointer'
-                            : 'bg-slate-50 text-slate-300 cursor-not-allowed border border-slate-100'
-                      }`}
-                    >
-                      {improvingField === 'title' ? (
-                        <>
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                          <span>حكيم يحسّن...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Wand2 className="h-3 w-3" />
-                          <span>تحسين بحكيم</span>
-                          <Brain className="h-3 w-3 text-brand-turquoise" />
-                        </>
-                      )}
-                    </button>
-                  </div>
-                  <div className="relative">
-                    <Input
-                      value={form.title}
-                      onChange={(e) => handleChange('title', e.target.value)}
-                      placeholder="اكتب عنواناً واضحاً ومختصراً للتحدي"
-                      className={`text-right rounded-lg transition-all ${improvingField === 'title' ? 'border-brand-turquoise/40 bg-brand-turquoise/5' : ''}`}
-                      maxLength={200}
-                      disabled={improvingField === 'title'}
-                    />
-                    {improvingField === 'title' && (
-                      <div className="absolute inset-0 bg-brand-turquoise/5 rounded-lg flex items-center justify-center pointer-events-none">
-                        <div className="flex items-center gap-2 bg-white/90 backdrop-blur-sm px-4 py-2 rounded-full shadow-md border border-brand-turquoise/20">
-                          <Brain className="h-4 w-4 text-brand-turquoise animate-pulse" />
-                          <span className="text-xs font-medium text-brand-navy">حكيم يحسّن العنوان...</span>
-                          <Sparkles className="h-3 w-3 text-brand-turquoise/60" />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  <p className="text-[10px] text-muted-foreground mt-1">مثال: خطأ في حفظ بيانات الطالب عند التعديل</p>
-                </div>
+                <HakimInput
+                  label="عنوان التحدي"
+                  required
+                  value={form.title}
+                  onChange={(v) => handleChange('title', v)}
+                  placeholder="اكتب عنواناً واضحاً ومختصراً للتحدي"
+                  improving={improvingField === 'title'}
+                  onImprove={() => improveWithHakim('title')}
+                  maxLength={200}
+                  hint="مثال: خطأ في حفظ بيانات الطالب عند التعديل"
+                />
 
                 <div>
                   <Label className="text-sm font-medium">الصفحة <span className="text-red-500">*</span></Label>
@@ -530,19 +587,7 @@ export function ProductHubSubmitPage() {
                 </CardContent>
               </Card>
 
-              <Card className="border shadow-sm rounded-xl border-brand-turquoise/30 bg-brand-turquoise/5">
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3 text-sm">
-                    <Brain className="h-5 w-5 text-brand-turquoise flex-shrink-0" />
-                    <div>
-                      <p className="font-medium text-brand-navy">حكيم سيحلل التحدي تلقائياً</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        سيقترح الأولوية والفريق المناسب ويكتشف التحديات المشابهة ويُنشئ عنواناً واضحاً
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+              <HakimPreSubmitCard submitting={submitting} />
 
               <Card className="border shadow-sm rounded-xl bg-slate-50">
                 <CardContent className="p-3 flex items-center gap-3 text-xs text-muted-foreground">
@@ -569,7 +614,7 @@ export function ProductHubSubmitPage() {
               {step < STEPS.length - 1 ? (
                 <Button onClick={goNext} className="bg-brand-navy hover:bg-brand-navy/90 text-white rounded-lg min-w-[120px]">
                   التالي
-                  <ArrowRight className="h-4 w-4 mr-2 rotate-180" />
+                  <ArrowLeft className="h-4 w-4 mr-2" />
                 </Button>
               ) : (
                 <Button
@@ -595,6 +640,208 @@ export function ProductHubSubmitPage() {
         </div>
       </div>
     </Sidebar>
+  );
+}
+
+function HakimCompanion({ message, typing, reaction, visible, onToggle, progress, step, improving, submitting }) {
+  return (
+    <div className="relative">
+      <div
+        className={`overflow-hidden transition-all duration-500 ease-in-out ${visible ? 'max-h-[300px] opacity-100' : 'max-h-0 opacity-0'}`}
+      >
+        <div className="rounded-2xl border border-brand-turquoise/20 bg-gradient-to-l from-brand-turquoise/5 via-white to-brand-purple/5 shadow-sm">
+          <div className="p-4">
+            <div className="flex items-start gap-4">
+              <div className="relative flex-shrink-0">
+                <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br from-brand-turquoise to-brand-purple flex items-center justify-center shadow-lg shadow-brand-turquoise/25 ${improving || submitting ? 'animate-pulse' : ''}`}>
+                  <Brain className="h-6 w-6 text-white" />
+                </div>
+                <div className="absolute -bottom-1 -left-1 w-4 h-4 bg-emerald-400 rounded-full border-2 border-white flex items-center justify-center">
+                  <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+                </div>
+              </div>
+
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-sm font-bold text-brand-navy">حكيم</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-brand-turquoise/10 text-brand-turquoise font-medium">
+                    AI مساعد
+                  </span>
+                  {improving && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium flex items-center gap-1">
+                      <Wand2 className="h-2.5 w-2.5" />
+                      يحسّن النص
+                    </span>
+                  )}
+                  {submitting && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-brand-turquoise/10 text-brand-turquoise font-medium flex items-center gap-1 animate-pulse">
+                      <Zap className="h-2.5 w-2.5" />
+                      يحلل التحدي
+                    </span>
+                  )}
+                </div>
+
+                <div className="relative">
+                  {reaction ? (
+                    <div className={`text-sm font-medium ${reaction.color} transition-all duration-300 animate-in fade-in slide-in-from-bottom-2`}>
+                      {reaction.text}
+                    </div>
+                  ) : typing ? (
+                    <div className="flex items-center gap-1.5">
+                      <div className="flex gap-1">
+                        <span className="w-1.5 h-1.5 bg-brand-turquoise/60 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                        <span className="w-1.5 h-1.5 bg-brand-turquoise/60 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                        <span className="w-1.5 h-1.5 bg-brand-turquoise/60 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                      </div>
+                      <span className="text-[11px] text-muted-foreground">حكيم يكتب...</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-start gap-2 transition-all duration-300">
+                      <span className="text-base leading-none mt-0.5">{HAKIM_MOOD_ICONS[message.mood] || '🧠'}</span>
+                      <p className="text-sm text-brand-navy/80 leading-relaxed">{message.text}</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-3 flex items-center gap-3">
+                  <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-l from-brand-turquoise to-brand-purple rounded-full transition-all duration-700 ease-out"
+                      style={{ width: `${(progress.filled / progress.total) * 100}%` }}
+                    />
+                  </div>
+                  <span className="text-[10px] text-muted-foreground font-medium whitespace-nowrap">
+                    {progress.filled}/{progress.total} حقول
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {step === 1 && (
+            <div className="border-t border-brand-turquoise/10 px-4 py-2.5 bg-brand-turquoise/[0.02]">
+              <div className="flex items-center gap-4 text-[11px]">
+                <div className="flex items-center gap-1.5 text-brand-turquoise">
+                  <Wand2 className="h-3 w-3" />
+                  <span>اضغط "تحسين بحكيم" على أي حقل</span>
+                </div>
+                <div className="w-px h-3 bg-slate-200" />
+                <div className="flex items-center gap-1.5 text-brand-purple">
+                  <Sparkles className="h-3 w-3" />
+                  <span>سأعيد الصياغة ليكون النص أوضح وأدق</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <button
+        onClick={onToggle}
+        className="absolute -bottom-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-brand-turquoise/20 shadow-sm hover:shadow-md transition-all text-[11px] font-medium text-brand-navy hover:border-brand-turquoise/40"
+      >
+        <Brain className="h-3 w-3 text-brand-turquoise" />
+        {visible ? 'إخفاء حكيم' : 'إظهار حكيم'}
+        <MessageCircle className="h-3 w-3 text-brand-turquoise/60" />
+      </button>
+    </div>
+  );
+}
+
+function HakimContextualTip({ issueType, accountType }) {
+  const tip = useMemo(() => {
+    const tips = {
+      bug: 'حكيم سيبحث عن أخطاء مشابهة تم حلها سابقاً لتسريع الإصلاح',
+      error: 'حاول تضمين رسالة الخطأ الدقيقة في الخطوة التالية — يساعدني كثيراً!',
+      ui_issue: 'صف الشكل الحالي والشكل المتوقع بدقة — يمكنك إرفاق لقطة شاشة لاحقاً',
+      ux_issue: 'اشرح السيناريو الكامل الذي مررت به — من البداية للنهاية',
+      performance_issue: 'حدد أين يحدث البطء بالضبط وكم يستغرق — سأحلل السبب',
+      feature_request: 'اشرح المشكلة التي ستحلها هذه الميزة — ليس فقط الميزة نفسها',
+      improvement_suggestion: 'صف كيف سيؤثر هذا التحسين على تجربة المستخدم اليومية',
+      workflow_issue: 'حدد الخطوة التي تتعطل فيها — سأتتبع مسار العمل كاملاً',
+      permission_issue: 'حدد الإجراء المطلوب والصلاحية المفقودة — سأراجع إعدادات الأدوار',
+      integration_issue: 'حدد النظام الخارجي المتأثر — سأفحص نقاط التكامل',
+    };
+    return tips[issueType] || 'سأحلل التحدي وأوجهه للفريق المناسب';
+  }, [issueType]);
+
+  return (
+    <div className="mt-2 rounded-xl border border-brand-turquoise/15 bg-gradient-to-l from-brand-turquoise/5 to-transparent p-3">
+      <div className="flex items-start gap-2.5">
+        <div className="w-7 h-7 rounded-lg bg-brand-turquoise/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+          <Lightbulb className="h-3.5 w-3.5 text-brand-turquoise" />
+        </div>
+        <div>
+          <p className="text-[11px] font-semibold text-brand-navy mb-0.5 flex items-center gap-1">
+            نصيحة حكيم
+            <Brain className="h-3 w-3 text-brand-turquoise" />
+          </p>
+          <p className="text-[11px] text-brand-navy/70 leading-relaxed">{tip}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HakimInput({ label, required, value, onChange, placeholder, improving, onImprove, maxLength, hint }) {
+  const canImprove = value && value.trim().length >= 5;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1.5">
+        <Label className="text-sm font-medium">
+          {label} {required && <span className="text-red-500">*</span>}
+        </Label>
+        <button
+          type="button"
+          onClick={onImprove}
+          disabled={improving || !canImprove}
+          className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-medium transition-all ${
+            improving
+              ? 'bg-brand-turquoise/10 text-brand-turquoise cursor-wait'
+              : canImprove
+                ? 'bg-gradient-to-l from-brand-turquoise/10 to-brand-purple/10 text-brand-navy hover:from-brand-turquoise/20 hover:to-brand-purple/20 border border-brand-turquoise/20 hover:border-brand-turquoise/40 hover:shadow-sm cursor-pointer'
+                : 'bg-slate-50 text-slate-300 cursor-not-allowed border border-slate-100'
+          }`}
+        >
+          {improving ? (
+            <>
+              <Loader2 className="h-3 w-3 animate-spin" />
+              <span>حكيم يحسّن...</span>
+            </>
+          ) : (
+            <>
+              <Wand2 className="h-3 w-3" />
+              <span>تحسين بحكيم</span>
+              <Brain className="h-3 w-3 text-brand-turquoise" />
+            </>
+          )}
+        </button>
+      </div>
+      <div className="relative">
+        <Input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className={`text-right rounded-lg transition-all ${improving ? 'border-brand-turquoise/40 bg-brand-turquoise/5' : ''}`}
+          maxLength={maxLength}
+          disabled={improving}
+        />
+        {improving && (
+          <div className="absolute inset-0 bg-brand-turquoise/5 rounded-lg flex items-center justify-center pointer-events-none">
+            <div className="flex items-center gap-2 bg-white/90 backdrop-blur-sm px-4 py-2 rounded-full shadow-md border border-brand-turquoise/20">
+              <Brain className="h-4 w-4 text-brand-turquoise animate-pulse" />
+              <span className="text-xs font-medium text-brand-navy">حكيم يحسّن العنوان...</span>
+              <Sparkles className="h-3 w-3 text-brand-turquoise/60" />
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="flex items-center justify-between mt-1">
+        {hint && <p className="text-[10px] text-muted-foreground">{hint}</p>}
+        {maxLength && <p className="text-[10px] text-muted-foreground">{(value || '').length}/{maxLength}</p>}
+      </div>
+    </div>
   );
 }
 
@@ -660,6 +907,40 @@ function HakimTextArea({ label, required, value, onChange, placeholder, fieldNam
         )}
       </div>
     </div>
+  );
+}
+
+function HakimPreSubmitCard({ submitting }) {
+  return (
+    <Card className="border shadow-sm rounded-2xl border-brand-turquoise/30 overflow-hidden">
+      <div className="bg-gradient-to-l from-brand-turquoise/10 via-brand-purple/5 to-brand-turquoise/10">
+        <CardContent className="p-5">
+          <div className="flex items-start gap-4">
+            <div className={`w-11 h-11 rounded-xl bg-gradient-to-br from-brand-turquoise to-brand-purple flex items-center justify-center shadow-lg shadow-brand-turquoise/20 flex-shrink-0 ${submitting ? 'animate-spin' : ''}`}>
+              <Brain className="h-5 w-5 text-white" />
+            </div>
+            <div className="flex-1">
+              <p className="font-bold text-brand-navy text-sm mb-2">
+                {submitting ? 'حكيم يحلل التحدي الآن...' : 'ماذا سيفعل حكيم بعد الإرسال؟'}
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { icon: Zap, text: 'تحديد الأولوية تلقائياً', color: 'text-amber-500' },
+                  { icon: Eye, text: 'اكتشاف التحديات المشابهة', color: 'text-blue-500' },
+                  { icon: Shield, text: 'توجيه للفريق المناسب', color: 'text-emerald-500' },
+                  { icon: Sparkles, text: 'تحليل الأثر والخطورة', color: 'text-brand-purple' },
+                ].map((item, i) => (
+                  <div key={i} className={`flex items-center gap-2 text-[11px] text-brand-navy/70 ${submitting ? 'animate-pulse' : ''}`} style={submitting ? { animationDelay: `${i * 200}ms` } : {}}>
+                    <item.icon className={`h-3.5 w-3.5 ${item.color} flex-shrink-0`} />
+                    <span>{item.text}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </div>
+    </Card>
   );
 }
 
