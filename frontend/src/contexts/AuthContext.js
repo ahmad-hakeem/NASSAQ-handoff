@@ -121,7 +121,7 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const logout = () => {
+  const logout = useCallback(() => {
     localStorage.removeItem('nassaq_token');
     sessionStorage.removeItem('nassaq_school_context');
     sessionStorage.removeItem('nassaq_impersonating');
@@ -129,7 +129,18 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
     setSchoolContext(null);
     setIsImpersonating(false);
-  };
+  }, []);
+
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      if (e.key === 'nassaq_token' && !e.newValue) {
+        logout();
+        window.location.replace('/login');
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, [logout]);
 
   // Update token (for role switching)
   const updateToken = async (newToken) => {

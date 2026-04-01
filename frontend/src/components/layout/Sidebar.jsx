@@ -4,8 +4,6 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useTheme, useTranslation } from '../../contexts/ThemeContext';
 import { Button } from '../ui/button';
 import { ScrollArea } from '../ui/scroll-area';
-import { NotificationBell } from '../notifications/NotificationBell';
-import { RealtimeNotificationIndicator } from '../notifications/RealtimeNotificationIndicator';
 import {
   Dialog,
   DialogContent,
@@ -78,6 +76,7 @@ export const Sidebar = ({ children }) => {
   const [availableRoles, setAvailableRoles] = useState([]);
   const [loadingRoles, setLoadingRoles] = useState(false);
   const [switchingRole, setSwitchingRole] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const { user, logout, isImpersonating, schoolContext, getEffectiveRole, exitSchoolContext, token, updateToken, isSwitchedRole, originalRole } = useAuth();
   const { isRTL } = useTheme();
   const { t } = useTranslation();
@@ -195,8 +194,26 @@ export const Sidebar = ({ children }) => {
   };
 
   const handleLogout = () => {
-    logout();
-    navigate('/login');
+    nassaqWarning(
+      isRTL ? 'هل أنت متأكد أنك تريد تسجيل الخروج؟' : 'Are you sure you want to log out?',
+      {
+        onConfirm: async () => {
+          setLoggingOut(true);
+          try {
+            await axios.post(`${API_URL}/api/auth/logout`, {}, {
+              headers: { Authorization: `Bearer ${token}` }
+            }).catch(() => {});
+            logout();
+            navigate('/login');
+          } catch (e) {
+            logout();
+            navigate('/login');
+          } finally {
+            setLoggingOut(false);
+          }
+        },
+      }
+    );
   };
   
   // Handle exit from school context (impersonation mode)
@@ -597,8 +614,8 @@ export const Sidebar = ({ children }) => {
             </div>
           )}
           
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 rounded-xl bg-brand-turquoise flex items-center justify-center overflow-hidden">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-brand-turquoise flex items-center justify-center overflow-hidden flex-shrink-0">
               {user.avatar_url ? (
                 <img 
                   src={user.avatar_url} 
@@ -629,20 +646,23 @@ export const Sidebar = ({ children }) => {
                 })()}
               </p>
             </div>
-            {/* Real-time Notifications */}
-            <RealtimeNotificationIndicator isRTL={isRTL} />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleLogout}
+              disabled={loggingOut}
+              className="flex-shrink-0 text-red-300/70 hover:text-red-200 hover:bg-red-500/20 rounded-xl transition-colors"
+              data-testid="logout-btn"
+              title={isRTL ? 'تسجيل الخروج' : 'Logout'}
+              aria-label={isRTL ? 'تسجيل الخروج' : 'Logout'}
+            >
+              {loggingOut ? (
+                <RefreshCw className="h-5 w-5 animate-spin" />
+              ) : (
+                <LogOut className="h-5 w-5" />
+              )}
+            </Button>
           </div>
-          
-          {/* Logout Button */}
-          <Button
-            variant="ghost"
-            onClick={handleLogout}
-            className="w-full justify-start text-white/70 hover:text-white hover:bg-white/10"
-            data-testid="logout-btn"
-          >
-            <LogOut className="h-4 w-4 me-2" />
-            {isRTL ? 'تسجيل الخروج' : 'Logout'}
-          </Button>
         </div>
       )}
       
@@ -653,27 +673,30 @@ export const Sidebar = ({ children }) => {
               <div className="w-3 h-3 rounded-full bg-brand-turquoise animate-pulse" title={isRTL ? 'دور مُبدّل' : 'Switched Role'} />
             </div>
           )}
-          {availableRoles.length > 1 && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setShowRoleSwitcher(true)}
-              className="w-full text-white/70 hover:text-white hover:bg-white/10"
-              title={isRTL ? 'تبديل الدور' : 'Switch Role'}
-              data-testid="role-switcher-btn-collapsed"
-            >
-              <ArrowLeftRight className="h-5 w-5" />
-            </Button>
-          )}
+          <div className="w-full flex justify-center">
+            <div className="w-8 h-8 rounded-lg bg-brand-turquoise flex items-center justify-center overflow-hidden">
+              {user.avatar_url ? (
+                <img src={user.avatar_url} alt={user.full_name} className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-white text-xs font-semibold">{user.full_name?.charAt(0)}</span>
+              )}
+            </div>
+          </div>
           <Button
             variant="ghost"
             size="icon"
             onClick={handleLogout}
-            className="w-full text-white/70 hover:text-white hover:bg-white/10"
+            disabled={loggingOut}
+            className="w-full text-red-300/70 hover:text-red-200 hover:bg-red-500/20"
             title={isRTL ? 'تسجيل الخروج' : 'Logout'}
+            aria-label={isRTL ? 'تسجيل الخروج' : 'Logout'}
             data-testid="logout-btn-collapsed"
           >
-            <LogOut className="h-5 w-5" />
+            {loggingOut ? (
+              <RefreshCw className="h-5 w-5 animate-spin" />
+            ) : (
+              <LogOut className="h-5 w-5" />
+            )}
           </Button>
         </div>
       )}
