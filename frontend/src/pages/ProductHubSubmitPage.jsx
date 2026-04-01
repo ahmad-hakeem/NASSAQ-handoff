@@ -12,15 +12,18 @@ import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
 import { toast } from 'sonner';
 import {
-  Brain, Send, ArrowRight, Monitor, Loader2, CheckCircle2,
+  Send, ArrowRight, Monitor, Loader2, CheckCircle2,
   User, FileText, Sparkles, Wand2, MessageCircle, Zap,
-  Eye, Shield, Lightbulb, ThumbsUp, ArrowLeft, PenLine,
+  Eye, Shield, Lightbulb, ArrowLeft, PenLine,
 } from 'lucide-react';
 
 const authHeaders = () => {
   const t = localStorage.getItem('nassaq_token');
   return t ? { Authorization: `Bearer ${t}` } : {};
 };
+
+const HAKIM_FALLBACK = '/hakim-poses/friendly-greeting.png';
+const hakimImgError = (e) => { if (e.target.src !== HAKIM_FALLBACK) e.target.src = HAKIM_FALLBACK; };
 
 const STEPS = [
   { key: 'reporter', label: 'المُبلِّغ', icon: User },
@@ -128,30 +131,29 @@ const ACCOUNT_PAGES = {
 
 const HAKIM_STEP_MESSAGES = [
   [
-    { text: 'أهلاً! أنا حكيم، مساعدك الذكي 🧠', mood: 'wave' },
-    { text: 'أخبرني من أنت ونوع التحدي وسأساعدك في توجيهه للفريق المناسب', mood: 'think' },
-    { text: 'كلما كانت المعلومات دقيقة، كان تحليلي أفضل!', mood: 'tip' },
+    { text: 'أهلاً! أنا حكيم، مساعدك الذكي', pose: 'hand-wave-greeting' },
+    { text: 'أخبرني من أنت ونوع التحدي وسأساعدك في توجيهه للفريق المناسب', pose: 'explaining-concept' },
+    { text: 'كلما كانت المعلومات دقيقة، كان تحليلي أفضل!', pose: 'pointing-to-start' },
   ],
   [
-    { text: 'ممتاز! الآن صف التحدي بالتفصيل ✍️', mood: 'ready' },
-    { text: 'استخدم زر "تحسين بحكيم" وسأعيد صياغة النص ليكون أوضح', mood: 'tip' },
-    { text: 'الوصف الدقيق يساعدني في اكتشاف التحديات المشابهة', mood: 'think' },
+    { text: 'ممتاز! الآن صف التحدي بالتفصيل', pose: 'giving-instructions' },
+    { text: 'استخدم زر "تحسين بحكيم" وسأعيد صياغة النص ليكون أوضح', pose: 'explaining-concept' },
+    { text: 'الوصف الدقيق يساعدني في اكتشاف التحديات المشابهة', pose: 'detecting-patterns' },
   ],
   [
-    { text: 'راجع البيانات قبل الإرسال 👀', mood: 'review' },
-    { text: 'بمجرد الإرسال سأحلل التحدي وأقترح الأولوية والفريق المناسب', mood: 'ready' },
-    { text: 'سأبحث أيضاً عن تحديات مشابهة سابقة!', mood: 'think' },
+    { text: 'راجع البيانات قبل الإرسال', pose: 'attention-gesture' },
+    { text: 'بمجرد الإرسال سأحلل التحدي وأقترح الأولوية والفريق المناسب', pose: 'ai-thinking' },
+    { text: 'سأبحث أيضاً عن تحديات مشابهة سابقة!', pose: 'detecting-patterns' },
   ],
 ];
 
-const HAKIM_MOOD_ICONS = {
-  wave: '👋',
-  think: '🤔',
-  tip: '💡',
-  ready: '✨',
-  review: '📋',
-  happy: '😊',
-  analyzing: '🔍',
+const HAKIM_REACTION_POSES = {
+  improved: 'positive-feedback',
+  already_good: 'clapping-celebration',
+  step_done: 'congratulating-student',
+  account_selected: 'pointing-to-start',
+  generating: 'ai-thinking-2',
+  submitting: 'ai-thinking',
 };
 
 export function ProductHubSubmitPage() {
@@ -371,10 +373,10 @@ export function ProductHubSubmitPage() {
   const currentHakimMsg = HAKIM_STEP_MESSAGES[step]?.[hakimMsgIndex] || HAKIM_STEP_MESSAGES[0][0];
 
   const hakimReactionText = useMemo(() => {
-    if (hakimReaction === 'improved') return { text: 'تم التحسين بنجاح! 🎯', color: 'text-emerald-600' };
-    if (hakimReaction === 'already_good') return { text: 'النص ممتاز كما هو 👌', color: 'text-blue-600' };
-    if (hakimReaction === 'step_done') return { text: 'أحسنت! إلى الخطوة التالية 🚀', color: 'text-brand-turquoise' };
-    if (hakimReaction === 'account_selected') return { text: 'سأعرض لك الصفحات المتاحة ✨', color: 'text-brand-purple' };
+    if (hakimReaction === 'improved') return { key: 'improved', text: 'تم التحسين بنجاح!', color: 'text-emerald-600' };
+    if (hakimReaction === 'already_good') return { key: 'already_good', text: 'النص ممتاز كما هو', color: 'text-blue-600' };
+    if (hakimReaction === 'step_done') return { key: 'step_done', text: 'أحسنت! إلى الخطوة التالية', color: 'text-brand-turquoise' };
+    if (hakimReaction === 'account_selected') return { key: 'account_selected', text: 'سأعرض لك الصفحات المتاحة', color: 'text-brand-purple' };
     return null;
   }, [hakimReaction]);
 
@@ -383,14 +385,14 @@ export function ProductHubSubmitPage() {
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/20" dir="rtl">
         <div className="p-4 lg:p-8 max-w-4xl mx-auto space-y-6">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-brand-navy flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-brand-turquoise/10">
-                  <Brain className="h-6 w-6 text-brand-turquoise" />
-                </div>
-                إضافة تحدي جديد
-              </h1>
-              <p className="text-muted-foreground mt-1 text-sm">حكيم سيحلل التحدي ويقترح الأولوية والفريق المناسب</p>
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-brand-turquoise/10 to-brand-purple/10 overflow-hidden shadow-md border border-brand-turquoise/20">
+                <img src="/hakim-poses/inviting-to-begin.png" alt="حكيم" className="w-full h-full object-cover" onError={hakimImgError} />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-brand-navy">إضافة تحدي جديد</h1>
+                <p className="text-muted-foreground mt-0.5 text-sm">حكيم سيحلل التحدي ويقترح الأولوية والفريق المناسب</p>
+              </div>
             </div>
             <Button variant="outline" onClick={() => navigate('/admin/product-hub')} className="rounded-lg">
               <ArrowRight className="h-4 w-4 ml-2" />
@@ -434,6 +436,7 @@ export function ProductHubSubmitPage() {
             step={step}
             improving={!!improvingField}
             submitting={submitting}
+            generating={generatingExpected}
           />
 
           {step === 0 && (
@@ -661,7 +664,7 @@ export function ProductHubSubmitPage() {
                 >
                   {submitting ? (
                     <>
-                      <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+                      <img src="/hakim-poses/ai-thinking.png" alt="" className="h-5 w-5 rounded-full object-cover ml-2 border border-white/30" onError={hakimImgError} />
                       حكيم يحلل...
                     </>
                   ) : (
@@ -680,7 +683,18 @@ export function ProductHubSubmitPage() {
   );
 }
 
-function HakimCompanion({ message, typing, reaction, visible, onToggle, progress, step, improving, submitting }) {
+function HakimCompanion({ message, typing, reaction, visible, onToggle, progress, step, improving, submitting, generating }) {
+  const activePose = useMemo(() => {
+    if (submitting) return HAKIM_REACTION_POSES.submitting;
+    if (generating) return HAKIM_REACTION_POSES.generating;
+    if (improving) return 'ai-thinking';
+    if (reaction) {
+      const reactionPose = HAKIM_REACTION_POSES[reaction.key];
+      if (reactionPose) return reactionPose;
+    }
+    return message.pose || 'friendly-greeting';
+  }, [message.pose, improving, submitting, generating, reaction]);
+
   return (
     <div className="relative">
       <div
@@ -690,10 +704,15 @@ function HakimCompanion({ message, typing, reaction, visible, onToggle, progress
           <div className="p-4">
             <div className="flex items-start gap-4">
               <div className="relative flex-shrink-0">
-                <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br from-brand-turquoise to-brand-purple flex items-center justify-center shadow-lg shadow-brand-turquoise/25 ${improving || submitting ? 'animate-pulse' : ''}`}>
-                  <Brain className="h-6 w-6 text-white" />
+                <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br from-brand-turquoise/10 to-brand-purple/10 overflow-hidden shadow-lg shadow-brand-turquoise/15 border border-brand-turquoise/20 ${improving || submitting || generating ? 'ring-2 ring-brand-turquoise/30 ring-offset-1' : ''}`}>
+                  <img
+                    src={`/hakim-poses/${activePose}.png`}
+                    alt="حكيم"
+                    className={`w-full h-full object-cover transition-all duration-500 ${improving || submitting || generating ? 'scale-105' : 'hover:scale-110'}`}
+                    onError={hakimImgError}
+                  />
                 </div>
-                <div className="absolute -bottom-1 -left-1 w-4 h-4 bg-emerald-400 rounded-full border-2 border-white flex items-center justify-center">
+                <div className={`absolute -bottom-1 -left-1 w-4 h-4 rounded-full border-2 border-white flex items-center justify-center ${improving || generating ? 'bg-amber-400' : submitting ? 'bg-brand-turquoise' : 'bg-emerald-400'}`}>
                   <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
                 </div>
               </div>
@@ -708,6 +727,12 @@ function HakimCompanion({ message, typing, reaction, visible, onToggle, progress
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium flex items-center gap-1">
                       <Wand2 className="h-2.5 w-2.5" />
                       يحسّن النص
+                    </span>
+                  )}
+                  {generating && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-brand-purple/10 text-brand-purple font-medium flex items-center gap-1 animate-pulse">
+                      <PenLine className="h-2.5 w-2.5" />
+                      يُنشئ نصاً
                     </span>
                   )}
                   {submitting && (
@@ -733,10 +758,7 @@ function HakimCompanion({ message, typing, reaction, visible, onToggle, progress
                       <span className="text-[11px] text-muted-foreground">حكيم يكتب...</span>
                     </div>
                   ) : (
-                    <div className="flex items-start gap-2 transition-all duration-300">
-                      <span className="text-base leading-none mt-0.5">{HAKIM_MOOD_ICONS[message.mood] || '🧠'}</span>
-                      <p className="text-sm text-brand-navy/80 leading-relaxed">{message.text}</p>
-                    </div>
+                    <p className="text-sm text-brand-navy/80 leading-relaxed transition-all duration-300">{message.text}</p>
                   )}
                 </div>
 
@@ -777,7 +799,7 @@ function HakimCompanion({ message, typing, reaction, visible, onToggle, progress
         onClick={onToggle}
         className="absolute -bottom-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-brand-turquoise/20 shadow-sm hover:shadow-md transition-all text-[11px] font-medium text-brand-navy hover:border-brand-turquoise/40"
       >
-        <Brain className="h-3 w-3 text-brand-turquoise" />
+        <img src="/hakim-poses/friendly-greeting.png" alt="" className="h-4 w-4 rounded-full object-cover" onError={hakimImgError} />
         {visible ? 'إخفاء حكيم' : 'إظهار حكيم'}
         <MessageCircle className="h-3 w-3 text-brand-turquoise/60" />
       </button>
@@ -786,34 +808,39 @@ function HakimCompanion({ message, typing, reaction, visible, onToggle, progress
 }
 
 function HakimContextualTip({ issueType, accountType }) {
-  const tip = useMemo(() => {
+  const tipData = useMemo(() => {
     const tips = {
-      bug: 'حكيم سيبحث عن أخطاء مشابهة تم حلها سابقاً لتسريع الإصلاح',
-      error: 'حاول تضمين رسالة الخطأ الدقيقة في الخطوة التالية — يساعدني كثيراً!',
-      ui_issue: 'صف الشكل الحالي والشكل المتوقع بدقة — يمكنك إرفاق لقطة شاشة لاحقاً',
-      ux_issue: 'اشرح السيناريو الكامل الذي مررت به — من البداية للنهاية',
-      performance_issue: 'حدد أين يحدث البطء بالضبط وكم يستغرق — سأحلل السبب',
-      feature_request: 'اشرح المشكلة التي ستحلها هذه الميزة — ليس فقط الميزة نفسها',
-      improvement_suggestion: 'صف كيف سيؤثر هذا التحسين على تجربة المستخدم اليومية',
-      workflow_issue: 'حدد الخطوة التي تتعطل فيها — سأتتبع مسار العمل كاملاً',
-      permission_issue: 'حدد الإجراء المطلوب والصلاحية المفقودة — سأراجع إعدادات الأدوار',
-      integration_issue: 'حدد النظام الخارجي المتأثر — سأفحص نقاط التكامل',
+      bug: { text: 'حكيم سيبحث عن أخطاء مشابهة تم حلها سابقاً لتسريع الإصلاح', pose: 'detecting-patterns' },
+      error: { text: 'حاول تضمين رسالة الخطأ الدقيقة في الخطوة التالية — يساعدني كثيراً!', pose: 'attention-gesture' },
+      ui_issue: { text: 'صف الشكل الحالي والشكل المتوقع بدقة — يمكنك إرفاق لقطة شاشة لاحقاً', pose: 'explaining-concept' },
+      ux_issue: { text: 'اشرح السيناريو الكامل الذي مررت به — من البداية للنهاية', pose: 'listening' },
+      performance_issue: { text: 'حدد أين يحدث البطء بالضبط وكم يستغرق — سأحلل السبب', pose: 'ai-thinking' },
+      feature_request: { text: 'اشرح المشكلة التي ستحلها هذه الميزة — ليس فقط الميزة نفسها', pose: 'giving-instructions' },
+      improvement_suggestion: { text: 'صف كيف سيؤثر هذا التحسين على تجربة المستخدم اليومية', pose: 'motivating' },
+      workflow_issue: { text: 'حدد الخطوة التي تتعطل فيها — سأتتبع مسار العمل كاملاً', pose: 'detecting-patterns' },
+      permission_issue: { text: 'حدد الإجراء المطلوب والصلاحية المفقودة — سأراجع إعدادات الأدوار', pose: 'attention-gesture' },
+      integration_issue: { text: 'حدد النظام الخارجي المتأثر — سأفحص نقاط التكامل', pose: 'ai-thinking-2' },
     };
-    return tips[issueType] || 'سأحلل التحدي وأوجهه للفريق المناسب';
+    return tips[issueType] || { text: 'سأحلل التحدي وأوجهه للفريق المناسب', pose: 'explaining-concept' };
   }, [issueType]);
 
   return (
     <div className="mt-2 rounded-xl border border-brand-turquoise/15 bg-gradient-to-l from-brand-turquoise/5 to-transparent p-3">
-      <div className="flex items-start gap-2.5">
-        <div className="w-7 h-7 rounded-lg bg-brand-turquoise/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-          <Lightbulb className="h-3.5 w-3.5 text-brand-turquoise" />
+      <div className="flex items-start gap-3">
+        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-turquoise/10 to-brand-purple/10 overflow-hidden flex-shrink-0 border border-brand-turquoise/15 shadow-sm">
+          <img
+            src={`/hakim-poses/${tipData.pose}.png`}
+            alt="حكيم"
+            className="w-full h-full object-cover"
+            onError={hakimImgError}
+          />
         </div>
-        <div>
+        <div className="pt-0.5">
           <p className="text-[11px] font-semibold text-brand-navy mb-0.5 flex items-center gap-1">
+            <Lightbulb className="h-3 w-3 text-brand-turquoise" />
             نصيحة حكيم
-            <Brain className="h-3 w-3 text-brand-turquoise" />
           </p>
-          <p className="text-[11px] text-brand-navy/70 leading-relaxed">{tip}</p>
+          <p className="text-[11px] text-brand-navy/70 leading-relaxed">{tipData.text}</p>
         </div>
       </div>
     </div>
@@ -850,7 +877,7 @@ function HakimInput({ label, required, value, onChange, placeholder, improving, 
             <>
               <Wand2 className="h-3 w-3" />
               <span>تحسين بحكيم</span>
-              <Brain className="h-3 w-3 text-brand-turquoise" />
+              <img src="/hakim-poses/ai-thinking.png" alt="" className="h-4 w-4 rounded-full object-cover" onError={hakimImgError} />
             </>
           )}
         </button>
@@ -867,7 +894,7 @@ function HakimInput({ label, required, value, onChange, placeholder, improving, 
         {improving && (
           <div className="absolute inset-0 bg-brand-turquoise/5 rounded-lg flex items-center justify-center pointer-events-none">
             <div className="flex items-center gap-2 bg-white/90 backdrop-blur-sm px-4 py-2 rounded-full shadow-md border border-brand-turquoise/20">
-              <Brain className="h-4 w-4 text-brand-turquoise animate-pulse" />
+              <img src="/hakim-poses/ai-thinking.png" alt="" className="h-6 w-6 rounded-full object-cover border border-brand-turquoise/20" onError={hakimImgError} />
               <span className="text-xs font-medium text-brand-navy">حكيم يحسّن العنوان...</span>
               <Sparkles className="h-3 w-3 text-brand-turquoise/60" />
             </div>
@@ -915,7 +942,7 @@ function HakimTextArea({ label, required, value, onChange, placeholder, fieldNam
                 <>
                   <PenLine className="h-3 w-3" />
                   <span>إنشاء بحكيم</span>
-                  <Brain className="h-3 w-3 text-brand-purple" />
+                  <img src="/hakim-poses/ai-thinking-2.png" alt="" className="h-4 w-4 rounded-full object-cover" onError={hakimImgError} />
                 </>
               )}
             </button>
@@ -941,7 +968,7 @@ function HakimTextArea({ label, required, value, onChange, placeholder, fieldNam
               <>
                 <Wand2 className="h-3 w-3" />
                 <span>تحسين بحكيم</span>
-                <Brain className="h-3 w-3 text-brand-turquoise" />
+                <img src="/hakim-poses/ai-thinking.png" alt="" className="h-4 w-4 rounded-full object-cover" onError={hakimImgError} />
               </>
             )}
           </button>
@@ -961,7 +988,7 @@ function HakimTextArea({ label, required, value, onChange, placeholder, fieldNam
         {improving && (
           <div className="absolute inset-0 bg-brand-turquoise/5 rounded-lg flex items-center justify-center pointer-events-none">
             <div className="flex items-center gap-2 bg-white/90 backdrop-blur-sm px-4 py-2 rounded-full shadow-md border border-brand-turquoise/20">
-              <Brain className="h-4 w-4 text-brand-turquoise animate-pulse" />
+              <img src="/hakim-poses/ai-thinking.png" alt="" className="h-6 w-6 rounded-full object-cover border border-brand-turquoise/20" onError={hakimImgError} />
               <span className="text-xs font-medium text-brand-navy">حكيم يحسّن النص...</span>
               <Sparkles className="h-3 w-3 text-brand-turquoise/60" />
             </div>
@@ -970,7 +997,7 @@ function HakimTextArea({ label, required, value, onChange, placeholder, fieldNam
         {generating && (
           <div className="absolute inset-0 bg-brand-purple/5 rounded-lg flex items-center justify-center pointer-events-none">
             <div className="flex items-center gap-2 bg-white/90 backdrop-blur-sm px-4 py-2 rounded-full shadow-md border border-brand-purple/20">
-              <Brain className="h-4 w-4 text-brand-purple animate-pulse" />
+              <img src="/hakim-poses/ai-thinking-2.png" alt="" className="h-6 w-6 rounded-full object-cover border border-brand-purple/20" onError={hakimImgError} />
               <span className="text-xs font-medium text-brand-navy">حكيم يُنشئ الوضع المتوقع...</span>
               <PenLine className="h-3 w-3 text-brand-purple/60" />
             </div>
@@ -998,8 +1025,13 @@ function HakimPreSubmitCard({ submitting }) {
       <div className="bg-gradient-to-l from-brand-turquoise/10 via-brand-purple/5 to-brand-turquoise/10">
         <CardContent className="p-5">
           <div className="flex items-start gap-4">
-            <div className={`w-11 h-11 rounded-xl bg-gradient-to-br from-brand-turquoise to-brand-purple flex items-center justify-center shadow-lg shadow-brand-turquoise/20 flex-shrink-0 ${submitting ? 'animate-spin' : ''}`}>
-              <Brain className="h-5 w-5 text-white" />
+            <div className={`w-14 h-14 rounded-xl bg-gradient-to-br from-brand-turquoise/10 to-brand-purple/10 overflow-hidden shadow-lg shadow-brand-turquoise/20 flex-shrink-0 border border-brand-turquoise/20 ${submitting ? 'ring-2 ring-brand-turquoise/40 ring-offset-1' : ''}`}>
+              <img
+                src={`/hakim-poses/${submitting ? 'ai-thinking.png' : 'positive-feedback.png'}`}
+                alt="حكيم"
+                className={`w-full h-full object-cover transition-all duration-500 ${submitting ? 'scale-105' : ''}`}
+                onError={hakimImgError}
+              />
             </div>
             <div className="flex-1">
               <p className="font-bold text-brand-navy text-sm mb-2">
