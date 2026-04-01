@@ -386,6 +386,8 @@ export const PlatformSettingsPage = () => {
     maintenanceMode: false,
   });
   
+  const [availableTitles, setAvailableTitles] = useState({ ar: [], en: [] });
+
   // Load settings from API using new endpoints
   const fetchSettings = React.useCallback(async () => {
       try {
@@ -554,9 +556,6 @@ export const PlatformSettingsPage = () => {
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
   }, [hasUnsavedChanges]);
-  
-  // Available titles state
-  const [availableTitles, setAvailableTitles] = useState({ ar: [], en: [] });
   
   // Brand settings
   const [brandSettings, setBrandSettings] = useState({
