@@ -342,6 +342,7 @@ class IssueCreate(BaseModel):
     employee_name: str
     employee_id: Optional[str] = None
     account_type: str
+    title: Optional[str] = None
     section: Optional[str] = None
     page: str
     current_behavior: str

@@ -296,7 +296,7 @@ async def create_issue(data: IssueCreate, current_user: dict = Depends(get_curre
         "impact_assessment": hakim_analysis.get("impact_assessment", ""),
     }
 
-    issue["title"] = hakim_analysis.get("suggested_title", f"مشكلة في {data.page}")
+    issue["title"] = data.title.strip() if data.title and data.title.strip() else hakim_analysis.get("suggested_title", f"مشكلة في {data.page}")
     issue["priority"] = hakim_analysis.get("suggested_priority", "medium")
     issue["ai_suggested_priority"] = hakim_analysis.get("suggested_priority", "medium")
     issue["assigned_team"] = hakim_analysis.get("suggested_team")

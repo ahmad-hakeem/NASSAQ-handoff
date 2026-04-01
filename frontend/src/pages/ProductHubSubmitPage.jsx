@@ -139,6 +139,7 @@ export function ProductHubSubmitPage() {
     employee_name: user?.full_name || '',
     employee_id: '',
     account_type: '',
+    title: '',
     page: '',
     current_behavior: '',
     expected_behavior: '',
@@ -209,6 +210,7 @@ export function ProductHubSubmitPage() {
       if (!form.account_type) return 'نوع الحساب مطلوب';
     }
     if (stepIdx === 1) {
+      if (!form.title?.trim()) return 'عنوان التحدي مطلوب';
       if (!form.page?.trim()) return 'الصفحة مطلوبة';
       if (!form.current_behavior?.trim()) return 'الوضع الحالي مطلوب';
       if (!form.expected_behavior?.trim()) return 'الوضع المتوقع مطلوب';
@@ -377,6 +379,18 @@ export function ProductHubSubmitPage() {
               </CardHeader>
               <CardContent className="space-y-5">
                 <div>
+                  <Label className="text-sm font-medium">عنوان التحدي <span className="text-red-500">*</span></Label>
+                  <Input
+                    value={form.title}
+                    onChange={(e) => handleChange('title', e.target.value)}
+                    placeholder="اكتب عنواناً واضحاً ومختصراً للتحدي"
+                    className="mt-1.5 text-right rounded-lg"
+                    maxLength={200}
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-1">مثال: خطأ في حفظ بيانات الطالب عند التعديل</p>
+                </div>
+
+                <div>
                   <Label className="text-sm font-medium">الصفحة <span className="text-red-500">*</span></Label>
                   {availablePages.length > 0 ? (
                     <Select value={form.page} onValueChange={(v) => handleChange('page', v)}>
@@ -455,6 +469,7 @@ export function ProductHubSubmitPage() {
                   <ReviewRow label="نوع التحدي" value={COMMENT_TYPE_OPTIONS.find(o => o.value === form.issue_type)?.labelAr || form.issue_type} />
                   <ReviewRow label="نوع الحساب" value={ACCOUNT_TYPE_LABELS[form.account_type] || form.account_type} />
                   <Separator />
+                  <ReviewRow label="عنوان التحدي" value={form.title} />
                   <ReviewRow label="الصفحة" value={form.page} />
                   <Separator />
                   <div>
