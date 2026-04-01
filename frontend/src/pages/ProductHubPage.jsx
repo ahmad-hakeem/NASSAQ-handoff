@@ -467,39 +467,37 @@ function KanbanView({ issues, loading, total }) {
   }
 
   return (
-    <div className="overflow-x-auto pb-4">
-      <div className="flex gap-4 min-w-max">
-        {KANBAN_COLUMNS.map(status => {
-          const cfg = STATUS_CONFIG[status];
-          const columnIssues = issues[status] || [];
-          return (
-            <div key={status} className="w-[280px] flex-shrink-0">
-              <div className={`rounded-t-xl px-4 py-2.5 ${cfg.bgLight} border ${cfg.borderColor} border-b-0`}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <cfg.icon className={`h-4 w-4 ${cfg.textColor}`} />
-                    <span className={`text-sm font-semibold ${cfg.textColor}`}>{cfg.label}</span>
-                  </div>
-                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5">
-                    {columnIssues.length}
-                  </Badge>
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
+      {KANBAN_COLUMNS.map(status => {
+        const cfg = STATUS_CONFIG[status];
+        const columnIssues = issues[status] || [];
+        return (
+          <div key={status} className="min-w-0">
+            <div className={`rounded-t-xl px-3 py-2 ${cfg.bgLight} border ${cfg.borderColor} border-b-0`}>
+              <div className="flex items-center justify-between gap-1">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <cfg.icon className={`h-3.5 w-3.5 flex-shrink-0 ${cfg.textColor}`} />
+                  <span className={`text-xs font-semibold truncate ${cfg.textColor}`}>{cfg.label}</span>
                 </div>
-              </div>
-              <div className={`rounded-b-xl border ${cfg.borderColor} border-t-0 bg-slate-50/50 p-2 space-y-2 min-h-[200px]`}>
-                {columnIssues.length === 0 ? (
-                  <div className="flex items-center justify-center h-32 text-xs text-muted-foreground">
-                    لا توجد تعليقات
-                  </div>
-                ) : (
-                  columnIssues.map(issue => (
-                    <IssueKanbanCard key={issue.id} issue={issue} />
-                  ))
-                )}
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5 flex-shrink-0">
+                  {columnIssues.length}
+                </Badge>
               </div>
             </div>
-          );
-        })}
-      </div>
+            <div className={`rounded-b-xl border ${cfg.borderColor} border-t-0 bg-slate-50/50 p-2 space-y-2 min-h-[160px] max-h-[400px] overflow-y-auto`}>
+              {columnIssues.length === 0 ? (
+                <div className="flex items-center justify-center h-24 text-xs text-muted-foreground">
+                  لا توجد تعليقات
+                </div>
+              ) : (
+                columnIssues.map(issue => (
+                  <IssueKanbanCard key={issue.id} issue={issue} />
+                ))
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
