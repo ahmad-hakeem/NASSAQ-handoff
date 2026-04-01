@@ -22,7 +22,8 @@ import {
 import {
   ArrowRight, Brain, Copy, Send, Shield, MessageSquare, Activity,
   FileText, Loader2, ThumbsUp, ThumbsDown, UserPlus, ChevronDown, ChevronUp,
-  Monitor, Globe, Eye, AlertTriangle, CheckCircle2,
+  Monitor, Globe, Eye, AlertTriangle, CheckCircle2, Clock, Users, Tag,
+  Zap, Calendar, BarChart3, RefreshCw,
 } from 'lucide-react';
 
 const authHeaders = () => {
@@ -43,6 +44,8 @@ export function ProductHubIssuePage() {
   const [statusNote, setStatusNote] = useState('');
   const [assignTeam, setAssignTeam] = useState('');
   const [expandedSections, setExpandedSections] = useState({ timeline: false });
+  const [generatingPrompt, setGeneratingPrompt] = useState(false);
+  const [promptCopied, setPromptCopied] = useState(false);
 
   const isAdmin = user?.role === 'platform_admin';
   const perms = issue?.permissions || {};
@@ -114,7 +117,6 @@ export function ProductHubIssuePage() {
     }
   };
 
-
   const handleFeedback = async (resolved) => {
     try {
       await axios.post(`/api/product-hub/issues/${issueId}/feedback`, { resolved }, { headers: authHeaders() });
@@ -122,6 +124,28 @@ export function ProductHubIssuePage() {
       fetchIssue();
     } catch (err) {
       toast.error(err.response?.data?.detail?.message || 'فشل');
+    }
+  };
+
+  const handleGeneratePrompt = async () => {
+    setGeneratingPrompt(true);
+    try {
+      await axios.post(`/api/product-hub/issues/${issueId}/generate-prompt`, {}, { headers: authHeaders() });
+      toast.success('تم إنشاء البرومبت');
+      fetchIssue();
+    } catch (err) {
+      toast.error('فشل في إنشاء البرومبت');
+    } finally {
+      setGeneratingPrompt(false);
+    }
+  };
+
+  const handleCopyPrompt = () => {
+    if (issue?.generated_prompt) {
+      navigator.clipboard.writeText(issue.generated_prompt);
+      setPromptCopied(true);
+      toast.success('تم نسخ البرومبت');
+      setTimeout(() => setPromptCopied(false), 2000);
     }
   };
 
@@ -149,48 +173,256 @@ export function ProductHubIssuePage() {
   const progress = STATUS_PROGRESS[issue.status] || 0;
   const hakim = issue.hakim_analysis || {};
   const allowedTransitions = issue.valid_transitions || [];
+  const statusCfg = STATUS_CONFIG[issue.status] || {};
+
+  const progressColor = progress === 100 ? 'text-emerald-600' :
+    progress >= 75 ? 'text-blue-600' :
+    progress >= 50 ? 'text-brand-turquoise' :
+    progress >= 25 ? 'text-amber-600' : 'text-slate-500';
+
   return (
     <Sidebar>
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/20" dir="rtl">
         <div className="p-4 lg:p-8 max-w-[1400px] mx-auto space-y-6">
-          <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
-            <div className="flex items-start gap-4">
-              <Button variant="outline" size="sm" onClick={() => navigate('/admin/product-hub')} className="rounded-lg mt-1">
-                <ArrowRight className="h-4 w-4 ml-1" />
-                رجوع
-              </Button>
-              <div>
-                <div className="flex items-center gap-2 flex-wrap mb-1">
-                  <span className="text-xs text-muted-foreground font-mono bg-slate-100 px-2 py-0.5 rounded">#{issue.issue_number}</span>
-                  <StatusChip status={issue.status} showIcon />
-                  <PriorityBadge priority={issue.priority} showIcon />
-                  <SLAIndicator issue={issue} />
-                </div>
-                <h1 className="text-xl lg:text-2xl font-bold text-brand-navy leading-tight">{issue.title}</h1>
-                <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground flex-wrap">
-                  <span className="flex items-center gap-1">
-                    <TypeIcon className={`h-3.5 w-3.5 ${typeCfg.color}`} />
-                    {typeCfg.label}
-                  </span>
-                  <span>•</span>
-                  <span>{issue.employee_name}</span>
-                  <span>•</span>
-                  <span>{issue.section} › {issue.page}</span>
-                  <span>•</span>
-                  <span>{formatDualDateCompact(issue.created_at)}</span>
+
+          {/* ═══════ 1. HERO TITLE ═══════ */}
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-l from-brand-navy via-brand-navy/95 to-brand-navy/90 p-6 lg:p-8 shadow-lg">
+            <div className="absolute inset-0 opacity-[0.04]" style={{
+              backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+            }} />
+            <div className="relative flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+              <div className="flex items-start gap-4">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => navigate('/admin/product-hub')}
+                  className="rounded-lg mt-1 text-white/70 hover:text-white hover:bg-white/10 border border-white/20"
+                >
+                  <ArrowRight className="h-4 w-4 ml-1" />
+                  رجوع
+                </Button>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 flex-wrap mb-2">
+                    <span className="text-xs font-mono bg-white/15 text-white/80 px-2.5 py-1 rounded-md">#{issue.issue_number}</span>
+                    <Badge className={`text-[11px] ${typeCfg.color} bg-white/15 border-white/20`}>
+                      <TypeIcon className="h-3 w-3 ml-1" />
+                      {typeCfg.label}
+                    </Badge>
+                  </div>
+                  <h1 className="text-2xl lg:text-3xl font-bold text-white leading-tight tracking-tight">
+                    {issue.title}
+                  </h1>
+                  <div className="flex items-center gap-3 mt-3 text-xs text-white/60 flex-wrap">
+                    <span className="flex items-center gap-1">
+                      <Users className="h-3 w-3" />
+                      {issue.employee_name}
+                    </span>
+                    <span className="text-white/30">•</span>
+                    <span>{issue.section} › {issue.page}</span>
+                    <span className="text-white/30">•</span>
+                    <span className="flex items-center gap-1">
+                      <Calendar className="h-3 w-3" />
+                      {formatDualDateCompact(issue.created_at)}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="w-full">
-            <div className="flex items-center gap-3 mb-1.5">
-              <span className="text-xs text-muted-foreground">التقدم</span>
-              <span className="text-xs font-semibold text-brand-navy">{progress}%</span>
-            </div>
-            <Progress value={progress} className="h-2" />
+          {/* ═══════ 2. QUICK INFO CARDS (Horizontal) ═══════ */}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+            <QuickInfoCard
+              icon={<BarChart3 className="h-4 w-4" />}
+              label="الحالة"
+              value={<StatusChip status={issue.status} size="sm" showIcon />}
+              accent="bg-blue-50 border-blue-200"
+            />
+            <QuickInfoCard
+              icon={<Zap className="h-4 w-4" />}
+              label="الأولوية"
+              value={<PriorityBadge priority={issue.priority} size="sm" showIcon />}
+              accent="bg-amber-50 border-amber-200"
+            />
+            <QuickInfoCard
+              icon={<Tag className="h-4 w-4" />}
+              label="النوع"
+              value={<span className="text-xs font-medium">{typeCfg.label}</span>}
+              accent="bg-purple-50 border-purple-200"
+            />
+            <QuickInfoCard
+              icon={<Users className="h-4 w-4" />}
+              label="الفريق المسؤول"
+              value={<span className={`text-xs font-medium ${issue.assigned_team ? 'text-brand-turquoise' : 'text-muted-foreground'}`}>{issue.assigned_team || '—'}</span>}
+              accent="bg-teal-50 border-teal-200"
+            />
+            <QuickInfoCard
+              icon={<Clock className="h-4 w-4" />}
+              label="SLA"
+              value={<SLAIndicator issue={issue} size="sm" />}
+              accent={issue.sla_status === 'exceeded' ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200'}
+            />
           </div>
 
+          {/* ═══════ 3. PROGRESS HERO ═══════ */}
+          <Card className="border shadow-sm rounded-2xl overflow-hidden">
+            <div className="p-5 lg:p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                    progress === 100 ? 'bg-emerald-100' :
+                    progress >= 50 ? 'bg-blue-100' : 'bg-slate-100'
+                  }`}>
+                    <BarChart3 className={`h-5 w-5 ${progressColor}`} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-brand-navy">التقدم المحرز</h3>
+                    <p className="text-xs text-muted-foreground">
+                      {statusCfg.label || issue.status}
+                      {issue.sla_remaining_hours !== undefined && (
+                        <span className={`mr-2 ${issue.sla_status === 'exceeded' ? 'text-red-500' : 'text-emerald-500'}`}>
+                          • SLA: {Math.round(issue.sla_remaining_hours)} ساعة
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+                <span className={`text-3xl font-black ${progressColor}`}>{progress}%</span>
+              </div>
+              <div className="relative">
+                <div className="w-full h-4 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-700 ease-out ${
+                      progress === 100 ? 'bg-gradient-to-l from-emerald-500 to-emerald-400' :
+                      progress >= 75 ? 'bg-gradient-to-l from-blue-500 to-blue-400' :
+                      progress >= 50 ? 'bg-gradient-to-l from-brand-turquoise to-brand-turquoise/80' :
+                      progress >= 25 ? 'bg-gradient-to-l from-amber-500 to-amber-400' :
+                      'bg-gradient-to-l from-slate-400 to-slate-300'
+                    }`}
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+                <div className="flex justify-between mt-2">
+                  {['جديد', 'مراجعة', 'قيد العمل', 'اختبار', 'منجز'].map((label, i) => {
+                    const stepProgress = i * 25;
+                    return (
+                      <span key={label} className={`text-[10px] ${progress >= stepProgress ? 'text-brand-navy font-medium' : 'text-muted-foreground'}`}>
+                        {label}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          {/* ═══════ 4. ADMIN ACTION BAR (Main Admins Only) ═══════ */}
+          {isMainAdmin && (
+            <Card className="border-2 border-brand-navy/10 shadow-sm rounded-2xl bg-gradient-to-l from-brand-navy/[0.02] to-transparent">
+              <CardContent className="p-4 lg:p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <Shield className="h-4 w-4 text-brand-navy" />
+                  <span className="text-sm font-bold text-brand-navy">لوحة التحكم</span>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr_auto_auto] gap-4 items-start">
+                  {/* Status Change */}
+                  {allowedTransitions.length > 0 && (
+                    <div>
+                      <p className="text-[11px] text-muted-foreground mb-2 font-medium">تغيير الحالة</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {allowedTransitions.map(s => {
+                          const cfg = STATUS_CONFIG[s] || {};
+                          return (
+                            <Button
+                              key={s}
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleStatusChange(s)}
+                              disabled={updatingStatus}
+                              className="text-[11px] rounded-lg h-8 px-3"
+                            >
+                              {updatingStatus && <Loader2 className="h-3 w-3 animate-spin ml-1" />}
+                              {cfg.label || s}
+                            </Button>
+                          );
+                        })}
+                      </div>
+                      <Input
+                        value={statusNote}
+                        onChange={(e) => setStatusNote(e.target.value)}
+                        placeholder="ملاحظة (اختياري)"
+                        className="mt-2 text-right text-xs rounded-lg h-8"
+                      />
+                    </div>
+                  )}
+
+                  {allowedTransitions.length > 0 && <Separator orientation="vertical" className="h-16 hidden lg:block" />}
+
+                  {/* Team Assignment */}
+                  <div>
+                    <p className="text-[11px] text-muted-foreground mb-2 font-medium">تعيين الفريق</p>
+                    <div className="flex gap-2">
+                      <Select value={assignTeam} onValueChange={setAssignTeam}>
+                        <SelectTrigger className="text-xs rounded-lg h-8 min-w-[140px]">
+                          <SelectValue placeholder="اختر الفريق" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {TEAMS.map(t => (
+                            <SelectItem key={t} value={t}>{t}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        onClick={handleAssign}
+                        disabled={!assignTeam}
+                        size="sm"
+                        className="bg-brand-navy hover:bg-brand-navy/90 text-white rounded-lg h-8"
+                      >
+                        <UserPlus className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                    {issue.assigned_team && (
+                      <p className="text-[11px] text-muted-foreground mt-1.5">
+                        الحالي: <span className="text-brand-turquoise font-medium">{issue.assigned_team}</span>
+                      </p>
+                    )}
+                  </div>
+
+                  <Separator orientation="vertical" className="h-16 hidden lg:block" />
+
+                  {/* Prompt Actions */}
+                  <div>
+                    <p className="text-[11px] text-muted-foreground mb-2 font-medium">البرومبت</p>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleGeneratePrompt}
+                        disabled={generatingPrompt}
+                        className="text-[11px] rounded-lg h-8 gap-1 border-brand-purple/30 text-brand-purple hover:bg-brand-purple/5"
+                      >
+                        {generatingPrompt ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                        Generate
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleCopyPrompt}
+                        disabled={!issue.generated_prompt}
+                        className={`text-[11px] rounded-lg h-8 gap-1 ${promptCopied ? 'border-emerald-300 text-emerald-600 bg-emerald-50' : 'border-brand-purple/30 text-brand-purple hover:bg-brand-purple/5'}`}
+                      >
+                        {promptCopied ? <CheckCircle2 className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                        {promptCopied ? 'Copied!' : 'Copy'}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ═══════ FEEDBACK BANNER ═══════ */}
           {issue.status === 'done' && issue.feedback_requested && !issue.feedback_response && (
             <Card className="border-2 border-amber-300 shadow-md bg-gradient-to-r from-amber-50 to-amber-50/50 rounded-xl">
               <CardContent className="p-6 text-center space-y-4">
@@ -213,8 +445,11 @@ export function ProductHubIssuePage() {
             </Card>
           )}
 
+          {/* ═══════ MAIN CONTENT GRID ═══════ */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-6">
+
+              {/* ═══════ 5. CHALLENGE DETAILS ═══════ */}
               <Card className="border shadow-sm rounded-xl">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base flex items-center gap-2">
@@ -329,13 +564,10 @@ export function ProductHubIssuePage() {
                             variant="outline"
                             size="sm"
                             className="rounded-lg gap-1.5 text-xs border-brand-purple/30 text-brand-purple hover:bg-brand-purple/5"
-                            onClick={() => {
-                              navigator.clipboard.writeText(issue.generated_prompt);
-                              toast.success('تم نسخ البرومبت');
-                            }}
+                            onClick={handleCopyPrompt}
                           >
-                            <Copy className="h-3.5 w-3.5" />
-                            Copy Prompt
+                            {promptCopied ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                            {promptCopied ? 'Copied!' : 'Copy Prompt'}
                           </Button>
                         </div>
                         <pre
@@ -348,7 +580,7 @@ export function ProductHubIssuePage() {
                 </CardContent>
               </Card>
 
-
+              {/* ═══════ COMMENTS ═══════ */}
               {issue.permissions?.can_comment && (
                 <Card className="border shadow-sm rounded-xl">
                   <CardHeader className="pb-3">
@@ -359,9 +591,9 @@ export function ProductHubIssuePage() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {issue.comments?.map(c => {
-                      const typeCfg = COMMENT_TYPE_CONFIG[c.type] || COMMENT_TYPE_CONFIG.general;
+                      const cTypeCfg = COMMENT_TYPE_CONFIG[c.type] || COMMENT_TYPE_CONFIG.general;
                       return (
-                        <div key={c.id} className={`flex gap-3 p-3 rounded-xl border ${typeCfg.borderColor} ${typeCfg.bgColor}`}>
+                        <div key={c.id} className={`flex gap-3 p-3 rounded-xl border ${cTypeCfg.borderColor} ${cTypeCfg.bgColor}`}>
                           <Avatar className="h-8 w-8 flex-shrink-0">
                             <AvatarFallback className="bg-brand-navy text-white text-xs">
                               {(c.user_name || '?')[0]}
@@ -374,8 +606,8 @@ export function ProductHubIssuePage() {
                                 <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4">مدير</Badge>
                               )}
                               {c.type && c.type !== 'general' && (
-                                <Badge className={`text-[9px] px-1.5 py-0 h-4 ${typeCfg.bgColor} ${typeCfg.textColor} border ${typeCfg.borderColor}`}>
-                                  {typeCfg.label}
+                                <Badge className={`text-[9px] px-1.5 py-0 h-4 ${cTypeCfg.bgColor} ${cTypeCfg.textColor} border ${cTypeCfg.borderColor}`}>
+                                  {cTypeCfg.label}
                                 </Badge>
                               )}
                               <span className="text-muted-foreground">•</span>
@@ -431,6 +663,7 @@ export function ProductHubIssuePage() {
                 </Card>
               )}
 
+              {/* ═══════ ACTIVITY LOG ═══════ */}
               <Card className="border shadow-sm rounded-xl">
                 <CardHeader
                   className="pb-3 cursor-pointer"
@@ -504,96 +737,8 @@ export function ProductHubIssuePage() {
               </Card>
             </div>
 
+            {/* ═══════ RIGHT SIDEBAR ═══════ */}
             <div className="space-y-6">
-              <HakimInsightCard hakim={hakim} />
-
-              {isMainAdmin && allowedTransitions.length > 0 && (
-                <Card className="border shadow-sm rounded-xl">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                      <Shield className="h-4 w-4 text-brand-navy" />
-                      إجراءات الإدارة
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-2 font-medium">تغيير الحالة</p>
-                      <div className="flex flex-wrap gap-2">
-                        {allowedTransitions.map(s => {
-                          const cfg = STATUS_CONFIG[s] || {};
-                          return (
-                            <Button
-                              key={s}
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleStatusChange(s)}
-                              disabled={updatingStatus}
-                              className={`text-xs rounded-lg border-2 hover:${cfg.bgLight} hover:${cfg.textColor} hover:${cfg.borderColor}`}
-                            >
-                              {updatingStatus && <Loader2 className="h-3 w-3 animate-spin ml-1" />}
-                              {cfg.label || s}
-                            </Button>
-                          );
-                        })}
-                      </div>
-                      <Input
-                        value={statusNote}
-                        onChange={(e) => setStatusNote(e.target.value)}
-                        placeholder="ملاحظة (اختياري)"
-                        className="mt-2 text-right text-sm rounded-lg"
-                      />
-                    </div>
-
-                    <Separator />
-
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-2 font-medium">تعيين الفريق</p>
-                      <div className="flex gap-2">
-                        <Select value={assignTeam} onValueChange={setAssignTeam}>
-                          <SelectTrigger className="flex-1 text-sm rounded-lg"><SelectValue placeholder="اختر الفريق" /></SelectTrigger>
-                          <SelectContent>
-                            {TEAMS.map(t => (
-                              <SelectItem key={t} value={t}>{t}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Button
-                          onClick={handleAssign}
-                          disabled={!assignTeam}
-                          size="sm"
-                          className="bg-brand-navy hover:bg-brand-navy/90 text-white rounded-lg"
-                        >
-                          <UserPlus className="h-4 w-4" />
-                        </Button>
-                      </div>
-                      {issue.assigned_team && (
-                        <p className="text-xs text-muted-foreground mt-2">
-                          الفريق الحالي: <span className="text-brand-turquoise font-medium">{issue.assigned_team}</span>
-                        </p>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              <Card className="border shadow-sm rounded-xl">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                    <Eye className="h-4 w-4 text-brand-turquoise" />
-                    معلومات سريعة
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3 text-sm">
-                  <QuickInfoRow label="الحالة" value={<StatusChip status={issue.status} size="sm" showIcon />} />
-                  <QuickInfoRow label="الأولوية" value={<PriorityBadge priority={issue.priority} size="sm" showIcon />} />
-                  <QuickInfoRow label="النوع" value={typeCfg.label} />
-                  <QuickInfoRow label="المُبلِّغ" value={issue.employee_name} />
-                  <QuickInfoRow label="الفريق" value={issue.assigned_team || '—'} />
-                  <QuickInfoRow label="التقدم" value={`${progress}%`} />
-                  {issue.created_by_name && <QuickInfoRow label="أنشأه" value={issue.created_by_name} />}
-                </CardContent>
-              </Card>
-
               {issue.duplicates && issue.duplicates.length > 0 && isAdmin && (
                 <Card className="border shadow-sm rounded-xl border-amber-200">
                   <CardHeader className="pb-2">
@@ -614,6 +759,22 @@ export function ProductHubIssuePage() {
               )}
             </div>
           </div>
+
+          {/* ═══════ 6. HAKIM ANALYSIS (Bottom of Page) ═══════ */}
+          {hakim && Object.keys(hakim).length > 0 && (
+            <div className="relative">
+              <div className="absolute -top-3 right-6 bg-brand-purple text-white text-[11px] font-medium px-3 py-1 rounded-full shadow-sm z-10 flex items-center gap-1.5">
+                <Brain className="h-3 w-3" />
+                تحليل Hakim AI
+              </div>
+              <Card className="border-2 border-brand-purple/20 shadow-md rounded-2xl bg-gradient-to-l from-brand-purple/[0.02] to-transparent pt-4">
+                <CardContent className="p-5 lg:p-6">
+                  <HakimInsightCard hakim={hakim} />
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
         </div>
       </div>
     </Sidebar>
@@ -629,11 +790,14 @@ function InfoField({ label, value, className = '', highlight = false }) {
   );
 }
 
-function QuickInfoRow({ label, value }) {
+function QuickInfoCard({ icon, label, value, accent = 'bg-slate-50 border-slate-200' }) {
   return (
-    <div className="flex items-center justify-between">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className="text-xs font-medium">{typeof value === 'string' ? value : value}</span>
+    <div className={`rounded-xl border p-3 ${accent} flex flex-col gap-2`}>
+      <div className="flex items-center gap-1.5 text-muted-foreground">
+        {icon}
+        <span className="text-[11px] font-medium">{label}</span>
+      </div>
+      <div>{value}</div>
     </div>
   );
 }
