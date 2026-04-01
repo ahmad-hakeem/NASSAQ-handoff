@@ -465,6 +465,18 @@ export const Sidebar = ({ children }) => {
             </Link>
           )}
           <div className="flex items-center gap-1">
+            {availableRoles.length > 1 && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowRoleSwitcher(true)}
+                className="text-white/70 hover:text-white hover:bg-white/10"
+                data-testid="sidebar-role-switch-btn"
+                title={isRTL ? 'تبديل الأدوار' : 'Switch Role'}
+              >
+                <ArrowLeftRight className="h-5 w-5" />
+              </Button>
+            )}
             {user?.role === 'platform_admin' && (
               <Button
                 variant="ghost"
@@ -620,19 +632,6 @@ export const Sidebar = ({ children }) => {
             {/* Real-time Notifications */}
             <RealtimeNotificationIndicator isRTL={isRTL} />
           </div>
-          
-          {/* Role Switcher Button */}
-          {availableRoles.length > 1 && (
-            <Button
-              variant="ghost"
-              onClick={() => setShowRoleSwitcher(true)}
-              className="w-full justify-start text-white/70 hover:text-white hover:bg-white/10 mb-2"
-              data-testid="role-switcher-btn"
-            >
-              <ArrowLeftRight className="h-4 w-4 me-2" />
-              {isRTL ? 'تبديل الدور' : 'Switch Role'}
-            </Button>
-          )}
           
           {/* Logout Button */}
           <Button
