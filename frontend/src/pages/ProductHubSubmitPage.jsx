@@ -928,12 +928,12 @@ function HakimInput({ label, required, value, onChange, placeholder, improving, 
           type="button"
           onClick={onImprove}
           disabled={improving || !canImprove}
-          className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-medium transition-all ${
+          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[11px] font-semibold transition-all shadow-sm ${
             improving
-              ? 'bg-brand-turquoise/10 text-brand-turquoise cursor-wait'
+              ? 'bg-brand-turquoise/20 text-brand-turquoise cursor-wait border border-brand-turquoise/30'
               : canImprove
-                ? 'bg-gradient-to-l from-brand-turquoise/10 to-brand-purple/10 text-brand-navy hover:from-brand-turquoise/20 hover:to-brand-purple/20 border border-brand-turquoise/20 hover:border-brand-turquoise/40 hover:shadow-sm cursor-pointer'
-                : 'bg-slate-50 text-slate-300 cursor-not-allowed border border-slate-100'
+                ? 'bg-brand-turquoise text-white hover:bg-brand-turquoise/90 hover:shadow-md hover:shadow-brand-turquoise/25 cursor-pointer border border-brand-turquoise'
+                : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
           }`}
         >
           {improving ? (
@@ -945,7 +945,7 @@ function HakimInput({ label, required, value, onChange, placeholder, improving, 
             <>
               <Wand2 className="h-3 w-3" />
               <span>تحسين بحكيم</span>
-              <img src="/hakim-poses/ai-thinking.png" alt="" className="h-4 w-4 rounded-full object-cover" onError={hakimImgError} />
+              <img src="/hakim-poses/ai-thinking.png" alt="" className="h-4 w-4 rounded-full object-cover ring-1 ring-white/50" onError={hakimImgError} />
             </>
           )}
         </button>
@@ -993,12 +993,12 @@ function HakimTextArea({ label, required, value, onChange, placeholder, fieldNam
               type="button"
               onClick={onGenerate}
               disabled={isDisabled || !canGenerate}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-medium transition-all ${
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[11px] font-semibold transition-all shadow-sm ${
                 generating
-                  ? 'bg-brand-purple/10 text-brand-purple cursor-wait'
+                  ? 'bg-brand-purple/20 text-brand-purple cursor-wait border border-brand-purple/30'
                   : canGenerate
-                    ? 'bg-gradient-to-l from-brand-purple/10 to-brand-turquoise/10 text-brand-navy hover:from-brand-purple/20 hover:to-brand-turquoise/20 border border-brand-purple/20 hover:border-brand-purple/40 hover:shadow-sm cursor-pointer'
-                    : 'bg-slate-50 text-slate-300 cursor-not-allowed border border-slate-100'
+                    ? 'bg-brand-purple text-white hover:bg-brand-purple/90 hover:shadow-md hover:shadow-brand-purple/25 cursor-pointer border border-brand-purple'
+                    : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
               }`}
             >
               {generating ? (
@@ -1010,7 +1010,7 @@ function HakimTextArea({ label, required, value, onChange, placeholder, fieldNam
                 <>
                   <PenLine className="h-3 w-3" />
                   <span>إنشاء بحكيم</span>
-                  <img src="/hakim-poses/ai-thinking-2.png" alt="" className="h-4 w-4 rounded-full object-cover" onError={hakimImgError} />
+                  <img src="/hakim-poses/ai-thinking-2.png" alt="" className="h-4 w-4 rounded-full object-cover ring-1 ring-white/50" onError={hakimImgError} />
                 </>
               )}
             </button>
@@ -1019,12 +1019,12 @@ function HakimTextArea({ label, required, value, onChange, placeholder, fieldNam
             type="button"
             onClick={onImprove}
             disabled={isDisabled || !canImprove}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-medium transition-all ${
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[11px] font-semibold transition-all shadow-sm ${
               improving
-                ? 'bg-brand-turquoise/10 text-brand-turquoise cursor-wait'
+                ? 'bg-brand-turquoise/20 text-brand-turquoise cursor-wait border border-brand-turquoise/30'
                 : canImprove
-                  ? 'bg-gradient-to-l from-brand-turquoise/10 to-brand-purple/10 text-brand-navy hover:from-brand-turquoise/20 hover:to-brand-purple/20 border border-brand-turquoise/20 hover:border-brand-turquoise/40 hover:shadow-sm cursor-pointer'
-                  : 'bg-slate-50 text-slate-300 cursor-not-allowed border border-slate-100'
+                  ? 'bg-brand-turquoise text-white hover:bg-brand-turquoise/90 hover:shadow-md hover:shadow-brand-turquoise/25 cursor-pointer border border-brand-turquoise'
+                  : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
             }`}
           >
             {improving ? (
@@ -1036,7 +1036,7 @@ function HakimTextArea({ label, required, value, onChange, placeholder, fieldNam
               <>
                 <Wand2 className="h-3 w-3" />
                 <span>تحسين بحكيم</span>
-                <img src="/hakim-poses/ai-thinking.png" alt="" className="h-4 w-4 rounded-full object-cover" onError={hakimImgError} />
+                <img src="/hakim-poses/ai-thinking.png" alt="" className="h-4 w-4 rounded-full object-cover ring-1 ring-white/50" onError={hakimImgError} />
               </>
             )}
           </button>
@@ -1109,12 +1109,12 @@ function HakimTitleGenerator({ value, onChange, onSelectSuggestion, onGenerate, 
             type="button"
             onClick={onGenerate}
             disabled={isDisabled || !canGenerate}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium transition-all ${
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[11px] font-semibold transition-all shadow-sm ${
               generating
-                ? 'bg-brand-purple/10 text-brand-purple cursor-wait'
+                ? 'bg-brand-purple/20 text-brand-purple cursor-wait border border-brand-purple/30'
                 : canGenerate
-                  ? 'bg-gradient-to-l from-brand-purple/15 to-brand-turquoise/10 text-brand-navy hover:from-brand-purple/25 hover:to-brand-turquoise/15 border border-brand-purple/20 hover:border-brand-purple/40 hover:shadow-sm cursor-pointer'
-                  : 'bg-slate-50 text-slate-300 cursor-not-allowed border border-slate-100'
+                  ? 'bg-brand-purple text-white hover:bg-brand-purple/90 hover:shadow-md hover:shadow-brand-purple/25 cursor-pointer border border-brand-purple'
+                  : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
             }`}
           >
             {generating ? (
@@ -1126,7 +1126,7 @@ function HakimTitleGenerator({ value, onChange, onSelectSuggestion, onGenerate, 
               <>
                 <PenLine className="h-3 w-3" />
                 <span>إنشاء بحكيم</span>
-                <img src="/hakim-poses/ai-thinking-2.png" alt="" className="h-4 w-4 rounded-full object-cover" onError={hakimImgError} />
+                <img src="/hakim-poses/ai-thinking-2.png" alt="" className="h-4 w-4 rounded-full object-cover ring-1 ring-white/50" onError={hakimImgError} />
               </>
             )}
           </button>
@@ -1135,10 +1135,10 @@ function HakimTitleGenerator({ value, onChange, onSelectSuggestion, onGenerate, 
               type="button"
               onClick={onImprove}
               disabled={isDisabled}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium transition-all ${
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[11px] font-semibold transition-all shadow-sm ${
                 improving
-                  ? 'bg-brand-turquoise/10 text-brand-turquoise cursor-wait'
-                  : 'bg-gradient-to-l from-brand-turquoise/10 to-brand-purple/10 text-brand-navy hover:from-brand-turquoise/20 hover:to-brand-purple/20 border border-brand-turquoise/20 hover:border-brand-turquoise/40 hover:shadow-sm cursor-pointer'
+                  ? 'bg-brand-turquoise/20 text-brand-turquoise cursor-wait border border-brand-turquoise/30'
+                  : 'bg-brand-turquoise text-white hover:bg-brand-turquoise/90 hover:shadow-md hover:shadow-brand-turquoise/25 cursor-pointer border border-brand-turquoise'
               }`}
             >
               {improving ? (
