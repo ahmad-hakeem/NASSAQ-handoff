@@ -1075,6 +1075,7 @@ async def hakim_improve_text(
         client = OpenAI(api_key=api_key, base_url=base_url if base_url else None)
 
         field_prompts = {
+            "title": "إعادة صياغة عنوان التحدي ليكون مختصراً وواضحاً ودقيقاً، بحد أقصى جملة واحدة قصيرة تصف المشكلة أو الطلب",
             "current_behavior": "تحسين وصف الوضع الحالي/المشكلة ليكون أوضح وأكثر تحديداً تقنياً",
             "expected_behavior": "تحسين وصف الوضع المتوقع/الحل المطلوب ليكون أوضح وقابلاً للتنفيذ",
             "additional_info": "تحسين المعلومات الإضافية لتكون أكثر فائدة للفريق التقني",

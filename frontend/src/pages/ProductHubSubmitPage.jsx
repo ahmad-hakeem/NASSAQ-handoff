@@ -379,14 +379,55 @@ export function ProductHubSubmitPage() {
               </CardHeader>
               <CardContent className="space-y-5">
                 <div>
-                  <Label className="text-sm font-medium">عنوان التحدي <span className="text-red-500">*</span></Label>
-                  <Input
-                    value={form.title}
-                    onChange={(e) => handleChange('title', e.target.value)}
-                    placeholder="اكتب عنواناً واضحاً ومختصراً للتحدي"
-                    className="mt-1.5 text-right rounded-lg"
-                    maxLength={200}
-                  />
+                  <div className="flex items-center justify-between mb-1.5">
+                    <Label className="text-sm font-medium">
+                      عنوان التحدي <span className="text-red-500">*</span>
+                    </Label>
+                    <button
+                      type="button"
+                      onClick={() => improveWithHakim('title')}
+                      disabled={improvingField === 'title' || !form.title || form.title.trim().length < 5}
+                      className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-medium transition-all ${
+                        improvingField === 'title'
+                          ? 'bg-brand-turquoise/10 text-brand-turquoise cursor-wait'
+                          : form.title && form.title.trim().length >= 5
+                            ? 'bg-gradient-to-l from-brand-turquoise/10 to-brand-purple/10 text-brand-navy hover:from-brand-turquoise/20 hover:to-brand-purple/20 border border-brand-turquoise/20 hover:border-brand-turquoise/40 hover:shadow-sm cursor-pointer'
+                            : 'bg-slate-50 text-slate-300 cursor-not-allowed border border-slate-100'
+                      }`}
+                    >
+                      {improvingField === 'title' ? (
+                        <>
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          <span>حكيم يحسّن...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Wand2 className="h-3 w-3" />
+                          <span>تحسين بحكيم</span>
+                          <Brain className="h-3 w-3 text-brand-turquoise" />
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <Input
+                      value={form.title}
+                      onChange={(e) => handleChange('title', e.target.value)}
+                      placeholder="اكتب عنواناً واضحاً ومختصراً للتحدي"
+                      className={`text-right rounded-lg transition-all ${improvingField === 'title' ? 'border-brand-turquoise/40 bg-brand-turquoise/5' : ''}`}
+                      maxLength={200}
+                      disabled={improvingField === 'title'}
+                    />
+                    {improvingField === 'title' && (
+                      <div className="absolute inset-0 bg-brand-turquoise/5 rounded-lg flex items-center justify-center pointer-events-none">
+                        <div className="flex items-center gap-2 bg-white/90 backdrop-blur-sm px-4 py-2 rounded-full shadow-md border border-brand-turquoise/20">
+                          <Brain className="h-4 w-4 text-brand-turquoise animate-pulse" />
+                          <span className="text-xs font-medium text-brand-navy">حكيم يحسّن العنوان...</span>
+                          <Sparkles className="h-3 w-3 text-brand-turquoise/60" />
+                        </div>
+                      </div>
+                    )}
+                  </div>
                   <p className="text-[10px] text-muted-foreground mt-1">مثال: خطأ في حفظ بيانات الطالب عند التعديل</p>
                 </div>
 
