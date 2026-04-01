@@ -272,12 +272,6 @@ export const Sidebar = ({ children }) => {
         href: '/admin/product-hub',
         roles: ['platform_admin'],
       },
-      {
-        icon: Settings,
-        label: isRTL ? 'إعدادات النظام' : 'System Settings',
-        href: '/settings',
-        roles: ['platform_admin'],
-      },
     ];
 
     // School Principal & Sub Admin Menu Items
@@ -470,21 +464,37 @@ export const Sidebar = ({ children }) => {
               <img src={LOGO_WHITE} alt="نَسَّق" className="h-8 w-8 rounded-lg object-contain" />
             </Link>
           )}
-          {!collapsed && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setCollapsed(!collapsed)}
-              className="text-white/70 hover:text-white hover:bg-white/10 hidden lg:flex"
-              data-testid="sidebar-collapse-btn"
-            >
-              {isRTL ? (
-                <ChevronRight className="h-5 w-5" />
-              ) : (
-                <ChevronLeft className="h-5 w-5" />
-              )}
-            </Button>
-          )}
+          <div className="flex items-center gap-1">
+            {user?.role === 'platform_admin' && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => { navigate('/settings'); setMobileOpen(false); }}
+                className={`text-white/70 hover:text-white hover:bg-white/10 ${
+                  location.pathname === '/settings' ? 'bg-white/15 text-white' : ''
+                }`}
+                data-testid="sidebar-settings-btn"
+                title={isRTL ? 'إعدادات النظام' : 'System Settings'}
+              >
+                <Settings className="h-5 w-5" />
+              </Button>
+            )}
+            {!collapsed && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setCollapsed(!collapsed)}
+                className="text-white/70 hover:text-white hover:bg-white/10 hidden lg:flex"
+                data-testid="sidebar-collapse-btn"
+              >
+                {isRTL ? (
+                  <ChevronRight className="h-5 w-5" />
+                ) : (
+                  <ChevronLeft className="h-5 w-5" />
+                )}
+              </Button>
+            )}
+          </div>
         </div>
         
         {/* Collapse button when collapsed */}
