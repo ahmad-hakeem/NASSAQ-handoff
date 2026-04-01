@@ -52,7 +52,7 @@ export function ProductHubIssuePage() {
       const res = await axios.get(`/api/product-hub/issues/${issueId}`, { headers: authHeaders() });
       setIssue(res.data);
     } catch (e) {
-      toast.error('فشل في تحميل المشكلة');
+      toast.error('فشل في تحميل التعليق');
       navigate('/admin/product-hub');
     } finally {
       setLoading(false);
@@ -128,7 +128,7 @@ export function ProductHubIssuePage() {
   const handleFeedback = async (resolved) => {
     try {
       await axios.post(`/api/product-hub/issues/${issueId}/feedback`, { resolved }, { headers: authHeaders() });
-      toast.success(resolved ? 'شكراً — تم تأكيد الحل' : 'تم إعادة فتح المشكلة');
+      toast.success(resolved ? 'شكراً — تم تأكيد الحل' : 'تم إعادة فتح التعليق');
       fetchIssue();
     } catch (err) {
       toast.error(err.response?.data?.detail?.message || 'فشل');
@@ -145,7 +145,7 @@ export function ProductHubIssuePage() {
         <div className="flex justify-center items-center min-h-screen">
           <div className="flex flex-col items-center gap-3">
             <div className="animate-spin rounded-full h-10 w-10 border-2 border-brand-turquoise border-t-transparent" />
-            <p className="text-sm text-muted-foreground">جاري تحميل المشكلة...</p>
+            <p className="text-sm text-muted-foreground">جاري تحميل التعليق...</p>
           </div>
         </div>
       </Sidebar>
@@ -215,7 +215,7 @@ export function ProductHubIssuePage() {
                 <div className="inline-flex items-center justify-center p-3 rounded-2xl bg-amber-100 mx-auto">
                   <Brain className="h-8 w-8 text-amber-600" />
                 </div>
-                <h3 className="text-lg font-bold text-brand-navy">تم حل المشكلة — هل تم حلها فعلاً؟</h3>
+                <h3 className="text-lg font-bold text-brand-navy">تم المعالجة — هل تمت بنجاح؟</h3>
                 <p className="text-sm text-muted-foreground">رأيك يساعدنا في تحسين جودة الحلول</p>
                 <div className="flex justify-center gap-4">
                   <Button onClick={() => handleFeedback(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-sm">
@@ -237,7 +237,7 @@ export function ProductHubIssuePage() {
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base flex items-center gap-2">
                     <FileText className="h-4 w-4 text-brand-turquoise" />
-                    تفاصيل المشكلة
+                    تفاصيل التعليق
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-5">
@@ -606,7 +606,7 @@ export function ProductHubIssuePage() {
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-semibold flex items-center gap-2 text-amber-700">
                       <AlertTriangle className="h-4 w-4" />
-                      مشاكل مشابهة ({issue.duplicates.length})
+                      تعليقات مشابهة ({issue.duplicates.length})
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-2">

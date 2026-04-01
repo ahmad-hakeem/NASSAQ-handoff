@@ -25,15 +25,15 @@ export const PRIORITY_CONFIG = {
 export const TYPE_CONFIG = {
   bug: { label: 'خطأ برمجي', icon: Bug, color: 'text-red-600' },
   error: { label: 'خطأ تقني', icon: AlertTriangle, color: 'text-red-500' },
-  ui_issue: { label: 'مشكلة واجهة', icon: Eye, color: 'text-blue-600' },
-  ux_issue: { label: 'مشكلة تجربة مستخدم', icon: Lightbulb, color: 'text-purple-600' },
-  performance_issue: { label: 'مشكلة أداء', icon: Zap, color: 'text-amber-600' },
-  content_issue: { label: 'مشكلة محتوى', icon: FileText, color: 'text-teal-600' },
+  ui_issue: { label: 'ملاحظة واجهة', icon: Eye, color: 'text-blue-600' },
+  ux_issue: { label: 'ملاحظة تجربة مستخدم', icon: Lightbulb, color: 'text-purple-600' },
+  performance_issue: { label: 'ملاحظة أداء', icon: Zap, color: 'text-amber-600' },
+  content_issue: { label: 'ملاحظة محتوى', icon: FileText, color: 'text-teal-600' },
   feature_request: { label: 'طلب ميزة', icon: Lightbulb, color: 'text-green-600' },
   improvement_suggestion: { label: 'اقتراح تحسين', icon: TrendingUp, color: 'text-cyan-600' },
-  permission_issue: { label: 'مشكلة صلاحيات', icon: Shield, color: 'text-orange-600' },
-  workflow_issue: { label: 'مشكلة سير عمل', icon: Settings, color: 'text-violet-600' },
-  integration_issue: { label: 'مشكلة تكامل', icon: Link2, color: 'text-indigo-600' },
+  permission_issue: { label: 'ملاحظة صلاحيات', icon: Shield, color: 'text-orange-600' },
+  workflow_issue: { label: 'ملاحظة سير عمل', icon: Settings, color: 'text-violet-600' },
+  integration_issue: { label: 'ملاحظة تكامل', icon: Link2, color: 'text-indigo-600' },
   other: { label: 'أخرى', icon: HelpCircle, color: 'text-slate-600' },
 };
 
@@ -50,8 +50,8 @@ export const FINAL_STATUSES = new Set(['done', 'rejected', 'user_feedback_confir
 export const TEAMS = ['Frontend', 'Backend', 'DevOps', 'Design', 'QA', 'Product'];
 
 export const EVENT_LABELS = {
-  created: 'تم إنشاء المشكلة',
-  issue_created: 'تم إنشاء المشكلة',
+  created: 'تم الإنشاء',
+  issue_created: 'تم الإنشاء',
   status_changed: 'تم تغيير الحالة',
   assigned: 'تم التعيين',
   issue_assigned: 'تم تعيين الفريق',
@@ -65,9 +65,9 @@ export const EVENT_LABELS = {
   feedback_loop_sent: 'طلب تأكيد من المستخدم',
   user_confirmed_resolution: 'المستخدم أكّد الحل',
   user_rejected_resolution: 'المستخدم رفض الحل',
-  issue_reopened: 'إعادة فتح المشكلة',
-  issue_updated: 'تحديث المشكلة',
-  issue_marked_done: 'تم إكمال المشكلة',
+  issue_reopened: 'إعادة فتح',
+  issue_updated: 'تحديث',
+  issue_marked_done: 'تم الإكمال',
   sla_warning_triggered: 'تحذير SLA',
   updated: 'تحديث',
   closed: 'تم الإغلاق',
@@ -86,7 +86,7 @@ export const IMPACT_LABELS = {
   wrong_results: 'نتائج خاطئة',
   slow_performance: 'أداء بطيء',
   user_confusion: 'إرباك المستخدم',
-  visual_issue: 'مشكلة بصرية',
+  visual_issue: 'ملاحظة بصرية',
   data_loss: 'فقدان بيانات',
   minor_impact: 'تأثير بسيط',
 };

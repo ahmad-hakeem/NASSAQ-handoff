@@ -72,7 +72,7 @@ export function ProductHubPage() {
       setIssues(res.data.issues);
       setTotal(res.data.total);
     } catch (e) {
-      toast.error('فشل في تحميل المشاكل');
+      toast.error('فشل في تحميل التعليقات');
     } finally {
       setLoading(false);
     }
@@ -171,7 +171,7 @@ export function ProductHubPage() {
                 className="bg-brand-turquoise hover:bg-brand-turquoise/90 text-white shadow-lg shadow-brand-turquoise/20"
               >
                 <Plus className="h-4 w-4 ml-2" />
-                إرسال مشكلة جديدة
+                إضافة تعليق جديد
               </Button>
             </div>
           </div>
@@ -184,7 +184,7 @@ export function ProductHubPage() {
               </TabsTrigger>
               <TabsTrigger value="issues" className="rounded-lg data-[state=active]:bg-brand-navy data-[state=active]:text-white gap-2">
                 <Table2 className="h-4 w-4" />
-                المشاكل
+                التعليقات
               </TabsTrigger>
               <TabsTrigger value="kanban" className="rounded-lg data-[state=active]:bg-brand-navy data-[state=active]:text-white gap-2">
                 <Kanban className="h-4 w-4" />
@@ -336,7 +336,7 @@ function IssuesTableView({ issues, loading, total, page, totalPages, onPageChang
     return (
       <Card className="border rounded-xl">
         <CardContent>
-          <EmptyState icon={Bug} title="لا توجد مشاكل" description="لم يتم العثور على مشاكل تطابق معايير البحث" />
+          <EmptyState icon={Bug} title="لا توجد تعليقات" description="لم يتم العثور على تعليقات تطابق معايير البحث" />
         </CardContent>
       </Card>
     );
@@ -433,7 +433,7 @@ function IssuesTableView({ issues, loading, total, page, totalPages, onPageChang
             <ChevronRight className="h-4 w-4" />
           </Button>
           <span className="text-sm text-muted-foreground">
-            صفحة {page} من {totalPages} ({total} مشكلة)
+            صفحة {page} من {totalPages} ({total} تعليق)
           </span>
           <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => onPageChange(p => p + 1)} className="rounded-lg">
             <ChevronLeft className="h-4 w-4" />
@@ -460,7 +460,7 @@ function KanbanView({ issues, loading, total }) {
     return (
       <Card className="border rounded-xl">
         <CardContent>
-          <EmptyState icon={Kanban} title="لا توجد مشاكل" description="سيظهر تتبع المشاكل هنا بمجرد إنشائها" />
+          <EmptyState icon={Kanban} title="لا توجد تعليقات" description="ستظهر التعليقات هنا بمجرد إنشائها" />
         </CardContent>
       </Card>
     );
@@ -488,7 +488,7 @@ function KanbanView({ issues, loading, total }) {
               <div className={`rounded-b-xl border ${cfg.borderColor} border-t-0 bg-slate-50/50 p-2 space-y-2 min-h-[200px]`}>
                 {columnIssues.length === 0 ? (
                   <div className="flex items-center justify-center h-32 text-xs text-muted-foreground">
-                    لا توجد مشاكل
+                    لا توجد تعليقات
                   </div>
                 ) : (
                   columnIssues.map(issue => (
@@ -517,9 +517,9 @@ function DashboardView({ data, loading, isAdmin, navigate }) {
   }
 
   const kpiCards = [
-    { label: 'إجمالي المشاكل', value: data.total_issues, icon: BarChart3, color: 'text-brand-navy', bg: 'bg-blue-50' },
-    { label: 'مشاكل مفتوحة', value: data.total_open, icon: AlertTriangle, color: 'text-amber-600', bg: 'bg-amber-50' },
-    { label: 'مشاكل حرجة', value: data.critical_open, icon: AlertOctagon, color: 'text-red-600', bg: 'bg-red-50' },
+    { label: 'إجمالي التعليقات', value: data.total_issues, icon: BarChart3, color: 'text-brand-navy', bg: 'bg-blue-50' },
+    { label: 'تعليقات مفتوحة', value: data.total_open, icon: AlertTriangle, color: 'text-amber-600', bg: 'bg-amber-50' },
+    { label: 'تعليقات حرجة', value: data.critical_open, icon: AlertOctagon, color: 'text-red-600', bg: 'bg-red-50' },
     { label: 'جديدة هذا الأسبوع', value: data.new_this_week, icon: Zap, color: 'text-blue-600', bg: 'bg-blue-50' },
     { label: 'قيد التنفيذ', value: data.in_progress, icon: Clock, color: 'text-violet-600', bg: 'bg-violet-50' },
     { label: 'متوسط الحل (ساعة)', value: data.avg_resolution_hours, icon: Timer, color: 'text-emerald-600', bg: 'bg-emerald-50' },
@@ -702,7 +702,7 @@ function DashboardView({ data, loading, isAdmin, navigate }) {
               <div className="p-1.5 rounded-lg bg-brand-turquoise/10">
                 <Building2 className="h-4 w-4 text-brand-turquoise" />
               </div>
-              أكثر الأقسام مشاكلاً
+              أكثر الأقسام تعليقات
             </CardTitle>
           </CardHeader>
           <CardContent>

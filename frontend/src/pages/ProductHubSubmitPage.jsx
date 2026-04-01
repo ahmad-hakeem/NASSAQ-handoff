@@ -17,7 +17,7 @@ import {
 } from '../components/product-hub';
 import {
   Brain, Send, ArrowRight, Monitor, Loader2, CheckCircle2,
-  User, FileText, Sparkles, Info, Globe, Smartphone, Laptop,
+  User, FileText, Sparkles, Info,
 } from 'lucide-react';
 
 const authHeaders = () => {
@@ -27,9 +27,22 @@ const authHeaders = () => {
 
 const STEPS = [
   { key: 'reporter', label: 'المُبلِّغ', icon: User },
-  { key: 'details', label: 'تفاصيل المشكلة', icon: FileText },
+  { key: 'details', label: 'تفاصيل التعليق', icon: FileText },
   { key: 'extra', label: 'معلومات إضافية', icon: Info },
   { key: 'review', label: 'مراجعة وإرسال', icon: Send },
+];
+
+const COMMENT_TYPE_OPTIONS = [
+  { value: 'bug', labelAr: 'خطأ برمجي', labelEn: 'Bugs' },
+  { value: 'error', labelAr: 'خطأ تقني', labelEn: 'Errors' },
+  { value: 'ui_issue', labelAr: 'ملاحظة واجهة', labelEn: 'UI Issues' },
+  { value: 'ux_issue', labelAr: 'ملاحظة تجربة مستخدم', labelEn: 'UX Issues' },
+  { value: 'performance_issue', labelAr: 'ملاحظة أداء', labelEn: 'Performance Issues' },
+  { value: 'feature_request', labelAr: 'طلب ميزة', labelEn: 'Feature Requests' },
+  { value: 'improvement_suggestion', labelAr: 'اقتراح تحسين', labelEn: 'Improvement Suggestions' },
+  { value: 'workflow_issue', labelAr: 'ملاحظة سير عمل', labelEn: 'Workflow Issues' },
+  { value: 'permission_issue', labelAr: 'ملاحظة صلاحيات', labelEn: 'Permission Issues' },
+  { value: 'integration_issue', labelAr: 'ملاحظة تكامل', labelEn: 'Integration Issues' },
 ];
 
 const IMPACT_OPTIONS = Object.entries(IMPACT_LABELS).map(([value, label]) => ({ value, label }));
@@ -93,15 +106,15 @@ export function ProductHubSubmitPage() {
 
   const validateStep = (stepIdx) => {
     if (stepIdx === 0) {
-      if (!form.employee_name?.trim() || form.employee_name.trim().length < 3) return 'اسم الموظف مطلوب (3 أحرف على الأقل)';
+      if (!form.employee_name?.trim() || form.employee_name.trim().length < 3) return 'الاسم مطلوب (3 أحرف على الأقل)';
+      if (!form.issue_type) return 'نوع التعليق مطلوب';
       if (!form.account_type) return 'نوع الحساب مطلوب';
     }
     if (stepIdx === 1) {
-      if (!form.issue_type) return 'نوع المشكلة مطلوب';
       if (!form.section) return 'القسم مطلوب';
       if (!form.page?.trim()) return 'الصفحة مطلوبة';
-      if (!form.current_behavior?.trim()) return 'السلوك الحالي مطلوب';
-      if (!form.expected_behavior?.trim()) return 'السلوك المتوقع مطلوب';
+      if (!form.current_behavior?.trim()) return 'الوضع الحالي مطلوب';
+      if (!form.expected_behavior?.trim()) return 'الوضع المتوقع مطلوب';
     }
     return null;
   };
@@ -127,7 +140,7 @@ export function ProductHubSubmitPage() {
       if (payload.related_to && payload.related_to.length === 0) delete payload.related_to;
       if (!payload.reproducibility) delete payload.reproducibility;
       const res = await axios.post('/api/product-hub/issues', payload, { headers: authHeaders() });
-      toast.success('تم إرسال المشكلة بنجاح — حكيم يحللها الآن');
+      toast.success('تم إرسال التعليق بنجاح — حكيم يحلله الآن');
       navigate(`/admin/product-hub/issues/${res.data.id}`);
     } catch (err) {
       const detail = err.response?.data?.detail;
@@ -136,7 +149,7 @@ export function ProductHubSubmitPage() {
       } else if (typeof detail === 'string') {
         toast.error(detail);
       } else {
-        toast.error('فشل في إرسال المشكلة');
+        toast.error('فشل في إرسال التعليق');
       }
     } finally {
       setSubmitting(false);
@@ -153,9 +166,9 @@ export function ProductHubSubmitPage() {
                 <div className="p-2 rounded-xl bg-brand-turquoise/10">
                   <Brain className="h-6 w-6 text-brand-turquoise" />
                 </div>
-                إرسال مشكلة جديدة
+                إضافة تعليق جديد
               </h1>
-              <p className="text-muted-foreground mt-1 text-sm">حكيم سيحلل مشكلتك ويقترح الأولوية والفريق المناسب</p>
+              <p className="text-muted-foreground mt-1 text-sm">حكيم سيحلل تعليقك ويقترح الأولوية والفريق المناسب</p>
             </div>
             <Button variant="outline" onClick={() => navigate('/admin/product-hub')} className="rounded-lg">
               <ArrowRight className="h-4 w-4 ml-2" />
@@ -200,7 +213,7 @@ export function ProductHubSubmitPage() {
               <CardContent className="space-y-5">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   <div>
-                    <Label className="text-sm font-medium">اسم الموظف <span className="text-red-500">*</span></Label>
+                    <Label className="text-sm font-medium">الاسم <span className="text-red-500">*</span></Label>
                     <Input
                       value={form.employee_name}
                       onChange={(e) => handleChange('employee_name', e.target.value)}
@@ -220,39 +233,28 @@ export function ProductHubSubmitPage() {
                   </div>
                 </div>
                 <div>
-                  <Label className="text-sm font-medium">نوع الحساب <span className="text-red-500">*</span></Label>
-                  <Select value={form.account_type} onValueChange={(v) => handleChange('account_type', v)}>
-                    <SelectTrigger className="mt-1.5 rounded-lg"><SelectValue placeholder="اختر نوع الحساب" /></SelectTrigger>
+                  <Label className="text-sm font-medium">نوع التعليق <span className="text-red-500">*</span></Label>
+                  <Select value={form.issue_type} onValueChange={(v) => handleChange('issue_type', v)}>
+                    <SelectTrigger className="mt-1.5 rounded-lg"><SelectValue placeholder="اختر نوع التعليق" /></SelectTrigger>
                     <SelectContent>
-                      {config?.account_types?.map(t => (
-                        <SelectItem key={t} value={t}>{t}</SelectItem>
+                      {COMMENT_TYPE_OPTIONS.map(opt => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.labelAr} — {opt.labelEn}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div>
-                  <Label className="text-sm font-medium">المنصة</Label>
-                  <div className="flex gap-2 mt-1.5">
-                    {[
-                      { value: 'web', label: 'ويب', icon: Globe },
-                      { value: 'mobile', label: 'موبايل', icon: Smartphone },
-                      { value: 'desktop', label: 'سطح المكتب', icon: Laptop },
-                    ].map(p => (
-                      <button
-                        key={p.value}
-                        type="button"
-                        onClick={() => handleChange('platform', p.value)}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 text-sm transition-all ${
-                          form.platform === p.value
-                            ? 'border-brand-turquoise bg-brand-turquoise/10 text-brand-navy font-medium'
-                            : 'border-slate-200 text-muted-foreground hover:border-slate-300'
-                        }`}
-                      >
-                        <p.icon className="h-4 w-4" />
-                        {p.label}
-                      </button>
-                    ))}
-                  </div>
+                  <Label className="text-sm font-medium">نوع الحساب <span className="text-red-500">*</span></Label>
+                  <Select value={form.account_type} onValueChange={(v) => handleChange('account_type', v)}>
+                    <SelectTrigger className="mt-1.5 rounded-lg"><SelectValue placeholder="اختر نوع الحساب" /></SelectTrigger>
+                    <SelectContent>
+                      {config?.account_types?.filter(t => t !== 'platform').map(t => (
+                        <SelectItem key={t} value={t}>{t}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </CardContent>
             </Card>
@@ -263,34 +265,10 @@ export function ProductHubSubmitPage() {
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2">
                   <FileText className="h-4 w-4 text-brand-turquoise" />
-                  تفاصيل المشكلة
+                  تفاصيل التعليق
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-5">
-                <div>
-                  <Label className="text-sm font-medium">نوع المشكلة <span className="text-red-500">*</span></Label>
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 mt-2">
-                    {config?.issue_types?.map(t => {
-                      const tc = TYPE_CONFIG[t.value] || TYPE_CONFIG.other;
-                      const Icon = tc.icon;
-                      const selected = form.issue_type === t.value;
-                      return (
-                        <button
-                          key={t.value}
-                          type="button"
-                          onClick={() => handleChange('issue_type', t.value)}
-                          className={`p-3 rounded-xl border-2 text-sm font-medium flex items-center gap-2 transition-all ${
-                            selected ? 'border-brand-turquoise bg-brand-turquoise/10 text-brand-navy shadow-sm' : 'border-slate-200 hover:border-slate-300 text-muted-foreground'
-                          }`}
-                        >
-                          <Icon className={`h-4 w-4 ${selected ? tc.color : ''}`} />
-                          {t.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   <div>
                     <Label className="text-sm font-medium">القسم <span className="text-red-500">*</span></Label>
@@ -315,18 +293,18 @@ export function ProductHubSubmitPage() {
                 </div>
 
                 <div>
-                  <Label className="text-sm font-medium">السلوك الحالي <span className="text-red-500">*</span></Label>
+                  <Label className="text-sm font-medium">الوضع الحالي <span className="text-red-500">*</span></Label>
                   <Textarea
                     value={form.current_behavior}
                     onChange={(e) => handleChange('current_behavior', e.target.value)}
-                    placeholder="ما الذي يحدث حالياً؟ صف المشكلة بوضوح..."
+                    placeholder="صف ما يحدث حالياً بوضوح..."
                     className="mt-1.5 text-right min-h-[100px] rounded-lg"
                   />
                   <p className="text-[11px] text-muted-foreground mt-1 text-left">{(form.current_behavior || '').length}/5000</p>
                 </div>
 
                 <div>
-                  <Label className="text-sm font-medium">السلوك المتوقع <span className="text-red-500">*</span></Label>
+                  <Label className="text-sm font-medium">الوضع المتوقع <span className="text-red-500">*</span></Label>
                   <Textarea
                     value={form.expected_behavior}
                     onChange={(e) => handleChange('expected_behavior', e.target.value)}
@@ -397,7 +375,7 @@ export function ProductHubSubmitPage() {
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base flex items-center gap-2">
                       <Sparkles className="h-4 w-4 text-brand-turquoise" />
-                      حقول خاصة بنوع المشكلة
+                      حقول خاصة بنوع التعليق
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
@@ -435,11 +413,10 @@ export function ProductHubSubmitPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <ReviewRow label="اسم الموظف" value={form.employee_name} />
+                  <ReviewRow label="الاسم" value={form.employee_name} />
+                  <ReviewRow label="نوع التعليق" value={COMMENT_TYPE_OPTIONS.find(o => o.value === form.issue_type)?.labelAr || form.issue_type} />
                   <ReviewRow label="نوع الحساب" value={form.account_type} />
-                  <ReviewRow label="المنصة" value={form.platform} />
                   <Separator />
-                  <ReviewRow label="نوع المشكلة" value={TYPE_CONFIG[form.issue_type]?.label || form.issue_type} />
                   <ReviewRow label="القسم" value={form.section} />
                   <ReviewRow label="الصفحة" value={form.page} />
                   <Separator />
@@ -472,9 +449,9 @@ export function ProductHubSubmitPage() {
                   <div className="flex items-center gap-3 text-sm">
                     <Brain className="h-5 w-5 text-brand-turquoise flex-shrink-0" />
                     <div>
-                      <p className="font-medium text-brand-navy">حكيم سيحلل مشكلتك تلقائياً</p>
+                      <p className="font-medium text-brand-navy">حكيم سيحلل تعليقك تلقائياً</p>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        سيقترح الأولوية والفريق المناسب ويكتشف المشاكل المشابهة ويُنشئ عنواناً واضحاً
+                        سيقترح الأولوية والفريق المناسب ويكتشف التعليقات المشابهة ويُنشئ عنواناً واضحاً
                       </p>
                     </div>
                   </div>
@@ -522,7 +499,7 @@ export function ProductHubSubmitPage() {
                   ) : (
                     <>
                       <Send className="h-4 w-4 ml-2" />
-                      إرسال المشكلة
+                      إرسال التعليق
                     </>
                   )}
                 </Button>
