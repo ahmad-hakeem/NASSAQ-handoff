@@ -5,8 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Input } from '../components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { Progress } from '../components/ui/progress';
 import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -236,126 +236,162 @@ export function ProductHubPage() {
   );
 }
 
-function ChipFilter({ label, value, options, onChange }) {
-  return (
-    <div className="space-y-1.5">
-      <p className="text-[11px] font-semibold text-muted-foreground">{label}</p>
-      <div className="flex flex-wrap gap-1.5">
-        <button
-          onClick={() => onChange('')}
-          className={`px-3 py-1 rounded-full text-[11px] font-medium border transition-all ${
-            !value
-              ? 'border-brand-turquoise bg-brand-turquoise/10 text-brand-navy'
-              : 'border-slate-200 text-muted-foreground hover:border-slate-300 hover:bg-slate-50'
-          }`}
-        >
-          الكل
-        </button>
-        {options.map(opt => (
-          <button
-            key={opt.value}
-            onClick={() => onChange(value === opt.value ? '' : opt.value)}
-            className={`px-3 py-1 rounded-full text-[11px] font-medium border transition-all ${
-              value === opt.value
-                ? 'border-brand-turquoise bg-brand-turquoise/10 text-brand-navy'
-                : 'border-slate-200 text-muted-foreground hover:border-slate-300 hover:bg-slate-50'
-            }`}
-          >
-            {opt.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function FilterToolbar({ filters, config, onFilterChange, onClear, hasActiveFilters }) {
+  const activeCount = Object.values(filters).filter(v => v).length;
+
   return (
     <Card className="border shadow-sm rounded-xl">
-      <CardContent className="p-4 space-y-4">
-        <div className="relative">
-          <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="بحث في العنوان، المحتوى، الاسم..."
-            value={filters.search}
-            onChange={(e) => onFilterChange('search', e.target.value)}
-            className="pr-10 text-right rounded-lg"
-          />
-        </div>
-
-        <ChipFilter
-          label="الحالة"
-          value={filters.status}
-          options={Object.entries(STATUS_CONFIG).map(([k, v]) => ({ value: k, label: v.label }))}
-          onChange={(v) => onFilterChange('status', v)}
-        />
-
-        <ChipFilter
-          label="الأولوية"
-          value={filters.priority}
-          options={Object.entries(PRIORITY_CONFIG).map(([k, v]) => ({ value: k, label: v.label }))}
-          onChange={(v) => onFilterChange('priority', v)}
-        />
-
-        {config && (
-          <>
-            <ChipFilter
-              label="النوع"
-              value={filters.issue_type}
-              options={(config.issue_types || []).map(t => ({ value: t.value, label: t.label }))}
-              onChange={(v) => onFilterChange('issue_type', v)}
+      <CardContent className="p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="بحث في العنوان، المحتوى، الاسم..."
+              value={filters.search}
+              onChange={(e) => onFilterChange('search', e.target.value)}
+              className="pr-10 text-right rounded-lg h-9"
             />
-            <ChipFilter
-              label="القسم"
-              value={filters.section}
-              options={(config.sections || []).map(s => ({ value: s, label: s }))}
-              onChange={(v) => onFilterChange('section', v)}
-            />
-            <ChipFilter
-              label="الفريق"
-              value={filters.assigned_team}
-              options={(config.teams || []).map(t => ({ value: t, label: t }))}
-              onChange={(v) => onFilterChange('assigned_team', v)}
-            />
-          </>
-        )}
-
-        {hasActiveFilters && (
-          <div className="flex justify-end">
-            <Button variant="ghost" size="sm" onClick={onClear} className="text-red-500 hover:text-red-700 hover:bg-red-50 rounded-full">
-              <XCircle className="h-4 w-4 ml-1" />
-              مسح الفلاتر
-            </Button>
           </div>
-        )}
+
+          <Select value={filters.status || '_all'} onValueChange={(v) => onFilterChange('status', v === '_all' ? '' : v)}>
+            <SelectTrigger className="w-[140px] rounded-lg h-9 text-xs">
+              <SelectValue placeholder="الحالة" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="_all">كل الحالات</SelectItem>
+              {Object.entries(STATUS_CONFIG).map(([k, v]) => (
+                <SelectItem key={k} value={k}>
+                  <span className="flex items-center gap-1.5">
+                    <span className={`w-2 h-2 rounded-full ${v.color}`} />
+                    {v.label}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={filters.priority || '_all'} onValueChange={(v) => onFilterChange('priority', v === '_all' ? '' : v)}>
+            <SelectTrigger className="w-[130px] rounded-lg h-9 text-xs">
+              <SelectValue placeholder="الأولوية" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="_all">كل الأولويات</SelectItem>
+              {Object.entries(PRIORITY_CONFIG).map(([k, v]) => (
+                <SelectItem key={k} value={k}>
+                  <span className="flex items-center gap-1.5">
+                    <span className={`w-2 h-2 rounded-full ${v.dotColor || 'bg-slate-400'}`} />
+                    {v.label}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {config && (
+            <>
+              <Select value={filters.issue_type || '_all'} onValueChange={(v) => onFilterChange('issue_type', v === '_all' ? '' : v)}>
+                <SelectTrigger className="w-[130px] rounded-lg h-9 text-xs">
+                  <SelectValue placeholder="النوع" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_all">كل الأنواع</SelectItem>
+                  {(config.issue_types || []).map(t => (
+                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={filters.section || '_all'} onValueChange={(v) => onFilterChange('section', v === '_all' ? '' : v)}>
+                <SelectTrigger className="w-[130px] rounded-lg h-9 text-xs">
+                  <SelectValue placeholder="القسم" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_all">كل الأقسام</SelectItem>
+                  {(config.sections || []).map(s => (
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={filters.assigned_team || '_all'} onValueChange={(v) => onFilterChange('assigned_team', v === '_all' ? '' : v)}>
+                <SelectTrigger className="w-[120px] rounded-lg h-9 text-xs">
+                  <SelectValue placeholder="الفريق" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_all">كل الفرق</SelectItem>
+                  {(config.teams || []).map(t => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </>
+          )}
+
+          {hasActiveFilters && (
+            <Button variant="ghost" size="sm" onClick={onClear} className="text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg h-9 px-3">
+              <XCircle className="h-3.5 w-3.5 ml-1" />
+              مسح ({activeCount})
+            </Button>
+          )}
+        </div>
       </CardContent>
     </Card>
   );
+}
+
+function getProgressColor(progress) {
+  if (progress >= 100) return 'bg-emerald-500';
+  if (progress >= 75) return 'bg-emerald-400';
+  if (progress >= 50) return 'bg-brand-turquoise';
+  if (progress >= 25) return 'bg-amber-400';
+  return 'bg-red-400';
+}
+
+function getProgressGradient(progress) {
+  if (progress >= 100) return 'from-emerald-400 to-emerald-600';
+  if (progress >= 75) return 'from-emerald-300 to-emerald-500';
+  if (progress >= 50) return 'from-brand-turquoise/80 to-brand-turquoise';
+  if (progress >= 25) return 'from-amber-300 to-amber-500';
+  return 'from-red-300 to-red-500';
+}
+
+function getCardStyle(progress, status) {
+  const isDone = status === 'done' || status === 'user_feedback_confirmed';
+  const isRejected = status === 'rejected';
+  if (isDone) return 'border-emerald-200 bg-emerald-50/30';
+  if (isRejected) return 'border-red-200 bg-red-50/20';
+  if (progress >= 50) return 'border-slate-200';
+  return 'border-slate-200';
 }
 
 function IssueCard({ issue, navigate }) {
   const typeCfg = TYPE_CONFIG[issue.issue_type] || TYPE_CONFIG.other;
   const TypeIcon = typeCfg.icon;
   const progress = STATUS_PROGRESS[issue.status] || 0;
+  const isDone = issue.status === 'done' || issue.status === 'user_feedback_confirmed';
+  const isRejected = issue.status === 'rejected';
+  const cardBorder = getCardStyle(progress, issue.status);
 
   return (
     <Card
       onClick={() => navigate(`/admin/product-hub/issues/${issue.id}`)}
-      className="border shadow-sm rounded-xl hover:shadow-md hover:border-brand-turquoise/40 cursor-pointer transition-all group"
+      className={`shadow-sm rounded-xl hover:shadow-lg cursor-pointer transition-all group overflow-hidden ${cardBorder}`}
     >
-      <CardContent className="p-5">
-        <div className="flex items-start justify-between gap-3 mb-3">
+      <div className={`h-1 w-full bg-gradient-to-l ${getProgressGradient(progress)}`} style={{ width: `${progress}%`, minWidth: progress > 0 ? '8px' : '0' }} />
+
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between gap-2 mb-2">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1.5">
-              <span className="text-[11px] font-mono text-muted-foreground bg-slate-100 px-1.5 py-0.5 rounded">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-[10px] font-mono text-muted-foreground bg-slate-100 px-1.5 py-0.5 rounded">
                 #{issue.issue_number}
               </span>
-              <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                <TypeIcon className={`h-3.5 w-3.5 ${typeCfg.color}`} />
+              <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                <TypeIcon className={`h-3 w-3 ${typeCfg.color}`} />
                 <span>{typeCfg.label}</span>
               </div>
             </div>
-            <h3 className="text-sm font-bold text-brand-navy group-hover:text-brand-turquoise transition-colors leading-relaxed">
+            <h3 className={`text-sm font-bold leading-snug transition-colors ${isDone ? 'text-emerald-700 line-through decoration-emerald-300' : isRejected ? 'text-red-400 line-through decoration-red-200' : 'text-brand-navy group-hover:text-brand-turquoise'}`}>
               {issue.title}
             </h3>
           </div>
@@ -363,57 +399,65 @@ function IssueCard({ issue, navigate }) {
         </div>
 
         {issue.current_behavior && (
-          <p className="text-xs text-muted-foreground line-clamp-2 mb-3 leading-relaxed bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+          <p className="text-[11px] text-muted-foreground line-clamp-2 mb-2 leading-relaxed bg-slate-50/80 p-2 rounded-lg border border-slate-100">
             {issue.current_behavior}
           </p>
         )}
 
-        <div className="flex flex-wrap items-center gap-2 mb-3">
+        <div className="flex flex-wrap items-center gap-1.5 mb-2">
           <StatusChip status={issue.status} size="sm" showIcon />
           <SLAIndicator issue={issue} size="sm" />
           {issue.assigned_team && (
-            <Badge variant="outline" className="text-[10px] border-brand-turquoise/30 text-brand-turquoise">
+            <Badge variant="outline" className="text-[9px] border-brand-turquoise/30 text-brand-turquoise px-1.5 py-0">
               {issue.assigned_team}
             </Badge>
           )}
         </div>
 
         {issue.hakim_analysis && Object.keys(issue.hakim_analysis).length > 0 && (
-          <div className="flex items-center gap-2 mb-3 px-2.5 py-1.5 bg-brand-turquoise/5 rounded-lg border border-brand-turquoise/10">
-            <Brain className="h-3 w-3 text-brand-turquoise flex-shrink-0" />
-            <span className="text-[10px] text-brand-turquoise font-medium">حكيم</span>
+          <div className="flex items-center gap-1.5 mb-2 px-2 py-1 bg-brand-turquoise/5 rounded-md border border-brand-turquoise/10">
+            <Brain className="h-2.5 w-2.5 text-brand-turquoise flex-shrink-0" />
+            <span className="text-[9px] text-brand-turquoise font-medium">حكيم</span>
             {issue.hakim_analysis.suggested_team && (
-              <span className="text-[10px] text-muted-foreground">
-                الفريق: <span className="font-medium text-brand-navy">{issue.hakim_analysis.suggested_team}</span>
+              <span className="text-[9px] text-muted-foreground truncate">
+                {issue.hakim_analysis.suggested_team}
               </span>
             )}
             {issue.hakim_analysis.duplicate_ids?.length > 0 && (
-              <span className="text-[10px] text-amber-600 flex items-center gap-0.5">
-                <AlertTriangle className="h-2.5 w-2.5" />
-                {issue.hakim_analysis.duplicate_ids.length} مشابه
-              </span>
-            )}
-            {issue.hakim_analysis.impact_assessment && (
-              <span className="text-[10px] text-muted-foreground truncate max-w-[140px]">
-                {issue.hakim_analysis.impact_assessment}
+              <span className="text-[9px] text-amber-600 flex items-center gap-0.5">
+                <AlertTriangle className="h-2 w-2" />
+                {issue.hakim_analysis.duplicate_ids.length}
               </span>
             )}
           </div>
         )}
 
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-            <span className="flex items-center gap-1">
-              <Users className="h-3 w-3" />
+        <div className="mb-2">
+          <div className="flex items-center justify-between mb-1">
+            <span className={`text-[10px] font-semibold ${getProgressColor(progress).replace('bg-', 'text-')}`}>
+              {progress}%
+            </span>
+            <span className="text-[9px] text-muted-foreground">
+              {isDone ? 'مكتمل' : isRejected ? 'مرفوض' : 'التقدم'}
+            </span>
+          </div>
+          <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+            <div
+              className={`h-2 rounded-full bg-gradient-to-l ${getProgressGradient(progress)} transition-all duration-500`}
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <span className="flex items-center gap-0.5">
+              <Users className="h-2.5 w-2.5" />
               {issue.employee_name}
             </span>
             <span>{issue.section}</span>
-            <span>{formatDualDateCompact(issue.created_at)}</span>
           </div>
-          <div className="flex items-center gap-1.5">
-            <Progress value={progress} className="h-1.5 w-16" />
-            <span className="text-[10px] text-muted-foreground font-medium">{progress}%</span>
-          </div>
+          <span>{formatDualDateCompact(issue.created_at)}</span>
         </div>
       </CardContent>
     </Card>
@@ -444,7 +488,7 @@ function IssuesTableView({ issues, loading, total, page, totalPages, onPageChang
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {issues.map(issue => (
           <IssueCard key={issue.id} issue={issue} navigate={navigate} />
         ))}
