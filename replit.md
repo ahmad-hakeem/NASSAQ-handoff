@@ -85,6 +85,18 @@ Each fix report must include: root cause, why it wasn't caught before, what chan
 - **Backend**: FastAPI (Python), MongoDB (motor), JWT auth — port 8000
 - **Database**: MongoDB at `localhost:27017`, DB: `test_database`
 
+### Product Intelligence Hub (مركز ذكاء المنتج)
+- **Backend**: `backend/routes/product_hub_routes.py` — Full CRUD, status workflow, Hakim AI analysis, comments, dashboard analytics
+- **Frontend**: `ProductHubPage.jsx` (listing + analytics), `ProductHubSubmitPage.jsx` (smart form), `ProductHubIssuePage.jsx` (detail + comments + feedback)
+- **Routes**: `/admin/product-hub`, `/admin/product-hub/submit`, `/admin/product-hub/issues/:issueId`
+- **Collections**: `product_issues`, `issue_activity_log`, `issue_comments`, `issue_duplicates_map`
+- **Status lifecycle**: `new` → `under_review` → `in_progress` → `qa_validation` → `done` → `user_feedback_confirmed` (also `rejected` from new/under_review/in_progress)
+- **SLA**: critical=24h, high=72h, medium=120h, low=None
+- **RBAC**: Status changes, dashboard, assignment, title/priority edits are admin-only. Non-admins can create issues + view/comment/feedback on own issues only. `generated_prompt` redacted for non-admins.
+- **Hakim AI**: Uses `AI_INTEGRATIONS_OPENAI_API_KEY` env var, model `gpt-4o-mini`, fallback `_fallback_analysis()` if no key
+- **Platform admin accounts**: `zalat@nassaqapp.com`, `hakim@nassaqapp.com` (seeded on startup)
+- **Input validation**: `issue_type` and `account_type` validated against enum sets
+
 ### Unified Approval Engine
 - **Backend**: `backend/engines/approval_engine.py` — handler registry + transition validation + structured event logging
 - **Handlers**: `backend/engines/approval_handlers.py` — Teacher + School handlers with `verify_after_approve()`

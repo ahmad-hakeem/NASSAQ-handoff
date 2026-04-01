@@ -50,6 +50,7 @@ import {
   Star,
   Play,
   Award,
+  Lightbulb,
 } from 'lucide-react';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
@@ -263,6 +264,12 @@ export const Sidebar = ({ children }) => {
         icon: MessageSquare,
         label: isRTL ? 'التواصل والإشعارات' : 'Communication & Notifications',
         href: '/admin/communication',
+        roles: ['platform_admin'],
+      },
+      {
+        icon: Lightbulb,
+        label: isRTL ? 'مركز ذكاء المنتج' : 'Product Hub',
+        href: '/admin/product-hub',
         roles: ['platform_admin'],
       },
       {

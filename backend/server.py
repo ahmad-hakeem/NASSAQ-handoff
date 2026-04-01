@@ -80,6 +80,48 @@ from routes.monitoring_routes import router as monitoring_router
 app.include_router(monitoring_router)
 
 
+async def _seed_platform_admins():
+    admins = [
+        {
+            "full_name": "Dr. Ahmad Zalat",
+            "email": "zalat@nassaqapp.com",
+            "password": "h38xaHBJ",
+            "role": "platform_admin",
+        },
+        {
+            "full_name": "Ahmed Hakim",
+            "email": "hakim@nassaqapp.com",
+            "password": "Hakimnassaqapp2026$$",
+            "role": "platform_admin",
+        },
+    ]
+    for admin in admins:
+        existing = await db.users.find_one({"email": admin["email"]})
+        if not existing:
+            user_doc = {
+                "id": str(uuid.uuid4()),
+                "email": admin["email"],
+                "full_name": admin["full_name"],
+                "password_hash": hash_password(admin["password"]),
+                "role": admin["role"],
+                "is_active": True,
+                "tenant_id": None,
+                "phone": None,
+                "avatar_url": None,
+                "preferred_language": "ar",
+                "preferred_theme": "light",
+                "must_change_password": False,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            await db.users.insert_one(user_doc)
+            logger.info(f"Seeded platform admin: {admin['email']}")
+        else:
+            if existing.get("role") != "platform_admin":
+                await db.users.update_one({"email": admin["email"]}, {"$set": {"role": "platform_admin"}})
+                logger.info(f"Updated role to platform_admin: {admin['email']}")
+
+
 @app.on_event("startup")
 async def startup_tasks():
     from config import config
@@ -101,6 +143,8 @@ async def startup_tasks():
     approval_engine.register(TeacherApprovalHandler())
     approval_engine.register(SchoolApprovalHandler())
     logger.info(f"Approval engine initialized with {len(approval_engine.get_registered_types())} handler(s)")
+
+    await _seed_platform_admins()
 
     from seeds.timetable_hard_constraints import seed_hard_constraints
     try:
@@ -659,6 +703,7 @@ from routes.event_workflow_routes_mod import router as event_workflow_mod_router
 from routes.relationship_routes_mod import router as relationship_mod_router
 from routes.consent_privacy_routes_mod import router as consent_privacy_mod_router
 from routes.activities_routes_mod import router as activities_mod_router
+from routes.product_hub_routes import router as product_hub_router
 
 api_router.include_router(auth_mod_router)
 api_router.include_router(user_mod_router)
@@ -686,6 +731,7 @@ api_router.include_router(event_workflow_mod_router)
 api_router.include_router(relationship_mod_router)
 api_router.include_router(consent_privacy_mod_router)
 api_router.include_router(activities_mod_router)
+api_router.include_router(product_hub_router)
 
 from routes.principal_management_routes import router as principal_mgmt_router
 api_router.include_router(principal_mgmt_router)

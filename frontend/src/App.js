@@ -58,6 +58,11 @@ import {
   TeacherSettingsPage
 } from "./pages/TeacherModule";
 
+// Product Intelligence Hub
+import { ProductHubPage } from "./pages/ProductHubPage";
+import { ProductHubSubmitPage } from "./pages/ProductHubSubmitPage";
+import { ProductHubIssuePage } from "./pages/ProductHubIssuePage";
+
 // Platform Admin Pages
 import { PlatformSchoolsPage } from "./pages/PlatformSchoolsPage";
 import { PlatformUsersPage } from "./pages/PlatformUsersPage";
@@ -353,6 +358,30 @@ function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={['platform_admin']}>
             <PlatformAnalyticsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/product-hub"
+        element={
+          <ProtectedRoute allowedRoles={['platform_admin', 'platform_operations_manager', 'school_principal', 'school_admin', 'teacher']}>
+            <ProductHubPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/product-hub/submit"
+        element={
+          <ProtectedRoute allowedRoles={['platform_admin', 'platform_operations_manager', 'school_principal', 'school_admin', 'teacher']}>
+            <ProductHubSubmitPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/product-hub/issues/:issueId"
+        element={
+          <ProtectedRoute allowedRoles={['platform_admin', 'platform_operations_manager', 'school_principal', 'school_admin', 'teacher']}>
+            <ProductHubIssuePage />
           </ProtectedRoute>
         }
       />
