@@ -122,3 +122,31 @@ export const DYNAMIC_FIELD_LABELS = {
   api_endpoint: 'نقطة API',
   additional_details: 'تفاصيل إضافية',
 };
+
+export function formatDualDate(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  const hijri = d.toLocaleDateString('ar-SA-u-ca-islamic', { year: 'numeric', month: 'short', day: 'numeric' });
+  const greg = d.toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' });
+  return `${hijri}  —  ${greg}`;
+}
+
+export function formatDualDateTime(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  const hijri = d.toLocaleDateString('ar-SA-u-ca-islamic', { year: 'numeric', month: 'short', day: 'numeric' });
+  const greg = d.toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' });
+  const time = d.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+  return `${hijri}  —  ${greg}  ${time}`;
+}
+
+export function formatDualDateCompact(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  const hijri = d.toLocaleDateString('ar-SA-u-ca-islamic', { day: 'numeric', month: 'numeric' });
+  const greg = d.toLocaleDateString('ar-EG', { day: 'numeric', month: 'numeric' });
+  return `${hijri} | ${greg}`;
+}

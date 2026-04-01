@@ -17,6 +17,7 @@ import {
   StatusChip, PriorityBadge, SLAIndicator, HakimInsightCard, EmptyState,
   STATUS_CONFIG, TYPE_CONFIG, STATUS_PROGRESS,
   FINAL_STATUSES, TEAMS, EVENT_LABELS, COMMENT_TYPE_CONFIG, IMPACT_LABELS,
+  formatDualDate, formatDualDateTime, formatDualDateCompact,
 } from '../components/product-hub';
 import {
   ArrowRight, Brain, Copy, Send, Shield, MessageSquare, Activity,
@@ -189,7 +190,7 @@ export function ProductHubIssuePage() {
                   <span>•</span>
                   <span>{issue.section} › {issue.page}</span>
                   <span>•</span>
-                  <span>{new Date(issue.created_at).toLocaleDateString('ar-SA')}</span>
+                  <span>{formatDualDateCompact(issue.created_at)}</span>
                 </div>
               </div>
             </div>
@@ -263,8 +264,8 @@ export function ProductHubIssuePage() {
                         className={issue.sla_status === 'exceeded' ? 'text-red-600 font-semibold' : 'text-emerald-600 font-semibold'}
                       />
                     )}
-                    <InfoField label="تاريخ الإنشاء" value={new Date(issue.created_at).toLocaleString('ar-SA')} />
-                    {issue.resolved_at && <InfoField label="تاريخ الحل" value={new Date(issue.resolved_at).toLocaleString('ar-SA')} />}
+                    <InfoField label="تاريخ الإنشاء" value={formatDualDateTime(issue.created_at)} />
+                    {issue.resolved_at && <InfoField label="تاريخ الحل" value={formatDualDateTime(issue.resolved_at)} />}
                   </div>
 
                   <Separator />
@@ -396,7 +397,7 @@ export function ProductHubIssuePage() {
                               </Badge>
                             )}
                             <span className="text-muted-foreground">•</span>
-                            <span className="text-muted-foreground">{new Date(c.timestamp).toLocaleString('ar-SA')}</span>
+                            <span className="text-muted-foreground">{formatDualDateTime(c.timestamp)}</span>
                           </div>
                           <p className="text-sm mt-1.5 leading-relaxed">{c.content}</p>
                         </div>
@@ -504,7 +505,7 @@ export function ProductHubIssuePage() {
                                   </div>
                                 )}
                                 <span className="text-[10px] text-muted-foreground mt-1 block">
-                                  {new Date(a.timestamp).toLocaleString('ar-SA')}
+                                  {formatDualDateTime(a.timestamp)}
                                 </span>
                               </div>
                             </div>

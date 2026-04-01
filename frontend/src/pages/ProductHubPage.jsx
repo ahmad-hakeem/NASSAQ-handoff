@@ -14,6 +14,7 @@ import {
   StatusChip, PriorityBadge, SLAIndicator, StatCard, EmptyState, IssueKanbanCard,
   HakimInsightCard,
   STATUS_CONFIG, PRIORITY_CONFIG, TYPE_CONFIG, STATUS_PROGRESS, KANBAN_COLUMNS,
+  formatDualDateCompact,
 } from '../components/product-hub';
 import {
   Brain, Plus, Search, BarChart3, Users, Target, Zap, Sparkles,
@@ -407,7 +408,7 @@ function IssueCard({ issue, navigate }) {
               {issue.employee_name}
             </span>
             <span>{issue.section}</span>
-            <span>{new Date(issue.created_at).toLocaleDateString('ar-SA')}</span>
+            <span>{formatDualDateCompact(issue.created_at)}</span>
           </div>
           <div className="flex items-center gap-1.5">
             <Progress value={progress} className="h-1.5 w-16" />
