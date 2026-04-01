@@ -315,6 +315,36 @@ export function ProductHubIssuePage() {
                       </div>
                     </>
                   )}
+
+                  {isMainAdmin && issue.generated_prompt && (
+                    <>
+                      <Separator />
+                      <div>
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="text-sm font-semibold flex items-center gap-2">
+                            <Brain className="h-3.5 w-3.5 text-brand-purple" />
+                            Final Prompt
+                          </h4>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="rounded-lg gap-1.5 text-xs border-brand-purple/30 text-brand-purple hover:bg-brand-purple/5"
+                            onClick={() => {
+                              navigator.clipboard.writeText(issue.generated_prompt);
+                              toast.success('تم نسخ البرومبت');
+                            }}
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                            Copy Prompt
+                          </Button>
+                        </div>
+                        <pre
+                          className="text-xs bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-300 p-4 rounded-xl border border-slate-200 dark:border-slate-700 font-mono leading-relaxed whitespace-pre-wrap overflow-x-auto max-h-[400px] overflow-y-auto"
+                          dir="ltr"
+                        >{issue.generated_prompt}</pre>
+                      </div>
+                    </>
+                  )}
                 </CardContent>
               </Card>
 
