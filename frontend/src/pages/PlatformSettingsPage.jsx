@@ -388,6 +388,34 @@ export const PlatformSettingsPage = () => {
   
   const [availableTitles, setAvailableTitles] = useState({ ar: [], en: [] });
 
+  const [contactInfo, setContactInfo] = useState({
+    primaryEmail: 'info@nassaqapp.com',
+    supportEmail: 'support@nassaqapp.com',
+    primaryPhone: '+966 11 234 5678',
+    alternatePhone: '+966 11 234 5679',
+    address: 'الرياض، المملكة العربية السعودية، حي العليا، شارع العروبة',
+    workingHours: 'الأحد - الخميس: 8:00 ص - 4:00 م',
+    website: 'https://nassaqapp.com',
+    ownerName: 'شركة نَسَّق للتقنية التعليمية',
+    socialMedia: {
+      twitter: 'https://twitter.com/nassaqapp',
+      facebook: '',
+      instagram: '',
+      linkedin: 'https://linkedin.com/company/nassaq',
+      youtube: '',
+    },
+  });
+
+  const [securitySettings, setSecuritySettings] = useState({
+    twoFactorEnabled: false,
+    sessionTimeout: 30,
+    maxSessions: 5,
+    passwordMinLength: 8,
+    passwordRequireUppercase: true,
+    passwordRequireNumbers: true,
+    passwordRequireSpecial: true,
+  });
+
   // Load settings from API using new endpoints
   const fetchSettings = React.useCallback(async () => {
       try {
@@ -620,36 +648,6 @@ export const PlatformSettingsPage = () => {
     version: '2.0',
     lastUpdated: '2026-02-15T00:00:00Z',
     effectiveDate: '2026-03-01T00:00:00Z',
-  });
-  
-  // Contact info
-  const [contactInfo, setContactInfo] = useState({
-    primaryEmail: 'info@nassaqapp.com',
-    supportEmail: 'support@nassaqapp.com',
-    primaryPhone: '+966 11 234 5678',
-    alternatePhone: '+966 11 234 5679',
-    address: 'الرياض، المملكة العربية السعودية، حي العليا، شارع العروبة',
-    workingHours: 'الأحد - الخميس: 8:00 ص - 4:00 م',
-    website: 'https://nassaqapp.com',
-    ownerName: 'شركة نَسَّق للتقنية التعليمية',
-    socialMedia: {
-      twitter: 'https://twitter.com/nassaqapp',
-      facebook: '',
-      instagram: '',
-      linkedin: 'https://linkedin.com/company/nassaq',
-      youtube: '',
-    },
-  });
-  
-  // Security settings
-  const [securitySettings, setSecuritySettings] = useState({
-    twoFactorEnabled: false,
-    sessionTimeout: 30,
-    maxSessions: 5,
-    passwordMinLength: 8,
-    passwordRequireUppercase: true,
-    passwordRequireNumbers: true,
-    passwordRequireSpecial: true,
   });
   
   // Format date
