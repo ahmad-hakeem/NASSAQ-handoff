@@ -209,20 +209,118 @@ def _fallback_analysis(issue: dict) -> dict:
 
 async def _generate_prompt(issue: dict) -> str:
     hakim = issue.get("hakim_analysis", {})
-    return f"""[ISSUE TYPE] {ISSUE_TYPE_LABELS.get(issue.get('issue_type', ''), issue.get('issue_type', ''))}
-[TITLE] {issue.get('title', hakim.get('suggested_title', ''))}
-[CONTEXT] Section: {issue.get('section', '')} | Page: {issue.get('page', '')} | Account: {issue.get('account_type', '')}
-[CURRENT BEHAVIOR] {issue.get('current_behavior', '')}
-[EXPECTED BEHAVIOR] {issue.get('expected_behavior', '')}
-[REPRODUCTION STEPS] {issue.get('steps_to_reproduce', 'N/A')}
-[REPRODUCIBILITY] {issue.get('reproducibility', 'N/A')}
-[IMPACT] {hakim.get('impact_assessment', 'N/A')}
-[PRIORITY] {PRIORITY_LABELS.get(issue.get('priority', ''), issue.get('priority', ''))} — {hakim.get('priority_reasoning', '')}
-[TECHNICAL NOTES] {hakim.get('technical_notes', 'N/A')}
-[HAKIM NOTES] Team: {hakim.get('suggested_team', 'N/A')} | {hakim.get('team_reasoning', '')}
-[ERROR] {issue.get('error_message', 'N/A')}
-[URL] {issue.get('url', 'N/A')}
-[DEVICE] {issue.get('device', 'N/A')} | Browser: {issue.get('browser', 'N/A')}"""
+    issue_type = ISSUE_TYPE_LABELS.get(issue.get('issue_type', ''), issue.get('issue_type', ''))
+    title = issue.get('title', hakim.get('suggested_title', ''))
+    priority = PRIORITY_LABELS.get(issue.get('priority', ''), issue.get('priority', ''))
+    section = issue.get('section', 'N/A')
+    page = issue.get('page', 'N/A')
+    account_type = issue.get('account_type', 'N/A')
+    current_behavior = issue.get('current_behavior', 'N/A')
+    expected_behavior = issue.get('expected_behavior', 'N/A')
+    steps = issue.get('steps_to_reproduce', '')
+    reproducibility = issue.get('reproducibility', 'N/A')
+    error_msg = issue.get('error_message', '')
+    url = issue.get('url', '')
+    device = issue.get('device', '')
+    browser = issue.get('browser', '')
+    impact_list = issue.get('impact', [])
+    impact_assessment = hakim.get('impact_assessment', '')
+    priority_reasoning = hakim.get('priority_reasoning', '')
+    technical_notes = hakim.get('technical_notes', '')
+    team = hakim.get('suggested_team', 'N/A')
+    team_reasoning = hakim.get('team_reasoning', '')
+
+    impact_text = ', '.join(impact_list) if impact_list else impact_assessment or 'N/A'
+
+    lines = []
+    lines.append("=" * 60)
+    lines.append("  NASSAQ — AI Generated Prompt by Hakim")
+    lines.append("=" * 60)
+    lines.append("")
+
+    lines.append(f"[ISSUE TYPE]: {issue_type}")
+    lines.append("")
+    lines.append(f"[TITLE]:")
+    lines.append(f"{title}")
+    lines.append("")
+
+    lines.append("[CONTEXT]:")
+    lines.append(f"  - Account Type: {account_type}")
+    lines.append(f"  - Section: {section}")
+    lines.append(f"  - Page: {page}")
+    if url:
+        lines.append(f"  - URL: {url}")
+    if device:
+        lines.append(f"  - Device: {device}")
+    if browser:
+        lines.append(f"  - Browser: {browser}")
+    lines.append("")
+
+    lines.append("[CURRENT BEHAVIOR]:")
+    lines.append(f"{current_behavior}")
+    lines.append("")
+
+    lines.append("[EXPECTED BEHAVIOR]:")
+    lines.append(f"{expected_behavior}")
+    lines.append("")
+
+    if steps:
+        lines.append("[REPRODUCTION STEPS]:")
+        for i, step in enumerate(steps.split('\n'), 1):
+            step = step.strip()
+            if step:
+                if not step[0].isdigit():
+                    lines.append(f"  {i}. {step}")
+                else:
+                    lines.append(f"  {step}")
+        lines.append("")
+
+    lines.append(f"[REPRODUCIBILITY]: {reproducibility}")
+    lines.append("")
+
+    if error_msg:
+        lines.append("[ERROR MESSAGE]:")
+        lines.append(f"```")
+        lines.append(f"{error_msg}")
+        lines.append(f"```")
+        lines.append("")
+
+    lines.append(f"[IMPACT]: {impact_text}")
+    lines.append("")
+
+    lines.append(f"[PRIORITY]: {priority}")
+    if priority_reasoning:
+        lines.append(f"  Reasoning: {priority_reasoning}")
+    lines.append("")
+
+    lines.append("-" * 60)
+    lines.append("  HAKIM AI ANALYSIS")
+    lines.append("-" * 60)
+    lines.append("")
+
+    if technical_notes:
+        lines.append("[TECHNICAL NOTES]:")
+        lines.append(f"{technical_notes}")
+        lines.append("")
+
+    lines.append(f"[ASSIGNED TEAM]: {team}")
+    if team_reasoning:
+        lines.append(f"  Reasoning: {team_reasoning}")
+    lines.append("")
+
+    lines.append("-" * 60)
+    lines.append("  EXECUTION INSTRUCTIONS")
+    lines.append("-" * 60)
+    lines.append("")
+    lines.append("Fix the issue described above in the NASSAQ codebase.")
+    lines.append("Stack: React (frontend) + FastAPI (backend) + MongoDB.")
+    lines.append("RTL Arabic UI — use existing brand design tokens.")
+    lines.append("Ensure the fix handles edge cases and does not break existing functionality.")
+    lines.append("Test the fix before marking as complete.")
+    lines.append("")
+    lines.append("=" * 60)
+
+    return "\n".join(lines)
 
 
 async def _next_issue_number() -> int:

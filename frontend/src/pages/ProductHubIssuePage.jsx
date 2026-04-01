@@ -391,30 +391,12 @@ export function ProductHubIssuePage() {
 
                   <Separator orientation="vertical" className="h-16 hidden lg:block" />
 
-                  {/* Prompt Actions */}
+                  {/* Prompt Status Indicator */}
                   <div>
                     <p className="text-[11px] text-muted-foreground mb-2 font-medium">البرومبت</p>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleGeneratePrompt}
-                        disabled={generatingPrompt}
-                        className="text-[11px] rounded-lg h-8 gap-1 border-brand-purple/30 text-brand-purple hover:bg-brand-purple/5"
-                      >
-                        {generatingPrompt ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                        Generate
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleCopyPrompt}
-                        disabled={!issue.generated_prompt}
-                        className={`text-[11px] rounded-lg h-8 gap-1 ${promptCopied ? 'border-emerald-300 text-emerald-600 bg-emerald-50' : 'border-brand-purple/30 text-brand-purple hover:bg-brand-purple/5'}`}
-                      >
-                        {promptCopied ? <CheckCircle2 className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                        {promptCopied ? 'Copied!' : 'Copy'}
-                      </Button>
+                    <div className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg ${issue.generated_prompt ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
+                      {issue.generated_prompt ? <CheckCircle2 className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
+                      {issue.generated_prompt ? 'Generated' : 'Not Generated'}
                     </div>
                   </div>
                 </div>
@@ -551,34 +533,100 @@ export function ProductHubIssuePage() {
                     </>
                   )}
 
-                  {isMainAdmin && issue.generated_prompt && (
-                    <>
-                      <Separator />
-                      <div>
-                        <div className="flex items-center justify-between mb-3">
-                          <h4 className="text-sm font-semibold flex items-center gap-2">
-                            <Brain className="h-3.5 w-3.5 text-brand-purple" />
-                            Final Prompt
-                          </h4>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="rounded-lg gap-1.5 text-xs border-brand-purple/30 text-brand-purple hover:bg-brand-purple/5"
-                            onClick={handleCopyPrompt}
-                          >
-                            {promptCopied ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                            {promptCopied ? 'Copied!' : 'Copy Prompt'}
-                          </Button>
-                        </div>
-                        <pre
-                          className="text-xs bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-300 p-4 rounded-xl border border-slate-200 dark:border-slate-700 font-mono leading-relaxed whitespace-pre-wrap overflow-x-auto max-h-[400px] overflow-y-auto"
-                          dir="ltr"
-                        >{issue.generated_prompt}</pre>
-                      </div>
-                    </>
-                  )}
                 </CardContent>
               </Card>
+
+              {/* ═══════ 6. AI GENERATED PROMPT (Main Admins Only) ═══════ */}
+              {isMainAdmin && (
+                <Card className="border-2 border-brand-purple/20 shadow-md rounded-2xl overflow-hidden">
+                  <div className="bg-gradient-to-l from-brand-purple/10 via-brand-purple/5 to-transparent px-5 py-4 flex items-center justify-between border-b border-brand-purple/10">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-xl bg-brand-purple/10">
+                        <Brain className="h-5 w-5 text-brand-purple" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-brand-purple" dir="ltr">AI Generated Prompt by Hakim</h3>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          {issue.generated_prompt ? (
+                            <span className="text-emerald-600 font-medium flex items-center gap-1">
+                              <CheckCircle2 className="h-3 w-3" />
+                              Generated
+                            </span>
+                          ) : (
+                            <span className="text-amber-600 font-medium flex items-center gap-1">
+                              <AlertTriangle className="h-3 w-3" />
+                              Not Generated
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleGeneratePrompt}
+                        disabled={generatingPrompt}
+                        className="text-xs rounded-lg h-8 gap-1.5 border-brand-purple/30 text-brand-purple hover:bg-brand-purple/10"
+                      >
+                        {generatingPrompt ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                        {issue.generated_prompt ? 'Regenerate Prompt' : 'Generate Prompt'}
+                      </Button>
+                      {issue.generated_prompt && (
+                        <Button
+                          variant={promptCopied ? "default" : "outline"}
+                          size="sm"
+                          onClick={handleCopyPrompt}
+                          className={`text-xs rounded-lg h-8 gap-1.5 ${promptCopied ? 'bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-500' : 'border-brand-purple/30 text-brand-purple hover:bg-brand-purple/10'}`}
+                        >
+                          {promptCopied ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                          {promptCopied ? 'Copied!' : 'Copy Prompt'}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  {issue.generated_prompt ? (
+                    <CardContent className="p-0">
+                      <pre
+                        className="text-[13px] bg-slate-950 text-slate-200 p-6 font-mono leading-[1.8] whitespace-pre-wrap overflow-x-auto max-h-[600px] overflow-y-auto scrollbar-thin"
+                        dir="ltr"
+                        style={{ tabSize: 4 }}
+                      >{issue.generated_prompt}</pre>
+                      <div className="px-5 py-3 bg-slate-50 border-t flex items-center justify-between">
+                        <p className="text-[11px] text-muted-foreground">
+                          Ready to use in Vibe Coding Platform
+                        </p>
+                        <Button
+                          variant={promptCopied ? "default" : "outline"}
+                          size="sm"
+                          onClick={handleCopyPrompt}
+                          className={`text-xs rounded-lg h-8 gap-1.5 ${promptCopied ? 'bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-500' : 'border-brand-purple/30 text-brand-purple hover:bg-brand-purple/10'}`}
+                        >
+                          {promptCopied ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                          {promptCopied ? 'Copied!' : 'Copy Prompt'}
+                        </Button>
+                      </div>
+                    </CardContent>
+                  ) : (
+                    <CardContent className="p-8 text-center">
+                      <div className="inline-flex items-center justify-center p-4 rounded-2xl bg-brand-purple/5 mb-4">
+                        <Brain className="h-8 w-8 text-brand-purple/40" />
+                      </div>
+                      <p className="text-sm text-muted-foreground mb-1">لم يتم إنشاء البرومبت بعد</p>
+                      <p className="text-xs text-muted-foreground/70 mb-4">اضغط على "Generate Prompt" لإنشاء برومبت تنفيذي بواسطة Hakim AI</p>
+                      <Button
+                        onClick={handleGeneratePrompt}
+                        disabled={generatingPrompt}
+                        className="bg-brand-purple hover:bg-brand-purple/90 text-white rounded-lg gap-2"
+                      >
+                        {generatingPrompt ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
+                        Generate Prompt
+                      </Button>
+                    </CardContent>
+                  )}
+                </Card>
+              )}
 
               {/* ═══════ COMMENTS ═══════ */}
               {issue.permissions?.can_comment && (
