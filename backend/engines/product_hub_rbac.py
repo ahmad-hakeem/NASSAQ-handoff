@@ -195,6 +195,15 @@ def check_resource_ownership(user: dict, issue: dict) -> bool:
     return issue.get("created_by") == user_id
 
 
+def can_access_comments(user: dict, issue: dict) -> bool:
+    if is_platform_admin(user):
+        return True
+    if is_main_admin(user):
+        return True
+    user_id = user.get("id", user.get("user_id", ""))
+    return issue.get("created_by") == user_id
+
+
 def enforce_ownership_or_admin(user: dict, issue: dict, action: HubAction):
     if not check_resource_ownership(user, issue):
         user_id = user.get("id", user.get("user_id", "unknown"))

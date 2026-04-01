@@ -319,85 +319,87 @@ export function ProductHubIssuePage() {
               </Card>
 
 
-              <Card className="border shadow-sm rounded-xl">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <MessageSquare className="h-4 w-4 text-brand-turquoise" />
-                    التعليقات ({issue.comments?.length || 0})
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {issue.comments?.map(c => {
-                    const typeCfg = COMMENT_TYPE_CONFIG[c.type] || COMMENT_TYPE_CONFIG.general;
-                    return (
-                      <div key={c.id} className={`flex gap-3 p-3 rounded-xl border ${typeCfg.borderColor} ${typeCfg.bgColor}`}>
-                        <Avatar className="h-8 w-8 flex-shrink-0">
-                          <AvatarFallback className="bg-brand-navy text-white text-xs">
-                            {(c.user_name || '?')[0]}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 text-xs flex-wrap">
-                            <span className="font-semibold text-foreground">{c.user_name}</span>
-                            {c.user_role === 'platform_admin' && (
-                              <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4">مدير</Badge>
-                            )}
-                            {c.type && c.type !== 'general' && (
-                              <Badge className={`text-[9px] px-1.5 py-0 h-4 ${typeCfg.bgColor} ${typeCfg.textColor} border ${typeCfg.borderColor}`}>
-                                {typeCfg.label}
-                              </Badge>
-                            )}
-                            <span className="text-muted-foreground">•</span>
-                            <span className="text-muted-foreground">{formatDualDateTime(c.timestamp)}</span>
+              {issue.permissions?.can_comment && (
+                <Card className="border shadow-sm rounded-xl">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <MessageSquare className="h-4 w-4 text-brand-turquoise" />
+                      التعليقات ({issue.comments?.length || 0})
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {issue.comments?.map(c => {
+                      const typeCfg = COMMENT_TYPE_CONFIG[c.type] || COMMENT_TYPE_CONFIG.general;
+                      return (
+                        <div key={c.id} className={`flex gap-3 p-3 rounded-xl border ${typeCfg.borderColor} ${typeCfg.bgColor}`}>
+                          <Avatar className="h-8 w-8 flex-shrink-0">
+                            <AvatarFallback className="bg-brand-navy text-white text-xs">
+                              {(c.user_name || '?')[0]}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 text-xs flex-wrap">
+                              <span className="font-semibold text-foreground">{c.user_name}</span>
+                              {c.user_role === 'platform_admin' && (
+                                <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4">مدير</Badge>
+                              )}
+                              {c.type && c.type !== 'general' && (
+                                <Badge className={`text-[9px] px-1.5 py-0 h-4 ${typeCfg.bgColor} ${typeCfg.textColor} border ${typeCfg.borderColor}`}>
+                                  {typeCfg.label}
+                                </Badge>
+                              )}
+                              <span className="text-muted-foreground">•</span>
+                              <span className="text-muted-foreground">{formatDualDateTime(c.timestamp)}</span>
+                            </div>
+                            <p className="text-sm mt-1.5 leading-relaxed">{c.content}</p>
                           </div>
-                          <p className="text-sm mt-1.5 leading-relaxed">{c.content}</p>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
 
-                  {(!issue.comments || issue.comments.length === 0) && (
-                    <EmptyState icon={MessageSquare} title="لا توجد تعليقات بعد" className="py-6" />
-                  )}
-
-                  <Separator />
-
-                  <div className="space-y-3">
-                    {isMainAdmin && (
-                      <div className="flex gap-2">
-                        {Object.entries(COMMENT_TYPE_CONFIG).map(([key, cfg]) => (
-                          <button
-                            key={key}
-                            onClick={() => setCommentType(key)}
-                            className={`px-3 py-1 rounded-full text-[11px] font-medium border transition-all ${
-                              commentType === key
-                                ? `${cfg.bgColor} ${cfg.textColor} ${cfg.borderColor}`
-                                : 'border-slate-200 text-muted-foreground hover:border-slate-300'
-                            }`}
-                          >
-                            {cfg.label}
-                          </button>
-                        ))}
-                      </div>
+                    {(!issue.comments || issue.comments.length === 0) && (
+                      <EmptyState icon={MessageSquare} title="لا توجد تعليقات بعد" className="py-6" />
                     )}
-                    <div className="flex gap-2">
-                      <Textarea
-                        value={comment}
-                        onChange={(e) => setComment(e.target.value)}
-                        placeholder="أضف تعليقاً..."
-                        className="text-right min-h-[60px] flex-1 rounded-lg"
-                      />
-                      <Button
-                        onClick={handleComment}
-                        disabled={!comment.trim() || submittingComment}
-                        className="bg-brand-navy hover:bg-brand-navy/90 text-white self-end rounded-lg"
-                      >
-                        {submittingComment ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                      </Button>
+
+                    <Separator />
+
+                    <div className="space-y-3">
+                      {isMainAdmin && (
+                        <div className="flex gap-2">
+                          {Object.entries(COMMENT_TYPE_CONFIG).map(([key, cfg]) => (
+                            <button
+                              key={key}
+                              onClick={() => setCommentType(key)}
+                              className={`px-3 py-1 rounded-full text-[11px] font-medium border transition-all ${
+                                commentType === key
+                                  ? `${cfg.bgColor} ${cfg.textColor} ${cfg.borderColor}`
+                                  : 'border-slate-200 text-muted-foreground hover:border-slate-300'
+                              }`}
+                            >
+                              {cfg.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex gap-2">
+                        <Textarea
+                          value={comment}
+                          onChange={(e) => setComment(e.target.value)}
+                          placeholder="أضف تعليقاً..."
+                          className="text-right min-h-[60px] flex-1 rounded-lg"
+                        />
+                        <Button
+                          onClick={handleComment}
+                          disabled={!comment.trim() || submittingComment}
+                          className="bg-brand-navy hover:bg-brand-navy/90 text-white self-end rounded-lg"
+                        >
+                          {submittingComment ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              )}
 
               <Card className="border shadow-sm rounded-xl">
                 <CardHeader

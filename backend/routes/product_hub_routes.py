@@ -40,7 +40,7 @@ from dependencies import db, get_current_user, require_roles, UserRole
 from engines.product_hub_rbac import (
     HubAction, HubRole, is_platform_admin, check_permission,
     enforce_permission, enforce_ownership_or_admin,
-    check_resource_ownership, redact_issue_for_role,
+    check_resource_ownership, can_access_comments, redact_issue_for_role,
     require_hub_action, get_user_id, resolve_hub_role,
     is_main_admin, is_super_admin,
 )
@@ -433,7 +433,7 @@ async def get_issue(issue_id: str, current_user: dict = Depends(get_current_user
     await check_sla_warning(issue_id, issue, current_user)
 
     issue["activity_log"] = activity
-    issue["comments"] = comments
+    issue["comments"] = comments if can_access_comments(current_user, issue) else []
     issue["duplicates"] = duplicates
     issue["is_admin"] = admin
     issue["valid_transitions"] = list(VALID_STATUS_TRANSITIONS.get(issue.get("status", "new"), set()))
@@ -447,7 +447,7 @@ async def get_issue(issue_id: str, current_user: dict = Depends(get_current_user
         "can_update_title": main_admin,
         "can_update_priority": main_admin,
         "can_approve_closure": super_admin,
-        "can_comment": admin or check_resource_ownership(current_user, issue),
+        "can_comment": can_access_comments(current_user, issue),
         "can_submit_feedback": (
             issue.get("status") == "done"
             and (admin or check_resource_ownership(current_user, issue))
@@ -612,7 +612,8 @@ async def add_comment(
     current_user: dict = Depends(get_current_user),
 ):
     issue = await _get_issue_or_404(issue_id)
-    enforce_ownership_or_admin(current_user, issue, HubAction.ADD_COMMENT)
+    if not can_access_comments(current_user, issue):
+        raise HTTPException(status_code=403, detail={"success": False, "error_code": "FORBIDDEN_COMMENTS", "message": "ليس لديك صلاحية الوصول للتعليقات"})
 
     user_role = current_user.get("role", "")
     resolved_role = "platform_admin" if user_role == "platform_admin" else "internal_user"
@@ -644,8 +645,8 @@ async def get_comments(
     current_user: dict = Depends(get_current_user),
 ):
     issue = await _get_issue_or_404(issue_id)
-    if not is_platform_admin(current_user):
-        enforce_ownership_or_admin(current_user, issue, HubAction.VIEW_COMMENTS)
+    if not can_access_comments(current_user, issue):
+        raise HTTPException(status_code=403, detail={"success": False, "error_code": "FORBIDDEN_COMMENTS", "message": "ليس لديك صلاحية الوصول للتعليقات"})
 
     comments = await db.issue_comments.find(
         {"issue_id": issue_id}, {"_id": 0}
