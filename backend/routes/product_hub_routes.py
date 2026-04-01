@@ -29,7 +29,7 @@ Collections:
 - issue_duplicates_map: Duplicate detection results
 """
 
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, Body
 from typing import Optional, List
 from datetime import datetime, timezone, timedelta
 import uuid
@@ -1038,3 +1038,55 @@ async def update_issue_priority(
     await audit_issue_updated(issue_id, current_user, changes)
 
     return {"success": True}
+
+
+@router.post("/hakim-improve-text")
+async def hakim_improve_text(
+    data: dict = Body(...),
+    current_user: dict = Depends(get_current_user),
+):
+    text = (data.get("text") or "").strip()
+    field_type = data.get("field_type", "general")
+    if not text or len(text) < 5:
+        _hub_error(422, "TEXT_TOO_SHORT", "النص قصير جداً للتحسين")
+
+    try:
+        from openai import OpenAI
+        import os
+        api_key = os.environ.get("AI_INTEGRATIONS_OPENAI_API_KEY", "")
+        base_url = os.environ.get("AI_INTEGRATIONS_OPENAI_BASE_URL", "")
+        if not api_key:
+            return {"improved_text": text, "suggestions": []}
+
+        client = OpenAI(api_key=api_key, base_url=base_url if base_url else None)
+
+        field_prompts = {
+            "current_behavior": "تحسين وصف الوضع الحالي/المشكلة ليكون أوضح وأكثر تحديداً تقنياً",
+            "expected_behavior": "تحسين وصف الوضع المتوقع/الحل المطلوب ليكون أوضح وقابلاً للتنفيذ",
+            "additional_info": "تحسين المعلومات الإضافية لتكون أكثر فائدة للفريق التقني",
+        }
+        field_instruction = field_prompts.get(field_type, "تحسين النص ليكون أوضح وأكثر تحديداً")
+
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": f"""أنت حكيم، مساعد ذكاء المنتج في نظام نسّق. مهمتك: {field_instruction}.
+
+قواعد:
+- حافظ على المعنى الأصلي
+- اجعل النص أوضح وأكثر تنظيماً
+- أضف تفاصيل تقنية إن أمكن
+- اكتب بالعربية
+- لا تضف معلومات من عندك
+- أرجع النص المحسّن فقط بدون مقدمات"""},
+                {"role": "user", "content": text}
+            ],
+            max_tokens=500,
+            temperature=0.3,
+        )
+
+        improved = response.choices[0].message.content.strip()
+        return {"improved_text": improved, "original_text": text}
+    except Exception as e:
+        logger.warning(f"[Hakim] Text improvement failed: {e}")
+        return {"improved_text": text, "original_text": text}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sidebar } from '../components/layout/Sidebar';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -7,17 +7,13 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { Badge } from '../components/ui/badge';
 import { Separator } from '../components/ui/separator';
 import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
 import { toast } from 'sonner';
 import {
-  TYPE_CONFIG,
-} from '../components/product-hub';
-import {
   Brain, Send, ArrowRight, Monitor, Loader2, CheckCircle2,
-  User, FileText,
+  User, FileText, Sparkles, Wand2,
 } from 'lucide-react';
 
 const authHeaders = () => {
@@ -53,6 +49,82 @@ const ACCOUNT_TYPE_LABELS = {
   website_user: 'Website User — زائر الموقع',
 };
 
+const ACCOUNT_PAGES = {
+  platform_admin: [
+    'لوحة التحكم الرئيسية',
+    'إدارة المدارس',
+    'إدارة المستخدمين',
+    'إدارة الاشتراكات',
+    'التقارير والتحليلات',
+    'الإعدادات العامة',
+    'إدارة الأدوار والصلاحيات',
+    'مركز ذكاء المنتج',
+    'سجل النشاطات',
+    'إدارة الإشعارات',
+    'صفحة أخرى',
+  ],
+  school_admin: [
+    'لوحة تحكم المدرسة',
+    'إدارة المعلمين',
+    'إدارة الطلاب',
+    'إدارة الفصول',
+    'الجدول الدراسي',
+    'إدارة المواد',
+    'التقارير المدرسية',
+    'إعدادات المدرسة',
+    'إدارة أولياء الأمور',
+    'الحضور والغياب',
+    'إدارة الامتحانات',
+    'نظام الدرجات',
+    'صفحة أخرى',
+  ],
+  teacher: [
+    'لوحة تحكم المعلم',
+    'إدارة الفصول',
+    'الجدول الدراسي',
+    'تسجيل الحضور',
+    'إدارة الواجبات',
+    'إدارة الاختبارات',
+    'رصد الدرجات',
+    'التواصل مع أولياء الأمور',
+    'التقارير',
+    'الملف الشخصي',
+    'صفحة أخرى',
+  ],
+  student: [
+    'لوحة تحكم الطالب',
+    'الجدول الدراسي',
+    'الواجبات',
+    'الاختبارات',
+    'النتائج والدرجات',
+    'الحضور والغياب',
+    'المواد الدراسية',
+    'الملف الشخصي',
+    'صفحة أخرى',
+  ],
+  parent: [
+    'لوحة تحكم ولي الأمر',
+    'متابعة الأبناء',
+    'الحضور والغياب',
+    'النتائج والدرجات',
+    'التواصل مع المدرسة',
+    'الإشعارات',
+    'المدفوعات',
+    'الملف الشخصي',
+    'صفحة أخرى',
+  ],
+  website_user: [
+    'الصفحة الرئيسية',
+    'تسجيل الدخول',
+    'التسجيل الجديد',
+    'صفحة التسعير',
+    'صفحة التواصل',
+    'صفحة المميزات',
+    'المدونة',
+    'صفحة أخرى',
+  ],
+};
+
 
 export function ProductHubSubmitPage() {
   const { user } = useAuth();
@@ -60,13 +132,13 @@ export function ProductHubSubmitPage() {
   const [config, setConfig] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [step, setStep] = useState(0);
+  const [improvingField, setImprovingField] = useState(null);
 
   const [form, setForm] = useState({
     issue_type: '',
     employee_name: user?.full_name || '',
     employee_id: '',
     account_type: '',
-    section: '',
     page: '',
     current_behavior: '',
     expected_behavior: '',
@@ -99,6 +171,37 @@ export function ProductHubSubmitPage() {
     setForm(f => ({ ...f, [field]: value }));
   };
 
+  const handleAccountTypeChange = (value) => {
+    setForm(f => ({ ...f, account_type: value, page: '' }));
+  };
+
+  const availablePages = ACCOUNT_PAGES[form.account_type] || [];
+
+  const improveWithHakim = useCallback(async (fieldName) => {
+    const text = form[fieldName];
+    if (!text || text.trim().length < 5) {
+      toast.error('اكتب 5 أحرف على الأقل قبل التحسين');
+      return;
+    }
+    setImprovingField(fieldName);
+    try {
+      const res = await axios.post('/api/product-hub/hakim-improve-text', {
+        text: text.trim(),
+        field_type: fieldName,
+      }, { headers: authHeaders() });
+      if (res.data.improved_text && res.data.improved_text !== text.trim()) {
+        setForm(f => ({ ...f, [fieldName]: res.data.improved_text }));
+        toast.success('حكيم حسّن النص بنجاح');
+      } else {
+        toast.success('النص واضح ولا يحتاج تحسين');
+      }
+    } catch {
+      toast.error('فشل تحسين النص');
+    } finally {
+      setImprovingField(null);
+    }
+  }, [form]);
+
   const validateStep = (stepIdx) => {
     if (stepIdx === 0) {
       if (!form.employee_name?.trim() || form.employee_name.trim().length < 3) return 'الاسم مطلوب (3 أحرف على الأقل)';
@@ -106,7 +209,6 @@ export function ProductHubSubmitPage() {
       if (!form.account_type) return 'نوع الحساب مطلوب';
     }
     if (stepIdx === 1) {
-      if (!form.section) return 'القسم مطلوب';
       if (!form.page?.trim()) return 'الصفحة مطلوبة';
       if (!form.current_behavior?.trim()) return 'الوضع الحالي مطلوب';
       if (!form.expected_behavior?.trim()) return 'الوضع المتوقع مطلوب';
@@ -135,9 +237,9 @@ export function ProductHubSubmitPage() {
       if (payload.impact && payload.impact.length === 0) delete payload.impact;
       if (payload.related_to && payload.related_to.length === 0) delete payload.related_to;
       if (!payload.reproducibility) delete payload.reproducibility;
-      const res = await axios.post('/api/product-hub/issues', payload, { headers: authHeaders() });
+      await axios.post('/api/product-hub/issues', payload, { headers: authHeaders() });
       toast.success('تم إرسال التحدي بنجاح — حكيم يحلله الآن');
-      navigate(`/admin/product-hub/issues/${res.data.id}`);
+      navigate('/admin/product-hub');
     } catch (err) {
       const detail = err.response?.data?.detail;
       if (typeof detail === 'object' && detail.message) {
@@ -243,7 +345,7 @@ export function ProductHubSubmitPage() {
                 </div>
                 <div>
                   <Label className="text-sm font-medium">نوع الحساب <span className="text-red-500">*</span></Label>
-                  <Select value={form.account_type} onValueChange={(v) => handleChange('account_type', v)}>
+                  <Select value={form.account_type} onValueChange={handleAccountTypeChange}>
                     <SelectTrigger className="mt-1.5 rounded-lg"><SelectValue placeholder="اختر نوع الحساب" /></SelectTrigger>
                     <SelectContent>
                       {config?.account_types?.map(t => (
@@ -265,61 +367,67 @@ export function ProductHubSubmitPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-5">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <div>
-                    <Label className="text-sm font-medium">القسم <span className="text-red-500">*</span></Label>
-                    <Select value={form.section} onValueChange={(v) => handleChange('section', v)}>
-                      <SelectTrigger className="mt-1.5 rounded-lg"><SelectValue placeholder="اختر القسم" /></SelectTrigger>
+                <div>
+                  <Label className="text-sm font-medium">الصفحة <span className="text-red-500">*</span></Label>
+                  {availablePages.length > 0 ? (
+                    <Select value={form.page} onValueChange={(v) => handleChange('page', v)}>
+                      <SelectTrigger className="mt-1.5 rounded-lg"><SelectValue placeholder="اختر الصفحة" /></SelectTrigger>
                       <SelectContent>
-                        {config?.sections?.map(s => (
-                          <SelectItem key={s} value={s}>{s}</SelectItem>
+                        {availablePages.map(p => (
+                          <SelectItem key={p} value={p}>{p}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium">الصفحة <span className="text-red-500">*</span></Label>
+                  ) : (
                     <Input
                       value={form.page}
                       onChange={(e) => handleChange('page', e.target.value)}
                       placeholder="اسم الصفحة أو الشاشة"
                       className="mt-1.5 text-right rounded-lg"
                     />
-                  </div>
+                  )}
+                  {form.account_type && (
+                    <p className="text-[11px] text-brand-turquoise mt-1 flex items-center gap-1">
+                      <Sparkles className="h-3 w-3" />
+                      صفحات {ACCOUNT_TYPE_LABELS[form.account_type]?.split('—')[1]?.trim() || form.account_type}
+                    </p>
+                  )}
                 </div>
 
-                <div>
-                  <Label className="text-sm font-medium">الوضع الحالي <span className="text-red-500">*</span></Label>
-                  <Textarea
-                    value={form.current_behavior}
-                    onChange={(e) => handleChange('current_behavior', e.target.value)}
-                    placeholder="صف ما يحدث حالياً بوضوح..."
-                    className="mt-1.5 text-right min-h-[100px] rounded-lg"
-                  />
-                  <p className="text-[11px] text-muted-foreground mt-1 text-left">{(form.current_behavior || '').length}/5000</p>
-                </div>
+                <HakimTextArea
+                  label="الوضع الحالي"
+                  required
+                  value={form.current_behavior}
+                  onChange={(v) => handleChange('current_behavior', v)}
+                  placeholder="صف ما يحدث حالياً بوضوح..."
+                  fieldName="current_behavior"
+                  improving={improvingField === 'current_behavior'}
+                  onImprove={() => improveWithHakim('current_behavior')}
+                  maxLength={5000}
+                />
 
-                <div>
-                  <Label className="text-sm font-medium">الوضع المتوقع <span className="text-red-500">*</span></Label>
-                  <Textarea
-                    value={form.expected_behavior}
-                    onChange={(e) => handleChange('expected_behavior', e.target.value)}
-                    placeholder="ما الذي يجب أن يحدث بدلاً من ذلك؟"
-                    className="mt-1.5 text-right min-h-[100px] rounded-lg"
-                  />
-                  <p className="text-[11px] text-muted-foreground mt-1 text-left">{(form.expected_behavior || '').length}/5000</p>
-                </div>
+                <HakimTextArea
+                  label="الوضع المتوقع"
+                  required
+                  value={form.expected_behavior}
+                  onChange={(v) => handleChange('expected_behavior', v)}
+                  placeholder="ما الذي يجب أن يحدث بدلاً من ذلك؟"
+                  fieldName="expected_behavior"
+                  improving={improvingField === 'expected_behavior'}
+                  onImprove={() => improveWithHakim('expected_behavior')}
+                  maxLength={5000}
+                />
 
-                <div>
-                  <Label className="text-sm font-medium">معلومات إضافية</Label>
-                  <Textarea
-                    value={form.additional_info || ''}
-                    onChange={(e) => handleChange('additional_info', e.target.value)}
-                    placeholder="أضف أي تفاصيل أو ملاحظات إضافية تساعد في فهم التحدي..."
-                    className="mt-1.5 text-right min-h-[80px] rounded-lg"
-                  />
-                  <p className="text-[11px] text-muted-foreground mt-1">اختياري — يساعد حكيم في التحليل</p>
-                </div>
+                <HakimTextArea
+                  label="معلومات إضافية"
+                  required={false}
+                  value={form.additional_info || ''}
+                  onChange={(v) => handleChange('additional_info', v)}
+                  placeholder="أضف أي تفاصيل أو ملاحظات إضافية تساعد في فهم التحدي..."
+                  fieldName="additional_info"
+                  improving={improvingField === 'additional_info'}
+                  onImprove={() => improveWithHakim('additional_info')}
+                />
               </CardContent>
             </Card>
           )}
@@ -338,7 +446,6 @@ export function ProductHubSubmitPage() {
                   <ReviewRow label="نوع التحدي" value={COMMENT_TYPE_OPTIONS.find(o => o.value === form.issue_type)?.labelAr || form.issue_type} />
                   <ReviewRow label="نوع الحساب" value={ACCOUNT_TYPE_LABELS[form.account_type] || form.account_type} />
                   <Separator />
-                  <ReviewRow label="القسم" value={form.section} />
                   <ReviewRow label="الصفحة" value={form.page} />
                   <Separator />
                   <div>
@@ -423,6 +530,71 @@ export function ProductHubSubmitPage() {
         </div>
       </div>
     </Sidebar>
+  );
+}
+
+function HakimTextArea({ label, required, value, onChange, placeholder, fieldName, improving, onImprove, maxLength }) {
+  const canImprove = value && value.trim().length >= 5;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1.5">
+        <Label className="text-sm font-medium">
+          {label} {required && <span className="text-red-500">*</span>}
+        </Label>
+        <button
+          type="button"
+          onClick={onImprove}
+          disabled={improving || !canImprove}
+          className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-medium transition-all ${
+            improving
+              ? 'bg-brand-turquoise/10 text-brand-turquoise cursor-wait'
+              : canImprove
+                ? 'bg-gradient-to-l from-brand-turquoise/10 to-brand-purple/10 text-brand-navy hover:from-brand-turquoise/20 hover:to-brand-purple/20 border border-brand-turquoise/20 hover:border-brand-turquoise/40 hover:shadow-sm cursor-pointer'
+                : 'bg-slate-50 text-slate-300 cursor-not-allowed border border-slate-100'
+          }`}
+        >
+          {improving ? (
+            <>
+              <Loader2 className="h-3 w-3 animate-spin" />
+              <span>حكيم يحسّن...</span>
+            </>
+          ) : (
+            <>
+              <Wand2 className="h-3 w-3" />
+              <span>تحسين بحكيم</span>
+              <Brain className="h-3 w-3 text-brand-turquoise" />
+            </>
+          )}
+        </button>
+      </div>
+      <div className="relative">
+        <Textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className={`text-right min-h-[100px] rounded-lg transition-all ${improving ? 'border-brand-turquoise/40 bg-brand-turquoise/5' : ''}`}
+          disabled={improving}
+        />
+        {improving && (
+          <div className="absolute inset-0 bg-brand-turquoise/5 rounded-lg flex items-center justify-center pointer-events-none">
+            <div className="flex items-center gap-2 bg-white/90 backdrop-blur-sm px-4 py-2 rounded-full shadow-md border border-brand-turquoise/20">
+              <Brain className="h-4 w-4 text-brand-turquoise animate-pulse" />
+              <span className="text-xs font-medium text-brand-navy">حكيم يحسّن النص...</span>
+              <Sparkles className="h-3 w-3 text-brand-turquoise/60" />
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="flex items-center justify-between mt-1">
+        <p className="text-[11px] text-muted-foreground">
+          {!required && 'اختياري — '}يساعد حكيم في التحليل
+        </p>
+        {maxLength && (
+          <p className="text-[11px] text-muted-foreground">{(value || '').length}/{maxLength}</p>
+        )}
+      </div>
+    </div>
   );
 }
 

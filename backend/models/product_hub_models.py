@@ -328,12 +328,21 @@ class IssueSystem(BaseModel):
     last_status_changed_at: Optional[str] = None
 
 
+ACCOUNT_SECTION_MAP = {
+    "platform_admin": "إدارة المنصة",
+    "school_admin": "إدارة المدرسة",
+    "teacher": "المعلم",
+    "student": "الطالب",
+    "parent": "ولي الأمر",
+    "website_user": "الموقع الإلكتروني",
+}
+
 class IssueCreate(BaseModel):
     issue_type: str
     employee_name: str
     employee_id: Optional[str] = None
     account_type: str
-    section: str
+    section: Optional[str] = None
     page: str
     current_behavior: str
     expected_behavior: str
@@ -406,12 +415,20 @@ class IssueCreate(BaseModel):
             raise ValueError("النص طويل جداً (الحد الأقصى 5000 حرف)")
         return v.strip()
 
-    @field_validator("page", "section")
+    @field_validator("page")
     @classmethod
     def validate_required_string(cls, v):
         if not v or not v.strip():
             raise ValueError("هذا الحقل مطلوب")
         return v.strip()
+
+    @model_validator(mode="after")
+    def derive_section(self):
+        if not self.section or not self.section.strip():
+            self.section = ACCOUNT_SECTION_MAP.get(self.account_type, "عام")
+        else:
+            self.section = self.section.strip()
+        return self
 
     @field_validator("reproducibility")
     @classmethod
