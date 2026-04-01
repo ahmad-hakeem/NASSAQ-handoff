@@ -94,6 +94,7 @@ import {
   HardDrive,
   Activity,
   Zap,
+  Trash2,
 } from 'lucide-react';
 import axios from 'axios';
 
@@ -783,7 +784,19 @@ export const PlatformSettingsPage = () => {
   };
   
   // Upload profile picture
+  const fileInputRef = React.useRef(null);
   const handleUploadProfilePicture = async (file) => {
+    if (!file) return;
+    const maxSize = 5 * 1024 * 1024;
+    if (file.size > maxSize) {
+      nassaqError(isRTL ? 'حجم الصورة يجب أن لا يتجاوز 5 ميجابايت' : 'Image must be under 5MB');
+      return;
+    }
+    if (!file.type.startsWith('image/')) {
+      nassaqError(isRTL ? 'يرجى اختيار ملف صورة' : 'Please select an image file');
+      return;
+    }
+    setLoading(true);
     try {
       const formData = new FormData();
       formData.append('file', file);
@@ -793,10 +806,14 @@ export const PlatformSettingsPage = () => {
       if (response.data?.profile_picture) {
         setAccountData(prev => ({ ...prev, profilePicture: response.data.profile_picture }));
         toast.success(isRTL ? 'تم رفع الصورة بنجاح' : 'Picture uploaded successfully');
+        if (refreshUser) await refreshUser();
       }
     } catch (error) {
       console.error('Error uploading picture:', error);
       nassaqError(isRTL ? 'فشل رفع الصورة' : 'Failed to upload picture');
+    } finally {
+      setLoading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
   
@@ -1118,21 +1135,65 @@ export const PlatformSettingsPage = () => {
                     <CardContent className="space-y-6">
                       {/* Profile Picture */}
                       <div className="flex items-center gap-6">
-                        <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-brand-navy to-brand-navy/70 flex items-center justify-center text-white text-3xl font-bold shadow-lg">
-                          {accountData.name?.charAt(0) || 'م'}
+                        <div className="w-24 h-24 rounded-2xl overflow-hidden bg-gradient-to-br from-brand-navy to-brand-navy/70 flex items-center justify-center text-white text-3xl font-bold shadow-lg flex-shrink-0">
+                          {accountData.profilePicture ? (
+                            <img
+                              src={accountData.profilePicture}
+                              alt={accountData.name || ''}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            accountData.name?.charAt(0) || 'م'
+                          )}
                         </div>
                         <div>
                           <h4 className="font-medium mb-2">{t.profilePicture}</h4>
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp"
+                            className="hidden"
+                            onChange={(e) => handleUploadProfilePicture(e.target.files?.[0])}
+                          />
                           <div className="flex gap-2">
-                            <Button variant="outline" size="sm" className="rounded-xl">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="rounded-xl"
+                              disabled={loading}
+                              onClick={() => fileInputRef.current?.click()}
+                            >
                               <Upload className="h-4 w-4 me-2" />
                               {t.uploadImage}
                             </Button>
-                            <Button variant="ghost" size="sm" className="rounded-xl">
-                              <Camera className="h-4 w-4 me-2" />
-                              {isRTL ? 'التقاط' : 'Capture'}
-                            </Button>
+                            {accountData.profilePicture && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="rounded-xl text-red-500 hover:text-red-600"
+                                disabled={loading}
+                                onClick={async () => {
+                                  setLoading(true);
+                                  try {
+                                    await api.delete('/settings/account/profile-picture');
+                                    setAccountData(prev => ({ ...prev, profilePicture: null }));
+                                    toast.success(isRTL ? 'تم حذف الصورة' : 'Picture removed');
+                                    if (refreshUser) await refreshUser();
+                                  } catch (err) {
+                                    nassaqError(isRTL ? 'فشل حذف الصورة' : 'Failed to remove picture');
+                                  } finally {
+                                    setLoading(false);
+                                  }
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4 me-2" />
+                                {isRTL ? 'حذف' : 'Remove'}
+                              </Button>
+                            )}
                           </div>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {isRTL ? 'PNG, JPG أو WebP — بحد أقصى 5 ميجابايت' : 'PNG, JPG or WebP — max 5MB'}
+                          </p>
                         </div>
                       </div>
                       

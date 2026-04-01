@@ -615,10 +615,9 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
             encoded = base64.b64encode(content).decode('utf-8')
             data_url = f"data:{file.content_type};base64,{encoded}"
             
-            # Update user profile
             await db.users.update_one(
                 {"id": current_user.get("id")},
-                {"$set": {"profile_picture": data_url}}
+                {"$set": {"profile_picture": data_url, "avatar_url": data_url}}
             )
             
             return {"success": True, "profile_picture": data_url}
@@ -627,6 +626,16 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
             _log.getLogger("nassaq").error(f"Operation error: {e}")
             raise HTTPException(status_code=500, detail="حدث خطأ داخلي في الخادم")
     
+    @router.delete("/account/profile-picture")
+    async def delete_profile_picture(
+        current_user: dict = Depends(get_current_user)
+    ):
+        await db.users.update_one(
+            {"id": current_user.get("id")},
+            {"$unset": {"profile_picture": "", "avatar_url": ""}}
+        )
+        return {"success": True}
+
     # ============= ACTIVE SESSIONS =============
     
     @router.get("/sessions/active")
