@@ -11,15 +11,15 @@ import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
 import { toast } from 'sonner';
 import {
-  StatusChip, PriorityBadge, SLAIndicator, StatCard, EmptyState, IssueKanbanCard,
+  StatusChip, PriorityBadge, SLAIndicator, StatCard, EmptyState,
   HakimInsightCard,
-  STATUS_CONFIG, PRIORITY_CONFIG, TYPE_CONFIG, STATUS_PROGRESS, KANBAN_COLUMNS,
+  STATUS_CONFIG, PRIORITY_CONFIG, TYPE_CONFIG, STATUS_PROGRESS,
   formatDualDateCompact,
 } from '../components/product-hub';
 import {
   Brain, Plus, Search, BarChart3, Users, Target, Zap, Sparkles,
   ChevronLeft, ChevronRight, Award, Building2, Timer, AlertOctagon, Clock,
-  Table2, Kanban, AlertTriangle, CheckCircle2, Bug, TrendingUp, Eye,
+  Table2, AlertTriangle, CheckCircle2, Bug, TrendingUp, Eye,
   RefreshCw, XCircle, ArrowUpRight, ArrowDownRight, ShieldCheck, CircleDot,
   Activity, Layers, ThumbsUp, ThumbsDown,
 } from 'lucide-react';
@@ -146,16 +146,6 @@ export function ProductHubPage() {
     return sorted;
   }, [issues, sortField, sortDir]);
 
-  const kanbanIssues = useMemo(() => {
-    const grouped = {};
-    KANBAN_COLUMNS.forEach(col => { grouped[col] = []; });
-    issues.forEach(issue => {
-      const col = grouped[issue.status] ? issue.status : 'new';
-      grouped[col].push(issue);
-    });
-    return grouped;
-  }, [issues]);
-
   const toggleSort = (field) => {
     if (sortField === field) {
       setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -207,10 +197,6 @@ export function ProductHubPage() {
                 <Table2 className="h-4 w-4" />
                 التحديات
               </TabsTrigger>
-              <TabsTrigger value="kanban" className="rounded-lg data-[state=active]:bg-brand-navy data-[state=active]:text-white gap-2">
-                <Kanban className="h-4 w-4" />
-                كانبان
-              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="dashboard" className="mt-6">
@@ -238,17 +224,6 @@ export function ProductHubPage() {
                 navigate={navigate}
                 highlightId={highlightId}
               />
-            </TabsContent>
-
-            <TabsContent value="kanban" className="mt-6">
-              <FilterToolbar
-                filters={filters}
-                config={config}
-                onFilterChange={updateFilter}
-                onClear={clearFilters}
-                hasActiveFilters={hasActiveFilters}
-              />
-              <KanbanView issues={kanbanIssues} loading={loading} total={total} highlightId={highlightId} />
             </TabsContent>
           </Tabs>
         </div>
@@ -542,124 +517,6 @@ function IssuesTableView({ issues, loading, total, page, totalPages, onPageChang
   );
 }
 
-function KanbanView({ issues, loading, total, highlightId }) {
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center py-24">
-        <div className="flex flex-col items-center gap-4">
-          <div className="relative">
-            <div className="animate-spin rounded-full h-10 w-10 border-[3px] border-brand-turquoise/20 border-t-brand-turquoise" />
-            <Kanban className="absolute inset-0 m-auto h-4 w-4 text-brand-turquoise animate-pulse" />
-          </div>
-          <p className="text-sm text-slate-400 font-medium">جاري تحميل اللوحة...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (total === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 gap-4">
-        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-brand-turquoise/10 to-brand-navy/10 flex items-center justify-center">
-          <Kanban className="h-8 w-8 text-brand-turquoise/50" />
-        </div>
-        <div className="text-center space-y-1">
-          <h3 className="text-base font-bold text-slate-700">لا توجد تحديات</h3>
-          <p className="text-sm text-slate-400">ستظهر التحديات هنا بمجرد إنشائها</p>
-        </div>
-      </div>
-    );
-  }
-
-  const COLUMN_STYLES = {
-    new: { gradient: 'from-blue-500 to-blue-600', glow: 'shadow-blue-500/10', bgPattern: 'bg-[radial-gradient(circle_at_50%_0%,rgba(59,130,246,0.04),transparent_70%)]' },
-    under_review: { gradient: 'from-amber-500 to-amber-600', glow: 'shadow-amber-500/10', bgPattern: 'bg-[radial-gradient(circle_at_50%_0%,rgba(245,158,11,0.04),transparent_70%)]' },
-    in_progress: { gradient: 'from-violet-500 to-violet-600', glow: 'shadow-violet-500/10', bgPattern: 'bg-[radial-gradient(circle_at_50%_0%,rgba(139,92,246,0.04),transparent_70%)]' },
-    qa_validation: { gradient: 'from-cyan-500 to-cyan-600', glow: 'shadow-cyan-500/10', bgPattern: 'bg-[radial-gradient(circle_at_50%_0%,rgba(6,182,212,0.04),transparent_70%)]' },
-    done: { gradient: 'from-emerald-500 to-emerald-600', glow: 'shadow-emerald-500/10', bgPattern: 'bg-[radial-gradient(circle_at_50%_0%,rgba(16,185,129,0.04),transparent_70%)]' },
-    rejected: { gradient: 'from-red-500 to-red-600', glow: 'shadow-red-500/10', bgPattern: 'bg-[radial-gradient(circle_at_50%_0%,rgba(239,68,68,0.04),transparent_70%)]' },
-    user_feedback_confirmed: { gradient: 'from-emerald-500 to-teal-600', glow: 'shadow-emerald-500/10', bgPattern: 'bg-[radial-gradient(circle_at_50%_0%,rgba(16,185,129,0.04),transparent_70%)]' },
-  };
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between bg-white/60 backdrop-blur-sm rounded-xl border border-slate-200/60 px-4 py-2.5">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5">
-            <Kanban className="h-4 w-4 text-brand-turquoise" />
-            <span className="text-sm font-bold text-brand-navy">لوحة كانبان</span>
-          </div>
-          <div className="h-4 w-px bg-slate-200" />
-          <span className="text-xs text-slate-400">
-            <span className="font-semibold text-brand-navy">{total}</span> تحدي
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          {KANBAN_COLUMNS.slice(0, 5).map(status => {
-            const cfg = STATUS_CONFIG[status];
-            const count = (issues[status] || []).length;
-            if (count === 0) return null;
-            return (
-              <div key={status} className="flex items-center gap-1">
-                <div className={`w-2 h-2 rounded-full ${cfg.color}`} />
-                <span className="text-[10px] text-slate-500 font-medium">{count}</span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="overflow-x-auto pb-4 -mx-1 px-1 scrollbar-thin" style={{ scrollbarWidth: 'thin' }}>
-        <div className="flex gap-3" style={{ minWidth: `${KANBAN_COLUMNS.length * 260}px` }}>
-          {KANBAN_COLUMNS.map(status => {
-            const cfg = STATUS_CONFIG[status];
-            const colStyle = COLUMN_STYLES[status];
-            const columnIssues = issues[status] || [];
-            return (
-              <div key={status} className={`flex-1 min-w-[240px] max-w-[300px] flex flex-col rounded-2xl border border-slate-200/60 bg-white/40 backdrop-blur-sm overflow-hidden shadow-sm ${colStyle.glow}`}>
-                <div className="relative px-4 py-3">
-                  <div className={`absolute inset-x-0 top-0 h-[3px] bg-gradient-to-l ${colStyle.gradient}`} />
-                  <div className="flex items-center justify-between pt-1">
-                    <div className="flex items-center gap-2.5">
-                      <div className={`w-7 h-7 rounded-lg bg-gradient-to-br ${colStyle.gradient} flex items-center justify-center shadow-sm`}>
-                        <cfg.icon className="h-3.5 w-3.5 text-white" />
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-[13px] font-bold text-slate-800 leading-none">{cfg.label}</span>
-                        <span className="text-[10px] text-slate-400 mt-0.5">{cfg.labelEn}</span>
-                      </div>
-                    </div>
-                    <div className={`min-w-[24px] h-6 px-2 rounded-lg bg-gradient-to-br ${colStyle.gradient} flex items-center justify-center`}>
-                      <span className="text-[11px] font-bold text-white">{columnIssues.length}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div
-                  className={`flex-1 px-2.5 pb-2.5 space-y-2.5 min-h-[180px] max-h-[560px] overflow-y-auto ${colStyle.bgPattern}`}
-                  style={{ scrollbarWidth: 'thin' }}
-                >
-                  {columnIssues.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-36 text-slate-300 gap-3">
-                      <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${colStyle.gradient} opacity-10 flex items-center justify-center`}>
-                        <cfg.icon className="h-5 w-5 text-slate-500" />
-                      </div>
-                      <span className="text-[11px] text-slate-400">لا توجد تحديات</span>
-                    </div>
-                  ) : (
-                    columnIssues.map(issue => (
-                      <IssueKanbanCard key={issue.id} issue={issue} isHighlighted={highlightId === issue.id} />
-                    ))
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function DashboardView({ data, loading, isAdmin, navigate }) {
   if (loading || !data) {
