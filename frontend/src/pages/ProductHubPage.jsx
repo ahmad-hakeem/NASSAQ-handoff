@@ -339,7 +339,8 @@ function FilterToolbar({ filters, config, onFilterChange, onClear, hasActiveFilt
   );
 }
 
-function getProgressColor(progress) {
+function getProgressColor(progress, status) {
+  if (status === 'rejected') return 'bg-red-500';
   if (progress >= 100) return 'bg-emerald-500';
   if (progress >= 75) return 'bg-emerald-400';
   if (progress >= 50) return 'bg-brand-turquoise';
@@ -347,7 +348,8 @@ function getProgressColor(progress) {
   return 'bg-red-400';
 }
 
-function getProgressGradient(progress) {
+function getProgressGradient(progress, status) {
+  if (status === 'rejected') return 'from-red-300 to-red-500';
   if (progress >= 100) return 'from-emerald-400 to-emerald-600';
   if (progress >= 75) return 'from-emerald-300 to-emerald-500';
   if (progress >= 50) return 'from-brand-turquoise/80 to-brand-turquoise';
@@ -377,7 +379,7 @@ function IssueCard({ issue, navigate }) {
       onClick={() => navigate(`/admin/product-hub/issues/${issue.id}`)}
       className={`shadow-sm rounded-xl hover:shadow-lg cursor-pointer transition-all group overflow-hidden ${cardBorder}`}
     >
-      <div className={`h-1 w-full bg-gradient-to-l ${getProgressGradient(progress)}`} style={{ width: `${progress}%`, minWidth: progress > 0 ? '8px' : '0' }} />
+      <div className={`h-1 w-full bg-gradient-to-l ${getProgressGradient(progress, issue.status)}`} style={{ width: `${progress}%`, minWidth: progress > 0 ? '8px' : '0' }} />
 
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-2 mb-2">
@@ -434,7 +436,7 @@ function IssueCard({ issue, navigate }) {
 
         <div className="mb-2">
           <div className="flex items-center justify-between mb-1">
-            <span className={`text-[10px] font-semibold ${getProgressColor(progress).replace('bg-', 'text-')}`}>
+            <span className={`text-[10px] font-semibold ${getProgressColor(progress, issue.status).replace('bg-', 'text-')}`}>
               {progress}%
             </span>
             <span className="text-[9px] text-muted-foreground">
@@ -443,7 +445,7 @@ function IssueCard({ issue, navigate }) {
           </div>
           <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
             <div
-              className={`h-2 rounded-full bg-gradient-to-l ${getProgressGradient(progress)} transition-all duration-500`}
+              className={`h-2 rounded-full bg-gradient-to-l ${getProgressGradient(progress, issue.status)} transition-all duration-500`}
               style={{ width: `${progress}%` }}
             />
           </div>
@@ -534,37 +536,58 @@ function KanbanView({ issues, loading, total }) {
   }
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
-      {KANBAN_COLUMNS.map(status => {
-        const cfg = STATUS_CONFIG[status];
-        const columnIssues = issues[status] || [];
-        return (
-          <div key={status} className="min-w-0">
-            <div className={`rounded-t-xl px-3 py-2 ${cfg.bgLight} border ${cfg.borderColor} border-b-0`}>
-              <div className="flex items-center justify-between gap-1">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <cfg.icon className={`h-3.5 w-3.5 flex-shrink-0 ${cfg.textColor}`} />
-                  <span className={`text-xs font-semibold truncate ${cfg.textColor}`}>{cfg.label}</span>
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted-foreground">
+          إجمالي: <span className="font-semibold text-brand-navy">{total}</span> تحدي
+        </p>
+      </div>
+
+      <div className="overflow-x-auto pb-4 -mx-2 px-2">
+        <div className="flex gap-4" style={{ minWidth: `${KANBAN_COLUMNS.length * 240}px` }}>
+          {KANBAN_COLUMNS.map(status => {
+            const cfg = STATUS_CONFIG[status];
+            const columnIssues = issues[status] || [];
+            const isFinal = status === 'done' || status === 'user_feedback_confirmed';
+            const isRejected = status === 'rejected';
+            return (
+              <div key={status} className="flex-1 min-w-[220px] max-w-[280px] flex flex-col">
+                <div className={`rounded-t-xl px-3 py-2.5 border border-b-0 ${cfg.borderColor} ${cfg.bgLight} relative overflow-hidden`}>
+                  <div className={`absolute inset-x-0 top-0 h-1 ${cfg.color}`} />
+                  <div className="flex items-center justify-between gap-1 pt-0.5">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className={`p-1 rounded-md ${cfg.bgLight}`}>
+                        <cfg.icon className={`h-3.5 w-3.5 ${cfg.textColor}`} />
+                      </div>
+                      <span className={`text-xs font-bold ${cfg.textColor}`}>{cfg.label}</span>
+                    </div>
+                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${cfg.bgLight} ${cfg.textColor} border ${cfg.borderColor}`}>
+                      {columnIssues.length}
+                    </span>
+                  </div>
                 </div>
-                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5 flex-shrink-0">
-                  {columnIssues.length}
-                </Badge>
+
+                <div className={`flex-1 rounded-b-xl border ${cfg.borderColor} border-t-0 p-2 space-y-2 min-h-[200px] max-h-[520px] overflow-y-auto ${isFinal ? 'bg-emerald-50/30' : isRejected ? 'bg-red-50/20' : 'bg-slate-50/40'}`}
+                  style={{ scrollbarWidth: 'thin' }}
+                >
+                  {columnIssues.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-32 text-muted-foreground gap-2">
+                      <div className={`p-2 rounded-full ${cfg.bgLight}`}>
+                        <cfg.icon className={`h-4 w-4 ${cfg.textColor} opacity-40`} />
+                      </div>
+                      <span className="text-[11px]">لا توجد تحديات</span>
+                    </div>
+                  ) : (
+                    columnIssues.map(issue => (
+                      <IssueKanbanCard key={issue.id} issue={issue} />
+                    ))
+                  )}
+                </div>
               </div>
-            </div>
-            <div className={`rounded-b-xl border ${cfg.borderColor} border-t-0 bg-slate-50/50 p-2 space-y-2 min-h-[160px] max-h-[400px] overflow-y-auto`}>
-              {columnIssues.length === 0 ? (
-                <div className="flex items-center justify-center h-24 text-xs text-muted-foreground">
-                  لا توجد تحديات
-                </div>
-              ) : (
-                columnIssues.map(issue => (
-                  <IssueKanbanCard key={issue.id} issue={issue} />
-                ))
-              )}
-            </div>
-          </div>
-        );
-      })}
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
