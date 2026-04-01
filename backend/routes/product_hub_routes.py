@@ -946,9 +946,23 @@ async def get_dashboard(current_user: dict = Depends(get_current_user)):
             "priority_reasoning": ha.get("priority_reasoning", ""),
         })
 
+    resolved_statuses = {"done", "user_feedback_confirmed"}
+    total_resolved = sum(status_counts.get(s, 0) for s in resolved_statuses)
+    total_rejected = status_counts.get("rejected", 0)
+    under_review = status_counts.get("under_review", 0)
+    qa_validation = status_counts.get("qa_validation", 0)
+    new_count = status_counts.get("new", 0)
+    resolution_rate = round((total_resolved / max(1, total)) * 100, 1)
+
     return {
         "total_issues": total,
         "total_open": total_open,
+        "total_resolved": total_resolved,
+        "total_rejected": total_rejected,
+        "resolution_rate": resolution_rate,
+        "new_count": new_count,
+        "under_review": under_review,
+        "qa_validation": qa_validation,
         "critical_open": critical_open,
         "new_this_week": new_this_week,
         "in_progress": status_counts.get("in_progress", 0),

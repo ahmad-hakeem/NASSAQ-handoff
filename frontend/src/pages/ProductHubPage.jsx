@@ -20,7 +20,8 @@ import {
   Brain, Plus, Search, BarChart3, Users, Target, Zap, Sparkles,
   ChevronLeft, ChevronRight, Award, Building2, Timer, AlertOctagon, Clock,
   Table2, Kanban, AlertTriangle, CheckCircle2, Bug, TrendingUp, Eye,
-  RefreshCw, XCircle,
+  RefreshCw, XCircle, ArrowUpRight, ArrowDownRight, ShieldCheck, CircleDot,
+  Activity, Layers, ThumbsUp, ThumbsDown,
 } from 'lucide-react';
 
 const authHeaders = () => {
@@ -649,29 +650,177 @@ function DashboardView({ data, loading, isAdmin, navigate }) {
     );
   }
 
-  const kpiCards = [
-    { label: 'إجمالي التحديات', value: data.total_issues, icon: BarChart3, color: 'text-brand-navy', bg: 'bg-blue-50' },
-    { label: 'تحديات مفتوحة', value: data.total_open, icon: AlertTriangle, color: 'text-amber-600', bg: 'bg-amber-50' },
-    { label: 'تحديات حرجة', value: data.critical_open, icon: AlertOctagon, color: 'text-red-600', bg: 'bg-red-50' },
-    { label: 'جديدة هذا الأسبوع', value: data.new_this_week, icon: Zap, color: 'text-blue-600', bg: 'bg-blue-50' },
-    { label: 'قيد التنفيذ', value: data.in_progress, icon: Clock, color: 'text-violet-600', bg: 'bg-violet-50' },
-    { label: 'متوسط الحل (ساعة)', value: data.avg_resolution_hours, icon: Timer, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    { label: 'تجاوز SLA', value: data.sla_exceeded, icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50' },
-    { label: 'مكررات مكتشفة', value: data.duplicates_detected, icon: Target, color: 'text-amber-600', bg: 'bg-amber-50' },
+  const total = data.total_issues || 0;
+  const resolved = data.total_resolved || 0;
+  const open = data.total_open || 0;
+  const rejected = data.total_rejected || 0;
+  const resRate = data.resolution_rate || 0;
+  const unresolvedPct = total > 0 ? Math.round((open / total) * 100) : 0;
+  const resolvedPct = total > 0 ? Math.round((resolved / total) * 100) : 0;
+  const rejectedPct = total > 0 ? Math.round((rejected / total) * 100) : 0;
+
+  const statusFlow = [
+    { label: 'جديدة', value: data.new_count || 0, color: 'bg-sky-500', icon: CircleDot },
+    { label: 'قيد المراجعة', value: data.under_review || 0, color: 'bg-amber-500', icon: Eye },
+    { label: 'قيد التنفيذ', value: data.in_progress || 0, color: 'bg-violet-500', icon: Activity },
+    { label: 'فحص الجودة', value: data.qa_validation || 0, color: 'bg-blue-500', icon: ShieldCheck },
+    { label: 'تم الحل', value: resolved, color: 'bg-emerald-500', icon: CheckCircle2 },
+    { label: 'مرفوضة', value: rejected, color: 'bg-red-500', icon: XCircle },
   ];
 
   const hakimStats = data.hakim_stats;
 
   return (
     <div className="space-y-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-brand-navy to-brand-navy/90 p-5 shadow-lg text-white">
+          <div className="flex items-start justify-between">
+            <div className="p-2.5 rounded-xl bg-white/10">
+              <Layers className="h-5 w-5 text-white" />
+            </div>
+            {data.new_this_week > 0 && (
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white/15 flex items-center gap-0.5">
+                <ArrowUpRight className="h-3 w-3" />
+                +{data.new_this_week} هذا الأسبوع
+              </span>
+            )}
+          </div>
+          <div className="mt-3">
+            <p className="text-4xl font-bold tracking-tight">{total}</p>
+            <p className="text-sm text-white/70 mt-0.5">إجمالي التحديات</p>
+          </div>
+          <div className="absolute -bottom-6 -left-6 h-24 w-24 rounded-full bg-white/5" />
+        </div>
+
+        <div className="relative overflow-hidden rounded-2xl border bg-white p-5 shadow-sm group hover:shadow-md transition-all">
+          <div className="flex items-start justify-between">
+            <div className="p-2.5 rounded-xl bg-emerald-50 transition-transform group-hover:scale-110">
+              <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+            </div>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
+              {resolvedPct}%
+            </span>
+          </div>
+          <div className="mt-3">
+            <p className="text-4xl font-bold text-brand-navy tracking-tight">{resolved}</p>
+            <p className="text-sm text-muted-foreground mt-0.5">تم حلها</p>
+          </div>
+          <div className="mt-2 w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+            <div className="bg-emerald-500 h-1.5 rounded-full transition-all duration-700" style={{ width: `${resolvedPct}%` }} />
+          </div>
+          <div className="absolute -bottom-4 -left-4 h-20 w-20 rounded-full bg-emerald-50 opacity-50" />
+        </div>
+
+        <div className="relative overflow-hidden rounded-2xl border bg-white p-5 shadow-sm group hover:shadow-md transition-all">
+          <div className="flex items-start justify-between">
+            <div className="p-2.5 rounded-xl bg-amber-50 transition-transform group-hover:scale-110">
+              <AlertTriangle className="h-5 w-5 text-amber-600" />
+            </div>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">
+              {unresolvedPct}%
+            </span>
+          </div>
+          <div className="mt-3">
+            <p className="text-4xl font-bold text-brand-navy tracking-tight">{open}</p>
+            <p className="text-sm text-muted-foreground mt-0.5">لم تُحل بعد</p>
+          </div>
+          <div className="mt-2 w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+            <div className="bg-amber-500 h-1.5 rounded-full transition-all duration-700" style={{ width: `${unresolvedPct}%` }} />
+          </div>
+          <div className="absolute -bottom-4 -left-4 h-20 w-20 rounded-full bg-amber-50 opacity-50" />
+        </div>
+
+        <div className="relative overflow-hidden rounded-2xl border bg-white p-5 shadow-sm group hover:shadow-md transition-all">
+          <div className="flex items-start justify-between">
+            <div className="p-2.5 rounded-xl bg-red-50 transition-transform group-hover:scale-110">
+              <AlertOctagon className="h-5 w-5 text-red-600" />
+            </div>
+            {data.sla_exceeded > 0 && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-50 text-red-700">
+                {data.sla_exceeded} تجاوز SLA
+              </span>
+            )}
+          </div>
+          <div className="mt-3">
+            <p className="text-4xl font-bold text-brand-navy tracking-tight">{data.critical_open || 0}</p>
+            <p className="text-sm text-muted-foreground mt-0.5">حرجة مفتوحة</p>
+          </div>
+          <div className="mt-2 w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+            <div className="bg-red-500 h-1.5 rounded-full transition-all duration-700" style={{ width: `${total > 0 ? Math.round(((data.critical_open || 0) / total) * 100) : 0}%` }} />
+          </div>
+          <div className="absolute -bottom-4 -left-4 h-20 w-20 rounded-full bg-red-50 opacity-50" />
+        </div>
+      </div>
+
+      <Card className="border rounded-2xl shadow-sm overflow-hidden">
+        <CardHeader className="pb-2 bg-gradient-to-l from-slate-50 to-white">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2 text-brand-navy">
+            <div className="p-1.5 rounded-lg bg-brand-turquoise/10">
+              <Activity className="h-4 w-4 text-brand-turquoise" />
+            </div>
+            تدفق حالة التحديات
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-3 pb-5">
+          <div className="flex items-center gap-1 mb-4 w-full h-3 rounded-full overflow-hidden bg-slate-100">
+            {statusFlow.map((s, i) => {
+              const pct = total > 0 ? (s.value / total) * 100 : 0;
+              return pct > 0 ? (
+                <div key={i} className={`${s.color} h-3 transition-all duration-700`} style={{ width: `${pct}%` }} title={`${s.label}: ${s.value}`} />
+              ) : null;
+            })}
+          </div>
+          <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+            {statusFlow.map((s, i) => {
+              const Ic = s.icon;
+              return (
+                <div key={i} className="text-center p-3 rounded-xl bg-slate-50/80 border border-slate-100 hover:border-slate-200 transition-colors">
+                  <div className="flex items-center justify-center mb-1.5">
+                    <div className={`w-2 h-2 rounded-full ${s.color} ml-1.5`} />
+                    <Ic className="h-3.5 w-3.5 text-slate-500" />
+                  </div>
+                  <p className="text-xl font-bold text-brand-navy">{s.value}</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">{s.label}</p>
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {kpiCards.map((kpi, i) => (
-          <StatCard key={i} {...kpi} />
-        ))}
+        <div className="rounded-2xl border bg-white p-4 shadow-sm">
+          <div className="flex items-center gap-2 mb-2">
+            <Timer className="h-4 w-4 text-emerald-600" />
+            <span className="text-xs text-muted-foreground">متوسط وقت الحل</span>
+          </div>
+          <p className="text-2xl font-bold text-brand-navy">{data.avg_resolution_hours || 0}<span className="text-sm font-normal text-muted-foreground mr-1">ساعة</span></p>
+        </div>
+        <div className="rounded-2xl border bg-white p-4 shadow-sm">
+          <div className="flex items-center gap-2 mb-2">
+            <Target className="h-4 w-4 text-amber-600" />
+            <span className="text-xs text-muted-foreground">مكررات مكتشفة</span>
+          </div>
+          <p className="text-2xl font-bold text-brand-navy">{data.duplicates_detected || 0}</p>
+        </div>
+        <div className="rounded-2xl border bg-white p-4 shadow-sm">
+          <div className="flex items-center gap-2 mb-2">
+            <ThumbsDown className="h-4 w-4 text-red-500" />
+            <span className="text-xs text-muted-foreground">مرفوضة</span>
+          </div>
+          <p className="text-2xl font-bold text-brand-navy">{rejected}<span className="text-sm font-normal text-muted-foreground mr-1">({rejectedPct}%)</span></p>
+        </div>
+        <div className="rounded-2xl border bg-white p-4 shadow-sm">
+          <div className="flex items-center gap-2 mb-2">
+            <TrendingUp className="h-4 w-4 text-brand-turquoise" />
+            <span className="text-xs text-muted-foreground">معدل الحل</span>
+          </div>
+          <p className="text-2xl font-bold text-brand-navy">{resRate}<span className="text-sm font-normal text-muted-foreground mr-1">%</span></p>
+        </div>
       </div>
 
       {hakimStats && (
-        <Card className="border rounded-xl shadow-sm bg-gradient-to-br from-brand-turquoise/5 via-white to-brand-turquoise/3 border-brand-turquoise/20">
+        <Card className="border rounded-2xl shadow-sm bg-gradient-to-br from-brand-turquoise/5 via-white to-brand-turquoise/3 border-brand-turquoise/20">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-semibold flex items-center gap-2 text-brand-navy">
               <div className="p-2 rounded-xl bg-brand-turquoise/10">
@@ -683,15 +832,15 @@ function DashboardView({ data, loading, isAdmin, navigate }) {
           </CardHeader>
           <CardContent className="space-y-5">
             <div className="grid grid-cols-3 gap-3">
-              <div className="text-center p-3 bg-white rounded-xl border border-slate-100">
+              <div className="text-center p-3.5 bg-white rounded-xl border border-slate-100 shadow-sm">
                 <p className="text-2xl font-bold text-brand-navy">{hakimStats.total_analyzed}</p>
                 <p className="text-[10px] text-muted-foreground mt-0.5">تحدي تم تحليله</p>
               </div>
-              <div className="text-center p-3 bg-white rounded-xl border border-slate-100">
+              <div className="text-center p-3.5 bg-white rounded-xl border border-slate-100 shadow-sm">
                 <p className="text-2xl font-bold text-amber-600">{hakimStats.duplicates_detected}</p>
                 <p className="text-[10px] text-muted-foreground mt-0.5">مكرر مكتشف</p>
               </div>
-              <div className="text-center p-3 bg-white rounded-xl border border-slate-100">
+              <div className="text-center p-3.5 bg-white rounded-xl border border-slate-100 shadow-sm">
                 <p className="text-2xl font-bold text-violet-600">{hakimStats.priority_overridden}</p>
                 <p className="text-[10px] text-muted-foreground mt-0.5">أولوية مُعدّلة</p>
               </div>
@@ -724,7 +873,7 @@ function DashboardView({ data, loading, isAdmin, navigate }) {
                     <div
                       key={i}
                       onClick={() => navigate(`/admin/product-hub/issues/${insight.id}`)}
-                      className="p-3 bg-white rounded-xl border border-slate-100 hover:border-brand-turquoise/30 cursor-pointer transition-all group"
+                      className="p-3 bg-white rounded-xl border border-slate-100 hover:border-brand-turquoise/30 cursor-pointer transition-all group shadow-sm"
                     >
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-[10px] font-mono text-muted-foreground bg-slate-100 px-1.5 py-0.5 rounded">
@@ -753,7 +902,7 @@ function DashboardView({ data, loading, isAdmin, navigate }) {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="border rounded-xl shadow-sm">
+        <Card className="border rounded-2xl shadow-sm">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-semibold flex items-center gap-2 text-brand-navy">
               <div className="p-1.5 rounded-lg bg-brand-turquoise/10">
@@ -765,12 +914,15 @@ function DashboardView({ data, loading, isAdmin, navigate }) {
           <CardContent>
             <div className="space-y-3">
               {data.by_type?.map((t, i) => {
-                const pct = Math.min(100, (t.count / Math.max(1, data.total_issues)) * 100);
+                const pct = Math.min(100, (t.count / Math.max(1, total)) * 100);
                 return (
                   <div key={i} className="group">
                     <div className="flex items-center justify-between text-sm mb-1">
                       <span className="text-slate-600">{t.label}</span>
-                      <span className="font-semibold text-brand-navy">{t.count}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-muted-foreground">{Math.round(pct)}%</span>
+                        <span className="font-semibold text-brand-navy">{t.count}</span>
+                      </div>
                     </div>
                     <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
                       <div className="bg-gradient-to-r from-brand-turquoise to-brand-turquoise/70 h-2 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
@@ -785,7 +937,7 @@ function DashboardView({ data, loading, isAdmin, navigate }) {
           </CardContent>
         </Card>
 
-        <Card className="border rounded-xl shadow-sm">
+        <Card className="border rounded-2xl shadow-sm">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-semibold flex items-center gap-2 text-brand-navy">
               <div className="p-1.5 rounded-lg bg-brand-turquoise/10">
@@ -798,7 +950,7 @@ function DashboardView({ data, loading, isAdmin, navigate }) {
             <div className="space-y-3">
               {data.by_priority?.map((p, i) => {
                 const cfg = PRIORITY_CONFIG[p.priority] || {};
-                const pct = Math.min(100, (p.count / Math.max(1, data.total_issues)) * 100);
+                const pct = Math.min(100, (p.count / Math.max(1, total)) * 100);
                 return (
                   <div key={i}>
                     <div className="flex items-center justify-between text-sm mb-1">
@@ -806,7 +958,10 @@ function DashboardView({ data, loading, isAdmin, navigate }) {
                         <div className={`w-2.5 h-2.5 rounded-full ${cfg.dotColor || 'bg-slate-400'}`} />
                         <span className="text-slate-600">{p.label || p.priority}</span>
                       </div>
-                      <span className="font-semibold text-brand-navy">{p.count}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-muted-foreground">{Math.round(pct)}%</span>
+                        <span className="font-semibold text-brand-navy">{p.count}</span>
+                      </div>
                     </div>
                     <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
                       <div className={`h-2 rounded-full transition-all duration-500 ${cfg.color || 'bg-slate-400'}`} style={{ width: `${pct}%` }} />
@@ -821,7 +976,7 @@ function DashboardView({ data, loading, isAdmin, navigate }) {
           </CardContent>
         </Card>
 
-        <Card className="border rounded-xl shadow-sm">
+        <Card className="border rounded-2xl shadow-sm">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-semibold flex items-center gap-2 text-brand-navy">
               <div className="p-1.5 rounded-lg bg-brand-turquoise/10">
@@ -833,7 +988,7 @@ function DashboardView({ data, loading, isAdmin, navigate }) {
           <CardContent>
             <div className="space-y-3">
               {data.by_team?.map((t, i) => {
-                const pct = Math.min(100, (t.count / Math.max(1, data.total_issues)) * 100);
+                const pct = Math.min(100, (t.count / Math.max(1, total)) * 100);
                 return (
                   <div key={i} className="flex items-center justify-between text-sm">
                     <span className="text-slate-600">{t.team || 'غير معيّن'}</span>
@@ -853,7 +1008,7 @@ function DashboardView({ data, loading, isAdmin, navigate }) {
           </CardContent>
         </Card>
 
-        <Card className="border rounded-xl shadow-sm">
+        <Card className="border rounded-2xl shadow-sm">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-semibold flex items-center gap-2 text-brand-navy">
               <div className="p-1.5 rounded-lg bg-brand-turquoise/10">
@@ -884,7 +1039,7 @@ function DashboardView({ data, loading, isAdmin, navigate }) {
           </CardContent>
         </Card>
 
-        <Card className="border rounded-xl shadow-sm">
+        <Card className="border rounded-2xl shadow-sm">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-semibold flex items-center gap-2 text-brand-navy">
               <div className="p-1.5 rounded-lg bg-brand-turquoise/10">
@@ -913,7 +1068,7 @@ function DashboardView({ data, loading, isAdmin, navigate }) {
           </CardContent>
         </Card>
 
-        <Card className="border rounded-xl shadow-sm">
+        <Card className="border rounded-2xl shadow-sm">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-semibold flex items-center gap-2 text-brand-navy">
               <div className="p-1.5 rounded-lg bg-brand-turquoise/10">
