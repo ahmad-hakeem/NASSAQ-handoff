@@ -14,7 +14,7 @@ import { toast } from 'sonner';
 import {
   Brain, Send, ArrowRight, Monitor, Loader2, CheckCircle2,
   User, FileText, Sparkles, Wand2, MessageCircle, Zap,
-  Eye, Shield, Lightbulb, ThumbsUp, ArrowLeft,
+  Eye, Shield, Lightbulb, ThumbsUp, ArrowLeft, PenLine,
 } from 'lucide-react';
 
 const authHeaders = () => {
@@ -161,6 +161,7 @@ export function ProductHubSubmitPage() {
   const [submitting, setSubmitting] = useState(false);
   const [step, setStep] = useState(0);
   const [improvingField, setImprovingField] = useState(null);
+  const [generatingExpected, setGeneratingExpected] = useState(false);
   const [hakimMsgIndex, setHakimMsgIndex] = useState(0);
   const [hakimVisible, setHakimVisible] = useState(true);
   const [hakimTyping, setHakimTyping] = useState(false);
@@ -258,6 +259,39 @@ export function ProductHubSubmitPage() {
       toast.error('فشل تحسين النص');
     } finally {
       setImprovingField(null);
+    }
+  }, [form, triggerHakimReaction]);
+
+  const generateExpected = useCallback(async () => {
+    if (!form.current_behavior || form.current_behavior.trim().length < 10) {
+      toast.error('اكتب وصف الوضع الحالي أولاً (10 أحرف على الأقل)');
+      return;
+    }
+    setGeneratingExpected(true);
+    triggerHakimReaction(null);
+    try {
+      const res = await axios.post('/api/product-hub/hakim-generate-expected', {
+        title: form.title,
+        current_behavior: form.current_behavior,
+        issue_type: form.issue_type,
+        page: form.page,
+      }, { headers: authHeaders() });
+      if (res.data.success && res.data.generated_text) {
+        setForm(f => ({ ...f, expected_behavior: res.data.generated_text }));
+        toast.success('حكيم أنشأ الوضع المتوقع — يمكنك تعديله');
+        triggerHakimReaction('improved');
+      } else {
+        toast.error('لم يتمكن حكيم من إنشاء الوصف — حاول مرة أخرى');
+      }
+    } catch (err) {
+      const detail = err.response?.data?.detail;
+      if (typeof detail === 'object' && detail.message) {
+        toast.error(detail.message);
+      } else {
+        toast.error('فشل في إنشاء الوضع المتوقع');
+      }
+    } finally {
+      setGeneratingExpected(false);
     }
   }, [form, triggerHakimReaction]);
 
@@ -537,6 +571,9 @@ export function ProductHubSubmitPage() {
                   improving={improvingField === 'expected_behavior'}
                   onImprove={() => improveWithHakim('expected_behavior')}
                   maxLength={5000}
+                  onGenerate={generateExpected}
+                  generating={generatingExpected}
+                  canGenerate={form.current_behavior && form.current_behavior.trim().length >= 10}
                 />
 
                 <HakimTextArea
@@ -845,8 +882,9 @@ function HakimInput({ label, required, value, onChange, placeholder, improving, 
   );
 }
 
-function HakimTextArea({ label, required, value, onChange, placeholder, fieldName, improving, onImprove, maxLength }) {
+function HakimTextArea({ label, required, value, onChange, placeholder, fieldName, improving, onImprove, maxLength, onGenerate, generating, canGenerate }) {
   const canImprove = value && value.trim().length >= 5;
+  const isDisabled = improving || generating;
 
   return (
     <div>
@@ -854,39 +892,71 @@ function HakimTextArea({ label, required, value, onChange, placeholder, fieldNam
         <Label className="text-sm font-medium">
           {label} {required && <span className="text-red-500">*</span>}
         </Label>
-        <button
-          type="button"
-          onClick={onImprove}
-          disabled={improving || !canImprove}
-          className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-medium transition-all ${
-            improving
-              ? 'bg-brand-turquoise/10 text-brand-turquoise cursor-wait'
-              : canImprove
-                ? 'bg-gradient-to-l from-brand-turquoise/10 to-brand-purple/10 text-brand-navy hover:from-brand-turquoise/20 hover:to-brand-purple/20 border border-brand-turquoise/20 hover:border-brand-turquoise/40 hover:shadow-sm cursor-pointer'
-                : 'bg-slate-50 text-slate-300 cursor-not-allowed border border-slate-100'
-          }`}
-        >
-          {improving ? (
-            <>
-              <Loader2 className="h-3 w-3 animate-spin" />
-              <span>حكيم يحسّن...</span>
-            </>
-          ) : (
-            <>
-              <Wand2 className="h-3 w-3" />
-              <span>تحسين بحكيم</span>
-              <Brain className="h-3 w-3 text-brand-turquoise" />
-            </>
+        <div className="flex items-center gap-2">
+          {onGenerate && (
+            <button
+              type="button"
+              onClick={onGenerate}
+              disabled={isDisabled || !canGenerate}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-medium transition-all ${
+                generating
+                  ? 'bg-brand-purple/10 text-brand-purple cursor-wait'
+                  : canGenerate
+                    ? 'bg-gradient-to-l from-brand-purple/10 to-brand-turquoise/10 text-brand-navy hover:from-brand-purple/20 hover:to-brand-turquoise/20 border border-brand-purple/20 hover:border-brand-purple/40 hover:shadow-sm cursor-pointer'
+                    : 'bg-slate-50 text-slate-300 cursor-not-allowed border border-slate-100'
+              }`}
+            >
+              {generating ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <span>حكيم يُنشئ...</span>
+                </>
+              ) : (
+                <>
+                  <PenLine className="h-3 w-3" />
+                  <span>إنشاء بحكيم</span>
+                  <Brain className="h-3 w-3 text-brand-purple" />
+                </>
+              )}
+            </button>
           )}
-        </button>
+          <button
+            type="button"
+            onClick={onImprove}
+            disabled={isDisabled || !canImprove}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-medium transition-all ${
+              improving
+                ? 'bg-brand-turquoise/10 text-brand-turquoise cursor-wait'
+                : canImprove
+                  ? 'bg-gradient-to-l from-brand-turquoise/10 to-brand-purple/10 text-brand-navy hover:from-brand-turquoise/20 hover:to-brand-purple/20 border border-brand-turquoise/20 hover:border-brand-turquoise/40 hover:shadow-sm cursor-pointer'
+                  : 'bg-slate-50 text-slate-300 cursor-not-allowed border border-slate-100'
+            }`}
+          >
+            {improving ? (
+              <>
+                <Loader2 className="h-3 w-3 animate-spin" />
+                <span>حكيم يحسّن...</span>
+              </>
+            ) : (
+              <>
+                <Wand2 className="h-3 w-3" />
+                <span>تحسين بحكيم</span>
+                <Brain className="h-3 w-3 text-brand-turquoise" />
+              </>
+            )}
+          </button>
+        </div>
       </div>
       <div className="relative">
         <Textarea
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
-          className={`text-right min-h-[100px] rounded-lg transition-all ${improving ? 'border-brand-turquoise/40 bg-brand-turquoise/5' : ''}`}
-          disabled={improving}
+          className={`text-right min-h-[100px] rounded-lg transition-all ${
+            generating ? 'border-brand-purple/40 bg-brand-purple/5' :
+            improving ? 'border-brand-turquoise/40 bg-brand-turquoise/5' : ''
+          }`}
+          disabled={isDisabled}
         />
         {improving && (
           <div className="absolute inset-0 bg-brand-turquoise/5 rounded-lg flex items-center justify-center pointer-events-none">
@@ -897,10 +967,22 @@ function HakimTextArea({ label, required, value, onChange, placeholder, fieldNam
             </div>
           </div>
         )}
+        {generating && (
+          <div className="absolute inset-0 bg-brand-purple/5 rounded-lg flex items-center justify-center pointer-events-none">
+            <div className="flex items-center gap-2 bg-white/90 backdrop-blur-sm px-4 py-2 rounded-full shadow-md border border-brand-purple/20">
+              <Brain className="h-4 w-4 text-brand-purple animate-pulse" />
+              <span className="text-xs font-medium text-brand-navy">حكيم يُنشئ الوضع المتوقع...</span>
+              <PenLine className="h-3 w-3 text-brand-purple/60" />
+            </div>
+          </div>
+        )}
       </div>
       <div className="flex items-center justify-between mt-1">
         <p className="text-[11px] text-muted-foreground">
-          {!required && 'اختياري — '}يساعد حكيم في التحليل
+          {onGenerate && !value?.trim() && canGenerate
+            ? 'اضغط "إنشاء بحكيم" لتوليد وصف تلقائي من الوضع الحالي'
+            : !required ? 'اختياري — يساعد حكيم في التحليل' : 'يساعد حكيم في التحليل'
+          }
         </p>
         {maxLength && (
           <p className="text-[11px] text-muted-foreground">{(value || '').length}/{maxLength}</p>

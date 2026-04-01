@@ -1054,6 +1054,68 @@ async def update_issue_priority(
     return {"success": True}
 
 
+@router.post("/hakim-generate-expected")
+async def hakim_generate_expected(
+    data: dict = Body(...),
+    current_user: dict = Depends(get_current_user),
+):
+    title = (data.get("title") or "").strip()
+    current_behavior = (data.get("current_behavior") or "").strip()
+    issue_type = (data.get("issue_type") or "").strip()
+    page = (data.get("page") or "").strip()
+
+    if not current_behavior or len(current_behavior) < 10:
+        _hub_error(422, "CURRENT_BEHAVIOR_TOO_SHORT", "يجب وصف الوضع الحالي أولاً (10 أحرف على الأقل)")
+
+    try:
+        from openai import OpenAI
+        import os
+        api_key = os.environ.get("AI_INTEGRATIONS_OPENAI_API_KEY", "")
+        base_url = os.environ.get("AI_INTEGRATIONS_OPENAI_BASE_URL", "")
+        if not api_key:
+            return {"generated_text": "", "success": False}
+
+        client = OpenAI(api_key=api_key, base_url=base_url if base_url else None)
+
+        context_parts = []
+        if title:
+            context_parts.append(f"عنوان التحدي: {title}")
+        if issue_type:
+            type_label = ISSUE_TYPE_LABELS.get(issue_type, issue_type)
+            context_parts.append(f"نوع التحدي: {type_label}")
+        if page:
+            context_parts.append(f"الصفحة: {page}")
+        context_parts.append(f"الوضع الحالي: {current_behavior}")
+
+        context = "\n".join(context_parts)
+
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": """أنت حكيم، مساعد ذكاء المنتج في نظام نسّق التعليمي.
+مهمتك: بناءً على وصف الوضع الحالي والمشكلة، اكتب وصفاً واضحاً ودقيقاً للوضع المتوقع (النتيجة المرجوة).
+
+قواعد:
+- صِغ النتيجة المتوقعة كخطوات واضحة وقابلة للتنفيذ
+- استخدم صيغة "يجب أن..." أو "المتوقع أن..."
+- كن محدداً وعملياً — لا تكتب عبارات عامة
+- اكتب بالعربية بأسلوب تقني مهني
+- اجعل الوصف بين 2-4 جمل
+- لا تكرر وصف المشكلة — ركز على الحل المطلوب
+- أرجع النص المولّد فقط بدون مقدمات أو شرح"""},
+                {"role": "user", "content": context}
+            ],
+            max_tokens=400,
+            temperature=0.4,
+        )
+
+        generated = response.choices[0].message.content.strip()
+        return {"generated_text": generated, "success": True}
+    except Exception as e:
+        logger.warning(f"[Hakim] Expected behavior generation failed: {e}")
+        return {"generated_text": "", "success": False}
+
+
 @router.post("/hakim-improve-text")
 async def hakim_improve_text(
     data: dict = Body(...),
