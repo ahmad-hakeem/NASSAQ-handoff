@@ -46,6 +46,8 @@ export function ProductHubIssuePage() {
   const [expandedSections, setExpandedSections] = useState({ timeline: false });
 
   const isAdmin = user?.role === 'platform_admin';
+  const perms = issue?.permissions || {};
+  const isMainAdmin = perms.is_main_admin || false;
 
   const fetchIssue = useCallback(async () => {
     try {
@@ -62,8 +64,8 @@ export function ProductHubIssuePage() {
   useEffect(() => { fetchIssue(); }, [fetchIssue]);
 
   const handleStatusChange = async (newStatus) => {
-    if (FINAL_STATUSES.has(newStatus) && !isAdmin) {
-      toast.error('فقط مدير المنصة يمكنه تغيير الحالة النهائية');
+    if (FINAL_STATUSES.has(newStatus) && !isMainAdmin) {
+      toast.error('هذا الإجراء مقصور على المديرين الأساسيين فقط');
       return;
     }
     setUpdatingStatus(true);
@@ -100,7 +102,7 @@ export function ProductHubIssuePage() {
     setSubmittingComment(true);
     try {
       await axios.post(`/api/product-hub/issues/${issueId}/comments`, {
-        content: comment, comment_type: isAdmin ? commentType : 'general'
+        content: comment, comment_type: isMainAdmin ? commentType : 'general'
       }, { headers: authHeaders() });
       toast.success('تم إضافة التعليق');
       setComment('');
@@ -409,7 +411,7 @@ export function ProductHubIssuePage() {
                   <Separator />
 
                   <div className="space-y-3">
-                    {isAdmin && (
+                    {isMainAdmin && (
                       <div className="flex gap-2">
                         {Object.entries(COMMENT_TYPE_CONFIG).map(([key, cfg]) => (
                           <button
@@ -521,7 +523,7 @@ export function ProductHubIssuePage() {
             <div className="space-y-6">
               <HakimInsightCard hakim={hakim} />
 
-              {isAdmin && allowedTransitions.length > 0 && (
+              {isMainAdmin && allowedTransitions.length > 0 && (
                 <Card className="border shadow-sm rounded-xl">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-semibold flex items-center gap-2">

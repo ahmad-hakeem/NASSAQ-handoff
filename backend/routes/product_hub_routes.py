@@ -42,6 +42,7 @@ from engines.product_hub_rbac import (
     enforce_permission, enforce_ownership_or_admin,
     check_resource_ownership, redact_issue_for_role,
     require_hub_action, get_user_id, resolve_hub_role,
+    is_main_admin, is_super_admin,
 )
 from engines.product_hub_events import (
     HubEvent, emit_event,
@@ -241,6 +242,8 @@ async def _get_issue_or_404(issue_id: str) -> dict:
 @router.get("/config")
 async def get_hub_config(current_user: dict = Depends(get_current_user)):
     admin = is_platform_admin(current_user)
+    main_admin = is_main_admin(current_user)
+    super_admin = is_super_admin(current_user)
     return {
         "issue_types": [{"value": k, "label": v} for k, v in ISSUE_TYPE_LABELS.items()],
         "statuses": [{"value": k, "label": v} for k, v in STATUS_LABELS.items()],
@@ -253,13 +256,16 @@ async def get_hub_config(current_user: dict = Depends(get_current_user)):
         "valid_transitions": {k: list(v) for k, v in VALID_STATUS_TRANSITIONS.items()},
         "teams": sorted(VALID_TEAMS),
         "is_admin": admin,
+        "is_main_admin": main_admin,
+        "is_super_admin": super_admin,
         "permissions": {
-            "can_assign": admin,
-            "can_change_status": admin,
+            "can_assign": main_admin,
+            "can_change_status": main_admin,
             "can_view_prompt": admin,
             "can_view_analytics": admin,
-            "can_update_priority": admin,
-            "can_update_title": admin,
+            "can_update_priority": main_admin,
+            "can_update_title": main_admin,
+            "can_approve_closure": super_admin,
         },
     }
 
@@ -432,17 +438,22 @@ async def get_issue(issue_id: str, current_user: dict = Depends(get_current_user
     issue["is_admin"] = admin
     issue["valid_transitions"] = list(VALID_STATUS_TRANSITIONS.get(issue.get("status", "new"), set()))
 
+    main_admin = is_main_admin(current_user)
+    super_admin = is_super_admin(current_user)
     permissions = {
-        "can_change_status": admin,
-        "can_assign": admin,
+        "can_change_status": main_admin,
+        "can_assign": main_admin,
         "can_view_prompt": admin,
-        "can_update_title": admin,
-        "can_update_priority": admin,
+        "can_update_title": main_admin,
+        "can_update_priority": main_admin,
+        "can_approve_closure": super_admin,
         "can_comment": admin or check_resource_ownership(current_user, issue),
         "can_submit_feedback": (
             issue.get("status") == "done"
             and (admin or check_resource_ownership(current_user, issue))
         ),
+        "is_main_admin": main_admin,
+        "is_super_admin": super_admin,
     }
     issue["permissions"] = permissions
 

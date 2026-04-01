@@ -17,6 +17,21 @@ import logging
 
 logger = logging.getLogger("nassaq.product_hub.rbac")
 
+MAIN_ADMIN_EMAILS = {"zalat@nassaqapp.com", "hakim@nassaqapp.com"}
+SUPER_ADMIN_EMAIL = "zalat@nassaqapp.com"
+
+
+def _get_email(user: dict) -> str:
+    return (user.get("email") or "").lower().strip()
+
+
+def is_main_admin(user: dict) -> bool:
+    return _get_email(user) in MAIN_ADMIN_EMAILS
+
+
+def is_super_admin(user: dict) -> bool:
+    return _get_email(user) == SUPER_ADMIN_EMAIL
+
 
 class HubAction(str, Enum):
     CREATE_ISSUE = "create_issue"
@@ -78,20 +93,20 @@ PERMISSION_MATRIX = {
 }
 
 ERROR_MESSAGES = {
-    HubAction.ASSIGN_ISSUE:       "فقط مدير المنصة يمكنه تعيين المشاكل",
-    HubAction.CHANGE_STATUS:      "فقط مدير المنصة يمكنه تغيير الحالة",
-    HubAction.SET_FINAL_STATUS:   "فقط مدير المنصة يمكنه تغيير الحالة النهائية",
+    HubAction.ASSIGN_ISSUE:       "هذا الإجراء مقصور على المديرين الأساسيين فقط",
+    HubAction.CHANGE_STATUS:      "هذا الإجراء مقصور على المديرين الأساسيين فقط",
+    HubAction.SET_FINAL_STATUS:   "هذا الإجراء مقصور على المديرين الأساسيين فقط",
     HubAction.VIEW_PROMPT:        "فقط مدير المنصة يمكنه عرض البرومبت",
     HubAction.COPY_PROMPT:        "فقط مدير المنصة يمكنه نسخ البرومبت",
     HubAction.GENERATE_PROMPT:    "فقط مدير المنصة يمكنه إنشاء البرومبت",
     HubAction.VIEW_HAKIM_INSIGHTS:"فقط مدير المنصة يمكنه عرض تحليلات حكيم",
     HubAction.VIEW_FULL_ANALYTICS:"فقط مدير المنصة يمكنه عرض التحليلات الكاملة",
-    HubAction.UPDATE_TITLE:       "فقط مدير المنصة يمكنه تعديل العنوان",
-    HubAction.UPDATE_PRIORITY:    "فقط مدير المنصة يمكنه تعديل الأولوية",
-    HubAction.APPROVE_CLOSURE:    "فقط مدير المنصة يمكنه الموافقة على الإغلاق",
-    HubAction.REOPEN_ISSUE:       "فقط مدير المنصة يمكنه إعادة فتح المشكلة",
-    HubAction.UPDATE_ISSUE:       "فقط مدير المنصة يمكنه تعديل المشكلة",
-    HubAction.VIEW_ANY_ISSUE:     "ليس لديك صلاحية لعرض هذه المشكلة",
+    HubAction.UPDATE_TITLE:       "هذا الإجراء مقصور على المديرين الأساسيين فقط",
+    HubAction.UPDATE_PRIORITY:    "هذا الإجراء مقصور على المديرين الأساسيين فقط",
+    HubAction.APPROVE_CLOSURE:    "هذا الإجراء مقصور على المدير الرئيسي فقط",
+    HubAction.REOPEN_ISSUE:       "هذا الإجراء مقصور على المديرين الأساسيين فقط",
+    HubAction.UPDATE_ISSUE:       "هذا الإجراء مقصور على المديرين الأساسيين فقط",
+    HubAction.VIEW_ANY_ISSUE:     "ليس لديك صلاحية لعرض هذا التعليق",
     HubAction.VIEW_DUPLICATES:    "فقط مدير المنصة يمكنه عرض التكرارات",
 }
 
@@ -129,21 +144,48 @@ def check_permission(user: dict, action: HubAction) -> bool:
     return PERMISSION_MATRIX.get(action, {}).get(role, False)
 
 
+MAIN_ADMIN_ONLY_ACTIONS = {
+    HubAction.ASSIGN_ISSUE,
+    HubAction.CHANGE_STATUS,
+    HubAction.SET_FINAL_STATUS,
+    HubAction.REOPEN_ISSUE,
+    HubAction.UPDATE_ISSUE,
+    HubAction.UPDATE_TITLE,
+    HubAction.UPDATE_PRIORITY,
+}
+
+SUPER_ADMIN_ONLY_ACTIONS = {
+    HubAction.APPROVE_CLOSURE,
+}
+
+
 def enforce_permission(user: dict, action: HubAction):
     if not check_permission(user, action):
-        user_id = user.get("id", user.get("user_id", "unknown"))
-        logger.warning(
-            f"[RBAC] Permission denied: user={user_id} role={user.get('role','')} action={action.value}"
-        )
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "success": False,
-                "error_code": ERROR_CODES.get(action, "FORBIDDEN_ACTION"),
-                "message": ERROR_MESSAGES.get(action, "ليس لديك صلاحية لتنفيذ هذا الإجراء"),
-                "details": {"action": action.value, "required_role": "platform_admin"},
-            }
-        )
+        _deny(user, action)
+
+    if action in SUPER_ADMIN_ONLY_ACTIONS:
+        if not is_super_admin(user):
+            _deny(user, action, "هذا الإجراء مقصور على المدير الرئيسي فقط (zalat@nassaqapp.com)")
+
+    if action in MAIN_ADMIN_ONLY_ACTIONS:
+        if not is_main_admin(user):
+            _deny(user, action, "هذا الإجراء مقصور على المديرين الأساسيين فقط")
+
+
+def _deny(user: dict, action: HubAction, custom_message: str = None):
+    user_id = user.get("id", user.get("user_id", "unknown"))
+    logger.warning(
+        f"[RBAC] Permission denied: user={user_id} email={_get_email(user)} action={action.value}"
+    )
+    raise HTTPException(
+        status_code=403,
+        detail={
+            "success": False,
+            "error_code": ERROR_CODES.get(action, "FORBIDDEN_ACTION"),
+            "message": custom_message or ERROR_MESSAGES.get(action, "ليس لديك صلاحية لتنفيذ هذا الإجراء"),
+            "details": {"action": action.value},
+        }
+    )
 
 
 def check_resource_ownership(user: dict, issue: dict) -> bool:
