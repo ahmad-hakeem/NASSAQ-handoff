@@ -165,6 +165,50 @@ INDEXES = {
             name="idx_tca_school_teacher_class_unique",
         ),
     ],
+    "product_issues": [
+        IndexModel([("id", ASCENDING)], unique=True, name="idx_product_issues_id"),
+        IndexModel([("status", ASCENDING)], name="idx_product_issues_status"),
+        IndexModel([("priority", ASCENDING)], name="idx_product_issues_priority"),
+        IndexModel([("issue_type", ASCENDING)], name="idx_product_issues_type"),
+        IndexModel([("assigned_team", ASCENDING)], name="idx_product_issues_team"),
+        IndexModel([("employee_name", ASCENDING)], name="idx_product_issues_employee"),
+        IndexModel([("created_by", ASCENDING)], name="idx_product_issues_created_by"),
+        IndexModel([("created_at", DESCENDING)], name="idx_product_issues_created_at"),
+        IndexModel(
+            [("status", ASCENDING), ("priority", ASCENDING), ("created_at", DESCENDING)],
+            name="idx_product_issues_status_priority_date",
+        ),
+        IndexModel(
+            [("status", ASCENDING), ("assigned_team", ASCENDING)],
+            name="idx_product_issues_status_team",
+        ),
+        IndexModel([("section", ASCENDING)], name="idx_product_issues_section"),
+        IndexModel(
+            [("created_by", ASCENDING), ("created_at", DESCENDING)],
+            name="idx_product_issues_created_by_date",
+        ),
+    ],
+    "issue_activity_log": [
+        IndexModel([("id", ASCENDING)], unique=True, name="idx_activity_log_id"),
+        IndexModel([("issue_id", ASCENDING), ("timestamp", DESCENDING)], name="idx_activity_log_issue_time"),
+        IndexModel([("action", ASCENDING)], name="idx_activity_log_action"),
+        IndexModel([("performed_by", ASCENDING)], name="idx_activity_log_performed_by"),
+        IndexModel([("timestamp", DESCENDING)], name="idx_activity_log_timestamp"),
+    ],
+    "issue_comments": [
+        IndexModel([("id", ASCENDING)], unique=True, name="idx_issue_comments_id"),
+        IndexModel([("issue_id", ASCENDING), ("timestamp", ASCENDING)], name="idx_issue_comments_issue_time"),
+        IndexModel([("created_by", ASCENDING)], name="idx_issue_comments_created_by"),
+    ],
+    "issue_duplicates_map": [
+        IndexModel([("id", ASCENDING)], unique=True, name="idx_duplicates_map_id"),
+        IndexModel([("issue_id", ASCENDING)], name="idx_duplicates_map_issue"),
+        IndexModel([("duplicate_of", ASCENDING)], name="idx_duplicates_map_duplicate_of"),
+        IndexModel(
+            [("issue_id", ASCENDING), ("duplicate_of", ASCENDING)],
+            name="idx_duplicates_map_pair",
+        ),
+    ],
 }
 
 

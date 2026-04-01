@@ -24,16 +24,14 @@ API Contracts:
 
 Collections:
 - product_issues: Main issue storage
-- issue_activity_log: Activity timeline + event log
+- issue_activity_log: Activity timeline + event log + audit trail
 - issue_comments: Discussion threads
 - issue_duplicates_map: Duplicate detection results
 """
 
 from fastapi import APIRouter, HTTPException, Depends, Query
-from pydantic import BaseModel, Field, field_validator
-from typing import Optional, List, Dict, Any
+from typing import Optional, List
 from datetime import datetime, timezone, timedelta
-from enum import Enum
 import uuid
 import logging
 import json
@@ -57,91 +55,28 @@ from engines.product_hub_events import (
     VALID_STATUS_TRANSITIONS, FINAL_STATUSES, OPEN_STATUSES,
     STATUS_LABELS, PRIORITY_LABELS, SLA_HOURS, STATUS_PROGRESS,
 )
+from engines.product_hub_audit import (
+    AuditAction, write_audit_log,
+    audit_issue_created, audit_issue_updated,
+    audit_status_changed, audit_issue_assigned,
+    audit_ai_analyzed, audit_duplicate_detected,
+    audit_prompt_generated, audit_comment_added,
+    audit_attachment_added, audit_feedback_confirmed,
+    get_audit_trail, get_full_timeline,
+)
+from models.product_hub_models import (
+    IssueCreate, IssueUpdate, IssueComment, StatusUpdate,
+    AssignIssue, FeedbackResponse, TitleUpdate, PriorityUpdate,
+    ISSUE_TYPE_LABELS, ISSUE_TYPE_COMPAT, DYNAMIC_FIELDS_BY_TYPE,
+    ACCOUNT_TYPE_OPTIONS, SECTION_OPTIONS,
+    VALID_ISSUE_TYPES, VALID_ACCOUNT_TYPES, VALID_SECTIONS, VALID_TEAMS,
+    IssueType, IssuePriority, IssueStatus,
+    CommentType, AuditRole,
+)
 
 logger = logging.getLogger("nassaq.product_hub")
 
 router = APIRouter(prefix="/product-hub", tags=["Product Intelligence Hub"])
-
-
-class IssueType(str, Enum):
-    BUG = "bug"
-    ERROR = "error"
-    UI_ISSUE = "ui_issue"
-    UX_ISSUE = "ux_issue"
-    PERFORMANCE = "performance"
-    CONTENT = "content"
-    FEATURE_REQUEST = "feature_request"
-    IMPROVEMENT = "improvement"
-    PERMISSION = "permission"
-    WORKFLOW = "workflow"
-    INTEGRATION = "integration"
-    OTHER = "other"
-
-
-class IssuePriority(str, Enum):
-    CRITICAL = "critical"
-    HIGH = "high"
-    MEDIUM = "medium"
-    LOW = "low"
-
-
-class IssueStatus(str, Enum):
-    NEW = "new"
-    UNDER_REVIEW = "under_review"
-    IN_PROGRESS = "in_progress"
-    QA_VALIDATION = "qa_validation"
-    DONE = "done"
-    REJECTED = "rejected"
-    USER_FEEDBACK_CONFIRMED = "user_feedback_confirmed"
-
-
-ISSUE_TYPE_LABELS = {
-    "bug": "خطأ برمجي",
-    "error": "خطأ تقني",
-    "ui_issue": "مشكلة واجهة",
-    "ux_issue": "مشكلة تجربة مستخدم",
-    "performance": "مشكلة أداء",
-    "content": "مشكلة محتوى",
-    "feature_request": "طلب ميزة",
-    "improvement": "اقتراح تحسين",
-    "permission": "مشكلة صلاحيات",
-    "workflow": "مشكلة سير عمل",
-    "integration": "مشكلة تكامل",
-    "other": "أخرى",
-}
-
-DYNAMIC_FIELDS_BY_TYPE = {
-    "bug": ["steps_to_reproduce", "reproducibility", "error_message"],
-    "error": ["error_message", "error_code", "steps_to_reproduce"],
-    "ui_issue": ["screen_area", "affected_elements"],
-    "ux_issue": ["user_journey", "pain_point"],
-    "performance": ["load_time", "affected_operation"],
-    "content": ["content_location", "content_type"],
-    "feature_request": ["use_case", "business_value"],
-    "improvement": ["improvement_area", "expected_impact"],
-    "permission": ["affected_role", "expected_access"],
-    "workflow": ["workflow_name", "broken_step"],
-    "integration": ["integration_name", "api_endpoint"],
-    "other": ["additional_details"],
-}
-
-ACCOUNT_TYPE_OPTIONS = [
-    "platform_admin", "school_principal", "school_sub_admin",
-    "teacher", "student", "parent", "visitor"
-]
-
-SECTION_OPTIONS = [
-    "لوحة القيادة", "إدارة المدارس", "إدارة المستخدمين",
-    "الجداول والمواعيد", "الحضور والغياب", "التقييمات",
-    "التقارير", "الإعدادات", "التسجيل", "حكيم الذكي",
-    "بوابة الطالب", "بوابة ولي الأمر", "بوابة المعلم",
-    "التواصل", "الأمان", "أخرى"
-]
-
-VALID_ISSUE_TYPES = set(ISSUE_TYPE_LABELS.keys())
-VALID_ACCOUNT_TYPES = set(ACCOUNT_TYPE_OPTIONS)
-VALID_SECTIONS = set(SECTION_OPTIONS)
-VALID_TEAMS = {"Frontend", "Backend", "DevOps", "Design", "QA", "Product"}
 
 
 def _hub_error(status_code: int, error_code: str, message: str, details: dict = None):
@@ -158,135 +93,6 @@ def _hub_error(status_code: int, error_code: str, message: str, details: dict = 
 
 def _now_iso():
     return datetime.now(timezone.utc).isoformat()
-
-
-class IssueCreate(BaseModel):
-    issue_type: str
-    employee_name: str
-    employee_id: Optional[str] = None
-    account_type: str
-    section: str
-    page: str
-    current_behavior: str
-    expected_behavior: str
-    steps_to_reproduce: Optional[str] = None
-    reproducibility: Optional[str] = None
-    error_message: Optional[str] = None
-    error_code: Optional[str] = None
-    screen_area: Optional[str] = None
-    affected_elements: Optional[str] = None
-    user_journey: Optional[str] = None
-    pain_point: Optional[str] = None
-    load_time: Optional[str] = None
-    affected_operation: Optional[str] = None
-    content_location: Optional[str] = None
-    content_type: Optional[str] = None
-    use_case: Optional[str] = None
-    business_value: Optional[str] = None
-    improvement_area: Optional[str] = None
-    expected_impact: Optional[str] = None
-    affected_role: Optional[str] = None
-    expected_access: Optional[str] = None
-    workflow_name: Optional[str] = None
-    broken_step: Optional[str] = None
-    integration_name: Optional[str] = None
-    api_endpoint: Optional[str] = None
-    additional_details: Optional[str] = None
-    url: Optional[str] = None
-    device: Optional[str] = None
-    browser: Optional[str] = None
-    attachments: Optional[List[str]] = None
-
-    @field_validator("issue_type")
-    @classmethod
-    def validate_issue_type(cls, v):
-        if v not in VALID_ISSUE_TYPES:
-            raise ValueError(f"نوع المشكلة غير صالح: {v}")
-        return v
-
-    @field_validator("account_type")
-    @classmethod
-    def validate_account_type(cls, v):
-        if v not in VALID_ACCOUNT_TYPES:
-            raise ValueError(f"نوع الحساب غير صالح: {v}")
-        return v
-
-    @field_validator("employee_name")
-    @classmethod
-    def validate_employee_name(cls, v):
-        if not v or not v.strip():
-            raise ValueError("اسم الموظف مطلوب")
-        if len(v.strip()) > 200:
-            raise ValueError("اسم الموظف طويل جداً")
-        return v.strip()
-
-    @field_validator("current_behavior", "expected_behavior")
-    @classmethod
-    def validate_behavior_fields(cls, v):
-        if not v or not v.strip():
-            raise ValueError("هذا الحقل مطلوب")
-        if len(v.strip()) > 5000:
-            raise ValueError("النص طويل جداً")
-        return v.strip()
-
-    @field_validator("page", "section")
-    @classmethod
-    def validate_required_string(cls, v):
-        if not v or not v.strip():
-            raise ValueError("هذا الحقل مطلوب")
-        return v.strip()
-
-
-class IssueUpdate(BaseModel):
-    current_behavior: Optional[str] = None
-    expected_behavior: Optional[str] = None
-    steps_to_reproduce: Optional[str] = None
-    error_message: Optional[str] = None
-    additional_details: Optional[str] = None
-
-
-class IssueComment(BaseModel):
-    content: str
-
-    @field_validator("content")
-    @classmethod
-    def validate_content(cls, v):
-        if not v or not v.strip():
-            raise ValueError("محتوى التعليق مطلوب")
-        if len(v.strip()) > 5000:
-            raise ValueError("التعليق طويل جداً")
-        return v.strip()
-
-
-class StatusUpdate(BaseModel):
-    status: str
-    note: Optional[str] = None
-
-    @field_validator("status")
-    @classmethod
-    def validate_status(cls, v):
-        valid = set(STATUS_LABELS.keys())
-        if v not in valid:
-            raise ValueError(f"حالة غير صالحة: {v}")
-        return v
-
-
-class AssignIssue(BaseModel):
-    assigned_team: str
-    assigned_to: Optional[str] = None
-    note: Optional[str] = None
-
-    @field_validator("assigned_team")
-    @classmethod
-    def validate_team(cls, v):
-        if v not in VALID_TEAMS:
-            raise ValueError(f"فريق غير صالح: {v}")
-        return v
-
-
-class FeedbackResponse(BaseModel):
-    resolved: bool
-    comment: Optional[str] = None
 
 
 async def _run_hakim_analysis(issue: dict) -> dict:
@@ -374,14 +180,18 @@ Respond in this exact JSON format (Arabic text preferred):
 def _fallback_analysis(issue: dict) -> dict:
     type_to_team = {
         "bug": "Backend", "error": "Backend", "ui_issue": "Frontend",
-        "ux_issue": "Design", "performance": "DevOps", "content": "Product",
-        "feature_request": "Product", "improvement": "Product",
-        "permission": "Backend", "workflow": "Backend",
-        "integration": "Backend", "other": "Product",
+        "ux_issue": "Design", "performance_issue": "DevOps", "content_issue": "Product",
+        "feature_request": "Product", "improvement_suggestion": "Product",
+        "permission_issue": "Backend", "workflow_issue": "Backend",
+        "integration_issue": "Backend", "other": "Product",
+        "performance": "DevOps", "content": "Product",
+        "improvement": "Product", "permission": "Backend",
+        "workflow": "Backend", "integration": "Backend",
     }
     type_to_priority = {
-        "bug": "high", "error": "high", "performance": "high",
-        "permission": "medium", "integration": "medium",
+        "bug": "high", "error": "high", "performance_issue": "high",
+        "permission_issue": "medium", "integration_issue": "medium",
+        "performance": "high", "permission": "medium", "integration": "medium",
     }
     return {
         "suggested_title": f"{ISSUE_TYPE_LABELS.get(issue.get('issue_type', ''), 'مشكلة')} في {issue.get('page', 'الصفحة')}",
@@ -457,105 +267,67 @@ async def get_hub_config(current_user: dict = Depends(get_current_user)):
 @router.post("/issues")
 async def create_issue(data: IssueCreate, current_user: dict = Depends(get_current_user)):
     now = datetime.now(timezone.utc)
-    issue_id = str(uuid.uuid4())
     user_id = get_user_id(current_user)
 
-    issue = {
-        "id": issue_id,
-        "issue_number": await _next_issue_number(),
-        "issue_type": data.issue_type,
-        "status": "new",
-        "priority": None,
-        "title": None,
-        "employee_name": data.employee_name,
-        "employee_id": data.employee_id,
-        "account_type": data.account_type,
-        "section": data.section,
-        "page": data.page,
-        "current_behavior": data.current_behavior,
-        "expected_behavior": data.expected_behavior,
-        "steps_to_reproduce": data.steps_to_reproduce,
-        "reproducibility": data.reproducibility,
-        "error_message": data.error_message,
-        "error_code": data.error_code,
-        "screen_area": data.screen_area,
-        "affected_elements": data.affected_elements,
-        "user_journey": data.user_journey,
-        "pain_point": data.pain_point,
-        "load_time": data.load_time,
-        "affected_operation": data.affected_operation,
-        "content_location": data.content_location,
-        "content_type_field": data.content_type,
-        "use_case": data.use_case,
-        "business_value": data.business_value,
-        "improvement_area": data.improvement_area,
-        "expected_impact": data.expected_impact,
-        "affected_role": data.affected_role,
-        "expected_access": data.expected_access,
-        "workflow_name": data.workflow_name,
-        "broken_step": data.broken_step,
-        "integration_name": data.integration_name,
-        "api_endpoint": data.api_endpoint,
-        "additional_details": data.additional_details,
-        "url": data.url,
-        "device": data.device,
-        "browser": data.browser,
-        "attachments": data.attachments or [],
-        "assigned_team": None,
-        "assigned_to": None,
-        "assigned_to_name": None,
-        "assigned_at": None,
-        "hakim_analysis": {},
-        "generated_prompt": None,
-        "duplicate_of": None,
-        "submission_metadata": {
-            "employee_name": data.employee_name,
-            "employee_id": data.employee_id,
-            "user_id": user_id,
-            "created_at": now.isoformat(),
-            "created_date": now.strftime("%Y-%m-%d"),
-            "created_time": now.strftime("%H:%M:%S"),
-        },
-        "sla_deadline": None,
-        "sla_status": None,
-        "feedback_requested": False,
-        "feedback_response": None,
-        "created_by": user_id,
-        "created_by_name": current_user.get("full_name", ""),
-        "created_by_role": current_user.get("role", ""),
-        "created_at": now.isoformat(),
-        "updated_at": now.isoformat(),
-        "resolved_at": None,
-    }
+    issue = data.to_issue_document(user_id, current_user)
+    issue_id = issue["id"]
+    issue["issue_number"] = await _next_issue_number()
 
     hakim_analysis = await _run_hakim_analysis(issue)
     issue["hakim_analysis"] = hakim_analysis
+    issue["ai"] = {
+        "suggested_title": hakim_analysis.get("suggested_title", ""),
+        "duplicate_detected": bool(hakim_analysis.get("duplicate_ids")),
+        "duplicate_candidates": [
+            {"issue_id": did, "confidence": 0.0}
+            for did in hakim_analysis.get("duplicate_ids", [])[:3]
+        ],
+        "suggested_team": hakim_analysis.get("suggested_team"),
+        "generated_prompt": None,
+        "priority_reasoning": hakim_analysis.get("priority_reasoning", ""),
+        "team_reasoning": hakim_analysis.get("team_reasoning", ""),
+        "technical_notes": hakim_analysis.get("technical_notes", ""),
+        "impact_assessment": hakim_analysis.get("impact_assessment", ""),
+    }
+
     issue["title"] = hakim_analysis.get("suggested_title", f"مشكلة في {data.page}")
     issue["priority"] = hakim_analysis.get("suggested_priority", "medium")
+    issue["ai_suggested_priority"] = hakim_analysis.get("suggested_priority", "medium")
     issue["assigned_team"] = hakim_analysis.get("suggested_team")
+    issue["assignment"]["team"] = hakim_analysis.get("suggested_team")
 
     sla = calculate_sla(issue["priority"], now)
     issue["sla_deadline"] = sla["sla_deadline"]
     issue["sla_status"] = sla["sla_status"]
 
     issue["generated_prompt"] = await _generate_prompt(issue)
+    issue["ai"]["generated_prompt"] = issue["generated_prompt"]
 
     if hakim_analysis.get("duplicate_ids"):
         for dup_id in hakim_analysis["duplicate_ids"][:3]:
-            await db.issue_duplicates_map.insert_one({
+            dup_entry = {
                 "id": str(uuid.uuid4()),
                 "issue_id": issue_id,
                 "duplicate_of": dup_id,
-                "detected_by": "hakim_ai",
-                "confidence": "ai_suggested",
-                "timestamp": now.isoformat(),
-            })
+                "confidence": 0.0,
+                "detected_by": "hakim",
+                "created_at": now.isoformat(),
+            }
+            await db.issue_duplicates_map.insert_one(dup_entry)
+            await audit_duplicate_detected(issue_id, current_user, dup_id)
+
+    issue["system"]["last_status_changed_at"] = now.isoformat()
 
     await db.product_issues.insert_one({**issue, "_id": issue_id})
 
     await handle_issue_created(issue_id, issue, current_user)
+    await audit_issue_created(issue_id, current_user, issue)
+
     await handle_hakim_analysis(issue_id, current_user, hakim_analysis, source="auto_on_create")
+    await audit_ai_analyzed(issue_id, current_user, hakim_analysis)
+
     await handle_prompt_generated(issue_id, current_user)
+    await audit_prompt_generated(issue_id, current_user)
 
     logger.info(f"[ProductHub] Issue created: #{issue['issue_number']} ({issue_id[:8]})")
     issue.pop("_id", None)
@@ -593,7 +365,8 @@ async def list_issues(
         else:
             query["status"] = status
     if issue_type:
-        query["issue_type"] = issue_type
+        mapped_type = ISSUE_TYPE_COMPAT.get(issue_type, issue_type)
+        query["issue_type"] = mapped_type
     if priority:
         query["priority"] = priority
     if section:
@@ -687,17 +460,37 @@ async def update_issue(
     issue = await _get_issue_or_404(issue_id)
 
     changes = {}
-    for field in ["current_behavior", "expected_behavior", "steps_to_reproduce", "error_message", "additional_details"]:
+    update_fields = [
+        "current_behavior", "expected_behavior", "steps_to_reproduce",
+        "error_message", "additional_details", "reproducibility",
+    ]
+    for field in update_fields:
         value = getattr(data, field, None)
         if value is not None:
-            changes[field] = value.strip()
+            changes[field] = value.strip() if isinstance(value, str) else value
+
+    if data.impact is not None:
+        changes["impact"] = data.impact
+    if data.related_to is not None:
+        changes["technical.related_to"] = data.related_to
 
     if not changes:
         _hub_error(422, "NO_CHANGES", "لم يتم إرسال أي تعديلات")
 
-    changes["updated_at"] = _now_iso()
+    now = _now_iso()
+    changes["updated_at"] = now
+    changes["system.updated_at"] = now
+
+    if "current_behavior" in changes:
+        changes["description.current_behavior"] = changes["current_behavior"]
+    if "expected_behavior" in changes:
+        changes["description.expected_behavior"] = changes["expected_behavior"]
+    if "reproducibility" in changes:
+        changes["description.reproducible"] = changes["reproducibility"]
+
     await db.product_issues.update_one({"id": issue_id}, {"$set": changes})
     await handle_issue_updated(issue_id, current_user, changes)
+    await audit_issue_updated(issue_id, current_user, changes)
 
     return {"success": True, "updated_fields": list(changes.keys())}
 
@@ -727,19 +520,23 @@ async def update_issue_status(
             "allowed_transitions": list(VALID_STATUS_TRANSITIONS.get(current_status, set())),
         })
 
+    now = _now_iso()
     update_fields = {
         "status": new_status,
-        "updated_at": _now_iso(),
+        "updated_at": now,
+        "system.updated_at": now,
+        "system.last_status_changed_at": now,
     }
 
     if new_status == "done":
-        update_fields["resolved_at"] = _now_iso()
+        update_fields["resolved_at"] = now
         update_fields["feedback_requested"] = True
 
     if new_status == "under_review" and current_status in {"done", "rejected"}:
         update_fields["resolved_at"] = None
         update_fields["feedback_requested"] = False
         update_fields["feedback_response"] = None
+        update_fields["sla_warning_emitted"] = False
 
     result = await db.product_issues.update_one(
         {"id": issue_id, "status": current_status},
@@ -749,6 +546,7 @@ async def update_issue_status(
         _hub_error(409, "CONCURRENT_MODIFICATION", "الحالة تغيّرت — يرجى تحديث الصفحة")
 
     await handle_status_changed(issue_id, current_user, current_status, new_status, data.note or "")
+    await audit_status_changed(issue_id, current_user, current_status, new_status, data.note or "")
 
     logger.info(f"[ProductHub] Issue {issue_id[:8]}: {current_status} → {new_status}")
     return {"success": True, "status": new_status, "previous_status": current_status}
@@ -764,6 +562,12 @@ async def assign_issue(
 
     issue = await _get_issue_or_404(issue_id)
 
+    if data.assigned_to:
+        assignee = await db.users.find_one({"id": data.assigned_to}, {"_id": 0, "id": 1, "full_name": 1})
+        if not assignee:
+            _hub_error(422, "ASSIGNEE_NOT_FOUND", "المستخدم المعيّن غير موجود",
+                       {"assigned_to": data.assigned_to})
+
     now = _now_iso()
     await db.product_issues.update_one(
         {"id": issue_id},
@@ -772,10 +576,17 @@ async def assign_issue(
             "assigned_to": data.assigned_to,
             "assigned_at": now,
             "updated_at": now,
+            "assignment.team": data.assigned_team.lower() if data.assigned_team else None,
+            "assignment.assigned_to": data.assigned_to,
+            "system.updated_at": now,
         }}
     )
 
     await handle_issue_assigned(
+        issue_id, current_user, data.assigned_team,
+        data.assigned_to, data.note or ""
+    )
+    await audit_issue_assigned(
         issue_id, current_user, data.assigned_team,
         data.assigned_to, data.note or ""
     )
@@ -792,18 +603,26 @@ async def add_comment(
     issue = await _get_issue_or_404(issue_id)
     enforce_ownership_or_admin(current_user, issue, HubAction.ADD_COMMENT)
 
+    user_role = current_user.get("role", "")
+    resolved_role = "platform_admin" if user_role == "platform_admin" else "internal_user"
+
     comment = {
         "id": str(uuid.uuid4()),
         "issue_id": issue_id,
+        "comment": data.content,
         "content": data.content,
+        "created_by": get_user_id(current_user),
         "user_id": get_user_id(current_user),
         "user_name": current_user.get("full_name", ""),
-        "user_role": current_user.get("role", ""),
+        "role": resolved_role,
+        "user_role": user_role,
+        "type": data.comment_type,
         "timestamp": _now_iso(),
     }
 
     await db.issue_comments.insert_one(comment)
     await handle_comment_added(issue_id, current_user, comment["id"])
+    await audit_comment_added(issue_id, current_user, comment["id"], data.comment_type)
     comment.pop("_id", None)
     return comment
 
@@ -852,10 +671,13 @@ async def submit_feedback(
         },
         "feedback_requested": False,
         "updated_at": now,
+        "system.updated_at": now,
+        "system.last_status_changed_at": now,
     }
 
     if not data.resolved:
         update_fields["resolved_at"] = None
+        update_fields["sla_warning_emitted"] = False
 
     result = await db.product_issues.update_one(
         {"id": issue_id, "status": "done"},
@@ -868,6 +690,7 @@ async def submit_feedback(
                    {"expected_status": "done"})
 
     await handle_feedback_response(issue_id, current_user, data.resolved, data.comment or "")
+    await audit_feedback_confirmed(issue_id, current_user, data.resolved, data.comment or "")
 
     return {"success": True, "new_status": new_status}
 
@@ -895,11 +718,18 @@ async def regenerate_prompt(
     issue = await _get_issue_or_404(issue_id)
     prompt = await _generate_prompt(issue)
 
+    now = _now_iso()
     await db.product_issues.update_one(
         {"id": issue_id},
-        {"$set": {"generated_prompt": prompt, "updated_at": _now_iso()}}
+        {"$set": {
+            "generated_prompt": prompt,
+            "ai.generated_prompt": prompt,
+            "updated_at": now,
+            "system.updated_at": now,
+        }}
     )
     await handle_prompt_generated(issue_id, current_user)
+    await audit_prompt_generated(issue_id, current_user)
 
     return {"success": True, "prompt": prompt, "issue_id": issue_id}
 
@@ -938,11 +768,15 @@ async def get_activity_log(
     if not is_platform_admin(current_user):
         enforce_ownership_or_admin(current_user, issue, HubAction.VIEW_ACTIVITY_LOG)
 
-    activity = await db.issue_activity_log.find(
-        {"issue_id": issue_id}, {"_id": 0}
-    ).sort("timestamp", -1).to_list(200)
+    timeline = await get_full_timeline(issue_id)
 
-    return {"activity_log": activity, "total": len(activity), "issue_id": issue_id}
+    return {
+        "activity_log": timeline["timeline"],
+        "total": timeline["total"],
+        "issue_id": issue_id,
+        "actors": timeline["actors"],
+        "actions_summary": timeline["actions_summary"],
+    }
 
 
 @router.get("/issues/{issue_id}/duplicates")
@@ -1106,11 +940,14 @@ async def update_issue_title(
         _hub_error(422, "TITLE_TOO_LONG", "العنوان طويل جداً")
 
     old_title = issue.get("title", "")
+    now = _now_iso()
     await db.product_issues.update_one(
         {"id": issue_id},
-        {"$set": {"title": title, "updated_at": _now_iso()}}
+        {"$set": {"title": title, "updated_at": now, "system.updated_at": now}}
     )
-    await handle_issue_updated(issue_id, current_user, {"title": {"from": old_title, "to": title}})
+    changes = {"title": {"from": old_title, "to": title}}
+    await handle_issue_updated(issue_id, current_user, changes)
+    await audit_issue_updated(issue_id, current_user, changes)
 
     return {"success": True}
 
@@ -1131,16 +968,22 @@ async def update_issue_priority(
                    {"valid_values": list(PRIORITY_LABELS.keys())})
 
     old_priority = issue.get("priority", "")
-    update_fields = {"priority": priority, "updated_at": _now_iso()}
+    now = _now_iso()
+    update_fields = {
+        "priority": priority,
+        "updated_at": now,
+        "system.updated_at": now,
+    }
 
     sla = calculate_sla(priority, datetime.now(timezone.utc))
     if sla["sla_deadline"]:
         update_fields["sla_deadline"] = sla["sla_deadline"]
         update_fields["sla_status"] = sla["sla_status"]
+        update_fields["sla_warning_emitted"] = False
 
     await db.product_issues.update_one({"id": issue_id}, {"$set": update_fields})
-    await handle_issue_updated(issue_id, current_user, {
-        "priority": {"from": old_priority, "to": priority}
-    })
+    changes = {"priority": {"from": old_priority, "to": priority}}
+    await handle_issue_updated(issue_id, current_user, changes)
+    await audit_issue_updated(issue_id, current_user, changes)
 
     return {"success": True}
