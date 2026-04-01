@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Sidebar } from '../components/layout/Sidebar';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -12,50 +12,30 @@ import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
 import { toast } from 'sonner';
 import {
-  Bug, AlertTriangle, Clock, CheckCircle2, XCircle, Search, Plus,
-  BarChart3, TrendingUp, Users, Target, Shield, Zap, Filter,
-  ChevronLeft, ChevronRight, Brain, Lightbulb, Award, Building2,
-  ArrowUpRight, Timer, AlertOctagon, Eye
+  StatusChip, PriorityBadge, SLAIndicator, StatCard, EmptyState, IssueKanbanCard,
+  STATUS_CONFIG, PRIORITY_CONFIG, TYPE_CONFIG, STATUS_PROGRESS, KANBAN_COLUMNS,
+} from '../components/product-hub';
+import {
+  Brain, Plus, Search, BarChart3, Users, Target, Zap,
+  ChevronLeft, ChevronRight, Award, Building2, Timer, AlertOctagon, Clock,
+  Table2, Kanban, AlertTriangle, CheckCircle2, Bug, ArrowUpDown,
+  RefreshCw, XCircle,
 } from 'lucide-react';
-
-const STATUS_CONFIG = {
-  new: { label: 'جديد', color: 'bg-blue-500', textColor: 'text-blue-700', bgLight: 'bg-blue-50', icon: Zap },
-  under_review: { label: 'تحت المراجعة', color: 'bg-orange-500', textColor: 'text-orange-700', bgLight: 'bg-orange-50', icon: Eye },
-  in_progress: { label: 'قيد التنفيذ', color: 'bg-purple-500', textColor: 'text-purple-700', bgLight: 'bg-purple-50', icon: Clock },
-  qa_validation: { label: 'تحقق الجودة', color: 'bg-cyan-500', textColor: 'text-cyan-700', bgLight: 'bg-cyan-50', icon: Shield },
-  done: { label: 'مكتمل', color: 'bg-green-500', textColor: 'text-green-700', bgLight: 'bg-green-50', icon: CheckCircle2 },
-  rejected: { label: 'مرفوض', color: 'bg-red-500', textColor: 'text-red-700', bgLight: 'bg-red-50', icon: XCircle },
-  user_feedback_confirmed: { label: 'أكده المستخدم', color: 'bg-emerald-600', textColor: 'text-emerald-700', bgLight: 'bg-emerald-50', icon: CheckCircle2 },
-};
-
-const PRIORITY_CONFIG = {
-  critical: { label: 'حرج', color: 'bg-red-600', textColor: 'text-red-700', icon: AlertOctagon },
-  high: { label: 'عالي', color: 'bg-orange-500', textColor: 'text-orange-700', icon: AlertTriangle },
-  medium: { label: 'متوسط', color: 'bg-yellow-500', textColor: 'text-yellow-700', icon: Target },
-  low: { label: 'منخفض', color: 'bg-gray-400', textColor: 'text-gray-600', icon: ArrowUpRight },
-};
-
-const TYPE_ICONS = {
-  bug: Bug, error: AlertTriangle, ui_issue: Eye, ux_issue: Lightbulb,
-  performance: Zap, feature_request: Lightbulb, improvement: TrendingUp,
-};
-
-const STATUS_PROGRESS = {
-  new: 10, under_review: 25, in_progress: 55, qa_validation: 80,
-  done: 100, rejected: 100, user_feedback_confirmed: 100,
-};
 
 export function ProductHubPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'issues');
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'dashboard');
   const [issues, setIssues] = useState([]);
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [dashLoading, setDashLoading] = useState(true);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [config, setConfig] = useState(null);
+  const [sortField, setSortField] = useState('created_at');
+  const [sortDir, setSortDir] = useState('desc');
 
   const [filters, setFilters] = useState({
     status: searchParams.get('status') || '',
@@ -64,9 +44,12 @@ export function ProductHubPage() {
     section: '',
     assigned_team: '',
     search: '',
+    date_from: '',
+    date_to: '',
   });
 
   const isAdmin = user?.role === 'platform_admin';
+  const limit = 20;
 
   const fetchConfig = useCallback(async () => {
     try {
@@ -76,14 +59,10 @@ export function ProductHubPage() {
   }, []);
 
   const fetchIssues = useCallback(async () => {
+    setLoading(true);
     try {
-      const params = { page, limit: 20 };
-      if (filters.status) params.status = filters.status;
-      if (filters.issue_type) params.issue_type = filters.issue_type;
-      if (filters.priority) params.priority = filters.priority;
-      if (filters.section) params.section = filters.section;
-      if (filters.assigned_team) params.assigned_team = filters.assigned_team;
-      if (filters.search) params.search = filters.search;
+      const params = { page, limit };
+      Object.entries(filters).forEach(([k, v]) => { if (v) params[k] = v; });
       const res = await axios.get('/api/product-hub/issues', { params });
       setIssues(res.data.issues);
       setTotal(res.data.total);
@@ -95,15 +74,17 @@ export function ProductHubPage() {
   }, [page, filters]);
 
   const fetchDashboard = useCallback(async () => {
+    setDashLoading(true);
     try {
       const res = await axios.get('/api/product-hub/dashboard');
       setDashboard(res.data);
     } catch (e) { console.error(e); }
+    finally { setDashLoading(false); }
   }, []);
 
   useEffect(() => { fetchConfig(); }, [fetchConfig]);
   useEffect(() => { fetchIssues(); }, [fetchIssues]);
-  useEffect(() => { if (activeTab === 'dashboard') fetchDashboard(); }, [activeTab, fetchDashboard]);
+  useEffect(() => { fetchDashboard(); }, [fetchDashboard]);
 
   useEffect(() => {
     const tab = searchParams.get('tab');
@@ -115,204 +96,132 @@ export function ProductHubPage() {
     setSearchParams({ tab });
   };
 
-  const totalPages = Math.ceil(total / 20);
+  const updateFilter = (key, value) => {
+    setFilters(f => ({ ...f, [key]: value === 'all' ? '' : value }));
+    setPage(1);
+  };
+
+  const clearFilters = () => {
+    setFilters({ status: '', issue_type: '', priority: '', section: '', assigned_team: '', search: '', date_from: '', date_to: '' });
+    setPage(1);
+  };
+
+  const hasActiveFilters = Object.values(filters).some(v => v);
+  const totalPages = Math.ceil(total / limit);
+
+  const sortedIssues = useMemo(() => {
+    const sorted = [...issues];
+    sorted.sort((a, b) => {
+      const aVal = a[sortField] || '';
+      const bVal = b[sortField] || '';
+      if (sortDir === 'asc') return aVal > bVal ? 1 : -1;
+      return aVal < bVal ? 1 : -1;
+    });
+    return sorted;
+  }, [issues, sortField, sortDir]);
+
+  const kanbanIssues = useMemo(() => {
+    const grouped = {};
+    KANBAN_COLUMNS.forEach(col => { grouped[col] = []; });
+    issues.forEach(issue => {
+      const col = grouped[issue.status] ? issue.status : 'new';
+      grouped[col].push(issue);
+    });
+    return grouped;
+  }, [issues]);
+
+  const toggleSort = (field) => {
+    if (sortField === field) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDir('desc');
+    }
+  };
 
   return (
     <Sidebar>
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50/30" dir="rtl">
-        <div className="p-4 lg:p-6 space-y-6">
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/20" dir="rtl">
+        <div className="p-4 lg:p-8 space-y-6 max-w-[1600px] mx-auto">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div>
               <h1 className="text-2xl lg:text-3xl font-bold text-brand-navy flex items-center gap-3">
-                <Brain className="h-8 w-8 text-brand-turquoise" />
+                <div className="p-2 rounded-xl bg-brand-turquoise/10">
+                  <Brain className="h-7 w-7 text-brand-turquoise" />
+                </div>
                 مركز ذكاء المنتج
               </h1>
-              <p className="text-muted-foreground mt-1">نظام الحوكمة والتتبع الذكي الداخلي</p>
+              <p className="text-muted-foreground mt-1 text-sm">نظام الحوكمة والتتبع الذكي الداخلي</p>
             </div>
-            <Button
-              onClick={() => navigate('/admin/product-hub/submit')}
-              className="bg-brand-turquoise hover:bg-brand-turquoise/90 text-white"
-            >
-              <Plus className="h-4 w-4 ml-2" />
-              إرسال مشكلة جديدة
-            </Button>
+            <div className="flex items-center gap-3">
+              <Button
+                variant="outline" size="sm"
+                onClick={() => { fetchIssues(); fetchDashboard(); }}
+                className="text-muted-foreground"
+              >
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+              <Button
+                onClick={() => navigate('/admin/product-hub/submit')}
+                className="bg-brand-turquoise hover:bg-brand-turquoise/90 text-white shadow-lg shadow-brand-turquoise/20"
+              >
+                <Plus className="h-4 w-4 ml-2" />
+                إرسال مشكلة جديدة
+              </Button>
+            </div>
           </div>
 
           <Tabs value={activeTab} onValueChange={handleTabChange}>
-            <TabsList className="bg-white border shadow-sm">
-              <TabsTrigger value="issues" className="data-[state=active]:bg-brand-navy data-[state=active]:text-white">
+            <TabsList className="bg-white border shadow-sm rounded-xl p-1">
+              <TabsTrigger value="dashboard" className="rounded-lg data-[state=active]:bg-brand-navy data-[state=active]:text-white gap-2">
+                <BarChart3 className="h-4 w-4" />
+                لوحة القيادة
+              </TabsTrigger>
+              <TabsTrigger value="issues" className="rounded-lg data-[state=active]:bg-brand-navy data-[state=active]:text-white gap-2">
+                <Table2 className="h-4 w-4" />
                 المشاكل
               </TabsTrigger>
-              <TabsTrigger value="dashboard" className="data-[state=active]:bg-brand-navy data-[state=active]:text-white">
-                لوحة التحليلات
+              <TabsTrigger value="kanban" className="rounded-lg data-[state=active]:bg-brand-navy data-[state=active]:text-white gap-2">
+                <Kanban className="h-4 w-4" />
+                كانبان
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="issues" className="space-y-4 mt-4">
-              <Card className="border shadow-sm">
-                <CardContent className="p-4">
-                  <div className="flex flex-wrap gap-3 items-center">
-                    <div className="relative flex-1 min-w-[200px]">
-                      <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        placeholder="بحث..."
-                        value={filters.search}
-                        onChange={(e) => { setFilters(f => ({...f, search: e.target.value})); setPage(1); }}
-                        className="pr-10 text-right"
-                      />
-                    </div>
-                    <Select value={filters.status} onValueChange={(v) => { setFilters(f => ({...f, status: v === 'all' ? '' : v})); setPage(1); }}>
-                      <SelectTrigger className="w-[150px]"><SelectValue placeholder="الحالة" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">الكل</SelectItem>
-                        {Object.entries(STATUS_CONFIG).map(([k, v]) => (
-                          <SelectItem key={k} value={k}>{v.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Select value={filters.priority} onValueChange={(v) => { setFilters(f => ({...f, priority: v === 'all' ? '' : v})); setPage(1); }}>
-                      <SelectTrigger className="w-[140px]"><SelectValue placeholder="الأولوية" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">الكل</SelectItem>
-                        {Object.entries(PRIORITY_CONFIG).map(([k, v]) => (
-                          <SelectItem key={k} value={k}>{v.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {config && (
-                      <>
-                        <Select value={filters.issue_type} onValueChange={(v) => { setFilters(f => ({...f, issue_type: v === 'all' ? '' : v})); setPage(1); }}>
-                          <SelectTrigger className="w-[150px]"><SelectValue placeholder="النوع" /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">الكل</SelectItem>
-                            {config.issue_types?.map(t => (
-                              <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Select value={filters.assigned_team} onValueChange={(v) => { setFilters(f => ({...f, assigned_team: v === 'all' ? '' : v})); setPage(1); }}>
-                          <SelectTrigger className="w-[140px]"><SelectValue placeholder="الفريق" /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">الكل</SelectItem>
-                            {config.teams?.map(t => (
-                              <SelectItem key={t} value={t}>{t}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {loading ? (
-                <div className="flex justify-center py-20">
-                  <div className="animate-pulse text-brand-navy text-lg">جاري التحميل...</div>
-                </div>
-              ) : issues.length === 0 ? (
-                <Card className="border">
-                  <CardContent className="p-12 text-center">
-                    <Bug className="h-16 w-16 mx-auto text-muted-foreground/40 mb-4" />
-                    <h3 className="text-lg font-semibold text-muted-foreground">لا توجد مشاكل</h3>
-                    <p className="text-sm text-muted-foreground mt-1">قم بإرسال أول مشكلة للبدء</p>
-                  </CardContent>
-                </Card>
-              ) : (
-                <div className="space-y-3">
-                  {issues.map(issue => {
-                    const statusCfg = STATUS_CONFIG[issue.status] || STATUS_CONFIG.new;
-                    const priorityCfg = PRIORITY_CONFIG[issue.priority] || PRIORITY_CONFIG.medium;
-                    const TypeIcon = TYPE_ICONS[issue.issue_type] || Bug;
-                    const progress = STATUS_PROGRESS[issue.status] || 0;
-                    return (
-                      <Card
-                        key={issue.id}
-                        className="border hover:border-brand-turquoise/50 hover:shadow-md transition-all cursor-pointer"
-                        onClick={() => navigate(`/admin/product-hub/issues/${issue.id}`)}
-                      >
-                        <CardContent className="p-4">
-                          <div className="flex flex-col lg:flex-row lg:items-center gap-4">
-                            <div className="flex items-start gap-3 flex-1">
-                              <div className={`p-2 rounded-lg ${statusCfg.bgLight}`}>
-                                <TypeIcon className={`h-5 w-5 ${statusCfg.textColor}`} />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="text-xs text-muted-foreground font-mono">#{issue.issue_number}</span>
-                                  <h3 className="font-semibold text-sm lg:text-base truncate">{issue.title}</h3>
-                                </div>
-                                <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground flex-wrap">
-                                  <span>{issue.employee_name}</span>
-                                  <span>•</span>
-                                  <span>{issue.section}</span>
-                                  <span>•</span>
-                                  <span>{issue.page}</span>
-                                  {issue.assigned_team && (
-                                    <>
-                                      <span>•</span>
-                                      <span className="text-brand-turquoise">{issue.assigned_team}</span>
-                                    </>
-                                  )}
-                                </div>
-                                <div className="mt-2">
-                                  <Progress value={progress} className="h-1.5" />
-                                </div>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2 flex-shrink-0">
-                              <Badge className={`${priorityCfg.color} text-white text-[10px]`}>{priorityCfg.label}</Badge>
-                              <Badge className={`${statusCfg.color} text-white text-[10px]`}>{statusCfg.label}</Badge>
-                              {issue.sla_status === 'exceeded' && (
-                                <Badge className="bg-red-600 text-white text-[10px] animate-pulse">
-                                  <Timer className="h-3 w-3 ml-1" />
-                                  تجاوز SLA
-                                </Badge>
-                              )}
-                              {issue.hakim_analysis?.duplicate_ids?.length > 0 && (
-                                <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-600">
-                                  مكرر محتمل
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-
-                  {totalPages > 1 && (
-                    <div className="flex justify-center items-center gap-4 pt-4">
-                      <Button
-                        variant="outline" size="sm"
-                        disabled={page <= 1}
-                        onClick={() => setPage(p => p - 1)}
-                      >
-                        <ChevronRight className="h-4 w-4" />
-                      </Button>
-                      <span className="text-sm text-muted-foreground">
-                        صفحة {page} من {totalPages} ({total} مشكلة)
-                      </span>
-                      <Button
-                        variant="outline" size="sm"
-                        disabled={page >= totalPages}
-                        onClick={() => setPage(p => p + 1)}
-                      >
-                        <ChevronLeft className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              )}
+            <TabsContent value="dashboard" className="mt-6">
+              <DashboardView data={dashboard} loading={dashLoading} isAdmin={isAdmin} navigate={navigate} />
             </TabsContent>
 
-            <TabsContent value="dashboard" className="space-y-6 mt-4">
-              {!dashboard ? (
-                <div className="flex justify-center py-20">
-                  <div className="animate-pulse text-brand-navy">جاري تحميل التحليلات...</div>
-                </div>
-              ) : (
-                <DashboardView data={dashboard} />
-              )}
+            <TabsContent value="issues" className="mt-6 space-y-4">
+              <FilterToolbar
+                filters={filters}
+                config={config}
+                onFilterChange={updateFilter}
+                onClear={clearFilters}
+                hasActiveFilters={hasActiveFilters}
+              />
+              <IssuesTableView
+                issues={sortedIssues}
+                loading={loading}
+                total={total}
+                page={page}
+                totalPages={totalPages}
+                onPageChange={setPage}
+                onSort={toggleSort}
+                sortField={sortField}
+                sortDir={sortDir}
+                navigate={navigate}
+              />
+            </TabsContent>
+
+            <TabsContent value="kanban" className="mt-6">
+              <FilterToolbar
+                filters={filters}
+                config={config}
+                onFilterChange={updateFilter}
+                onClear={clearFilters}
+                hasActiveFilters={hasActiveFilters}
+              />
+              <KanbanView issues={kanbanIssues} loading={loading} total={total} />
             </TabsContent>
           </Tabs>
         </div>
@@ -321,70 +230,345 @@ export function ProductHubPage() {
   );
 }
 
-function DashboardView({ data }) {
+function FilterToolbar({ filters, config, onFilterChange, onClear, hasActiveFilters }) {
+  return (
+    <Card className="border shadow-sm rounded-xl">
+      <CardContent className="p-4">
+        <div className="flex flex-wrap gap-3 items-center">
+          <div className="relative flex-1 min-w-[220px]">
+            <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="بحث في العنوان، المحتوى، الاسم..."
+              value={filters.search}
+              onChange={(e) => onFilterChange('search', e.target.value)}
+              className="pr-10 text-right rounded-lg"
+            />
+          </div>
+
+          <Select value={filters.status || 'all'} onValueChange={(v) => onFilterChange('status', v)}>
+            <SelectTrigger className="w-[140px] rounded-lg"><SelectValue placeholder="الحالة" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">كل الحالات</SelectItem>
+              {Object.entries(STATUS_CONFIG).map(([k, v]) => (
+                <SelectItem key={k} value={k}>{v.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={filters.priority || 'all'} onValueChange={(v) => onFilterChange('priority', v)}>
+            <SelectTrigger className="w-[130px] rounded-lg"><SelectValue placeholder="الأولوية" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">كل الأولويات</SelectItem>
+              {Object.entries(PRIORITY_CONFIG).map(([k, v]) => (
+                <SelectItem key={k} value={k}>{v.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {config && (
+            <>
+              <Select value={filters.issue_type || 'all'} onValueChange={(v) => onFilterChange('issue_type', v)}>
+                <SelectTrigger className="w-[140px] rounded-lg"><SelectValue placeholder="النوع" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">كل الأنواع</SelectItem>
+                  {config.issue_types?.map(t => (
+                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={filters.section || 'all'} onValueChange={(v) => onFilterChange('section', v)}>
+                <SelectTrigger className="w-[140px] rounded-lg"><SelectValue placeholder="القسم" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">كل الأقسام</SelectItem>
+                  {config.sections?.map(s => (
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={filters.assigned_team || 'all'} onValueChange={(v) => onFilterChange('assigned_team', v)}>
+                <SelectTrigger className="w-[130px] rounded-lg"><SelectValue placeholder="الفريق" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">كل الفرق</SelectItem>
+                  {config.teams?.map(t => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </>
+          )}
+
+          {hasActiveFilters && (
+            <Button variant="ghost" size="sm" onClick={onClear} className="text-red-500 hover:text-red-700 hover:bg-red-50">
+              <XCircle className="h-4 w-4 ml-1" />
+              مسح
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function IssuesTableView({ issues, loading, total, page, totalPages, onPageChange, onSort, sortField, sortDir, navigate }) {
+  if (loading) {
+    return (
+      <Card className="border rounded-xl">
+        <CardContent className="p-0">
+          <div className="flex justify-center items-center py-20">
+            <div className="flex flex-col items-center gap-3">
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-brand-turquoise border-t-transparent" />
+              <p className="text-sm text-muted-foreground">جاري التحميل...</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (issues.length === 0) {
+    return (
+      <Card className="border rounded-xl">
+        <CardContent>
+          <EmptyState icon={Bug} title="لا توجد مشاكل" description="لم يتم العثور على مشاكل تطابق معايير البحث" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const SortHeader = ({ field, children }) => (
+    <th
+      className="px-4 py-3 text-right text-xs font-semibold text-slate-500 cursor-pointer hover:text-brand-navy transition-colors select-none"
+      onClick={() => onSort(field)}
+    >
+      <span className="inline-flex items-center gap-1">
+        {children}
+        {sortField === field && (
+          <ArrowUpDown className={`h-3 w-3 ${sortDir === 'asc' ? 'rotate-180' : ''} text-brand-turquoise`} />
+        )}
+      </span>
+    </th>
+  );
+
+  return (
+    <div className="space-y-4">
+      <Card className="border rounded-xl overflow-hidden shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="bg-slate-50/80 border-b">
+                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 w-[60px]">#</th>
+                <SortHeader field="title">العنوان</SortHeader>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500">النوع</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500">القسم</th>
+                <SortHeader field="priority">الأولوية</SortHeader>
+                <SortHeader field="status">الحالة</SortHeader>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500">الفريق</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500">المُبلِّغ</th>
+                <SortHeader field="created_at">التاريخ</SortHeader>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500">SLA</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 w-[80px]">التقدم</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {issues.map(issue => {
+                const typeCfg = TYPE_CONFIG[issue.issue_type] || TYPE_CONFIG.other;
+                const TypeIcon = typeCfg.icon;
+                const progress = STATUS_PROGRESS[issue.status] || 0;
+
+                return (
+                  <tr
+                    key={issue.id}
+                    onClick={() => navigate(`/admin/product-hub/issues/${issue.id}`)}
+                    className="hover:bg-brand-turquoise/3 cursor-pointer transition-colors group"
+                  >
+                    <td className="px-4 py-3 text-xs text-muted-foreground font-mono">
+                      {issue.issue_number}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="max-w-[280px]">
+                        <p className="text-sm font-medium text-brand-navy truncate group-hover:text-brand-turquoise transition-colors">
+                          {issue.title}
+                        </p>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <TypeIcon className={`h-3.5 w-3.5 ${typeCfg.color}`} />
+                        <span className="hidden xl:inline">{typeCfg.label}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground">{issue.section}</td>
+                    <td className="px-4 py-3"><PriorityBadge priority={issue.priority} size="sm" /></td>
+                    <td className="px-4 py-3"><StatusChip status={issue.status} size="sm" /></td>
+                    <td className="px-4 py-3 text-xs text-brand-turquoise font-medium">{issue.assigned_team || '—'}</td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground truncate max-w-[120px]">{issue.employee_name}</td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                      {new Date(issue.created_at).toLocaleDateString('ar-SA')}
+                    </td>
+                    <td className="px-4 py-3"><SLAIndicator issue={issue} size="sm" /></td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1.5">
+                        <Progress value={progress} className="h-1.5 w-12" />
+                        <span className="text-[10px] text-muted-foreground">{progress}%</span>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {totalPages > 1 && (
+        <div className="flex justify-center items-center gap-4 pt-2">
+          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => onPageChange(p => p - 1)} className="rounded-lg">
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            صفحة {page} من {totalPages} ({total} مشكلة)
+          </span>
+          <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => onPageChange(p => p + 1)} className="rounded-lg">
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function KanbanView({ issues, loading, total }) {
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center py-20">
+        <div className="flex flex-col items-center gap-3">
+          <div className="animate-spin rounded-full h-8 w-8 border-2 border-brand-turquoise border-t-transparent" />
+          <p className="text-sm text-muted-foreground">جاري التحميل...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (total === 0) {
+    return (
+      <Card className="border rounded-xl">
+        <CardContent>
+          <EmptyState icon={Kanban} title="لا توجد مشاكل" description="سيظهر تتبع المشاكل هنا بمجرد إنشائها" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto pb-4">
+      <div className="flex gap-4 min-w-max">
+        {KANBAN_COLUMNS.map(status => {
+          const cfg = STATUS_CONFIG[status];
+          const columnIssues = issues[status] || [];
+          return (
+            <div key={status} className="w-[280px] flex-shrink-0">
+              <div className={`rounded-t-xl px-4 py-2.5 ${cfg.bgLight} border ${cfg.borderColor} border-b-0`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <cfg.icon className={`h-4 w-4 ${cfg.textColor}`} />
+                    <span className={`text-sm font-semibold ${cfg.textColor}`}>{cfg.label}</span>
+                  </div>
+                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5">
+                    {columnIssues.length}
+                  </Badge>
+                </div>
+              </div>
+              <div className={`rounded-b-xl border ${cfg.borderColor} border-t-0 bg-slate-50/50 p-2 space-y-2 min-h-[200px]`}>
+                {columnIssues.length === 0 ? (
+                  <div className="flex items-center justify-center h-32 text-xs text-muted-foreground">
+                    لا توجد مشاكل
+                  </div>
+                ) : (
+                  columnIssues.map(issue => (
+                    <IssueKanbanCard key={issue.id} issue={issue} />
+                  ))
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function DashboardView({ data, loading, isAdmin, navigate }) {
+  if (loading || !data) {
+    return (
+      <div className="flex justify-center items-center py-20">
+        <div className="flex flex-col items-center gap-3">
+          <div className="animate-spin rounded-full h-8 w-8 border-2 border-brand-turquoise border-t-transparent" />
+          <p className="text-sm text-muted-foreground">جاري تحميل التحليلات...</p>
+        </div>
+      </div>
+    );
+  }
+
   const kpiCards = [
     { label: 'إجمالي المشاكل', value: data.total_issues, icon: BarChart3, color: 'text-brand-navy', bg: 'bg-blue-50' },
-    { label: 'مشاكل مفتوحة', value: data.total_open, icon: AlertTriangle, color: 'text-orange-600', bg: 'bg-orange-50' },
+    { label: 'مشاكل مفتوحة', value: data.total_open, icon: AlertTriangle, color: 'text-amber-600', bg: 'bg-amber-50' },
     { label: 'مشاكل حرجة', value: data.critical_open, icon: AlertOctagon, color: 'text-red-600', bg: 'bg-red-50' },
     { label: 'جديدة هذا الأسبوع', value: data.new_this_week, icon: Zap, color: 'text-blue-600', bg: 'bg-blue-50' },
-    { label: 'قيد التنفيذ', value: data.in_progress, icon: Clock, color: 'text-purple-600', bg: 'bg-purple-50' },
-    { label: 'متوسط الحل (ساعة)', value: data.avg_resolution_hours, icon: Timer, color: 'text-green-600', bg: 'bg-green-50' },
+    { label: 'قيد التنفيذ', value: data.in_progress, icon: Clock, color: 'text-violet-600', bg: 'bg-violet-50' },
+    { label: 'متوسط الحل (ساعة)', value: data.avg_resolution_hours, icon: Timer, color: 'text-emerald-600', bg: 'bg-emerald-50' },
     { label: 'تجاوز SLA', value: data.sla_exceeded, icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50' },
-    { label: 'مكررات تم اكتشافها', value: data.duplicates_detected, icon: Target, color: 'text-amber-600', bg: 'bg-amber-50' },
+    { label: 'مكررات مكتشفة', value: data.duplicates_detected, icon: Target, color: 'text-amber-600', bg: 'bg-amber-50' },
   ];
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {kpiCards.map((kpi, i) => (
-          <Card key={i} className="border shadow-sm">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div className={`p-2 rounded-lg ${kpi.bg}`}>
-                  <kpi.icon className={`h-5 w-5 ${kpi.color}`} />
-                </div>
-                <div className="text-left">
-                  <p className="text-2xl font-bold text-brand-navy">{kpi.value ?? 0}</p>
-                  <p className="text-xs text-muted-foreground">{kpi.label}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <StatCard key={i} {...kpi} />
         ))}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="border shadow-sm">
+        <Card className="border rounded-xl shadow-sm">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <BarChart3 className="h-4 w-4 text-brand-turquoise" />
+            <CardTitle className="text-sm font-semibold flex items-center gap-2 text-brand-navy">
+              <div className="p-1.5 rounded-lg bg-brand-turquoise/10">
+                <BarChart3 className="h-4 w-4 text-brand-turquoise" />
+              </div>
               حسب النوع
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              {data.by_type?.map((t, i) => (
-                <div key={i} className="flex items-center justify-between text-sm">
-                  <span>{t.label}</span>
-                  <div className="flex items-center gap-2">
-                    <div className="w-32 bg-gray-100 rounded-full h-2">
-                      <div className="bg-brand-turquoise h-2 rounded-full" style={{width: `${Math.min(100, (t.count / Math.max(1, data.total_issues)) * 100)}%`}} />
+            <div className="space-y-3">
+              {data.by_type?.map((t, i) => {
+                const pct = Math.min(100, (t.count / Math.max(1, data.total_issues)) * 100);
+                return (
+                  <div key={i} className="group">
+                    <div className="flex items-center justify-between text-sm mb-1">
+                      <span className="text-slate-600">{t.label}</span>
+                      <span className="font-semibold text-brand-navy">{t.count}</span>
                     </div>
-                    <span className="font-semibold w-8 text-left">{t.count}</span>
+                    <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                      <div className="bg-gradient-to-r from-brand-turquoise to-brand-turquoise/70 h-2 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {(!data.by_type || data.by_type.length === 0) && (
-                <p className="text-sm text-muted-foreground text-center py-4">لا توجد بيانات</p>
+                <EmptyState title="لا توجد بيانات" className="py-8" />
               )}
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border shadow-sm">
+        <Card className="border rounded-xl shadow-sm">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Target className="h-4 w-4 text-brand-turquoise" />
+            <CardTitle className="text-sm font-semibold flex items-center gap-2 text-brand-navy">
+              <div className="p-1.5 rounded-lg bg-brand-turquoise/10">
+                <Target className="h-4 w-4 text-brand-turquoise" />
+              </div>
               حسب الأولوية
             </CardTitle>
           </CardHeader>
@@ -392,116 +576,140 @@ function DashboardView({ data }) {
             <div className="space-y-3">
               {data.by_priority?.map((p, i) => {
                 const cfg = PRIORITY_CONFIG[p.priority] || {};
+                const pct = Math.min(100, (p.count / Math.max(1, data.total_issues)) * 100);
                 return (
-                  <div key={i} className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-2">
-                      <div className={`w-3 h-3 rounded-full ${cfg.color || 'bg-gray-400'}`} />
-                      <span>{p.label || p.priority}</span>
+                  <div key={i}>
+                    <div className="flex items-center justify-between text-sm mb-1">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2.5 h-2.5 rounded-full ${cfg.dotColor || 'bg-slate-400'}`} />
+                        <span className="text-slate-600">{p.label || p.priority}</span>
+                      </div>
+                      <span className="font-semibold text-brand-navy">{p.count}</span>
                     </div>
-                    <span className="font-semibold">{p.count}</span>
+                    <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                      <div className={`h-2 rounded-full transition-all duration-500 ${cfg.color || 'bg-slate-400'}`} style={{ width: `${pct}%` }} />
+                    </div>
                   </div>
                 );
               })}
               {(!data.by_priority || data.by_priority.length === 0) && (
-                <p className="text-sm text-muted-foreground text-center py-4">لا توجد بيانات</p>
+                <EmptyState title="لا توجد بيانات" className="py-8" />
               )}
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border shadow-sm">
+        <Card className="border rounded-xl shadow-sm">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Award className="h-4 w-4 text-brand-turquoise" />
+            <CardTitle className="text-sm font-semibold flex items-center gap-2 text-brand-navy">
+              <div className="p-1.5 rounded-lg bg-brand-turquoise/10">
+                <Users className="h-4 w-4 text-brand-turquoise" />
+              </div>
+              حسب الفريق
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {data.by_team?.map((t, i) => {
+                const pct = Math.min(100, (t.count / Math.max(1, data.total_issues)) * 100);
+                return (
+                  <div key={i} className="flex items-center justify-between text-sm">
+                    <span className="text-slate-600">{t.team || 'غير معيّن'}</span>
+                    <div className="flex items-center gap-3">
+                      <div className="w-20 bg-slate-100 rounded-full h-2 overflow-hidden">
+                        <div className="bg-brand-navy/60 h-2 rounded-full" style={{ width: `${pct}%` }} />
+                      </div>
+                      <span className="font-semibold text-brand-navy w-6 text-left">{t.count}</span>
+                    </div>
+                  </div>
+                );
+              })}
+              {(!data.by_team || data.by_team.length === 0) && (
+                <EmptyState title="لا توجد بيانات" className="py-8" />
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border rounded-xl shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2 text-brand-navy">
+              <div className="p-1.5 rounded-lg bg-brand-turquoise/10">
+                <Award className="h-4 w-4 text-brand-turquoise" />
+              </div>
               أكثر المساهمين
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               {data.top_contributors?.map((c, i) => (
                 <div key={i} className="flex items-center justify-between text-sm">
-                  <div className="flex items-center gap-2">
-                    <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white ${i === 0 ? 'bg-amber-500' : i === 1 ? 'bg-gray-400' : 'bg-orange-400'}`}>
+                  <div className="flex items-center gap-2.5">
+                    <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white ${
+                      i === 0 ? 'bg-amber-500' : i === 1 ? 'bg-slate-400' : 'bg-orange-400'
+                    }`}>
                       {i + 1}
                     </span>
-                    <span>{c.name}</span>
+                    <span className="text-slate-600">{c.name}</span>
                   </div>
-                  <Badge variant="secondary">{c.count} مشكلة</Badge>
+                  <Badge variant="secondary" className="text-[11px]">{c.count}</Badge>
                 </div>
               ))}
               {(!data.top_contributors || data.top_contributors.length === 0) && (
-                <p className="text-sm text-muted-foreground text-center py-4">لا توجد بيانات</p>
+                <EmptyState title="لا توجد بيانات" className="py-8" />
               )}
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border shadow-sm">
+        <Card className="border rounded-xl shadow-sm">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-brand-turquoise" />
+            <CardTitle className="text-sm font-semibold flex items-center gap-2 text-brand-navy">
+              <div className="p-1.5 rounded-lg bg-brand-turquoise/10">
+                <CheckCircle2 className="h-4 w-4 text-brand-turquoise" />
+              </div>
               أدق المبلّغين
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               {data.most_accurate_reporters?.map((r, i) => (
                 <div key={i} className="flex items-center justify-between text-sm">
-                  <span>{r.name}</span>
+                  <span className="text-slate-600">{r.name}</span>
                   <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground">{r.valid}/{r.total}</span>
-                    <Badge variant={r.accuracy >= 80 ? 'default' : 'secondary'} className={r.accuracy >= 80 ? 'bg-green-500' : ''}>
+                    <span className="text-xs text-muted-foreground">{r.valid}/{r.total}</span>
+                    <Badge className={`text-[10px] ${r.accuracy >= 80 ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-600'}`}>
                       {r.accuracy}%
                     </Badge>
                   </div>
                 </div>
               ))}
               {(!data.most_accurate_reporters || data.most_accurate_reporters.length === 0) && (
-                <p className="text-sm text-muted-foreground text-center py-4">لا توجد بيانات كافية</p>
+                <EmptyState title="لا توجد بيانات كافية" className="py-8" />
               )}
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border shadow-sm">
+        <Card className="border rounded-xl shadow-sm">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Building2 className="h-4 w-4 text-brand-turquoise" />
+            <CardTitle className="text-sm font-semibold flex items-center gap-2 text-brand-navy">
+              <div className="p-1.5 rounded-lg bg-brand-turquoise/10">
+                <Building2 className="h-4 w-4 text-brand-turquoise" />
+              </div>
               أكثر الأقسام مشاكلاً
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               {data.top_sections?.map((s, i) => (
                 <div key={i} className="flex items-center justify-between text-sm">
-                  <span>{s.section}</span>
-                  <Badge variant="secondary">{s.count}</Badge>
+                  <span className="text-slate-600">{s.section}</span>
+                  <Badge variant="secondary" className="text-[11px]">{s.count}</Badge>
                 </div>
               ))}
               {(!data.top_sections || data.top_sections.length === 0) && (
-                <p className="text-sm text-muted-foreground text-center py-4">لا توجد بيانات</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border shadow-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Users className="h-4 w-4 text-brand-turquoise" />
-              حسب الفريق
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {data.by_team?.map((t, i) => (
-                <div key={i} className="flex items-center justify-between text-sm">
-                  <span>{t.team}</span>
-                  <Badge variant="secondary">{t.count}</Badge>
-                </div>
-              ))}
-              {(!data.by_team || data.by_team.length === 0) && (
-                <p className="text-sm text-muted-foreground text-center py-4">لا توجد بيانات</p>
+                <EmptyState title="لا توجد بيانات" className="py-8" />
               )}
             </div>
           </CardContent>
