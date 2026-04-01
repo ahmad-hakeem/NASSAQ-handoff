@@ -86,6 +86,7 @@ class AccountType(str, Enum):
     STUDENT = "student"
     PARENT = "parent"
     WEBSITE_USER = "website_user"
+    ENTIRE_SYSTEM = "entire_system"
 
 
 class Platform(str, Enum):

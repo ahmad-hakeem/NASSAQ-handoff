@@ -51,6 +51,7 @@ const ACCOUNT_TYPE_LABELS = {
   student: 'Student — طالب',
   parent: 'Parent — ولي أمر',
   website_user: 'Website User — زائر الموقع',
+  entire_system: 'Entire System — النظام بالكامل',
 };
 
 const ACCOUNT_PAGES = {
@@ -125,6 +126,10 @@ const ACCOUNT_PAGES = {
     'صفحة التواصل',
     'صفحة المميزات',
     'المدونة',
+    'صفحة أخرى',
+  ],
+  entire_system: [
+    'النظام بالكامل',
     'صفحة أخرى',
   ],
 };
