@@ -243,7 +243,14 @@ export function ProductHubIssuePage() {
                 <CardContent className="space-y-5">
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                     <InfoField label="المُبلِّغ" value={issue.employee_name} />
-                    <InfoField label="نوع الحساب" value={issue.account_type} />
+                    <InfoField label="نوع الحساب" value={{
+                      platform_admin: 'Platform Admin',
+                      school_admin: 'School Admin',
+                      teacher: 'Teacher',
+                      student: 'Student',
+                      parent: 'Parent',
+                      website_user: 'Website User',
+                    }[issue.account_type] || issue.account_type} />
                     <InfoField label="القسم" value={issue.section} />
                     <InfoField label="الصفحة" value={issue.page} />
                     <InfoField label="الفريق" value={issue.assigned_team || '—'} highlight={!!issue.assigned_team} />

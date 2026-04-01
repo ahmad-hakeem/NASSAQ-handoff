@@ -45,6 +45,15 @@ const COMMENT_TYPE_OPTIONS = [
   { value: 'integration_issue', labelAr: 'ملاحظة تكامل', labelEn: 'Integration Issues' },
 ];
 
+const ACCOUNT_TYPE_LABELS = {
+  platform_admin: 'Platform Admin — مدير المنصة',
+  school_admin: 'School Admin — مدير المدرسة',
+  teacher: 'Teacher — معلم',
+  student: 'Student — طالب',
+  parent: 'Parent — ولي أمر',
+  website_user: 'Website User — زائر الموقع',
+};
+
 const IMPACT_OPTIONS = Object.entries(IMPACT_LABELS).map(([value, label]) => ({ value, label }));
 
 export function ProductHubSubmitPage() {
@@ -250,8 +259,8 @@ export function ProductHubSubmitPage() {
                   <Select value={form.account_type} onValueChange={(v) => handleChange('account_type', v)}>
                     <SelectTrigger className="mt-1.5 rounded-lg"><SelectValue placeholder="اختر نوع الحساب" /></SelectTrigger>
                     <SelectContent>
-                      {config?.account_types?.filter(t => t !== 'platform').map(t => (
-                        <SelectItem key={t} value={t}>{t}</SelectItem>
+                      {config?.account_types?.map(t => (
+                        <SelectItem key={t} value={t}>{ACCOUNT_TYPE_LABELS[t] || t}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -415,7 +424,7 @@ export function ProductHubSubmitPage() {
                 <CardContent className="space-y-4">
                   <ReviewRow label="الاسم" value={form.employee_name} />
                   <ReviewRow label="نوع التعليق" value={COMMENT_TYPE_OPTIONS.find(o => o.value === form.issue_type)?.labelAr || form.issue_type} />
-                  <ReviewRow label="نوع الحساب" value={form.account_type} />
+                  <ReviewRow label="نوع الحساب" value={ACCOUNT_TYPE_LABELS[form.account_type] || form.account_type} />
                   <Separator />
                   <ReviewRow label="القسم" value={form.section} />
                   <ReviewRow label="الصفحة" value={form.page} />

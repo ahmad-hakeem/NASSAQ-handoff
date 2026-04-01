@@ -81,12 +81,11 @@ class RelatedTo(str, Enum):
 
 class AccountType(str, Enum):
     PLATFORM_ADMIN = "platform_admin"
-    SCHOOL_PRINCIPAL = "school_principal"
-    SCHOOL_SUB_ADMIN = "school_sub_admin"
+    SCHOOL_ADMIN = "school_admin"
     TEACHER = "teacher"
     STUDENT = "student"
     PARENT = "parent"
-    VISITOR = "visitor"
+    WEBSITE_USER = "website_user"
 
 
 class Platform(str, Enum):
