@@ -120,36 +120,52 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
         settings: GeneralSettings,
         current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
     ):
-        """تحديث الإعدادات العامة"""
-        try:
-            await db.system_settings.update_one(
-                {"type": "general"},
-                {
-                    "$set": {
-                        "type": "general",
-                        "data": settings.dict(),
-                        "updated_at": datetime.now(timezone.utc).isoformat(),
-                        "updated_by": current_user.get("id")
-                    }
-                },
-                upsert=True
-            )
-            
-            # Log the action
+        """تحديث الإعدادات العامة مع تتبع التغييرات"""
+        now = datetime.now(timezone.utc).isoformat()
+        new_data = settings.dict()
+
+        existing = await db.system_settings.find_one({"type": "general"})
+        old_data = existing.get("data", {}) if existing else {}
+
+        field_labels = {
+            "platform_name": "اسم المنصة (عربي)",
+            "platform_name_en": "اسم المنصة (إنجليزي)",
+            "browser_title": "عنوان المتصفح",
+            "default_language": "اللغة الافتراضية",
+            "date_system": "نظام التاريخ",
+            "timezone": "المنطقة الزمنية",
+        }
+
+        changes = []
+        for key, new_val in new_data.items():
+            old_val = old_data.get(key, "")
+            if str(old_val) != str(new_val):
+                changes.append({
+                    "field": key,
+                    "field_label": field_labels.get(key, key),
+                    "old_value": str(old_val),
+                    "new_value": str(new_val),
+                })
+
+        await db.system_settings.update_one(
+            {"type": "general"},
+            {"$set": {"type": "general", "data": new_data, "updated_at": now, "updated_by": current_user.get("id")}},
+            upsert=True
+        )
+
+        if changes:
             await db.audit_logs.insert_one({
                 "id": str(uuid.uuid4()),
                 "action": "settings_updated",
                 "target_type": "general_settings",
                 "performed_by": current_user.get("id"),
-                "performed_by_name": current_user.get("name"),
-                "timestamp": datetime.now(timezone.utc).isoformat()
+                "performed_by_name": current_user.get("full_name", current_user.get("name", "")),
+                "performed_by_email": current_user.get("email", ""),
+                "timestamp": now,
+                "changes": changes,
             })
-            
-            return {"success": True, "message": "تم حفظ الإعدادات بنجاح"}
-        except Exception as e:
-            import logging as _log
-            _log.getLogger("nassaq").error(f"Settings update error: {e}")
-            raise HTTPException(status_code=500, detail="حدث خطأ أثناء حفظ الإعدادات")
+
+        return {"success": True, "message": "تم حفظ الإعدادات بنجاح", "changes": changes}
     
     # ============= MAINTENANCE SETTINGS =============
     
@@ -392,24 +408,55 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
         info: ContactInfo,
         current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
     ):
-        """تحديث بيانات التواصل"""
-        try:
-            await db.system_settings.update_one(
-                {"type": "contact"},
-                {
-                    "$set": {
-                        "type": "contact",
-                        "data": info.dict(),
-                        "updated_at": datetime.now(timezone.utc).isoformat()
-                    }
-                },
-                upsert=True
-            )
-            return {"success": True, "message": "تم حفظ بيانات التواصل"}
-        except Exception as e:
-            import logging as _log
-            _log.getLogger("nassaq").error(f"Operation error: {e}")
-            raise HTTPException(status_code=500, detail="حدث خطأ داخلي في الخادم")
+        """تحديث بيانات التواصل مع تتبع التغييرات"""
+        now = datetime.now(timezone.utc).isoformat()
+        new_data = info.dict()
+
+        existing = await db.system_settings.find_one({"type": "contact"})
+        old_data = existing.get("data", {}) if existing else {}
+
+        field_labels = {
+            "email": "البريد الإلكتروني",
+            "phone": "رقم الهاتف",
+            "working_hours_ar": "ساعات العمل",
+            "address_ar": "العنوان",
+            "social_twitter": "تويتر",
+            "social_linkedin": "لينكدإن",
+            "social_instagram": "إنستجرام",
+            "social_facebook": "فيسبوك",
+            "social_youtube": "يوتيوب",
+        }
+
+        changes = []
+        for key, new_val in new_data.items():
+            old_val = old_data.get(key, "")
+            if str(old_val) != str(new_val):
+                changes.append({
+                    "field": key,
+                    "field_label": field_labels.get(key, key),
+                    "old_value": str(old_val),
+                    "new_value": str(new_val),
+                })
+
+        await db.system_settings.update_one(
+            {"type": "contact"},
+            {"$set": {"type": "contact", "data": new_data, "updated_at": now}},
+            upsert=True
+        )
+
+        if changes:
+            await db.audit_logs.insert_one({
+                "id": str(uuid.uuid4()),
+                "action": "settings_updated",
+                "target_type": "contact_settings",
+                "performed_by": current_user.get("id"),
+                "performed_by_name": current_user.get("full_name", current_user.get("name", "")),
+                "performed_by_email": current_user.get("email", ""),
+                "timestamp": now,
+                "changes": changes,
+            })
+
+        return {"success": True, "message": "تم حفظ بيانات التواصل", "changes": changes}
     
     # ============= SECURITY SETTINGS =============
     
@@ -431,24 +478,53 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
         settings: SecuritySettings,
         current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
     ):
-        """تحديث إعدادات الأمان"""
-        try:
-            await db.system_settings.update_one(
-                {"type": "security"},
-                {
-                    "$set": {
-                        "type": "security",
-                        "data": settings.dict(),
-                        "updated_at": datetime.now(timezone.utc).isoformat()
-                    }
-                },
-                upsert=True
-            )
-            return {"success": True, "message": "تم حفظ إعدادات الأمان"}
-        except Exception as e:
-            import logging as _log
-            _log.getLogger("nassaq").error(f"Operation error: {e}")
-            raise HTTPException(status_code=500, detail="حدث خطأ داخلي في الخادم")
+        """تحديث إعدادات الأمان مع تتبع التغييرات"""
+        now = datetime.now(timezone.utc).isoformat()
+        new_data = settings.dict()
+
+        existing = await db.system_settings.find_one({"type": "security"})
+        old_data = existing.get("data", {}) if existing else {}
+
+        field_labels = {
+            "session_duration_minutes": "مدة الجلسة (بالدقائق)",
+            "max_concurrent_sessions": "الحد الأقصى للجلسات",
+            "min_password_length": "الحد الأدنى لطول كلمة المرور",
+            "require_uppercase": "حرف كبير مطلوب",
+            "require_lowercase": "حرف صغير مطلوب",
+            "require_numbers": "رقم مطلوب",
+            "require_special_chars": "رمز خاص مطلوب",
+        }
+
+        changes = []
+        for key, new_val in new_data.items():
+            old_val = old_data.get(key, "")
+            if str(old_val) != str(new_val):
+                changes.append({
+                    "field": key,
+                    "field_label": field_labels.get(key, key),
+                    "old_value": str(old_val),
+                    "new_value": str(new_val),
+                })
+
+        await db.system_settings.update_one(
+            {"type": "security"},
+            {"$set": {"type": "security", "data": new_data, "updated_at": now}},
+            upsert=True
+        )
+
+        if changes:
+            await db.audit_logs.insert_one({
+                "id": str(uuid.uuid4()),
+                "action": "settings_updated",
+                "target_type": "security_settings",
+                "performed_by": current_user.get("id"),
+                "performed_by_name": current_user.get("full_name", current_user.get("name", "")),
+                "performed_by_email": current_user.get("email", ""),
+                "timestamp": now,
+                "changes": changes,
+            })
+
+        return {"success": True, "message": "تم حفظ إعدادات الأمان", "changes": changes}
     
     # ============= USER ACCOUNT SETTINGS =============
     
@@ -476,25 +552,56 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
         settings: UserAccountSettings,
         current_user: dict = Depends(get_current_user)
     ):
-        """تحديث إعدادات حساب المستخدم"""
-        try:
-            await db.users.update_one(
-                {"id": current_user.get("id")},
-                {
-                    "$set": {
-                        "name": settings.name,
-                        "title": settings.title,
-                        "phone": settings.phone,
-                        "language": settings.language,
-                        "updated_at": datetime.now(timezone.utc).isoformat()
-                    }
-                }
-            )
-            return {"success": True, "message": "تم حفظ إعدادات الحساب"}
-        except Exception as e:
-            import logging as _log
-            _log.getLogger("nassaq").error(f"Operation error: {e}")
-            raise HTTPException(status_code=500, detail="حدث خطأ داخلي في الخادم")
+        """تحديث إعدادات حساب المستخدم مع تسجيل التغييرات"""
+        user_id = current_user.get("id")
+        now = datetime.now(timezone.utc).isoformat()
+
+        existing = await db.users.find_one({"id": user_id})
+        if not existing:
+            raise HTTPException(status_code=404, detail="المستخدم غير موجود")
+
+        field_map = {
+            "name": {"old_key": "name", "new_val": settings.name, "label": "الاسم"},
+            "title": {"old_key": "title", "new_val": settings.title, "label": "اللقب"},
+            "phone": {"old_key": "phone", "new_val": settings.phone, "label": "رقم الهاتف"},
+            "language": {"old_key": "language", "new_val": settings.language, "label": "اللغة"},
+        }
+
+        changes = []
+        update_fields = {"updated_at": now}
+        for field_key, info in field_map.items():
+            old_val = existing.get(info["old_key"], "")
+            new_val = info["new_val"] or ""
+            if str(old_val) != str(new_val):
+                changes.append({
+                    "field": field_key,
+                    "field_label": info["label"],
+                    "old_value": str(old_val),
+                    "new_value": str(new_val),
+                })
+                update_fields[info["old_key"]] = new_val
+
+        if not changes:
+            return {"success": True, "message": "لا توجد تغييرات لحفظها", "changes": []}
+
+        await db.users.update_one(
+            {"id": user_id},
+            {"$set": update_fields}
+        )
+
+        await db.audit_logs.insert_one({
+            "id": str(uuid.uuid4()),
+            "action": "account_settings_updated",
+            "target_type": "user_account",
+            "target_id": user_id,
+            "performed_by": user_id,
+            "performed_by_name": current_user.get("full_name", current_user.get("name", "")),
+            "performed_by_email": current_user.get("email", ""),
+            "timestamp": now,
+            "changes": changes,
+        })
+
+        return {"success": True, "message": "تم حفظ إعدادات الحساب بنجاح", "changes": changes}
     
     @router.post("/account/upload-picture")
     async def upload_profile_picture(

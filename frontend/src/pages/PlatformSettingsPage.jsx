@@ -329,7 +329,7 @@ const INITIAL_VERSION_HISTORY = [];
 
 export const PlatformSettingsPage = () => {
   const { isRTL = true, isDark, toggleTheme, toggleLanguage } = useTheme();
-  const { user, logout, token } = useAuth();
+  const { user, logout, token, refreshUser } = useAuth();
   const navigate = useNavigate();
   const { nassaqError, nassaqWarning } = useNassaqAlert();
   const t = translations[isRTL ? 'ar' : 'en'];
@@ -350,6 +350,8 @@ export const PlatformSettingsPage = () => {
   const [copiedField, setCopiedField] = useState(null);
   const [versionHistory, setVersionHistory] = useState([]);
   const [activeSessions, setActiveSessions] = useState([]);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [initialSnapshots, setInitialSnapshots] = useState({});
   
   // Account settings - using user data only
   const [accountData, setAccountData] = useState({
@@ -385,8 +387,7 @@ export const PlatformSettingsPage = () => {
   });
   
   // Load settings from API using new endpoints
-  useEffect(() => {
-    const fetchSettings = async () => {
+  const fetchSettings = React.useCallback(async () => {
       try {
         // Fetch general settings
         const generalResponse = await api.get('/settings/general');
@@ -509,13 +510,50 @@ export const PlatformSettingsPage = () => {
         console.error('Error fetching settings:', error);
       } finally {
         setInitialLoading(false);
+        setTimeout(() => {
+          setInitialSnapshots({ _loaded: true, _reset: Date.now() });
+        }, 200);
       }
-    };
-    
+  }, [api]);
+
+  useEffect(() => {
     if (token) {
       fetchSettings();
     }
-  }, [api, token]);
+  }, [fetchSettings, token]);
+
+  useEffect(() => {
+    if (!initialSnapshots._loaded) return;
+    if (!initialSnapshots.account) {
+      setInitialSnapshots(prev => ({
+        ...prev,
+        account: JSON.stringify(accountData),
+        general: JSON.stringify(generalSettings),
+        contact: JSON.stringify(contactInfo),
+        security: JSON.stringify(securitySettings),
+      }));
+      return;
+    }
+    const currentMap = {
+      account: JSON.stringify(accountData),
+      general: JSON.stringify(generalSettings),
+      contact: JSON.stringify(contactInfo),
+      security: JSON.stringify(securitySettings),
+    };
+    const changed = Object.keys(currentMap).some(k => initialSnapshots[k] && currentMap[k] !== initialSnapshots[k]);
+    setHasUnsavedChanges(changed);
+  }, [accountData, generalSettings, contactInfo, securitySettings, initialSnapshots]);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [hasUnsavedChanges]);
   
   // Available titles state
   const [availableTitles, setAvailableTitles] = useState({ ar: [], en: [] });
@@ -643,7 +681,6 @@ export const PlatformSettingsPage = () => {
   const handleSaveGeneralSettings = async () => {
     setLoading(true);
     try {
-      // Save general settings
       await api.put('/settings/general', {
         platform_name: generalSettings.platformNameAr,
         platform_name_en: generalSettings.platformNameEn,
@@ -660,9 +697,10 @@ export const PlatformSettingsPage = () => {
       });
       
       toast.success(t.savedSuccessfully);
+      await fetchSettings();
     } catch (error) {
       console.error('Error saving general settings:', error);
-      nassaqError(isRTL ? 'فشل الحفظ' : 'Save failed');
+      nassaqError(error.response?.data?.detail || (isRTL ? 'فشل في حفظ الإعدادات' : 'Save failed'));
     } finally {
       setLoading(false);
     }
@@ -691,9 +729,10 @@ export const PlatformSettingsPage = () => {
         social_youtube: contactInfo.socialMedia.youtube,
       });
       toast.success(t.savedSuccessfully);
+      await fetchSettings();
     } catch (error) {
       console.error('Error saving contact settings:', error);
-      nassaqError(isRTL ? 'فشل الحفظ' : 'Save failed');
+      nassaqError(error.response?.data?.detail || (isRTL ? 'فشل في حفظ الإعدادات' : 'Save failed'));
     } finally {
       setLoading(false);
     }
@@ -713,28 +752,34 @@ export const PlatformSettingsPage = () => {
         require_special_chars: securitySettings.passwordRequireSpecial ? 1 : 0,
       });
       toast.success(t.savedSuccessfully);
+      await fetchSettings();
     } catch (error) {
       console.error('Error saving security settings:', error);
-      nassaqError(isRTL ? 'فشل الحفظ' : 'Save failed');
+      nassaqError(error.response?.data?.detail || (isRTL ? 'فشل في حفظ الإعدادات' : 'Save failed'));
     } finally {
       setLoading(false);
     }
   };
   
-  // Save account settings
   const handleSaveAccountSettings = async () => {
+    if (!accountData.name?.trim()) {
+      nassaqError(isRTL ? 'الاسم مطلوب' : 'Name is required');
+      return;
+    }
     setLoading(true);
     try {
-      await api.put('/settings/account', {
+      const res = await api.put('/settings/account', {
         name: accountData.name,
         title: accountData.title || '',
         phone: accountData.phone,
         language: accountData.language,
       });
-      toast.success(t.savedSuccessfully);
+      toast.success(res.data?.message || t.savedSuccessfully);
+      if (refreshUser) await refreshUser();
+      await fetchSettings();
     } catch (error) {
       console.error('Error saving account settings:', error);
-      nassaqError(isRTL ? 'فشل الحفظ' : 'Save failed');
+      nassaqError(error.response?.data?.detail || (isRTL ? 'فشل في حفظ الإعدادات' : 'Save failed'));
     } finally {
       setLoading(false);
     }
@@ -953,7 +998,7 @@ export const PlatformSettingsPage = () => {
                   {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
                 </Button>
                 <Button 
-                  className="rounded-xl bg-brand-navy hover:bg-brand-navy/90"
+                  className={`rounded-xl ${hasUnsavedChanges ? 'bg-brand-turquoise hover:bg-brand-turquoise/90 animate-pulse' : 'bg-brand-navy hover:bg-brand-navy/90'}`}
                   onClick={handleSave}
                   disabled={loading}
                 >
@@ -962,7 +1007,7 @@ export const PlatformSettingsPage = () => {
                   ) : (
                     <Save className="h-4 w-4 me-2" />
                   )}
-                  {loading ? t.saving : t.saveChanges}
+                  {loading ? t.saving : hasUnsavedChanges ? (isRTL ? 'حفظ التغييرات ●' : '● Save Changes') : t.saveChanges}
                 </Button>
               </div>
             </div>
@@ -983,7 +1028,15 @@ export const PlatformSettingsPage = () => {
                       return (
                         <button
                           key={tab.id}
-                          onClick={() => setActiveTab(tab.id)}
+                          onClick={() => {
+                            if (hasUnsavedChanges) {
+                              nassaqWarning(isRTL ? 'لديك تغييرات غير محفوظة. هل تريد المتابعة؟' : 'You have unsaved changes. Continue?', {
+                                onConfirm: () => setActiveTab(tab.id),
+                              });
+                            } else {
+                              setActiveTab(tab.id);
+                            }
+                          }}
                           className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
                             isActive 
                               ? 'bg-brand-navy text-white' 
@@ -1034,7 +1087,15 @@ export const PlatformSettingsPage = () => {
                         variant={activeTab === tab.id ? 'default' : 'outline'}
                         size="sm"
                         className={`rounded-xl whitespace-nowrap ${activeTab === tab.id ? 'bg-brand-navy' : ''}`}
-                        onClick={() => setActiveTab(tab.id)}
+                        onClick={() => {
+                          if (hasUnsavedChanges) {
+                            nassaqWarning(isRTL ? 'لديك تغييرات غير محفوظة. هل تريد المتابعة؟' : 'You have unsaved changes. Continue?', {
+                              onConfirm: () => setActiveTab(tab.id),
+                            });
+                          } else {
+                            setActiveTab(tab.id);
+                          }
+                        }}
                       >
                         <TabIcon className="h-4 w-4 me-2" />
                         {isRTL ? tab.label_ar : tab.label_en}
