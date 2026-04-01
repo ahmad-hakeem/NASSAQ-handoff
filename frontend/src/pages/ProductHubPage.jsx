@@ -5,7 +5,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Input } from '../components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Progress } from '../components/ui/progress';
 import { useAuth } from '../contexts/AuthContext';
@@ -18,7 +17,7 @@ import {
 import {
   Brain, Plus, Search, BarChart3, Users, Target, Zap,
   ChevronLeft, ChevronRight, Award, Building2, Timer, AlertOctagon, Clock,
-  Table2, Kanban, AlertTriangle, CheckCircle2, Bug, ArrowUpDown,
+  Table2, Kanban, AlertTriangle, CheckCircle2, Bug,
   RefreshCw, XCircle,
 } from 'lucide-react';
 
@@ -72,7 +71,7 @@ export function ProductHubPage() {
       setIssues(res.data.issues);
       setTotal(res.data.total);
     } catch (e) {
-      toast.error('فشل في تحميل التعليقات');
+      toast.error('فشل في تحميل التحديات');
     } finally {
       setLoading(false);
     }
@@ -171,7 +170,7 @@ export function ProductHubPage() {
                 className="bg-brand-turquoise hover:bg-brand-turquoise/90 text-white shadow-lg shadow-brand-turquoise/20"
               >
                 <Plus className="h-4 w-4 ml-2" />
-                إضافة تعليق جديد
+                إضافة تحدي جديد
               </Button>
             </div>
           </div>
@@ -184,7 +183,7 @@ export function ProductHubPage() {
               </TabsTrigger>
               <TabsTrigger value="issues" className="rounded-lg data-[state=active]:bg-brand-navy data-[state=active]:text-white gap-2">
                 <Table2 className="h-4 w-4" />
-                التعليقات
+                التحديات
               </TabsTrigger>
               <TabsTrigger value="kanban" className="rounded-lg data-[state=active]:bg-brand-navy data-[state=active]:text-white gap-2">
                 <Kanban className="h-4 w-4" />
@@ -235,100 +234,176 @@ export function ProductHubPage() {
   );
 }
 
+function ChipFilter({ label, value, options, onChange }) {
+  return (
+    <div className="space-y-1.5">
+      <p className="text-[11px] font-semibold text-muted-foreground">{label}</p>
+      <div className="flex flex-wrap gap-1.5">
+        <button
+          onClick={() => onChange('')}
+          className={`px-3 py-1 rounded-full text-[11px] font-medium border transition-all ${
+            !value
+              ? 'border-brand-turquoise bg-brand-turquoise/10 text-brand-navy'
+              : 'border-slate-200 text-muted-foreground hover:border-slate-300 hover:bg-slate-50'
+          }`}
+        >
+          الكل
+        </button>
+        {options.map(opt => (
+          <button
+            key={opt.value}
+            onClick={() => onChange(value === opt.value ? '' : opt.value)}
+            className={`px-3 py-1 rounded-full text-[11px] font-medium border transition-all ${
+              value === opt.value
+                ? 'border-brand-turquoise bg-brand-turquoise/10 text-brand-navy'
+                : 'border-slate-200 text-muted-foreground hover:border-slate-300 hover:bg-slate-50'
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function FilterToolbar({ filters, config, onFilterChange, onClear, hasActiveFilters }) {
   return (
     <Card className="border shadow-sm rounded-xl">
-      <CardContent className="p-4">
-        <div className="flex flex-wrap gap-3 items-center">
-          <div className="relative flex-1 min-w-[220px]">
-            <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="بحث في العنوان، المحتوى، الاسم..."
-              value={filters.search}
-              onChange={(e) => onFilterChange('search', e.target.value)}
-              className="pr-10 text-right rounded-lg"
+      <CardContent className="p-4 space-y-4">
+        <div className="relative">
+          <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="بحث في العنوان، المحتوى، الاسم..."
+            value={filters.search}
+            onChange={(e) => onFilterChange('search', e.target.value)}
+            className="pr-10 text-right rounded-lg"
+          />
+        </div>
+
+        <ChipFilter
+          label="الحالة"
+          value={filters.status}
+          options={Object.entries(STATUS_CONFIG).map(([k, v]) => ({ value: k, label: v.label }))}
+          onChange={(v) => onFilterChange('status', v)}
+        />
+
+        <ChipFilter
+          label="الأولوية"
+          value={filters.priority}
+          options={Object.entries(PRIORITY_CONFIG).map(([k, v]) => ({ value: k, label: v.label }))}
+          onChange={(v) => onFilterChange('priority', v)}
+        />
+
+        {config && (
+          <>
+            <ChipFilter
+              label="النوع"
+              value={filters.issue_type}
+              options={(config.issue_types || []).map(t => ({ value: t.value, label: t.label }))}
+              onChange={(v) => onFilterChange('issue_type', v)}
             />
-          </div>
+            <ChipFilter
+              label="القسم"
+              value={filters.section}
+              options={(config.sections || []).map(s => ({ value: s, label: s }))}
+              onChange={(v) => onFilterChange('section', v)}
+            />
+            <ChipFilter
+              label="الفريق"
+              value={filters.assigned_team}
+              options={(config.teams || []).map(t => ({ value: t, label: t }))}
+              onChange={(v) => onFilterChange('assigned_team', v)}
+            />
+          </>
+        )}
 
-          <Select value={filters.status || 'all'} onValueChange={(v) => onFilterChange('status', v)}>
-            <SelectTrigger className="w-[140px] rounded-lg"><SelectValue placeholder="الحالة" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">كل الحالات</SelectItem>
-              {Object.entries(STATUS_CONFIG).map(([k, v]) => (
-                <SelectItem key={k} value={k}>{v.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={filters.priority || 'all'} onValueChange={(v) => onFilterChange('priority', v)}>
-            <SelectTrigger className="w-[130px] rounded-lg"><SelectValue placeholder="الأولوية" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">كل الأولويات</SelectItem>
-              {Object.entries(PRIORITY_CONFIG).map(([k, v]) => (
-                <SelectItem key={k} value={k}>{v.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {config && (
-            <>
-              <Select value={filters.issue_type || 'all'} onValueChange={(v) => onFilterChange('issue_type', v)}>
-                <SelectTrigger className="w-[140px] rounded-lg"><SelectValue placeholder="النوع" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">كل الأنواع</SelectItem>
-                  {config.issue_types?.map(t => (
-                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Select value={filters.section || 'all'} onValueChange={(v) => onFilterChange('section', v)}>
-                <SelectTrigger className="w-[140px] rounded-lg"><SelectValue placeholder="القسم" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">كل الأقسام</SelectItem>
-                  {config.sections?.map(s => (
-                    <SelectItem key={s} value={s}>{s}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Select value={filters.assigned_team || 'all'} onValueChange={(v) => onFilterChange('assigned_team', v)}>
-                <SelectTrigger className="w-[130px] rounded-lg"><SelectValue placeholder="الفريق" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">كل الفرق</SelectItem>
-                  {config.teams?.map(t => (
-                    <SelectItem key={t} value={t}>{t}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </>
-          )}
-
-          {hasActiveFilters && (
-            <Button variant="ghost" size="sm" onClick={onClear} className="text-red-500 hover:text-red-700 hover:bg-red-50">
+        {hasActiveFilters && (
+          <div className="flex justify-end">
+            <Button variant="ghost" size="sm" onClick={onClear} className="text-red-500 hover:text-red-700 hover:bg-red-50 rounded-full">
               <XCircle className="h-4 w-4 ml-1" />
-              مسح
+              مسح الفلاتر
             </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function IssueCard({ issue, navigate }) {
+  const typeCfg = TYPE_CONFIG[issue.issue_type] || TYPE_CONFIG.other;
+  const TypeIcon = typeCfg.icon;
+  const progress = STATUS_PROGRESS[issue.status] || 0;
+
+  return (
+    <Card
+      onClick={() => navigate(`/admin/product-hub/issues/${issue.id}`)}
+      className="border shadow-sm rounded-xl hover:shadow-md hover:border-brand-turquoise/40 cursor-pointer transition-all group"
+    >
+      <CardContent className="p-5">
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className="text-[11px] font-mono text-muted-foreground bg-slate-100 px-1.5 py-0.5 rounded">
+                #{issue.issue_number}
+              </span>
+              <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                <TypeIcon className={`h-3.5 w-3.5 ${typeCfg.color}`} />
+                <span>{typeCfg.label}</span>
+              </div>
+            </div>
+            <h3 className="text-sm font-bold text-brand-navy group-hover:text-brand-turquoise transition-colors leading-relaxed">
+              {issue.title}
+            </h3>
+          </div>
+          <PriorityBadge priority={issue.priority} size="sm" showIcon />
+        </div>
+
+        {issue.current_behavior && (
+          <p className="text-xs text-muted-foreground line-clamp-2 mb-3 leading-relaxed bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+            {issue.current_behavior}
+          </p>
+        )}
+
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <StatusChip status={issue.status} size="sm" showIcon />
+          <SLAIndicator issue={issue} size="sm" />
+          {issue.assigned_team && (
+            <Badge variant="outline" className="text-[10px] border-brand-turquoise/30 text-brand-turquoise">
+              {issue.assigned_team}
+            </Badge>
           )}
+        </div>
+
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+            <span className="flex items-center gap-1">
+              <Users className="h-3 w-3" />
+              {issue.employee_name}
+            </span>
+            <span>{issue.section}</span>
+            <span>{new Date(issue.created_at).toLocaleDateString('ar-SA')}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Progress value={progress} className="h-1.5 w-16" />
+            <span className="text-[10px] text-muted-foreground font-medium">{progress}%</span>
+          </div>
         </div>
       </CardContent>
     </Card>
   );
 }
 
-function IssuesTableView({ issues, loading, total, page, totalPages, onPageChange, onSort, sortField, sortDir, navigate }) {
+function IssuesTableView({ issues, loading, total, page, totalPages, onPageChange, navigate }) {
   if (loading) {
     return (
-      <Card className="border rounded-xl">
-        <CardContent className="p-0">
-          <div className="flex justify-center items-center py-20">
-            <div className="flex flex-col items-center gap-3">
-              <div className="animate-spin rounded-full h-8 w-8 border-2 border-brand-turquoise border-t-transparent" />
-              <p className="text-sm text-muted-foreground">جاري التحميل...</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="flex justify-center items-center py-20">
+        <div className="flex flex-col items-center gap-3">
+          <div className="animate-spin rounded-full h-8 w-8 border-2 border-brand-turquoise border-t-transparent" />
+          <p className="text-sm text-muted-foreground">جاري التحميل...</p>
+        </div>
+      </div>
     );
   }
 
@@ -336,96 +411,19 @@ function IssuesTableView({ issues, loading, total, page, totalPages, onPageChang
     return (
       <Card className="border rounded-xl">
         <CardContent>
-          <EmptyState icon={Bug} title="لا توجد تعليقات" description="لم يتم العثور على تعليقات تطابق معايير البحث" />
+          <EmptyState icon={Bug} title="لا توجد تحديات" description="لم يتم العثور على تحديات تطابق معايير البحث" />
         </CardContent>
       </Card>
     );
   }
 
-  const SortHeader = ({ field, children }) => (
-    <th
-      className="px-4 py-3 text-right text-xs font-semibold text-slate-500 cursor-pointer hover:text-brand-navy transition-colors select-none"
-      onClick={() => onSort(field)}
-    >
-      <span className="inline-flex items-center gap-1">
-        {children}
-        {sortField === field && (
-          <ArrowUpDown className={`h-3 w-3 ${sortDir === 'asc' ? 'rotate-180' : ''} text-brand-turquoise`} />
-        )}
-      </span>
-    </th>
-  );
-
   return (
     <div className="space-y-4">
-      <Card className="border rounded-xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-slate-50/80 border-b">
-                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 w-[60px]">#</th>
-                <SortHeader field="title">العنوان</SortHeader>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500">النوع</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500">القسم</th>
-                <SortHeader field="priority">الأولوية</SortHeader>
-                <SortHeader field="status">الحالة</SortHeader>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500">الفريق</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500">المُبلِّغ</th>
-                <SortHeader field="created_at">التاريخ</SortHeader>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500">SLA</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 w-[80px]">التقدم</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {issues.map(issue => {
-                const typeCfg = TYPE_CONFIG[issue.issue_type] || TYPE_CONFIG.other;
-                const TypeIcon = typeCfg.icon;
-                const progress = STATUS_PROGRESS[issue.status] || 0;
-
-                return (
-                  <tr
-                    key={issue.id}
-                    onClick={() => navigate(`/admin/product-hub/issues/${issue.id}`)}
-                    className="hover:bg-brand-turquoise/3 cursor-pointer transition-colors group"
-                  >
-                    <td className="px-4 py-3 text-xs text-muted-foreground font-mono">
-                      {issue.issue_number}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="max-w-[280px]">
-                        <p className="text-sm font-medium text-brand-navy truncate group-hover:text-brand-turquoise transition-colors">
-                          {issue.title}
-                        </p>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <TypeIcon className={`h-3.5 w-3.5 ${typeCfg.color}`} />
-                        <span className="hidden xl:inline">{typeCfg.label}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">{issue.section}</td>
-                    <td className="px-4 py-3"><PriorityBadge priority={issue.priority} size="sm" /></td>
-                    <td className="px-4 py-3"><StatusChip status={issue.status} size="sm" /></td>
-                    <td className="px-4 py-3 text-xs text-brand-turquoise font-medium">{issue.assigned_team || '—'}</td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground truncate max-w-[120px]">{issue.employee_name}</td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
-                      {new Date(issue.created_at).toLocaleDateString('ar-SA')}
-                    </td>
-                    <td className="px-4 py-3"><SLAIndicator issue={issue} size="sm" /></td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1.5">
-                        <Progress value={progress} className="h-1.5 w-12" />
-                        <span className="text-[10px] text-muted-foreground">{progress}%</span>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {issues.map(issue => (
+          <IssueCard key={issue.id} issue={issue} navigate={navigate} />
+        ))}
+      </div>
 
       {totalPages > 1 && (
         <div className="flex justify-center items-center gap-4 pt-2">
@@ -433,7 +431,7 @@ function IssuesTableView({ issues, loading, total, page, totalPages, onPageChang
             <ChevronRight className="h-4 w-4" />
           </Button>
           <span className="text-sm text-muted-foreground">
-            صفحة {page} من {totalPages} ({total} تعليق)
+            صفحة {page} من {totalPages} ({total} تحدي)
           </span>
           <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => onPageChange(p => p + 1)} className="rounded-lg">
             <ChevronLeft className="h-4 w-4" />
@@ -460,7 +458,7 @@ function KanbanView({ issues, loading, total }) {
     return (
       <Card className="border rounded-xl">
         <CardContent>
-          <EmptyState icon={Kanban} title="لا توجد تعليقات" description="ستظهر التعليقات هنا بمجرد إنشائها" />
+          <EmptyState icon={Kanban} title="لا توجد تحديات" description="ستظهر التحديات هنا بمجرد إنشائها" />
         </CardContent>
       </Card>
     );
@@ -487,7 +485,7 @@ function KanbanView({ issues, loading, total }) {
             <div className={`rounded-b-xl border ${cfg.borderColor} border-t-0 bg-slate-50/50 p-2 space-y-2 min-h-[160px] max-h-[400px] overflow-y-auto`}>
               {columnIssues.length === 0 ? (
                 <div className="flex items-center justify-center h-24 text-xs text-muted-foreground">
-                  لا توجد تعليقات
+                  لا توجد تحديات
                 </div>
               ) : (
                 columnIssues.map(issue => (
@@ -515,9 +513,9 @@ function DashboardView({ data, loading, isAdmin, navigate }) {
   }
 
   const kpiCards = [
-    { label: 'إجمالي التعليقات', value: data.total_issues, icon: BarChart3, color: 'text-brand-navy', bg: 'bg-blue-50' },
-    { label: 'تعليقات مفتوحة', value: data.total_open, icon: AlertTriangle, color: 'text-amber-600', bg: 'bg-amber-50' },
-    { label: 'تعليقات حرجة', value: data.critical_open, icon: AlertOctagon, color: 'text-red-600', bg: 'bg-red-50' },
+    { label: 'إجمالي التحديات', value: data.total_issues, icon: BarChart3, color: 'text-brand-navy', bg: 'bg-blue-50' },
+    { label: 'تحديات مفتوحة', value: data.total_open, icon: AlertTriangle, color: 'text-amber-600', bg: 'bg-amber-50' },
+    { label: 'تحديات حرجة', value: data.critical_open, icon: AlertOctagon, color: 'text-red-600', bg: 'bg-red-50' },
     { label: 'جديدة هذا الأسبوع', value: data.new_this_week, icon: Zap, color: 'text-blue-600', bg: 'bg-blue-50' },
     { label: 'قيد التنفيذ', value: data.in_progress, icon: Clock, color: 'text-violet-600', bg: 'bg-violet-50' },
     { label: 'متوسط الحل (ساعة)', value: data.avg_resolution_hours, icon: Timer, color: 'text-emerald-600', bg: 'bg-emerald-50' },
@@ -700,7 +698,7 @@ function DashboardView({ data, loading, isAdmin, navigate }) {
               <div className="p-1.5 rounded-lg bg-brand-turquoise/10">
                 <Building2 className="h-4 w-4 text-brand-turquoise" />
               </div>
-              أكثر الأقسام تعليقات
+              أكثر الأقسام تحديات
             </CardTitle>
           </CardHeader>
           <CardContent>

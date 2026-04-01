@@ -69,7 +69,7 @@ export function HakimInsightCard({ hakim, compact = false, className = '' }) {
           <div className="p-3 bg-amber-50 rounded-xl border border-amber-200">
             <div className="flex items-center gap-2 text-amber-700 text-xs font-medium">
               <AlertTriangle className="h-3.5 w-3.5" />
-              {hakim.duplicate_ids.length} تعليق مشابه تم اكتشافه
+              {hakim.duplicate_ids.length} تحدي مشابه تم اكتشافه
             </div>
             {hakim.duplicate_note && (
               <p className="text-xs text-amber-600 mt-1">{hakim.duplicate_note}</p>

@@ -54,7 +54,7 @@ export function ProductHubIssuePage() {
       const res = await axios.get(`/api/product-hub/issues/${issueId}`, { headers: authHeaders() });
       setIssue(res.data);
     } catch (e) {
-      toast.error('فشل في تحميل التعليق');
+      toast.error('فشل في تحميل التحدي');
       navigate('/admin/product-hub');
     } finally {
       setLoading(false);
@@ -130,7 +130,7 @@ export function ProductHubIssuePage() {
   const handleFeedback = async (resolved) => {
     try {
       await axios.post(`/api/product-hub/issues/${issueId}/feedback`, { resolved }, { headers: authHeaders() });
-      toast.success(resolved ? 'شكراً — تم تأكيد الحل' : 'تم إعادة فتح التعليق');
+      toast.success(resolved ? 'شكراً — تم تأكيد الحل' : 'تم إعادة فتح التحدي');
       fetchIssue();
     } catch (err) {
       toast.error(err.response?.data?.detail?.message || 'فشل');
@@ -147,7 +147,7 @@ export function ProductHubIssuePage() {
         <div className="flex justify-center items-center min-h-screen">
           <div className="flex flex-col items-center gap-3">
             <div className="animate-spin rounded-full h-10 w-10 border-2 border-brand-turquoise border-t-transparent" />
-            <p className="text-sm text-muted-foreground">جاري تحميل التعليق...</p>
+            <p className="text-sm text-muted-foreground">جاري تحميل التحدي...</p>
           </div>
         </div>
       </Sidebar>
@@ -239,7 +239,7 @@ export function ProductHubIssuePage() {
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base flex items-center gap-2">
                     <FileText className="h-4 w-4 text-brand-turquoise" />
-                    تفاصيل التعليق
+                    تفاصيل التحدي
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-5">
@@ -615,7 +615,7 @@ export function ProductHubIssuePage() {
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-semibold flex items-center gap-2 text-amber-700">
                       <AlertTriangle className="h-4 w-4" />
-                      تعليقات مشابهة ({issue.duplicates.length})
+                      تحديات مشابهة ({issue.duplicates.length})
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-2">

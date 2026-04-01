@@ -78,7 +78,7 @@ export const EVENT_LABELS = {
 export const COMMENT_TYPE_CONFIG = {
   admin_note: { label: 'ملاحظة إدارية', bgColor: 'bg-blue-50', borderColor: 'border-blue-200', textColor: 'text-blue-700' },
   qa_note: { label: 'ملاحظة QA', bgColor: 'bg-purple-50', borderColor: 'border-purple-200', textColor: 'text-purple-700' },
-  general: { label: 'تعليق', bgColor: 'bg-slate-50', borderColor: 'border-slate-200', textColor: 'text-slate-700' },
+  general: { label: 'عام', bgColor: 'bg-slate-50', borderColor: 'border-slate-200', textColor: 'text-slate-700' },
 };
 
 export const IMPACT_LABELS = {

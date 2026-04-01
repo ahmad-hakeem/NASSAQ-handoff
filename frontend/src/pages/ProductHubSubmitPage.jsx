@@ -27,7 +27,7 @@ const authHeaders = () => {
 
 const STEPS = [
   { key: 'reporter', label: 'المُبلِّغ', icon: User },
-  { key: 'details', label: 'تفاصيل التعليق', icon: FileText },
+  { key: 'details', label: 'تفاصيل التحدي', icon: FileText },
   { key: 'review', label: 'مراجعة وإرسال', icon: Send },
 ];
 
@@ -102,7 +102,7 @@ export function ProductHubSubmitPage() {
   const validateStep = (stepIdx) => {
     if (stepIdx === 0) {
       if (!form.employee_name?.trim() || form.employee_name.trim().length < 3) return 'الاسم مطلوب (3 أحرف على الأقل)';
-      if (!form.issue_type) return 'نوع التعليق مطلوب';
+      if (!form.issue_type) return 'نوع التحدي مطلوب';
       if (!form.account_type) return 'نوع الحساب مطلوب';
     }
     if (stepIdx === 1) {
@@ -136,7 +136,7 @@ export function ProductHubSubmitPage() {
       if (payload.related_to && payload.related_to.length === 0) delete payload.related_to;
       if (!payload.reproducibility) delete payload.reproducibility;
       const res = await axios.post('/api/product-hub/issues', payload, { headers: authHeaders() });
-      toast.success('تم إرسال التعليق بنجاح — حكيم يحلله الآن');
+      toast.success('تم إرسال التحدي بنجاح — حكيم يحلله الآن');
       navigate(`/admin/product-hub/issues/${res.data.id}`);
     } catch (err) {
       const detail = err.response?.data?.detail;
@@ -145,7 +145,7 @@ export function ProductHubSubmitPage() {
       } else if (typeof detail === 'string') {
         toast.error(detail);
       } else {
-        toast.error('فشل في إرسال التعليق');
+        toast.error('فشل في إرسال التحدي');
       }
     } finally {
       setSubmitting(false);
@@ -162,9 +162,9 @@ export function ProductHubSubmitPage() {
                 <div className="p-2 rounded-xl bg-brand-turquoise/10">
                   <Brain className="h-6 w-6 text-brand-turquoise" />
                 </div>
-                إضافة تعليق جديد
+                إضافة تحدي جديد
               </h1>
-              <p className="text-muted-foreground mt-1 text-sm">حكيم سيحلل تعليقك ويقترح الأولوية والفريق المناسب</p>
+              <p className="text-muted-foreground mt-1 text-sm">حكيم سيحلل التحدي ويقترح الأولوية والفريق المناسب</p>
             </div>
             <Button variant="outline" onClick={() => navigate('/admin/product-hub')} className="rounded-lg">
               <ArrowRight className="h-4 w-4 ml-2" />
@@ -229,9 +229,9 @@ export function ProductHubSubmitPage() {
                   </div>
                 </div>
                 <div>
-                  <Label className="text-sm font-medium">نوع التعليق <span className="text-red-500">*</span></Label>
+                  <Label className="text-sm font-medium">نوع التحدي <span className="text-red-500">*</span></Label>
                   <Select value={form.issue_type} onValueChange={(v) => handleChange('issue_type', v)}>
-                    <SelectTrigger className="mt-1.5 rounded-lg"><SelectValue placeholder="اختر نوع التعليق" /></SelectTrigger>
+                    <SelectTrigger className="mt-1.5 rounded-lg"><SelectValue placeholder="اختر نوع التحدي" /></SelectTrigger>
                     <SelectContent>
                       {COMMENT_TYPE_OPTIONS.map(opt => (
                         <SelectItem key={opt.value} value={opt.value}>
@@ -261,7 +261,7 @@ export function ProductHubSubmitPage() {
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2">
                   <FileText className="h-4 w-4 text-brand-turquoise" />
-                  تفاصيل التعليق
+                  تفاصيل التحدي
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-5">
@@ -315,7 +315,7 @@ export function ProductHubSubmitPage() {
                   <Textarea
                     value={form.additional_info || ''}
                     onChange={(e) => handleChange('additional_info', e.target.value)}
-                    placeholder="أضف أي تفاصيل أو ملاحظات إضافية تساعد في فهم التعليق..."
+                    placeholder="أضف أي تفاصيل أو ملاحظات إضافية تساعد في فهم التحدي..."
                     className="mt-1.5 text-right min-h-[80px] rounded-lg"
                   />
                   <p className="text-[11px] text-muted-foreground mt-1">اختياري — يساعد حكيم في التحليل</p>
@@ -335,7 +335,7 @@ export function ProductHubSubmitPage() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <ReviewRow label="الاسم" value={form.employee_name} />
-                  <ReviewRow label="نوع التعليق" value={COMMENT_TYPE_OPTIONS.find(o => o.value === form.issue_type)?.labelAr || form.issue_type} />
+                  <ReviewRow label="نوع التحدي" value={COMMENT_TYPE_OPTIONS.find(o => o.value === form.issue_type)?.labelAr || form.issue_type} />
                   <ReviewRow label="نوع الحساب" value={ACCOUNT_TYPE_LABELS[form.account_type] || form.account_type} />
                   <Separator />
                   <ReviewRow label="القسم" value={form.section} />
@@ -363,9 +363,9 @@ export function ProductHubSubmitPage() {
                   <div className="flex items-center gap-3 text-sm">
                     <Brain className="h-5 w-5 text-brand-turquoise flex-shrink-0" />
                     <div>
-                      <p className="font-medium text-brand-navy">حكيم سيحلل تعليقك تلقائياً</p>
+                      <p className="font-medium text-brand-navy">حكيم سيحلل التحدي تلقائياً</p>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        سيقترح الأولوية والفريق المناسب ويكتشف التعليقات المشابهة ويُنشئ عنواناً واضحاً
+                        سيقترح الأولوية والفريق المناسب ويكتشف التحديات المشابهة ويُنشئ عنواناً واضحاً
                       </p>
                     </div>
                   </div>
@@ -413,7 +413,7 @@ export function ProductHubSubmitPage() {
                   ) : (
                     <>
                       <Send className="h-4 w-4 ml-2" />
-                      إرسال التعليق
+                      إرسال التحدي
                     </>
                   )}
                 </Button>
