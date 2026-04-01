@@ -33,7 +33,7 @@ export function ProductHubPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'dashboard');
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'issues');
   const [issues, setIssues] = useState([]);
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -188,16 +188,18 @@ export function ProductHubPage() {
           </div>
 
           <Tabs value={activeTab} onValueChange={handleTabChange}>
-            <TabsList className="bg-white border shadow-sm rounded-xl p-1">
-              <TabsTrigger value="dashboard" className="rounded-lg data-[state=active]:bg-brand-navy data-[state=active]:text-white gap-2">
-                <BarChart3 className="h-4 w-4" />
-                لوحة القيادة
-              </TabsTrigger>
-              <TabsTrigger value="issues" className="rounded-lg data-[state=active]:bg-brand-navy data-[state=active]:text-white gap-2">
-                <Table2 className="h-4 w-4" />
-                التحديات
-              </TabsTrigger>
-            </TabsList>
+            <div className="flex justify-end">
+              <TabsList className="bg-white border shadow-sm rounded-xl p-1">
+                <TabsTrigger value="issues" className="rounded-lg data-[state=active]:bg-brand-navy data-[state=active]:text-white gap-2">
+                  <Table2 className="h-4 w-4" />
+                  التحديات
+                </TabsTrigger>
+                <TabsTrigger value="dashboard" className="rounded-lg data-[state=active]:bg-brand-navy data-[state=active]:text-white gap-2">
+                  <BarChart3 className="h-4 w-4" />
+                  لوحة القيادة
+                </TabsTrigger>
+              </TabsList>
+            </div>
 
             <TabsContent value="dashboard" className="mt-6">
               <DashboardView data={dashboard} loading={dashLoading} isAdmin={isAdmin} navigate={navigate} />
