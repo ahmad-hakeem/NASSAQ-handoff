@@ -12,12 +12,13 @@ import axios from 'axios';
 import { toast } from 'sonner';
 import {
   StatusChip, PriorityBadge, SLAIndicator, StatCard, EmptyState, IssueKanbanCard,
+  HakimInsightCard,
   STATUS_CONFIG, PRIORITY_CONFIG, TYPE_CONFIG, STATUS_PROGRESS, KANBAN_COLUMNS,
 } from '../components/product-hub';
 import {
-  Brain, Plus, Search, BarChart3, Users, Target, Zap,
+  Brain, Plus, Search, BarChart3, Users, Target, Zap, Sparkles,
   ChevronLeft, ChevronRight, Award, Building2, Timer, AlertOctagon, Clock,
-  Table2, Kanban, AlertTriangle, CheckCircle2, Bug,
+  Table2, Kanban, AlertTriangle, CheckCircle2, Bug, TrendingUp, Eye,
   RefreshCw, XCircle,
 } from 'lucide-react';
 
@@ -376,6 +377,29 @@ function IssueCard({ issue, navigate }) {
           )}
         </div>
 
+        {issue.hakim_analysis && Object.keys(issue.hakim_analysis).length > 0 && (
+          <div className="flex items-center gap-2 mb-3 px-2.5 py-1.5 bg-brand-turquoise/5 rounded-lg border border-brand-turquoise/10">
+            <Brain className="h-3 w-3 text-brand-turquoise flex-shrink-0" />
+            <span className="text-[10px] text-brand-turquoise font-medium">حكيم</span>
+            {issue.hakim_analysis.suggested_team && (
+              <span className="text-[10px] text-muted-foreground">
+                الفريق: <span className="font-medium text-brand-navy">{issue.hakim_analysis.suggested_team}</span>
+              </span>
+            )}
+            {issue.hakim_analysis.duplicate_ids?.length > 0 && (
+              <span className="text-[10px] text-amber-600 flex items-center gap-0.5">
+                <AlertTriangle className="h-2.5 w-2.5" />
+                {issue.hakim_analysis.duplicate_ids.length} مشابه
+              </span>
+            )}
+            {issue.hakim_analysis.impact_assessment && (
+              <span className="text-[10px] text-muted-foreground truncate max-w-[140px]">
+                {issue.hakim_analysis.impact_assessment}
+              </span>
+            )}
+          </div>
+        )}
+
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
             <span className="flex items-center gap-1">
@@ -523,6 +547,8 @@ function DashboardView({ data, loading, isAdmin, navigate }) {
     { label: 'مكررات مكتشفة', value: data.duplicates_detected, icon: Target, color: 'text-amber-600', bg: 'bg-amber-50' },
   ];
 
+  const hakimStats = data.hakim_stats;
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -530,6 +556,88 @@ function DashboardView({ data, loading, isAdmin, navigate }) {
           <StatCard key={i} {...kpi} />
         ))}
       </div>
+
+      {hakimStats && (
+        <Card className="border rounded-xl shadow-sm bg-gradient-to-br from-brand-turquoise/5 via-white to-brand-turquoise/3 border-brand-turquoise/20">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2 text-brand-navy">
+              <div className="p-2 rounded-xl bg-brand-turquoise/10">
+                <Brain className="h-5 w-5 text-brand-turquoise" />
+              </div>
+              <span>تحليلات حكيم</span>
+              <Sparkles className="h-3.5 w-3.5 text-brand-turquoise/60" />
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <div className="grid grid-cols-3 gap-3">
+              <div className="text-center p-3 bg-white rounded-xl border border-slate-100">
+                <p className="text-2xl font-bold text-brand-navy">{hakimStats.total_analyzed}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">تحدي تم تحليله</p>
+              </div>
+              <div className="text-center p-3 bg-white rounded-xl border border-slate-100">
+                <p className="text-2xl font-bold text-amber-600">{hakimStats.duplicates_detected}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">مكرر مكتشف</p>
+              </div>
+              <div className="text-center p-3 bg-white rounded-xl border border-slate-100">
+                <p className="text-2xl font-bold text-violet-600">{hakimStats.priority_overridden}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">أولوية مُعدّلة</p>
+              </div>
+            </div>
+
+            {hakimStats.top_teams?.length > 0 && (
+              <div>
+                <p className="text-[11px] font-semibold text-muted-foreground mb-2 flex items-center gap-1.5">
+                  <Users className="h-3 w-3" />
+                  الفرق المقترحة من حكيم
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {hakimStats.top_teams.map((t, i) => (
+                    <Badge key={i} variant="outline" className="text-[11px] border-brand-turquoise/30 text-brand-turquoise bg-brand-turquoise/5 px-3 py-1">
+                      {t.team} ({t.count})
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {hakimStats.recent_insights?.length > 0 && (
+              <div>
+                <p className="text-[11px] font-semibold text-muted-foreground mb-2 flex items-center gap-1.5">
+                  <Eye className="h-3 w-3" />
+                  آخر تحليلات حكيم
+                </p>
+                <div className="space-y-2">
+                  {hakimStats.recent_insights.map((insight, i) => (
+                    <div
+                      key={i}
+                      onClick={() => navigate(`/admin/product-hub/issues/${insight.id}`)}
+                      className="p-3 bg-white rounded-xl border border-slate-100 hover:border-brand-turquoise/30 cursor-pointer transition-all group"
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[10px] font-mono text-muted-foreground bg-slate-100 px-1.5 py-0.5 rounded">
+                          #{insight.issue_number}
+                        </span>
+                        <PriorityBadge priority={insight.priority} size="sm" />
+                        {insight.suggested_team && (
+                          <Badge variant="outline" className="text-[9px] border-brand-turquoise/20 text-brand-turquoise">
+                            {insight.suggested_team}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs font-medium text-brand-navy group-hover:text-brand-turquoise transition-colors truncate">
+                        {insight.title}
+                      </p>
+                      {insight.impact && (
+                        <p className="text-[10px] text-muted-foreground mt-1 line-clamp-1">{insight.impact}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="border rounded-xl shadow-sm">

@@ -913,6 +913,39 @@ async def get_dashboard(current_user: dict = Depends(get_current_user)):
     dept_raw = await db.product_issues.aggregate(pipeline_dept).to_list(10)
     by_department = [{"department": d["_id"], "count": d["count"]} for d in dept_raw]
 
+    hakim_analyzed = await db.product_issues.count_documents({"hakim_analysis": {"$exists": True, "$ne": {}}})
+    hakim_priority_changed = await db.product_issues.count_documents({
+        "hakim_analysis.suggested_priority": {"$exists": True},
+        "$expr": {"$ne": ["$priority", "$hakim_analysis.suggested_priority"]}
+    })
+    pipeline_hakim_teams = [
+        {"$match": {"hakim_analysis.suggested_team": {"$exists": True, "$ne": None}}},
+        {"$group": {"_id": "$hakim_analysis.suggested_team", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+        {"$limit": 5}
+    ]
+    hakim_teams_raw = await db.product_issues.aggregate(pipeline_hakim_teams).to_list(5)
+    hakim_top_teams = [{"team": t["_id"], "count": t["count"]} for t in hakim_teams_raw]
+
+    recent_hakim = await db.product_issues.find(
+        {"hakim_analysis.impact_assessment": {"$exists": True, "$ne": ""}},
+        {"_id": 0, "id": 1, "title": 1, "issue_number": 1, "priority": 1,
+         "hakim_analysis.impact_assessment": 1, "hakim_analysis.suggested_priority": 1,
+         "hakim_analysis.suggested_team": 1, "hakim_analysis.priority_reasoning": 1}
+    ).sort("created_at", -1).limit(5).to_list(5)
+    hakim_recent_insights = []
+    for ri in recent_hakim:
+        ha = ri.get("hakim_analysis", {})
+        hakim_recent_insights.append({
+            "id": ri.get("id"),
+            "title": ri.get("title"),
+            "issue_number": ri.get("issue_number"),
+            "priority": ri.get("priority"),
+            "impact": ha.get("impact_assessment", ""),
+            "suggested_team": ha.get("suggested_team", ""),
+            "priority_reasoning": ha.get("priority_reasoning", ""),
+        })
+
     return {
         "total_issues": total,
         "total_open": total_open,
@@ -930,6 +963,13 @@ async def get_dashboard(current_user: dict = Depends(get_current_user)):
         "top_contributors": top_contributors,
         "most_accurate_reporters": most_accurate,
         "by_department": by_department,
+        "hakim_stats": {
+            "total_analyzed": hakim_analyzed,
+            "duplicates_detected": dup_count,
+            "priority_overridden": hakim_priority_changed,
+            "top_teams": hakim_top_teams,
+            "recent_insights": hakim_recent_insights,
+        },
         "is_admin": True,
     }
 
