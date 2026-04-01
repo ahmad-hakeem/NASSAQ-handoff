@@ -261,7 +261,7 @@ async def get_hub_config(current_user: dict = Depends(get_current_user)):
         "permissions": {
             "can_assign": main_admin,
             "can_change_status": main_admin,
-            "can_view_prompt": admin,
+            "can_view_prompt": main_admin,
             "can_view_analytics": admin,
             "can_update_priority": main_admin,
             "can_update_title": main_admin,
@@ -443,7 +443,7 @@ async def get_issue(issue_id: str, current_user: dict = Depends(get_current_user
     permissions = {
         "can_change_status": main_admin,
         "can_assign": main_admin,
-        "can_view_prompt": admin,
+        "can_view_prompt": main_admin,
         "can_update_title": main_admin,
         "can_update_priority": main_admin,
         "can_approve_closure": super_admin,

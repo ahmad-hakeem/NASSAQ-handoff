@@ -152,6 +152,9 @@ MAIN_ADMIN_ONLY_ACTIONS = {
     HubAction.UPDATE_ISSUE,
     HubAction.UPDATE_TITLE,
     HubAction.UPDATE_PRIORITY,
+    HubAction.VIEW_PROMPT,
+    HubAction.COPY_PROMPT,
+    HubAction.GENERATE_PROMPT,
 }
 
 SUPER_ADMIN_ONLY_ACTIONS = {
@@ -236,7 +239,7 @@ ADMIN_REDACTED_FIELDS = {"generated_prompt", "hakim_analysis"}
 
 
 def redact_issue_for_role(issue: dict, user: dict) -> dict:
-    if is_platform_admin(user):
+    if is_main_admin(user):
         return issue
     for field in ADMIN_REDACTED_FIELDS:
         issue.pop(field, None)
