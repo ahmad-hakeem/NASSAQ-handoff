@@ -14,7 +14,7 @@ import { toast } from 'sonner';
 import {
   Send, ArrowRight, Monitor, Loader2, CheckCircle2,
   User, FileText, Sparkles, Wand2, MessageCircle, Zap,
-  Eye, Shield, Lightbulb, ArrowLeft, PenLine, RefreshCw,
+  Eye, Shield, Lightbulb, ArrowLeft, PenLine, RefreshCw, Calendar, Clock,
 } from 'lucide-react';
 
 const authHeaders = () => {
@@ -175,6 +175,7 @@ export function ProductHubSubmitPage() {
   const [hakimVisible, setHakimVisible] = useState(true);
   const [hakimTyping, setHakimTyping] = useState(false);
   const [hakimReaction, setHakimReaction] = useState(null);
+  const [currentDateTime, setCurrentDateTime] = useState(new Date());
 
   const [form, setForm] = useState({
     issue_type: '',
@@ -200,6 +201,11 @@ export function ProductHubSubmitPage() {
     axios.get('/api/product-hub/config', { headers: authHeaders() })
       .then(r => setConfig(r.data))
       .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentDateTime(new Date()), 30000);
+    return () => clearInterval(timer);
   }, []);
 
   useEffect(() => {
@@ -485,10 +491,23 @@ export function ProductHubSubmitPage() {
           {step === 0 && (
             <Card className="border shadow-sm rounded-xl">
               <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <User className="h-4 w-4 text-brand-turquoise" />
-                  معلومات المُبلِّغ
-                </CardTitle>
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <User className="h-4 w-4 text-brand-turquoise" />
+                    معلومات المُبلِّغ
+                  </CardTitle>
+                  <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5">
+                    <div className="flex items-center gap-1.5 text-[12px] text-brand-navy/70">
+                      <Calendar className="h-3.5 w-3.5 text-brand-turquoise" />
+                      <span>{currentDateTime.toLocaleDateString('ar-SA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                    </div>
+                    <div className="w-px h-4 bg-slate-300" />
+                    <div className="flex items-center gap-1.5 text-[12px] text-brand-navy/70">
+                      <Clock className="h-3.5 w-3.5 text-brand-purple" />
+                      <span>{currentDateTime.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}</span>
+                    </div>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent className="space-y-5">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
