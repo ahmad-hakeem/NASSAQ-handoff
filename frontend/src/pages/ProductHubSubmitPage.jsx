@@ -675,7 +675,10 @@ export function ProductHubSubmitPage() {
                   <ReviewRow label="نوع التحدي" value={COMMENT_TYPE_OPTIONS.find(o => o.value === form.issue_type)?.labelAr || form.issue_type} />
                   <ReviewRow label="نوع الحساب" value={ACCOUNT_TYPE_LABELS[form.account_type] || form.account_type} />
                   <Separator />
-                  <ReviewRow label="عنوان التحدي" value={form.title} />
+                  <div className="bg-gradient-to-l from-brand-navy/5 via-brand-purple/5 to-brand-turquoise/5 rounded-xl p-4 border border-brand-navy/10">
+                    <p className="text-[11px] text-muted-foreground mb-1.5">عنوان التحدي</p>
+                    <h2 className="text-lg font-bold text-brand-navy leading-relaxed">{form.title}</h2>
+                  </div>
                   <ReviewRow label="الصفحة" value={form.page} />
                   <Separator />
                   <div>
