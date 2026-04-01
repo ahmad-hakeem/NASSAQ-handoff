@@ -537,11 +537,11 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
             user = await db.users.find_one({"id": current_user.get("id")})
             if user:
                 return {
-                    "name": user.get("name", ""),
+                    "name": user.get("full_name", user.get("name", "")),
                     "title": user.get("title", ""),
                     "phone": user.get("phone", ""),
-                    "language": user.get("language", "ar"),
-                    "profile_picture": user.get("profile_picture"),
+                    "language": user.get("preferred_language", user.get("language", "ar")),
+                    "profile_picture": user.get("profile_picture", user.get("avatar_url")),
                 }
             return {}
         except Exception as e:
@@ -561,10 +561,10 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
             raise HTTPException(status_code=404, detail="المستخدم غير موجود")
 
         field_map = {
-            "name": {"old_key": "name", "new_val": settings.name, "label": "الاسم"},
+            "name": {"old_key": "full_name", "new_val": settings.name, "label": "الاسم"},
             "title": {"old_key": "title", "new_val": settings.title, "label": "اللقب"},
             "phone": {"old_key": "phone", "new_val": settings.phone, "label": "رقم الهاتف"},
-            "language": {"old_key": "language", "new_val": settings.language, "label": "اللغة"},
+            "language": {"old_key": "preferred_language", "new_val": settings.language, "label": "اللغة"},
         }
 
         changes = []
