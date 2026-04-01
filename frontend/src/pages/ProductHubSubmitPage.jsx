@@ -237,15 +237,23 @@ export function ProductHubSubmitPage() {
       if (payload.impact && payload.impact.length === 0) delete payload.impact;
       if (payload.related_to && payload.related_to.length === 0) delete payload.related_to;
       if (!payload.reproducibility) delete payload.reproducibility;
+      if (payload.attachments && payload.attachments.length === 0) delete payload.attachments;
+      if (!payload.employee_id?.trim()) delete payload.employee_id;
       await axios.post('/api/product-hub/issues', payload, { headers: authHeaders() });
       toast.success('تم إرسال التحدي بنجاح — حكيم يحلله الآن');
-      navigate('/admin/product-hub');
+      navigate('/admin/product-hub?tab=issues');
     } catch (err) {
+      console.error('[ProductHub] Submit failed:', err?.response?.status, err?.response?.data || err.message);
       const detail = err.response?.data?.detail;
-      if (typeof detail === 'object' && detail.message) {
+      if (err?.response?.status === 401) {
+        toast.error('انتهت صلاحية الجلسة — يرجى تسجيل الدخول مرة أخرى');
+      } else if (typeof detail === 'object' && detail.message) {
         toast.error(detail.message);
       } else if (typeof detail === 'string') {
         toast.error(detail);
+      } else if (Array.isArray(detail)) {
+        const firstErr = detail[0]?.msg || detail[0]?.message || 'خطأ في البيانات';
+        toast.error(firstErr);
       } else {
         toast.error('فشل في إرسال التحدي');
       }

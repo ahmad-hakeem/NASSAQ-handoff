@@ -70,10 +70,15 @@ export function ProductHubPage() {
       const params = { page, limit };
       Object.entries(filters).forEach(([k, v]) => { if (v) params[k] = v; });
       const res = await axios.get('/api/product-hub/issues', { params, headers: authHeaders() });
-      setIssues(res.data.issues);
-      setTotal(res.data.total);
+      setIssues(res.data.issues || []);
+      setTotal(res.data.total || 0);
     } catch (e) {
-      toast.error('فشل في تحميل التحديات');
+      console.error('[ProductHub] fetchIssues failed:', e?.response?.status, e?.response?.data || e.message);
+      if (e?.response?.status === 401) {
+        toast.error('انتهت صلاحية الجلسة — يرجى تسجيل الدخول مرة أخرى');
+      } else {
+        toast.error('فشل في تحميل التحديات');
+      }
     } finally {
       setLoading(false);
     }
