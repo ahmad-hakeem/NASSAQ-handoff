@@ -14,7 +14,7 @@ import { toast } from 'sonner';
 import {
   Send, ArrowRight, Monitor, Loader2, CheckCircle2,
   User, FileText, Sparkles, Wand2, MessageCircle, Zap,
-  Eye, Shield, Lightbulb, ArrowLeft, PenLine,
+  Eye, Shield, Lightbulb, ArrowLeft, PenLine, RefreshCw,
 } from 'lucide-react';
 
 const authHeaders = () => {
@@ -169,6 +169,8 @@ export function ProductHubSubmitPage() {
   const [step, setStep] = useState(0);
   const [improvingField, setImprovingField] = useState(null);
   const [generatingExpected, setGeneratingExpected] = useState(false);
+  const [generatingTitle, setGeneratingTitle] = useState(false);
+  const [titleSuggestions, setTitleSuggestions] = useState([]);
   const [hakimMsgIndex, setHakimMsgIndex] = useState(0);
   const [hakimVisible, setHakimVisible] = useState(true);
   const [hakimTyping, setHakimTyping] = useState(false);
@@ -299,6 +301,42 @@ export function ProductHubSubmitPage() {
       }
     } finally {
       setGeneratingExpected(false);
+    }
+  }, [form, triggerHakimReaction]);
+
+  const generateTitle = useCallback(async () => {
+    if (!form.current_behavior || form.current_behavior.trim().length < 10 ||
+        !form.expected_behavior || form.expected_behavior.trim().length < 10) {
+      toast.error('يرجى استكمال الوضع الحالي والوضع المتوقع لإنشاء عنوان دقيق');
+      return;
+    }
+    setGeneratingTitle(true);
+    setTitleSuggestions([]);
+    try {
+      const res = await axios.post('/api/product-hub/hakim-generate-title', {
+        current_behavior: form.current_behavior,
+        expected_behavior: form.expected_behavior,
+        additional_info: form.additional_info || '',
+        issue_type: form.issue_type,
+        page: form.page,
+      }, { headers: authHeaders() });
+      if (res.data.success && res.data.titles?.length > 0) {
+        setTitleSuggestions(res.data.titles);
+        setForm(f => ({ ...f, title: f.title?.trim() ? f.title : res.data.titles[0] }));
+        toast.success('حكيم أنشأ اقتراحات للعنوان — اختر الأنسب');
+        triggerHakimReaction('improved');
+      } else {
+        toast.error('لم يتمكن حكيم من إنشاء عنوان — حاول مرة أخرى');
+      }
+    } catch (err) {
+      const detail = err.response?.data?.detail;
+      if (typeof detail === 'object' && detail.message) {
+        toast.error(detail.message);
+      } else {
+        toast.error('فشل في إنشاء العنوان');
+      }
+    } finally {
+      setGeneratingTitle(false);
     }
   }, [form, triggerHakimReaction]);
 
@@ -441,7 +479,7 @@ export function ProductHubSubmitPage() {
             step={step}
             improving={!!improvingField}
             submitting={submitting}
-            generating={generatingExpected}
+            generating={generatingExpected || generatingTitle}
           />
 
           {step === 0 && (
@@ -518,18 +556,6 @@ export function ProductHubSubmitPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-5">
-                <HakimInput
-                  label="عنوان التحدي"
-                  required
-                  value={form.title}
-                  onChange={(v) => handleChange('title', v)}
-                  placeholder="اكتب عنواناً واضحاً ومختصراً للتحدي"
-                  improving={improvingField === 'title'}
-                  onImprove={() => improveWithHakim('title')}
-                  maxLength={200}
-                  hint="مثال: خطأ في حفظ بيانات الطالب عند التعديل"
-                />
-
                 <div>
                   <Label className="text-sm font-medium">الصفحة <span className="text-red-500">*</span></Label>
                   {availablePages.length > 0 ? (
@@ -593,6 +619,24 @@ export function ProductHubSubmitPage() {
                   fieldName="additional_info"
                   improving={improvingField === 'additional_info'}
                   onImprove={() => improveWithHakim('additional_info')}
+                />
+
+                <Separator className="my-2" />
+
+                <HakimTitleGenerator
+                  value={form.title}
+                  onChange={(v) => { handleChange('title', v); setTitleSuggestions([]); }}
+                  onSelectSuggestion={(v) => { handleChange('title', v); }}
+                  onGenerate={generateTitle}
+                  onRegenerate={generateTitle}
+                  generating={generatingTitle}
+                  suggestions={titleSuggestions}
+                  canGenerate={
+                    form.current_behavior && form.current_behavior.trim().length >= 10 &&
+                    form.expected_behavior && form.expected_behavior.trim().length >= 10
+                  }
+                  improving={improvingField === 'title'}
+                  onImprove={() => improveWithHakim('title')}
                 />
               </CardContent>
             </Card>
@@ -1020,6 +1064,164 @@ function HakimTextArea({ label, required, value, onChange, placeholder, fieldNam
           <p className="text-[11px] text-muted-foreground">{(value || '').length}/{maxLength}</p>
         )}
       </div>
+    </div>
+  );
+}
+
+function HakimTitleGenerator({ value, onChange, onSelectSuggestion, onGenerate, onRegenerate, generating, suggestions, canGenerate, improving, onImprove }) {
+  const canImprove = value && value.trim().length >= 5;
+  const isDisabled = improving || generating;
+  const hasSuggestions = suggestions && suggestions.length > 0;
+
+  return (
+    <div className="rounded-xl border border-brand-purple/20 bg-gradient-to-l from-brand-purple/5 via-white to-brand-turquoise/5 p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <img src="/hakim-poses/giving-instructions.png" alt="" className="h-7 w-7 rounded-lg object-cover border border-brand-purple/15" onError={hakimImgError} />
+          <div>
+            <Label className="text-sm font-medium">
+              عنوان التحدي <span className="text-red-500">*</span>
+            </Label>
+            <p className="text-[10px] text-muted-foreground">يُفضّل 3-5 كلمات بصياغة إيجابية</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onGenerate}
+            disabled={isDisabled || !canGenerate}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium transition-all ${
+              generating
+                ? 'bg-brand-purple/10 text-brand-purple cursor-wait'
+                : canGenerate
+                  ? 'bg-gradient-to-l from-brand-purple/15 to-brand-turquoise/10 text-brand-navy hover:from-brand-purple/25 hover:to-brand-turquoise/15 border border-brand-purple/20 hover:border-brand-purple/40 hover:shadow-sm cursor-pointer'
+                  : 'bg-slate-50 text-slate-300 cursor-not-allowed border border-slate-100'
+            }`}
+          >
+            {generating ? (
+              <>
+                <Loader2 className="h-3 w-3 animate-spin" />
+                <span>حكيم يُنشئ...</span>
+              </>
+            ) : (
+              <>
+                <PenLine className="h-3 w-3" />
+                <span>إنشاء بحكيم</span>
+                <img src="/hakim-poses/ai-thinking-2.png" alt="" className="h-4 w-4 rounded-full object-cover" onError={hakimImgError} />
+              </>
+            )}
+          </button>
+          {canImprove && (
+            <button
+              type="button"
+              onClick={onImprove}
+              disabled={isDisabled}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium transition-all ${
+                improving
+                  ? 'bg-brand-turquoise/10 text-brand-turquoise cursor-wait'
+                  : 'bg-gradient-to-l from-brand-turquoise/10 to-brand-purple/10 text-brand-navy hover:from-brand-turquoise/20 hover:to-brand-purple/20 border border-brand-turquoise/20 hover:border-brand-turquoise/40 hover:shadow-sm cursor-pointer'
+              }`}
+            >
+              {improving ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <span>يحسّن...</span>
+                </>
+              ) : (
+                <>
+                  <Wand2 className="h-3 w-3" />
+                  <span>تحسين</span>
+                </>
+              )}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="relative">
+        <Input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={canGenerate ? 'اكتب عنواناً أو اضغط "إنشاء بحكيم"' : 'أكمل الوضع الحالي والمتوقع أولاً'}
+          className={`text-right rounded-lg transition-all ${
+            generating ? 'border-brand-purple/40 bg-brand-purple/5' :
+            improving ? 'border-brand-turquoise/40 bg-brand-turquoise/5' : ''
+          }`}
+          maxLength={200}
+          disabled={isDisabled}
+        />
+        {generating && (
+          <div className="absolute inset-0 bg-brand-purple/5 rounded-lg flex items-center justify-center pointer-events-none">
+            <div className="flex items-center gap-2 bg-white/90 backdrop-blur-sm px-4 py-2 rounded-full shadow-md border border-brand-purple/20">
+              <img src="/hakim-poses/ai-thinking-2.png" alt="" className="h-6 w-6 rounded-full object-cover border border-brand-purple/20" onError={hakimImgError} />
+              <span className="text-xs font-medium text-brand-navy">حكيم يُنشئ عنواناً احترافياً...</span>
+              <Sparkles className="h-3 w-3 text-brand-purple/60" />
+            </div>
+          </div>
+        )}
+        {improving && (
+          <div className="absolute inset-0 bg-brand-turquoise/5 rounded-lg flex items-center justify-center pointer-events-none">
+            <div className="flex items-center gap-2 bg-white/90 backdrop-blur-sm px-4 py-2 rounded-full shadow-md border border-brand-turquoise/20">
+              <img src="/hakim-poses/ai-thinking.png" alt="" className="h-6 w-6 rounded-full object-cover border border-brand-turquoise/20" onError={hakimImgError} />
+              <span className="text-xs font-medium text-brand-navy">حكيم يحسّن العنوان...</span>
+              <Sparkles className="h-3 w-3 text-brand-turquoise/60" />
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between">
+        {!canGenerate ? (
+          <p className="text-[10px] text-amber-600 flex items-center gap-1">
+            <Lightbulb className="h-3 w-3" />
+            يرجى استكمال الوضع الحالي والوضع المتوقع لإنشاء عنوان دقيق
+          </p>
+        ) : (
+          <p className="text-[10px] text-muted-foreground">
+            {hasSuggestions ? 'اختر من الاقتراحات أو عدّل العنوان يدوياً' : 'يمكنك الكتابة يدوياً أو الإنشاء بواسطة حكيم'}
+          </p>
+        )}
+        <p className="text-[10px] text-muted-foreground">{(value || '').length}/200</p>
+      </div>
+
+      {hasSuggestions && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-semibold text-brand-navy flex items-center gap-1.5">
+              <img src="/hakim-poses/positive-feedback.png" alt="" className="h-5 w-5 rounded-full object-cover" onError={hakimImgError} />
+              اقتراحات حكيم
+            </p>
+            <button
+              type="button"
+              onClick={onRegenerate}
+              disabled={isDisabled}
+              className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] text-brand-purple hover:bg-brand-purple/10 transition-all"
+            >
+              <RefreshCw className="h-3 w-3" />
+              إعادة توليد
+            </button>
+          </div>
+          <div className="grid gap-1.5">
+            {suggestions.map((s, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => onSelectSuggestion(s)}
+                className={`w-full text-right px-3 py-2 rounded-lg text-sm transition-all border ${
+                  value === s
+                    ? 'bg-brand-purple/10 border-brand-purple/30 text-brand-navy font-medium'
+                    : 'bg-white border-slate-200 text-brand-navy/80 hover:bg-brand-purple/5 hover:border-brand-purple/20'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span>{s}</span>
+                  {value === s && <CheckCircle2 className="h-3.5 w-3.5 text-brand-purple flex-shrink-0" />}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

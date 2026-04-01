@@ -1116,6 +1116,82 @@ async def hakim_generate_expected(
         return {"generated_text": "", "success": False}
 
 
+@router.post("/hakim-generate-title")
+async def hakim_generate_title(
+    data: dict = Body(...),
+    current_user: dict = Depends(get_current_user),
+):
+    current_behavior = (data.get("current_behavior") or "").strip()[:5000]
+    expected_behavior = (data.get("expected_behavior") or "").strip()[:5000]
+    additional_info = (data.get("additional_info") or "").strip()[:2000]
+    issue_type = (data.get("issue_type") or "").strip()[:100]
+    page = (data.get("page") or "").strip()[:200]
+
+    if not current_behavior or len(current_behavior) < 10:
+        _hub_error(422, "INSUFFICIENT_DATA", "يرجى استكمال الوضع الحالي والوضع المتوقع لإنشاء عنوان دقيق")
+    if not expected_behavior or len(expected_behavior) < 10:
+        _hub_error(422, "INSUFFICIENT_DATA", "يرجى استكمال الوضع الحالي والوضع المتوقع لإنشاء عنوان دقيق")
+
+    try:
+        from openai import OpenAI
+        import os, json as _json
+        api_key = os.environ.get("AI_INTEGRATIONS_OPENAI_API_KEY", "")
+        base_url = os.environ.get("AI_INTEGRATIONS_OPENAI_BASE_URL", "")
+        if not api_key:
+            return {"titles": [], "success": False}
+
+        client = OpenAI(api_key=api_key, base_url=base_url if base_url else None)
+
+        context_parts = []
+        if issue_type:
+            type_label = ISSUE_TYPE_LABELS.get(issue_type, issue_type)
+            context_parts.append(f"نوع التحدي: {type_label}")
+        if page:
+            context_parts.append(f"الصفحة: {page}")
+        context_parts.append(f"الوضع الحالي: {current_behavior}")
+        context_parts.append(f"الوضع المتوقع: {expected_behavior}")
+        if additional_info:
+            context_parts.append(f"معلومات إضافية: {additional_info}")
+
+        context = "\n".join(context_parts)
+
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": """أنت حكيم، مساعد ذكاء المنتج في نظام نسّق التعليمي.
+مهمتك: بناءً على تفاصيل التحدي، أنشئ 3 عناوين احترافية مختلفة.
+
+قواعد صارمة للعنوان:
+- قصير ومركز: من 3 إلى 5 كلمات فقط
+- واضح وسهل الفهم بدون غموض
+- يعكس القيمة أو الهدف وليس المشكلة فقط
+- استخدم لغة إيجابية وبنّاءة
+- لا تستخدم كلمات سلبية مثل: "مشكلة"، "خطأ"، "فشل"، "عطل"، "خلل"
+- استخدم تعبيرات مثل: "تحسين تجربة..."، "تطوير أداء..."، "تحسين..."، "فرصة تحسين..."
+- اكتب بالعربية فقط
+- قابل للعرض في كارت بدون قص
+
+أرجع النتيجة كـ JSON array فقط بدون أي نص إضافي:
+["عنوان 1", "عنوان 2", "عنوان 3"]"""},
+                {"role": "user", "content": context}
+            ],
+            max_tokens=200,
+            temperature=0.7,
+        )
+
+        raw = response.choices[0].message.content.strip()
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+        titles = _json.loads(raw)
+        if not isinstance(titles, list):
+            titles = [str(titles)]
+        titles = [t.strip() for t in titles if isinstance(t, str) and t.strip()][:3]
+        return {"titles": titles, "success": True}
+    except Exception as e:
+        logger.warning(f"[Hakim] Title generation failed: {e}")
+        return {"titles": [], "success": False}
+
+
 @router.post("/hakim-improve-text")
 async def hakim_improve_text(
     data: dict = Body(...),
