@@ -239,9 +239,10 @@ export function ProductHubSubmitPage() {
       if (!payload.reproducibility) delete payload.reproducibility;
       if (payload.attachments && payload.attachments.length === 0) delete payload.attachments;
       if (!payload.employee_id?.trim()) delete payload.employee_id;
-      await axios.post('/api/product-hub/issues', payload, { headers: authHeaders() });
+      const res = await axios.post('/api/product-hub/issues', payload, { headers: authHeaders() });
+      const newId = res.data?.id || '';
       toast.success('تم إرسال التحدي بنجاح — حكيم يحلله الآن');
-      navigate('/admin/product-hub?tab=issues');
+      navigate(`/admin/product-hub?tab=issues${newId ? `&highlight=${newId}` : ''}`);
     } catch (err) {
       console.error('[ProductHub] Submit failed:', err?.response?.status, err?.response?.data || err.message);
       const detail = err.response?.data?.detail;

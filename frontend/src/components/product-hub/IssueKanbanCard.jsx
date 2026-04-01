@@ -29,8 +29,9 @@ function getInitials(name) {
   return parts[0].slice(0, 2);
 }
 
-export function IssueKanbanCard({ issue }) {
+export function IssueKanbanCard({ issue, isHighlighted }) {
   const navigate = useNavigate();
+  const cardRef = React.useRef(null);
   const typeCfg = TYPE_CONFIG[issue.issue_type] || TYPE_CONFIG.other;
   const TypeIcon = typeCfg.icon;
   const progress = STATUS_PROGRESS[issue.status] || 0;
@@ -41,10 +42,17 @@ export function IssueKanbanCard({ issue }) {
   const commentCount = issue.discussion?.length || 0;
   const attachmentCount = issue.attachments?.length || 0;
 
+  React.useEffect(() => {
+    if (isHighlighted && cardRef.current) {
+      cardRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [isHighlighted]);
+
   return (
     <div
+      ref={cardRef}
       onClick={() => navigate(`/admin/product-hub/issues/${issue.id}`)}
-      className="group relative bg-white rounded-xl border border-slate-200/80 hover:border-brand-turquoise/50 shadow-[0_1px_3px_rgba(0,0,0,0.04)] hover:shadow-[0_8px_25px_rgba(70,193,190,0.12)] transition-all duration-300 cursor-pointer overflow-hidden"
+      className={`group relative bg-white rounded-xl border border-slate-200/80 hover:border-brand-turquoise/50 shadow-[0_1px_3px_rgba(0,0,0,0.04)] hover:shadow-[0_8px_25px_rgba(70,193,190,0.12)] transition-all duration-300 cursor-pointer overflow-hidden ${isHighlighted ? 'ring-2 ring-brand-turquoise ring-offset-2 animate-pulse' : ''}`}
     >
       <div
         className={`absolute inset-x-0 top-0 h-[3px] bg-gradient-to-l ${getProgressGradient(progress, issue.status)} transition-all duration-500`}

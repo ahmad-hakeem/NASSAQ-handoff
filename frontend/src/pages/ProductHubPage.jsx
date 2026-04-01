@@ -43,6 +43,7 @@ export function ProductHubPage() {
   const [config, setConfig] = useState(null);
   const [sortField, setSortField] = useState('created_at');
   const [sortDir, setSortDir] = useState('desc');
+  const [highlightId, setHighlightId] = useState(searchParams.get('highlight') || '');
 
   const [filters, setFilters] = useState({
     status: searchParams.get('status') || '',
@@ -101,7 +102,20 @@ export function ProductHubPage() {
   useEffect(() => {
     const tab = searchParams.get('tab');
     if (tab && tab !== activeTab) setActiveTab(tab);
+    const hl = searchParams.get('highlight');
+    if (hl) setHighlightId(hl);
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!highlightId) return;
+    const timer = setTimeout(() => {
+      setHighlightId('');
+      const fresh = new URLSearchParams(window.location.search);
+      fresh.delete('highlight');
+      setSearchParams(fresh, { replace: true });
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [highlightId]);
 
   const handleTabChange = (tab) => {
     setActiveTab(tab);
@@ -222,6 +236,7 @@ export function ProductHubPage() {
                 sortField={sortField}
                 sortDir={sortDir}
                 navigate={navigate}
+                highlightId={highlightId}
               />
             </TabsContent>
 
@@ -233,7 +248,7 @@ export function ProductHubPage() {
                 onClear={clearFilters}
                 hasActiveFilters={hasActiveFilters}
               />
-              <KanbanView issues={kanbanIssues} loading={loading} total={total} />
+              <KanbanView issues={kanbanIssues} loading={loading} total={total} highlightId={highlightId} />
             </TabsContent>
           </Tabs>
         </div>
@@ -372,18 +387,26 @@ function getCardStyle(progress, status) {
   return 'border-slate-200';
 }
 
-function IssueCard({ issue, navigate }) {
+function IssueCard({ issue, navigate, isHighlighted }) {
   const typeCfg = TYPE_CONFIG[issue.issue_type] || TYPE_CONFIG.other;
   const TypeIcon = typeCfg.icon;
   const progress = STATUS_PROGRESS[issue.status] || 0;
   const isDone = issue.status === 'done' || issue.status === 'user_feedback_confirmed';
   const isRejected = issue.status === 'rejected';
   const cardBorder = getCardStyle(progress, issue.status);
+  const cardRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (isHighlighted && cardRef.current) {
+      cardRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [isHighlighted]);
 
   return (
     <Card
+      ref={cardRef}
       onClick={() => navigate(`/admin/product-hub/issues/${issue.id}`)}
-      className={`shadow-sm rounded-xl hover:shadow-lg cursor-pointer transition-all group overflow-hidden ${cardBorder}`}
+      className={`shadow-sm rounded-xl hover:shadow-lg cursor-pointer transition-all group overflow-hidden ${cardBorder} ${isHighlighted ? 'ring-2 ring-brand-turquoise ring-offset-2 animate-pulse' : ''}`}
     >
       <div className={`h-1 w-full bg-gradient-to-l ${getProgressGradient(progress, issue.status)}`} style={{ width: `${progress}%`, minWidth: progress > 0 ? '8px' : '0' }} />
 
@@ -472,7 +495,7 @@ function IssueCard({ issue, navigate }) {
   );
 }
 
-function IssuesTableView({ issues, loading, total, page, totalPages, onPageChange, navigate }) {
+function IssuesTableView({ issues, loading, total, page, totalPages, onPageChange, navigate, highlightId }) {
   if (loading) {
     return (
       <div className="flex justify-center items-center py-20">
@@ -498,7 +521,7 @@ function IssuesTableView({ issues, loading, total, page, totalPages, onPageChang
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {issues.map(issue => (
-          <IssueCard key={issue.id} issue={issue} navigate={navigate} />
+          <IssueCard key={issue.id} issue={issue} navigate={navigate} isHighlighted={highlightId === issue.id} />
         ))}
       </div>
 
@@ -519,7 +542,7 @@ function IssuesTableView({ issues, loading, total, page, totalPages, onPageChang
   );
 }
 
-function KanbanView({ issues, loading, total }) {
+function KanbanView({ issues, loading, total, highlightId }) {
   if (loading) {
     return (
       <div className="flex justify-center items-center py-24">
@@ -625,7 +648,7 @@ function KanbanView({ issues, loading, total }) {
                     </div>
                   ) : (
                     columnIssues.map(issue => (
-                      <IssueKanbanCard key={issue.id} issue={issue} />
+                      <IssueKanbanCard key={issue.id} issue={issue} isHighlighted={highlightId === issue.id} />
                     ))
                   )}
                 </div>
