@@ -188,7 +188,7 @@ export function ProductHubPage() {
           </div>
 
           <Tabs value={activeTab} onValueChange={handleTabChange}>
-            <div className="flex justify-end">
+            <div className="flex justify-start">
               <TabsList className="bg-white border shadow-sm rounded-xl p-1">
                 <TabsTrigger value="issues" className="rounded-lg data-[state=active]:bg-brand-navy data-[state=active]:text-white gap-2">
                   <Table2 className="h-4 w-4" />
