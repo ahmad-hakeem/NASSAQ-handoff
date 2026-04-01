@@ -13,11 +13,11 @@ import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
 import { toast } from 'sonner';
 import {
-  TYPE_CONFIG, IMPACT_LABELS, REPRODUCIBILITY_OPTIONS, DYNAMIC_FIELD_LABELS,
+  TYPE_CONFIG,
 } from '../components/product-hub';
 import {
   Brain, Send, ArrowRight, Monitor, Loader2, CheckCircle2,
-  User, FileText, Sparkles, Info,
+  User, FileText,
 } from 'lucide-react';
 
 const authHeaders = () => {
@@ -28,7 +28,6 @@ const authHeaders = () => {
 const STEPS = [
   { key: 'reporter', label: 'المُبلِّغ', icon: User },
   { key: 'details', label: 'تفاصيل التعليق', icon: FileText },
-  { key: 'extra', label: 'معلومات إضافية', icon: Info },
   { key: 'review', label: 'مراجعة وإرسال', icon: Send },
 ];
 
@@ -54,7 +53,6 @@ const ACCOUNT_TYPE_LABELS = {
   website_user: 'Website User — زائر الموقع',
 };
 
-const IMPACT_OPTIONS = Object.entries(IMPACT_LABELS).map(([value, label]) => ({ value, label }));
 
 export function ProductHubSubmitPage() {
   const { user } = useAuth();
@@ -80,9 +78,9 @@ export function ProductHubSubmitPage() {
     related_to: [],
     reproducibility: '',
     attachments: [],
+    additional_info: '',
   });
 
-  const [dynamicFields, setDynamicFields] = useState({});
 
   useEffect(() => {
     axios.get('/api/product-hub/config', { headers: authHeaders() })
@@ -96,21 +94,9 @@ export function ProductHubSubmitPage() {
     }
   }, [user]);
 
-  const dynamicFieldList = config?.dynamic_fields?.[form.issue_type] || [];
 
   const handleChange = (field, value) => {
     setForm(f => ({ ...f, [field]: value }));
-  };
-
-  const toggleImpact = (val) => {
-    setForm(f => ({
-      ...f,
-      impact: f.impact.includes(val) ? f.impact.filter(v => v !== val) : [...f.impact, val],
-    }));
-  };
-
-  const handleDynamicChange = (field, value) => {
-    setDynamicFields(f => ({ ...f, [field]: value }));
   };
 
   const validateStep = (stepIdx) => {
@@ -144,7 +130,8 @@ export function ProductHubSubmitPage() {
 
     setSubmitting(true);
     try {
-      const payload = { ...form, ...dynamicFields };
+      const payload = { ...form };
+      if (!payload.additional_info?.trim()) delete payload.additional_info;
       if (payload.impact && payload.impact.length === 0) delete payload.impact;
       if (payload.related_to && payload.related_to.length === 0) delete payload.related_to;
       if (!payload.reproducibility) delete payload.reproducibility;
@@ -322,97 +309,22 @@ export function ProductHubSubmitPage() {
                   />
                   <p className="text-[11px] text-muted-foreground mt-1 text-left">{(form.expected_behavior || '').length}/5000</p>
                 </div>
+
+                <div>
+                  <Label className="text-sm font-medium">معلومات إضافية</Label>
+                  <Textarea
+                    value={form.additional_info || ''}
+                    onChange={(e) => handleChange('additional_info', e.target.value)}
+                    placeholder="أضف أي تفاصيل أو ملاحظات إضافية تساعد في فهم التعليق..."
+                    className="mt-1.5 text-right min-h-[80px] rounded-lg"
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">اختياري — يساعد حكيم في التحليل</p>
+                </div>
               </CardContent>
             </Card>
           )}
 
           {step === 2 && (
-            <div className="space-y-5">
-              <Card className="border shadow-sm rounded-xl">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Info className="h-4 w-4 text-brand-turquoise" />
-                    معلومات إضافية
-                  </CardTitle>
-                  <p className="text-xs text-muted-foreground">هذه الحقول اختيارية ولكنها تساعد حكيم في التحليل</p>
-                </CardHeader>
-                <CardContent className="space-y-5">
-                  <div>
-                    <Label className="text-sm font-medium">التأثير</Label>
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {IMPACT_OPTIONS.map(opt => (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() => toggleImpact(opt.value)}
-                          className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-                            form.impact.includes(opt.value)
-                              ? 'border-brand-turquoise bg-brand-turquoise/10 text-brand-navy'
-                              : 'border-slate-200 text-muted-foreground hover:border-slate-300'
-                          }`}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <Label className="text-sm font-medium">قابلية التكرار</Label>
-                    <div className="flex gap-2 mt-1.5">
-                      {REPRODUCIBILITY_OPTIONS.map(opt => (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() => handleChange('reproducibility', opt.value)}
-                          className={`px-4 py-2 rounded-lg border-2 text-sm transition-all ${
-                            form.reproducibility === opt.value
-                              ? 'border-brand-turquoise bg-brand-turquoise/10 text-brand-navy font-medium'
-                              : 'border-slate-200 text-muted-foreground hover:border-slate-300'
-                          }`}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {dynamicFieldList.length > 0 && (
-                <Card className="border shadow-sm rounded-xl">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <Sparkles className="h-4 w-4 text-brand-turquoise" />
-                      حقول خاصة بنوع التعليق
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {dynamicFieldList.filter(f => f !== 'reproducibility').map(field => (
-                      <div key={field}>
-                        <Label className="text-sm font-medium">{DYNAMIC_FIELD_LABELS[field] || field}</Label>
-                        {field.includes('steps') || field.includes('journey') || field.includes('details') || field.includes('value') ? (
-                          <Textarea
-                            value={dynamicFields[field] || ''}
-                            onChange={(e) => handleDynamicChange(field, e.target.value)}
-                            className="mt-1.5 text-right min-h-[80px] rounded-lg"
-                          />
-                        ) : (
-                          <Input
-                            value={dynamicFields[field] || ''}
-                            onChange={(e) => handleDynamicChange(field, e.target.value)}
-                            className="mt-1.5 text-right rounded-lg"
-                          />
-                        )}
-                      </div>
-                    ))}
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-          )}
-
-          {step === 3 && (
             <div className="space-y-5">
               <Card className="border shadow-sm rounded-xl">
                 <CardHeader className="pb-3">
@@ -437,18 +349,11 @@ export function ProductHubSubmitPage() {
                     <p className="text-xs text-muted-foreground mb-1">السلوك المتوقع</p>
                     <p className="text-sm bg-emerald-50 p-3 rounded-lg border border-emerald-100">{form.expected_behavior}</p>
                   </div>
-                  {form.impact.length > 0 && (
+                  {form.additional_info && (
                     <div>
-                      <p className="text-xs text-muted-foreground mb-1">التأثير</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {form.impact.map(i => (
-                          <Badge key={i} variant="secondary" className="text-[11px]">{IMPACT_LABELS[i] || i}</Badge>
-                        ))}
-                      </div>
+                      <p className="text-xs text-muted-foreground mb-1">معلومات إضافية</p>
+                      <p className="text-sm bg-slate-50 p-3 rounded-lg border border-slate-200">{form.additional_info}</p>
                     </div>
-                  )}
-                  {form.reproducibility && (
-                    <ReviewRow label="قابلية التكرار" value={REPRODUCIBILITY_OPTIONS.find(o => o.value === form.reproducibility)?.label || form.reproducibility} />
                   )}
                 </CardContent>
               </Card>
