@@ -22,7 +22,7 @@ import {
 import {
   ArrowRight, Brain, Copy, Send, Shield, MessageSquare, Activity,
   FileText, Loader2, ThumbsUp, ThumbsDown, UserPlus, ChevronDown, ChevronUp,
-  Monitor, Globe, Eye, AlertTriangle, CheckCircle2, ClipboardCheck,
+  Monitor, Globe, Eye, AlertTriangle, CheckCircle2,
 } from 'lucide-react';
 
 const authHeaders = () => {
@@ -39,8 +39,6 @@ export function ProductHubIssuePage() {
   const [comment, setComment] = useState('');
   const [commentType, setCommentType] = useState('general');
   const [submittingComment, setSubmittingComment] = useState(false);
-  const [showPrompt, setShowPrompt] = useState(false);
-  const [prompt, setPrompt] = useState('');
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [statusNote, setStatusNote] = useState('');
   const [assignTeam, setAssignTeam] = useState('');
@@ -116,17 +114,6 @@ export function ProductHubIssuePage() {
     }
   };
 
-  const handleCopyPrompt = async () => {
-    try {
-      const res = await axios.get(`/api/product-hub/issues/${issueId}/prompt`, { headers: authHeaders() });
-      setPrompt(res.data.prompt);
-      setShowPrompt(true);
-      await navigator.clipboard.writeText(res.data.prompt);
-      toast.success('تم نسخ Prompt');
-    } catch (err) {
-      toast.error(err.response?.data?.detail?.message || 'غير مصرح');
-    }
-  };
 
   const handleFeedback = async (resolved) => {
     try {
@@ -194,14 +181,6 @@ export function ProductHubIssuePage() {
                 </div>
               </div>
             </div>
-            {isAdmin && (
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <Button variant="outline" size="sm" onClick={handleCopyPrompt} className="rounded-lg gap-1.5">
-                  <Copy className="h-3.5 w-3.5" />
-                  نسخ Prompt
-                </Button>
-              </div>
-            )}
           </div>
 
           <div className="w-full">
@@ -339,34 +318,6 @@ export function ProductHubIssuePage() {
                 </CardContent>
               </Card>
 
-              {showPrompt && prompt && isAdmin && (
-                <Card className="border shadow-sm rounded-xl border-brand-turquoise/30">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <ClipboardCheck className="h-4 w-4 text-brand-turquoise" />
-                      Developer Prompt
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <pre className="text-xs bg-slate-900 text-emerald-400 p-5 rounded-xl overflow-x-auto whitespace-pre-wrap font-mono leading-relaxed" dir="ltr">
-                      {prompt}
-                    </pre>
-                    <div className="flex justify-end mt-3 gap-2">
-                      <Button
-                        size="sm" variant="outline"
-                        onClick={async () => {
-                          await navigator.clipboard.writeText(prompt);
-                          toast.success('تم النسخ');
-                        }}
-                        className="rounded-lg text-xs"
-                      >
-                        <Copy className="h-3 w-3 ml-1" />
-                        نسخ مرة أخرى
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
 
               <Card className="border shadow-sm rounded-xl">
                 <CardHeader className="pb-3">
