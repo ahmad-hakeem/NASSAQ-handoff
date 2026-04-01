@@ -22,6 +22,11 @@ import {
   RefreshCw, XCircle,
 } from 'lucide-react';
 
+const authHeaders = () => {
+  const t = localStorage.getItem('nassaq_token');
+  return t ? { Authorization: `Bearer ${t}` } : {};
+};
+
 export function ProductHubPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -53,7 +58,7 @@ export function ProductHubPage() {
 
   const fetchConfig = useCallback(async () => {
     try {
-      const res = await axios.get('/api/product-hub/config');
+      const res = await axios.get('/api/product-hub/config', { headers: authHeaders() });
       setConfig(res.data);
     } catch (e) { console.error(e); }
   }, []);
@@ -63,7 +68,7 @@ export function ProductHubPage() {
     try {
       const params = { page, limit };
       Object.entries(filters).forEach(([k, v]) => { if (v) params[k] = v; });
-      const res = await axios.get('/api/product-hub/issues', { params });
+      const res = await axios.get('/api/product-hub/issues', { params, headers: authHeaders() });
       setIssues(res.data.issues);
       setTotal(res.data.total);
     } catch (e) {
@@ -76,7 +81,7 @@ export function ProductHubPage() {
   const fetchDashboard = useCallback(async () => {
     setDashLoading(true);
     try {
-      const res = await axios.get('/api/product-hub/dashboard');
+      const res = await axios.get('/api/product-hub/dashboard', { headers: authHeaders() });
       setDashboard(res.data);
     } catch (e) { console.error(e); }
     finally { setDashLoading(false); }

@@ -24,6 +24,11 @@ import {
   Monitor, Globe, Eye, AlertTriangle, CheckCircle2, ClipboardCheck,
 } from 'lucide-react';
 
+const authHeaders = () => {
+  const t = localStorage.getItem('nassaq_token');
+  return t ? { Authorization: `Bearer ${t}` } : {};
+};
+
 export function ProductHubIssuePage() {
   const { issueId } = useParams();
   const { user } = useAuth();
@@ -44,7 +49,7 @@ export function ProductHubIssuePage() {
 
   const fetchIssue = useCallback(async () => {
     try {
-      const res = await axios.get(`/api/product-hub/issues/${issueId}`);
+      const res = await axios.get(`/api/product-hub/issues/${issueId}`, { headers: authHeaders() });
       setIssue(res.data);
     } catch (e) {
       toast.error('فشل في تحميل المشكلة');
@@ -65,7 +70,7 @@ export function ProductHubIssuePage() {
     try {
       await axios.put(`/api/product-hub/issues/${issueId}/status`, {
         status: newStatus, note: statusNote
-      });
+      }, { headers: authHeaders() });
       toast.success('تم تحديث الحالة');
       setStatusNote('');
       fetchIssue();
@@ -80,7 +85,7 @@ export function ProductHubIssuePage() {
   const handleAssign = async () => {
     if (!assignTeam) return;
     try {
-      await axios.put(`/api/product-hub/issues/${issueId}/assign`, { assigned_team: assignTeam });
+      await axios.put(`/api/product-hub/issues/${issueId}/assign`, { assigned_team: assignTeam }, { headers: authHeaders() });
       toast.success('تم التعيين');
       setAssignTeam('');
       fetchIssue();
@@ -96,7 +101,7 @@ export function ProductHubIssuePage() {
     try {
       await axios.post(`/api/product-hub/issues/${issueId}/comments`, {
         content: comment, comment_type: isAdmin ? commentType : 'general'
-      });
+      }, { headers: authHeaders() });
       toast.success('تم إضافة التعليق');
       setComment('');
       setCommentType('general');
@@ -110,7 +115,7 @@ export function ProductHubIssuePage() {
 
   const handleCopyPrompt = async () => {
     try {
-      const res = await axios.get(`/api/product-hub/issues/${issueId}/prompt`);
+      const res = await axios.get(`/api/product-hub/issues/${issueId}/prompt`, { headers: authHeaders() });
       setPrompt(res.data.prompt);
       setShowPrompt(true);
       await navigator.clipboard.writeText(res.data.prompt);
@@ -122,7 +127,7 @@ export function ProductHubIssuePage() {
 
   const handleFeedback = async (resolved) => {
     try {
-      await axios.post(`/api/product-hub/issues/${issueId}/feedback`, { resolved });
+      await axios.post(`/api/product-hub/issues/${issueId}/feedback`, { resolved }, { headers: authHeaders() });
       toast.success(resolved ? 'شكراً — تم تأكيد الحل' : 'تم إعادة فتح المشكلة');
       fetchIssue();
     } catch (err) {

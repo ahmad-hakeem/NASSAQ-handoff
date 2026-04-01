@@ -20,6 +20,11 @@ import {
   User, FileText, Sparkles, Info, Globe, Smartphone, Laptop,
 } from 'lucide-react';
 
+const authHeaders = () => {
+  const t = localStorage.getItem('nassaq_token');
+  return t ? { Authorization: `Bearer ${t}` } : {};
+};
+
 const STEPS = [
   { key: 'reporter', label: 'المُبلِّغ', icon: User },
   { key: 'details', label: 'تفاصيل المشكلة', icon: FileText },
@@ -58,7 +63,7 @@ export function ProductHubSubmitPage() {
   const [dynamicFields, setDynamicFields] = useState({});
 
   useEffect(() => {
-    axios.get('/api/product-hub/config')
+    axios.get('/api/product-hub/config', { headers: authHeaders() })
       .then(r => setConfig(r.data))
       .catch(() => {});
   }, []);
@@ -121,7 +126,7 @@ export function ProductHubSubmitPage() {
       if (payload.impact && payload.impact.length === 0) delete payload.impact;
       if (payload.related_to && payload.related_to.length === 0) delete payload.related_to;
       if (!payload.reproducibility) delete payload.reproducibility;
-      const res = await axios.post('/api/product-hub/issues', payload);
+      const res = await axios.post('/api/product-hub/issues', payload, { headers: authHeaders() });
       toast.success('تم إرسال المشكلة بنجاح — حكيم يحللها الآن');
       navigate(`/admin/product-hub/issues/${res.data.id}`);
     } catch (err) {
