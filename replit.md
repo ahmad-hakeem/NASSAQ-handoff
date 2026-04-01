@@ -86,16 +86,19 @@ Each fix report must include: root cause, why it wasn't caught before, what chan
 - **Database**: MongoDB at `localhost:27017`, DB: `test_database`
 
 ### Product Intelligence Hub (مركز ذكاء المنتج)
-- **Backend**: `backend/routes/product_hub_routes.py` — Full CRUD, status workflow, Hakim AI analysis, comments, dashboard analytics
-- **Frontend**: `ProductHubPage.jsx` (listing + analytics), `ProductHubSubmitPage.jsx` (smart form), `ProductHubIssuePage.jsx` (detail + comments + feedback)
+- **RBAC Engine**: `backend/engines/product_hub_rbac.py` — HubAction permission matrix (24 actions), HubRole resolution (platform_admin/internal_user), structured error codes (FORBIDDEN_*), resource ownership validation, field redaction for non-admins, permission denial audit logging
+- **Event Flow Engine**: `backend/engines/product_hub_events.py` — 16 HubEvent types (issue_created, hakim_analysis_started/completed, duplicate_detected, prompt_generated, status_changed, issue_marked_done, feedback_loop_sent, user_confirmed/rejected_resolution, issue_reopened, comment/attachment_added, issue_updated, sla_warning_triggered), SLA calculation, progress% enrichment, strict status transitions
+- **API Routes**: `backend/routes/product_hub_routes.py` — 18 endpoints: POST/GET/PATCH issues, PUT status/assign/title/priority, POST/GET comments, POST feedback, GET/POST prompt, GET hakim-insights, GET activity-log, GET duplicates, GET dashboard, GET config
+- **Frontend**: `ProductHubPage.jsx` (listing + analytics), `ProductHubSubmitPage.jsx` (smart form), `ProductHubIssuePage.jsx` (detail + server-authoritative valid_transitions + permissions object)
 - **Routes**: `/admin/product-hub`, `/admin/product-hub/submit`, `/admin/product-hub/issues/:issueId`
 - **Collections**: `product_issues`, `issue_activity_log`, `issue_comments`, `issue_duplicates_map`
-- **Status lifecycle**: `new` → `under_review` → `in_progress` → `qa_validation` → `done` → `user_feedback_confirmed` (also `rejected` from new/under_review/in_progress)
+- **Strict Status Lifecycle**: `new` → `under_review` → `in_progress` → `qa_validation` → `done` → `user_feedback_confirmed`. Reopen: `done/rejected` → `under_review`. Reject: only from `under_review`. No shortcuts.
 - **SLA**: critical=24h, high=72h, medium=120h, low=None
-- **RBAC**: Status changes, dashboard, assignment, title/priority edits are admin-only. Non-admins can create issues + view/comment/feedback on own issues only. `generated_prompt` redacted for non-admins.
+- **RBAC Rules**: Admin-only: status changes, assignment, prompt view/generate/copy, hakim insights, dashboard analytics, title/priority/issue update, duplicate view, final status, closure approval, reopen. Internal users: create + own issue view/comment/feedback only. `generated_prompt` redacted for non-admins.
+- **Structured Errors**: `{success, error_code, message, details}` format with codes like INVALID_TRANSITION, FORBIDDEN_ASSIGN, CONCURRENT_MODIFICATION, etc.
 - **Hakim AI**: Uses `AI_INTEGRATIONS_OPENAI_API_KEY` env var, model `gpt-4o-mini`, fallback `_fallback_analysis()` if no key
 - **Platform admin accounts**: `zalat@nassaqapp.com`, `hakim@nassaqapp.com` (seeded on startup)
-- **Input validation**: `issue_type` and `account_type` validated against enum sets
+- **Input validation**: Pydantic field_validators for issue_type, account_type, employee_name, behavior fields, team assignment; length limits enforced
 
 ### Unified Approval Engine
 - **Backend**: `backend/engines/approval_engine.py` — handler registry + transition validation + structured event logging

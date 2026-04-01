@@ -44,9 +44,9 @@ const STATUS_PROGRESS = {
 };
 
 const STATUS_TRANSITIONS = {
-  new: ['under_review', 'in_progress', 'rejected'],
-  under_review: ['in_progress', 'rejected', 'done'],
-  in_progress: ['qa_validation', 'under_review', 'done'],
+  new: ['under_review'],
+  under_review: ['in_progress', 'rejected'],
+  in_progress: ['qa_validation'],
   qa_validation: ['done', 'in_progress'],
   done: ['user_feedback_confirmed', 'under_review'],
   rejected: ['under_review'],
@@ -174,7 +174,7 @@ export function ProductHubIssuePage() {
   const priorityCfg = PRIORITY_CONFIG[issue.priority] || PRIORITY_CONFIG.medium;
   const progress = STATUS_PROGRESS[issue.status] || 0;
   const hakim = issue.hakim_analysis || {};
-  const allowedTransitions = STATUS_TRANSITIONS[issue.status] || [];
+  const allowedTransitions = issue.valid_transitions || STATUS_TRANSITIONS[issue.status] || [];
 
   return (
     <Sidebar>
@@ -357,9 +357,9 @@ export function ProductHubIssuePage() {
                         <div className="w-2 h-2 rounded-full bg-brand-turquoise mt-2 flex-shrink-0" />
                         <div className="flex-1">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-medium">{a.action_by_name || 'النظام'}</span>
+                            <span className="font-medium">{a.performed_by_name || a.action_by_name || 'النظام'}</span>
                             <span className="text-muted-foreground">—</span>
-                            <span className="text-muted-foreground">{_actionLabel(a.action)}</span>
+                            <span className="text-muted-foreground">{_actionLabel(a.event_type || a.action)}</span>
                           </div>
                           {a.details && Object.keys(a.details).length > 0 && (
                             <div className="text-xs text-muted-foreground mt-1">
@@ -542,6 +542,18 @@ function _actionLabel(action) {
     feedback_submitted: 'قدّم ملاحظات',
     title_updated: 'حدّث العنوان',
     priority_changed: 'غيّر الأولوية',
+    hakim_analysis_started: 'بدأ تحليل حكيم',
+    hakim_analysis_completed: 'اكتمل تحليل حكيم',
+    duplicate_detected: 'تم اكتشاف تكرار',
+    prompt_generated: 'تم توليد الأمر',
+    issue_marked_done: 'تم إنجاز المشكلة',
+    issue_reopened: 'أعيد فتح المشكلة',
+    feedback_loop_sent: 'تم طلب ملاحظات',
+    user_confirmed_resolution: 'أكد المستخدم الحل',
+    user_rejected_resolution: 'رفض المستخدم الحل',
+    sla_warning_triggered: 'تحذير SLA',
+    issue_updated: 'تم تحديث المشكلة',
+    attachment_added: 'أضاف مرفق',
   };
   return MAP[action] || action;
 }

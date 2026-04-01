@@ -2,14 +2,35 @@
 Product Intelligence Hub — مركز ذكاء المنتج
 Internal governance, issue tracking, and AI-assisted analysis system.
 
+API Contracts:
+- POST   /issues                    — Create issue (any authenticated user)
+- GET    /issues                    — List issues (own for users, all for admin)
+- GET    /issues/{id}               — Issue detail (own for users, any for admin)
+- PATCH  /issues/{id}               — Update issue fields (admin only)
+- PUT    /issues/{id}/status        — Change status (admin only)
+- PUT    /issues/{id}/assign        — Assign team (admin only)
+- PUT    /issues/{id}/title         — Update title (admin only)
+- PUT    /issues/{id}/priority      — Update priority (admin only)
+- POST   /issues/{id}/comments      — Add comment (owner + admin)
+- GET    /issues/{id}/comments      — Get comments (owner + admin)
+- POST   /issues/{id}/feedback      — Submit feedback (owner + admin)
+- GET    /issues/{id}/prompt        — Get generated prompt (admin only)
+- POST   /issues/{id}/generate-prompt — Regenerate prompt (admin only)
+- GET    /issues/{id}/hakim-insights — Get Hakim analysis (admin only)
+- GET    /issues/{id}/activity-log  — Get activity log (owner + admin)
+- GET    /issues/{id}/duplicates    — Get duplicate matches (admin only)
+- GET    /dashboard                 — Dashboard analytics (admin only)
+- GET    /config                    — Hub configuration (any authenticated)
+
 Collections:
 - product_issues: Main issue storage
-- issue_activity_log: Activity timeline
-- issue_comments: Internal discussion threads
+- issue_activity_log: Activity timeline + event log
+- issue_comments: Discussion threads
+- issue_duplicates_map: Duplicate detection results
 """
 
 from fastapi import APIRouter, HTTPException, Depends, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone, timedelta
 from enum import Enum
@@ -18,6 +39,24 @@ import logging
 import json
 
 from dependencies import db, get_current_user, require_roles, UserRole
+from engines.product_hub_rbac import (
+    HubAction, HubRole, is_platform_admin, check_permission,
+    enforce_permission, enforce_ownership_or_admin,
+    check_resource_ownership, redact_issue_for_role,
+    require_hub_action, get_user_id, resolve_hub_role,
+)
+from engines.product_hub_events import (
+    HubEvent, emit_event,
+    validate_status_transition, get_transition_error,
+    calculate_sla, enrich_sla_state,
+    handle_issue_created, handle_hakim_analysis,
+    handle_prompt_generated, handle_status_changed,
+    handle_feedback_response, handle_issue_assigned,
+    handle_comment_added, handle_attachment_added,
+    handle_issue_updated, check_sla_warning,
+    VALID_STATUS_TRANSITIONS, FINAL_STATUSES, OPEN_STATUSES,
+    STATUS_LABELS, PRIORITY_LABELS, SLA_HOURS, STATUS_PROGRESS,
+)
 
 logger = logging.getLogger("nassaq.product_hub")
 
@@ -71,54 +110,6 @@ ISSUE_TYPE_LABELS = {
     "other": "أخرى",
 }
 
-STATUS_LABELS = {
-    "new": "جديد",
-    "under_review": "تحت المراجعة",
-    "in_progress": "قيد التنفيذ",
-    "qa_validation": "تحقق الجودة",
-    "done": "مكتمل",
-    "rejected": "مرفوض",
-    "user_feedback_confirmed": "أكده المستخدم",
-}
-
-PRIORITY_LABELS = {
-    "critical": "حرج",
-    "high": "عالي",
-    "medium": "متوسط",
-    "low": "منخفض",
-}
-
-SLA_HOURS = {
-    "critical": 24,
-    "high": 72,
-    "medium": 120,
-    "low": None,
-}
-
-STATUS_PROGRESS = {
-    "new": 10,
-    "under_review": 25,
-    "in_progress": 55,
-    "qa_validation": 80,
-    "done": 100,
-    "rejected": 100,
-    "user_feedback_confirmed": 100,
-}
-
-FINAL_STATUSES = {"done", "rejected", "user_feedback_confirmed"}
-
-PLATFORM_ADMIN_EMAILS = {"zalat@nassaqapp.com", "hakim@nassaqapp.com"}
-
-VALID_STATUS_TRANSITIONS = {
-    "new": {"under_review", "in_progress", "rejected"},
-    "under_review": {"in_progress", "rejected", "done"},
-    "in_progress": {"qa_validation", "under_review", "done"},
-    "qa_validation": {"done", "in_progress"},
-    "done": {"user_feedback_confirmed", "under_review"},
-    "rejected": {"under_review"},
-    "user_feedback_confirmed": set(),
-}
-
 DYNAMIC_FIELDS_BY_TYPE = {
     "bug": ["steps_to_reproduce", "reproducibility", "error_message"],
     "error": ["error_message", "error_code", "steps_to_reproduce"],
@@ -147,19 +138,26 @@ SECTION_OPTIONS = [
     "التواصل", "الأمان", "أخرى"
 ]
 
-
 VALID_ISSUE_TYPES = set(ISSUE_TYPE_LABELS.keys())
 VALID_ACCOUNT_TYPES = set(ACCOUNT_TYPE_OPTIONS)
 VALID_SECTIONS = set(SECTION_OPTIONS)
-
-ADMIN_ONLY_FIELDS = {"generated_prompt"}
-ADMIN_ONLY_HAKIM_FIELDS = set()
+VALID_TEAMS = {"Frontend", "Backend", "DevOps", "Design", "QA", "Product"}
 
 
-def _redact_for_non_admin(issue: dict) -> dict:
-    for f in ADMIN_ONLY_FIELDS:
-        issue.pop(f, None)
-    return issue
+def _hub_error(status_code: int, error_code: str, message: str, details: dict = None):
+    raise HTTPException(
+        status_code=status_code,
+        detail={
+            "success": False,
+            "error_code": error_code,
+            "message": message,
+            "details": details or {},
+        }
+    )
+
+
+def _now_iso():
+    return datetime.now(timezone.utc).isoformat()
 
 
 class IssueCreate(BaseModel):
@@ -199,14 +197,78 @@ class IssueCreate(BaseModel):
     browser: Optional[str] = None
     attachments: Optional[List[str]] = None
 
+    @field_validator("issue_type")
+    @classmethod
+    def validate_issue_type(cls, v):
+        if v not in VALID_ISSUE_TYPES:
+            raise ValueError(f"نوع المشكلة غير صالح: {v}")
+        return v
+
+    @field_validator("account_type")
+    @classmethod
+    def validate_account_type(cls, v):
+        if v not in VALID_ACCOUNT_TYPES:
+            raise ValueError(f"نوع الحساب غير صالح: {v}")
+        return v
+
+    @field_validator("employee_name")
+    @classmethod
+    def validate_employee_name(cls, v):
+        if not v or not v.strip():
+            raise ValueError("اسم الموظف مطلوب")
+        if len(v.strip()) > 200:
+            raise ValueError("اسم الموظف طويل جداً")
+        return v.strip()
+
+    @field_validator("current_behavior", "expected_behavior")
+    @classmethod
+    def validate_behavior_fields(cls, v):
+        if not v or not v.strip():
+            raise ValueError("هذا الحقل مطلوب")
+        if len(v.strip()) > 5000:
+            raise ValueError("النص طويل جداً")
+        return v.strip()
+
+    @field_validator("page", "section")
+    @classmethod
+    def validate_required_string(cls, v):
+        if not v or not v.strip():
+            raise ValueError("هذا الحقل مطلوب")
+        return v.strip()
+
+
+class IssueUpdate(BaseModel):
+    current_behavior: Optional[str] = None
+    expected_behavior: Optional[str] = None
+    steps_to_reproduce: Optional[str] = None
+    error_message: Optional[str] = None
+    additional_details: Optional[str] = None
+
 
 class IssueComment(BaseModel):
     content: str
+
+    @field_validator("content")
+    @classmethod
+    def validate_content(cls, v):
+        if not v or not v.strip():
+            raise ValueError("محتوى التعليق مطلوب")
+        if len(v.strip()) > 5000:
+            raise ValueError("التعليق طويل جداً")
+        return v.strip()
 
 
 class StatusUpdate(BaseModel):
     status: str
     note: Optional[str] = None
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, v):
+        valid = set(STATUS_LABELS.keys())
+        if v not in valid:
+            raise ValueError(f"حالة غير صالحة: {v}")
+        return v
 
 
 class AssignIssue(BaseModel):
@@ -214,32 +276,17 @@ class AssignIssue(BaseModel):
     assigned_to: Optional[str] = None
     note: Optional[str] = None
 
+    @field_validator("assigned_team")
+    @classmethod
+    def validate_team(cls, v):
+        if v not in VALID_TEAMS:
+            raise ValueError(f"فريق غير صالح: {v}")
+        return v
+
 
 class FeedbackResponse(BaseModel):
     resolved: bool
     comment: Optional[str] = None
-
-
-def _is_platform_admin(user: dict) -> bool:
-    return user.get("role") == "platform_admin"
-
-
-def _now_iso():
-    return datetime.now(timezone.utc).isoformat()
-
-
-async def _log_activity(issue_id: str, action: str, user: dict, details: dict = None):
-    entry = {
-        "id": str(uuid.uuid4()),
-        "issue_id": issue_id,
-        "action": action,
-        "action_by": user.get("id", user.get("user_id", "")),
-        "action_by_name": user.get("full_name", ""),
-        "action_by_role": user.get("role", ""),
-        "details": details or {},
-        "timestamp": _now_iso(),
-    }
-    await db.issue_activity_log.insert_one(entry)
 
 
 async def _run_hakim_analysis(issue: dict) -> dict:
@@ -296,7 +343,10 @@ Respond in this exact JSON format (Arabic text preferred):
 
         response = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[{"role": "system", "content": "You are a product intelligence AI. Respond ONLY with valid JSON."}, {"role": "user", "content": prompt}],
+            messages=[
+                {"role": "system", "content": "You are a product intelligence AI. Respond ONLY with valid JSON."},
+                {"role": "user", "content": prompt}
+            ],
             temperature=0.3,
             max_tokens=600,
         )
@@ -306,15 +356,14 @@ Respond in this exact JSON format (Arabic text preferred):
             text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
         analysis = json.loads(text)
 
-        analysis.setdefault("suggested_title", "")
-        analysis.setdefault("suggested_priority", "medium")
-        analysis.setdefault("suggested_team", "Backend")
-        analysis.setdefault("duplicate_ids", [])
-        analysis.setdefault("duplicate_note", "")
-        analysis.setdefault("technical_notes", "")
-        analysis.setdefault("impact_assessment", "")
-        analysis.setdefault("priority_reasoning", "")
-        analysis.setdefault("team_reasoning", "")
+        for key, default in [
+            ("suggested_title", ""), ("suggested_priority", "medium"),
+            ("suggested_team", "Backend"), ("duplicate_ids", []),
+            ("duplicate_note", ""), ("technical_notes", ""),
+            ("impact_assessment", ""), ("priority_reasoning", ""),
+            ("team_reasoning", ""),
+        ]:
+            analysis.setdefault(key, default)
         return analysis
 
     except Exception as e:
@@ -365,8 +414,23 @@ async def _generate_prompt(issue: dict) -> str:
 [DEVICE] {issue.get('device', 'N/A')} | Browser: {issue.get('browser', 'N/A')}"""
 
 
+async def _next_issue_number() -> int:
+    last = await db.product_issues.find_one(
+        {}, {"issue_number": 1}, sort=[("issue_number", -1)]
+    )
+    return (last.get("issue_number", 0) if last else 0) + 1
+
+
+async def _get_issue_or_404(issue_id: str) -> dict:
+    issue = await db.product_issues.find_one({"id": issue_id}, {"_id": 0})
+    if not issue:
+        _hub_error(404, "ISSUE_NOT_FOUND", "المشكلة غير موجودة", {"issue_id": issue_id})
+    return issue
+
+
 @router.get("/config")
 async def get_hub_config(current_user: dict = Depends(get_current_user)):
+    admin = is_platform_admin(current_user)
     return {
         "issue_types": [{"value": k, "label": v} for k, v in ISSUE_TYPE_LABELS.items()],
         "statuses": [{"value": k, "label": v} for k, v in STATUS_LABELS.items()],
@@ -376,22 +440,25 @@ async def get_hub_config(current_user: dict = Depends(get_current_user)):
         "dynamic_fields": DYNAMIC_FIELDS_BY_TYPE,
         "sla_hours": SLA_HOURS,
         "status_progress": STATUS_PROGRESS,
-        "teams": ["Frontend", "Backend", "DevOps", "Design", "QA", "Product"],
-        "is_admin": _is_platform_admin(current_user),
+        "valid_transitions": {k: list(v) for k, v in VALID_STATUS_TRANSITIONS.items()},
+        "teams": sorted(VALID_TEAMS),
+        "is_admin": admin,
+        "permissions": {
+            "can_assign": admin,
+            "can_change_status": admin,
+            "can_view_prompt": admin,
+            "can_view_analytics": admin,
+            "can_update_priority": admin,
+            "can_update_title": admin,
+        },
     }
 
 
 @router.post("/issues")
 async def create_issue(data: IssueCreate, current_user: dict = Depends(get_current_user)):
-    if not data.employee_name or not data.employee_name.strip():
-        raise HTTPException(status_code=422, detail="اسم الموظف مطلوب")
-    if data.issue_type not in VALID_ISSUE_TYPES:
-        raise HTTPException(status_code=422, detail=f"نوع المشكلة غير صالح: {data.issue_type}")
-    if data.account_type not in VALID_ACCOUNT_TYPES:
-        raise HTTPException(status_code=422, detail=f"نوع الحساب غير صالح: {data.account_type}")
-
     now = datetime.now(timezone.utc)
     issue_id = str(uuid.uuid4())
+    user_id = get_user_id(current_user)
 
     issue = {
         "id": issue_id,
@@ -400,7 +467,7 @@ async def create_issue(data: IssueCreate, current_user: dict = Depends(get_curre
         "status": "new",
         "priority": None,
         "title": None,
-        "employee_name": data.employee_name.strip(),
+        "employee_name": data.employee_name,
         "employee_id": data.employee_id,
         "account_type": data.account_type,
         "section": data.section,
@@ -442,9 +509,9 @@ async def create_issue(data: IssueCreate, current_user: dict = Depends(get_curre
         "generated_prompt": None,
         "duplicate_of": None,
         "submission_metadata": {
-            "employee_name": data.employee_name.strip(),
+            "employee_name": data.employee_name,
             "employee_id": data.employee_id,
-            "user_id": current_user.get("id", current_user.get("user_id", "")),
+            "user_id": user_id,
             "created_at": now.isoformat(),
             "created_date": now.strftime("%Y-%m-%d"),
             "created_time": now.strftime("%H:%M:%S"),
@@ -453,7 +520,7 @@ async def create_issue(data: IssueCreate, current_user: dict = Depends(get_curre
         "sla_status": None,
         "feedback_requested": False,
         "feedback_response": None,
-        "created_by": current_user.get("id", current_user.get("user_id", "")),
+        "created_by": user_id,
         "created_by_name": current_user.get("full_name", ""),
         "created_by_role": current_user.get("role", ""),
         "created_at": now.isoformat(),
@@ -467,10 +534,9 @@ async def create_issue(data: IssueCreate, current_user: dict = Depends(get_curre
     issue["priority"] = hakim_analysis.get("suggested_priority", "medium")
     issue["assigned_team"] = hakim_analysis.get("suggested_team")
 
-    sla_h = SLA_HOURS.get(issue["priority"])
-    if sla_h:
-        issue["sla_deadline"] = (now + timedelta(hours=sla_h)).isoformat()
-        issue["sla_status"] = "within"
+    sla = calculate_sla(issue["priority"], now)
+    issue["sla_deadline"] = sla["sla_deadline"]
+    issue["sla_status"] = sla["sla_status"]
 
     issue["generated_prompt"] = await _generate_prompt(issue)
 
@@ -481,25 +547,22 @@ async def create_issue(data: IssueCreate, current_user: dict = Depends(get_curre
                 "issue_id": issue_id,
                 "duplicate_of": dup_id,
                 "detected_by": "hakim_ai",
+                "confidence": "ai_suggested",
                 "timestamp": now.isoformat(),
             })
 
     await db.product_issues.insert_one({**issue, "_id": issue_id})
-    await _log_activity(issue_id, "issue_created", current_user, {
-        "issue_type": data.issue_type,
-        "priority": issue["priority"],
-    })
+
+    await handle_issue_created(issue_id, issue, current_user)
+    await handle_hakim_analysis(issue_id, current_user, hakim_analysis, source="auto_on_create")
+    await handle_prompt_generated(issue_id, current_user)
 
     logger.info(f"[ProductHub] Issue created: #{issue['issue_number']} ({issue_id[:8]})")
     issue.pop("_id", None)
+
+    redact_issue_for_role(issue, current_user)
+    enrich_sla_state(issue)
     return issue
-
-
-async def _next_issue_number() -> int:
-    last = await db.product_issues.find_one(
-        {}, {"issue_number": 1}, sort=[("issue_number", -1)]
-    )
-    return (last.get("issue_number", 0) if last else 0) + 1
 
 
 @router.get("/issues")
@@ -517,11 +580,11 @@ async def list_issues(
     limit: int = Query(50, ge=1, le=200),
     current_user: dict = Depends(get_current_user),
 ):
-    is_admin = _is_platform_admin(current_user)
-    user_id = current_user.get("id", current_user.get("user_id", ""))
+    admin = is_platform_admin(current_user)
+    user_id = get_user_id(current_user)
 
     query: dict = {}
-    if not is_admin:
+    if not admin:
         query["created_by"] = user_id
 
     if status:
@@ -537,7 +600,7 @@ async def list_issues(
         query["section"] = section
     if assigned_team:
         query["assigned_team"] = assigned_team
-    if created_by:
+    if created_by and admin:
         query["created_by"] = created_by
     if date_from:
         query.setdefault("created_at", {})["$gte"] = date_from
@@ -553,32 +616,25 @@ async def list_issues(
 
     total = await db.product_issues.count_documents(query)
     skip = (page - 1) * limit
-    issues = await db.product_issues.find(query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+    issues = await db.product_issues.find(
+        query, {"_id": 0}
+    ).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
 
-    now = datetime.now(timezone.utc)
     for issue in issues:
-        if issue.get("sla_deadline") and issue.get("status") not in FINAL_STATUSES:
-            deadline = datetime.fromisoformat(issue["sla_deadline"].replace("Z", "+00:00"))
-            issue["sla_remaining_hours"] = max(0, (deadline - now).total_seconds() / 3600)
-            issue["sla_status"] = "within" if deadline > now else "exceeded"
-
-    if not is_admin:
-        issues = [_redact_for_non_admin(i) for i in issues]
+        enrich_sla_state(issue)
+        redact_issue_for_role(issue, current_user)
 
     return {"issues": issues, "total": total, "page": page, "limit": limit}
 
 
 @router.get("/issues/{issue_id}")
 async def get_issue(issue_id: str, current_user: dict = Depends(get_current_user)):
-    is_admin = _is_platform_admin(current_user)
-    user_id = current_user.get("id", current_user.get("user_id", ""))
+    admin = is_platform_admin(current_user)
 
-    issue = await db.product_issues.find_one({"id": issue_id}, {"_id": 0})
-    if not issue:
-        raise HTTPException(status_code=404, detail="المشكلة غير موجودة")
+    issue = await _get_issue_or_404(issue_id)
 
-    if not is_admin and issue.get("created_by") != user_id:
-        raise HTTPException(status_code=403, detail="ليس لديك صلاحية لعرض هذه المشكلة")
+    if not admin:
+        enforce_ownership_or_admin(current_user, issue, HubAction.VIEW_OWN_ISSUE)
 
     activity = await db.issue_activity_log.find(
         {"issue_id": issue_id}, {"_id": 0}
@@ -588,46 +644,88 @@ async def get_issue(issue_id: str, current_user: dict = Depends(get_current_user
         {"issue_id": issue_id}, {"_id": 0}
     ).sort("timestamp", 1).to_list(200)
 
-    duplicates = await db.issue_duplicates_map.find(
-        {"$or": [{"issue_id": issue_id}, {"duplicate_of": issue_id}]}, {"_id": 0}
-    ).to_list(20)
+    duplicates = []
+    if admin:
+        duplicates = await db.issue_duplicates_map.find(
+            {"$or": [{"issue_id": issue_id}, {"duplicate_of": issue_id}]}, {"_id": 0}
+        ).to_list(20)
 
-    now = datetime.now(timezone.utc)
-    if issue.get("sla_deadline") and issue.get("status") not in FINAL_STATUSES:
-        deadline = datetime.fromisoformat(issue["sla_deadline"].replace("Z", "+00:00"))
-        issue["sla_remaining_hours"] = max(0, (deadline - now).total_seconds() / 3600)
-        issue["sla_status"] = "within" if deadline > now else "exceeded"
+    enrich_sla_state(issue)
+    await check_sla_warning(issue_id, issue, current_user)
 
     issue["activity_log"] = activity
     issue["comments"] = comments
     issue["duplicates"] = duplicates
-    issue["is_admin"] = is_admin
+    issue["is_admin"] = admin
+    issue["valid_transitions"] = list(VALID_STATUS_TRANSITIONS.get(issue.get("status", "new"), set()))
 
-    if not is_admin:
-        _redact_for_non_admin(issue)
+    permissions = {
+        "can_change_status": admin,
+        "can_assign": admin,
+        "can_view_prompt": admin,
+        "can_update_title": admin,
+        "can_update_priority": admin,
+        "can_comment": admin or check_resource_ownership(current_user, issue),
+        "can_submit_feedback": (
+            issue.get("status") == "done"
+            and (admin or check_resource_ownership(current_user, issue))
+        ),
+    }
+    issue["permissions"] = permissions
 
+    redact_issue_for_role(issue, current_user)
     return issue
+
+
+@router.patch("/issues/{issue_id}")
+async def update_issue(
+    issue_id: str,
+    data: IssueUpdate,
+    current_user: dict = Depends(get_current_user),
+):
+    enforce_permission(current_user, HubAction.UPDATE_ISSUE)
+    issue = await _get_issue_or_404(issue_id)
+
+    changes = {}
+    for field in ["current_behavior", "expected_behavior", "steps_to_reproduce", "error_message", "additional_details"]:
+        value = getattr(data, field, None)
+        if value is not None:
+            changes[field] = value.strip()
+
+    if not changes:
+        _hub_error(422, "NO_CHANGES", "لم يتم إرسال أي تعديلات")
+
+    changes["updated_at"] = _now_iso()
+    await db.product_issues.update_one({"id": issue_id}, {"$set": changes})
+    await handle_issue_updated(issue_id, current_user, changes)
+
+    return {"success": True, "updated_fields": list(changes.keys())}
 
 
 @router.put("/issues/{issue_id}/status")
 async def update_issue_status(
     issue_id: str,
     data: StatusUpdate,
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
+    current_user: dict = Depends(get_current_user),
 ):
-    issue = await db.product_issues.find_one({"id": issue_id}, {"_id": 0})
-    if not issue:
-        raise HTTPException(status_code=404, detail="المشكلة غير موجودة")
+    enforce_permission(current_user, HubAction.CHANGE_STATUS)
 
-    new_status = data.status
+    issue = await _get_issue_or_404(issue_id)
     current_status = issue.get("status", "new")
+    new_status = data.status
 
-    allowed = VALID_STATUS_TRANSITIONS.get(current_status, set())
-    if new_status not in allowed:
-        raise HTTPException(
-            status_code=400,
-            detail=f"لا يمكن الانتقال من '{STATUS_LABELS.get(current_status, current_status)}' إلى '{STATUS_LABELS.get(new_status, new_status)}'"
-        )
+    if new_status in FINAL_STATUSES:
+        enforce_permission(current_user, HubAction.SET_FINAL_STATUS)
+
+    if current_status in FINAL_STATUSES and new_status == "under_review":
+        enforce_permission(current_user, HubAction.REOPEN_ISSUE)
+
+    if not validate_status_transition(current_status, new_status):
+        _hub_error(400, "INVALID_TRANSITION", get_transition_error(current_status, new_status), {
+            "current_status": current_status,
+            "requested_status": new_status,
+            "allowed_transitions": list(VALID_STATUS_TRANSITIONS.get(current_status, set())),
+        })
 
     update_fields = {
         "status": new_status,
@@ -638,32 +736,33 @@ async def update_issue_status(
         update_fields["resolved_at"] = _now_iso()
         update_fields["feedback_requested"] = True
 
+    if new_status == "under_review" and current_status in {"done", "rejected"}:
+        update_fields["resolved_at"] = None
+        update_fields["feedback_requested"] = False
+        update_fields["feedback_response"] = None
+
     result = await db.product_issues.update_one(
         {"id": issue_id, "status": current_status},
         {"$set": update_fields}
     )
     if result.modified_count == 0:
-        raise HTTPException(status_code=409, detail="الحالة تغيّرت — يرجى تحديث الصفحة")
+        _hub_error(409, "CONCURRENT_MODIFICATION", "الحالة تغيّرت — يرجى تحديث الصفحة")
 
-    await _log_activity(issue_id, "status_changed", current_user, {
-        "from": current_status,
-        "to": new_status,
-        "note": data.note or "",
-    })
+    await handle_status_changed(issue_id, current_user, current_status, new_status, data.note or "")
 
     logger.info(f"[ProductHub] Issue {issue_id[:8]}: {current_status} → {new_status}")
-    return {"success": True, "status": new_status}
+    return {"success": True, "status": new_status, "previous_status": current_status}
 
 
 @router.put("/issues/{issue_id}/assign")
 async def assign_issue(
     issue_id: str,
     data: AssignIssue,
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
+    current_user: dict = Depends(get_current_user),
 ):
-    issue = await db.product_issues.find_one({"id": issue_id}, {"_id": 0})
-    if not issue:
-        raise HTTPException(status_code=404, detail="المشكلة غير موجودة")
+    enforce_permission(current_user, HubAction.ASSIGN_ISSUE)
+
+    issue = await _get_issue_or_404(issue_id)
 
     now = _now_iso()
     await db.product_issues.update_one(
@@ -676,11 +775,10 @@ async def assign_issue(
         }}
     )
 
-    await _log_activity(issue_id, "issue_assigned", current_user, {
-        "team": data.assigned_team,
-        "assigned_to": data.assigned_to,
-        "note": data.note or "",
-    })
+    await handle_issue_assigned(
+        issue_id, current_user, data.assigned_team,
+        data.assigned_to, data.note or ""
+    )
 
     return {"success": True, "assigned_team": data.assigned_team}
 
@@ -691,28 +789,39 @@ async def add_comment(
     data: IssueComment,
     current_user: dict = Depends(get_current_user),
 ):
-    issue = await db.product_issues.find_one({"id": issue_id}, {"_id": 0})
-    if not issue:
-        raise HTTPException(status_code=404, detail="المشكلة غير موجودة")
-
-    user_id = current_user.get("id", current_user.get("user_id", ""))
-    if not _is_platform_admin(current_user) and issue.get("created_by") != user_id:
-        raise HTTPException(status_code=403, detail="ليس لديك صلاحية للتعليق على هذه المشكلة")
+    issue = await _get_issue_or_404(issue_id)
+    enforce_ownership_or_admin(current_user, issue, HubAction.ADD_COMMENT)
 
     comment = {
         "id": str(uuid.uuid4()),
         "issue_id": issue_id,
         "content": data.content,
-        "user_id": current_user.get("id", current_user.get("user_id", "")),
+        "user_id": get_user_id(current_user),
         "user_name": current_user.get("full_name", ""),
         "user_role": current_user.get("role", ""),
         "timestamp": _now_iso(),
     }
 
     await db.issue_comments.insert_one(comment)
-    await _log_activity(issue_id, "comment_added", current_user)
+    await handle_comment_added(issue_id, current_user, comment["id"])
     comment.pop("_id", None)
     return comment
+
+
+@router.get("/issues/{issue_id}/comments")
+async def get_comments(
+    issue_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    issue = await _get_issue_or_404(issue_id)
+    if not is_platform_admin(current_user):
+        enforce_ownership_or_admin(current_user, issue, HubAction.VIEW_COMMENTS)
+
+    comments = await db.issue_comments.find(
+        {"issue_id": issue_id}, {"_id": 0}
+    ).sort("timestamp", 1).to_list(200)
+
+    return {"comments": comments, "total": len(comments)}
 
 
 @router.post("/issues/{issue_id}/feedback")
@@ -721,43 +830,44 @@ async def submit_feedback(
     data: FeedbackResponse,
     current_user: dict = Depends(get_current_user),
 ):
-    issue = await db.product_issues.find_one({"id": issue_id}, {"_id": 0})
-    if not issue:
-        raise HTTPException(status_code=404, detail="المشكلة غير موجودة")
-
-    user_id = current_user.get("id", current_user.get("user_id", ""))
-    if not _is_platform_admin(current_user) and issue.get("created_by") != user_id:
-        raise HTTPException(status_code=403, detail="فقط صاحب البلاغ يمكنه إرسال ملاحظات")
+    issue = await _get_issue_or_404(issue_id)
+    enforce_ownership_or_admin(current_user, issue, HubAction.SUBMIT_FEEDBACK)
 
     if issue.get("status") != "done":
-        raise HTTPException(status_code=400, detail="لا يمكن إرسال ملاحظات إلا على المشاكل المكتملة")
+        _hub_error(400, "INVALID_FEEDBACK_STATE",
+                   "لا يمكن إرسال ملاحظات إلا على المشاكل المكتملة",
+                   {"current_status": issue.get("status")})
 
     now = _now_iso()
-    if data.resolved:
-        new_status = "user_feedback_confirmed"
-    else:
-        new_status = "under_review"
+    new_status = "user_feedback_confirmed" if data.resolved else "under_review"
 
-    await db.product_issues.update_one(
-        {"id": issue_id},
-        {"$set": {
-            "status": new_status,
-            "feedback_response": {
-                "resolved": data.resolved,
-                "comment": data.comment,
-                "responded_by": current_user.get("id", ""),
-                "responded_at": now,
-            },
-            "feedback_requested": False,
-            "updated_at": now,
-        }}
+    update_fields = {
+        "status": new_status,
+        "feedback_response": {
+            "resolved": data.resolved,
+            "comment": data.comment,
+            "responded_by": get_user_id(current_user),
+            "responded_by_name": current_user.get("full_name", ""),
+            "responded_at": now,
+        },
+        "feedback_requested": False,
+        "updated_at": now,
+    }
+
+    if not data.resolved:
+        update_fields["resolved_at"] = None
+
+    result = await db.product_issues.update_one(
+        {"id": issue_id, "status": "done"},
+        {"$set": update_fields}
     )
 
-    await _log_activity(issue_id, "feedback_submitted", current_user, {
-        "resolved": data.resolved,
-        "comment": data.comment,
-        "new_status": new_status,
-    })
+    if result.modified_count == 0:
+        _hub_error(409, "CONCURRENT_MODIFICATION",
+                   "تم تعديل حالة المشكلة بواسطة مستخدم آخر — يرجى إعادة تحميل الصفحة",
+                   {"expected_status": "done"})
+
+    await handle_feedback_response(issue_id, current_user, data.resolved, data.comment or "")
 
     return {"success": True, "new_status": new_status}
 
@@ -765,18 +875,96 @@ async def submit_feedback(
 @router.get("/issues/{issue_id}/prompt")
 async def get_issue_prompt(
     issue_id: str,
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
+    current_user: dict = Depends(get_current_user),
 ):
-    issue = await db.product_issues.find_one({"id": issue_id}, {"_id": 0})
-    if not issue:
-        raise HTTPException(status_code=404, detail="المشكلة غير موجودة")
+    enforce_permission(current_user, HubAction.VIEW_PROMPT)
 
+    issue = await _get_issue_or_404(issue_id)
     prompt = issue.get("generated_prompt") or await _generate_prompt(issue)
-    return {"prompt": prompt, "issue_id": issue_id}
+
+    return {"success": True, "prompt": prompt, "issue_id": issue_id}
+
+
+@router.post("/issues/{issue_id}/generate-prompt")
+async def regenerate_prompt(
+    issue_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    enforce_permission(current_user, HubAction.GENERATE_PROMPT)
+
+    issue = await _get_issue_or_404(issue_id)
+    prompt = await _generate_prompt(issue)
+
+    await db.product_issues.update_one(
+        {"id": issue_id},
+        {"$set": {"generated_prompt": prompt, "updated_at": _now_iso()}}
+    )
+    await handle_prompt_generated(issue_id, current_user)
+
+    return {"success": True, "prompt": prompt, "issue_id": issue_id}
+
+
+@router.get("/issues/{issue_id}/hakim-insights")
+async def get_hakim_insights(
+    issue_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    enforce_permission(current_user, HubAction.VIEW_HAKIM_INSIGHTS)
+
+    issue = await _get_issue_or_404(issue_id)
+
+    return {
+        "success": True,
+        "issue_id": issue_id,
+        "hakim_analysis": issue.get("hakim_analysis", {}),
+        "suggested_title": issue.get("hakim_analysis", {}).get("suggested_title", ""),
+        "suggested_priority": issue.get("hakim_analysis", {}).get("suggested_priority", ""),
+        "suggested_team": issue.get("hakim_analysis", {}).get("suggested_team", ""),
+        "priority_reasoning": issue.get("hakim_analysis", {}).get("priority_reasoning", ""),
+        "team_reasoning": issue.get("hakim_analysis", {}).get("team_reasoning", ""),
+        "technical_notes": issue.get("hakim_analysis", {}).get("technical_notes", ""),
+        "impact_assessment": issue.get("hakim_analysis", {}).get("impact_assessment", ""),
+        "duplicate_ids": issue.get("hakim_analysis", {}).get("duplicate_ids", []),
+        "duplicate_note": issue.get("hakim_analysis", {}).get("duplicate_note", ""),
+    }
+
+
+@router.get("/issues/{issue_id}/activity-log")
+async def get_activity_log(
+    issue_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    issue = await _get_issue_or_404(issue_id)
+    if not is_platform_admin(current_user):
+        enforce_ownership_or_admin(current_user, issue, HubAction.VIEW_ACTIVITY_LOG)
+
+    activity = await db.issue_activity_log.find(
+        {"issue_id": issue_id}, {"_id": 0}
+    ).sort("timestamp", -1).to_list(200)
+
+    return {"activity_log": activity, "total": len(activity), "issue_id": issue_id}
+
+
+@router.get("/issues/{issue_id}/duplicates")
+async def get_duplicates(
+    issue_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    enforce_permission(current_user, HubAction.VIEW_DUPLICATES)
+
+    await _get_issue_or_404(issue_id)
+
+    duplicates = await db.issue_duplicates_map.find(
+        {"$or": [{"issue_id": issue_id}, {"duplicate_of": issue_id}]}, {"_id": 0}
+    ).to_list(50)
+
+    return {"duplicates": duplicates, "total": len(duplicates), "issue_id": issue_id}
 
 
 @router.get("/dashboard")
-async def get_dashboard(current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))):
+async def get_dashboard(current_user: dict = Depends(get_current_user)):
+    enforce_permission(current_user, HubAction.VIEW_FULL_ANALYTICS)
+
     now = datetime.now(timezone.utc)
     week_ago = (now - timedelta(days=7)).isoformat()
 
@@ -787,8 +975,7 @@ async def get_dashboard(current_user: dict = Depends(require_roles([UserRole.PLA
     status_counts = {s["_id"]: s["count"] for s in status_counts_raw}
 
     total = sum(status_counts.values())
-    open_statuses = {"new", "under_review", "in_progress", "qa_validation"}
-    total_open = sum(status_counts.get(s, 0) for s in open_statuses)
+    total_open = sum(status_counts.get(s, 0) for s in OPEN_STATUSES)
 
     pipeline_type = [{"$group": {"_id": "$issue_type", "count": {"$sum": 1}}}]
     type_counts_raw = await db.product_issues.aggregate(pipeline_type).to_list(20)
@@ -806,10 +993,12 @@ async def get_dashboard(current_user: dict = Depends(require_roles([UserRole.PLA
     by_team = [{"team": t["_id"], "count": t["count"]} for t in team_counts_raw]
 
     new_this_week = await db.product_issues.count_documents({"created_at": {"$gte": week_ago}})
-    critical_open = await db.product_issues.count_documents({"priority": "critical", "status": {"$in": list(open_statuses)}})
+    critical_open = await db.product_issues.count_documents(
+        {"priority": "critical", "status": {"$in": list(OPEN_STATUSES)}}
+    )
     sla_exceeded = await db.product_issues.count_documents({
         "sla_deadline": {"$lte": now.isoformat()},
-        "status": {"$in": list(open_statuses)},
+        "status": {"$in": list(OPEN_STATUSES)},
     })
 
     resolved = await db.product_issues.find(
@@ -826,7 +1015,7 @@ async def get_dashboard(current_user: dict = Depends(require_roles([UserRole.PLA
                 res = datetime.fromisoformat(r["resolved_at"].replace("Z", "+00:00"))
                 total_hours += (res - created).total_seconds() / 3600
                 count += 1
-            except:
+            except (ValueError, TypeError, KeyError):
                 pass
         if count:
             avg_resolution = round(total_hours / count, 1)
@@ -865,7 +1054,11 @@ async def get_dashboard(current_user: dict = Depends(require_roles([UserRole.PLA
         {"$limit": 10}
     ]
     accuracy_raw = await db.product_issues.aggregate(pipeline_accuracy).to_list(10)
-    most_accurate = [{"name": a["name"], "total": a["total"], "valid": a["valid"], "accuracy": round(a.get("accuracy", 0), 1)} for a in accuracy_raw if a.get("total", 0) >= 2]
+    most_accurate = [
+        {"name": a["name"], "total": a["total"], "valid": a["valid"],
+         "accuracy": round(a.get("accuracy", 0), 1)}
+        for a in accuracy_raw if a.get("total", 0) >= 2
+    ]
 
     pipeline_dept = [
         {"$group": {"_id": "$account_type", "count": {"$sum": 1}}},
@@ -892,7 +1085,7 @@ async def get_dashboard(current_user: dict = Depends(require_roles([UserRole.PLA
         "top_contributors": top_contributors,
         "most_accurate_reporters": most_accurate,
         "by_department": by_department,
-        "is_admin": _is_platform_admin(current_user),
+        "is_admin": True,
     }
 
 
@@ -900,21 +1093,25 @@ async def get_dashboard(current_user: dict = Depends(require_roles([UserRole.PLA
 async def update_issue_title(
     issue_id: str,
     data: dict,
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
+    current_user: dict = Depends(get_current_user),
 ):
-    issue = await db.product_issues.find_one({"id": issue_id})
-    if not issue:
-        raise HTTPException(status_code=404, detail="المشكلة غير موجودة")
-    
+    enforce_permission(current_user, HubAction.UPDATE_TITLE)
+
+    issue = await _get_issue_or_404(issue_id)
+
     title = data.get("title", "").strip()
     if not title:
-        raise HTTPException(status_code=422, detail="العنوان مطلوب")
-    
+        _hub_error(422, "TITLE_REQUIRED", "العنوان مطلوب")
+    if len(title) > 500:
+        _hub_error(422, "TITLE_TOO_LONG", "العنوان طويل جداً")
+
+    old_title = issue.get("title", "")
     await db.product_issues.update_one(
         {"id": issue_id},
         {"$set": {"title": title, "updated_at": _now_iso()}}
     )
-    await _log_activity(issue_id, "title_updated", current_user, {"title": title})
+    await handle_issue_updated(issue_id, current_user, {"title": {"from": old_title, "to": title}})
+
     return {"success": True}
 
 
@@ -922,22 +1119,28 @@ async def update_issue_title(
 async def update_issue_priority(
     issue_id: str,
     data: dict,
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
+    current_user: dict = Depends(get_current_user),
 ):
-    issue = await db.product_issues.find_one({"id": issue_id})
-    if not issue:
-        raise HTTPException(status_code=404, detail="المشكلة غير موجودة")
-    
+    enforce_permission(current_user, HubAction.UPDATE_PRIORITY)
+
+    issue = await _get_issue_or_404(issue_id)
+
     priority = data.get("priority", "")
     if priority not in PRIORITY_LABELS:
-        raise HTTPException(status_code=422, detail="أولوية غير صالحة")
-    
+        _hub_error(422, "INVALID_PRIORITY", "أولوية غير صالحة",
+                   {"valid_values": list(PRIORITY_LABELS.keys())})
+
+    old_priority = issue.get("priority", "")
     update_fields = {"priority": priority, "updated_at": _now_iso()}
-    sla_h = SLA_HOURS.get(priority)
-    if sla_h:
-        update_fields["sla_deadline"] = (datetime.now(timezone.utc) + timedelta(hours=sla_h)).isoformat()
-        update_fields["sla_status"] = "within"
-    
+
+    sla = calculate_sla(priority, datetime.now(timezone.utc))
+    if sla["sla_deadline"]:
+        update_fields["sla_deadline"] = sla["sla_deadline"]
+        update_fields["sla_status"] = sla["sla_status"]
+
     await db.product_issues.update_one({"id": issue_id}, {"$set": update_fields})
-    await _log_activity(issue_id, "priority_changed", current_user, {"priority": priority})
+    await handle_issue_updated(issue_id, current_user, {
+        "priority": {"from": old_priority, "to": priority}
+    })
+
     return {"success": True}
