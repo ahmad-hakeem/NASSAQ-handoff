@@ -6,7 +6,6 @@ import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -19,7 +18,7 @@ import {
 import {
   Brain, Plus, Search, BarChart3, Users, Target, Zap, Sparkles,
   ChevronLeft, ChevronRight, Award, Building2, Timer, AlertOctagon, Clock,
-  Table2, AlertTriangle, CheckCircle2, Bug, TrendingUp, Eye,
+  AlertTriangle, CheckCircle2, Bug, TrendingUp, Eye,
   RefreshCw, XCircle, ArrowUpRight, ArrowDownRight, ShieldCheck, CircleDot,
   Activity, Layers, ThumbsUp, ThumbsDown, Copy, MessageSquare, FileText, Paperclip, ExternalLink,
   ChevronDown, ChevronUp, Minimize2, Send, Loader2, Wand2, ListChecks,
@@ -279,55 +278,62 @@ export function ProductHubPage() {
     <Sidebar>
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/20" dir="rtl">
         <div className="p-4 lg:p-8 space-y-6 max-w-[1600px] mx-auto">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            <div>
-              <h1 className="text-2xl lg:text-3xl font-bold text-brand-navy flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-brand-turquoise/10">
-                  <Brain className="h-7 w-7 text-brand-turquoise" />
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-brand-navy via-brand-navy/95 to-brand-purple p-6 sm:p-8 text-white shadow-2xl">
+            <div className="absolute inset-0 nassaq-pattern opacity-[0.06]" style={{ backgroundImage: "url('/nassaq-pattern.png')" }} />
+            <div className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="space-y-2">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-white/10 rounded-xl backdrop-blur-sm">
+                    <Brain className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h1 className="text-2xl sm:text-3xl font-bold font-cairo">
+                      مركز ذكاء المنتج
+                    </h1>
+                    <p className="text-white/70 text-sm font-tajawal">
+                      نظام الحوكمة والتتبع الذكي الداخلي
+                    </p>
+                  </div>
                 </div>
-                مركز ذكاء المنتج
-              </h1>
-              <p className="text-muted-foreground mt-1 text-sm">نظام الحوكمة والتتبع الذكي الداخلي</p>
-            </div>
-            <div className="flex items-center gap-3">
-              <Button
-                variant="outline" size="sm"
-                onClick={() => { fetchIssues(); fetchDashboard(); }}
-                className="text-muted-foreground"
-              >
-                <RefreshCw className="h-4 w-4" />
-              </Button>
-              <Button
-                onClick={() => navigate('/admin/product-hub/submit')}
-                className="bg-brand-turquoise hover:bg-brand-turquoise/90 text-white shadow-lg shadow-brand-turquoise/20"
-              >
-                <Plus className="h-4 w-4 ml-2" />
-                إضافة تحدي جديد
-              </Button>
+              </div>
+              <div className="flex items-center gap-2">
+                {isMainAdmin && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={`border-white/20 hover:bg-white/10 ${activeTab === 'dashboard' ? 'bg-white/20 text-white' : 'text-white'}`}
+                    onClick={() => handleTabChange(activeTab === 'dashboard' ? 'issues' : 'dashboard')}
+                  >
+                    <BarChart3 className="h-4 w-4 me-1.5" />
+                    لوحة القيادة
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-white/20 text-white hover:bg-white/10"
+                  onClick={() => { fetchIssues(); fetchDashboard(); }}
+                >
+                  <RefreshCw className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => navigate('/admin/product-hub/submit')}
+                  className="bg-brand-turquoise hover:bg-brand-turquoise/90 text-white shadow-lg shadow-brand-turquoise/20"
+                >
+                  <Plus className="h-4 w-4 me-1.5" />
+                  إضافة تحدي جديد
+                </Button>
+              </div>
             </div>
           </div>
 
-          <Tabs value={activeTab} onValueChange={handleTabChange}>
-            <div className="flex justify-start">
-              <TabsList className="bg-white border shadow-sm rounded-xl p-1">
-                <TabsTrigger value="issues" className="rounded-lg data-[state=active]:bg-brand-navy data-[state=active]:text-white gap-2">
-                  <Table2 className="h-4 w-4" />
-                  التحديات
-                </TabsTrigger>
-                {isMainAdmin && (
-                  <TabsTrigger value="dashboard" className="rounded-lg data-[state=active]:bg-brand-navy data-[state=active]:text-white gap-2">
-                    <BarChart3 className="h-4 w-4" />
-                    لوحة القيادة
-                  </TabsTrigger>
-                )}
-              </TabsList>
-            </div>
+          {activeTab === 'dashboard' && isMainAdmin && (
+            <DashboardView data={dashboard} loading={dashLoading} isAdmin={isMainAdmin} navigate={navigate} />
+          )}
 
-            <TabsContent value="dashboard" className="mt-6">
-              {isMainAdmin && <DashboardView data={dashboard} loading={dashLoading} isAdmin={isMainAdmin} navigate={navigate} />}
-            </TabsContent>
-
-            <TabsContent value="issues" className="mt-6 space-y-5">
+          {activeTab !== 'dashboard' && (
+            <div className="space-y-5">
               <FilterToolbar
                 filters={filters}
                 config={config}
@@ -373,8 +379,8 @@ export function ProductHubPage() {
                 isMainAdmin={isMainAdmin}
                 onRefresh={fetchIssues}
               />
-            </TabsContent>
-          </Tabs>
+            </div>
+          )}
         </div>
       </div>
     </Sidebar>
