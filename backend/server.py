@@ -130,6 +130,12 @@ async def startup_tasks():
         for issue in issues:
             logger.warning(f"Config issue: {issue}")
     logger.info(f"NASSAQ v{config.VERSION} starting in {config.ENVIRONMENT} mode")
+    logger.info(f"Database: {config.DB_NAME} | Seed allowed: {config.seed_allowed()} | Destructive ops: {config.destructive_ops_allowed()}")
+
+    checklist = config.deployment_checklist()
+    if config.is_production() and not checklist["all_passed"]:
+        failed = {k: v for k, v in checklist.items() if v is False}
+        logger.error(f"DEPLOYMENT SAFETY: Pre-flight checks FAILED: {failed}")
 
     from db_indexes import create_indexes
     try:
@@ -144,21 +150,24 @@ async def startup_tasks():
     approval_engine.register(SchoolApprovalHandler())
     logger.info(f"Approval engine initialized with {len(approval_engine.get_registered_types())} handler(s)")
 
-    await _seed_platform_admins()
+    if config.seed_allowed():
+        await _seed_platform_admins()
 
-    from seeds.timetable_hard_constraints import seed_hard_constraints
-    try:
-        result = await seed_hard_constraints(db)
-        logger.info(f"Timetable hard constraints: {result}")
-    except Exception as e:
-        logger.warning(f"Hard constraints seeding: {e}")
+        from seeds.timetable_hard_constraints import seed_hard_constraints
+        try:
+            result = await seed_hard_constraints(db)
+            logger.info(f"Timetable hard constraints: {result}")
+        except Exception as e:
+            logger.warning(f"Hard constraints seeding: {e}")
 
-    from seeds.timetable_soft_constraints import seed_soft_constraints
-    try:
-        result = await seed_soft_constraints(db)
-        logger.info(f"Timetable soft constraints: {result}")
-    except Exception as e:
-        logger.warning(f"Soft constraints seeding: {e}")
+        from seeds.timetable_soft_constraints import seed_soft_constraints
+        try:
+            result = await seed_soft_constraints(db)
+            logger.info(f"Timetable soft constraints: {result}")
+        except Exception as e:
+            logger.warning(f"Soft constraints seeding: {e}")
+    else:
+        logger.info(f"DEPLOYMENT SAFETY: Seed scripts SKIPPED (environment={config.ENVIRONMENT})")
 
 
 # ============== SHARED PYDANTIC MODELS ==============

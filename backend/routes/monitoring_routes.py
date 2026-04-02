@@ -90,6 +90,38 @@ async def system_status(current_user: dict = Depends(require_roles([UserRole.PLA
     }
 
 
+@router.get("/deployment-safety")
+async def deployment_safety_check(current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))):
+    from config import config
+    checklist = config.deployment_checklist()
+
+    db_ok = False
+    collection_counts = {}
+    try:
+        await db.command("ping")
+        db_ok = True
+        for coll_name in ["users", "schools", "teachers", "students", "product_issues"]:
+            collection_counts[coll_name] = await db[coll_name].count_documents({})
+    except Exception:
+        pass
+
+    return {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "environment": config.ENVIRONMENT,
+        "database_name": config.DB_NAME,
+        "database_connected": db_ok,
+        "seed_scripts_blocked": not config.seed_allowed(),
+        "destructive_ops_blocked": not config.destructive_ops_allowed(),
+        "pre_flight_checklist": checklist,
+        "data_snapshot": collection_counts,
+        "policy": {
+            "rule": "Production data must NEVER be lost, overwritten, or replaced",
+            "seed_blocked_in": ["production", "staging"],
+            "safe_to_deploy": checklist.get("all_passed", False) and db_ok,
+        }
+    }
+
+
 @router.get("/metrics")
 async def system_metrics(current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))):
     process_info = {}

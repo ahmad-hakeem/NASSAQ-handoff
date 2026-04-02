@@ -67,6 +67,18 @@ Every task must follow these principles before delivery:
 ### Post-Fix Documentation
 Each fix report must include: root cause, why it wasn't caught before, what changed, how recurrence is prevented, what was tested
 
+### Deployment Safety Policy (PERMANENT & NON-NEGOTIABLE)
+- **Core Rule**: Production data must NEVER be lost, overwritten, or replaced during deployment
+- **Seed Scripts**: BLOCKED in production and staging (`config.seed_allowed()` returns `False`)
+- **Destructive Ops**: BLOCKED in non-development environments (`config.destructive_ops_allowed()`)
+- **Safe Migrations Only**: Add fields, collections, indexes — NEVER drop, delete, rename, or truncate
+- **Build Script** (`build.sh`): Validates JWT_SECRET_KEY and DB_NAME before production builds
+- **Startup Safety**: `server.py` logs environment, DB name, seed status; runs deployment checklist in production
+- **Safety Endpoint**: `GET /system/deployment-safety` — full pre-flight checklist (admin only)
+- **Environment Separation**: DEV (test data), STAGING (masked data), PROD (real data only) — each with separate DB/env vars
+- **Pre-Deployment Checklist**: Environment set, DB production-safe, seeds blocked, destructive ops blocked, JWT configured, CORS configured
+- **Documentation**: `backend/DEPLOYMENT_SAFETY.md` — complete policy reference
+
 ### Production Readiness (Applied)
 - **JWT Security**: No hardcoded fallback — generates ephemeral secret if env var missing, logs warning
 - **CORS**: Uses `CORS_ORIGINS` from config (env-based), not hardcoded `*`

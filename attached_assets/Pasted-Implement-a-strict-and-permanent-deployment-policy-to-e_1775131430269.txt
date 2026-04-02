@@ -1,0 +1,171 @@
+Implement a strict and permanent deployment policy to ensure that NO real production data is ever lost, overwritten, or replaced during any deployment process.
+
+This rule is CRITICAL and NON-NEGOTIABLE.
+
+==================================================
+1) CORE RULE (MANDATORY)
+==================================================
+
+During ANY deployment:
+
+- NEVER overwrite production database
+- NEVER reset production database
+- NEVER seed demo/test data into production
+- NEVER run destructive migrations automatically
+- NEVER drop tables or collections with real data
+
+Production data MUST remain intact at all times.
+
+==================================================
+2) ENVIRONMENT SEPARATION (STRICT)
+==================================================
+
+Enforce strict separation between environments:
+
+- Development (DEV)
+- Staging (STAGING)
+- Production (PROD)
+
+Rules:
+
+- DEV uses test/dummy data only
+- STAGING may use copied or masked data
+- PROD contains ONLY real data
+
+Each environment MUST have:
+- separate database
+- separate environment variables
+- separate credentials
+
+==================================================
+3) DATABASE CONNECTION SAFETY
+==================================================
+
+Before deployment:
+
+- Verify environment variables:
+  - DATABASE_URL
+  - ENVIRONMENT = production
+
+Block deployment if:
+- environment is unclear
+- database target is ambiguous
+- production database is being pointed to by a dev script
+
+==================================================
+4) MIGRATION POLICY (SAFE ONLY)
+==================================================
+
+Allow ONLY SAFE migrations in production:
+
+Allowed:
+- Add new fields
+- Add new tables/collections
+- Add indexes
+
+NOT allowed:
+- Drop tables
+- Rename fields without migration mapping
+- Delete data
+- Overwrite existing values
+
+If a destructive migration is detected:
+→ BLOCK deployment immediately
+
+==================================================
+5) SEEDING RULES (CRITICAL)
+==================================================
+
+- NEVER run seed scripts automatically in production
+- Seed scripts must be:
+  - disabled in production
+  - environment-protected
+
+If ENVIRONMENT = production:
+→ block any seed execution
+
+==================================================
+6) DATA PROTECTION LAYER
+==================================================
+
+Before any migration or deployment:
+
+- Automatically create a backup of production database
+- Backup must include:
+  - full data snapshot
+  - timestamp
+  - rollback capability
+
+If backup fails:
+→ CANCEL deployment
+
+==================================================
+7) DEPLOYMENT VALIDATION CHECKLIST
+==================================================
+
+Before deployment executes:
+
+System must validate:
+
+- Environment = production (confirmed)
+- Database is production-safe
+- No seed scripts will run
+- No destructive migrations exist
+- Backup completed successfully
+
+If ANY check fails:
+→ STOP deployment immediately
+
+==================================================
+8) POST-DEPLOYMENT VALIDATION
+==================================================
+
+After deployment:
+
+- Verify:
+  - all data still exists
+  - no records lost
+  - system reads existing data correctly
+  - new features do not override old data
+
+==================================================
+9) UI / SYSTEM BEHAVIOR
+==================================================
+
+- Existing data must remain visible
+- No UI reset
+- No data disappearance
+- No fallback to empty state
+
+==================================================
+10) FAIL-SAFE MECHANISM
+==================================================
+
+If any unexpected behavior occurs:
+
+- Automatically trigger rollback using backup
+- Restore system to last stable state
+
+==================================================
+11) PERMANENT RULE
+==================================================
+
+This policy must be enforced for ALL future deployments.
+
+It must be:
+
+- embedded in deployment scripts
+- validated in CI/CD pipeline
+- non-bypassable without explicit override
+
+==================================================
+12) GOAL
+==================================================
+
+Guarantee that:
+
+- real production data is NEVER lost
+- demo/test data NEVER overwrites real data
+- deployments are SAFE, CONTROLLED, and REVERSIBLE
+
+This is a permanent system protection rule.
