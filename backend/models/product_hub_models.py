@@ -679,6 +679,7 @@ class IssueUpdate(BaseModel):
 class IssueComment(BaseModel):
     content: str
     comment_type: Optional[str] = "general"
+    mentions: Optional[List[str]] = []
 
     @field_validator("content")
     @classmethod
@@ -696,6 +697,19 @@ class IssueComment(BaseModel):
         if v and v not in valid:
             raise ValueError(f"نوع التعليق غير صالح: {v}")
         return v or "general"
+
+
+class CommentUpdate(BaseModel):
+    content: str
+
+    @field_validator("content")
+    @classmethod
+    def validate_content(cls, v):
+        if not v or not v.strip():
+            raise ValueError("محتوى التعليق مطلوب")
+        if len(v.strip()) > 5000:
+            raise ValueError("التعليق طويل جداً (الحد الأقصى 5000 حرف)")
+        return v.strip()
 
 
 class StatusUpdate(BaseModel):

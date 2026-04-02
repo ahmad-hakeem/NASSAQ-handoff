@@ -1,0 +1,128 @@
+Redesign the Challenge Cards inside the "Product Intelligence Hub" page to achieve a more structured, organized, and enterprise-grade UI with better data visibility and full-width utilization.
+
+==================================================
+1) LAYOUT TRANSFORMATION (CRITICAL)
+==================================================
+
+- Each challenge card must:
+  → expand to FULL WIDTH of the screen
+  → no longer appear as small boxed cards
+
+- Convert the card into a structured container that includes:
+  - Details section
+  - Comments section
+
+==================================================
+2) SECTION STRUCTURE
+==================================================
+
+Each challenge must be visually divided into clear sections:
+
+A) Challenge Details Section (Top or Left)
+- Title
+- Reporter (Highlighted)
+- Status
+- Priority
+- Progress
+- Section / Page / Context
+- Current Behavior
+- Expected Behavior
+- Impact
+
+B) Comments Section (Bottom or Right)
+- Full-width or split layout
+- Comment thread
+- Input field
+- Mentions support
+
+==================================================
+3) FULL WIDTH DESIGN
+==================================================
+
+- Both sections must:
+  → take full available horizontal space
+  → avoid cramped or narrow layouts
+
+- Layout options:
+  → Vertical (Details on top, Comments below)
+  OR
+  → Split View (Details left, Comments right)
+
+- Choose the layout that ensures:
+  - maximum readability
+  - clean structure
+  - no visual clutter
+
+==================================================
+4) VISUAL HIERARCHY
+==================================================
+
+- Important data must stand out:
+  - Title (large and clear)
+  - Reporter (highlighted)
+  - Status / Priority (badges)
+  - Progress (visual bar)
+
+- Use:
+  - spacing
+  - section separation
+  - cards inside container if needed
+
+==================================================
+5) UI CLEANUP
+==================================================
+
+- Remove:
+  - cluttered elements
+  - unnecessary duplication
+  - cramped spacing
+
+- Ensure:
+  - consistent alignment
+  - clear sections
+  - readable text blocks
+
+==================================================
+6) COMMENTS EXPERIENCE
+==================================================
+
+- Comments section must:
+  → feel like a collaboration panel (Slack-like)
+
+- Include:
+  - full thread view
+  - timestamps
+  - user identity
+  - mentions support
+  - multi-line input
+
+==================================================
+7) RESPONSIVENESS
+==================================================
+
+- Desktop:
+  → full-width layout
+
+- Tablet:
+  → stacked layout
+
+- Mobile:
+  → vertical scroll sections
+
+==================================================
+8) GOAL
+==================================================
+
+Transform the UI from:
+
+→ small, limited cards
+
+To:
+
+→ full-width structured workspace per challenge
+
+The final result should feel like:
+- a professional operations panel
+- easy to scan
+- easy to interact with
+- optimized for real work, not just viewing

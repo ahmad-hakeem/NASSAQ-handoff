@@ -15,6 +15,7 @@ import axios from 'axios';
 import { toast } from 'sonner';
 import {
   StatusChip, PriorityBadge, SLAIndicator, HakimInsightCard, EmptyState,
+  CommentInput, CommentBubble,
   STATUS_CONFIG, TYPE_CONFIG, STATUS_PROGRESS,
   FINAL_STATUSES, TEAMS, EVENT_LABELS, COMMENT_TYPE_CONFIG, IMPACT_LABELS,
   formatDualDate, formatDualDateTime, formatDualDateCompact,
@@ -37,9 +38,9 @@ export function ProductHubIssuePage() {
   const navigate = useNavigate();
   const [issue, setIssue] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [comment, setComment] = useState('');
   const [commentType, setCommentType] = useState('general');
   const [submittingComment, setSubmittingComment] = useState(false);
+  const [mentionableUsers, setMentionableUsers] = useState([]);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [statusNote, setStatusNote] = useState('');
   const [assignTeam, setAssignTeam] = useState('');
@@ -64,6 +65,14 @@ export function ProductHubIssuePage() {
   }, [issueId, navigate]);
 
   useEffect(() => { fetchIssue(); }, [fetchIssue]);
+
+  useEffect(() => {
+    if (isMainAdmin) {
+      axios.get('/api/product-hub/mentionable-users', { headers: authHeaders() })
+        .then(res => setMentionableUsers(res.data.users || []))
+        .catch(() => {});
+    }
+  }, [isMainAdmin]);
 
   const handleStatusChange = async (newStatus) => {
     if (FINAL_STATUSES.has(newStatus) && !isMainAdmin) {
@@ -99,21 +108,40 @@ export function ProductHubIssuePage() {
     }
   };
 
-  const handleComment = async () => {
-    if (!comment.trim()) return;
+  const handleComment = async (content, mentions = []) => {
+    if (!content.trim()) return;
     setSubmittingComment(true);
     try {
       await axios.post(`/api/product-hub/issues/${issueId}/comments`, {
-        content: comment, comment_type: isMainAdmin ? commentType : 'general'
+        content, comment_type: isMainAdmin ? commentType : 'general', mentions
       }, { headers: authHeaders() });
       toast.success('تم إضافة التعليق');
-      setComment('');
       setCommentType('general');
       fetchIssue();
     } catch (err) {
       toast.error('فشل في إضافة التعليق');
     } finally {
       setSubmittingComment(false);
+    }
+  };
+
+  const handleEditComment = async (commentId, content) => {
+    try {
+      await axios.put(`/api/product-hub/issues/${issueId}/comments/${commentId}`, { content }, { headers: authHeaders() });
+      toast.success('تم تعديل التعليق');
+      fetchIssue();
+    } catch {
+      toast.error('فشل في تعديل التعليق');
+    }
+  };
+
+  const handleDeleteComment = async (commentId) => {
+    try {
+      await axios.delete(`/api/product-hub/issues/${issueId}/comments/${commentId}`, { headers: authHeaders() });
+      toast.success('تم حذف التعليق');
+      fetchIssue();
+    } catch {
+      toast.error('فشل في حذف التعليق');
     }
   };
 
@@ -634,52 +662,33 @@ export function ProductHubIssuePage() {
                               <span className="text-muted-foreground">•</span>
                               <span className="text-muted-foreground">{formatDualDateTime(c.timestamp)}</span>
                             </div>
-                            <p className="text-sm mt-1.5 leading-relaxed">{c.content}</p>
+                            <CommentBubble
+                              comment={c}
+                              currentUserId={user?.id}
+                              isMainAdmin={isMainAdmin}
+                              onEdit={handleEditComment}
+                              onDelete={handleDeleteComment}
+                              mentionableUsers={mentionableUsers}
+                            />
                           </div>
                         </div>
                       );
                     })}
 
                     {(!issue.comments || issue.comments.length === 0) && (
-                      <EmptyState icon={MessageSquare} title="لا توجد تعليقات بعد" className="py-6" />
+                      <EmptyState icon={MessageSquare} title="لا توجد تعليقات بعد" description="اكتب تعليقك الأول أو استخدم @ للإشارة إلى شخص" className="py-6" />
                     )}
 
                     <Separator />
 
-                    <div className="space-y-3">
-                      {isMainAdmin && (
-                        <div className="flex gap-2">
-                          {Object.entries(COMMENT_TYPE_CONFIG).map(([key, cfg]) => (
-                            <button
-                              key={key}
-                              onClick={() => setCommentType(key)}
-                              className={`px-3 py-1 rounded-full text-[11px] font-medium border transition-all ${
-                                commentType === key
-                                  ? `${cfg.bgColor} ${cfg.textColor} ${cfg.borderColor}`
-                                  : 'border-slate-200 text-muted-foreground hover:border-slate-300'
-                              }`}
-                            >
-                              {cfg.label}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      <div className="flex gap-2">
-                        <Textarea
-                          value={comment}
-                          onChange={(e) => setComment(e.target.value)}
-                          placeholder="أضف تعليقاً..."
-                          className="text-right min-h-[60px] flex-1 rounded-lg"
-                        />
-                        <Button
-                          onClick={handleComment}
-                          disabled={!comment.trim() || submittingComment}
-                          className="bg-brand-navy hover:bg-brand-navy/90 text-white self-end rounded-lg"
-                        >
-                          {submittingComment ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                        </Button>
-                      </div>
-                    </div>
+                    <CommentInput
+                      onSubmit={handleComment}
+                      submitting={submittingComment}
+                      isMainAdmin={isMainAdmin}
+                      commentType={commentType}
+                      setCommentType={setCommentType}
+                      COMMENT_TYPE_CONFIG={COMMENT_TYPE_CONFIG}
+                    />
                   </CardContent>
                 </Card>
               )}

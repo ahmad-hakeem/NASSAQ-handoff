@@ -66,7 +66,7 @@ from engines.product_hub_audit import (
     get_audit_trail, get_full_timeline,
 )
 from models.product_hub_models import (
-    IssueCreate, IssueUpdate, IssueComment, StatusUpdate,
+    IssueCreate, IssueUpdate, IssueComment, CommentUpdate, StatusUpdate,
     AssignIssue, FeedbackResponse, TitleUpdate, PriorityUpdate,
     ISSUE_TYPE_LABELS, ISSUE_TYPE_COMPAT, DYNAMIC_FIELDS_BY_TYPE,
     ACCOUNT_TYPE_OPTIONS, SECTION_OPTIONS,
@@ -730,6 +730,10 @@ async def add_comment(
     user_role = current_user.get("role", "")
     resolved_role = "platform_admin" if user_role == "platform_admin" else "internal_user"
 
+    safe_comment_type = data.comment_type or "general"
+    if safe_comment_type != "general" and not is_main_admin(current_user):
+        safe_comment_type = "general"
+
     comment = {
         "id": str(uuid.uuid4()),
         "issue_id": issue_id,
@@ -740,8 +744,10 @@ async def add_comment(
         "user_name": current_user.get("full_name", ""),
         "role": resolved_role,
         "user_role": user_role,
-        "type": data.comment_type,
+        "type": safe_comment_type,
+        "mentions": data.mentions or [],
         "timestamp": _now_iso(),
+        "edited": False,
     }
 
     await db.issue_comments.insert_one(comment)
@@ -749,6 +755,56 @@ async def add_comment(
     await audit_comment_added(issue_id, current_user, comment["id"], data.comment_type)
     comment.pop("_id", None)
     return comment
+
+
+@router.put("/issues/{issue_id}/comments/{comment_id}")
+async def edit_comment(
+    issue_id: str,
+    comment_id: str,
+    data: CommentUpdate,
+    current_user: dict = Depends(get_current_user),
+):
+    issue = await _get_issue_or_404(issue_id)
+    if not can_access_comments(current_user, issue):
+        raise HTTPException(status_code=403, detail={"success": False, "error_code": "FORBIDDEN_COMMENTS", "message": "ليس لديك صلاحية الوصول للتعليقات"})
+
+    existing = await db.issue_comments.find_one({"id": comment_id, "issue_id": issue_id})
+    if not existing:
+        _hub_error(404, "COMMENT_NOT_FOUND", "التعليق غير موجود")
+
+    user_id = get_user_id(current_user)
+    if existing.get("user_id") != user_id and existing.get("created_by") != user_id:
+        if not is_main_admin(current_user):
+            _hub_error(403, "FORBIDDEN", "لا يمكنك تعديل تعليق مستخدم آخر")
+
+    await db.issue_comments.update_one(
+        {"id": comment_id},
+        {"$set": {"content": data.content, "comment": data.content, "edited": True, "edited_at": _now_iso()}}
+    )
+    return {"success": True, "message": "تم تعديل التعليق"}
+
+
+@router.delete("/issues/{issue_id}/comments/{comment_id}")
+async def delete_comment(
+    issue_id: str,
+    comment_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    issue = await _get_issue_or_404(issue_id)
+    if not can_access_comments(current_user, issue):
+        raise HTTPException(status_code=403, detail={"success": False, "error_code": "FORBIDDEN_COMMENTS", "message": "ليس لديك صلاحية الوصول للتعليقات"})
+
+    existing = await db.issue_comments.find_one({"id": comment_id, "issue_id": issue_id})
+    if not existing:
+        _hub_error(404, "COMMENT_NOT_FOUND", "التعليق غير موجود")
+
+    user_id = get_user_id(current_user)
+    if existing.get("user_id") != user_id and existing.get("created_by") != user_id:
+        if not is_main_admin(current_user):
+            _hub_error(403, "FORBIDDEN", "لا يمكنك حذف تعليق مستخدم آخر")
+
+    await db.issue_comments.delete_one({"id": comment_id})
+    return {"success": True, "message": "تم حذف التعليق"}
 
 
 @router.get("/issues/{issue_id}/comments")
@@ -765,6 +821,24 @@ async def get_comments(
     ).sort("timestamp", 1).to_list(200)
 
     return {"comments": comments, "total": len(comments)}
+
+
+@router.get("/mentionable-users")
+async def get_mentionable_users(
+    current_user: dict = Depends(get_current_user),
+):
+    if not is_platform_admin(current_user):
+        _hub_error(403, "FORBIDDEN", "غير مسموح")
+
+    users = await db.users.find(
+        {"is_active": True, "role": {"$in": ["platform_admin", "platform_operations_manager", "platform_technical_admin", "platform_support_specialist"]}},
+        {"_id": 0, "id": 1, "full_name": 1, "email": 1, "role": 1, "avatar_url": 1}
+    ).sort("full_name", 1).to_list(100)
+
+    return {"users": [
+        {"id": u.get("id", ""), "name": u.get("full_name", ""), "email": u.get("email", ""), "role": u.get("role", ""), "avatar": u.get("avatar_url")}
+        for u in users if u.get("id")
+    ]}
 
 
 @router.post("/issues/{issue_id}/feedback")
