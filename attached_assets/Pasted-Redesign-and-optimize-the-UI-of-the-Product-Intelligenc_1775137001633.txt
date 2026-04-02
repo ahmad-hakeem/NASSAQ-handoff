@@ -1,0 +1,206 @@
+Redesign and optimize the UI of the "Product Intelligence Hub" page — specifically the "Challenges" tab — to achieve a clean, structured, and enterprise-grade user experience with proper visual hierarchy and Hakim AI integration.
+
+==================================================
+1) PROBLEM STATEMENT
+==================================================
+
+The current UI of the "Challenges" tab is visually unstructured and lacks clarity:
+
+- Poor organization of card elements
+- Weak visual hierarchy
+- Inconsistent alignment
+- Difficulty scanning key information
+- Lack of clarity in Hakim AI interaction
+
+==================================================
+2) CORE OBJECTIVE
+==================================================
+
+Transform the page into:
+
+→ Clean  
+→ Structured  
+→ Easy to scan  
+→ AI-enhanced workspace  
+
+Where the user can:
+- quickly understand each challenge
+- identify key data instantly
+- interact with Hakim clearly and effectively
+
+==================================================
+3) CHALLENGE CARDS — EXTERNAL UI (CRITICAL)
+==================================================
+
+Redesign the outer view of challenge cards to:
+
+→ be visually structured  
+→ highlight only essential information  
+→ follow strict alignment rules  
+
+--------------------------------------------------
+A) CARD STRUCTURE
+--------------------------------------------------
+
+Each card must display:
+
+- Challenge Title (dominant element)
+- Reporter (clearly visible)
+- Progress (full width + percentage)
+- Status badge
+- Priority badge (if exists)
+- Creation Date
+- Challenge ID
+
+--------------------------------------------------
+B) TITLE POSITION (RTL / LTR SUPPORT)
+--------------------------------------------------
+
+- If system language is Arabic:
+  → Title aligned to the RIGHT (RTL)
+
+- If system language is English:
+  → Title aligned to the LEFT (LTR)
+
+- Layout must dynamically adapt based on language
+
+--------------------------------------------------
+C) VISUAL ORGANIZATION
+--------------------------------------------------
+
+- Clear separation between sections
+- Proper spacing between elements
+- No overlapping or clutter
+
+- Use:
+  → grid system
+  → consistent padding
+  → alignment rules
+
+--------------------------------------------------
+D) VISUAL HIERARCHY
+--------------------------------------------------
+
+- Title → most prominent
+- Progress bar → highly visible
+- Status / Priority → clear but secondary
+- Metadata → minimal emphasis
+
+==================================================
+4) PROGRESS BAR (MANDATORY)
+==================================================
+
+- Must span FULL width of the card
+- Show:
+  → percentage
+  → current status
+
+- Use dynamic colors based on status
+
+==================================================
+5) DATA CLARITY (CRITICAL REQUIREMENT)
+==================================================
+
+All displayed data must be:
+
+→ visually organized  
+→ easy to read  
+→ easy to scan in < 2 seconds  
+
+Avoid:
+- dense text
+- unclear grouping
+- visual noise
+
+==================================================
+6) HAKIM AI SECTION (IMPROVEMENT REQUIRED)
+==================================================
+
+Enhance Hakim integration inside the page:
+
+--------------------------------------------------
+A) ADD ACTION BUTTON
+--------------------------------------------------
+
+Add a clear and visible button:
+
+👉 "تحليل بواسطة حكيم" / "Analyze with Hakim"
+
+- Positioned inside Hakim section
+- Easily accessible
+- Clearly styled as primary action
+
+--------------------------------------------------
+B) USER EXPERIENCE
+--------------------------------------------------
+
+- The button should:
+  → trigger AI analysis of selected challenge
+  → feel instant and responsive
+
+--------------------------------------------------
+C) VISUAL PRESENCE
+--------------------------------------------------
+
+Hakim must feel:
+
+→ present  
+→ interactive  
+→ helpful  
+
+Not hidden or passive
+
+==================================================
+7) UI CLEANUP
+==================================================
+
+- Remove:
+  - misalignment
+  - inconsistent spacing
+  - cluttered layout
+
+- Ensure:
+  - clean structure
+  - consistent design system
+  - balanced spacing
+
+==================================================
+8) CONSISTENCY
+==================================================
+
+- All cards must follow EXACT same layout
+- No variation between cards
+- Fully aligned visual system
+
+==================================================
+9) RESPONSIVENESS
+==================================================
+
+Desktop:
+→ structured grid layout
+
+Tablet:
+→ reduced columns
+
+Mobile:
+→ stacked full-width cards
+
+RTL/LTR must work perfectly across all devices
+
+==================================================
+10) FINAL GOAL
+==================================================
+
+Transform the "Challenges" tab from:
+
+→ visually messy and hard to read
+
+To:
+
+→ structured, clear, and AI-enabled interface
+
+Where:
+
+- data is immediately understandable
+- UI feels professional
+- Hakim is clearly integrated as a decision assistant

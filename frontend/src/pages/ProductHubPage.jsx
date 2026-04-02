@@ -694,96 +694,115 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
   const hakimAnalysis = detailData?.hakim_analysis || issue.hakim_analysis;
   const promptText = detailData?.generated_prompt || issue.generated_prompt;
 
+  const statusLabel = STATUS_CONFIG[issue.status]?.label || issue.status;
+
   return (
     <div
       ref={cardRef}
-      className={`w-full rounded-xl border transition-all duration-400 overflow-hidden border-r-[4px] group ${heatmap.borderAccent} ${heatmap.bg} ${heatmap.hoverBg} ${heatmap.glow ? `shadow-lg ${heatmap.glow}` : 'shadow-[0_1px_4px_rgba(0,0,0,0.04)]'} ${isExpanded ? 'border-brand-turquoise/50 shadow-[0_8px_40px_rgba(70,193,190,0.15)] ring-1 ring-brand-turquoise/20' : 'border-slate-200/80 hover:shadow-[0_4px_20px_rgba(70,193,190,0.1)]'} ${isHighlighted ? 'ring-2 ring-brand-turquoise ring-offset-2' : ''} ${isHighRiskLowProgress && !isExpanded ? 'animate-[subtlePulse_3s_ease-in-out_infinite]' : ''}`}
+      className={`w-full rounded-2xl border transition-all duration-300 overflow-hidden group bg-white ${isExpanded ? 'border-brand-turquoise/40 shadow-[0_8px_32px_rgba(70,193,190,0.12)] ring-1 ring-brand-turquoise/15' : 'border-slate-200 hover:border-slate-300 hover:shadow-[0_4px_16px_rgba(0,0,0,0.06)]'} ${isHighlighted ? 'ring-2 ring-brand-turquoise ring-offset-2' : ''}`}
     >
       {/* ═══════════════ COLLAPSED STATE ═══════════════ */}
       <div
         onClick={() => onToggleExpand(issue.id)}
         className="cursor-pointer"
       >
-        {/* ─── ROW 1: Title + ID ─── */}
-        <div className="px-5 pt-4 pb-0">
-          <div className="flex items-start justify-between gap-3">
+        {/* ─── SECTION 1: Title (DOMINANT) + ID ─── */}
+        <div className="px-5 pt-5 pb-2">
+          <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1.5">
-                <div title={riskCfg.tooltip} className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full ${riskCfg.bg} ${riskCfg.border} border font-medium ${riskCfg.color} cursor-help`}>
-                  <span className={`w-2 h-2 rounded-full ${riskCfg.dot} flex-shrink-0`} />
-                  {riskCfg.label}
-                </div>
-                {hasDuplicates && (
-                  <div className="flex items-center gap-1 px-1.5 py-0.5 bg-amber-50 rounded-full border border-amber-100">
-                    <Brain className="h-2.5 w-2.5 text-amber-500" />
-                    <span className="text-[9px] text-amber-600 font-medium">مكرر</span>
-                  </div>
-                )}
-              </div>
-              <h3 className={`text-[15px] font-bold leading-snug mb-0 ${isDone ? 'text-emerald-700 line-through decoration-emerald-300' : isRejected ? 'text-red-400 line-through decoration-red-200' : 'text-brand-navy'}`}>
+              <h3 className={`text-base font-bold leading-snug ${isDone ? 'text-emerald-700 line-through decoration-emerald-300/60 decoration-2' : isRejected ? 'text-red-400 line-through decoration-red-200/60 decoration-2' : 'text-brand-navy'}`}>
                 {issue.title}
               </h3>
             </div>
-            <div className="flex items-center gap-2 flex-shrink-0 pt-0.5">
-              <span className="text-[10px] font-mono text-muted-foreground bg-slate-100/80 px-2 py-0.5 rounded font-semibold">
+            <div className="flex items-center gap-2.5 flex-shrink-0 pt-0.5">
+              {hasDuplicates && (
+                <div className="flex items-center gap-1 px-1.5 py-0.5 bg-amber-50 rounded-md border border-amber-100">
+                  <Copy className="h-2.5 w-2.5 text-amber-500" />
+                  <span className="text-[9px] text-amber-600 font-semibold">مكرر</span>
+                </div>
+              )}
+              <span className="text-[10px] font-mono text-slate-400 bg-slate-50 px-2 py-1 rounded-md font-semibold border border-slate-100">
                 #{issue.issue_number}
               </span>
-              <div className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-300 ${isExpanded ? 'bg-brand-turquoise/10 text-brand-turquoise rotate-180' : 'bg-slate-100/80 text-slate-400 group-hover:bg-slate-200/80'}`}>
+              <div className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-300 ${isExpanded ? 'bg-brand-turquoise/10 text-brand-turquoise rotate-180' : 'bg-slate-50 text-slate-400 group-hover:bg-slate-100'}`}>
                 <ChevronDown className="h-4 w-4" />
               </div>
             </div>
           </div>
         </div>
 
-        {/* ─── ROW 2: Reporter + Status + Priority ─── */}
-        <div className="px-5 py-2">
+        {/* ─── SECTION 2: Reporter + Status + Priority ─── */}
+        <div className="px-5 pb-3">
           <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <div className="flex items-center gap-2">
                 <div
-                  className="w-6 h-6 rounded-full flex items-center justify-center text-[8px] font-bold text-white flex-shrink-0"
+                  className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0 shadow-sm"
                   style={{ background: isDone ? 'linear-gradient(135deg, #10b981, #059669)' : isRejected ? 'linear-gradient(135deg, #ef4444, #dc2626)' : 'linear-gradient(135deg, #1C3D74, #46C1BE)' }}
                 >
                   {getInitials(issue.employee_name)}
                 </div>
-                <span className="text-[11px] font-semibold text-brand-navy truncate max-w-[130px]">{issue.employee_name}</span>
+                <span className="text-xs font-semibold text-brand-navy truncate max-w-[150px]">{issue.employee_name}</span>
               </div>
               <div className="w-px h-4 bg-slate-200 max-sm:hidden" />
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-2">
                 <StatusChip status={issue.status} size="default" showIcon />
                 <PriorityBadge priority={issue.priority} size="sm" showIcon />
-                <SLAIndicator issue={issue} size="sm" />
               </div>
             </div>
-            {issue.assigned_team && (
-              <Badge variant="outline" className="text-[9px] border-brand-turquoise/25 text-brand-turquoise px-1.5 py-0 h-5 font-medium max-md:hidden">
-                {issue.assigned_team}
-              </Badge>
-            )}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <SLAIndicator issue={issue} size="sm" />
+              {issue.assigned_team && (
+                <Badge variant="outline" className="text-[9px] border-brand-turquoise/20 text-brand-turquoise px-2 py-0.5 h-5 font-medium max-md:hidden rounded-md">
+                  {issue.assigned_team}
+                </Badge>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* ─── ROW 3: AI Prediction Strip ─── */}
+        {/* ─── SECTION 3: Progress Bar (FULL WIDTH — DOMINANT) ─── */}
+        <div className="px-5 pb-3">
+          <div className="flex items-center justify-between mb-1.5">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-slate-500 font-medium">التقدم</span>
+              <span className="text-[10px] text-slate-400">({statusLabel})</span>
+              {isHighRiskLowProgress && (
+                <AlertTriangle className="h-3 w-3 text-red-500 animate-pulse" />
+              )}
+            </div>
+            <span className={`text-xs font-bold tabular-nums ${progress >= 75 ? 'text-emerald-600' : progress >= 50 ? 'text-brand-turquoise' : progress >= 25 ? 'text-amber-500' : 'text-red-500'}`}>
+              {progress}%
+            </span>
+          </div>
+          <div className={`w-full bg-slate-100 rounded-full h-2.5 overflow-hidden ${isHighRiskLowProgress ? 'ring-1 ring-red-200' : ''}`}>
+            <div
+              className={`h-full rounded-full bg-gradient-to-l ${progressColor} transition-all duration-700 ease-out`}
+              style={{ width: `${Math.max(progress, 2)}%` }}
+            />
+          </div>
+        </div>
+
+        {/* ─── SECTION 4: AI Strip (compact, only if relevant) ─── */}
         {!isDone && !isRejected && (predictions.delay !== 'on_track' || predictions.escalation !== 'stable') && (
-          <div className="px-5 pb-1.5">
-            <div className="flex items-center gap-2 py-1.5 px-3 rounded-lg bg-gradient-to-l from-brand-turquoise/[0.04] to-brand-navy/[0.03] border border-brand-turquoise/10">
-              <Sparkles className="h-3 w-3 text-brand-turquoise/50 flex-shrink-0" />
-              <span className="text-[9px] text-brand-turquoise/60 font-medium flex-shrink-0">تنبؤ حكيم</span>
-              <div className="w-px h-3 bg-brand-turquoise/15 max-sm:hidden" />
+          <div className="px-5 pb-2">
+            <div className="flex items-center gap-2 py-1.5 px-3 rounded-lg bg-slate-50/80 border border-slate-100">
+              <Sparkles className="h-3 w-3 text-brand-turquoise/60 flex-shrink-0" />
+              <span className="text-[9px] text-slate-400 font-medium flex-shrink-0">حكيم</span>
+              <div className="w-px h-3 bg-slate-200" />
               <div className="flex items-center gap-1.5 flex-wrap">
+                <span title={riskCfg.tooltip} className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md ${riskCfg.bg} border ${riskCfg.border} ${riskCfg.color}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${riskCfg.dot}`} />
+                  {riskCfg.label}
+                </span>
                 {predictions.delay !== 'on_track' && (
-                  <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full ${delayCfg.bg} ${delayCfg.border} border ${delayCfg.color}`}>
-                    <span className="text-[9px]">{delayCfg.icon}</span> {delayCfg.label}
+                  <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md ${delayCfg.bg} border ${delayCfg.border} ${delayCfg.color}`}>
+                    {delayCfg.label}
                   </span>
                 )}
-                {predictions.escalation === 'escalating' && (
-                  <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full ${escalationCfg.bg} ${escalationCfg.border} border ${escalationCfg.color}`}>
-                    <span className="text-[9px]">{escalationCfg.icon}</span> {escalationCfg.label}
-                  </span>
-                )}
-                {predictions.escalation === 'decreasing' && (
-                  <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full ${escalationCfg.bg} ${escalationCfg.border} border ${escalationCfg.color}`}>
-                    <span className="text-[9px]">{escalationCfg.icon}</span> {escalationCfg.label}
+                {predictions.escalation !== 'stable' && (
+                  <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md ${escalationCfg.bg} border ${escalationCfg.border} ${escalationCfg.color}`}>
+                    {escalationCfg.label}
                   </span>
                 )}
               </div>
@@ -792,48 +811,28 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
         )}
 
         {isDone && (
-          <div className="px-5 pb-1.5">
-            <div className="flex items-center gap-2 py-1.5 px-3 rounded-lg bg-emerald-50/50 border border-emerald-100">
-              <Sparkles className="h-3 w-3 text-emerald-400 flex-shrink-0" />
-              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700">
-                ✅ مكتمل في الموعد
-              </span>
+          <div className="px-5 pb-2">
+            <div className="flex items-center gap-2 py-1.5 px-3 rounded-lg bg-emerald-50/60 border border-emerald-100">
+              <CheckCircle2 className="h-3 w-3 text-emerald-500 flex-shrink-0" />
+              <span className="text-[10px] font-medium text-emerald-700">مكتمل</span>
             </div>
           </div>
         )}
 
-        {/* ─── ROW 4: Progress Bar (dominant, full width) ─── */}
-        <div className="px-5 pt-1 pb-2">
-          <div className="flex items-center justify-between mb-1">
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] text-muted-foreground font-medium">التقدم</span>
-              {isHighRiskLowProgress && (
-                <AlertTriangle className="h-3 w-3 text-red-500 animate-pulse" />
-              )}
+        {/* ─── SECTION 5: Footer — Date + Metadata ─── */}
+        <div className="px-5 pb-4 pt-1">
+          <div className="flex items-center justify-between border-t border-slate-100 pt-2.5">
+            <div className="flex items-center gap-2">
+              <Clock className="h-3 w-3 text-slate-300" />
+              <span className="text-[10px] text-slate-400">{formatDualDateCompact(issue.created_at)}</span>
             </div>
-            <span className={`text-[11px] font-bold tabular-nums ${progress >= 75 ? 'text-emerald-600' : progress >= 50 ? 'text-brand-turquoise' : progress >= 25 ? 'text-amber-500' : 'text-red-500'}`}>
-              {progress}%
-            </span>
-          </div>
-          <div className={`w-full bg-slate-200/60 rounded-full h-2 overflow-hidden ${isHighRiskLowProgress ? 'ring-1 ring-red-200' : ''}`}>
-            <div
-              className={`h-full rounded-full bg-gradient-to-l ${progressColor} transition-all duration-700 ease-out`}
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-        </div>
-
-        {/* ─── ROW 5: Footer — Date + Metadata ─── */}
-        <div className="px-5 pb-3 pt-0.5">
-          <div className="flex items-center justify-between border-t border-slate-100 pt-2">
-            <span className="text-[10px] text-muted-foreground">{formatDualDateCompact(issue.created_at)}</span>
             <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+              <div className="flex items-center gap-1 text-[10px] text-slate-400">
                 <MessageSquare className="h-3 w-3" />
                 <span className="font-semibold">{commentCount}</span>
               </div>
               {attachmentCount > 0 && (
-                <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                <div className="flex items-center gap-1 text-[10px] text-slate-400">
                   <Paperclip className="h-3 w-3" />
                   <span className="font-semibold">{attachmentCount}</span>
                 </div>
@@ -998,20 +997,35 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
               </div>
 
               {/* ═══ ZONE C: HAKIM AI ═══ */}
-              <div className="lg:col-span-3 p-5 border-t lg:border-t-0 bg-gradient-to-b from-brand-turquoise/3 to-transparent">
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-brand-turquoise to-brand-turquoise/70 flex items-center justify-center shadow-sm">
-                    <Brain className="h-4 w-4 text-white" />
+              <div className="lg:col-span-3 p-5 border-t lg:border-t-0 bg-gradient-to-b from-brand-turquoise/[0.04] via-transparent to-brand-navy/[0.02]">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-turquoise to-brand-navy flex items-center justify-center shadow-md shadow-brand-turquoise/20">
+                    <Brain className="h-4.5 w-4.5 text-white" />
                   </div>
-                  <div>
+                  <div className="flex-1">
                     <span className="text-sm font-bold text-brand-navy block leading-tight">حكيم</span>
-                    <span className="text-[9px] text-brand-turquoise font-medium">مساعد ذكي</span>
+                    <span className="text-[10px] text-brand-turquoise font-medium">مساعد ذكي للتحليل</span>
                   </div>
-                  <Sparkles className="h-3.5 w-3.5 text-brand-turquoise/50 mr-auto" />
                 </div>
 
+                {isMainAdmin && (
+                  <Button
+                    onClick={handleReanalyze}
+                    disabled={reanalyzing}
+                    className={`w-full h-10 text-xs font-bold rounded-xl gap-2 mb-4 transition-all shadow-sm ${
+                      hakimAnalysis && Object.keys(hakimAnalysis).length > 0
+                        ? 'bg-white border-2 border-brand-turquoise/30 text-brand-turquoise hover:bg-brand-turquoise/5 hover:border-brand-turquoise/50 hover:shadow-md'
+                        : 'bg-gradient-to-l from-brand-turquoise to-brand-turquoise/90 text-white hover:from-brand-turquoise/90 hover:to-brand-turquoise/80 shadow-brand-turquoise/25'
+                    }`}
+                    variant={hakimAnalysis && Object.keys(hakimAnalysis).length > 0 ? 'outline' : 'default'}
+                  >
+                    {reanalyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
+                    {reanalyzing ? 'جاري التحليل...' : hakimAnalysis && Object.keys(hakimAnalysis).length > 0 ? 'إعادة التحليل بحكيم' : 'تحليل بواسطة حكيم'}
+                  </Button>
+                )}
+
                 {hakimAnalysis && Object.keys(hakimAnalysis).length > 0 ? (
-                  <div className="space-y-3">
+                  <div className="space-y-2.5">
                     {hakimAnalysis.suggested_priority && (
                       <HakimMicroInsight
                         label="الأولوية المقترحة"
@@ -1037,9 +1051,9 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
                       <HakimMicroInsight label="ملاحظات فنية" detail={hakimAnalysis.technical_notes} icon={FileText} />
                     )}
                     {hakimAnalysis.duplicate_ids?.length > 0 && (
-                      <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-200">
+                      <div className="p-2.5 bg-amber-50/80 rounded-xl border border-amber-200/80">
                         <div className="flex items-center gap-1.5 text-amber-700 text-[10px] font-semibold mb-1">
-                          <AlertTriangle className="h-3 w-3" />
+                          <Copy className="h-3 w-3" />
                           {hakimAnalysis.duplicate_ids.length} تحدي مشابه
                         </div>
                         {hakimAnalysis.duplicate_note && (
@@ -1049,42 +1063,33 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
                     )}
                   </div>
                 ) : (
-                  <div className="text-center py-6">
-                    <Brain className="h-8 w-8 text-slate-200 mx-auto mb-2" />
-                    <p className="text-xs text-muted-foreground">لم يتم التحليل بعد</p>
+                  <div className="text-center py-5 px-3 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+                    <Sparkles className="h-8 w-8 text-slate-200 mx-auto mb-2" />
+                    <p className="text-xs text-slate-400 font-medium">لم يتم التحليل بعد</p>
+                    <p className="text-[10px] text-slate-300 mt-0.5">اضغط الزر أعلاه لبدء تحليل حكيم</p>
                   </div>
                 )}
 
                 {isMainAdmin && (
-                  <div className="mt-4 space-y-2">
-                    <Button
-                      variant="outline" size="sm"
-                      onClick={handleReanalyze}
-                      disabled={reanalyzing}
-                      className="w-full h-9 text-xs font-semibold rounded-lg gap-2 border-brand-turquoise/30 text-brand-turquoise hover:bg-brand-turquoise/5 hover:border-brand-turquoise/50 transition-all"
-                    >
-                      {reanalyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Brain className="h-3.5 w-3.5" />}
-                      {reanalyzing ? 'جاري التحليل...' : hakimAnalysis && Object.keys(hakimAnalysis).length > 0 ? 'إعادة تحليل بحكيم' : 'تحليل بحكيم'}
-                    </Button>
-
-                    <div className="text-[10px] text-muted-foreground font-semibold mb-2 flex items-center gap-1.5 mt-3">
-                      <Wand2 className="h-3 w-3 text-brand-purple" /> إجراءات حكيم
+                  <div className="mt-4 pt-4 border-t border-slate-100 space-y-2">
+                    <div className="text-[10px] text-slate-400 font-semibold mb-2 flex items-center gap-1.5">
+                      <Wand2 className="h-3 w-3 text-brand-purple/70" /> أدوات إضافية
                     </div>
                     <div className="grid grid-cols-2 gap-1.5">
                       <Button
                         variant="outline" size="sm"
                         onClick={handleGenerate}
                         disabled={generating}
-                        className="h-8 text-[9px] font-semibold rounded-lg gap-1 border-brand-purple/20 text-brand-purple hover:bg-brand-purple/5"
+                        className="h-8 text-[9px] font-semibold rounded-lg gap-1 border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-brand-purple hover:border-brand-purple/20"
                       >
-                        {generating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Brain className="h-3 w-3" />}
+                        {generating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
                         {promptText ? 'إعادة البرومبت' : 'إنشاء برومبت'}
                       </Button>
                       <Button
                         variant={copied ? "default" : "outline"} size="sm"
                         onClick={handleCopy}
                         disabled={!promptText}
-                        className={`h-8 text-[9px] font-semibold rounded-lg gap-1 ${copied ? 'bg-emerald-500 text-white' : 'border-brand-navy/15 text-brand-navy hover:bg-brand-navy/5'} ${!promptText ? 'opacity-40' : ''}`}
+                        className={`h-8 text-[9px] font-semibold rounded-lg gap-1 ${copied ? 'bg-emerald-500 text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50'} ${!promptText ? 'opacity-30' : ''}`}
                       >
                         {copied ? <CheckCircle2 className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
                         {copied ? 'تم النسخ' : 'نسخ البرومبت'}
@@ -1109,13 +1114,15 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
 
 function HakimMicroInsight({ label, value, detail, icon: Icon, valueColor = 'text-brand-navy' }) {
   return (
-    <div className="p-2.5 bg-white rounded-xl border border-slate-100 hover:border-brand-turquoise/20 transition-colors">
-      <div className="flex items-center gap-1.5 mb-1">
-        <Icon className="h-3 w-3 text-brand-turquoise/70" />
-        <span className="text-[10px] text-muted-foreground font-medium">{label}</span>
+    <div className="p-3 bg-white rounded-xl border border-slate-100 hover:border-brand-turquoise/25 transition-all hover:shadow-sm">
+      <div className="flex items-center gap-2 mb-1">
+        <div className="w-5 h-5 rounded-md bg-brand-turquoise/8 flex items-center justify-center flex-shrink-0">
+          <Icon className="h-3 w-3 text-brand-turquoise" />
+        </div>
+        <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">{label}</span>
       </div>
-      {value && <p className={`text-xs font-semibold ${valueColor}`}>{value}</p>}
-      {detail && <p className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed line-clamp-3">{detail}</p>}
+      {value && <p className={`text-xs font-bold ${valueColor} mt-1`}>{value}</p>}
+      {detail && <p className="text-[10px] text-slate-500 mt-1 leading-relaxed line-clamp-3">{detail}</p>}
     </div>
   );
 }
@@ -1151,13 +1158,13 @@ function IssuesTableView({ issues, loading, total, page, totalPages, onPageChang
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {expandedId && (
         <div className="flex justify-end">
           <Button
             variant="ghost" size="sm"
             onClick={() => setExpandedId(null)}
-            className="text-xs text-muted-foreground hover:text-brand-navy gap-1.5 h-7"
+            className="text-xs text-slate-400 hover:text-brand-navy gap-1.5 h-7 rounded-lg"
           >
             <Minimize2 className="h-3 w-3" /> طي الكل
           </Button>
@@ -1180,14 +1187,17 @@ function IssuesTableView({ issues, loading, total, page, totalPages, onPageChang
       ))}
 
       {totalPages > 1 && (
-        <div className="flex justify-center items-center gap-4 pt-2">
-          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => onPageChange(p => p - 1)} className="rounded-lg">
+        <div className="flex justify-center items-center gap-3 pt-4 pb-2">
+          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => onPageChange(p => p - 1)} className="rounded-xl h-9 w-9 p-0 border-slate-200">
             <ChevronRight className="h-4 w-4" />
           </Button>
-          <span className="text-sm text-muted-foreground">
-            صفحة {page} من {totalPages} ({total} تحدي)
-          </span>
-          <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => onPageChange(p => p + 1)} className="rounded-lg">
+          <div className="flex items-center gap-2 px-4 py-1.5 bg-slate-50 rounded-xl border border-slate-200">
+            <span className="text-xs text-slate-500 font-medium">
+              صفحة <span className="font-bold text-brand-navy">{page}</span> من <span className="font-bold text-brand-navy">{totalPages}</span>
+            </span>
+            <span className="text-[10px] text-slate-400">({total} تحدي)</span>
+          </div>
+          <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => onPageChange(p => p + 1)} className="rounded-xl h-9 w-9 p-0 border-slate-200">
             <ChevronLeft className="h-4 w-4" />
           </Button>
         </div>
