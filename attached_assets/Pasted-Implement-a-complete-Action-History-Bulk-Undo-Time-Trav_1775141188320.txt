@@ -1,0 +1,226 @@
+Implement a complete Action History + Bulk Undo (Time Travel) system inside the "Product Intelligence Hub" to allow tracking, auditing, and reversing bulk operations safely and efficiently.
+
+==================================================
+1) CORE OBJECTIVE
+==================================================
+
+Enable the system to:
+
+→ track all critical actions  
+→ allow bulk undo of operations  
+→ provide full visibility of changes  
+→ prevent irreversible mistakes  
+
+This transforms the system into:
+→ safe, auditable, and reversible operation environment
+
+==================================================
+2) TARGET USERS (STRICT PERMISSIONS)
+==================================================
+
+This system must be accessible ONLY to:
+
+- zalat@nassaqapp.com
+- hakim@nassaqapp.com
+
+Other users:
+→ cannot access undo or history controls
+
+==================================================
+3) ACTION TRACKING (MANDATORY)
+==================================================
+
+Track ALL critical actions, including:
+
+- Bulk Edit
+- Bulk Delete
+- Status Change
+- Assignment Change
+- Priority Change
+- Duplicate Marking
+- Prompt generation / regeneration
+- Any override actions
+
+==================================================
+4) HISTORY DATA MODEL (BACKEND)
+==================================================
+
+Each action must be stored as a record:
+
+{
+  "action_id": "UUID",
+  "action_type": "bulk_edit | bulk_delete | status_change | ...",
+  "performed_by": "user_email",
+  "timestamp": "datetime",
+
+  "affected_items": ["issue_id_1", "issue_id_2"],
+
+  "before_state": { ... },
+  "after_state": { ... },
+
+  "is_undoable": true,
+  "undo_expiry": "timestamp"
+}
+
+==================================================
+5) BULK UNDO SYSTEM (TIME TRAVEL)
+==================================================
+
+--------------------------------------------------
+A) UNDO CAPABILITY
+--------------------------------------------------
+
+- Each bulk action must support:
+  → full rollback
+
+- Undo must:
+  → restore previous state exactly
+  → apply to all affected items
+
+--------------------------------------------------
+B) UNDO TRIGGER
+--------------------------------------------------
+
+Provide:
+
+1) Immediate Undo (Toast level)
+   Example:
+   "تم تحديث 3 تحديات — تراجع"
+
+2) History-Based Undo
+   → from Action History panel
+
+--------------------------------------------------
+C) UNDO EXPIRY RULE
+--------------------------------------------------
+
+- Undo should be available for:
+  → limited time (e.g., 5–30 minutes)
+
+- After expiry:
+  → action becomes permanent
+
+==================================================
+6) ACTION HISTORY PANEL (UI)
+==================================================
+
+Create a dedicated panel or page:
+
+👉 "Action History" / "سجل العمليات"
+
+Each record must display:
+
+- action type
+- user (email)
+- timestamp
+- number of affected items
+- summary of change
+
+Example:
+"Bulk Status Change — 5 challenges — by zalat@nassaqapp.com"
+
+==================================================
+7) HISTORY INTERACTION
+==================================================
+
+For each record:
+
+- View details:
+  → before vs after comparison
+
+- Undo button (if allowed)
+
+- Status:
+  → Active / Expired / Undone
+
+==================================================
+8) VISUAL DESIGN
+==================================================
+
+- Clean timeline or list format
+- Clear separation between actions
+- Highlight undoable actions
+
+Optional:
+- color coding based on action type
+
+==================================================
+9) SAFETY MECHANISMS
+==================================================
+
+For destructive actions (like delete):
+
+- Allow undo ONLY if:
+  → data is soft-deleted (not permanently removed)
+
+- Require:
+  → confirmation before undo
+
+==================================================
+10) BACKEND REQUIREMENTS
+==================================================
+
+- Implement soft delete system
+- Store full snapshots of affected data
+- Ensure atomic operations:
+  → either full undo succeeds
+  → or fails safely
+
+==================================================
+11) PERFORMANCE
+==================================================
+
+- History queries must be efficient
+- Bulk undo must:
+  → execute as single operation (batch)
+
+==================================================
+12) ERROR HANDLING
+==================================================
+
+If undo fails:
+
+- show clear error message
+- explain reason
+- do NOT leave system in inconsistent state
+
+==================================================
+13) AUDIT COMPLIANCE
+==================================================
+
+- Even after undo:
+  → keep original action in history
+  → mark it as "undone"
+
+- Maintain full audit trail
+
+==================================================
+14) OPTIONAL ENHANCEMENTS
+==================================================
+
+- Filter history by:
+  → user
+  → action type
+  → date
+
+- Search functionality
+
+- Export logs
+
+==================================================
+15) FINAL GOAL
+==================================================
+
+Transform the system from:
+
+→ irreversible operations
+
+To:
+
+→ safe, reversible, and fully traceable system
+
+Where admins can:
+
+- act fast
+- experiment safely
+- recover from mistakes instantly
