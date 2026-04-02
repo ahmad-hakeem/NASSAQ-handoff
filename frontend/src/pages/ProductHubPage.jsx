@@ -632,7 +632,7 @@ function IssuesStatusFlow({ issues, onStatusFilter, activeStatus }) {
   );
 }
 
-function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, userId, onRefresh, isExpanded, onToggleExpand }) {
+function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, userId, onRefresh, isExpanded, onToggleExpand, isSelected, onToggleSelect }) {
   const typeCfg = TYPE_CONFIG[issue.issue_type] || TYPE_CONFIG.other;
   const TypeIcon = typeCfg.icon;
   const progress = STATUS_PROGRESS[issue.status] || 0;
@@ -788,7 +788,19 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
         dir="rtl"
       >
         <div className="p-4 space-y-3">
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            {onToggleSelect && (
+              <div
+                onClick={(e) => { e.stopPropagation(); onToggleSelect(issue.id); }}
+                className={`w-5 h-5 rounded-md border-2 flex items-center justify-center cursor-pointer transition-all flex-shrink-0 mt-0.5 ${
+                  isSelected
+                    ? 'bg-brand-turquoise border-brand-turquoise text-white shadow-sm'
+                    : 'border-slate-300 hover:border-brand-turquoise/50 bg-white'
+                }`}
+              >
+                {isSelected && <CheckCircle2 className="h-3.5 w-3.5" />}
+              </div>
+            )}
             <h3 className={`text-sm font-bold leading-relaxed flex-1 min-w-0 ${isDone ? 'text-emerald-800' : isRejected ? 'text-red-400' : 'text-brand-navy'}`}>
               {isDone && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 inline-block ml-1 -mt-0.5" />}
               {issue.title}
@@ -1782,32 +1794,20 @@ function IssuesTableView({ issues, loading, total, page, totalPages, onPageChang
         {issues.map(issue => {
           const isSelected = selectedIds.includes(issue.id);
           return (
-            <div key={issue.id} className="relative">
-              {isMainAdmin && (
-                <div
-                  onClick={(e) => { e.stopPropagation(); toggleSelect(issue.id); }}
-                  className={`absolute top-3 left-3 z-10 w-5 h-5 rounded-md border-2 flex items-center justify-center cursor-pointer transition-all ${
-                    isSelected
-                      ? 'bg-brand-turquoise border-brand-turquoise text-white shadow-sm'
-                      : 'border-slate-300 hover:border-brand-turquoise/50 bg-white/90 backdrop-blur-sm'
-                  }`}
-                >
-                  {isSelected && <CheckCircle2 className="h-3.5 w-3.5" />}
-                </div>
-              )}
-              <div className={isSelected ? 'ring-2 ring-brand-turquoise/40 rounded-2xl' : ''}>
-                <IssuePanel
-                  issue={issue}
-                  navigate={navigate}
-                  isHighlighted={highlightId === issue.id}
-                  isMainAdmin={isMainAdmin}
-                  isAdmin={isAdmin}
-                  userId={user?.id}
-                  onRefresh={onRefresh}
-                  isExpanded={expandedId === issue.id}
-                  onToggleExpand={handleToggleExpand}
-                />
-              </div>
+            <div key={issue.id} className={isSelected ? 'ring-2 ring-brand-turquoise/40 rounded-2xl' : ''}>
+              <IssuePanel
+                issue={issue}
+                navigate={navigate}
+                isHighlighted={highlightId === issue.id}
+                isMainAdmin={isMainAdmin}
+                isAdmin={isAdmin}
+                userId={user?.id}
+                onRefresh={onRefresh}
+                isExpanded={expandedId === issue.id}
+                onToggleExpand={handleToggleExpand}
+                isSelected={isSelected}
+                onToggleSelect={toggleSelect}
+              />
             </div>
           );
         })}
