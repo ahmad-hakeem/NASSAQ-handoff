@@ -702,13 +702,13 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
   return (
     <div
       ref={cardRef}
-      className={`w-full rounded-2xl border transition-all duration-300 overflow-hidden group ${
+      className={`w-full rounded-2xl border overflow-hidden group hub-card ${
         isDone
-          ? 'bg-gradient-to-l from-emerald-50/80 via-emerald-50/40 to-white border-emerald-200/60'
+          ? 'bg-gradient-to-l from-emerald-50/80 via-emerald-50/40 to-white border-emerald-200/60 hub-card-done'
           : isRejected
           ? 'bg-gradient-to-l from-red-50/50 via-red-50/20 to-white border-red-200/50'
           : 'bg-white border-slate-200'
-      } ${isExpanded ? 'border-brand-turquoise/40 shadow-[0_8px_32px_rgba(70,193,190,0.12)] ring-1 ring-brand-turquoise/15' : `hover:shadow-[0_4px_16px_rgba(0,0,0,0.06)] ${!isDone && !isRejected ? 'hover:border-slate-300' : ''}`} ${isHighlighted ? 'ring-2 ring-brand-turquoise ring-offset-2' : ''}`}
+      } ${isExpanded ? 'hub-card-expanded border-brand-turquoise/40 shadow-[0_8px_32px_rgba(70,193,190,0.12)] ring-1 ring-brand-turquoise/15' : `hover:shadow-[0_4px_16px_rgba(0,0,0,0.06)] ${!isDone && !isRejected ? 'hover:border-slate-300' : ''}`} ${isHighlighted ? 'ring-2 ring-brand-turquoise ring-offset-2' : ''}`}
     >
       {/* ═══════════════ COLLAPSED STATE ═══════════════ */}
       <div
@@ -734,8 +734,8 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
               <span className="text-[10px] font-mono text-slate-400 bg-slate-50 px-2 py-1 rounded-md font-semibold border border-slate-100">
                 #{issue.issue_number}
               </span>
-              <div className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-300 ${isExpanded ? 'bg-brand-turquoise/10 text-brand-turquoise rotate-180' : 'bg-slate-50 text-slate-400 group-hover:bg-slate-100'}`}>
-                <ChevronDown className="h-4 w-4" />
+              <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${isExpanded ? 'bg-brand-turquoise/10 text-brand-turquoise' : 'bg-slate-50 text-slate-400 group-hover:bg-slate-100'}`}>
+                <ChevronDown className={`h-4 w-4 hub-chevron ${isExpanded ? 'hub-chevron-open' : ''}`} />
               </div>
             </div>
           </div>
@@ -778,7 +778,7 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
           </div>
           <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
             <div
-              className={`h-full rounded-full bg-gradient-to-l ${progressColor} transition-all duration-700 ease-out`}
+              className={`h-full rounded-full bg-gradient-to-l ${progressColor} hub-progress-fill`}
               style={{ width: `${Math.max(progress, 2)}%` }}
             />
           </div>
@@ -839,7 +839,7 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
 
       {/* ═══════════════ EXPANDED STATE ═══════════════ */}
       <div
-        className="overflow-hidden transition-all duration-400 ease-in-out"
+        className="overflow-hidden hub-expand-content"
         style={{
           maxHeight: isExpanded ? '2000px' : '0px',
           opacity: isExpanded ? 1 : 0,
@@ -847,10 +847,18 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
       >
         <div className="border-t border-slate-100">
           {detailLoading ? (
-            <div className="flex justify-center items-center py-16">
-              <div className="flex flex-col items-center gap-3">
-                <div className="animate-spin rounded-full h-8 w-8 border-2 border-brand-turquoise border-t-transparent" />
-                <p className="text-sm text-muted-foreground">جاري تحميل مساحة العمل...</p>
+            <div className="p-5 space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="hub-skeleton w-10 h-10 rounded-full" />
+                <div className="flex-1 space-y-2">
+                  <div className="hub-skeleton h-4 w-3/4 rounded-md" />
+                  <div className="hub-skeleton h-3 w-1/2 rounded-md" />
+                </div>
+              </div>
+              <div className="hub-skeleton h-20 w-full rounded-xl" />
+              <div className="hub-skeleton h-16 w-full rounded-xl" />
+              <div className="flex gap-2">
+                <div className="hub-skeleton h-9 flex-1 rounded-lg" />
               </div>
             </div>
           ) : detailError ? (
@@ -866,7 +874,7 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-0">
               {/* ═══ ZONE A: DETAILS ═══ */}
-              <div className="lg:col-span-5 p-5 lg:border-l border-slate-100">
+              <div className="lg:col-span-5 p-5 lg:border-l border-slate-100 hub-zone-stagger hub-zone-stagger-1">
                 <div className="space-y-4">
                   <div className="flex items-center gap-3 mb-4 flex-wrap">
                     <div className="flex items-center gap-2 bg-gradient-to-l from-brand-navy/5 to-brand-turquoise/5 rounded-lg px-3 py-2 border border-brand-turquoise/15">
@@ -940,7 +948,7 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
                     <Button
                       onClick={() => navigate(`/admin/product-hub/issues/${issue.id}`)}
                       size="sm"
-                      className="flex-1 h-9 text-xs font-semibold rounded-lg gap-1.5 bg-brand-navy hover:bg-brand-navy/90 text-white"
+                      className="flex-1 h-9 text-xs font-semibold rounded-lg gap-1.5 bg-brand-navy hover:bg-brand-navy/90 text-white hub-btn"
                     >
                       <ExternalLink className="h-3.5 w-3.5" /> فتح الصفحة الكاملة
                     </Button>
@@ -949,7 +957,7 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
               </div>
 
               {/* ═══ ZONE B: COMMENTS ═══ */}
-              <div className="lg:col-span-4 p-5 lg:border-l border-slate-100 border-t lg:border-t-0 flex flex-col">
+              <div className="lg:col-span-4 p-5 lg:border-l border-slate-100 border-t lg:border-t-0 flex flex-col hub-zone-stagger hub-zone-stagger-2">
                 <div className="flex items-center gap-2 mb-3">
                   <MessageSquare className="h-4 w-4 text-brand-navy" />
                   <span className="text-sm font-semibold text-brand-navy">المناقشة</span>
@@ -958,22 +966,23 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
 
                 <div className="flex-1 overflow-y-auto max-h-[400px] space-y-3 mb-3 scrollbar-thin">
                   {comments.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-8 text-center">
+                    <div className="flex flex-col items-center justify-center py-8 text-center hub-empty-state">
                       <MessageSquare className="h-8 w-8 text-slate-200 mb-2" />
                       <p className="text-xs text-muted-foreground">لا توجد تعليقات بعد</p>
                       <p className="text-[10px] text-muted-foreground mt-0.5">كن أول من يعلّق</p>
                     </div>
                   ) : (
-                    comments.map(comment => (
-                      <CommentBubble
-                        key={comment.id}
-                        comment={comment}
-                        currentUserId={userId}
-                        isMainAdmin={isMainAdmin}
-                        isAdmin={isAdmin}
-                        onEdit={handleEditComment}
-                        onDelete={handleDeleteComment}
-                      />
+                    comments.map((comment, idx) => (
+                      <div key={comment.id} className="hub-comment-enter" style={{ animationDelay: `${Math.min(idx * 40, 200)}ms` }}>
+                        <CommentBubble
+                          comment={comment}
+                          currentUserId={userId}
+                          isMainAdmin={isMainAdmin}
+                          isAdmin={isAdmin}
+                          onEdit={handleEditComment}
+                          onDelete={handleDeleteComment}
+                        />
+                      </div>
                     ))
                   )}
                 </div>
@@ -992,7 +1001,7 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
               </div>
 
               {/* ═══ ZONE C: HAKIM AI (Main Admins Only) ═══ */}
-              {isMainAdmin ? <div className="lg:col-span-3 p-5 border-t lg:border-t-0 bg-gradient-to-b from-brand-turquoise/[0.04] via-transparent to-brand-navy/[0.02]">
+              {isMainAdmin ? <div className="lg:col-span-3 p-5 border-t lg:border-t-0 bg-gradient-to-b from-brand-turquoise/[0.04] via-transparent to-brand-navy/[0.02] hub-zone-stagger hub-zone-stagger-3 hub-hakim-enter">
                 <div className="flex items-center gap-3 mb-4">
                   <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-turquoise to-brand-navy flex items-center justify-center shadow-md shadow-brand-turquoise/20">
                     <Brain className="h-4.5 w-4.5 text-white" />
@@ -1007,7 +1016,7 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
                   <Button
                     onClick={handleReanalyze}
                     disabled={reanalyzing}
-                    className={`w-full h-10 text-xs font-bold rounded-xl gap-2 mb-4 transition-all shadow-sm ${
+                    className={`w-full h-10 text-xs font-bold rounded-xl gap-2 mb-4 shadow-sm hub-btn ${
                       hakimAnalysis && Object.keys(hakimAnalysis).length > 0
                         ? 'bg-white border-2 border-brand-turquoise/30 text-brand-turquoise hover:bg-brand-turquoise/5 hover:border-brand-turquoise/50 hover:shadow-md'
                         : 'bg-gradient-to-l from-brand-turquoise to-brand-turquoise/90 text-white hover:from-brand-turquoise/90 hover:to-brand-turquoise/80 shadow-brand-turquoise/25'
@@ -1015,38 +1024,46 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
                     variant={hakimAnalysis && Object.keys(hakimAnalysis).length > 0 ? 'outline' : 'default'}
                   >
                     {reanalyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
-                    {reanalyzing ? 'جاري التحليل...' : hakimAnalysis && Object.keys(hakimAnalysis).length > 0 ? 'إعادة التحليل بحكيم' : 'تحليل بواسطة حكيم'}
+                    <span className={reanalyzing ? 'hub-analyzing' : ''}>{reanalyzing ? 'حكيم يحلّل...' : hakimAnalysis && Object.keys(hakimAnalysis).length > 0 ? 'إعادة التحليل بحكيم' : 'تحليل بواسطة حكيم'}</span>
                   </Button>
                 )}
 
                 {hakimAnalysis && Object.keys(hakimAnalysis).length > 0 ? (
                   <div className="space-y-2.5">
                     {hakimAnalysis.suggested_priority && (
-                      <HakimMicroInsight
-                        label="الأولوية المقترحة"
-                        value={PRIORITY_CONFIG[hakimAnalysis.suggested_priority]?.label || hakimAnalysis.suggested_priority}
-                        detail={hakimAnalysis.priority_reasoning}
-                        icon={Target}
-                        valueColor={PRIORITY_CONFIG[hakimAnalysis.suggested_priority]?.textColor}
-                      />
+                      <div className="hub-insight-item">
+                        <HakimMicroInsight
+                          label="الأولوية المقترحة"
+                          value={PRIORITY_CONFIG[hakimAnalysis.suggested_priority]?.label || hakimAnalysis.suggested_priority}
+                          detail={hakimAnalysis.priority_reasoning}
+                          icon={Target}
+                          valueColor={PRIORITY_CONFIG[hakimAnalysis.suggested_priority]?.textColor}
+                        />
+                      </div>
                     )}
                     {hakimAnalysis.suggested_team && (
-                      <HakimMicroInsight
-                        label="الفريق المقترح"
-                        value={hakimAnalysis.suggested_team}
-                        detail={hakimAnalysis.team_reasoning}
-                        icon={Users}
-                        valueColor="text-brand-turquoise"
-                      />
+                      <div className="hub-insight-item">
+                        <HakimMicroInsight
+                          label="الفريق المقترح"
+                          value={hakimAnalysis.suggested_team}
+                          detail={hakimAnalysis.team_reasoning}
+                          icon={Users}
+                          valueColor="text-brand-turquoise"
+                        />
+                      </div>
                     )}
                     {hakimAnalysis.impact_assessment && (
-                      <HakimMicroInsight label="تقييم الأثر" detail={hakimAnalysis.impact_assessment} icon={AlertTriangle} />
+                      <div className="hub-insight-item">
+                        <HakimMicroInsight label="تقييم الأثر" detail={hakimAnalysis.impact_assessment} icon={AlertTriangle} />
+                      </div>
                     )}
                     {hakimAnalysis.technical_notes && (
-                      <HakimMicroInsight label="ملاحظات فنية" detail={hakimAnalysis.technical_notes} icon={FileText} />
+                      <div className="hub-insight-item">
+                        <HakimMicroInsight label="ملاحظات فنية" detail={hakimAnalysis.technical_notes} icon={FileText} />
+                      </div>
                     )}
                     {hakimAnalysis.duplicate_ids?.length > 0 && (
-                      <div className="p-2.5 bg-amber-50/80 rounded-xl border border-amber-200/80">
+                      <div className="hub-insight-item p-2.5 bg-amber-50/80 rounded-xl border border-amber-200/80">
                         <div className="flex items-center gap-1.5 text-amber-700 text-[10px] font-semibold mb-1">
                           <Copy className="h-3 w-3" />
                           {hakimAnalysis.duplicate_ids.length} تحدي مشابه
@@ -1058,7 +1075,7 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
                     )}
                   </div>
                 ) : (
-                  <div className="text-center py-5 px-3 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+                  <div className="text-center py-5 px-3 bg-slate-50/50 rounded-xl border border-dashed border-slate-200 hub-empty-state">
                     <Sparkles className="h-8 w-8 text-slate-200 mx-auto mb-2" />
                     <p className="text-xs text-slate-400 font-medium">لم يتم التحليل بعد</p>
                     <p className="text-[10px] text-slate-300 mt-0.5">اضغط الزر أعلاه لبدء تحليل حكيم</p>
@@ -1075,7 +1092,7 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
                         variant="outline" size="sm"
                         onClick={handleGenerate}
                         disabled={generating}
-                        className="h-8 text-[9px] font-semibold rounded-lg gap-1 border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-brand-purple hover:border-brand-purple/20"
+                        className="h-8 text-[9px] font-semibold rounded-lg gap-1 border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-brand-purple hover:border-brand-purple/20 hub-btn"
                       >
                         {generating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
                         {promptText ? 'إعادة البرومبت' : 'إنشاء برومبت'}
@@ -1084,7 +1101,7 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
                         variant={copied ? "default" : "outline"} size="sm"
                         onClick={handleCopy}
                         disabled={!promptText}
-                        className={`h-8 text-[9px] font-semibold rounded-lg gap-1 ${copied ? 'bg-emerald-500 text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50'} ${!promptText ? 'opacity-30' : ''}`}
+                        className={`h-8 text-[9px] font-semibold rounded-lg gap-1 hub-btn ${copied ? 'bg-emerald-500 text-white hub-success-pulse' : 'border-slate-200 text-slate-600 hover:bg-slate-50'} ${!promptText ? 'opacity-30' : ''}`}
                       >
                         {copied ? <CheckCircle2 className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
                         {copied ? 'تم النسخ' : 'نسخ البرومبت'}

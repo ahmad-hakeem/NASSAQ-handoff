@@ -29,7 +29,7 @@ function MentionDropdown({ users, search, activeIndex, onSelect, listRef }) {
 
   if (filtered.length === 0) {
     return (
-      <div className="absolute z-50 bottom-full mb-1 right-0 w-72 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
+      <div className="absolute z-50 bottom-full mb-1 right-0 w-72 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden hub-mention-dropdown">
         <div className="p-2 border-b border-slate-100 flex items-center gap-1.5">
           <AtSign className="h-3 w-3 text-brand-turquoise" />
           <span className="text-[10px] text-muted-foreground">إشارة إلى مستخدم</span>
@@ -44,7 +44,7 @@ function MentionDropdown({ users, search, activeIndex, onSelect, listRef }) {
   return (
     <div
       ref={listRef}
-      className="absolute z-50 bottom-full mb-1 right-0 w-72 max-h-48 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-lg"
+      className="absolute z-50 bottom-full mb-1 right-0 w-72 max-h-48 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-lg hub-mention-dropdown"
     >
       <div className="p-2 border-b border-slate-100 flex items-center gap-1.5">
         <AtSign className="h-3 w-3 text-brand-turquoise" />
@@ -55,7 +55,7 @@ function MentionDropdown({ users, search, activeIndex, onSelect, listRef }) {
           key={u.id}
           data-active={i === activeIndex}
           onMouseDown={(e) => { e.preventDefault(); onSelect(u); }}
-          className={`w-full flex items-center gap-2.5 p-2.5 text-right transition-colors ${
+          className={`w-full flex items-center gap-2.5 p-2.5 text-right transition-colors duration-120 ${
             i === activeIndex ? 'bg-brand-turquoise/10' : 'hover:bg-slate-50'
           }`}
         >
@@ -248,7 +248,7 @@ export function CommentInput({ onSubmit, submitting, isMainAdmin, isAdmin, comme
             <button
               key={key}
               onClick={() => setCommentType(key)}
-              className={`px-3 py-1 rounded-full text-[11px] font-medium border transition-all ${
+              className={`px-3 py-1 rounded-full text-[11px] font-medium border hub-btn ${
                 commentType === key
                   ? `${cfg.bgColor} ${cfg.textColor} ${cfg.borderColor}`
                   : 'border-slate-200 text-muted-foreground hover:border-slate-300'
@@ -268,7 +268,7 @@ export function CommentInput({ onSubmit, submitting, isMainAdmin, isAdmin, comme
           onKeyDown={onKeyDown}
           onSelect={(e) => setCursorPos(e.target.selectionStart)}
           placeholder={canMention ? "اكتب تعليقك هنا... أو استخدم @ للإشارة إلى شخص" : "اكتب تعليقك هنا..."}
-          className="w-full text-right min-h-[80px] max-h-[200px] p-3 pr-4 rounded-xl border border-slate-200 bg-white focus:border-brand-turquoise focus:ring-1 focus:ring-brand-turquoise/30 outline-none resize-none text-sm leading-relaxed transition-all"
+          className="w-full text-right min-h-[80px] max-h-[200px] p-3 pr-4 rounded-xl border border-slate-200 bg-white focus:border-brand-turquoise focus:ring-1 focus:ring-brand-turquoise/30 outline-none resize-none text-sm leading-relaxed hub-input-focus"
           rows={3}
           dir="rtl"
         />
@@ -302,7 +302,7 @@ export function CommentInput({ onSubmit, submitting, isMainAdmin, isAdmin, comme
             onClick={handleSubmit}
             disabled={!text.trim() || submitting}
             size="sm"
-            className="bg-brand-navy hover:bg-brand-navy/90 text-white rounded-lg gap-1.5 h-9 px-4"
+            className="bg-brand-navy hover:bg-brand-navy/90 text-white rounded-lg gap-1.5 h-9 px-4 hub-btn"
           >
             {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
             إرسال
@@ -344,7 +344,7 @@ function renderMentionContent(content, mentions = [], mentionableUsers = []) {
         return (
           <span
             key={i}
-            className="inline-flex items-center bg-brand-turquoise/15 text-brand-turquoise font-medium px-1 py-0.5 rounded text-[13px] cursor-default"
+            className="inline-flex items-center bg-brand-turquoise/15 text-brand-turquoise font-medium px-1 py-0.5 rounded text-[13px] cursor-default hub-mention-token hover:bg-brand-turquoise/25 transition-colors duration-120"
             title={user.email || ''}
           >
             {part}
@@ -527,7 +527,7 @@ export function CommentBubble({ comment, currentUserId, isMainAdmin, isAdmin, on
       )}
 
       {!editing && (canEdit || canDelete) && (
-        <div className="absolute top-0 left-0 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+        <div className="absolute top-0 left-0 flex gap-1 hub-comment-actions">
           {canEdit && (
             <button
               onClick={startEdit}

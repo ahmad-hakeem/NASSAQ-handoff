@@ -311,3 +311,271 @@
 .hakim-img {
     filter: drop-shadow(0 1px 2px rgba(0,0,0,0.08)) drop-shadow(0 0 1px rgba(0,0,0,0.12));
 }
+
+/* ═══════════════════════════════════════════════════════
+   PRODUCT HUB — Micro-Interactions & Animation System
+   ═══════════════════════════════════════════════════════ */
+
+/* --- Card Hover & Press --- */
+.hub-card {
+  transition: transform 160ms cubic-bezier(0.22,0.61,0.36,1),
+              box-shadow 180ms ease,
+              border-color 180ms ease;
+}
+.hub-card:hover {
+  transform: translateY(-2px);
+  will-change: transform;
+}
+.hub-card:active {
+  transform: translateY(0) scale(0.995);
+  transition-duration: 80ms;
+}
+.hub-card.hub-card-expanded {
+  transform: none;
+}
+.hub-card.hub-card-expanded:active {
+  transform: none;
+}
+
+/* --- Expand / Collapse Content --- */
+.hub-expand-content {
+  transition: max-height 280ms cubic-bezier(0.22,0.61,0.36,1),
+              opacity 200ms ease;
+}
+
+/* --- Staggered Fade-In for Expanded Zones --- */
+@keyframes hubFadeSlideIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.hub-zone-stagger { animation: hubFadeSlideIn 260ms ease-out both; }
+.hub-zone-stagger-1 { animation-delay: 60ms; }
+.hub-zone-stagger-2 { animation-delay: 160ms; }
+.hub-zone-stagger-3 { animation-delay: 260ms; }
+
+/* --- Button Micro-Interactions --- */
+.hub-btn {
+  transition: transform 100ms ease,
+              box-shadow 150ms ease,
+              background-color 150ms ease,
+              border-color 150ms ease,
+              color 150ms ease;
+}
+.hub-btn:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+.hub-btn:active {
+  transform: scale(0.97);
+  transition-duration: 60ms;
+}
+
+/* --- Success Pulse (for copy, save confirmation) --- */
+@keyframes hubSuccessPulse {
+  0% { box-shadow: 0 0 0 0 rgba(16,185,129,0.4); }
+  70% { box-shadow: 0 0 0 8px rgba(16,185,129,0); }
+  100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); }
+}
+.hub-success-pulse {
+  animation: hubSuccessPulse 600ms ease-out;
+}
+
+/* --- Comment Appear --- */
+@keyframes hubCommentAppear {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.hub-comment-enter {
+  animation: hubCommentAppear 220ms ease-out both;
+}
+
+/* --- Comment Hover Actions Reveal --- */
+.hub-comment-actions {
+  opacity: 0;
+  transform: scale(0.92);
+  transition: opacity 120ms ease, transform 120ms ease;
+  pointer-events: none;
+}
+.group:hover .hub-comment-actions {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: auto;
+}
+
+/* --- Mention Dropdown --- */
+@keyframes hubMentionDropdown {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.hub-mention-dropdown {
+  animation: hubMentionDropdown 160ms ease-out;
+}
+
+/* --- Mention Token Insertion --- */
+@keyframes hubMentionPop {
+  0% { transform: scale(0.85); opacity: 0.5; }
+  60% { transform: scale(1.05); }
+  100% { transform: scale(1); opacity: 1; }
+}
+.hub-mention-token {
+  animation: hubMentionPop 200ms ease-out;
+}
+
+/* --- Progress Bar Width Animation --- */
+.hub-progress-fill {
+  transition: width 700ms cubic-bezier(0.22,0.61,0.36,1);
+}
+
+/* --- Badge Morph Transition --- */
+.hub-badge-morph {
+  transition: background-color 200ms ease,
+              color 200ms ease,
+              border-color 200ms ease;
+}
+
+/* --- Risk Warning Glow (subtle) --- */
+@keyframes hubRiskGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); }
+  50% { box-shadow: 0 0 6px 1px rgba(239,68,68,0.12); }
+}
+.hub-risk-glow {
+  animation: hubRiskGlow 3s ease-in-out infinite;
+}
+
+/* --- Hakim Panel Load --- */
+@keyframes hubHakimSlideIn {
+  from { opacity: 0; transform: translateX(-12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+[dir="rtl"] .hub-hakim-enter {
+  animation: hubHakimSlideIn 300ms ease-out both;
+  animation-delay: 200ms;
+}
+.hub-hakim-enter {
+  animation: hubHakimSlideIn 300ms ease-out both;
+  animation-delay: 200ms;
+}
+
+/* --- Hakim Insight Stagger --- */
+@keyframes hubInsightFade {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.hub-insight-item {
+  animation: hubInsightFade 240ms ease-out both;
+}
+.hub-insight-item:nth-child(1) { animation-delay: 100ms; }
+.hub-insight-item:nth-child(2) { animation-delay: 200ms; }
+.hub-insight-item:nth-child(3) { animation-delay: 300ms; }
+.hub-insight-item:nth-child(4) { animation-delay: 400ms; }
+.hub-insight-item:nth-child(5) { animation-delay: 500ms; }
+
+/* --- Hakim Analyzing Pulse --- */
+@keyframes hubAnalyzing {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+.hub-analyzing {
+  animation: hubAnalyzing 1.5s ease-in-out infinite;
+}
+
+/* --- Input Focus Ring --- */
+.hub-input-focus {
+  transition: border-color 150ms ease,
+              box-shadow 150ms ease;
+}
+.hub-input-focus:focus {
+  border-color: hsl(var(--brand-turquoise));
+  box-shadow: 0 0 0 3px hsla(179,49%,51%,0.12);
+}
+
+/* --- Skeleton Shimmer (for loading) --- */
+@keyframes hubSkeletonShimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.hub-skeleton {
+  background: linear-gradient(90deg,
+    hsl(210 14% 93%) 25%,
+    hsl(210 14% 97%) 50%,
+    hsl(210 14% 93%) 75%);
+  background-size: 200% 100%;
+  animation: hubSkeletonShimmer 1.8s ease-in-out infinite;
+  border-radius: 8px;
+}
+
+/* --- Toast Enter/Exit --- */
+@keyframes hubToastIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes hubToastOut {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(-4px) scale(0.96); }
+}
+
+/* --- Chevron Rotation --- */
+.hub-chevron {
+  transition: transform 250ms cubic-bezier(0.22,0.61,0.36,1);
+}
+.hub-chevron-open {
+  transform: rotate(180deg);
+}
+
+/* --- Done Card Success Glow --- */
+@keyframes hubDoneGlow {
+  from { box-shadow: 0 0 0 0 rgba(16,185,129,0.2); }
+  to { box-shadow: 0 0 0 0 rgba(16,185,129,0); }
+}
+.hub-card-done {
+  animation: hubDoneGlow 1s ease-out;
+}
+
+/* --- Empty State Fade --- */
+@keyframes hubEmptyFade {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+.hub-empty-state {
+  animation: hubEmptyFade 400ms ease-out;
+}
+
+/* ═══ REDUCED MOTION SUPPORT ═══ */
+@media (prefers-reduced-motion: reduce) {
+  .hub-card,
+  .hub-btn,
+  .hub-expand-content,
+  .hub-progress-fill,
+  .hub-badge-morph,
+  .hub-input-focus,
+  .hub-chevron {
+    transition-duration: 0ms !important;
+  }
+  .hub-card:hover {
+    transform: none;
+  }
+  .hub-card:active {
+    transform: none;
+  }
+  .hub-btn:active {
+    transform: none;
+  }
+  .hub-zone-stagger,
+  .hub-zone-stagger-1,
+  .hub-zone-stagger-2,
+  .hub-zone-stagger-3,
+  .hub-comment-enter,
+  .hub-mention-dropdown,
+  .hub-mention-token,
+  .hub-hakim-enter,
+  .hub-insight-item,
+  .hub-analyzing,
+  .hub-risk-glow,
+  .hub-success-pulse,
+  .hub-card-done,
+  .hub-empty-state,
+  .hub-skeleton {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
