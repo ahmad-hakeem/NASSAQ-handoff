@@ -43,7 +43,7 @@ export function ProductHubIssuePage() {
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [statusNote, setStatusNote] = useState('');
   const [assignTeam, setAssignTeam] = useState('');
-  const [expandedSections, setExpandedSections] = useState({ timeline: false });
+  const [expandedSections, setExpandedSections] = useState({ timeline: true });
   const [generatingPrompt, setGeneratingPrompt] = useState(false);
   const [promptCopied, setPromptCopied] = useState(false);
 
