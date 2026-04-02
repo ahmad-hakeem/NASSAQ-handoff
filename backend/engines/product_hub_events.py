@@ -275,7 +275,7 @@ async def check_sla_warning(issue_id: str, issue: dict, user: dict):
                     "priority": issue.get("priority"),
                     "hours_exceeded": round((now - deadline).total_seconds() / 3600, 1),
                 })
-                from database import db
+                from dependencies import db
                 await db.product_issues.update_one(
                     {"id": issue_id},
                     {"$set": {"sla_warning_emitted": True}}
