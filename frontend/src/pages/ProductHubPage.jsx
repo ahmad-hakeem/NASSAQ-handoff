@@ -708,7 +708,7 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
           : isRejected
           ? 'bg-gradient-to-l from-red-50/50 via-red-50/20 to-white border-red-200/50'
           : 'bg-white border-slate-200'
-      } ${isExpanded ? 'hub-card-expanded border-brand-turquoise/40 shadow-[0_8px_32px_rgba(70,193,190,0.12)] ring-1 ring-brand-turquoise/15' : `hover:shadow-[0_4px_16px_rgba(0,0,0,0.06)] ${!isDone && !isRejected ? 'hover:border-slate-300' : ''}`} ${isHighlighted ? 'ring-2 ring-brand-turquoise ring-offset-2' : ''}`}
+      } ${isExpanded ? 'md:col-span-2 hub-card-expanded border-brand-turquoise/40 shadow-[0_8px_32px_rgba(70,193,190,0.12)] ring-1 ring-brand-turquoise/15' : `hover:shadow-[0_4px_16px_rgba(0,0,0,0.06)] ${!isDone && !isRejected ? 'hover:border-slate-300' : ''}`} ${isHighlighted ? 'ring-2 ring-brand-turquoise ring-offset-2' : ''}`}
     >
       {/* ═══════════════ COLLAPSED STATE ═══════════════ */}
       <div
@@ -1183,20 +1183,22 @@ function IssuesTableView({ issues, loading, total, page, totalPages, onPageChang
         </div>
       )}
 
-      {issues.map(issue => (
-        <IssuePanel
-          key={issue.id}
-          issue={issue}
-          navigate={navigate}
-          isHighlighted={highlightId === issue.id}
-          isMainAdmin={isMainAdmin}
-          isAdmin={isAdmin}
-          userId={user?.id}
-          onRefresh={onRefresh}
-          isExpanded={expandedId === issue.id}
-          onToggleExpand={handleToggleExpand}
-        />
-      ))}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {issues.map(issue => (
+          <IssuePanel
+            key={issue.id}
+            issue={issue}
+            navigate={navigate}
+            isHighlighted={highlightId === issue.id}
+            isMainAdmin={isMainAdmin}
+            isAdmin={isAdmin}
+            userId={user?.id}
+            onRefresh={onRefresh}
+            isExpanded={expandedId === issue.id}
+            onToggleExpand={handleToggleExpand}
+          />
+        ))}
+      </div>
 
       {totalPages > 1 && (
         <div className="flex justify-center items-center gap-3 pt-4 pb-2">

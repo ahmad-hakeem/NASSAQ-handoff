@@ -801,30 +801,7 @@ async def edit_comment(
     data: CommentUpdate,
     current_user: dict = Depends(get_current_user),
 ):
-    issue = await _get_issue_or_404(issue_id)
-    if not can_access_comments(current_user, issue):
-        raise HTTPException(status_code=403, detail={"success": False, "error_code": "FORBIDDEN_COMMENTS", "message": "ليس لديك صلاحية الوصول للتعليقات"})
-
-    existing = await db.issue_comments.find_one({"id": comment_id, "issue_id": issue_id})
-    if not existing:
-        _hub_error(404, "COMMENT_NOT_FOUND", "التعليق غير موجود")
-
-    user_id = get_user_id(current_user)
-    if existing.get("user_id") != user_id and existing.get("created_by") != user_id:
-        if not is_main_admin(current_user):
-            _hub_error(403, "FORBIDDEN", "لا يمكنك تعديل تعليق مستخدم آخر")
-
-    await _validate_mentions(data.mentions or [], current_user)
-
-    update_fields = {
-        "content": data.content,
-        "comment": data.content,
-        "edited": True,
-        "edited_at": _now_iso(),
-        "mentions": data.mentions or [],
-    }
-    await db.issue_comments.update_one({"id": comment_id}, {"$set": update_fields})
-    return {"success": True, "message": "تم تعديل التعليق"}
+    raise HTTPException(status_code=403, detail={"success": False, "error_code": "FORBIDDEN", "message": "تعديل التعليقات غير مسموح"})
 
 
 @router.delete("/issues/{issue_id}/comments/{comment_id}")
@@ -833,21 +810,7 @@ async def delete_comment(
     comment_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    issue = await _get_issue_or_404(issue_id)
-    if not can_access_comments(current_user, issue):
-        raise HTTPException(status_code=403, detail={"success": False, "error_code": "FORBIDDEN_COMMENTS", "message": "ليس لديك صلاحية الوصول للتعليقات"})
-
-    existing = await db.issue_comments.find_one({"id": comment_id, "issue_id": issue_id})
-    if not existing:
-        _hub_error(404, "COMMENT_NOT_FOUND", "التعليق غير موجود")
-
-    user_id = get_user_id(current_user)
-    if existing.get("user_id") != user_id and existing.get("created_by") != user_id:
-        if not is_main_admin(current_user):
-            _hub_error(403, "FORBIDDEN", "لا يمكنك حذف تعليق مستخدم آخر")
-
-    await db.issue_comments.delete_one({"id": comment_id})
-    return {"success": True, "message": "تم حذف التعليق"}
+    raise HTTPException(status_code=403, detail={"success": False, "error_code": "FORBIDDEN", "message": "حذف التعليقات غير مسموح"})
 
 
 @router.get("/issues/{issue_id}/comments")

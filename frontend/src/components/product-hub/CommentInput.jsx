@@ -378,9 +378,8 @@ export function CommentBubble({ comment, currentUserId, isMainAdmin, isAdmin, on
     return (u.name || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q);
   });
 
-  const isOwner = comment.user_id === currentUserId || comment.created_by === currentUserId;
-  const canEdit = isOwner;
-  const canDelete = isOwner || isMainAdmin;
+  const canEdit = false;
+  const canDelete = false;
 
   const startEdit = () => {
     setEditing(true);
