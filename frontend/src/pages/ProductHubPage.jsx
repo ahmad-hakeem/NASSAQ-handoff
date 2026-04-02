@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Sidebar } from '../components/layout/Sidebar';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -12,8 +12,8 @@ import axios from 'axios';
 import { toast } from 'sonner';
 import {
   StatusChip, PriorityBadge, SLAIndicator, StatCard, EmptyState,
-  HakimInsightCard,
-  STATUS_CONFIG, PRIORITY_CONFIG, TYPE_CONFIG, STATUS_PROGRESS,
+  HakimInsightCard, CommentInput, CommentBubble,
+  STATUS_CONFIG, PRIORITY_CONFIG, TYPE_CONFIG, STATUS_PROGRESS, COMMENT_TYPE_CONFIG,
   formatDualDateCompact, getInitials,
 } from '../components/product-hub';
 import {
@@ -22,6 +22,7 @@ import {
   Table2, AlertTriangle, CheckCircle2, Bug, TrendingUp, Eye,
   RefreshCw, XCircle, ArrowUpRight, ArrowDownRight, ShieldCheck, CircleDot,
   Activity, Layers, ThumbsUp, ThumbsDown, Copy, MessageSquare, FileText, Paperclip, ExternalLink,
+  ChevronDown, ChevronUp, Minimize2, Send, Loader2, Wand2, ListChecks,
 } from 'lucide-react';
 
 const authHeaders = () => {
@@ -427,32 +428,55 @@ function IssuesStatusFlow({ issues, onStatusFilter, activeStatus }) {
   );
 }
 
-function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, onRefresh }) {
+function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, userId, onRefresh, isExpanded, onToggleExpand }) {
   const typeCfg = TYPE_CONFIG[issue.issue_type] || TYPE_CONFIG.other;
   const TypeIcon = typeCfg.icon;
   const progress = STATUS_PROGRESS[issue.status] || 0;
   const isDone = issue.status === 'done' || issue.status === 'user_feedback_confirmed';
   const isRejected = issue.status === 'rejected';
-  const cardRef = React.useRef(null);
-  const [generating, setGenerating] = React.useState(false);
-  const [copied, setCopied] = React.useState(false);
+  const cardRef = useRef(null);
+  const [generating, setGenerating] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [detailData, setDetailData] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState(false);
+  const [commentType, setCommentType] = useState('general');
+  const [submittingComment, setSubmittingComment] = useState(false);
   const commentCount = issue.comment_count || 0;
   const attachmentCount = issue.attachments?.length || 0;
   const hasDuplicates = issue.hakim_analysis?.duplicate_ids?.length > 0;
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (isHighlighted && cardRef.current) {
       cardRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }, [isHighlighted]);
 
+  useEffect(() => {
+    if (isExpanded && !detailData && !detailLoading && !detailError) {
+      setDetailLoading(true);
+      axios.get(`/api/product-hub/issues/${issue.id}`, { headers: authHeaders() })
+        .then(res => { setDetailData(res.data); setDetailError(false); })
+        .catch(() => { toast.error('فشل في تحميل التفاصيل'); setDetailError(true); })
+        .finally(() => setDetailLoading(false));
+    }
+  }, [isExpanded, issue.id, detailData, detailLoading, detailError]);
+
+  const refetchDetail = useCallback(async () => {
+    try {
+      const res = await axios.get(`/api/product-hub/issues/${issue.id}`, { headers: authHeaders() });
+      setDetailData(res.data);
+    } catch {}
+    if (onRefresh) onRefresh();
+  }, [issue.id, onRefresh]);
+
   const handleGenerate = async (e) => {
-    e.stopPropagation();
+    if (e) e.stopPropagation();
     setGenerating(true);
     try {
       await axios.post(`/api/product-hub/issues/${issue.id}/generate-prompt`, {}, { headers: authHeaders() });
       toast.success('تم إنشاء البرومبت');
-      if (onRefresh) onRefresh();
+      await refetchDetail();
     } catch {
       toast.error('فشل في إنشاء البرومبت');
     } finally {
@@ -461,16 +485,56 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, onRefresh }) 
   };
 
   const handleCopy = async (e) => {
-    e.stopPropagation();
-    if (issue.generated_prompt) {
+    if (e) e.stopPropagation();
+    const prompt = detailData?.generated_prompt || issue.generated_prompt;
+    if (prompt) {
       try {
-        await navigator.clipboard.writeText(issue.generated_prompt);
+        await navigator.clipboard.writeText(prompt);
         setCopied(true);
         toast.success('تم نسخ البرومبت');
         setTimeout(() => setCopied(false), 2000);
       } catch {
         toast.error('فشل في النسخ');
       }
+    }
+  };
+
+  const handleComment = async (content, mentions = []) => {
+    if (!content.trim()) return;
+    setSubmittingComment(true);
+    try {
+      await axios.post(`/api/product-hub/issues/${issue.id}/comments`, {
+        content, comment_type: isMainAdmin ? commentType : 'general', mentions
+      }, { headers: authHeaders() });
+      toast.success('تم إضافة التعليق');
+      setCommentType('general');
+      await refetchDetail();
+    } catch (err) {
+      const detail = err.response?.data?.detail;
+      toast.error(typeof detail === 'object' ? detail.message : (detail || 'فشل في إضافة التعليق'));
+    } finally {
+      setSubmittingComment(false);
+    }
+  };
+
+  const handleEditComment = async (commentId, content, mentions = []) => {
+    try {
+      await axios.put(`/api/product-hub/issues/${issue.id}/comments/${commentId}`, { content, mentions }, { headers: authHeaders() });
+      toast.success('تم تعديل التعليق');
+      await refetchDetail();
+    } catch (err) {
+      const detail = err.response?.data?.detail;
+      toast.error(typeof detail === 'object' ? detail.message : (detail || 'فشل في تعديل التعليق'));
+    }
+  };
+
+  const handleDeleteComment = async (commentId) => {
+    try {
+      await axios.delete(`/api/product-hub/issues/${issue.id}/comments/${commentId}`, { headers: authHeaders() });
+      toast.success('تم حذف التعليق');
+      await refetchDetail();
+    } catch {
+      toast.error('فشل في حذف التعليق');
     }
   };
 
@@ -482,194 +546,366 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, onRefresh }) 
   };
   const pCfg = priorityCfg[issue.priority] || priorityCfg.medium;
 
+  const comments = detailData?.comments || [];
+  const hakimAnalysis = detailData?.hakim_analysis || issue.hakim_analysis;
+  const promptText = detailData?.generated_prompt || issue.generated_prompt;
+
   return (
     <div
       ref={cardRef}
-      onClick={() => navigate(`/admin/product-hub/issues/${issue.id}`)}
-      className={`w-full bg-white rounded-xl border border-slate-200/80 hover:border-brand-turquoise/40 shadow-[0_1px_4px_rgba(0,0,0,0.04)] hover:shadow-[0_4px_20px_rgba(70,193,190,0.1)] transition-all duration-300 overflow-hidden border-r-[3px] cursor-pointer ${pCfg.border} ${pCfg.bg} ${isHighlighted ? 'ring-2 ring-brand-turquoise ring-offset-2' : ''}`}
+      className={`w-full bg-white rounded-xl border shadow-[0_1px_4px_rgba(0,0,0,0.04)] transition-all duration-400 overflow-hidden border-r-[3px] ${pCfg.border} ${pCfg.bg} ${isExpanded ? 'border-brand-turquoise/50 shadow-[0_8px_40px_rgba(70,193,190,0.15)] ring-1 ring-brand-turquoise/20' : 'border-slate-200/80 hover:border-brand-turquoise/40 hover:shadow-[0_4px_20px_rgba(70,193,190,0.1)]'} ${isHighlighted ? 'ring-2 ring-brand-turquoise ring-offset-2' : ''}`}
     >
       <div className={`h-[3px] bg-gradient-to-l ${getProgressGradient(progress, issue.status)}`} style={{ width: `${progress}%`, minWidth: progress > 0 ? '8px' : '0' }} />
 
-      <div className="flex flex-col lg:flex-row">
-        {/* ═══ LEFT: Challenge Details ═══ */}
-        <div className="flex-1 p-4 lg:p-5 min-w-0">
-          {/* Header Row */}
-          <div className="flex items-start justify-between gap-3 mb-3">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                <span className="text-[10px] font-mono text-muted-foreground bg-slate-100 px-2 py-0.5 rounded font-semibold">
-                  #{issue.issue_number}
-                </span>
-                <div className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full ${typeCfg.bgClass || 'bg-slate-100'}`}>
-                  <TypeIcon className={`h-3 w-3 ${typeCfg.color}`} />
-                  <span className={`font-medium ${typeCfg.color}`}>{typeCfg.label}</span>
-                </div>
-                <StatusChip status={issue.status} size="default" showIcon />
-                <PriorityBadge priority={issue.priority} size="sm" showIcon />
-                <SLAIndicator issue={issue} size="sm" />
+      {/* ═══════════════ COLLAPSED STATE ═══════════════ */}
+      <div
+        onClick={() => onToggleExpand(issue.id)}
+        className="cursor-pointer p-4 lg:p-5"
+      >
+        <div className="flex items-center gap-4">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+              <span className="text-[10px] font-mono text-muted-foreground bg-slate-100 px-2 py-0.5 rounded font-semibold">
+                #{issue.issue_number}
+              </span>
+              <div className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full ${typeCfg.bgClass || 'bg-slate-100'}`}>
+                <TypeIcon className={`h-3 w-3 ${typeCfg.color}`} />
+                <span className={`font-medium ${typeCfg.color}`}>{typeCfg.label}</span>
               </div>
-              <h3
-                onClick={() => navigate(`/admin/product-hub/issues/${issue.id}`)}
-                className={`text-base font-bold leading-snug cursor-pointer transition-colors ${isDone ? 'text-emerald-700 line-through decoration-emerald-300' : isRejected ? 'text-red-400 line-through decoration-red-200' : 'text-brand-navy hover:text-brand-turquoise'}`}
-              >
-                {issue.title}
-              </h3>
+              <StatusChip status={issue.status} size="default" showIcon />
+              <PriorityBadge priority={issue.priority} size="sm" showIcon />
+              <SLAIndicator issue={issue} size="sm" />
             </div>
+            <h3 className={`text-base font-bold leading-snug ${isDone ? 'text-emerald-700 line-through decoration-emerald-300' : isRejected ? 'text-red-400 line-through decoration-red-200' : 'text-brand-navy'}`}>
+              {issue.title}
+            </h3>
           </div>
 
-          {/* Reporter + Meta Row */}
-          <div className="flex items-center gap-3 mb-3 flex-wrap">
-            <div className="flex items-center gap-2 bg-gradient-to-l from-brand-navy/5 to-brand-turquoise/5 rounded-lg px-3 py-2 border border-brand-turquoise/15">
+          <div className="flex items-center gap-4 flex-shrink-0">
+            <div className="flex items-center gap-2 bg-gradient-to-l from-brand-navy/5 to-brand-turquoise/5 rounded-lg px-3 py-2 border border-brand-turquoise/15 max-lg:hidden">
               <div
-                className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
+                className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0"
                 style={{ background: isDone ? 'linear-gradient(135deg, #10b981, #059669)' : isRejected ? 'linear-gradient(135deg, #ef4444, #dc2626)' : 'linear-gradient(135deg, #1C3D74, #46C1BE)' }}
               >
                 {getInitials(issue.employee_name)}
               </div>
-              <div className="min-w-0">
-                <span className="text-[9px] text-brand-turquoise font-semibold block leading-none">المُبلّغ</span>
-                <span className="text-xs font-bold text-brand-navy truncate block">{issue.employee_name}</span>
-              </div>
+              <span className="text-xs font-bold text-brand-navy truncate max-w-[120px]">{issue.employee_name}</span>
             </div>
-            {issue.section && (
-              <span className="text-[10px] px-2 py-1 rounded-lg bg-slate-50 text-slate-600 border border-slate-100">{issue.section}</span>
-            )}
-            {issue.page && (
-              <span className="text-[10px] px-2 py-1 rounded-lg bg-slate-50 text-slate-500 border border-slate-100">{issue.page}</span>
-            )}
-            {issue.assigned_team && (
-              <Badge variant="outline" className="text-[10px] border-brand-turquoise/30 text-brand-turquoise px-2 py-0.5 font-medium">
-                {issue.assigned_team}
-              </Badge>
-            )}
-            <span className="text-[10px] text-muted-foreground mr-auto">{formatDualDateCompact(issue.created_at)}</span>
-          </div>
 
-          {/* Behavior Section */}
-          {(issue.current_behavior || issue.expected_behavior) && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-              {issue.current_behavior && (
-                <div className="p-2.5 rounded-lg bg-red-50/50 border border-red-100">
-                  <span className="text-[9px] font-semibold text-red-500 block mb-1">السلوك الحالي</span>
-                  <p className="text-[11px] text-slate-700 leading-relaxed line-clamp-3">{issue.current_behavior}</p>
+            <div className="hidden md:flex items-center gap-3">
+              <div className="w-24">
+                <div className="flex items-center justify-between mb-0.5">
+                  <span className={`text-[10px] font-bold ${progress >= 75 ? 'text-emerald-600' : progress >= 50 ? 'text-brand-turquoise' : progress >= 25 ? 'text-amber-500' : 'text-red-500'}`}>{progress}%</span>
                 </div>
-              )}
-              {issue.expected_behavior && (
-                <div className="p-2.5 rounded-lg bg-emerald-50/50 border border-emerald-100">
-                  <span className="text-[9px] font-semibold text-emerald-600 block mb-1">السلوك المتوقع</span>
-                  <p className="text-[11px] text-slate-700 leading-relaxed line-clamp-3">{issue.expected_behavior}</p>
+                <div className="w-full bg-slate-200/60 rounded-full h-1.5 overflow-hidden">
+                  <div className={`h-full rounded-full bg-gradient-to-l ${getProgressGradient(progress, issue.status)} transition-all duration-500`} style={{ width: `${progress}%` }} />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                <MessageSquare className="h-3 w-3" />
+                <span className="font-semibold">{commentCount}</span>
+              </div>
+              {attachmentCount > 0 && (
+                <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                  <Paperclip className="h-3 w-3" />
+                  <span className="font-semibold">{attachmentCount}</span>
                 </div>
               )}
             </div>
-          )}
-
-          {/* Impact + Hakim Row */}
-          <div className="flex items-center gap-2 flex-wrap">
-            {issue.impact && issue.impact.length > 0 && (
-              <div className="flex items-center gap-1.5">
-                <AlertTriangle className="h-3 w-3 text-amber-500" />
-                {issue.impact.slice(0, 3).map((imp, i) => (
-                  <span key={i} className="text-[9px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-100 font-medium">{imp}</span>
-                ))}
-                {issue.impact.length > 3 && <span className="text-[9px] text-amber-500">+{issue.impact.length - 3}</span>}
-              </div>
-            )}
 
             {hasDuplicates && (
-              <div className="flex items-center gap-1 px-2 py-0.5 bg-amber-50 rounded border border-amber-100">
+              <div className="flex items-center gap-1 px-2 py-0.5 bg-amber-50 rounded border border-amber-100 max-lg:hidden">
                 <Brain className="h-2.5 w-2.5 text-amber-500" />
-                <span className="text-[9px] text-amber-600 font-medium">مكرر ({issue.hakim_analysis.duplicate_ids.length})</span>
+                <span className="text-[9px] text-amber-600 font-medium">مكرر</span>
               </div>
             )}
 
-            {issue.hakim_analysis?.suggested_team && (
-              <div className="flex items-center gap-1 px-2 py-0.5 bg-brand-turquoise/5 rounded border border-brand-turquoise/10">
-                <Brain className="h-2.5 w-2.5 text-brand-turquoise" />
-                <span className="text-[9px] text-brand-turquoise font-medium">حكيم: {issue.hakim_analysis.suggested_team}</span>
-              </div>
-            )}
+            <span className="text-[10px] text-muted-foreground max-lg:hidden">{formatDualDateCompact(issue.created_at)}</span>
+
+            <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300 ${isExpanded ? 'bg-brand-turquoise/10 text-brand-turquoise rotate-180' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}>
+              <ChevronDown className="h-4 w-4" />
+            </div>
           </div>
         </div>
+      </div>
 
-        {/* ═══ RIGHT: Sidebar ═══ */}
-        <div className="lg:w-[280px] border-t lg:border-t-0 lg:border-r border-slate-100 bg-slate-50/50 p-4 lg:p-5 flex flex-col justify-between gap-3">
-          {/* Progress */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[10px] text-muted-foreground font-medium">التقدم</span>
-              <span className={`text-xs font-bold ${progress >= 75 ? 'text-emerald-600' : progress >= 50 ? 'text-brand-turquoise' : progress >= 25 ? 'text-amber-500' : 'text-red-500'}`}>
-                {progress}%
-              </span>
-            </div>
-            <div className="w-full bg-slate-200/60 rounded-full h-2.5 overflow-hidden">
-              <div
-                className={`h-full rounded-full bg-gradient-to-l ${getProgressGradient(progress, issue.status)} transition-all duration-500`}
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-            <div className="flex items-center justify-between mt-1">
-              <span className="text-[9px] text-muted-foreground">{isDone ? '✓ مكتمل' : isRejected ? '✕ مرفوض' : 'قيد التقدم'}</span>
-            </div>
-          </div>
-
-          {/* Counters */}
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-              <MessageSquare className="h-3 w-3" />
-              <span className="font-semibold">{commentCount}</span>
-              <span>تعليق</span>
-            </div>
-            {attachmentCount > 0 && (
-              <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                <Paperclip className="h-3 w-3" />
-                <span className="font-semibold">{attachmentCount}</span>
+      {/* ═══════════════ EXPANDED STATE ═══════════════ */}
+      <div
+        className="overflow-hidden transition-all duration-400 ease-in-out"
+        style={{
+          maxHeight: isExpanded ? '2000px' : '0px',
+          opacity: isExpanded ? 1 : 0,
+        }}
+      >
+        <div className="border-t border-slate-100">
+          {detailLoading ? (
+            <div className="flex justify-center items-center py-16">
+              <div className="flex flex-col items-center gap-3">
+                <div className="animate-spin rounded-full h-8 w-8 border-2 border-brand-turquoise border-t-transparent" />
+                <p className="text-sm text-muted-foreground">جاري تحميل مساحة العمل...</p>
               </div>
-            )}
-          </div>
-
-          {/* Actions */}
-          <div className="space-y-2">
-            <Button
-              onClick={(e) => { e.stopPropagation(); navigate(`/admin/product-hub/issues/${issue.id}`); }}
-              size="sm"
-              className="w-full h-9 text-xs font-semibold rounded-lg gap-1.5 bg-brand-navy hover:bg-brand-navy/90 text-white"
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-              فتح التحدي
-            </Button>
-
-            {isMainAdmin && (
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleGenerate}
-                  disabled={generating}
-                  className="flex-1 h-8 text-[10px] font-semibold rounded-lg gap-1 border-brand-purple/30 text-brand-purple hover:bg-brand-purple/10"
-                >
-                  {generating ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Brain className="h-3 w-3" />}
-                  {issue.generated_prompt ? 'إعادة' : 'برومبت'}
-                </Button>
-                <Button
-                  variant={copied ? "default" : "outline"}
-                  size="sm"
-                  onClick={handleCopy}
-                  disabled={!issue.generated_prompt}
-                  className={`flex-1 h-8 text-[10px] font-semibold rounded-lg gap-1 transition-all ${copied ? 'bg-emerald-500 text-white' : 'border-brand-navy/20 text-brand-navy hover:bg-brand-navy/5'} ${!issue.generated_prompt ? 'opacity-40' : ''}`}
-                >
-                  {copied ? <CheckCircle2 className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                  {copied ? 'تم' : 'نسخ'}
+            </div>
+          ) : detailError ? (
+            <div className="flex justify-center items-center py-16">
+              <div className="flex flex-col items-center gap-3">
+                <AlertTriangle className="h-8 w-8 text-amber-400" />
+                <p className="text-sm text-muted-foreground">فشل في تحميل التفاصيل</p>
+                <Button variant="outline" size="sm" onClick={() => { setDetailError(false); }} className="gap-1.5">
+                  <RefreshCw className="h-3.5 w-3.5" /> إعادة المحاولة
                 </Button>
               </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-0">
+              {/* ═══ ZONE A: DETAILS ═══ */}
+              <div className="lg:col-span-5 p-5 lg:border-l border-slate-100">
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3 mb-4 flex-wrap">
+                    <div className="flex items-center gap-2 bg-gradient-to-l from-brand-navy/5 to-brand-turquoise/5 rounded-lg px-3 py-2 border border-brand-turquoise/15">
+                      <div
+                        className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
+                        style={{ background: isDone ? 'linear-gradient(135deg, #10b981, #059669)' : isRejected ? 'linear-gradient(135deg, #ef4444, #dc2626)' : 'linear-gradient(135deg, #1C3D74, #46C1BE)' }}
+                      >
+                        {getInitials(issue.employee_name)}
+                      </div>
+                      <div className="min-w-0">
+                        <span className="text-[9px] text-brand-turquoise font-semibold block leading-none">المُبلّغ</span>
+                        <span className="text-xs font-bold text-brand-navy truncate block">{issue.employee_name}</span>
+                      </div>
+                    </div>
+                    {issue.section && <span className="text-[10px] px-2 py-1 rounded-lg bg-slate-50 text-slate-600 border border-slate-100">{issue.section}</span>}
+                    {issue.page && <span className="text-[10px] px-2 py-1 rounded-lg bg-slate-50 text-slate-500 border border-slate-100">{issue.page}</span>}
+                    {issue.assigned_team && (
+                      <Badge variant="outline" className="text-[10px] border-brand-turquoise/30 text-brand-turquoise px-2 py-0.5 font-medium">{issue.assigned_team}</Badge>
+                    )}
+                    {issue.platform && <span className="text-[10px] px-2 py-1 rounded-lg bg-violet-50 text-violet-600 border border-violet-100">{issue.platform}</span>}
+                  </div>
+
+                  {(issue.current_behavior || issue.expected_behavior) && (
+                    <div className="grid grid-cols-1 gap-3">
+                      {issue.current_behavior && (
+                        <div className="p-3 rounded-xl bg-red-50/60 border border-red-100">
+                          <span className="text-[10px] font-semibold text-red-500 block mb-1.5">السلوك الحالي</span>
+                          <p className="text-xs text-slate-700 leading-relaxed">{issue.current_behavior}</p>
+                        </div>
+                      )}
+                      {issue.expected_behavior && (
+                        <div className="p-3 rounded-xl bg-emerald-50/60 border border-emerald-100">
+                          <span className="text-[10px] font-semibold text-emerald-600 block mb-1.5">السلوك المتوقع</span>
+                          <p className="text-xs text-slate-700 leading-relaxed">{issue.expected_behavior}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {issue.impact && issue.impact.length > 0 && (
+                    <div className="p-3 rounded-xl bg-amber-50/50 border border-amber-100">
+                      <span className="text-[10px] font-semibold text-amber-600 block mb-2 flex items-center gap-1.5">
+                        <AlertTriangle className="h-3 w-3" /> التأثير
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {issue.impact.map((imp, i) => (
+                          <span key={i} className="text-[10px] px-2 py-0.5 rounded-lg bg-white text-amber-700 border border-amber-200 font-medium">{imp}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {detailData?.steps_to_reproduce && (
+                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                      <span className="text-[10px] font-semibold text-slate-600 block mb-1.5">خطوات إعادة الإنتاج</span>
+                      <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-line">{detailData.steps_to_reproduce}</p>
+                    </div>
+                  )}
+
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] text-muted-foreground font-medium">التقدم</span>
+                      <span className={`text-xs font-bold ${progress >= 75 ? 'text-emerald-600' : progress >= 50 ? 'text-brand-turquoise' : progress >= 25 ? 'text-amber-500' : 'text-red-500'}`}>{progress}%</span>
+                    </div>
+                    <div className="w-full bg-slate-200/60 rounded-full h-2.5 overflow-hidden">
+                      <div className={`h-full rounded-full bg-gradient-to-l ${getProgressGradient(progress, issue.status)} transition-all duration-500`} style={{ width: `${progress}%` }} />
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 pt-1">
+                    <Button
+                      onClick={() => navigate(`/admin/product-hub/issues/${issue.id}`)}
+                      size="sm"
+                      className="flex-1 h-9 text-xs font-semibold rounded-lg gap-1.5 bg-brand-navy hover:bg-brand-navy/90 text-white"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" /> فتح الصفحة الكاملة
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {/* ═══ ZONE B: COMMENTS ═══ */}
+              <div className="lg:col-span-4 p-5 lg:border-l border-slate-100 border-t lg:border-t-0 flex flex-col">
+                <div className="flex items-center gap-2 mb-3">
+                  <MessageSquare className="h-4 w-4 text-brand-navy" />
+                  <span className="text-sm font-semibold text-brand-navy">المناقشة</span>
+                  <span className="text-[10px] text-muted-foreground">({comments.length})</span>
+                </div>
+
+                <div className="flex-1 overflow-y-auto max-h-[400px] space-y-3 mb-3 scrollbar-thin">
+                  {comments.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-8 text-center">
+                      <MessageSquare className="h-8 w-8 text-slate-200 mb-2" />
+                      <p className="text-xs text-muted-foreground">لا توجد تعليقات بعد</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">كن أول من يعلّق</p>
+                    </div>
+                  ) : (
+                    comments.map(comment => (
+                      <CommentBubble
+                        key={comment.id}
+                        comment={comment}
+                        currentUserId={userId}
+                        isMainAdmin={isMainAdmin}
+                        isAdmin={isAdmin}
+                        onEdit={handleEditComment}
+                        onDelete={handleDeleteComment}
+                      />
+                    ))
+                  )}
+                </div>
+
+                <div className="border-t border-slate-100 pt-3">
+                  <CommentInput
+                    onSubmit={handleComment}
+                    submitting={submittingComment}
+                    isMainAdmin={isMainAdmin}
+                    isAdmin={isAdmin}
+                    commentType={commentType}
+                    setCommentType={setCommentType}
+                    COMMENT_TYPE_CONFIG={COMMENT_TYPE_CONFIG}
+                  />
+                </div>
+              </div>
+
+              {/* ═══ ZONE C: HAKIM AI ═══ */}
+              <div className="lg:col-span-3 p-5 border-t lg:border-t-0 bg-gradient-to-b from-brand-turquoise/3 to-transparent">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-brand-turquoise to-brand-turquoise/70 flex items-center justify-center shadow-sm">
+                    <Brain className="h-4 w-4 text-white" />
+                  </div>
+                  <div>
+                    <span className="text-sm font-bold text-brand-navy block leading-tight">حكيم</span>
+                    <span className="text-[9px] text-brand-turquoise font-medium">مساعد ذكي</span>
+                  </div>
+                  <Sparkles className="h-3.5 w-3.5 text-brand-turquoise/50 mr-auto" />
+                </div>
+
+                {hakimAnalysis && Object.keys(hakimAnalysis).length > 0 ? (
+                  <div className="space-y-3">
+                    {hakimAnalysis.suggested_priority && (
+                      <HakimMicroInsight
+                        label="الأولوية المقترحة"
+                        value={PRIORITY_CONFIG[hakimAnalysis.suggested_priority]?.label || hakimAnalysis.suggested_priority}
+                        detail={hakimAnalysis.priority_reasoning}
+                        icon={Target}
+                        valueColor={PRIORITY_CONFIG[hakimAnalysis.suggested_priority]?.textColor}
+                      />
+                    )}
+                    {hakimAnalysis.suggested_team && (
+                      <HakimMicroInsight
+                        label="الفريق المقترح"
+                        value={hakimAnalysis.suggested_team}
+                        detail={hakimAnalysis.team_reasoning}
+                        icon={Users}
+                        valueColor="text-brand-turquoise"
+                      />
+                    )}
+                    {hakimAnalysis.impact_assessment && (
+                      <HakimMicroInsight label="تقييم الأثر" detail={hakimAnalysis.impact_assessment} icon={AlertTriangle} />
+                    )}
+                    {hakimAnalysis.technical_notes && (
+                      <HakimMicroInsight label="ملاحظات فنية" detail={hakimAnalysis.technical_notes} icon={FileText} />
+                    )}
+                    {hakimAnalysis.duplicate_ids?.length > 0 && (
+                      <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-200">
+                        <div className="flex items-center gap-1.5 text-amber-700 text-[10px] font-semibold mb-1">
+                          <AlertTriangle className="h-3 w-3" />
+                          {hakimAnalysis.duplicate_ids.length} تحدي مشابه
+                        </div>
+                        {hakimAnalysis.duplicate_note && (
+                          <p className="text-[10px] text-amber-600 leading-relaxed">{hakimAnalysis.duplicate_note}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-center py-6">
+                    <Brain className="h-8 w-8 text-slate-200 mx-auto mb-2" />
+                    <p className="text-xs text-muted-foreground">لم يتم التحليل بعد</p>
+                  </div>
+                )}
+
+                {isMainAdmin && (
+                  <div className="mt-4 space-y-2">
+                    <div className="text-[10px] text-muted-foreground font-semibold mb-2 flex items-center gap-1.5">
+                      <Wand2 className="h-3 w-3 text-brand-purple" /> إجراءات حكيم
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <Button
+                        variant="outline" size="sm"
+                        onClick={handleGenerate}
+                        disabled={generating}
+                        className="h-8 text-[9px] font-semibold rounded-lg gap-1 border-brand-purple/20 text-brand-purple hover:bg-brand-purple/5"
+                      >
+                        {generating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Brain className="h-3 w-3" />}
+                        {promptText ? 'إعادة البرومبت' : 'إنشاء برومبت'}
+                      </Button>
+                      <Button
+                        variant={copied ? "default" : "outline"} size="sm"
+                        onClick={handleCopy}
+                        disabled={!promptText}
+                        className={`h-8 text-[9px] font-semibold rounded-lg gap-1 ${copied ? 'bg-emerald-500 text-white' : 'border-brand-navy/15 text-brand-navy hover:bg-brand-navy/5'} ${!promptText ? 'opacity-40' : ''}`}
+                      >
+                        {copied ? <CheckCircle2 className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                        {copied ? 'تم النسخ' : 'نسخ البرومبت'}
+                      </Button>
+                    </div>
+
+                    {promptText && (
+                      <div className="mt-2 p-2.5 bg-slate-900 rounded-xl max-h-[150px] overflow-y-auto scrollbar-thin">
+                        <pre className="text-[9px] text-emerald-300 whitespace-pre-wrap leading-relaxed font-mono" dir="ltr">{promptText.slice(0, 600)}{promptText.length > 600 ? '...' : ''}</pre>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
+function HakimMicroInsight({ label, value, detail, icon: Icon, valueColor = 'text-brand-navy' }) {
+  return (
+    <div className="p-2.5 bg-white rounded-xl border border-slate-100 hover:border-brand-turquoise/20 transition-colors">
+      <div className="flex items-center gap-1.5 mb-1">
+        <Icon className="h-3 w-3 text-brand-turquoise/70" />
+        <span className="text-[10px] text-muted-foreground font-medium">{label}</span>
+      </div>
+      {value && <p className={`text-xs font-semibold ${valueColor}`}>{value}</p>}
+      {detail && <p className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed line-clamp-3">{detail}</p>}
+    </div>
+  );
+}
+
 function IssuesTableView({ issues, loading, total, page, totalPages, onPageChange, navigate, highlightId, isMainAdmin, onRefresh }) {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'platform_admin';
+  const [expandedId, setExpandedId] = useState(null);
+
+  const handleToggleExpand = useCallback((issueId) => {
+    setExpandedId(prev => prev === issueId ? null : issueId);
+  }, []);
+
   if (loading) {
     return (
       <div className="flex justify-center items-center py-20">
@@ -693,8 +929,31 @@ function IssuesTableView({ issues, loading, total, page, totalPages, onPageChang
 
   return (
     <div className="space-y-3">
+      {expandedId && (
+        <div className="flex justify-end">
+          <Button
+            variant="ghost" size="sm"
+            onClick={() => setExpandedId(null)}
+            className="text-xs text-muted-foreground hover:text-brand-navy gap-1.5 h-7"
+          >
+            <Minimize2 className="h-3 w-3" /> طي الكل
+          </Button>
+        </div>
+      )}
+
       {issues.map(issue => (
-        <IssuePanel key={issue.id} issue={issue} navigate={navigate} isHighlighted={highlightId === issue.id} isMainAdmin={isMainAdmin} onRefresh={onRefresh} />
+        <IssuePanel
+          key={issue.id}
+          issue={issue}
+          navigate={navigate}
+          isHighlighted={highlightId === issue.id}
+          isMainAdmin={isMainAdmin}
+          isAdmin={isAdmin}
+          userId={user?.id}
+          onRefresh={onRefresh}
+          isExpanded={expandedId === issue.id}
+          onToggleExpand={handleToggleExpand}
+        />
       ))}
 
       {totalPages > 1 && (
