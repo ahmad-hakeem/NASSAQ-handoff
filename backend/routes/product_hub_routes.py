@@ -1028,6 +1028,28 @@ async def get_hakim_insights(
     }
 
 
+@router.post("/issues/{issue_id}/reanalyze")
+async def reanalyze_issue(
+    issue_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    if not is_main_admin(current_user):
+        raise HTTPException(status_code=403, detail="إعادة التحليل متاحة فقط للمسؤولين الرئيسيين")
+    issue = await _get_issue_or_404(issue_id)
+    hakim_analysis = await _run_hakim_analysis(issue)
+    await db.product_issues.update_one(
+        {"id": issue_id},
+        {"$set": {"hakim_analysis": hakim_analysis, "updated_at": _now_iso()}}
+    )
+    await handle_hakim_analysis(issue_id, current_user, hakim_analysis, source="manual_reanalyze")
+    await audit_ai_analyzed(issue_id, current_user, hakim_analysis)
+    return {
+        "success": True,
+        "issue_id": issue_id,
+        "hakim_analysis": hakim_analysis,
+    }
+
+
 @router.get("/issues/{issue_id}/activity-log")
 async def get_activity_log(
     issue_id: str,

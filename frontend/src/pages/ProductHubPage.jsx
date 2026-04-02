@@ -288,7 +288,7 @@ export function ProductHubPage() {
               <DashboardView data={dashboard} loading={dashLoading} isAdmin={isAdmin} navigate={navigate} />
             </TabsContent>
 
-            <TabsContent value="issues" className="mt-6 space-y-4">
+            <TabsContent value="issues" className="mt-6 space-y-5">
               <FilterToolbar
                 filters={filters}
                 config={config}
@@ -296,7 +296,29 @@ export function ProductHubPage() {
                 onClear={clearFilters}
                 hasActiveFilters={hasActiveFilters}
               />
-              <IssuesStatusFlow issues={issues} onStatusFilter={updateFilter} activeStatus={filters.status} />
+
+              <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+                <div className="lg:col-span-3">
+                  <IssuesStatusFlow issues={issues} onStatusFilter={updateFilter} activeStatus={filters.status} />
+                </div>
+                <div className="flex flex-col justify-center gap-2 p-4 rounded-2xl border bg-gradient-to-br from-brand-navy/[0.03] to-brand-turquoise/[0.05] shadow-sm">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-brand-turquoise/10 flex items-center justify-center">
+                      <BarChart3 className="h-4 w-4 text-brand-turquoise" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-muted-foreground font-medium">إجمالي التحديات</p>
+                      <p className="text-xl font-bold text-brand-navy">{total}</p>
+                    </div>
+                  </div>
+                  {hasActiveFilters && (
+                    <p className="text-[10px] text-brand-turquoise font-medium mt-1">
+                      عرض {sortedIssues.length} من {total} نتيجة
+                    </p>
+                  )}
+                </div>
+              </div>
+
               <IssuesTableView
                 issues={sortedIssues}
                 loading={loading}
@@ -322,112 +344,136 @@ export function ProductHubPage() {
 
 function FilterToolbar({ filters, config, onFilterChange, onClear, hasActiveFilters }) {
   const activeCount = Object.values(filters).filter(v => v).length;
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const hasAdvancedFilters = !!(filters.issue_type || filters.created_by || filters.date_from || filters.date_to);
 
   return (
-    <Card className="border shadow-sm rounded-xl">
-      <CardContent className="p-4">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="بحث في العنوان، المحتوى، الاسم..."
-              value={filters.search}
-              onChange={(e) => onFilterChange('search', e.target.value)}
-              className="pr-10 text-right rounded-lg h-9"
-            />
-          </div>
-
-          <Select value={filters.status || '_all'} onValueChange={(v) => onFilterChange('status', v === '_all' ? '' : v)}>
-            <SelectTrigger className="w-[140px] rounded-lg h-9 text-xs">
-              <SelectValue placeholder="الحالة" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="_all">كل الحالات</SelectItem>
-              {Object.entries(STATUS_CONFIG).map(([k, v]) => (
-                <SelectItem key={k} value={k}>
-                  <span className="flex items-center gap-1.5">
-                    <span className={`w-2 h-2 rounded-full ${v.color}`} />
-                    {v.label}
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={filters.priority || '_all'} onValueChange={(v) => onFilterChange('priority', v === '_all' ? '' : v)}>
-            <SelectTrigger className="w-[130px] rounded-lg h-9 text-xs">
-              <SelectValue placeholder="الأولوية" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="_all">كل الأولويات</SelectItem>
-              {Object.entries(PRIORITY_CONFIG).map(([k, v]) => (
-                <SelectItem key={k} value={k}>
-                  <span className="flex items-center gap-1.5">
-                    <span className={`w-2 h-2 rounded-full ${v.dotColor || 'bg-slate-400'}`} />
-                    {v.label}
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {config && (
-            <>
-              <Select value={filters.issue_type || '_all'} onValueChange={(v) => onFilterChange('issue_type', v === '_all' ? '' : v)}>
-                <SelectTrigger className="w-[130px] rounded-lg h-9 text-xs">
-                  <SelectValue placeholder="النوع" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_all">كل الأنواع</SelectItem>
-                  {(config.issue_types || []).map(t => (
-                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              {(config.reporters || []).length > 0 && (
-                <Select value={filters.created_by || '_all'} onValueChange={(v) => onFilterChange('created_by', v === '_all' ? '' : v)}>
-                  <SelectTrigger className="w-[140px] rounded-lg h-9 text-xs">
-                    <SelectValue placeholder="المُبلِّغ" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="_all">كل المُبلِّغين</SelectItem>
-                    {(config.reporters || []).map(r => (
-                      <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </>
-          )}
-
-          <div className="flex items-center gap-2">
-            <div className="flex flex-col">
-              <label className="text-[10px] text-muted-foreground mb-0.5 font-medium">من تاريخ</label>
+    <Card className="border shadow-sm rounded-2xl bg-white/80 backdrop-blur-sm">
+      <CardContent className="p-0">
+        <div className="p-4 pb-3">
+          <div className="flex items-center gap-3">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
               <Input
-                type="date"
-                value={filters.date_from}
-                onChange={(e) => onFilterChange('date_from', e.target.value)}
-                className="w-[140px] rounded-lg h-9 text-xs"
+                placeholder="بحث في العنوان، المحتوى، الاسم..."
+                value={filters.search}
+                onChange={(e) => onFilterChange('search', e.target.value)}
+                className="pr-10 text-right rounded-xl h-10 bg-slate-50/80 border-slate-200 focus:bg-white transition-colors"
               />
             </div>
-            <div className="flex flex-col">
-              <label className="text-[10px] text-muted-foreground mb-0.5 font-medium">إلى تاريخ</label>
-              <Input
-                type="date"
-                value={filters.date_to}
-                onChange={(e) => onFilterChange('date_to', e.target.value)}
-                className="w-[140px] rounded-lg h-9 text-xs"
-              />
-            </div>
-          </div>
 
-          {hasActiveFilters && (
-            <Button variant="ghost" size="sm" onClick={onClear} className="text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg h-9 px-3">
-              <XCircle className="h-3.5 w-3.5 ml-1" />
-              مسح ({activeCount})
+            <Select value={filters.status || '_all'} onValueChange={(v) => onFilterChange('status', v === '_all' ? '' : v)}>
+              <SelectTrigger className="w-[140px] rounded-xl h-10 text-xs bg-slate-50/80 border-slate-200">
+                <SelectValue placeholder="الحالة" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_all">كل الحالات</SelectItem>
+                {Object.entries(STATUS_CONFIG).map(([k, v]) => (
+                  <SelectItem key={k} value={k}>
+                    <span className="flex items-center gap-1.5">
+                      <span className={`w-2 h-2 rounded-full ${v.color}`} />
+                      {v.label}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={filters.priority || '_all'} onValueChange={(v) => onFilterChange('priority', v === '_all' ? '' : v)}>
+              <SelectTrigger className="w-[130px] rounded-xl h-10 text-xs bg-slate-50/80 border-slate-200">
+                <SelectValue placeholder="الأولوية" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_all">كل الأولويات</SelectItem>
+                {Object.entries(PRIORITY_CONFIG).map(([k, v]) => (
+                  <SelectItem key={k} value={k}>
+                    <span className="flex items-center gap-1.5">
+                      <span className={`w-2 h-2 rounded-full ${v.dotColor || 'bg-slate-400'}`} />
+                      {v.label}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Button
+              variant="ghost" size="sm"
+              onClick={() => setShowAdvanced(prev => !prev)}
+              className={`rounded-xl h-10 px-3 text-xs gap-1.5 transition-all ${showAdvanced || hasAdvancedFilters ? 'bg-brand-navy/5 text-brand-navy border border-brand-navy/15' : 'text-muted-foreground hover:text-brand-navy'}`}
+            >
+              <Layers className="h-3.5 w-3.5" />
+              فلاتر متقدمة
+              {hasAdvancedFilters && <span className="w-2 h-2 rounded-full bg-brand-turquoise animate-pulse" />}
+              <ChevronDown className={`h-3 w-3 transition-transform duration-200 ${showAdvanced ? 'rotate-180' : ''}`} />
             </Button>
-          )}
+
+            {hasActiveFilters && (
+              <Button variant="ghost" size="sm" onClick={onClear} className="text-red-500 hover:text-red-700 hover:bg-red-50 rounded-xl h-10 px-3 text-xs gap-1.5">
+                <XCircle className="h-3.5 w-3.5" />
+                مسح ({activeCount})
+              </Button>
+            )}
+          </div>
+        </div>
+
+        <div
+          className="overflow-hidden transition-all duration-300 ease-in-out"
+          style={{ maxHeight: showAdvanced ? '200px' : '0px', opacity: showAdvanced ? 1 : 0 }}
+        >
+          <div className="px-4 pb-4 pt-1 border-t border-slate-100">
+            <div className="flex flex-wrap items-end gap-3 mt-3">
+              {config && (
+                <>
+                  <Select value={filters.issue_type || '_all'} onValueChange={(v) => onFilterChange('issue_type', v === '_all' ? '' : v)}>
+                    <SelectTrigger className="w-[140px] rounded-xl h-9 text-xs bg-slate-50/80 border-slate-200">
+                      <SelectValue placeholder="النوع" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_all">كل الأنواع</SelectItem>
+                      {(config.issue_types || []).map(t => (
+                        <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {(config.reporters || []).length > 0 && (
+                    <Select value={filters.created_by || '_all'} onValueChange={(v) => onFilterChange('created_by', v === '_all' ? '' : v)}>
+                      <SelectTrigger className="w-[150px] rounded-xl h-9 text-xs bg-slate-50/80 border-slate-200">
+                        <SelectValue placeholder="المُبلِّغ" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="_all">كل المُبلِّغين</SelectItem>
+                        {(config.reporters || []).map(r => (
+                          <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </>
+              )}
+
+              <div className="flex items-center gap-2">
+                <div className="flex flex-col">
+                  <label className="text-[10px] text-muted-foreground mb-0.5 font-medium">من تاريخ</label>
+                  <Input
+                    type="date"
+                    value={filters.date_from}
+                    onChange={(e) => onFilterChange('date_from', e.target.value)}
+                    className="w-[140px] rounded-xl h-9 text-xs bg-slate-50/80 border-slate-200"
+                  />
+                </div>
+                <div className="flex flex-col">
+                  <label className="text-[10px] text-muted-foreground mb-0.5 font-medium">إلى تاريخ</label>
+                  <Input
+                    type="date"
+                    value={filters.date_to}
+                    onChange={(e) => onFilterChange('date_to', e.target.value)}
+                    className="w-[140px] rounded-xl h-9 text-xs bg-slate-50/80 border-slate-200"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </CardContent>
     </Card>
@@ -464,21 +510,20 @@ function IssuesStatusFlow({ issues, onStatusFilter, activeStatus }) {
   ];
 
   return (
-    <Card className="border rounded-2xl shadow-sm overflow-hidden">
+    <Card className="border rounded-2xl shadow-sm overflow-hidden bg-white/80 backdrop-blur-sm">
       <CardContent className="p-4">
         <div className="flex items-center gap-2 mb-3">
           <div className="p-1.5 rounded-lg bg-brand-turquoise/10">
             <Activity className="h-4 w-4 text-brand-turquoise" />
           </div>
           <span className="text-sm font-semibold text-brand-navy">تدفق حالة التحديات</span>
-          <span className="text-[10px] text-muted-foreground mr-auto">({total} تحدي)</span>
         </div>
 
-        <div className="flex items-center gap-0.5 mb-3 w-full h-2.5 rounded-full overflow-hidden bg-slate-100">
+        <div className="flex items-center gap-0.5 mb-3 w-full h-3 rounded-full overflow-hidden bg-slate-100/80">
           {flow.map((s, i) => {
             const pct = total > 0 ? (s.value / total) * 100 : 0;
             return pct > 0 ? (
-              <div key={i} className={`${s.color} h-2.5 transition-all duration-700`} style={{ width: `${pct}%` }} title={`${s.label}: ${s.value}`} />
+              <div key={i} className={`${s.color} h-3 transition-all duration-700 first:rounded-r-full last:rounded-l-full`} style={{ width: `${pct}%` }} title={`${s.label}: ${s.value}`} />
             ) : null;
           })}
         </div>
@@ -491,7 +536,7 @@ function IssuesStatusFlow({ issues, onStatusFilter, activeStatus }) {
               <button
                 key={i}
                 onClick={() => onStatusFilter('status', isActive ? '' : s.key)}
-                className={`text-center p-2.5 rounded-xl border transition-all cursor-pointer ${isActive ? 'bg-brand-navy/5 border-brand-navy/30 ring-1 ring-brand-navy/20' : 'bg-slate-50/80 border-slate-100 hover:border-slate-200'}`}
+                className={`text-center p-2.5 rounded-xl border transition-all duration-200 cursor-pointer ${isActive ? 'bg-brand-navy/5 border-brand-navy/30 ring-1 ring-brand-navy/20 shadow-sm' : 'bg-slate-50/60 border-slate-100 hover:border-slate-200 hover:bg-white hover:shadow-sm'}`}
               >
                 <div className="flex items-center justify-center mb-1">
                   <div className={`w-2 h-2 rounded-full ${s.color} ml-1`} />
@@ -522,6 +567,7 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
   const [detailError, setDetailError] = useState(false);
   const [commentType, setCommentType] = useState('general');
   const [submittingComment, setSubmittingComment] = useState(false);
+  const [reanalyzing, setReanalyzing] = useState(false);
   const commentCount = issue.comment_count || 0;
   const attachmentCount = issue.attachments?.length || 0;
   const hasDuplicates = issue.hakim_analysis?.duplicate_ids?.length > 0;
@@ -615,6 +661,23 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
       await refetchDetail();
     } catch {
       toast.error('فشل في حذف التعليق');
+    }
+  };
+
+  const handleReanalyze = async (e) => {
+    if (e) e.stopPropagation();
+    setReanalyzing(true);
+    try {
+      const res = await axios.post(`/api/product-hub/issues/${issue.id}/reanalyze`, {}, { headers: authHeaders() });
+      if (res.data?.hakim_analysis) {
+        setDetailData(prev => prev ? { ...prev, hakim_analysis: res.data.hakim_analysis } : prev);
+      }
+      toast.success('تم إعادة تحليل حكيم بنجاح');
+      if (onRefresh) onRefresh();
+    } catch {
+      toast.error('فشل في إعادة التحليل');
+    } finally {
+      setReanalyzing(false);
     }
   };
 
@@ -994,7 +1057,17 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
 
                 {isMainAdmin && (
                   <div className="mt-4 space-y-2">
-                    <div className="text-[10px] text-muted-foreground font-semibold mb-2 flex items-center gap-1.5">
+                    <Button
+                      variant="outline" size="sm"
+                      onClick={handleReanalyze}
+                      disabled={reanalyzing}
+                      className="w-full h-9 text-xs font-semibold rounded-lg gap-2 border-brand-turquoise/30 text-brand-turquoise hover:bg-brand-turquoise/5 hover:border-brand-turquoise/50 transition-all"
+                    >
+                      {reanalyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Brain className="h-3.5 w-3.5" />}
+                      {reanalyzing ? 'جاري التحليل...' : hakimAnalysis && Object.keys(hakimAnalysis).length > 0 ? 'إعادة تحليل بحكيم' : 'تحليل بحكيم'}
+                    </Button>
+
+                    <div className="text-[10px] text-muted-foreground font-semibold mb-2 flex items-center gap-1.5 mt-3">
                       <Wand2 className="h-3 w-3 text-brand-purple" /> إجراءات حكيم
                     </div>
                     <div className="grid grid-cols-2 gap-1.5">
