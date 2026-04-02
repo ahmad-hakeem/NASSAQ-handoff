@@ -299,15 +299,30 @@ export function ProductHubPage() {
               </div>
               <div className="flex items-center gap-2">
                 {isMainAdmin && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className={`border-white/20 hover:bg-white/10 ${activeTab === 'dashboard' ? 'bg-white/20 text-white' : 'text-white'}`}
-                    onClick={() => handleTabChange(activeTab === 'dashboard' ? 'issues' : 'dashboard')}
-                  >
-                    <BarChart3 className="h-4 w-4 me-1.5" />
-                    لوحة القيادة
-                  </Button>
+                  <div className="flex items-center bg-white/10 rounded-lg p-0.5 gap-0.5">
+                    <button
+                      onClick={() => handleTabChange('issues')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                        activeTab === 'issues'
+                          ? 'bg-white text-brand-navy shadow-sm'
+                          : 'text-white/70 hover:text-white hover:bg-white/10'
+                      }`}
+                    >
+                      <Bug className="h-3.5 w-3.5" />
+                      التحديات
+                    </button>
+                    <button
+                      onClick={() => handleTabChange('dashboard')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                        activeTab === 'dashboard'
+                          ? 'bg-white text-brand-navy shadow-sm'
+                          : 'text-white/70 hover:text-white hover:bg-white/10'
+                      }`}
+                    >
+                      <BarChart3 className="h-3.5 w-3.5" />
+                      لوحة القيادة
+                    </button>
+                  </div>
                 )}
                 {isMainAdmin && (
                   <Button
