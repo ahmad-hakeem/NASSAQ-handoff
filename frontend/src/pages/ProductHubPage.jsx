@@ -300,30 +300,6 @@ function FilterToolbar({ filters, config, onFilterChange, onClear, hasActiveFilt
                 </SelectContent>
               </Select>
 
-              <Select value={filters.section || '_all'} onValueChange={(v) => onFilterChange('section', v === '_all' ? '' : v)}>
-                <SelectTrigger className="w-[130px] rounded-lg h-9 text-xs">
-                  <SelectValue placeholder="القسم" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_all">كل الأقسام</SelectItem>
-                  {(config.sections || []).map(s => (
-                    <SelectItem key={s} value={s}>{s}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Select value={filters.assigned_team || '_all'} onValueChange={(v) => onFilterChange('assigned_team', v === '_all' ? '' : v)}>
-                <SelectTrigger className="w-[120px] rounded-lg h-9 text-xs">
-                  <SelectValue placeholder="الفريق" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_all">كل الفرق</SelectItem>
-                  {(config.teams || []).map(t => (
-                    <SelectItem key={t} value={t}>{t}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
               {(config.reporters || []).length > 0 && (
                 <Select value={filters.created_by || '_all'} onValueChange={(v) => onFilterChange('created_by', v === '_all' ? '' : v)}>
                   <SelectTrigger className="w-[140px] rounded-lg h-9 text-xs">
