@@ -114,6 +114,10 @@ module.exports = {
                 'spin-slow': {
                     from: { transform: 'rotate(0deg)' },
                     to: { transform: 'rotate(360deg)' }
+                },
+                'subtlePulse': {
+                    '0%, 100%': { boxShadow: '0 0 0 0 rgba(239, 68, 68, 0)' },
+                    '50%': { boxShadow: '0 0 12px 2px rgba(239, 68, 68, 0.15)' }
                 }
             },
             animation: {
@@ -126,6 +130,7 @@ module.exports = {
                 'float': 'float 3s ease-in-out infinite',
                 'pulse-soft': 'pulse-soft 2s ease-in-out infinite',
                 'spin-slow': 'spin-slow 3s linear infinite',
+                'subtlePulse': 'subtlePulse 3s ease-in-out infinite',
             },
             boxShadow: {
                 'soft': '0 2px 15px -3px rgba(0, 0, 0, 0.07), 0 10px 20px -2px rgba(0, 0, 0, 0.04)',

@@ -30,6 +30,86 @@ const authHeaders = () => {
   return t ? { Authorization: `Bearer ${t}` } : {};
 };
 
+const SLA_HOURS = { critical: 24, high: 72, medium: 120, low: 240 };
+
+function computePredictions(issue, _nowBucket) {
+  const progress = STATUS_PROGRESS[issue.status] || 0;
+  const isDone = issue.status === 'done' || issue.status === 'user_feedback_confirmed' || issue.status === 'rejected';
+  if (isDone) return { risk: 'low', delay: 'on_track', escalation: 'stable' };
+
+  const created = new Date(issue.created_at);
+  if (isNaN(created.getTime())) return { risk: 'medium', delay: 'on_track', escalation: 'stable' };
+
+  const now = new Date();
+  const hoursElapsed = (now - created) / (1000 * 60 * 60);
+  const daysElapsed = hoursElapsed / 24;
+  const slaHours = SLA_HOURS[issue.priority] || 120;
+  const slaRatio = hoursElapsed / slaHours;
+  const progressRatio = progress / 100;
+
+  let riskScore = 0;
+  if (issue.priority === 'critical') riskScore += 3;
+  else if (issue.priority === 'high') riskScore += 2;
+  else if (issue.priority === 'medium') riskScore += 1;
+
+  if (issue.sla_status === 'exceeded') riskScore += 3;
+  else if (typeof issue.sla_remaining_hours === 'number' && issue.sla_remaining_hours <= 12) riskScore += 2;
+
+  if (slaRatio > 0.8 && progressRatio < 0.5) riskScore += 2;
+  if (slaRatio > 0.5 && progressRatio < 0.25) riskScore += 1;
+  if (issue.hakim_analysis?.duplicate_ids?.length > 0) riskScore += 1;
+
+  const risk = riskScore >= 5 ? 'high' : riskScore >= 3 ? 'medium' : 'low';
+
+  let delay = 'on_track';
+  const velocityGap = slaRatio - progressRatio;
+  if (issue.sla_status === 'exceeded') delay = 'likely_delayed';
+  else if (velocityGap > 0.5) delay = 'likely_delayed';
+  else if (velocityGap > 0.2 && daysElapsed > 2) delay = 'at_risk';
+
+  let escalation = 'stable';
+  if (riskScore >= 5 && progressRatio < 0.3) escalation = 'escalating';
+  else if (riskScore >= 3 && slaRatio > 0.7 && progressRatio < 0.5) escalation = 'escalating';
+  else if (isDone || progressRatio > 0.7) escalation = 'decreasing';
+
+  return { risk, delay, escalation, riskScore };
+}
+
+const PREDICTION_CFG = {
+  delay: {
+    on_track: { label: 'في الموعد', labelEn: 'On Track', icon: '✅', color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200' },
+    at_risk: { label: 'معرض للتأخير', labelEn: 'At Risk', icon: '⚠️', color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200' },
+    likely_delayed: { label: 'متأخر محتمل', labelEn: 'Likely Delayed', icon: '🔴', color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200' },
+  },
+  escalation: {
+    stable: { label: 'مستقر', labelEn: 'Stable', icon: '➡️', color: 'text-slate-600', bg: 'bg-slate-50', border: 'border-slate-200' },
+    escalating: { label: 'خطر متصاعد', labelEn: 'Escalating', icon: '📈', color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200' },
+    decreasing: { label: 'خطر متناقص', labelEn: 'Decreasing', icon: '📉', color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200' },
+  },
+  risk: {
+    high: { label: 'خطر عالي', labelEn: 'High Risk', dot: 'bg-red-500', color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200', tooltip: 'هذا التحدي يؤثر على وظائف أساسية أو يمنع المستخدمين' },
+    medium: { label: 'خطر متوسط', labelEn: 'Medium Risk', dot: 'bg-amber-500', color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', tooltip: 'هذا التحدي يحتاج متابعة ومعالجة في الوقت المناسب' },
+    low: { label: 'خطر منخفض', labelEn: 'Low Risk', dot: 'bg-emerald-500', color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', tooltip: 'هذا التحدي تحت السيطرة ولا يشكل خطراً حالياً' },
+  },
+};
+
+const HEATMAP_CFG = {
+  critical: { bg: 'bg-red-50/50', hoverBg: 'hover:bg-red-50/70', borderAccent: 'border-r-red-500', glow: 'shadow-red-100/50' },
+  high: { bg: 'bg-orange-50/40', hoverBg: 'hover:bg-orange-50/60', borderAccent: 'border-r-orange-400', glow: 'shadow-orange-100/50' },
+  medium: { bg: 'bg-amber-50/25', hoverBg: 'hover:bg-amber-50/40', borderAccent: 'border-r-amber-400', glow: '' },
+  low: { bg: 'bg-slate-50/30', hoverBg: 'hover:bg-slate-50/50', borderAccent: 'border-r-slate-300', glow: '' },
+};
+
+const PROGRESS_STATUS_COLOR = {
+  new: 'from-blue-400 to-blue-500',
+  under_review: 'from-amber-400 to-amber-500',
+  in_progress: 'from-violet-400 to-violet-500',
+  qa_validation: 'from-cyan-400 to-cyan-500',
+  done: 'from-emerald-400 to-emerald-500',
+  user_feedback_confirmed: 'from-emerald-500 to-emerald-600',
+  rejected: 'from-red-400 to-red-500',
+};
+
 export function ProductHubPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -538,13 +618,14 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
     }
   };
 
-  const priorityCfg = {
-    critical: { border: 'border-r-red-500', bg: 'bg-red-50/40' },
-    high: { border: 'border-r-orange-400', bg: 'bg-orange-50/30' },
-    medium: { border: 'border-r-amber-400', bg: '' },
-    low: { border: 'border-r-slate-300', bg: '' },
-  };
-  const pCfg = priorityCfg[issue.priority] || priorityCfg.medium;
+  const heatmap = HEATMAP_CFG[issue.priority] || HEATMAP_CFG.medium;
+  const nowBucket = useMemo(() => Math.floor(Date.now() / (5 * 60 * 1000)), []);
+  const predictions = useMemo(() => computePredictions(issue, nowBucket), [issue, nowBucket]);
+  const riskCfg = PREDICTION_CFG.risk[predictions.risk];
+  const delayCfg = PREDICTION_CFG.delay[predictions.delay];
+  const escalationCfg = PREDICTION_CFG.escalation[predictions.escalation];
+  const progressColor = PROGRESS_STATUS_COLOR[issue.status] || 'from-slate-300 to-slate-500';
+  const isHighRiskLowProgress = (predictions.risk === 'high' && progress < 50);
 
   const comments = detailData?.comments || [];
   const hakimAnalysis = detailData?.hakim_analysis || issue.hakim_analysis;
@@ -553,79 +634,131 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
   return (
     <div
       ref={cardRef}
-      className={`w-full bg-white rounded-xl border shadow-[0_1px_4px_rgba(0,0,0,0.04)] transition-all duration-400 overflow-hidden border-r-[3px] ${pCfg.border} ${pCfg.bg} ${isExpanded ? 'border-brand-turquoise/50 shadow-[0_8px_40px_rgba(70,193,190,0.15)] ring-1 ring-brand-turquoise/20' : 'border-slate-200/80 hover:border-brand-turquoise/40 hover:shadow-[0_4px_20px_rgba(70,193,190,0.1)]'} ${isHighlighted ? 'ring-2 ring-brand-turquoise ring-offset-2' : ''}`}
+      className={`w-full rounded-xl border transition-all duration-400 overflow-hidden border-r-[4px] group ${heatmap.borderAccent} ${heatmap.bg} ${heatmap.hoverBg} ${heatmap.glow ? `shadow-lg ${heatmap.glow}` : 'shadow-[0_1px_4px_rgba(0,0,0,0.04)]'} ${isExpanded ? 'border-brand-turquoise/50 shadow-[0_8px_40px_rgba(70,193,190,0.15)] ring-1 ring-brand-turquoise/20' : 'border-slate-200/80 hover:shadow-[0_4px_20px_rgba(70,193,190,0.1)]'} ${isHighlighted ? 'ring-2 ring-brand-turquoise ring-offset-2' : ''} ${isHighRiskLowProgress && !isExpanded ? 'animate-[subtlePulse_3s_ease-in-out_infinite]' : ''}`}
     >
-      <div className={`h-[3px] bg-gradient-to-l ${getProgressGradient(progress, issue.status)}`} style={{ width: `${progress}%`, minWidth: progress > 0 ? '8px' : '0' }} />
+      {/* ═══ FULL-WIDTH PROGRESS BAR ═══ */}
+      <div className="relative w-full h-[5px] bg-slate-100">
+        <div
+          className={`h-full bg-gradient-to-l ${progressColor} transition-all duration-700 ease-out`}
+          style={{ width: `${progress}%`, minWidth: progress > 0 ? '8px' : '0' }}
+        />
+        {isHighRiskLowProgress && (
+          <div className="absolute left-2 top-1/2 -translate-y-1/2">
+            <AlertTriangle className="h-3 w-3 text-red-500 animate-pulse" />
+          </div>
+        )}
+      </div>
 
       {/* ═══════════════ COLLAPSED STATE ═══════════════ */}
       <div
         onClick={() => onToggleExpand(issue.id)}
-        className="cursor-pointer p-4 lg:p-5"
+        className="cursor-pointer px-4 lg:px-5 pt-3.5 pb-3"
       >
-        <div className="flex items-center gap-4">
+        {/* ─── TOP ROW: Title + Risk + ID ─── */}
+        <div className="flex items-start gap-3 mb-2">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
               <span className="text-[10px] font-mono text-muted-foreground bg-slate-100 px-2 py-0.5 rounded font-semibold">
                 #{issue.issue_number}
               </span>
-              <div className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full ${typeCfg.bgClass || 'bg-slate-100'}`}>
-                <TypeIcon className={`h-3 w-3 ${typeCfg.color}`} />
-                <span className={`font-medium ${typeCfg.color}`}>{typeCfg.label}</span>
+              <div title={riskCfg.tooltip} className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full ${riskCfg.bg} ${riskCfg.border} border font-medium ${riskCfg.color} cursor-help`}>
+                <span className={`w-2 h-2 rounded-full ${riskCfg.dot} flex-shrink-0`} />
+                {riskCfg.label}
               </div>
               <StatusChip status={issue.status} size="default" showIcon />
               <PriorityBadge priority={issue.priority} size="sm" showIcon />
               <SLAIndicator issue={issue} size="sm" />
             </div>
-            <h3 className={`text-base font-bold leading-snug ${isDone ? 'text-emerald-700 line-through decoration-emerald-300' : isRejected ? 'text-red-400 line-through decoration-red-200' : 'text-brand-navy'}`}>
+            <h3 className={`text-[15px] font-bold leading-snug ${isDone ? 'text-emerald-700 line-through decoration-emerald-300' : isRejected ? 'text-red-400 line-through decoration-red-200' : 'text-brand-navy'}`}>
               {issue.title}
             </h3>
           </div>
 
-          <div className="flex items-center gap-4 flex-shrink-0">
-            <div className="flex items-center gap-2 bg-gradient-to-l from-brand-navy/5 to-brand-turquoise/5 rounded-lg px-3 py-2 border border-brand-turquoise/15 max-lg:hidden">
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300 flex-shrink-0 mt-1 ${isExpanded ? 'bg-brand-turquoise/10 text-brand-turquoise rotate-180' : 'bg-slate-100/80 text-slate-400 group-hover:bg-slate-200/80'}`}>
+            <ChevronDown className="h-4 w-4" />
+          </div>
+        </div>
+
+        {/* ─── SECONDARY: AI Prediction Strip ─── */}
+        {!isDone && !isRejected && (predictions.delay !== 'on_track' || predictions.escalation !== 'stable') && (
+          <div className="flex items-center gap-2 mb-2.5 flex-wrap">
+            <div className="flex items-center gap-1 text-[9px] text-brand-turquoise/60 font-medium">
+              <Brain className="h-3 w-3" /> تنبؤ حكيم
+            </div>
+            {predictions.delay !== 'on_track' && (
+              <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full ${delayCfg.bg} ${delayCfg.border} border ${delayCfg.color}`}>
+                <span className="text-[9px]">{delayCfg.icon}</span> {delayCfg.label}
+              </span>
+            )}
+            {predictions.escalation === 'escalating' && (
+              <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full ${escalationCfg.bg} ${escalationCfg.border} border ${escalationCfg.color}`}>
+                <span className="text-[9px]">{escalationCfg.icon}</span> {escalationCfg.label}
+              </span>
+            )}
+          </div>
+        )}
+
+        {isDone && (
+          <div className="flex items-center gap-2 mb-2.5">
+            <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700">
+              ✅ في الموعد
+            </span>
+          </div>
+        )}
+
+        {/* ─── CENTER: Progress Bar (dominant) ─── */}
+        <div className="mb-2.5">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] text-muted-foreground font-medium">التقدم</span>
+            <span className={`text-xs font-bold ${progress >= 75 ? 'text-emerald-600' : progress >= 50 ? 'text-brand-turquoise' : progress >= 25 ? 'text-amber-500' : 'text-red-500'}`}>
+              {progress}%
+            </span>
+          </div>
+          <div className="w-full bg-slate-200/60 rounded-full h-2.5 overflow-hidden">
+            <div
+              className={`h-full rounded-full bg-gradient-to-l ${progressColor} transition-all duration-700 ease-out`}
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        </div>
+
+        {/* ─── BOTTOM: Reporter + Date + Status ─── */}
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <div
                 className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0"
                 style={{ background: isDone ? 'linear-gradient(135deg, #10b981, #059669)' : isRejected ? 'linear-gradient(135deg, #ef4444, #dc2626)' : 'linear-gradient(135deg, #1C3D74, #46C1BE)' }}
               >
                 {getInitials(issue.employee_name)}
               </div>
-              <span className="text-xs font-bold text-brand-navy truncate max-w-[120px]">{issue.employee_name}</span>
+              <span className="text-xs font-semibold text-brand-navy truncate max-w-[140px]">{issue.employee_name}</span>
             </div>
+            {issue.assigned_team && (
+              <Badge variant="outline" className="text-[9px] border-brand-turquoise/25 text-brand-turquoise px-1.5 py-0 h-5 font-medium max-md:hidden">
+                {issue.assigned_team}
+              </Badge>
+            )}
+          </div>
 
-            <div className="hidden md:flex items-center gap-3">
-              <div className="w-24">
-                <div className="flex items-center justify-between mb-0.5">
-                  <span className={`text-[10px] font-bold ${progress >= 75 ? 'text-emerald-600' : progress >= 50 ? 'text-brand-turquoise' : progress >= 25 ? 'text-amber-500' : 'text-red-500'}`}>{progress}%</span>
-                </div>
-                <div className="w-full bg-slate-200/60 rounded-full h-1.5 overflow-hidden">
-                  <div className={`h-full rounded-full bg-gradient-to-l ${getProgressGradient(progress, issue.status)} transition-all duration-500`} style={{ width: `${progress}%` }} />
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                <MessageSquare className="h-3 w-3" />
-                <span className="font-semibold">{commentCount}</span>
-              </div>
-              {attachmentCount > 0 && (
-                <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                  <Paperclip className="h-3 w-3" />
-                  <span className="font-semibold">{attachmentCount}</span>
-                </div>
-              )}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+              <MessageSquare className="h-3 w-3" />
+              <span className="font-semibold">{commentCount}</span>
             </div>
-
+            {attachmentCount > 0 && (
+              <div className="flex items-center gap-1 text-[10px] text-muted-foreground max-md:hidden">
+                <Paperclip className="h-3 w-3" />
+                <span className="font-semibold">{attachmentCount}</span>
+              </div>
+            )}
             {hasDuplicates && (
-              <div className="flex items-center gap-1 px-2 py-0.5 bg-amber-50 rounded border border-amber-100 max-lg:hidden">
+              <div className="flex items-center gap-1 px-1.5 py-0.5 bg-amber-50 rounded border border-amber-100 max-md:hidden">
                 <Brain className="h-2.5 w-2.5 text-amber-500" />
                 <span className="text-[9px] text-amber-600 font-medium">مكرر</span>
               </div>
             )}
-
-            <span className="text-[10px] text-muted-foreground max-lg:hidden">{formatDualDateCompact(issue.created_at)}</span>
-
-            <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300 ${isExpanded ? 'bg-brand-turquoise/10 text-brand-turquoise rotate-180' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}>
-              <ChevronDown className="h-4 w-4" />
-            </div>
+            <span className="text-[10px] text-muted-foreground">{formatDualDateCompact(issue.created_at)}</span>
           </div>
         </div>
       </div>
