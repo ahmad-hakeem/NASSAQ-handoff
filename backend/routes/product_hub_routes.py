@@ -68,6 +68,7 @@ from engines.product_hub_audit import (
 from models.product_hub_models import (
     IssueCreate, IssueUpdate, IssueComment, CommentUpdate, StatusUpdate,
     AssignIssue, FeedbackResponse, TitleUpdate, PriorityUpdate,
+    BulkUpdateRequest, BulkDeleteRequest,
     ISSUE_TYPE_LABELS, ISSUE_TYPE_COMPAT, DYNAMIC_FIELDS_BY_TYPE,
     ACCOUNT_TYPE_OPTIONS, SECTION_OPTIONS,
     VALID_ISSUE_TYPES, VALID_ACCOUNT_TYPES, VALID_SECTIONS, VALID_TEAMS,
@@ -1032,6 +1033,79 @@ async def delete_issue(
     await audit_issue_updated(issue_id, current_user, {"action": "delete_issue", "deleted_at": now})
     logger.info(f"[ProductHub] Issue {issue_id[:8]} deleted by {current_user.get('email', 'unknown')}")
     return {"success": True, "issue_id": issue_id}
+
+
+@router.post("/issues/bulk-update")
+async def bulk_update_issues(
+    data: BulkUpdateRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    if not is_main_admin(current_user):
+        _hub_error(403, "FORBIDDEN", "هذه العملية متاحة فقط للمسؤولين الرئيسيين")
+
+    if not data.status and not data.priority and not data.assigned_team:
+        _hub_error(422, "NO_CHANGES", "يجب تحديد حقل واحد على الأقل للتعديل")
+
+    now = _now_iso()
+    update_fields = {"updated_at": now, "system.updated_at": now}
+
+    if data.status:
+        update_fields["status"] = data.status
+        update_fields["system.last_status_changed_at"] = now
+        if data.status == "done":
+            update_fields["resolved_at"] = now
+            update_fields["feedback_requested"] = True
+    if data.priority:
+        update_fields["priority"] = data.priority
+    if data.assigned_team:
+        update_fields["assigned_team"] = data.assigned_team
+
+    result = await db.product_issues.update_many(
+        {"id": {"$in": data.issue_ids}, "is_deleted": {"$ne": True}},
+        {"$set": update_fields}
+    )
+
+    for issue_id in data.issue_ids:
+        changes_log = {}
+        if data.status:
+            changes_log["status"] = data.status
+        if data.priority:
+            changes_log["priority"] = data.priority
+        if data.assigned_team:
+            changes_log["assigned_team"] = data.assigned_team
+        await audit_issue_updated(issue_id, current_user, {"action": "bulk_update", **changes_log})
+
+    logger.info(f"[ProductHub] Bulk update {result.modified_count}/{len(data.issue_ids)} issues by {current_user.get('email', 'unknown')}")
+    return {
+        "success": True,
+        "modified_count": result.modified_count,
+        "requested_count": len(data.issue_ids),
+    }
+
+
+@router.post("/issues/bulk-delete")
+async def bulk_delete_issues(
+    data: BulkDeleteRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    if not is_main_admin(current_user):
+        _hub_error(403, "FORBIDDEN", "هذه العملية متاحة فقط للمسؤولين الرئيسيين")
+
+    now = _now_iso()
+    result = await db.product_issues.update_many(
+        {"id": {"$in": data.issue_ids}, "is_deleted": {"$ne": True}},
+        {"$set": {"is_deleted": True, "deleted_at": now, "deleted_by": get_user_id(current_user)}}
+    )
+
+    for issue_id in data.issue_ids:
+        await audit_issue_updated(issue_id, current_user, {"action": "bulk_delete", "deleted_at": now})
+
+    logger.info(f"[ProductHub] Bulk delete {result.modified_count}/{len(data.issue_ids)} issues by {current_user.get('email', 'unknown')}")
+    return {
+        "success": True,
+        "deleted_count": result.modified_count,
+        "requested_count": len(data.issue_ids),
+    }
 
 
 @router.post("/issues/{issue_id}/reanalyze")

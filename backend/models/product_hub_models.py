@@ -776,3 +776,57 @@ class PriorityUpdate(BaseModel):
         if v not in valid:
             raise ValueError(f"أولوية غير صالحة: {v}")
         return v
+
+
+class BulkUpdateRequest(BaseModel):
+    issue_ids: List[str]
+    status: Optional[str] = None
+    priority: Optional[str] = None
+    assigned_team: Optional[str] = None
+
+    @field_validator("issue_ids")
+    @classmethod
+    def validate_ids(cls, v):
+        if not v or len(v) == 0:
+            raise ValueError("يجب تحديد تحدي واحد على الأقل")
+        if len(v) > 100:
+            raise ValueError("الحد الأقصى 100 تحدي")
+        return v
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, v):
+        if v is not None:
+            valid = {e.value for e in IssueStatus}
+            if v not in valid:
+                raise ValueError(f"حالة غير صالحة: {v}")
+        return v
+
+    @field_validator("priority")
+    @classmethod
+    def validate_priority_field(cls, v):
+        if v is not None:
+            valid = {e.value for e in IssuePriority}
+            if v not in valid:
+                raise ValueError(f"أولوية غير صالحة: {v}")
+        return v
+
+    @field_validator("assigned_team")
+    @classmethod
+    def validate_team(cls, v):
+        if v is not None and v not in VALID_TEAMS:
+            raise ValueError(f"فريق غير صالح: {v}")
+        return v
+
+
+class BulkDeleteRequest(BaseModel):
+    issue_ids: List[str]
+
+    @field_validator("issue_ids")
+    @classmethod
+    def validate_ids(cls, v):
+        if not v or len(v) == 0:
+            raise ValueError("يجب تحديد تحدي واحد على الأقل")
+        if len(v) > 100:
+            raise ValueError("الحد الأقصى 100 تحدي")
+        return v
