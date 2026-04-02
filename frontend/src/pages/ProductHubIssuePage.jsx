@@ -18,7 +18,7 @@ import {
   CommentInput, CommentBubble,
   STATUS_CONFIG, TYPE_CONFIG, STATUS_PROGRESS,
   FINAL_STATUSES, TEAMS, EVENT_LABELS, COMMENT_TYPE_CONFIG, IMPACT_LABELS,
-  formatDualDate, formatDualDateTime, formatDualDateCompact,
+  formatDualDate, formatDualDateTime, formatDualDateCompact, getInitials,
 } from '../components/product-hub';
 import {
   ArrowRight, Brain, Copy, Send, Shield, MessageSquare, Activity,
@@ -240,18 +240,24 @@ export function ProductHubIssuePage() {
                   <h1 className="text-2xl lg:text-3xl font-bold text-white leading-tight tracking-tight">
                     {issue.title}
                   </h1>
-                  <div className="flex items-center gap-3 mt-3 text-xs text-white/60 flex-wrap">
-                    <span className="flex items-center gap-1">
-                      <Users className="h-3 w-3" />
-                      {issue.employee_name}
-                    </span>
-                    <span className="text-white/30">•</span>
-                    <span>{issue.section} › {issue.page}</span>
-                    <span className="text-white/30">•</span>
-                    <span className="flex items-center gap-1">
-                      <Calendar className="h-3 w-3" />
-                      {formatDualDateCompact(issue.created_at)}
-                    </span>
+                  <div className="flex items-center gap-3 mt-3 flex-wrap">
+                    <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-lg px-3 py-1.5 border border-white/15">
+                      <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-brand-navy bg-white flex-shrink-0">
+                        {getInitials(issue.employee_name)}
+                      </div>
+                      <div>
+                        <span className="text-[9px] text-brand-turquoise font-semibold block leading-none">المُبلّغ</span>
+                        <span className="text-sm font-bold text-white">{issue.employee_name}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-white/60">
+                      <span>{issue.section} › {issue.page}</span>
+                      <span className="text-white/30">•</span>
+                      <span className="flex items-center gap-1">
+                        <Calendar className="h-3 w-3" />
+                        {formatDualDateCompact(issue.created_at)}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -441,8 +447,20 @@ export function ProductHubIssuePage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-5">
+                  <div className="flex items-center gap-3 p-3 bg-gradient-to-l from-brand-navy/5 to-brand-turquoise/5 rounded-xl border border-brand-turquoise/15 mb-1">
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
+                      style={{ background: 'linear-gradient(135deg, #1C3D74, #46C1BE)' }}>
+                      {getInitials(issue.employee_name)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <span className="text-[10px] text-brand-turquoise font-semibold block leading-none mb-0.5">المُبلّغ</span>
+                      <p className="text-sm font-bold text-brand-navy truncate">{issue.employee_name}</p>
+                    </div>
+                    {issue.section && (
+                      <span className="text-[10px] px-2 py-1 rounded-lg bg-white text-slate-500 border border-slate-100">{issue.section}</span>
+                    )}
+                  </div>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                    <InfoField label="المُبلِّغ" value={issue.employee_name} />
                     <InfoField label="نوع الحساب" value={{
                       platform_admin: 'Platform Admin',
                       school_admin: 'School Admin',

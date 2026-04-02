@@ -150,3 +150,10 @@ export function formatDualDateCompact(dateStr) {
   const greg = d.toLocaleDateString('ar-EG', { day: 'numeric', month: 'numeric' });
   return `${hijri} | ${greg}`;
 }
+
+export function getInitials(name) {
+  if (!name || !name.trim()) return '؟';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) return parts[0][0] + parts[1][0];
+  return parts[0].slice(0, 2);
+}

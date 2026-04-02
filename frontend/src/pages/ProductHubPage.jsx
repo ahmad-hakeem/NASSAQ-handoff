@@ -14,7 +14,7 @@ import {
   StatusChip, PriorityBadge, SLAIndicator, StatCard, EmptyState,
   HakimInsightCard,
   STATUS_CONFIG, PRIORITY_CONFIG, TYPE_CONFIG, STATUS_PROGRESS,
-  formatDualDateCompact,
+  formatDualDateCompact, getInitials,
 } from '../components/product-hub';
 import {
   Brain, Plus, Search, BarChart3, Users, Target, Zap, Sparkles,
@@ -571,15 +571,25 @@ function IssueCard({ issue, navigate, isHighlighted, isMainAdmin, onRefresh }) {
           </div>
         </div>
 
-        <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-2">
-          <div className="flex items-center gap-2">
-            <span className="flex items-center gap-0.5">
-              <Users className="h-2.5 w-2.5" />
-              {issue.employee_name}
-            </span>
-            <span>{issue.section}</span>
+        <div className="flex items-center gap-2.5 mb-2 p-2 bg-slate-50/80 rounded-lg border border-slate-100">
+          <div
+            className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
+            style={{ background: isDone ? 'linear-gradient(135deg, #10b981, #059669)' : isRejected ? 'linear-gradient(135deg, #ef4444, #dc2626)' : 'linear-gradient(135deg, #1C3D74, #46C1BE)' }}
+          >
+            {getInitials(issue.employee_name)}
           </div>
-          <span>{formatDualDateCompact(issue.created_at)}</span>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-brand-turquoise font-semibold">المُبلّغ</span>
+            </div>
+            <p className="text-xs font-bold text-brand-navy truncate leading-tight">{issue.employee_name}</p>
+          </div>
+          <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
+            {issue.section && (
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 truncate max-w-[90px]">{issue.section}</span>
+            )}
+            <span className="text-[9px] text-muted-foreground">{formatDualDateCompact(issue.created_at)}</span>
+          </div>
         </div>
 
         {isMainAdmin && (

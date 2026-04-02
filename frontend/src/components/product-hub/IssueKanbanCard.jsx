@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Brain, MessageSquare, Paperclip, ArrowUpRight } from 'lucide-react';
 import { PriorityBadge } from './PriorityBadge';
 import { SLAIndicator } from './SLAIndicator';
-import { TYPE_CONFIG, STATUS_PROGRESS } from './hubConstants';
+import { TYPE_CONFIG, STATUS_PROGRESS, getInitials } from './hubConstants';
 
 function getProgressGradient(progress, status) {
   if (status === 'rejected') return 'from-red-400 to-red-500';
@@ -20,13 +20,6 @@ function getProgressColor(progress, status) {
   if (progress >= 50) return '#46C1BE';
   if (progress >= 25) return '#f59e0b';
   return '#ef4444';
-}
-
-function getInitials(name) {
-  if (!name) return '؟';
-  const parts = name.trim().split(/\s+/);
-  if (parts.length >= 2) return parts[0][0] + parts[1][0];
-  return parts[0].slice(0, 2);
 }
 
 export function IssueKanbanCard({ issue, isHighlighted }) {
@@ -115,10 +108,10 @@ export function IssueKanbanCard({ issue, isHighlighted }) {
           </div>
         </div>
 
-        <div className="flex items-center justify-between pt-2.5 border-t border-slate-100">
-          <div className="flex items-center gap-2 min-w-0">
+        <div className="pt-2.5 border-t border-slate-100 space-y-2">
+          <div className="flex items-center gap-2 min-w-0 p-1.5 bg-slate-50/80 rounded-lg">
             <div
-              className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0"
+              className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0"
               style={{
                 background: isDone ? 'linear-gradient(135deg, #10b981, #059669)' :
                              isRejected ? 'linear-gradient(135deg, #ef4444, #dc2626)' :
@@ -127,10 +120,13 @@ export function IssueKanbanCard({ issue, isHighlighted }) {
             >
               {getInitials(issue.employee_name)}
             </div>
-            <span className="text-[10px] text-slate-500 truncate">{issue.employee_name}</span>
+            <div className="flex-1 min-w-0">
+              <span className="text-[8px] text-brand-turquoise font-semibold block leading-none mb-0.5">المُبلّغ</span>
+              <span className="text-[11px] font-bold text-brand-navy truncate block leading-tight">{issue.employee_name}</span>
+            </div>
           </div>
 
-          <div className="flex items-center gap-1.5 flex-shrink-0">
+          <div className="flex items-center justify-end gap-1.5">
             {commentCount > 0 && (
               <span className="inline-flex items-center gap-0.5 text-[9px] text-slate-400">
                 <MessageSquare className="h-2.5 w-2.5" />
