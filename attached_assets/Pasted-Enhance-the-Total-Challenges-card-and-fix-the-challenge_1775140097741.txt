@@ -1,0 +1,76 @@
+Enhance the "Total Challenges" card and fix the challenge numbering logic inside the "Product Intelligence Hub" page.
+
+==================================================
+1) TOTAL CHALLENGES CARD — VISUAL ENHANCEMENT
+==================================================
+
+Improve the visual design of the "Total Challenges" card with the following requirements:
+
+- Add a subtle background pattern to the card
+- Ensure strong and correct color contrast between:
+  - background
+  - pattern
+  - main number
+  - label text
+
+The card must remain:
+- clean
+- readable
+- professional
+- visually balanced
+
+Do NOT use a pattern that reduces readability or makes the card look noisy.
+
+==================================================
+2) NUMBER FORMAT
+==================================================
+
+- The main number inside the "Total Challenges" card must be displayed in English numerals
+  Example:
+  13
+  instead of
+  ١٣
+
+==================================================
+3) CHALLENGE NUMBERING / SEQUENCE FIX (CRITICAL)
+==================================================
+
+Review and fix the challenge numbering logic.
+
+Current issue:
+- The actual number of existing challenges is 13 only
+- However, some challenge cards display sequence numbers such as 15
+
+This indicates a problem in the numbering / sequencing system.
+
+Required fix:
+- Review the full logic used to generate challenge numbering
+- Ensure the displayed challenge serial number is correct and consistent
+- Prevent gaps, incorrect jumps, or mismatched numbering
+- Make sure challenge IDs / serial numbers reflect the actual intended sequence logic
+
+==================================================
+4) VALIDATION REQUIREMENT
+==================================================
+
+Verify:
+- total number of stored challenges
+- displayed challenge sequence numbers
+- consistency between database records and frontend display
+
+If numbering is based on a generated sequence:
+- fix the generation logic
+
+If numbering is based on count/order:
+- ensure deleted or hidden records do not create incorrect visible numbering unless intentionally designed
+
+==================================================
+5) FINAL GOAL
+==================================================
+
+The final result must ensure:
+
+- the "Total Challenges" card looks more premium and readable
+- the number is shown in English numerals
+- challenge numbering is accurate, consistent, and logically correct
+- no card displays an incorrect serial number relative to the actual challenge sequence

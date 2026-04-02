@@ -347,16 +347,17 @@ export function ProductHubPage() {
                   <IssuesStatusFlow issues={issues} onStatusFilter={updateFilter} activeStatus={filters.status} />
                 </div>
                 <div className="relative overflow-hidden flex flex-col items-center justify-center text-center p-5 rounded-2xl bg-gradient-to-br from-brand-navy via-brand-navy/95 to-brand-turquoise/80 text-white shadow-lg">
+                  <div className="absolute inset-0 opacity-[0.04]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.5) 1px, transparent 0)', backgroundSize: '16px 16px' }} />
                   <div className="absolute -bottom-6 -left-6 h-20 w-20 rounded-full bg-brand-turquoise/15" />
                   <div className="absolute -top-4 -right-4 h-14 w-14 rounded-full bg-white/5" />
                   <div className="relative z-10 flex flex-col items-center gap-1">
                     <div className="p-2 rounded-xl bg-white/10 backdrop-blur-sm mb-1">
                       <Layers className="h-5 w-5 text-white" />
                     </div>
-                    <p className="text-5xl font-extrabold tracking-tighter leading-none tabular-nums hub-countup-number">
-                      {total.toLocaleString('ar-SA')}
+                    <p className="text-5xl font-extrabold tracking-tighter leading-none tabular-nums hub-countup-number text-white drop-shadow-sm">
+                      {total}
                     </p>
-                    <p className="text-[11px] text-white/65 font-medium mt-1">إجمالي التحديات</p>
+                    <p className="text-[11px] text-white/70 font-semibold mt-1">إجمالي التحديات</p>
                     {hasActiveFilters && (
                       <p className="text-[10px] text-brand-turquoise font-medium mt-1 bg-white/10 px-2 py-0.5 rounded-full">
                         عرض {sortedIssues.length} من {total} نتيجة
@@ -1293,6 +1294,7 @@ function DashboardView({ data, loading, isAdmin, navigate }) {
     <div className="space-y-6">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="relative overflow-hidden rounded-2xl border-0 bg-gradient-to-br from-brand-navy via-brand-navy/95 to-brand-turquoise/80 p-5 shadow-xl shadow-brand-navy/20 text-white hub-card">
+          <div className="absolute inset-0 opacity-[0.04]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.5) 1px, transparent 0)', backgroundSize: '16px 16px' }} />
           <div className="flex items-start justify-between">
             <div className="p-2.5 rounded-xl bg-white/10 backdrop-blur-sm">
               <Layers className="h-5 w-5 text-white" />
@@ -1306,7 +1308,7 @@ function DashboardView({ data, loading, isAdmin, navigate }) {
           </div>
           <div className="mt-4 mb-1">
             <p className="text-6xl font-extrabold tracking-tighter leading-none tabular-nums hub-countup-number">
-              {animTotal.toLocaleString('ar-SA')}
+              {animTotal}
             </p>
             <p className="text-sm text-white/60 mt-2 font-medium">إجمالي التحديات</p>
           </div>
@@ -1332,7 +1334,7 @@ function DashboardView({ data, loading, isAdmin, navigate }) {
             </span>
           </div>
           <div className="mt-3">
-            <p className="text-4xl font-extrabold text-brand-navy tracking-tighter tabular-nums">{animResolved.toLocaleString('ar-SA')}</p>
+            <p className="text-4xl font-extrabold text-brand-navy tracking-tighter tabular-nums">{animResolved}</p>
             <p className="text-sm text-muted-foreground mt-0.5">تم حلها</p>
           </div>
           <div className="mt-2 w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
@@ -1351,7 +1353,7 @@ function DashboardView({ data, loading, isAdmin, navigate }) {
             </span>
           </div>
           <div className="mt-3">
-            <p className="text-4xl font-extrabold text-brand-navy tracking-tighter tabular-nums">{animOpen.toLocaleString('ar-SA')}</p>
+            <p className="text-4xl font-extrabold text-brand-navy tracking-tighter tabular-nums">{animOpen}</p>
             <p className="text-sm text-muted-foreground mt-0.5">لم تُحل بعد</p>
           </div>
           <div className="mt-2 w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
@@ -1372,7 +1374,7 @@ function DashboardView({ data, loading, isAdmin, navigate }) {
             )}
           </div>
           <div className="mt-3">
-            <p className="text-4xl font-extrabold text-brand-navy tracking-tighter tabular-nums">{animCritical.toLocaleString('ar-SA')}</p>
+            <p className="text-4xl font-extrabold text-brand-navy tracking-tighter tabular-nums">{animCritical}</p>
             <p className="text-sm text-muted-foreground mt-0.5">حرجة مفتوحة</p>
           </div>
           <div className="mt-2 w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
