@@ -214,6 +214,7 @@ export function ProductHubPage() {
                 onClear={clearFilters}
                 hasActiveFilters={hasActiveFilters}
               />
+              <IssuesStatusFlow issues={issues} onStatusFilter={updateFilter} activeStatus={filters.status} />
               <IssuesTableView
                 issues={sortedIssues}
                 loading={loading}
@@ -365,6 +366,71 @@ function getProgressGradient(progress, status) {
   if (progress >= 50) return 'from-brand-turquoise/80 to-brand-turquoise';
   if (progress >= 25) return 'from-amber-300 to-amber-500';
   return 'from-red-300 to-red-500';
+}
+
+function IssuesStatusFlow({ issues, onStatusFilter, activeStatus }) {
+  const counts = useMemo(() => {
+    const c = { new: 0, under_review: 0, in_progress: 0, qa_validation: 0, done: 0, user_feedback_confirmed: 0, rejected: 0 };
+    (issues || []).forEach(issue => {
+      if (c[issue.status] !== undefined) c[issue.status]++;
+    });
+    return c;
+  }, [issues]);
+
+  const total = issues?.length || 0;
+
+  const flow = [
+    { key: 'new', label: 'جديدة', value: counts.new, color: 'bg-sky-500', icon: CircleDot },
+    { key: 'under_review', label: 'قيد المراجعة', value: counts.under_review, color: 'bg-amber-500', icon: Eye },
+    { key: 'in_progress', label: 'قيد التنفيذ', value: counts.in_progress, color: 'bg-violet-500', icon: Activity },
+    { key: 'qa_validation', label: 'فحص الجودة', value: counts.qa_validation, color: 'bg-blue-500', icon: ShieldCheck },
+    { key: 'done,user_feedback_confirmed', label: 'تم الحل', value: counts.done + counts.user_feedback_confirmed, color: 'bg-emerald-500', icon: CheckCircle2 },
+    { key: 'rejected', label: 'مرفوضة', value: counts.rejected, color: 'bg-red-500', icon: XCircle },
+  ];
+
+  return (
+    <Card className="border rounded-2xl shadow-sm overflow-hidden">
+      <CardContent className="p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <div className="p-1.5 rounded-lg bg-brand-turquoise/10">
+            <Activity className="h-4 w-4 text-brand-turquoise" />
+          </div>
+          <span className="text-sm font-semibold text-brand-navy">تدفق حالة التحديات</span>
+          <span className="text-[10px] text-muted-foreground mr-auto">({total} تحدي)</span>
+        </div>
+
+        <div className="flex items-center gap-0.5 mb-3 w-full h-2.5 rounded-full overflow-hidden bg-slate-100">
+          {flow.map((s, i) => {
+            const pct = total > 0 ? (s.value / total) * 100 : 0;
+            return pct > 0 ? (
+              <div key={i} className={`${s.color} h-2.5 transition-all duration-700`} style={{ width: `${pct}%` }} title={`${s.label}: ${s.value}`} />
+            ) : null;
+          })}
+        </div>
+
+        <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+          {flow.map((s, i) => {
+            const Ic = s.icon;
+            const isActive = activeStatus === s.key;
+            return (
+              <button
+                key={i}
+                onClick={() => onStatusFilter('status', isActive ? '' : s.key)}
+                className={`text-center p-2.5 rounded-xl border transition-all cursor-pointer ${isActive ? 'bg-brand-navy/5 border-brand-navy/30 ring-1 ring-brand-navy/20' : 'bg-slate-50/80 border-slate-100 hover:border-slate-200'}`}
+              >
+                <div className="flex items-center justify-center mb-1">
+                  <div className={`w-2 h-2 rounded-full ${s.color} ml-1`} />
+                  <Ic className="h-3 w-3 text-slate-500" />
+                </div>
+                <p className="text-lg font-bold text-brand-navy">{s.value}</p>
+                <p className="text-[9px] text-muted-foreground leading-tight">{s.label}</p>
+              </button>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 function getCardStyle(progress, status, priority) {
