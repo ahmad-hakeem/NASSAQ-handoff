@@ -510,9 +510,20 @@ async def list_issues(
         query, {"_id": 0}
     ).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
 
+    issue_ids = [i.get("id") for i in issues if i.get("id")]
+    comment_counts = {}
+    if issue_ids:
+        pipeline = [
+            {"$match": {"issue_id": {"$in": issue_ids}}},
+            {"$group": {"_id": "$issue_id", "count": {"$sum": 1}}}
+        ]
+        async for doc in db.issue_comments.aggregate(pipeline):
+            comment_counts[doc["_id"]] = doc["count"]
+
     for issue in issues:
         enrich_sla_state(issue)
         redact_issue_for_role(issue, current_user)
+        issue["comment_count"] = comment_counts.get(issue.get("id"), 0)
 
     return {"issues": issues, "total": total, "page": page, "limit": limit}
 

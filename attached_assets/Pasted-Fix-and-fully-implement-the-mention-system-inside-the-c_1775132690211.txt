@@ -1,0 +1,302 @@
+Fix and fully implement the @mention system inside the comments section of each Challenge Card in the "Product Intelligence Hub" page.
+
+The current @mention behavior is not working correctly and must be fixed to behave reliably, smoothly, and in full alignment with RBAC / permission rules.
+
+This feature is critical and must work properly in both UI behavior and backend validation.
+
+==================================================
+1) CORE REQUIREMENT
+==================================================
+
+Inside the comments input field:
+
+- Typing "@" must trigger a mention system
+- The mention system must:
+  - open a dropdown list of allowed users
+  - allow searching by:
+    - name
+    - email
+  - allow keyboard navigation
+  - allow selecting a user
+  - insert the selected mention properly into the comment input
+
+The mention system must work consistently and correctly in all challenge comment sections.
+
+==================================================
+2) INPUT BEHAVIOR
+==================================================
+
+- When user types "@":
+  → show mention dropdown immediately
+
+- When user continues typing after "@":
+  → filter results dynamically in real time
+
+Examples:
+- @zah → should search matching users
+- @hak → should show hakim@nassaqapp.com if allowed
+
+- When user selects a mention:
+  → insert the mention as a styled token/tag inside the comment input
+  OR
+  → insert it as structured mention text with internal metadata
+
+- Mentioned user must remain clearly distinguishable visually
+
+==================================================
+3) REQUIRED MENTION UX
+==================================================
+
+The mention dropdown must be:
+
+- fast
+- searchable
+- keyboard accessible
+- clickable
+- visually clean
+- properly positioned near cursor/input
+- scrollable if results are many
+
+Each user result should show:
+- display name
+- email
+- role (if useful)
+- optional avatar
+
+The selected mention should appear:
+- highlighted
+- visually distinct from normal text
+- preserved after comment is submitted and displayed
+
+==================================================
+4) CRITICAL RBAC / PERMISSION RULES
+==================================================
+
+Mention behavior must strictly respect permissions.
+
+The following rules are mandatory:
+
+A) Any Platform Admin account can mention:
+- zalat@nassaqapp.com
+- hakim@nassaqapp.com
+
+B) The accounts:
+- zalat@nassaqapp.com
+- hakim@nassaqapp.com
+
+can mention ANY Platform Admin account
+
+C) Mention dropdown must only show users that are allowed by these rules
+
+D) Unauthorized users must NOT appear in mention results
+
+E) If user manually types an unauthorized email or unauthorized @mention:
+- backend must reject it
+OR
+- system must sanitize/block it before submission
+
+==================================================
+5) PERMISSION MATRIX
+==================================================
+
+Implement mention permissions exactly as follows:
+
+1. Platform Admin accounts:
+- can mention:
+  - zalat@nassaqapp.com
+  - hakim@nassaqapp.com
+  - any allowed Platform Admin account according to policy
+
+2. zalat@nassaqapp.com:
+- can mention any Platform Admin account
+- can mention hakim@nassaqapp.com
+
+3. hakim@nassaqapp.com:
+- can mention any Platform Admin account
+- can mention zalat@nassaqapp.com
+
+4. Any non-authorized user:
+- must not see restricted accounts in mention results
+- must not be able to submit unauthorized mentions
+
+==================================================
+6) BACKEND VALIDATION (MANDATORY)
+==================================================
+
+Do NOT rely only on frontend UI.
+
+Backend must validate all submitted mentions.
+
+For every submitted comment:
+- parse mentions
+- validate each mentioned account
+- confirm mention permission based on current user role/email
+- reject invalid mentions with clear error response
+
+Example error:
+{
+  "success": false,
+  "error_code": "UNAUTHORIZED_MENTION",
+  "message": "You are not allowed to mention this user."
+}
+
+==================================================
+7) COMMENT STORAGE FORMAT
+==================================================
+
+Store comments in a way that preserves mention metadata.
+
+Recommended structure:
+
+{
+  "comment_text": "Please review this @Hakim",
+  "mentions": [
+    {
+      "user_id": "123",
+      "email": "hakim@nassaqapp.com",
+      "display_name": "Ahmed Hakim"
+    }
+  ]
+}
+
+This is required so mentions can:
+- render correctly later
+- be validated
+- be used in notifications in the future
+
+==================================================
+8) COMMENT DISPLAY BEHAVIOR
+==================================================
+
+After comment submission:
+
+- render the mention in the comment thread as highlighted text
+- preserve user identity of the mentioned account
+- mention should not appear as plain broken text
+- mention styling should be clean and enterprise-friendly
+
+Optional:
+- clicking mention opens small profile preview
+OR
+- tooltip with name/email
+
+==================================================
+9) ENTER / SUBMISSION BEHAVIOR
+==================================================
+
+- Pressing Enter:
+  → must move to a new line
+  → must NOT submit
+
+- Comment submission must happen only by:
+  - clicking "Send"
+  OR
+  - Ctrl + Enter / Cmd + Enter
+
+This behavior must remain intact after implementing mentions.
+
+==================================================
+10) EDITING COMMENTS
+==================================================
+
+If comment editing is allowed:
+
+- existing mentions must remain editable
+- dropdown should reopen correctly if user edits around @mention text
+- mention metadata must stay in sync after editing
+
+==================================================
+11) EDGE CASES TO HANDLE
+==================================================
+
+Handle all of the following cases:
+
+- user types "@" and stops
+- user types "@ " with space
+- user types multiple mentions in same comment
+- user deletes part of a mention
+- user pastes text containing "@"
+- user mentions someone, then edits the comment
+- no allowed mention results found
+- backend rejects unauthorized mention
+- selected mention email/name has Arabic or English characters
+
+==================================================
+12) EMPTY / ERROR STATES
+==================================================
+
+If no valid users match:
+- show:
+  "لا يوجد مستخدمون متاحون للإشارة"
+
+If mention is invalid:
+- show clear inline error
+
+If backend rejects mention:
+- do not lose typed comment
+- preserve content
+- show error message clearly
+
+==================================================
+13) UI / STYLING REQUIREMENTS
+==================================================
+
+Mention input and dropdown must feel:
+- similar to Slack / Notion / Linear
+- modern
+- minimal
+- responsive
+- easy to understand
+
+Mention token styling:
+- soft highlighted background
+- readable text
+- subtle border or accent
+- not visually noisy
+
+Dropdown styling:
+- clean list
+- clear hover state
+- keyboard selected state
+- strong readability
+
+==================================================
+14) OPTIONAL NOTIFICATION PREPARATION
+==================================================
+
+Prepare the system structure so that in the future:
+- mentioned users can receive notifications
+- mention events can be logged
+- mention activity can appear in audit trail
+
+This does not need full notification implementation now, but architecture should support it.
+
+==================================================
+15) TESTING REQUIREMENTS
+==================================================
+
+Verify all of the following:
+
+- @ opens dropdown
+- search works by name/email
+- selection inserts mention correctly
+- mention renders correctly after submit
+- unauthorized mention is blocked
+- Platform Admin can mention zalat@nassaqapp.com and hakim@nassaqapp.com
+- zalat@nassaqapp.com and hakim@nassaqapp.com can mention any Platform Admin account
+- Enter creates new line
+- Ctrl+Enter submits
+- comments still work correctly after mention integration
+
+==================================================
+16) FINAL GOAL
+==================================================
+
+Deliver a fully working @mention system inside challenge comments that:
+
+- works reliably
+- respects permissions
+- supports structured collaboration
+- feels polished and enterprise-grade
+- is validated in frontend and backend
+- is future-ready for notifications and activity tracking

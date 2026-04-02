@@ -21,7 +21,7 @@ import {
   ChevronLeft, ChevronRight, Award, Building2, Timer, AlertOctagon, Clock,
   Table2, AlertTriangle, CheckCircle2, Bug, TrendingUp, Eye,
   RefreshCw, XCircle, ArrowUpRight, ArrowDownRight, ShieldCheck, CircleDot,
-  Activity, Layers, ThumbsUp, ThumbsDown, Copy,
+  Activity, Layers, ThumbsUp, ThumbsDown, Copy, MessageSquare, FileText, Paperclip, ExternalLink,
 } from 'lucide-react';
 
 const authHeaders = () => {
@@ -353,15 +353,6 @@ function FilterToolbar({ filters, config, onFilterChange, onClear, hasActiveFilt
   );
 }
 
-function getProgressColor(progress, status) {
-  if (status === 'rejected') return 'bg-red-500';
-  if (progress >= 100) return 'bg-emerald-500';
-  if (progress >= 75) return 'bg-emerald-400';
-  if (progress >= 50) return 'bg-brand-turquoise';
-  if (progress >= 25) return 'bg-amber-400';
-  return 'bg-red-400';
-}
-
 function getProgressGradient(progress, status) {
   if (status === 'rejected') return 'from-red-300 to-red-500';
   if (progress >= 100) return 'from-emerald-400 to-emerald-600';
@@ -436,28 +427,18 @@ function IssuesStatusFlow({ issues, onStatusFilter, activeStatus }) {
   );
 }
 
-function getCardStyle(progress, status, priority) {
-  const isDone = status === 'done' || status === 'user_feedback_confirmed';
-  const isRejected = status === 'rejected';
-  if (isDone) return 'border-emerald-200 bg-emerald-50/30';
-  if (isRejected) return 'border-red-200 bg-red-50/20';
-  if (priority === 'critical') return 'border-red-300 bg-red-50/40 border-l-4 border-l-red-500';
-  if (priority === 'high') return 'border-orange-200 bg-orange-50/30 border-l-4 border-l-orange-500';
-  if (priority === 'medium') return 'border-yellow-200 bg-yellow-50/20 border-l-4 border-l-yellow-400';
-  if (priority === 'low') return 'border-slate-200 bg-slate-50/20 border-l-4 border-l-slate-300';
-  return 'border-slate-200';
-}
-
-function IssueCard({ issue, navigate, isHighlighted, isMainAdmin, onRefresh }) {
+function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, onRefresh }) {
   const typeCfg = TYPE_CONFIG[issue.issue_type] || TYPE_CONFIG.other;
   const TypeIcon = typeCfg.icon;
   const progress = STATUS_PROGRESS[issue.status] || 0;
   const isDone = issue.status === 'done' || issue.status === 'user_feedback_confirmed';
   const isRejected = issue.status === 'rejected';
-  const cardBorder = getCardStyle(progress, issue.status, issue.priority);
   const cardRef = React.useRef(null);
   const [generating, setGenerating] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
+  const commentCount = issue.comment_count || 0;
+  const attachmentCount = issue.attachments?.length || 0;
+  const hasDuplicates = issue.hakim_analysis?.duplicate_ids?.length > 0;
 
   React.useEffect(() => {
     if (isHighlighted && cardRef.current) {
@@ -493,131 +474,198 @@ function IssueCard({ issue, navigate, isHighlighted, isMainAdmin, onRefresh }) {
     }
   };
 
+  const priorityCfg = {
+    critical: { border: 'border-r-red-500', bg: 'bg-red-50/40' },
+    high: { border: 'border-r-orange-400', bg: 'bg-orange-50/30' },
+    medium: { border: 'border-r-amber-400', bg: '' },
+    low: { border: 'border-r-slate-300', bg: '' },
+  };
+  const pCfg = priorityCfg[issue.priority] || priorityCfg.medium;
+
   return (
-    <Card
+    <div
       ref={cardRef}
       onClick={() => navigate(`/admin/product-hub/issues/${issue.id}`)}
-      className={`shadow-sm rounded-xl hover:shadow-lg cursor-pointer transition-all group overflow-hidden ${cardBorder} ${isHighlighted ? 'ring-2 ring-brand-turquoise ring-offset-2 animate-pulse' : ''}`}
+      className={`w-full bg-white rounded-xl border border-slate-200/80 hover:border-brand-turquoise/40 shadow-[0_1px_4px_rgba(0,0,0,0.04)] hover:shadow-[0_4px_20px_rgba(70,193,190,0.1)] transition-all duration-300 overflow-hidden border-r-[3px] cursor-pointer ${pCfg.border} ${pCfg.bg} ${isHighlighted ? 'ring-2 ring-brand-turquoise ring-offset-2' : ''}`}
     >
-      <div className={`h-1 w-full bg-gradient-to-l ${getProgressGradient(progress, issue.status)}`} style={{ width: `${progress}%`, minWidth: progress > 0 ? '8px' : '0' }} />
+      <div className={`h-[3px] bg-gradient-to-l ${getProgressGradient(progress, issue.status)}`} style={{ width: `${progress}%`, minWidth: progress > 0 ? '8px' : '0' }} />
 
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between gap-2 mb-2">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-[10px] font-mono text-muted-foreground bg-slate-100 px-1.5 py-0.5 rounded">
-                #{issue.issue_number}
-              </span>
-              <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                <TypeIcon className={`h-3 w-3 ${typeCfg.color}`} />
-                <span>{typeCfg.label}</span>
+      <div className="flex flex-col lg:flex-row">
+        {/* ═══ LEFT: Challenge Details ═══ */}
+        <div className="flex-1 p-4 lg:p-5 min-w-0">
+          {/* Header Row */}
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                <span className="text-[10px] font-mono text-muted-foreground bg-slate-100 px-2 py-0.5 rounded font-semibold">
+                  #{issue.issue_number}
+                </span>
+                <div className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full ${typeCfg.bgClass || 'bg-slate-100'}`}>
+                  <TypeIcon className={`h-3 w-3 ${typeCfg.color}`} />
+                  <span className={`font-medium ${typeCfg.color}`}>{typeCfg.label}</span>
+                </div>
+                <StatusChip status={issue.status} size="default" showIcon />
+                <PriorityBadge priority={issue.priority} size="sm" showIcon />
+                <SLAIndicator issue={issue} size="sm" />
+              </div>
+              <h3
+                onClick={() => navigate(`/admin/product-hub/issues/${issue.id}`)}
+                className={`text-base font-bold leading-snug cursor-pointer transition-colors ${isDone ? 'text-emerald-700 line-through decoration-emerald-300' : isRejected ? 'text-red-400 line-through decoration-red-200' : 'text-brand-navy hover:text-brand-turquoise'}`}
+              >
+                {issue.title}
+              </h3>
+            </div>
+          </div>
+
+          {/* Reporter + Meta Row */}
+          <div className="flex items-center gap-3 mb-3 flex-wrap">
+            <div className="flex items-center gap-2 bg-gradient-to-l from-brand-navy/5 to-brand-turquoise/5 rounded-lg px-3 py-2 border border-brand-turquoise/15">
+              <div
+                className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
+                style={{ background: isDone ? 'linear-gradient(135deg, #10b981, #059669)' : isRejected ? 'linear-gradient(135deg, #ef4444, #dc2626)' : 'linear-gradient(135deg, #1C3D74, #46C1BE)' }}
+              >
+                {getInitials(issue.employee_name)}
+              </div>
+              <div className="min-w-0">
+                <span className="text-[9px] text-brand-turquoise font-semibold block leading-none">المُبلّغ</span>
+                <span className="text-xs font-bold text-brand-navy truncate block">{issue.employee_name}</span>
               </div>
             </div>
-            <h3 className={`text-sm font-bold leading-snug transition-colors ${isDone ? 'text-emerald-700 line-through decoration-emerald-300' : isRejected ? 'text-red-400 line-through decoration-red-200' : 'text-brand-navy group-hover:text-brand-turquoise'}`}>
-              {issue.title}
-            </h3>
-          </div>
-          <PriorityBadge priority={issue.priority} size="sm" showIcon />
-        </div>
-
-        {issue.current_behavior && (
-          <p className="text-[11px] text-muted-foreground line-clamp-2 mb-2 leading-relaxed bg-slate-50/80 p-2 rounded-lg border border-slate-100">
-            {issue.current_behavior}
-          </p>
-        )}
-
-        <div className="flex flex-wrap items-center gap-2 mb-2">
-          <StatusChip status={issue.status} size="default" showIcon />
-          <SLAIndicator issue={issue} size="sm" />
-          {issue.assigned_team && (
-            <Badge variant="outline" className="text-[9px] border-brand-turquoise/30 text-brand-turquoise px-1.5 py-0">
-              {issue.assigned_team}
-            </Badge>
-          )}
-        </div>
-
-        {issue.hakim_analysis && Object.keys(issue.hakim_analysis).length > 0 && (
-          <div className="flex items-center gap-1.5 mb-2 px-2 py-1 bg-brand-turquoise/5 rounded-md border border-brand-turquoise/10">
-            <Brain className="h-2.5 w-2.5 text-brand-turquoise flex-shrink-0" />
-            <span className="text-[9px] text-brand-turquoise font-medium">حكيم</span>
-            {issue.hakim_analysis.suggested_team && (
-              <span className="text-[9px] text-muted-foreground truncate">
-                {issue.hakim_analysis.suggested_team}
-              </span>
-            )}
-            {issue.hakim_analysis.duplicate_ids?.length > 0 && (
-              <span className="text-[9px] text-amber-600 flex items-center gap-0.5">
-                <AlertTriangle className="h-2 w-2" />
-                {issue.hakim_analysis.duplicate_ids.length}
-              </span>
-            )}
-          </div>
-        )}
-
-        <div className="mb-2">
-          <div className="flex items-center justify-between mb-1">
-            <span className={`text-[10px] font-semibold ${getProgressColor(progress, issue.status).replace('bg-', 'text-')}`}>
-              {progress}%
-            </span>
-            <span className="text-[9px] text-muted-foreground">
-              {isDone ? 'مكتمل' : isRejected ? 'مرفوض' : 'التقدم'}
-            </span>
-          </div>
-          <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-            <div
-              className={`h-2 rounded-full bg-gradient-to-l ${getProgressGradient(progress, issue.status)} transition-all duration-500`}
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2.5 mb-2 p-2 bg-slate-50/80 rounded-lg border border-slate-100">
-          <div
-            className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
-            style={{ background: isDone ? 'linear-gradient(135deg, #10b981, #059669)' : isRejected ? 'linear-gradient(135deg, #ef4444, #dc2626)' : 'linear-gradient(135deg, #1C3D74, #46C1BE)' }}
-          >
-            {getInitials(issue.employee_name)}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1">
-              <span className="text-[10px] text-brand-turquoise font-semibold">المُبلّغ</span>
-            </div>
-            <p className="text-xs font-bold text-brand-navy truncate leading-tight">{issue.employee_name}</p>
-          </div>
-          <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
             {issue.section && (
-              <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 truncate max-w-[90px]">{issue.section}</span>
+              <span className="text-[10px] px-2 py-1 rounded-lg bg-slate-50 text-slate-600 border border-slate-100">{issue.section}</span>
             )}
-            <span className="text-[9px] text-muted-foreground">{formatDualDateCompact(issue.created_at)}</span>
+            {issue.page && (
+              <span className="text-[10px] px-2 py-1 rounded-lg bg-slate-50 text-slate-500 border border-slate-100">{issue.page}</span>
+            )}
+            {issue.assigned_team && (
+              <Badge variant="outline" className="text-[10px] border-brand-turquoise/30 text-brand-turquoise px-2 py-0.5 font-medium">
+                {issue.assigned_team}
+              </Badge>
+            )}
+            <span className="text-[10px] text-muted-foreground mr-auto">{formatDualDateCompact(issue.created_at)}</span>
+          </div>
+
+          {/* Behavior Section */}
+          {(issue.current_behavior || issue.expected_behavior) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+              {issue.current_behavior && (
+                <div className="p-2.5 rounded-lg bg-red-50/50 border border-red-100">
+                  <span className="text-[9px] font-semibold text-red-500 block mb-1">السلوك الحالي</span>
+                  <p className="text-[11px] text-slate-700 leading-relaxed line-clamp-3">{issue.current_behavior}</p>
+                </div>
+              )}
+              {issue.expected_behavior && (
+                <div className="p-2.5 rounded-lg bg-emerald-50/50 border border-emerald-100">
+                  <span className="text-[9px] font-semibold text-emerald-600 block mb-1">السلوك المتوقع</span>
+                  <p className="text-[11px] text-slate-700 leading-relaxed line-clamp-3">{issue.expected_behavior}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Impact + Hakim Row */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {issue.impact && issue.impact.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                <AlertTriangle className="h-3 w-3 text-amber-500" />
+                {issue.impact.slice(0, 3).map((imp, i) => (
+                  <span key={i} className="text-[9px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-100 font-medium">{imp}</span>
+                ))}
+                {issue.impact.length > 3 && <span className="text-[9px] text-amber-500">+{issue.impact.length - 3}</span>}
+              </div>
+            )}
+
+            {hasDuplicates && (
+              <div className="flex items-center gap-1 px-2 py-0.5 bg-amber-50 rounded border border-amber-100">
+                <Brain className="h-2.5 w-2.5 text-amber-500" />
+                <span className="text-[9px] text-amber-600 font-medium">مكرر ({issue.hakim_analysis.duplicate_ids.length})</span>
+              </div>
+            )}
+
+            {issue.hakim_analysis?.suggested_team && (
+              <div className="flex items-center gap-1 px-2 py-0.5 bg-brand-turquoise/5 rounded border border-brand-turquoise/10">
+                <Brain className="h-2.5 w-2.5 text-brand-turquoise" />
+                <span className="text-[9px] text-brand-turquoise font-medium">حكيم: {issue.hakim_analysis.suggested_team}</span>
+              </div>
+            )}
           </div>
         </div>
 
-        {isMainAdmin && (
-          <div className="flex gap-2 pt-2 border-t border-slate-100">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleGenerate}
-              disabled={generating}
-              className="flex-1 h-9 text-xs font-semibold rounded-lg gap-1.5 border-brand-purple/30 text-brand-purple hover:bg-brand-purple/10 hover:border-brand-purple/50 transition-all"
-            >
-              {generating ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Brain className="h-3.5 w-3.5" />}
-              {issue.generated_prompt ? 'Regenerate' : 'Generate Prompt'}
-            </Button>
-            <Button
-              variant={copied ? "default" : "outline"}
-              size="sm"
-              onClick={handleCopy}
-              disabled={!issue.generated_prompt}
-              className={`flex-1 h-9 text-xs font-semibold rounded-lg gap-1.5 transition-all ${copied ? 'bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-500' : 'border-brand-navy/20 text-brand-navy hover:bg-brand-navy/5 hover:border-brand-navy/40'} ${!issue.generated_prompt ? 'opacity-40' : ''}`}
-            >
-              {copied ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-              {copied ? 'Copied!' : 'Copy Prompt'}
-            </Button>
+        {/* ═══ RIGHT: Sidebar ═══ */}
+        <div className="lg:w-[280px] border-t lg:border-t-0 lg:border-r border-slate-100 bg-slate-50/50 p-4 lg:p-5 flex flex-col justify-between gap-3">
+          {/* Progress */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] text-muted-foreground font-medium">التقدم</span>
+              <span className={`text-xs font-bold ${progress >= 75 ? 'text-emerald-600' : progress >= 50 ? 'text-brand-turquoise' : progress >= 25 ? 'text-amber-500' : 'text-red-500'}`}>
+                {progress}%
+              </span>
+            </div>
+            <div className="w-full bg-slate-200/60 rounded-full h-2.5 overflow-hidden">
+              <div
+                className={`h-full rounded-full bg-gradient-to-l ${getProgressGradient(progress, issue.status)} transition-all duration-500`}
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <div className="flex items-center justify-between mt-1">
+              <span className="text-[9px] text-muted-foreground">{isDone ? '✓ مكتمل' : isRejected ? '✕ مرفوض' : 'قيد التقدم'}</span>
+            </div>
           </div>
-        )}
-      </CardContent>
-    </Card>
+
+          {/* Counters */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+              <MessageSquare className="h-3 w-3" />
+              <span className="font-semibold">{commentCount}</span>
+              <span>تعليق</span>
+            </div>
+            {attachmentCount > 0 && (
+              <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                <Paperclip className="h-3 w-3" />
+                <span className="font-semibold">{attachmentCount}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Actions */}
+          <div className="space-y-2">
+            <Button
+              onClick={(e) => { e.stopPropagation(); navigate(`/admin/product-hub/issues/${issue.id}`); }}
+              size="sm"
+              className="w-full h-9 text-xs font-semibold rounded-lg gap-1.5 bg-brand-navy hover:bg-brand-navy/90 text-white"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              فتح التحدي
+            </Button>
+
+            {isMainAdmin && (
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleGenerate}
+                  disabled={generating}
+                  className="flex-1 h-8 text-[10px] font-semibold rounded-lg gap-1 border-brand-purple/30 text-brand-purple hover:bg-brand-purple/10"
+                >
+                  {generating ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Brain className="h-3 w-3" />}
+                  {issue.generated_prompt ? 'إعادة' : 'برومبت'}
+                </Button>
+                <Button
+                  variant={copied ? "default" : "outline"}
+                  size="sm"
+                  onClick={handleCopy}
+                  disabled={!issue.generated_prompt}
+                  className={`flex-1 h-8 text-[10px] font-semibold rounded-lg gap-1 transition-all ${copied ? 'bg-emerald-500 text-white' : 'border-brand-navy/20 text-brand-navy hover:bg-brand-navy/5'} ${!issue.generated_prompt ? 'opacity-40' : ''}`}
+                >
+                  {copied ? <CheckCircle2 className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                  {copied ? 'تم' : 'نسخ'}
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -644,12 +692,10 @@ function IssuesTableView({ issues, loading, total, page, totalPages, onPageChang
   }
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {issues.map(issue => (
-          <IssueCard key={issue.id} issue={issue} navigate={navigate} isHighlighted={highlightId === issue.id} isMainAdmin={isMainAdmin} onRefresh={onRefresh} />
-        ))}
-      </div>
+    <div className="space-y-3">
+      {issues.map(issue => (
+        <IssuePanel key={issue.id} issue={issue} navigate={navigate} isHighlighted={highlightId === issue.id} isMainAdmin={isMainAdmin} onRefresh={onRefresh} />
+      ))}
 
       {totalPages > 1 && (
         <div className="flex justify-center items-center gap-4 pt-2">
