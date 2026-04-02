@@ -54,6 +54,7 @@ export function ProductHubPage() {
     search: '',
     date_from: '',
     date_to: '',
+    created_by: '',
   });
 
   const isAdmin = user?.role === 'platform_admin';
@@ -128,7 +129,7 @@ export function ProductHubPage() {
   };
 
   const clearFilters = () => {
-    setFilters({ status: '', issue_type: '', priority: '', section: '', assigned_team: '', search: '', date_from: '', date_to: '' });
+    setFilters({ status: '', issue_type: '', priority: '', section: '', assigned_team: '', search: '', date_from: '', date_to: '', created_by: '' });
     setPage(1);
   };
 
@@ -322,8 +323,43 @@ function FilterToolbar({ filters, config, onFilterChange, onClear, hasActiveFilt
                   ))}
                 </SelectContent>
               </Select>
+
+              {(config.reporters || []).length > 0 && (
+                <Select value={filters.created_by || '_all'} onValueChange={(v) => onFilterChange('created_by', v === '_all' ? '' : v)}>
+                  <SelectTrigger className="w-[140px] rounded-lg h-9 text-xs">
+                    <SelectValue placeholder="المُبلِّغ" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_all">كل المُبلِّغين</SelectItem>
+                    {(config.reporters || []).map(r => (
+                      <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </>
           )}
+
+          <div className="flex items-center gap-2">
+            <div className="flex flex-col">
+              <label className="text-[10px] text-muted-foreground mb-0.5 font-medium">من تاريخ</label>
+              <Input
+                type="date"
+                value={filters.date_from}
+                onChange={(e) => onFilterChange('date_from', e.target.value)}
+                className="w-[140px] rounded-lg h-9 text-xs"
+              />
+            </div>
+            <div className="flex flex-col">
+              <label className="text-[10px] text-muted-foreground mb-0.5 font-medium">إلى تاريخ</label>
+              <Input
+                type="date"
+                value={filters.date_to}
+                onChange={(e) => onFilterChange('date_to', e.target.value)}
+                className="w-[140px] rounded-lg h-9 text-xs"
+              />
+            </div>
+          </div>
 
           {hasActiveFilters && (
             <Button variant="ghost" size="sm" onClick={onClear} className="text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg h-9 px-3">

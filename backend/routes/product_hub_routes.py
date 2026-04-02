@@ -342,6 +342,18 @@ async def get_hub_config(current_user: dict = Depends(get_current_user)):
     admin = is_platform_admin(current_user)
     main_admin = is_main_admin(current_user)
     super_admin = is_super_admin(current_user)
+
+    reporters = []
+    if admin:
+        pipeline = [
+            {"$group": {"_id": "$created_by", "name": {"$first": "$employee_name"}}},
+            {"$sort": {"name": 1}},
+        ]
+        reporters = [
+            {"value": r["_id"], "label": r["name"] or r["_id"]}
+            for r in await db.product_issues.aggregate(pipeline).to_list(200)
+        ]
+
     return {
         "issue_types": [{"value": k, "label": v} for k, v in ISSUE_TYPE_LABELS.items()],
         "statuses": [{"value": k, "label": v} for k, v in STATUS_LABELS.items()],
@@ -353,6 +365,7 @@ async def get_hub_config(current_user: dict = Depends(get_current_user)):
         "status_progress": STATUS_PROGRESS,
         "valid_transitions": {k: list(v) for k, v in VALID_STATUS_TRANSITIONS.items()},
         "teams": sorted(VALID_TEAMS),
+        "reporters": reporters,
         "is_admin": admin,
         "is_main_admin": main_admin,
         "is_super_admin": super_admin,
