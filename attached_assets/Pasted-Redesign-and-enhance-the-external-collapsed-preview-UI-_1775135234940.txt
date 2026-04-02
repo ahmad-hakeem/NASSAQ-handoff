@@ -1,0 +1,287 @@
+Redesign and enhance the external (collapsed/preview) UI of Challenge Cards inside the "Product Intelligence Hub" page to achieve:
+
+→ Clean structured layout (UX optimized)
+→ Visual hierarchy (enterprise-grade)
+→ Intelligent layer (Priority Heatmap + Risk Indicator)
+→ Predictive layer (AI-based future insights)
+
+IMPORTANT:
+This applies ONLY to the OUTER (preview) state of the card.
+
+==================================================
+1) PROBLEM STATEMENT
+==================================================
+
+The current card layout is visually unstructured and difficult to scan:
+
+- Poor alignment between elements
+- No clear hierarchy
+- Inconsistent spacing
+- Key data is not emphasized
+- Visual clutter reduces usability
+
+==================================================
+2) CORE OBJECTIVE
+==================================================
+
+Transform each card into:
+
+→ Clean + Structured + Intelligent + Predictive Decision Unit
+
+User should instantly understand:
+- What is this?
+- How important is it?
+- How risky is it?
+- What will likely happen next?
+
+WITHOUT opening the card
+
+==================================================
+3) DISPLAY ONLY KEY DATA (MANDATORY)
+==================================================
+
+Each card must show ONLY:
+
+- Challenge Title
+- Reporter (clearly visible)
+- Progress (full width + percentage)
+- Status
+- Creation Date
+- Challenge ID
+
+DO NOT include:
+- full descriptions
+- comments
+- deep details
+
+==================================================
+4) STRUCTURED LAYOUT (VISUAL GRID)
+==================================================
+
+--------------------------------------------------
+TOP ROW:
+--------------------------------------------------
+- Challenge Title (large and dominant)
+- Challenge ID (top corner)
+
+- Risk Indicator (next to title)
+
+--------------------------------------------------
+SECOND ROW:
+--------------------------------------------------
+- Reporter (avatar + name)
+- Status badge
+- Priority badge
+
+(All aligned in one clean row)
+
+--------------------------------------------------
+AI PREDICTION ROW (NEW)
+--------------------------------------------------
+Display AI insights:
+
+- ⚠️ Likely Delayed / On Track
+- 📈 Risk Escalating / Stable
+
+Position:
+→ below title or second row
+
+--------------------------------------------------
+CENTER:
+--------------------------------------------------
+- Progress Bar (FULL WIDTH)
+- Percentage clearly visible
+
+--------------------------------------------------
+BOTTOM:
+--------------------------------------------------
+- Creation Date
+- Optional lightweight metadata
+
+==================================================
+5) VISUAL HIERARCHY (CRITICAL)
+==================================================
+
+- Title → strongest visual weight
+- Progress bar → dominant element
+- Risk + Prediction → attention layer
+- Metadata → minimal
+
+==================================================
+6) ALIGNMENT RULES
+==================================================
+
+- Strict grid system
+- Consistent padding
+- Equal spacing between sections
+- RTL optimized layout
+
+==================================================
+7) PRIORITY HEATMAP (INTELLIGENCE LAYER)
+==================================================
+
+Add visual heatmap using:
+
+- Background tint (preferred)
+OR
+- Left border accent
+
+Color mapping:
+
+- Critical → Deep Red
+- High → Orange
+- Medium → Yellow
+- Low → Grey
+
+Rules:
+- subtle but noticeable
+- must NOT affect readability
+
+==================================================
+8) RISK INDICATOR (CURRENT RISK)
+==================================================
+
+Display:
+
+- 🔴 High Risk
+- 🟠 Medium Risk
+- 🟢 Low Risk
+
+Position:
+→ near title
+
+Tooltip:
+"This issue affects critical functionality or user flow"
+
+==================================================
+9) AI PREDICTION LAYER (FUTURE INTELLIGENCE)
+==================================================
+
+--------------------------------------------------
+A) EXPECTED DELAY
+--------------------------------------------------
+
+Display:
+
+- Likely Delayed
+- At Risk
+- On Track
+
+Based on:
+- progress vs time
+- priority
+- historical patterns
+
+--------------------------------------------------
+B) RISK ESCALATION
+--------------------------------------------------
+
+Display:
+
+- Risk Escalating
+- Stable
+- Improving
+
+--------------------------------------------------
+C) UI DISPLAY
+--------------------------------------------------
+
+- small AI badges or strip
+- subtle styling (not like status)
+- must look AI-generated
+
+Example:
+⚠️ Likely Delayed  
+📈 Risk Escalating  
+
+==================================================
+10) PROGRESS BAR (ENHANCED)
+==================================================
+
+- Full width
+- percentage + label
+
+IF:
+→ High Risk + Low Progress
+
+THEN:
+→ add warning:
+   - pulse effect OR
+   - warning icon ⚠️
+
+==================================================
+11) UI CLEANUP
+==================================================
+
+Remove:
+- clutter
+- misalignment
+- duplicated elements
+
+Ensure:
+- clean spacing
+- clear sections
+- readable layout
+
+==================================================
+12) INTERACTION
+==================================================
+
+Hover:
+→ slight elevation
+→ highlight heatmap
+→ show tooltip (risk + prediction explanation)
+
+Click:
+→ opens Smart Panel (expanded view)
+
+==================================================
+13) RESPONSIVENESS
+==================================================
+
+Desktop → grid layout  
+Tablet → reduced columns  
+Mobile → stacked full width  
+
+Prediction + Risk must remain visible always
+
+==================================================
+14) PERFORMANCE
+==================================================
+
+- Risk + Prediction:
+  → precomputed (backend / AI)
+  → NOT calculated on render
+
+==================================================
+15) FINAL GOAL
+==================================================
+
+Transform each card from:
+
+→ messy UI element
+
+To:
+
+→ structured intelligent predictive decision unit
+
+==================================================
+16) FINAL EXPERIENCE
+==================================================
+
+Each card should instantly answer:
+
+- What is happening now? (Status)
+- How important is it? (Priority)
+- How dangerous is it? (Risk)
+- What will happen next? (Prediction)
+
+Without opening it.
+
+This converts the system from:
+
+→ reactive issue tracking
+
+To:
+
+→ proactive AI-driven decision system

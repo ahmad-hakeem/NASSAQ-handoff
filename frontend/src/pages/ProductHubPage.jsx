@@ -636,103 +636,61 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
       ref={cardRef}
       className={`w-full rounded-xl border transition-all duration-400 overflow-hidden border-r-[4px] group ${heatmap.borderAccent} ${heatmap.bg} ${heatmap.hoverBg} ${heatmap.glow ? `shadow-lg ${heatmap.glow}` : 'shadow-[0_1px_4px_rgba(0,0,0,0.04)]'} ${isExpanded ? 'border-brand-turquoise/50 shadow-[0_8px_40px_rgba(70,193,190,0.15)] ring-1 ring-brand-turquoise/20' : 'border-slate-200/80 hover:shadow-[0_4px_20px_rgba(70,193,190,0.1)]'} ${isHighlighted ? 'ring-2 ring-brand-turquoise ring-offset-2' : ''} ${isHighRiskLowProgress && !isExpanded ? 'animate-[subtlePulse_3s_ease-in-out_infinite]' : ''}`}
     >
-      {/* ═══ FULL-WIDTH PROGRESS BAR ═══ */}
-      <div className="relative w-full h-[5px] bg-slate-100">
-        <div
-          className={`h-full bg-gradient-to-l ${progressColor} transition-all duration-700 ease-out`}
-          style={{ width: `${progress}%`, minWidth: progress > 0 ? '8px' : '0' }}
-        />
-        {isHighRiskLowProgress && (
-          <div className="absolute left-2 top-1/2 -translate-y-1/2">
-            <AlertTriangle className="h-3 w-3 text-red-500 animate-pulse" />
-          </div>
-        )}
-      </div>
-
       {/* ═══════════════ COLLAPSED STATE ═══════════════ */}
       <div
         onClick={() => onToggleExpand(issue.id)}
-        className="cursor-pointer px-4 lg:px-5 pt-3.5 pb-3"
+        className="cursor-pointer"
       >
-        {/* ─── TOP ROW: Title + Risk + ID ─── */}
-        <div className="flex items-start gap-3 mb-2">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1 flex-wrap">
-              <span className="text-[10px] font-mono text-muted-foreground bg-slate-100 px-2 py-0.5 rounded font-semibold">
+        {/* ─── ROW 1: Title + ID ─── */}
+        <div className="px-5 pt-4 pb-0">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1.5">
+                <div title={riskCfg.tooltip} className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full ${riskCfg.bg} ${riskCfg.border} border font-medium ${riskCfg.color} cursor-help`}>
+                  <span className={`w-2 h-2 rounded-full ${riskCfg.dot} flex-shrink-0`} />
+                  {riskCfg.label}
+                </div>
+                {hasDuplicates && (
+                  <div className="flex items-center gap-1 px-1.5 py-0.5 bg-amber-50 rounded-full border border-amber-100">
+                    <Brain className="h-2.5 w-2.5 text-amber-500" />
+                    <span className="text-[9px] text-amber-600 font-medium">مكرر</span>
+                  </div>
+                )}
+              </div>
+              <h3 className={`text-[15px] font-bold leading-snug mb-0 ${isDone ? 'text-emerald-700 line-through decoration-emerald-300' : isRejected ? 'text-red-400 line-through decoration-red-200' : 'text-brand-navy'}`}>
+                {issue.title}
+              </h3>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0 pt-0.5">
+              <span className="text-[10px] font-mono text-muted-foreground bg-slate-100/80 px-2 py-0.5 rounded font-semibold">
                 #{issue.issue_number}
               </span>
-              <div title={riskCfg.tooltip} className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full ${riskCfg.bg} ${riskCfg.border} border font-medium ${riskCfg.color} cursor-help`}>
-                <span className={`w-2 h-2 rounded-full ${riskCfg.dot} flex-shrink-0`} />
-                {riskCfg.label}
+              <div className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-300 ${isExpanded ? 'bg-brand-turquoise/10 text-brand-turquoise rotate-180' : 'bg-slate-100/80 text-slate-400 group-hover:bg-slate-200/80'}`}>
+                <ChevronDown className="h-4 w-4" />
               </div>
-              <StatusChip status={issue.status} size="default" showIcon />
-              <PriorityBadge priority={issue.priority} size="sm" showIcon />
-              <SLAIndicator issue={issue} size="sm" />
             </div>
-            <h3 className={`text-[15px] font-bold leading-snug ${isDone ? 'text-emerald-700 line-through decoration-emerald-300' : isRejected ? 'text-red-400 line-through decoration-red-200' : 'text-brand-navy'}`}>
-              {issue.title}
-            </h3>
-          </div>
-
-          <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300 flex-shrink-0 mt-1 ${isExpanded ? 'bg-brand-turquoise/10 text-brand-turquoise rotate-180' : 'bg-slate-100/80 text-slate-400 group-hover:bg-slate-200/80'}`}>
-            <ChevronDown className="h-4 w-4" />
           </div>
         </div>
 
-        {/* ─── SECONDARY: AI Prediction Strip ─── */}
-        {!isDone && !isRejected && (predictions.delay !== 'on_track' || predictions.escalation !== 'stable') && (
-          <div className="flex items-center gap-2 mb-2.5 flex-wrap">
-            <div className="flex items-center gap-1 text-[9px] text-brand-turquoise/60 font-medium">
-              <Brain className="h-3 w-3" /> تنبؤ حكيم
-            </div>
-            {predictions.delay !== 'on_track' && (
-              <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full ${delayCfg.bg} ${delayCfg.border} border ${delayCfg.color}`}>
-                <span className="text-[9px]">{delayCfg.icon}</span> {delayCfg.label}
-              </span>
-            )}
-            {predictions.escalation === 'escalating' && (
-              <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full ${escalationCfg.bg} ${escalationCfg.border} border ${escalationCfg.color}`}>
-                <span className="text-[9px]">{escalationCfg.icon}</span> {escalationCfg.label}
-              </span>
-            )}
-          </div>
-        )}
-
-        {isDone && (
-          <div className="flex items-center gap-2 mb-2.5">
-            <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700">
-              ✅ في الموعد
-            </span>
-          </div>
-        )}
-
-        {/* ─── CENTER: Progress Bar (dominant) ─── */}
-        <div className="mb-2.5">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[10px] text-muted-foreground font-medium">التقدم</span>
-            <span className={`text-xs font-bold ${progress >= 75 ? 'text-emerald-600' : progress >= 50 ? 'text-brand-turquoise' : progress >= 25 ? 'text-amber-500' : 'text-red-500'}`}>
-              {progress}%
-            </span>
-          </div>
-          <div className="w-full bg-slate-200/60 rounded-full h-2.5 overflow-hidden">
-            <div
-              className={`h-full rounded-full bg-gradient-to-l ${progressColor} transition-all duration-700 ease-out`}
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-        </div>
-
-        {/* ─── BOTTOM: Reporter + Date + Status ─── */}
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <div
-                className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0"
-                style={{ background: isDone ? 'linear-gradient(135deg, #10b981, #059669)' : isRejected ? 'linear-gradient(135deg, #ef4444, #dc2626)' : 'linear-gradient(135deg, #1C3D74, #46C1BE)' }}
-              >
-                {getInitials(issue.employee_name)}
+        {/* ─── ROW 2: Reporter + Status + Priority ─── */}
+        <div className="px-5 py-2">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <div
+                  className="w-6 h-6 rounded-full flex items-center justify-center text-[8px] font-bold text-white flex-shrink-0"
+                  style={{ background: isDone ? 'linear-gradient(135deg, #10b981, #059669)' : isRejected ? 'linear-gradient(135deg, #ef4444, #dc2626)' : 'linear-gradient(135deg, #1C3D74, #46C1BE)' }}
+                >
+                  {getInitials(issue.employee_name)}
+                </div>
+                <span className="text-[11px] font-semibold text-brand-navy truncate max-w-[130px]">{issue.employee_name}</span>
               </div>
-              <span className="text-xs font-semibold text-brand-navy truncate max-w-[140px]">{issue.employee_name}</span>
+              <div className="w-px h-4 bg-slate-200 max-sm:hidden" />
+              <div className="flex items-center gap-1.5">
+                <StatusChip status={issue.status} size="default" showIcon />
+                <PriorityBadge priority={issue.priority} size="sm" showIcon />
+                <SLAIndicator issue={issue} size="sm" />
+              </div>
             </div>
             {issue.assigned_team && (
               <Badge variant="outline" className="text-[9px] border-brand-turquoise/25 text-brand-turquoise px-1.5 py-0 h-5 font-medium max-md:hidden">
@@ -740,25 +698,84 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
               </Badge>
             )}
           </div>
+        </div>
 
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-              <MessageSquare className="h-3 w-3" />
-              <span className="font-semibold">{commentCount}</span>
+        {/* ─── ROW 3: AI Prediction Strip ─── */}
+        {!isDone && !isRejected && (predictions.delay !== 'on_track' || predictions.escalation !== 'stable') && (
+          <div className="px-5 pb-1.5">
+            <div className="flex items-center gap-2 py-1.5 px-3 rounded-lg bg-gradient-to-l from-brand-turquoise/[0.04] to-brand-navy/[0.03] border border-brand-turquoise/10">
+              <Sparkles className="h-3 w-3 text-brand-turquoise/50 flex-shrink-0" />
+              <span className="text-[9px] text-brand-turquoise/60 font-medium flex-shrink-0">تنبؤ حكيم</span>
+              <div className="w-px h-3 bg-brand-turquoise/15 max-sm:hidden" />
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {predictions.delay !== 'on_track' && (
+                  <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full ${delayCfg.bg} ${delayCfg.border} border ${delayCfg.color}`}>
+                    <span className="text-[9px]">{delayCfg.icon}</span> {delayCfg.label}
+                  </span>
+                )}
+                {predictions.escalation === 'escalating' && (
+                  <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full ${escalationCfg.bg} ${escalationCfg.border} border ${escalationCfg.color}`}>
+                    <span className="text-[9px]">{escalationCfg.icon}</span> {escalationCfg.label}
+                  </span>
+                )}
+                {predictions.escalation === 'decreasing' && (
+                  <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full ${escalationCfg.bg} ${escalationCfg.border} border ${escalationCfg.color}`}>
+                    <span className="text-[9px]">{escalationCfg.icon}</span> {escalationCfg.label}
+                  </span>
+                )}
+              </div>
             </div>
-            {attachmentCount > 0 && (
-              <div className="flex items-center gap-1 text-[10px] text-muted-foreground max-md:hidden">
-                <Paperclip className="h-3 w-3" />
-                <span className="font-semibold">{attachmentCount}</span>
-              </div>
-            )}
-            {hasDuplicates && (
-              <div className="flex items-center gap-1 px-1.5 py-0.5 bg-amber-50 rounded border border-amber-100 max-md:hidden">
-                <Brain className="h-2.5 w-2.5 text-amber-500" />
-                <span className="text-[9px] text-amber-600 font-medium">مكرر</span>
-              </div>
-            )}
+          </div>
+        )}
+
+        {isDone && (
+          <div className="px-5 pb-1.5">
+            <div className="flex items-center gap-2 py-1.5 px-3 rounded-lg bg-emerald-50/50 border border-emerald-100">
+              <Sparkles className="h-3 w-3 text-emerald-400 flex-shrink-0" />
+              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700">
+                ✅ مكتمل في الموعد
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* ─── ROW 4: Progress Bar (dominant, full width) ─── */}
+        <div className="px-5 pt-1 pb-2">
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-muted-foreground font-medium">التقدم</span>
+              {isHighRiskLowProgress && (
+                <AlertTriangle className="h-3 w-3 text-red-500 animate-pulse" />
+              )}
+            </div>
+            <span className={`text-[11px] font-bold tabular-nums ${progress >= 75 ? 'text-emerald-600' : progress >= 50 ? 'text-brand-turquoise' : progress >= 25 ? 'text-amber-500' : 'text-red-500'}`}>
+              {progress}%
+            </span>
+          </div>
+          <div className={`w-full bg-slate-200/60 rounded-full h-2 overflow-hidden ${isHighRiskLowProgress ? 'ring-1 ring-red-200' : ''}`}>
+            <div
+              className={`h-full rounded-full bg-gradient-to-l ${progressColor} transition-all duration-700 ease-out`}
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        </div>
+
+        {/* ─── ROW 5: Footer — Date + Metadata ─── */}
+        <div className="px-5 pb-3 pt-0.5">
+          <div className="flex items-center justify-between border-t border-slate-100 pt-2">
             <span className="text-[10px] text-muted-foreground">{formatDualDateCompact(issue.created_at)}</span>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                <MessageSquare className="h-3 w-3" />
+                <span className="font-semibold">{commentCount}</span>
+              </div>
+              {attachmentCount > 0 && (
+                <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                  <Paperclip className="h-3 w-3" />
+                  <span className="font-semibold">{attachmentCount}</span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
