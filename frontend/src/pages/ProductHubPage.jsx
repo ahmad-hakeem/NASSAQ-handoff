@@ -21,7 +21,7 @@ import {
   ChevronLeft, ChevronRight, Award, Building2, Timer, AlertOctagon, Clock,
   Table2, AlertTriangle, CheckCircle2, Bug, TrendingUp, Eye,
   RefreshCw, XCircle, ArrowUpRight, ArrowDownRight, ShieldCheck, CircleDot,
-  Activity, Layers, ThumbsUp, ThumbsDown,
+  Activity, Layers, ThumbsUp, ThumbsDown, Copy,
 } from 'lucide-react';
 
 const authHeaders = () => {
@@ -58,6 +58,7 @@ export function ProductHubPage() {
   });
 
   const isAdmin = user?.role === 'platform_admin';
+  const isMainAdmin = config?.is_main_admin || false;
   const limit = 20;
 
   const fetchConfig = useCallback(async () => {
@@ -227,6 +228,8 @@ export function ProductHubPage() {
                 sortDir={sortDir}
                 navigate={navigate}
                 highlightId={highlightId}
+                isMainAdmin={isMainAdmin}
+                onRefresh={fetchIssues}
               />
             </TabsContent>
           </Tabs>
@@ -445,7 +448,7 @@ function getCardStyle(progress, status, priority) {
   return 'border-slate-200';
 }
 
-function IssueCard({ issue, navigate, isHighlighted }) {
+function IssueCard({ issue, navigate, isHighlighted, isMainAdmin, onRefresh }) {
   const typeCfg = TYPE_CONFIG[issue.issue_type] || TYPE_CONFIG.other;
   const TypeIcon = typeCfg.icon;
   const progress = STATUS_PROGRESS[issue.status] || 0;
@@ -453,12 +456,42 @@ function IssueCard({ issue, navigate, isHighlighted }) {
   const isRejected = issue.status === 'rejected';
   const cardBorder = getCardStyle(progress, issue.status, issue.priority);
   const cardRef = React.useRef(null);
+  const [generating, setGenerating] = React.useState(false);
+  const [copied, setCopied] = React.useState(false);
 
   React.useEffect(() => {
     if (isHighlighted && cardRef.current) {
       cardRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }, [isHighlighted]);
+
+  const handleGenerate = async (e) => {
+    e.stopPropagation();
+    setGenerating(true);
+    try {
+      await axios.post(`/api/product-hub/issues/${issue.id}/generate-prompt`, {}, { headers: authHeaders() });
+      toast.success('تم إنشاء البرومبت');
+      if (onRefresh) onRefresh();
+    } catch {
+      toast.error('فشل في إنشاء البرومبت');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleCopy = async (e) => {
+    e.stopPropagation();
+    if (issue.generated_prompt) {
+      try {
+        await navigator.clipboard.writeText(issue.generated_prompt);
+        setCopied(true);
+        toast.success('تم نسخ البرومبت');
+        setTimeout(() => setCopied(false), 2000);
+      } catch {
+        toast.error('فشل في النسخ');
+      }
+    }
+  };
 
   return (
     <Card
@@ -538,7 +571,7 @@ function IssueCard({ issue, navigate, isHighlighted }) {
           </div>
         </div>
 
-        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+        <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-2">
           <div className="flex items-center gap-2">
             <span className="flex items-center gap-0.5">
               <Users className="h-2.5 w-2.5" />
@@ -548,12 +581,37 @@ function IssueCard({ issue, navigate, isHighlighted }) {
           </div>
           <span>{formatDualDateCompact(issue.created_at)}</span>
         </div>
+
+        {isMainAdmin && (
+          <div className="flex gap-2 pt-2 border-t border-slate-100">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleGenerate}
+              disabled={generating}
+              className="flex-1 h-9 text-xs font-semibold rounded-lg gap-1.5 border-brand-purple/30 text-brand-purple hover:bg-brand-purple/10 hover:border-brand-purple/50 transition-all"
+            >
+              {generating ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Brain className="h-3.5 w-3.5" />}
+              {issue.generated_prompt ? 'Regenerate' : 'Generate Prompt'}
+            </Button>
+            <Button
+              variant={copied ? "default" : "outline"}
+              size="sm"
+              onClick={handleCopy}
+              disabled={!issue.generated_prompt}
+              className={`flex-1 h-9 text-xs font-semibold rounded-lg gap-1.5 transition-all ${copied ? 'bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-500' : 'border-brand-navy/20 text-brand-navy hover:bg-brand-navy/5 hover:border-brand-navy/40'} ${!issue.generated_prompt ? 'opacity-40' : ''}`}
+            >
+              {copied ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              {copied ? 'Copied!' : 'Copy Prompt'}
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
 }
 
-function IssuesTableView({ issues, loading, total, page, totalPages, onPageChange, navigate, highlightId }) {
+function IssuesTableView({ issues, loading, total, page, totalPages, onPageChange, navigate, highlightId, isMainAdmin, onRefresh }) {
   if (loading) {
     return (
       <div className="flex justify-center items-center py-20">
@@ -579,7 +637,7 @@ function IssuesTableView({ issues, loading, total, page, totalPages, onPageChang
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {issues.map(issue => (
-          <IssueCard key={issue.id} issue={issue} navigate={navigate} isHighlighted={highlightId === issue.id} />
+          <IssueCard key={issue.id} issue={issue} navigate={navigate} isHighlighted={highlightId === issue.id} isMainAdmin={isMainAdmin} onRefresh={onRefresh} />
         ))}
       </div>
 
