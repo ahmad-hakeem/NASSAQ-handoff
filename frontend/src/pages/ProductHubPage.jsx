@@ -355,12 +355,15 @@ function getProgressGradient(progress, status) {
   return 'from-red-300 to-red-500';
 }
 
-function getCardStyle(progress, status) {
+function getCardStyle(progress, status, priority) {
   const isDone = status === 'done' || status === 'user_feedback_confirmed';
   const isRejected = status === 'rejected';
   if (isDone) return 'border-emerald-200 bg-emerald-50/30';
   if (isRejected) return 'border-red-200 bg-red-50/20';
-  if (progress >= 50) return 'border-slate-200';
+  if (priority === 'critical') return 'border-red-300 bg-red-50/40 border-l-4 border-l-red-500';
+  if (priority === 'high') return 'border-orange-200 bg-orange-50/30 border-l-4 border-l-orange-500';
+  if (priority === 'medium') return 'border-yellow-200 bg-yellow-50/20 border-l-4 border-l-yellow-400';
+  if (priority === 'low') return 'border-slate-200 bg-slate-50/20 border-l-4 border-l-slate-300';
   return 'border-slate-200';
 }
 
@@ -370,7 +373,7 @@ function IssueCard({ issue, navigate, isHighlighted }) {
   const progress = STATUS_PROGRESS[issue.status] || 0;
   const isDone = issue.status === 'done' || issue.status === 'user_feedback_confirmed';
   const isRejected = issue.status === 'rejected';
-  const cardBorder = getCardStyle(progress, issue.status);
+  const cardBorder = getCardStyle(progress, issue.status, issue.priority);
   const cardRef = React.useRef(null);
 
   React.useEffect(() => {
@@ -412,8 +415,8 @@ function IssueCard({ issue, navigate, isHighlighted }) {
           </p>
         )}
 
-        <div className="flex flex-wrap items-center gap-1.5 mb-2">
-          <StatusChip status={issue.status} size="sm" showIcon />
+        <div className="flex flex-wrap items-center gap-2 mb-2">
+          <StatusChip status={issue.status} size="default" showIcon />
           <SLAIndicator issue={issue} size="sm" />
           {issue.assigned_team && (
             <Badge variant="outline" className="text-[9px] border-brand-turquoise/30 text-brand-turquoise px-1.5 py-0">
