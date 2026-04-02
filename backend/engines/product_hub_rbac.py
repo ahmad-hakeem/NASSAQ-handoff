@@ -40,6 +40,7 @@ class HubAction(str, Enum):
     LIST_OWN_ISSUES = "list_own_issues"
     LIST_ALL_ISSUES = "list_all_issues"
     UPDATE_ISSUE = "update_issue"
+    DELETE_ISSUE = "delete_issue"
     ASSIGN_ISSUE = "assign_issue"
     CHANGE_STATUS = "change_status"
     SET_FINAL_STATUS = "set_final_status"
@@ -47,6 +48,7 @@ class HubAction(str, Enum):
     VIEW_PROMPT = "view_prompt"
     COPY_PROMPT = "copy_prompt"
     GENERATE_PROMPT = "generate_prompt"
+    REANALYZE_ISSUE = "reanalyze_issue"
     VIEW_HAKIM_INSIGHTS = "view_hakim_insights"
     VIEW_FULL_ANALYTICS = "view_full_analytics"
     ADD_COMMENT = "add_comment"
@@ -72,6 +74,7 @@ PERMISSION_MATRIX = {
     HubAction.LIST_OWN_ISSUES:    {HubRole.INTERNAL_USER: True,  HubRole.PLATFORM_ADMIN: True},
     HubAction.LIST_ALL_ISSUES:    {HubRole.INTERNAL_USER: False, HubRole.PLATFORM_ADMIN: True},
     HubAction.UPDATE_ISSUE:       {HubRole.INTERNAL_USER: False, HubRole.PLATFORM_ADMIN: True},
+    HubAction.DELETE_ISSUE:       {HubRole.INTERNAL_USER: False, HubRole.PLATFORM_ADMIN: True},
     HubAction.ASSIGN_ISSUE:       {HubRole.INTERNAL_USER: False, HubRole.PLATFORM_ADMIN: True},
     HubAction.CHANGE_STATUS:      {HubRole.INTERNAL_USER: False, HubRole.PLATFORM_ADMIN: True},
     HubAction.SET_FINAL_STATUS:   {HubRole.INTERNAL_USER: False, HubRole.PLATFORM_ADMIN: True},
@@ -79,6 +82,7 @@ PERMISSION_MATRIX = {
     HubAction.VIEW_PROMPT:        {HubRole.INTERNAL_USER: False, HubRole.PLATFORM_ADMIN: True},
     HubAction.COPY_PROMPT:        {HubRole.INTERNAL_USER: False, HubRole.PLATFORM_ADMIN: True},
     HubAction.GENERATE_PROMPT:    {HubRole.INTERNAL_USER: False, HubRole.PLATFORM_ADMIN: True},
+    HubAction.REANALYZE_ISSUE:    {HubRole.INTERNAL_USER: False, HubRole.PLATFORM_ADMIN: True},
     HubAction.VIEW_HAKIM_INSIGHTS:{HubRole.INTERNAL_USER: False, HubRole.PLATFORM_ADMIN: True},
     HubAction.VIEW_FULL_ANALYTICS:{HubRole.INTERNAL_USER: False, HubRole.PLATFORM_ADMIN: True},
     HubAction.ADD_COMMENT:        {HubRole.INTERNAL_USER: True,  HubRole.PLATFORM_ADMIN: True},
@@ -92,40 +96,46 @@ PERMISSION_MATRIX = {
     HubAction.APPROVE_CLOSURE:    {HubRole.INTERNAL_USER: False, HubRole.PLATFORM_ADMIN: True},
 }
 
+FORBIDDEN_SUPER_ADMIN_MSG = "This action is restricted to the authorized super-admin accounts only."
+
 ERROR_MESSAGES = {
-    HubAction.ASSIGN_ISSUE:       "هذا الإجراء مقصور على المديرين الأساسيين فقط",
-    HubAction.CHANGE_STATUS:      "هذا الإجراء مقصور على المديرين الأساسيين فقط",
-    HubAction.SET_FINAL_STATUS:   "هذا الإجراء مقصور على المديرين الأساسيين فقط",
-    HubAction.VIEW_PROMPT:        "فقط مدير المنصة يمكنه عرض البرومبت",
-    HubAction.COPY_PROMPT:        "فقط مدير المنصة يمكنه نسخ البرومبت",
-    HubAction.GENERATE_PROMPT:    "فقط مدير المنصة يمكنه إنشاء البرومبت",
-    HubAction.VIEW_HAKIM_INSIGHTS:"فقط مدير المنصة يمكنه عرض تحليلات حكيم",
-    HubAction.VIEW_FULL_ANALYTICS:"فقط مدير المنصة يمكنه عرض التحليلات الكاملة",
-    HubAction.UPDATE_TITLE:       "هذا الإجراء مقصور على المديرين الأساسيين فقط",
-    HubAction.UPDATE_PRIORITY:    "هذا الإجراء مقصور على المديرين الأساسيين فقط",
-    HubAction.APPROVE_CLOSURE:    "هذا الإجراء مقصور على المدير الرئيسي فقط",
-    HubAction.REOPEN_ISSUE:       "هذا الإجراء مقصور على المديرين الأساسيين فقط",
-    HubAction.UPDATE_ISSUE:       "هذا الإجراء مقصور على المديرين الأساسيين فقط",
+    HubAction.ASSIGN_ISSUE:       FORBIDDEN_SUPER_ADMIN_MSG,
+    HubAction.CHANGE_STATUS:      FORBIDDEN_SUPER_ADMIN_MSG,
+    HubAction.SET_FINAL_STATUS:   FORBIDDEN_SUPER_ADMIN_MSG,
+    HubAction.VIEW_PROMPT:        FORBIDDEN_SUPER_ADMIN_MSG,
+    HubAction.COPY_PROMPT:        FORBIDDEN_SUPER_ADMIN_MSG,
+    HubAction.GENERATE_PROMPT:    FORBIDDEN_SUPER_ADMIN_MSG,
+    HubAction.REANALYZE_ISSUE:    FORBIDDEN_SUPER_ADMIN_MSG,
+    HubAction.VIEW_HAKIM_INSIGHTS:FORBIDDEN_SUPER_ADMIN_MSG,
+    HubAction.VIEW_FULL_ANALYTICS:FORBIDDEN_SUPER_ADMIN_MSG,
+    HubAction.UPDATE_TITLE:       FORBIDDEN_SUPER_ADMIN_MSG,
+    HubAction.UPDATE_PRIORITY:    FORBIDDEN_SUPER_ADMIN_MSG,
+    HubAction.APPROVE_CLOSURE:    FORBIDDEN_SUPER_ADMIN_MSG,
+    HubAction.REOPEN_ISSUE:       FORBIDDEN_SUPER_ADMIN_MSG,
+    HubAction.UPDATE_ISSUE:       FORBIDDEN_SUPER_ADMIN_MSG,
+    HubAction.DELETE_ISSUE:       FORBIDDEN_SUPER_ADMIN_MSG,
     HubAction.VIEW_ANY_ISSUE:     "ليس لديك صلاحية لعرض هذا التعليق",
-    HubAction.VIEW_DUPLICATES:    "فقط مدير المنصة يمكنه عرض التكرارات",
+    HubAction.VIEW_DUPLICATES:    FORBIDDEN_SUPER_ADMIN_MSG,
 }
 
 ERROR_CODES = {
-    HubAction.ASSIGN_ISSUE:       "FORBIDDEN_ASSIGN",
-    HubAction.CHANGE_STATUS:      "FORBIDDEN_STATUS_CHANGE",
-    HubAction.SET_FINAL_STATUS:   "FORBIDDEN_FINAL_STATUS",
-    HubAction.VIEW_PROMPT:        "FORBIDDEN_PROMPT_VIEW",
-    HubAction.COPY_PROMPT:        "FORBIDDEN_PROMPT_COPY",
-    HubAction.GENERATE_PROMPT:    "FORBIDDEN_PROMPT_GENERATE",
-    HubAction.VIEW_HAKIM_INSIGHTS:"FORBIDDEN_HAKIM_VIEW",
-    HubAction.VIEW_FULL_ANALYTICS:"FORBIDDEN_ANALYTICS",
-    HubAction.UPDATE_TITLE:       "FORBIDDEN_TITLE_UPDATE",
-    HubAction.UPDATE_PRIORITY:    "FORBIDDEN_PRIORITY_UPDATE",
-    HubAction.APPROVE_CLOSURE:    "FORBIDDEN_CLOSURE",
-    HubAction.REOPEN_ISSUE:       "FORBIDDEN_REOPEN",
-    HubAction.UPDATE_ISSUE:       "FORBIDDEN_UPDATE",
+    HubAction.ASSIGN_ISSUE:       "FORBIDDEN_SUPER_ADMIN_ACTION",
+    HubAction.CHANGE_STATUS:      "FORBIDDEN_SUPER_ADMIN_ACTION",
+    HubAction.SET_FINAL_STATUS:   "FORBIDDEN_SUPER_ADMIN_ACTION",
+    HubAction.VIEW_PROMPT:        "FORBIDDEN_SUPER_ADMIN_ACTION",
+    HubAction.COPY_PROMPT:        "FORBIDDEN_SUPER_ADMIN_ACTION",
+    HubAction.GENERATE_PROMPT:    "FORBIDDEN_SUPER_ADMIN_ACTION",
+    HubAction.REANALYZE_ISSUE:    "FORBIDDEN_SUPER_ADMIN_ACTION",
+    HubAction.VIEW_HAKIM_INSIGHTS:"FORBIDDEN_SUPER_ADMIN_ACTION",
+    HubAction.VIEW_FULL_ANALYTICS:"FORBIDDEN_SUPER_ADMIN_ACTION",
+    HubAction.UPDATE_TITLE:       "FORBIDDEN_SUPER_ADMIN_ACTION",
+    HubAction.UPDATE_PRIORITY:    "FORBIDDEN_SUPER_ADMIN_ACTION",
+    HubAction.APPROVE_CLOSURE:    "FORBIDDEN_SUPER_ADMIN_ACTION",
+    HubAction.REOPEN_ISSUE:       "FORBIDDEN_SUPER_ADMIN_ACTION",
+    HubAction.UPDATE_ISSUE:       "FORBIDDEN_SUPER_ADMIN_ACTION",
+    HubAction.DELETE_ISSUE:       "FORBIDDEN_SUPER_ADMIN_ACTION",
     HubAction.VIEW_ANY_ISSUE:     "FORBIDDEN_VIEW",
-    HubAction.VIEW_DUPLICATES:    "FORBIDDEN_DUPLICATES_VIEW",
+    HubAction.VIEW_DUPLICATES:    "FORBIDDEN_SUPER_ADMIN_ACTION",
 }
 
 
@@ -145,20 +155,22 @@ def check_permission(user: dict, action: HubAction) -> bool:
 
 
 MAIN_ADMIN_ONLY_ACTIONS = {
+    HubAction.DELETE_ISSUE,
+    HubAction.UPDATE_ISSUE,
     HubAction.ASSIGN_ISSUE,
     HubAction.CHANGE_STATUS,
     HubAction.SET_FINAL_STATUS,
     HubAction.REOPEN_ISSUE,
-    HubAction.UPDATE_ISSUE,
+    HubAction.APPROVE_CLOSURE,
     HubAction.UPDATE_TITLE,
     HubAction.UPDATE_PRIORITY,
     HubAction.VIEW_PROMPT,
     HubAction.COPY_PROMPT,
     HubAction.GENERATE_PROMPT,
-}
-
-SUPER_ADMIN_ONLY_ACTIONS = {
-    HubAction.APPROVE_CLOSURE,
+    HubAction.REANALYZE_ISSUE,
+    HubAction.VIEW_HAKIM_INSIGHTS,
+    HubAction.VIEW_FULL_ANALYTICS,
+    HubAction.VIEW_DUPLICATES,
 }
 
 
@@ -166,13 +178,9 @@ def enforce_permission(user: dict, action: HubAction):
     if not check_permission(user, action):
         _deny(user, action)
 
-    if action in SUPER_ADMIN_ONLY_ACTIONS:
-        if not is_super_admin(user):
-            _deny(user, action, "هذا الإجراء مقصور على المدير الرئيسي فقط (zalat@nassaqapp.com)")
-
     if action in MAIN_ADMIN_ONLY_ACTIONS:
         if not is_main_admin(user):
-            _deny(user, action, "هذا الإجراء مقصور على المديرين الأساسيين فقط")
+            _deny(user, action)
 
 
 def _deny(user: dict, action: HubAction, custom_message: str = None):

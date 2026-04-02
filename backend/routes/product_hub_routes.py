@@ -331,7 +331,7 @@ async def _next_issue_number() -> int:
 
 
 async def _get_issue_or_404(issue_id: str) -> dict:
-    issue = await db.product_issues.find_one({"id": issue_id}, {"_id": 0})
+    issue = await db.product_issues.find_one({"id": issue_id, "is_deleted": {"$ne": True}}, {"_id": 0})
     if not issue:
         _hub_error(404, "ISSUE_NOT_FOUND", "المشكلة غير موجودة", {"issue_id": issue_id})
     return issue
@@ -341,7 +341,6 @@ async def _get_issue_or_404(issue_id: str) -> dict:
 async def get_hub_config(current_user: dict = Depends(get_current_user)):
     admin = is_platform_admin(current_user)
     main_admin = is_main_admin(current_user)
-    super_admin = is_super_admin(current_user)
 
     reporters = []
     if admin:
@@ -368,15 +367,18 @@ async def get_hub_config(current_user: dict = Depends(get_current_user)):
         "reporters": reporters,
         "is_admin": admin,
         "is_main_admin": main_admin,
-        "is_super_admin": super_admin,
         "permissions": {
             "can_assign": main_admin,
             "can_change_status": main_admin,
             "can_view_prompt": main_admin,
-            "can_view_analytics": admin,
+            "can_view_analytics": main_admin,
             "can_update_priority": main_admin,
             "can_update_title": main_admin,
-            "can_approve_closure": super_admin,
+            "can_approve_closure": main_admin,
+            "can_delete": main_admin,
+            "can_reanalyze": main_admin,
+            "can_view_hakim_insights": main_admin,
+            "can_view_duplicates": main_admin,
         },
     }
 
@@ -472,7 +474,7 @@ async def list_issues(
     admin = is_platform_admin(current_user)
     user_id = get_user_id(current_user)
 
-    query: dict = {}
+    query: dict = {"is_deleted": {"$ne": True}}
     if not admin:
         query["created_by"] = user_id
 
@@ -546,7 +548,7 @@ async def get_issue(issue_id: str, current_user: dict = Depends(get_current_user
     ).sort("timestamp", 1).to_list(200)
 
     duplicates = []
-    if admin:
+    if is_main_admin(current_user):
         duplicates = await db.issue_duplicates_map.find(
             {"$or": [{"issue_id": issue_id}, {"duplicate_of": issue_id}]}, {"_id": 0}
         ).to_list(20)
@@ -561,21 +563,24 @@ async def get_issue(issue_id: str, current_user: dict = Depends(get_current_user
     issue["valid_transitions"] = list(VALID_STATUS_TRANSITIONS.get(issue.get("status", "new"), set()))
 
     main_admin = is_main_admin(current_user)
-    super_admin = is_super_admin(current_user)
     permissions = {
         "can_change_status": main_admin,
         "can_assign": main_admin,
         "can_view_prompt": main_admin,
         "can_update_title": main_admin,
         "can_update_priority": main_admin,
-        "can_approve_closure": super_admin,
+        "can_approve_closure": main_admin,
+        "can_delete": main_admin,
+        "can_reanalyze": main_admin,
+        "can_view_hakim_insights": main_admin,
+        "can_view_duplicates": main_admin,
+        "can_view_analytics": main_admin,
         "can_comment": can_access_comments(current_user, issue),
         "can_submit_feedback": (
             issue.get("status") == "done"
             and (admin or check_resource_ownership(current_user, issue))
         ),
         "is_main_admin": main_admin,
-        "is_super_admin": super_admin,
     }
     issue["permissions"] = permissions
 
@@ -1028,13 +1033,31 @@ async def get_hakim_insights(
     }
 
 
+@router.delete("/issues/{issue_id}")
+async def delete_issue(
+    issue_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    enforce_permission(current_user, HubAction.DELETE_ISSUE)
+
+    issue = await _get_issue_or_404(issue_id)
+
+    now = _now_iso()
+    await db.product_issues.update_one(
+        {"id": issue_id},
+        {"$set": {"is_deleted": True, "deleted_at": now, "deleted_by": get_user_id(current_user)}}
+    )
+    await audit_issue_updated(issue_id, current_user, {"action": "delete_issue", "deleted_at": now})
+    logger.info(f"[ProductHub] Issue {issue_id[:8]} deleted by {current_user.get('email', 'unknown')}")
+    return {"success": True, "issue_id": issue_id}
+
+
 @router.post("/issues/{issue_id}/reanalyze")
 async def reanalyze_issue(
     issue_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    if not is_main_admin(current_user):
-        raise HTTPException(status_code=403, detail="إعادة التحليل متاحة فقط للمسؤولين الرئيسيين")
+    enforce_permission(current_user, HubAction.REANALYZE_ISSUE)
     issue = await _get_issue_or_404(issue_id)
     hakim_analysis = await _run_hakim_analysis(issue)
     await db.product_issues.update_one(

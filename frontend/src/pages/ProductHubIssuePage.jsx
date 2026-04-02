@@ -784,7 +784,7 @@ export function ProductHubIssuePage() {
                   </CardContent>
                 )}
               </Card>
-              {issue.duplicates && issue.duplicates.length > 0 && isAdmin && (
+              {issue.duplicates && issue.duplicates.length > 0 && isMainAdmin && (
                 <Card className="border shadow-sm rounded-xl border-amber-200">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-semibold flex items-center gap-2 text-amber-700">
@@ -805,8 +805,8 @@ export function ProductHubIssuePage() {
             </div>
           </div>
 
-          {/* ═══════ 6. HAKIM ANALYSIS (Bottom of Page) ═══════ */}
-          {hakim && Object.keys(hakim).length > 0 && (
+          {/* ═══════ 6. HAKIM ANALYSIS (Bottom of Page — Main Admins Only) ═══════ */}
+          {isMainAdmin && hakim && Object.keys(hakim).length > 0 && (
             <div className="relative">
               <div className="absolute -top-3 right-6 bg-brand-purple text-white text-[11px] font-medium px-3 py-1 rounded-full shadow-sm z-10 flex items-center gap-1.5">
                 <Brain className="h-3 w-3" />

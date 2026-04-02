@@ -277,15 +277,17 @@ export function ProductHubPage() {
                   <Table2 className="h-4 w-4" />
                   التحديات
                 </TabsTrigger>
-                <TabsTrigger value="dashboard" className="rounded-lg data-[state=active]:bg-brand-navy data-[state=active]:text-white gap-2">
-                  <BarChart3 className="h-4 w-4" />
-                  لوحة القيادة
-                </TabsTrigger>
+                {isMainAdmin && (
+                  <TabsTrigger value="dashboard" className="rounded-lg data-[state=active]:bg-brand-navy data-[state=active]:text-white gap-2">
+                    <BarChart3 className="h-4 w-4" />
+                    لوحة القيادة
+                  </TabsTrigger>
+                )}
               </TabsList>
             </div>
 
             <TabsContent value="dashboard" className="mt-6">
-              <DashboardView data={dashboard} loading={dashLoading} isAdmin={isAdmin} navigate={navigate} />
+              {isMainAdmin && <DashboardView data={dashboard} loading={dashLoading} isAdmin={isMainAdmin} navigate={navigate} />}
             </TabsContent>
 
             <TabsContent value="issues" className="mt-6 space-y-5">
@@ -996,8 +998,8 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
                 </div>
               </div>
 
-              {/* ═══ ZONE C: HAKIM AI ═══ */}
-              <div className="lg:col-span-3 p-5 border-t lg:border-t-0 bg-gradient-to-b from-brand-turquoise/[0.04] via-transparent to-brand-navy/[0.02]">
+              {/* ═══ ZONE C: HAKIM AI (Main Admins Only) ═══ */}
+              {isMainAdmin ? <div className="lg:col-span-3 p-5 border-t lg:border-t-0 bg-gradient-to-b from-brand-turquoise/[0.04] via-transparent to-brand-navy/[0.02]">
                 <div className="flex items-center gap-3 mb-4">
                   <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-turquoise to-brand-navy flex items-center justify-center shadow-md shadow-brand-turquoise/20">
                     <Brain className="h-4.5 w-4.5 text-white" />
@@ -1103,7 +1105,7 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
                     )}
                   </div>
                 )}
-              </div>
+              </div> : null}
             </div>
           )}
         </div>
