@@ -707,6 +707,11 @@ export function ProductHubIssuePage() {
                 </Card>
               )}
 
+            </div>
+
+            {/* ═══════ RIGHT SIDEBAR ═══════ */}
+            <div className="space-y-6">
+
               {/* ═══════ ACTIVITY LOG ═══════ */}
               <Card className="border shadow-sm rounded-xl">
                 <CardHeader
@@ -730,15 +735,15 @@ export function ProductHubIssuePage() {
                           const eventKey = a.event_type || a.action;
                           const eventLabel = EVENT_LABELS[eventKey] || eventKey;
                           return (
-                            <div key={a.id || i} className="flex items-start gap-4 relative">
-                              <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 z-10 ${
+                            <div key={a.id || i} className="flex items-start gap-3 relative">
+                              <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 z-10 ${
                                 eventKey === 'created' || eventKey === 'issue_created' ? 'bg-emerald-100' :
                                 eventKey === 'status_changed' ? 'bg-blue-100' :
                                 eventKey === 'closed' || eventKey === 'issue_marked_done' ? 'bg-emerald-100' :
                                 eventKey === 'reopened' || eventKey === 'issue_reopened' ? 'bg-amber-100' :
                                 'bg-slate-100'
                               }`}>
-                                <div className={`w-2 h-2 rounded-full ${
+                                <div className={`w-1.5 h-1.5 rounded-full ${
                                   eventKey === 'created' || eventKey === 'issue_created' ? 'bg-emerald-500' :
                                   eventKey === 'status_changed' ? 'bg-blue-500' :
                                   eventKey === 'closed' || eventKey === 'issue_marked_done' ? 'bg-emerald-500' :
@@ -747,14 +752,14 @@ export function ProductHubIssuePage() {
                                 }`} />
                               </div>
                               <div className="flex-1 min-w-0 pb-2">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="text-sm font-medium">{a.performed_by_name || a.action_by_name || 'النظام'}</span>
-                                  <span className="text-xs text-muted-foreground bg-slate-50 px-2 py-0.5 rounded-full">{eventLabel}</span>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="text-xs font-medium">{a.performed_by_name || a.action_by_name || 'النظام'}</span>
+                                  <span className="text-[10px] text-muted-foreground bg-slate-50 px-1.5 py-0.5 rounded-full">{eventLabel}</span>
                                 </div>
                                 {a.details && (
-                                  <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+                                  <div className="text-[11px] text-muted-foreground mt-1 space-y-0.5">
                                     {a.details.from && a.details.to && (
-                                      <div className="flex items-center gap-2">
+                                      <div className="flex items-center gap-1.5">
                                         <StatusChip status={a.details.from} size="sm" />
                                         <span>→</span>
                                         <StatusChip status={a.details.to} size="sm" />
@@ -779,10 +784,6 @@ export function ProductHubIssuePage() {
                   </CardContent>
                 )}
               </Card>
-            </div>
-
-            {/* ═══════ RIGHT SIDEBAR ═══════ */}
-            <div className="space-y-6">
               {issue.duplicates && issue.duplicates.length > 0 && isAdmin && (
                 <Card className="border shadow-sm rounded-xl border-amber-200">
                   <CardHeader className="pb-2">
