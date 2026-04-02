@@ -1035,6 +1035,40 @@ async def delete_issue(
     return {"success": True, "issue_id": issue_id}
 
 
+UNDO_EXPIRY_MINUTES = 30
+TRACKED_SNAPSHOT_FIELDS = ["status", "priority", "assigned_team", "is_deleted", "resolved_at", "feedback_requested", "title"]
+
+
+async def _capture_before_states(issue_ids: list) -> dict:
+    issues = await db.product_issues.find(
+        {"id": {"$in": issue_ids}, "is_deleted": {"$ne": True}},
+        {"_id": 0, "id": 1, **{f: 1 for f in TRACKED_SNAPSHOT_FIELDS}}
+    ).to_list(200)
+    return {iss["id"]: {k: iss.get(k) for k in TRACKED_SNAPSHOT_FIELDS} for iss in issues}
+
+
+async def _save_action_history(action_type: str, user: dict, issue_ids: list, before_states: dict, after_state: dict) -> str:
+    now = _now_iso()
+    expiry = (datetime.now(timezone.utc) + timedelta(minutes=UNDO_EXPIRY_MINUTES)).isoformat()
+    action_id = str(uuid.uuid4())
+    record = {
+        "action_id": action_id,
+        "action_type": action_type,
+        "performed_by": user.get("email", "unknown"),
+        "performed_by_name": user.get("full_name", user.get("email", "unknown")),
+        "timestamp": now,
+        "affected_items": issue_ids,
+        "affected_count": len(issue_ids),
+        "before_state": before_states,
+        "after_state": after_state,
+        "is_undoable": True,
+        "undo_expiry": expiry,
+        "status": "active",
+    }
+    await db.bulk_action_history.insert_one(record)
+    return action_id
+
+
 @router.post("/issues/bulk-update")
 async def bulk_update_issues(
     data: BulkUpdateRequest,
@@ -1046,24 +1080,34 @@ async def bulk_update_issues(
     if not data.status and not data.priority and not data.assigned_team:
         _hub_error(422, "NO_CHANGES", "يجب تحديد حقل واحد على الأقل للتعديل")
 
+    before_states = await _capture_before_states(data.issue_ids)
+
     now = _now_iso()
     update_fields = {"updated_at": now, "system.updated_at": now}
+    after_snapshot = {}
 
     if data.status:
         update_fields["status"] = data.status
         update_fields["system.last_status_changed_at"] = now
+        after_snapshot["status"] = data.status
         if data.status == "done":
             update_fields["resolved_at"] = now
             update_fields["feedback_requested"] = True
+            after_snapshot["resolved_at"] = now
+            after_snapshot["feedback_requested"] = True
     if data.priority:
         update_fields["priority"] = data.priority
+        after_snapshot["priority"] = data.priority
     if data.assigned_team:
         update_fields["assigned_team"] = data.assigned_team
+        after_snapshot["assigned_team"] = data.assigned_team
 
     result = await db.product_issues.update_many(
         {"id": {"$in": data.issue_ids}, "is_deleted": {"$ne": True}},
         {"$set": update_fields}
     )
+
+    action_id = await _save_action_history("bulk_edit", current_user, data.issue_ids, before_states, after_snapshot)
 
     for issue_id in data.issue_ids:
         changes_log = {}
@@ -1080,6 +1124,7 @@ async def bulk_update_issues(
         "success": True,
         "modified_count": result.modified_count,
         "requested_count": len(data.issue_ids),
+        "action_id": action_id,
     }
 
 
@@ -1091,11 +1136,15 @@ async def bulk_delete_issues(
     if not is_main_admin(current_user):
         _hub_error(403, "FORBIDDEN", "هذه العملية متاحة فقط للمسؤولين الرئيسيين")
 
+    before_states = await _capture_before_states(data.issue_ids)
+
     now = _now_iso()
     result = await db.product_issues.update_many(
         {"id": {"$in": data.issue_ids}, "is_deleted": {"$ne": True}},
         {"$set": {"is_deleted": True, "deleted_at": now, "deleted_by": get_user_id(current_user)}}
     )
+
+    action_id = await _save_action_history("bulk_delete", current_user, data.issue_ids, before_states, {"is_deleted": True})
 
     for issue_id in data.issue_ids:
         await audit_issue_updated(issue_id, current_user, {"action": "bulk_delete", "deleted_at": now})
@@ -1105,6 +1154,110 @@ async def bulk_delete_issues(
         "success": True,
         "deleted_count": result.modified_count,
         "requested_count": len(data.issue_ids),
+        "action_id": action_id,
+    }
+
+
+@router.get("/action-history")
+async def get_action_history(
+    current_user: dict = Depends(get_current_user),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+):
+    if not is_main_admin(current_user):
+        _hub_error(403, "FORBIDDEN", "هذه العملية متاحة فقط للمسؤولين الرئيسيين")
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    records = await db.bulk_action_history.find(
+        {}, {"_id": 0}
+    ).sort("timestamp", -1).skip(offset).limit(limit).to_list(limit)
+
+    total = await db.bulk_action_history.count_documents({})
+
+    for r in records:
+        if r.get("status") == "active" and r.get("is_undoable"):
+            if r.get("undo_expiry", "") < now:
+                r["is_undoable"] = False
+                r["status"] = "expired"
+
+    return {
+        "success": True,
+        "records": records,
+        "total": total,
+    }
+
+
+@router.post("/action-history/{action_id}/undo")
+async def undo_action(
+    action_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    if not is_main_admin(current_user):
+        _hub_error(403, "FORBIDDEN", "هذه العملية متاحة فقط للمسؤولين الرئيسيين")
+
+    record = await db.bulk_action_history.find_one({"action_id": action_id}, {"_id": 0})
+    if not record:
+        _hub_error(404, "NOT_FOUND", "العملية غير موجودة")
+
+    if record.get("status") != "active":
+        _hub_error(400, "NOT_UNDOABLE", f"لا يمكن التراجع — الحالة: {record.get('status')}")
+
+    now_dt = datetime.now(timezone.utc)
+    if record.get("undo_expiry", "") < now_dt.isoformat():
+        await db.bulk_action_history.update_one(
+            {"action_id": action_id},
+            {"$set": {"status": "expired", "is_undoable": False}}
+        )
+        _hub_error(400, "EXPIRED", "انتهت مهلة التراجع")
+
+    before_states = record.get("before_state", {})
+    action_type = record.get("action_type", "")
+    restored_count = 0
+    now = _now_iso()
+
+    if action_type == "bulk_delete":
+        for issue_id, prev in before_states.items():
+            res = await db.product_issues.update_one(
+                {"id": issue_id},
+                {"$set": {"is_deleted": False, "deleted_at": None, "deleted_by": None, "updated_at": now}}
+            )
+            if res.modified_count > 0:
+                restored_count += 1
+            await audit_issue_updated(issue_id, current_user, {"action": "undo_bulk_delete"})
+
+    elif action_type == "bulk_edit":
+        for issue_id, prev in before_states.items():
+            restore_fields = {k: v for k, v in prev.items() if v is not None}
+            restore_fields["updated_at"] = now
+            res = await db.product_issues.update_one(
+                {"id": issue_id, "is_deleted": {"$ne": True}},
+                {"$set": restore_fields}
+            )
+            if res.modified_count > 0:
+                restored_count += 1
+            await audit_issue_updated(issue_id, current_user, {"action": "undo_bulk_edit", "restored_fields": list(restore_fields.keys())})
+
+    else:
+        _hub_error(400, "UNSUPPORTED", f"نوع العملية غير مدعوم للتراجع: {action_type}")
+
+    await db.bulk_action_history.update_one(
+        {"action_id": action_id},
+        {"$set": {
+            "status": "undone",
+            "is_undoable": False,
+            "undone_at": now,
+            "undone_by": current_user.get("email", "unknown"),
+            "restored_count": restored_count,
+        }}
+    )
+
+    logger.info(f"[ProductHub] Undo {action_type} ({action_id[:8]}): restored {restored_count} issues by {current_user.get('email', 'unknown')}")
+    return {
+        "success": True,
+        "action_id": action_id,
+        "restored_count": restored_count,
+        "action_type": action_type,
     }
 
 
