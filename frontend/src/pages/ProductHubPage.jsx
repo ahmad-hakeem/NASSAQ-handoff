@@ -346,23 +346,21 @@ export function ProductHubPage() {
                 <div className="lg:col-span-3">
                   <IssuesStatusFlow issues={issues} onStatusFilter={updateFilter} activeStatus={filters.status} />
                 </div>
-                <div className="relative overflow-hidden flex flex-col items-center justify-center text-center p-5 rounded-2xl bg-gradient-to-br from-brand-navy via-brand-navy/95 to-brand-turquoise/80 text-white shadow-lg">
-                  <div className="absolute inset-0 opacity-[0.04]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.5) 1px, transparent 0)', backgroundSize: '16px 16px' }} />
+                <div className="relative overflow-hidden flex flex-col items-center justify-center text-center p-5 rounded-2xl bg-gradient-to-br from-brand-navy via-brand-navy/95 to-brand-purple text-white shadow-lg">
+                  <div className="absolute inset-0 nassaq-pattern opacity-[0.06]" style={{ backgroundImage: "url('/nassaq-pattern.png')" }} />
                   <div className="absolute -bottom-6 -left-6 h-20 w-20 rounded-full bg-brand-turquoise/15" />
                   <div className="absolute -top-4 -right-4 h-14 w-14 rounded-full bg-white/5" />
                   <div className="relative z-10 flex flex-col items-center gap-1">
                     <div className="p-2 rounded-xl bg-white/10 backdrop-blur-sm mb-1">
-                      <Layers className="h-5 w-5 text-white" />
+                      <CheckCircle2 className="h-5 w-5 text-emerald-300" />
                     </div>
                     <p className="text-5xl font-extrabold tracking-tighter leading-none tabular-nums hub-countup-number text-white drop-shadow-sm">
-                      {total}
+                      {issues.filter(i => i.status === 'done' || i.status === 'user_feedback_confirmed').length}
                     </p>
-                    <p className="text-[11px] text-white/70 font-semibold mt-1">إجمالي التحديات</p>
-                    {hasActiveFilters && (
-                      <p className="text-[10px] text-brand-turquoise font-medium mt-1 bg-white/10 px-2 py-0.5 rounded-full">
-                        عرض {sortedIssues.length} من {total} نتيجة
-                      </p>
-                    )}
+                    <p className="text-[11px] text-white/70 font-semibold mt-1">التحديات المحلولة</p>
+                    <p className="text-[10px] text-white/50 font-medium mt-0.5">
+                      من أصل {total} تحدي
+                    </p>
                   </div>
                 </div>
               </div>
