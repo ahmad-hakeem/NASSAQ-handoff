@@ -742,6 +742,69 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
 
   const statusLabel = STATUS_CONFIG[issue.status]?.label || issue.status;
 
+  if (isMainAdmin) {
+    return (
+      <div
+        ref={cardRef}
+        className={`w-full rounded-2xl border overflow-hidden ${
+          isDone ? 'bg-gradient-to-l from-emerald-50/60 to-white border-emerald-200/60'
+          : isRejected ? 'bg-gradient-to-l from-red-50/40 to-white border-red-200/50'
+          : 'bg-white border-slate-200 hover:border-slate-300'
+        } hover:shadow-md transition-all ${isHighlighted ? 'ring-2 ring-brand-turquoise ring-offset-2' : ''}`}
+        dir="rtl"
+      >
+        <div className="p-4 space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <h3 className={`text-sm font-bold leading-relaxed flex-1 min-w-0 ${isDone ? 'text-emerald-800' : isRejected ? 'text-red-400' : 'text-brand-navy'}`}>
+              {isDone && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 inline-block ml-1 -mt-0.5" />}
+              {issue.title}
+            </h3>
+            <span className="text-[10px] font-mono text-slate-400 bg-slate-50 px-2 py-1 rounded-md font-semibold border border-slate-100 flex-shrink-0">
+              #{issue.issue_number}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <div
+                className="w-5 h-5 rounded-full flex items-center justify-center text-[7px] font-bold text-white flex-shrink-0"
+                style={{ background: isDone ? 'linear-gradient(135deg, #10b981, #059669)' : isRejected ? 'linear-gradient(135deg, #ef4444, #dc2626)' : 'linear-gradient(135deg, #1C3D74, #46C1BE)' }}
+              >
+                {getInitials(issue.employee_name)}
+              </div>
+              <span className="text-[11px] font-medium text-slate-600 truncate max-w-[140px]">{issue.employee_name}</span>
+            </div>
+            <div className="w-px h-4 bg-slate-200" />
+            <StatusChip status={issue.status} size="default" showIcon />
+            <div className="w-px h-4 bg-slate-200" />
+            {hasDuplicates ? (
+              <div className="flex items-center gap-1 px-2 py-0.5 bg-amber-50 rounded-md border border-amber-200">
+                <Copy className="h-3 w-3 text-amber-500" />
+                <span className="text-[10px] text-amber-700 font-semibold">مكرر</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1 px-2 py-0.5 bg-emerald-50 rounded-md border border-emerald-200">
+                <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+                <span className="text-[10px] text-emerald-700 font-semibold">غير مكرر</span>
+              </div>
+            )}
+          </div>
+
+          <div className="pt-1 border-t border-slate-100">
+            <Button
+              size="sm"
+              onClick={() => navigate(`/admin/product-hub/issues/${issue.id}`)}
+              className="w-full bg-brand-navy hover:bg-brand-navy/90 text-white text-xs gap-2"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              فتح الصفحة الكاملة
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       ref={cardRef}
