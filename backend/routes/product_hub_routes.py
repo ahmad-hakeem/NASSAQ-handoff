@@ -514,6 +514,7 @@ async def list_issues(
 
     issue_ids = [i.get("id") for i in issues if i.get("id")]
     comment_counts = {}
+    recent_comments_map = {}
     if issue_ids:
         pipeline = [
             {"$match": {"issue_id": {"$in": issue_ids}}},
@@ -522,10 +523,28 @@ async def list_issues(
         async for doc in db.issue_comments.aggregate(pipeline):
             comment_counts[doc["_id"]] = doc["count"]
 
+        recent_pipeline = [
+            {"$match": {"issue_id": {"$in": issue_ids}}},
+            {"$sort": {"timestamp": -1}},
+            {"$group": {
+                "_id": "$issue_id",
+                "comments": {"$push": {
+                    "user_name": "$user_name",
+                    "content": "$content",
+                    "timestamp": "$timestamp",
+                    "created_by": "$created_by",
+                }},
+            }},
+            {"$project": {"comments": {"$slice": ["$comments", 3]}}},
+        ]
+        async for doc in db.issue_comments.aggregate(recent_pipeline):
+            recent_comments_map[doc["_id"]] = doc["comments"]
+
     for issue in issues:
         enrich_sla_state(issue)
         redact_issue_for_role(issue, current_user)
         issue["comment_count"] = comment_counts.get(issue.get("id"), 0)
+        issue["recent_comments"] = recent_comments_map.get(issue.get("id"), [])
 
     return {"issues": issues, "total": total, "page": page, "limit": limit}
 

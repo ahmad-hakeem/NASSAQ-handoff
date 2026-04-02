@@ -1,0 +1,167 @@
+Enhance and fix the UI/UX of the Challenge Cards (external view before opening full details) inside the "Product Intelligence Hub" → "Challenges" tab.
+
+==================================================
+1) RTL ALIGNMENT (CRITICAL FIX)
+==================================================
+
+For Arabic language (RTL mode):
+
+- Challenge Title must be aligned to the RIGHT
+- Reporter name must be aligned to the LEFT
+- Status/action badges must be aligned to the LEFT in a clean row:
+  - "أكد المستخدم"
+  - "تم حله"
+  - "حرج"
+
+- Icons and badges must follow proper RTL flow:
+  → Right (Title) → Center (Content) → Left (Actions + Reporter)
+
+For English (LTR mode):
+→ Reverse alignment accordingly
+
+==================================================
+2) TITLE & ELEMENT ORGANIZATION
+==================================================
+
+- Title must:
+  → be clearly separated
+  → not overlap with any other element
+  → have proper spacing around it
+
+- All elements must:
+  → follow a structured layout grid
+  → have consistent spacing
+  → avoid visual clutter
+
+==================================================
+3) RESOLVED CARD VISUAL STATE (IMPORTANT CHANGE)
+==================================================
+
+For challenges with status = "Done":
+
+- DO NOT use strikethrough on title
+
+Instead:
+
+- Change entire card appearance:
+  → background color (soft green / success tone)
+  → subtle border or highlight
+  → optional check icon ✔
+
+Goal:
+→ visually indicate completion without harming readability
+
+==================================================
+4) OVERLAP ISSUE (CRITICAL BUG FIX)
+==================================================
+
+Fix all layout overlap issues, especially:
+
+- In comments section inside the card preview
+- Between title, badges, and metadata
+
+Ensure:
+- no overlapping text
+- no UI collision
+- clean spacing between all elements
+
+==================================================
+5) COMMENTS PREVIEW (ENHANCED UX)
+==================================================
+
+Inside the external card (before opening full page):
+
+- Show recent comments preview
+
+Each comment must display:
+- commenter name
+- comment snippet (short)
+- timestamp (optional)
+
+--------------------------------------------------
+VISUAL DIFFERENTIATION:
+--------------------------------------------------
+
+- Each user must have:
+  → unique color (avatar or name badge)
+  → consistent color identity across system
+
+Goal:
+→ easy visual distinction between users
+
+--------------------------------------------------
+STYLE:
+--------------------------------------------------
+
+- Comments should:
+  → appear as small stacked items
+  → clean and readable
+  → not overcrowded
+
+==================================================
+6) REMOVE HAKIM ANALYSIS FROM CARD PREVIEW
+==================================================
+
+- Remove Hakim analysis section from:
+  → external card view
+
+Reason:
+- not useful in this context
+- creates visual noise
+- not used by users at this stage
+
+Hakim should remain:
+→ only in detailed/expanded view
+
+==================================================
+7) VISUAL CLEANUP
+==================================================
+
+- Remove:
+  - unnecessary elements
+  - cluttered UI parts
+  - redundant data
+
+- Ensure:
+  - clear hierarchy
+  - clean spacing
+  - consistent typography
+
+==================================================
+8) GRID & SPACING SYSTEM
+==================================================
+
+- Use consistent layout grid
+- Equal spacing between sections
+- Proper padding inside card
+
+==================================================
+9) RESPONSIVENESS
+==================================================
+
+- Maintain RTL correctness across:
+  → desktop
+  → tablet
+  → mobile
+
+- Ensure no overlap in any screen size
+
+==================================================
+10) FINAL GOAL
+==================================================
+
+Transform the challenge card from:
+
+→ cluttered and misaligned UI
+
+To:
+
+→ clean, structured, RTL-correct, visually clear preview card
+
+User should be able to:
+- read title instantly
+- identify reporter and status
+- distinguish users in comments
+- understand completion state visually
+
+WITHOUT confusion or overlap

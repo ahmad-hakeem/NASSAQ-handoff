@@ -1,0 +1,431 @@
+Create a complete Micro-interactions and Animation Rules system for the "Product Intelligence Hub" UI, with special focus on the Challenge Cards, comments area, actions, and Hakim-related interactions.
+
+The goal is to make the interface feel:
+- alive
+- responsive
+- modern
+- premium
+- smooth
+- intelligent
+
+WITHOUT making it noisy, distracting, or overly playful.
+
+==================================================
+1) ANIMATION OBJECTIVE
+==================================================
+
+Use micro-interactions and motion to improve:
+
+- clarity
+- responsiveness
+- visual feedback
+- hierarchy
+- perceived quality
+- user confidence
+
+Animations must help the user understand:
+- what changed
+- what is clickable
+- what is loading
+- what is active
+- what just happened
+
+==================================================
+2) MOTION DESIGN PRINCIPLES
+==================================================
+
+All animations must follow these rules:
+
+1. Fast, smooth, and subtle
+2. Never decorative for no reason
+3. Always support usability
+4. Never block productivity
+5. Never slow down heavy workflows
+6. Must feel enterprise-grade, not playful
+7. Respect RTL/LTR layout
+8. Must be consistent across the system
+
+==================================================
+3) GENERAL TIMING RULES
+==================================================
+
+Recommended durations:
+
+- Hover effects: 120ms–180ms
+- Button press feedback: 80ms–120ms
+- Expand/collapse panels: 220ms–320ms
+- Card elevation / highlight transitions: 160ms–220ms
+- Loading skeleton shimmer: subtle and slow
+- Success feedback: 180ms–250ms
+- Toast appearance/disappearance: 200ms–300ms
+
+Avoid:
+- long slow transitions
+- bouncing animations
+- exaggerated scale changes
+- excessive motion
+
+==================================================
+4) CHALLENGE CARD MICRO-INTERACTIONS
+==================================================
+
+--------------------------------------------------
+A) HOVER STATE
+--------------------------------------------------
+
+When hovering over a challenge card:
+
+- slight elevation
+- subtle shadow increase
+- gentle border highlight
+- optional soft background shift
+
+Goal:
+→ show the card is interactive
+
+--------------------------------------------------
+B) CLICK / TAP STATE
+--------------------------------------------------
+
+When clicking the card:
+
+- subtle press effect
+- quick tactile feedback
+- then smooth transition to expanded/full details
+
+--------------------------------------------------
+C) RESOLVED CARD STATE
+--------------------------------------------------
+
+If challenge is marked as done:
+
+- smooth color transition of card background
+- optional success glow fade-in
+- no strike-through animation on title
+
+==================================================
+5) EXPAND / COLLAPSE ANIMATIONS
+==================================================
+
+For expandable challenge cards or smart panels:
+
+- animate height smoothly
+- fade in internal content
+- stagger secondary sections slightly:
+  - details first
+  - comments second
+  - Hakim panel third
+
+Rules:
+- no jarring jumps
+- maintain scroll stability
+- do not cause layout flicker
+
+==================================================
+6) BUTTON INTERACTIONS
+==================================================
+
+For all buttons such as:
+- Generate Prompt
+- Copy Prompt
+- Analyze with Hakim
+- Send Comment
+- Save
+- Assign
+
+Add:
+
+- hover state:
+  → color shift / slight shadow / border emphasis
+
+- press state:
+  → subtle scale down (very light)
+  → instant response feel
+
+- loading state:
+  → spinner or progress indicator
+  → disable duplicate clicks
+
+- success state:
+  → checkmark or confirmation pulse
+  → short confirmation animation
+
+==================================================
+7) COMMENT INTERACTIONS
+==================================================
+
+--------------------------------------------------
+A) COMMENT INPUT
+--------------------------------------------------
+
+- input focus:
+  → border highlight
+  → soft glow or focus ring
+  → textarea expands smoothly if auto-grow is enabled
+
+- typing should feel stable and smooth
+
+--------------------------------------------------
+B) COMMENT SUBMISSION
+--------------------------------------------------
+
+After sending a comment:
+
+- input clears smoothly
+- new comment appears with:
+  → slight fade-in
+  → slight upward motion
+  → not too dramatic
+
+- if optimistic UI is used:
+  → pending state appears subtly before confirmation
+
+--------------------------------------------------
+C) COMMENT HOVER
+--------------------------------------------------
+
+- optional subtle background tint on hover
+- reveal contextual actions smoothly:
+  → edit
+  → delete
+  → reply (if applicable)
+
+==================================================
+8) @MENTION MICRO-INTERACTIONS
+==================================================
+
+- when user types "@":
+  → mention dropdown should appear with:
+    - soft fade-in
+    - slight upward motion
+
+- keyboard selection:
+  → highlight slides or transitions smoothly
+
+- selected mention insertion:
+  → mention token appears with a soft pop-in / highlight
+
+- mention hover in displayed comments:
+  → slight highlight or tooltip reveal
+
+==================================================
+9) PROGRESS BAR ANIMATIONS
+==================================================
+
+- progress bars should animate width smoothly on load/update
+- status change should update progress with:
+  → soft transition
+  → no sudden jumps
+
+If:
+- high risk
+- likely delayed
+- escalating risk
+
+Then:
+- allow a very subtle warning pulse or glow
+- must remain professional, not flashy
+
+==================================================
+10) STATUS / PRIORITY / RISK BADGES
+==================================================
+
+When badges change:
+- smooth color transition
+- subtle fade / morph effect
+
+For example:
+- Under Review → In Progress
+- Medium → High
+- Stable → Risk Escalating
+
+Do NOT:
+- animate aggressively
+- blink rapidly
+
+==================================================
+11) HAKIM AI MICRO-INTERACTIONS
+==================================================
+
+Hakim must feel alive and responsive without looking like a toy.
+
+--------------------------------------------------
+A) HAKIM APPEARANCE
+--------------------------------------------------
+
+When Hakim panel loads:
+- soft fade-in
+- slight slide-in
+- optional delayed appearance after card details
+
+--------------------------------------------------
+B) HAKIM ANALYSIS ACTION
+--------------------------------------------------
+
+When clicking:
+- "Analyze with Hakim"
+- "Generate Prompt"
+- "Regenerate"
+
+Show:
+- smart loading state
+- analyzing pulse
+- text such as:
+  → "Hakim is analyzing..."
+  → "Generating suggestions..."
+
+Then:
+- reveal result progressively
+- fade in insights one by one if appropriate
+
+--------------------------------------------------
+C) HAKIM SUGGESTIONS
+--------------------------------------------------
+
+Each suggestion card can:
+- fade in
+- appear with subtle stagger
+- highlight briefly on first appearance
+
+--------------------------------------------------
+D) HAKIM IMAGES / AVATARS
+--------------------------------------------------
+
+If Hakim photos are used from database:
+- image transitions should be soft
+- random contextual appearance should not feel chaotic
+- avoid rapid image swapping
+
+==================================================
+12) TOASTS / FEEDBACK MESSAGES
+==================================================
+
+For actions like:
+- comment sent
+- prompt copied
+- save completed
+- status changed
+- assignment updated
+
+Use:
+- short toast notifications
+- clean slide/fade animation
+- auto dismiss after short duration
+
+Examples:
+- "تم نسخ الـ Prompt"
+- "تم حفظ التعديلات بنجاح"
+- "تم إرسال التعليق"
+
+==================================================
+13) EMPTY / LOADING / ERROR STATES
+==================================================
+
+--------------------------------------------------
+A) LOADING
+--------------------------------------------------
+
+Use:
+- skeleton loaders
+- shimmer effect (subtle)
+- avoid spinner-only screens if content structure is known
+
+--------------------------------------------------
+B) EMPTY
+--------------------------------------------------
+
+Empty states can:
+- fade in
+- include soft icon motion if needed
+- remain calm and minimal
+
+--------------------------------------------------
+C) ERROR
+--------------------------------------------------
+
+Error states:
+- appear clearly
+- no shaking or aggressive motion
+- use calm but obvious feedback
+
+==================================================
+14) PAGE-LEVEL TRANSITIONS
+==================================================
+
+Between:
+- challenge list
+- challenge details
+- settings
+- dashboard
+
+Use:
+- soft page transition
+- preserve visual continuity
+- avoid hard jumps where possible
+
+But:
+- do not overuse page transitions in heavy work areas
+
+==================================================
+15) RTL / LTR ANIMATION BEHAVIOR
+==================================================
+
+Animations must respect direction:
+
+- in Arabic (RTL):
+  → directional motion should feel right-to-left where relevant
+
+- in English (LTR):
+  → reverse naturally
+
+Examples:
+- slide-in panels
+- tooltip direction
+- dropdown alignment
+- inline actions reveal
+
+==================================================
+16) ACCESSIBILITY & REDUCED MOTION
+==================================================
+
+Support reduced motion preferences.
+
+If user prefers reduced motion:
+- minimize animation
+- keep only essential transition feedback
+- remove pulsing or decorative movement
+
+Animations must never:
+- trigger discomfort
+- make content harder to use
+
+==================================================
+17) CONSISTENCY RULE
+==================================================
+
+All micro-interactions must follow one coherent motion language.
+
+Meaning:
+- same hover feel
+- same button response pattern
+- same expand/collapse style
+- same toast timing
+- same focus ring logic
+
+No random motion styles between components.
+
+==================================================
+18) FINAL GOAL
+==================================================
+
+The UI should feel:
+
+- premium
+- confident
+- intelligent
+- responsive
+- modern
+- enterprise-grade
+
+Micro-interactions must make the system feel alive and trustworthy,
+not flashy or distracting.

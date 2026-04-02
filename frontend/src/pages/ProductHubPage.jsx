@@ -14,7 +14,7 @@ import {
   StatusChip, PriorityBadge, SLAIndicator, StatCard, EmptyState,
   HakimInsightCard, CommentInput, CommentBubble,
   STATUS_CONFIG, PRIORITY_CONFIG, TYPE_CONFIG, STATUS_PROGRESS, COMMENT_TYPE_CONFIG,
-  formatDualDateCompact, getInitials,
+  formatDualDateCompact, getInitials, getUserColor,
 } from '../components/product-hub';
 import {
   Brain, Plus, Search, BarChart3, Users, Target, Zap, Sparkles,
@@ -573,6 +573,7 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
   const commentCount = issue.comment_count || 0;
   const attachmentCount = issue.attachments?.length || 0;
   const hasDuplicates = issue.hakim_analysis?.duplicate_ids?.length > 0;
+  const recentComments = issue.recent_comments || [];
 
   useEffect(() => {
     if (isHighlighted && cardRef.current) {
@@ -701,22 +702,29 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
   return (
     <div
       ref={cardRef}
-      className={`w-full rounded-2xl border transition-all duration-300 overflow-hidden group bg-white ${isExpanded ? 'border-brand-turquoise/40 shadow-[0_8px_32px_rgba(70,193,190,0.12)] ring-1 ring-brand-turquoise/15' : 'border-slate-200 hover:border-slate-300 hover:shadow-[0_4px_16px_rgba(0,0,0,0.06)]'} ${isHighlighted ? 'ring-2 ring-brand-turquoise ring-offset-2' : ''}`}
+      className={`w-full rounded-2xl border transition-all duration-300 overflow-hidden group ${
+        isDone
+          ? 'bg-gradient-to-l from-emerald-50/80 via-emerald-50/40 to-white border-emerald-200/60'
+          : isRejected
+          ? 'bg-gradient-to-l from-red-50/50 via-red-50/20 to-white border-red-200/50'
+          : 'bg-white border-slate-200'
+      } ${isExpanded ? 'border-brand-turquoise/40 shadow-[0_8px_32px_rgba(70,193,190,0.12)] ring-1 ring-brand-turquoise/15' : `hover:shadow-[0_4px_16px_rgba(0,0,0,0.06)] ${!isDone && !isRejected ? 'hover:border-slate-300' : ''}`} ${isHighlighted ? 'ring-2 ring-brand-turquoise ring-offset-2' : ''}`}
     >
       {/* ═══════════════ COLLAPSED STATE ═══════════════ */}
       <div
         onClick={() => onToggleExpand(issue.id)}
         className="cursor-pointer"
       >
-        {/* ─── SECTION 1: Title (DOMINANT) + ID ─── */}
-        <div className="px-5 pt-5 pb-2">
-          <div className="flex items-start justify-between gap-4">
+        {/* ─── ROW 1: Title + Issue Number + Expand ─── */}
+        <div className="px-5 pt-5 pb-2.5">
+          <div className="flex items-start gap-3">
             <div className="flex-1 min-w-0">
-              <h3 className={`text-base font-bold leading-snug ${isDone ? 'text-emerald-700 line-through decoration-emerald-300/60 decoration-2' : isRejected ? 'text-red-400 line-through decoration-red-200/60 decoration-2' : 'text-brand-navy'}`}>
+              <h3 className={`text-base font-bold leading-relaxed ${isDone ? 'text-emerald-800' : isRejected ? 'text-red-400' : 'text-brand-navy'}`}>
+                {isDone && <CheckCircle2 className="h-4 w-4 text-emerald-500 inline-block ml-1.5 -mt-0.5" />}
                 {issue.title}
               </h3>
             </div>
-            <div className="flex items-center gap-2.5 flex-shrink-0 pt-0.5">
+            <div className="flex items-center gap-2 flex-shrink-0 pt-0.5">
               {hasDuplicates && (
                 <div className="flex items-center gap-1 px-1.5 py-0.5 bg-amber-50 rounded-md border border-amber-100">
                   <Copy className="h-2.5 w-2.5 text-amber-500" />
@@ -733,51 +741,42 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
           </div>
         </div>
 
-        {/* ─── SECTION 2: Reporter + Status + Priority ─── */}
+        {/* ─── ROW 2: Badges+Reporter aligned LEFT (end in RTL) ─── */}
         <div className="px-5 pb-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 flex-wrap">
-              <div className="flex items-center gap-2">
-                <div
-                  className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0 shadow-sm"
-                  style={{ background: isDone ? 'linear-gradient(135deg, #10b981, #059669)' : isRejected ? 'linear-gradient(135deg, #ef4444, #dc2626)' : 'linear-gradient(135deg, #1C3D74, #46C1BE)' }}
-                >
-                  {getInitials(issue.employee_name)}
-                </div>
-                <span className="text-xs font-semibold text-brand-navy truncate max-w-[150px]">{issue.employee_name}</span>
+          <div className="flex items-center justify-end gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <div
+                className="w-6 h-6 rounded-full flex items-center justify-center text-[8px] font-bold text-white flex-shrink-0 shadow-sm"
+                style={{ background: isDone ? 'linear-gradient(135deg, #10b981, #059669)' : isRejected ? 'linear-gradient(135deg, #ef4444, #dc2626)' : 'linear-gradient(135deg, #1C3D74, #46C1BE)' }}
+              >
+                {getInitials(issue.employee_name)}
               </div>
-              <div className="w-px h-4 bg-slate-200 max-sm:hidden" />
-              <div className="flex items-center gap-2">
-                <StatusChip status={issue.status} size="default" showIcon />
-                <PriorityBadge priority={issue.priority} size="sm" showIcon />
-              </div>
+              <span className="text-[11px] font-semibold text-brand-navy truncate max-w-[130px]">{issue.employee_name}</span>
             </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <SLAIndicator issue={issue} size="sm" />
-              {issue.assigned_team && (
-                <Badge variant="outline" className="text-[9px] border-brand-turquoise/20 text-brand-turquoise px-2 py-0.5 h-5 font-medium max-md:hidden rounded-md">
-                  {issue.assigned_team}
-                </Badge>
-              )}
-            </div>
+            <div className="w-px h-4 bg-slate-200" />
+            <StatusChip status={issue.status} size="default" showIcon />
+            <PriorityBadge priority={issue.priority} size="sm" showIcon />
+            <SLAIndicator issue={issue} size="sm" />
+            {issue.assigned_team && (
+              <Badge variant="outline" className="text-[9px] border-brand-turquoise/20 text-brand-turquoise px-2 py-0.5 h-5 font-medium max-md:hidden rounded-md">
+                {issue.assigned_team}
+              </Badge>
+            )}
           </div>
         </div>
 
-        {/* ─── SECTION 3: Progress Bar (FULL WIDTH — DOMINANT) ─── */}
+        {/* ─── ROW 3: Progress Bar ─── */}
         <div className="px-5 pb-3">
           <div className="flex items-center justify-between mb-1.5">
             <div className="flex items-center gap-2">
               <span className="text-[11px] text-slate-500 font-medium">التقدم</span>
               <span className="text-[10px] text-slate-400">({statusLabel})</span>
-              {isHighRiskLowProgress && (
-                <AlertTriangle className="h-3 w-3 text-red-500 animate-pulse" />
-              )}
             </div>
             <span className={`text-xs font-bold tabular-nums ${progress >= 75 ? 'text-emerald-600' : progress >= 50 ? 'text-brand-turquoise' : progress >= 25 ? 'text-amber-500' : 'text-red-500'}`}>
               {progress}%
             </span>
           </div>
-          <div className={`w-full bg-slate-100 rounded-full h-2.5 overflow-hidden ${isHighRiskLowProgress ? 'ring-1 ring-red-200' : ''}`}>
+          <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
             <div
               className={`h-full rounded-full bg-gradient-to-l ${progressColor} transition-all duration-700 ease-out`}
               style={{ width: `${Math.max(progress, 2)}%` }}
@@ -785,43 +784,37 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
           </div>
         </div>
 
-        {/* ─── SECTION 4: AI Strip (compact, only if relevant) ─── */}
-        {!isDone && !isRejected && (predictions.delay !== 'on_track' || predictions.escalation !== 'stable') && (
-          <div className="px-5 pb-2">
-            <div className="flex items-center gap-2 py-1.5 px-3 rounded-lg bg-slate-50/80 border border-slate-100">
-              <Sparkles className="h-3 w-3 text-brand-turquoise/60 flex-shrink-0" />
-              <span className="text-[9px] text-slate-400 font-medium flex-shrink-0">حكيم</span>
-              <div className="w-px h-3 bg-slate-200" />
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span title={riskCfg.tooltip} className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md ${riskCfg.bg} border ${riskCfg.border} ${riskCfg.color}`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${riskCfg.dot}`} />
-                  {riskCfg.label}
-                </span>
-                {predictions.delay !== 'on_track' && (
-                  <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md ${delayCfg.bg} border ${delayCfg.border} ${delayCfg.color}`}>
-                    {delayCfg.label}
-                  </span>
-                )}
-                {predictions.escalation !== 'stable' && (
-                  <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md ${escalationCfg.bg} border ${escalationCfg.border} ${escalationCfg.color}`}>
-                    {escalationCfg.label}
-                  </span>
-                )}
-              </div>
+        {/* ─── ROW 4: Recent Comments Preview ─── */}
+        {recentComments.length > 0 && (
+          <div className="px-5 pb-3">
+            <div className="space-y-1.5 border-t border-slate-100 pt-2.5">
+              {recentComments.slice(0, 2).map((c, i) => {
+                const uColor = getUserColor(c.created_by);
+                return (
+                  <div key={i} className="flex items-start gap-2">
+                    <div
+                      className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold text-white flex-shrink-0 mt-0.5"
+                      style={{ backgroundColor: uColor.avatar }}
+                    >
+                      {getInitials(c.user_name)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-[10px] font-semibold ${uColor.text}`}>{c.user_name}</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 leading-snug line-clamp-1 mt-0.5">{c.content}</p>
+                    </div>
+                  </div>
+                );
+              })}
+              {commentCount > 2 && (
+                <p className="text-[9px] text-slate-400 font-medium pr-7">+{commentCount - 2} تعليقات أخرى</p>
+              )}
             </div>
           </div>
         )}
 
-        {isDone && (
-          <div className="px-5 pb-2">
-            <div className="flex items-center gap-2 py-1.5 px-3 rounded-lg bg-emerald-50/60 border border-emerald-100">
-              <CheckCircle2 className="h-3 w-3 text-emerald-500 flex-shrink-0" />
-              <span className="text-[10px] font-medium text-emerald-700">مكتمل</span>
-            </div>
-          </div>
-        )}
-
-        {/* ─── SECTION 5: Footer — Date + Metadata ─── */}
+        {/* ─── ROW 5: Footer — Date + Metadata ─── */}
         <div className="px-5 pb-4 pt-1">
           <div className="flex items-center justify-between border-t border-slate-100 pt-2.5">
             <div className="flex items-center gap-2">

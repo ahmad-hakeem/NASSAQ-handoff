@@ -151,6 +151,24 @@ export function formatDualDateCompact(dateStr) {
   return `${hijri} | ${greg}`;
 }
 
+const USER_COLORS = [
+  { bg: 'bg-blue-100', text: 'text-blue-700', avatar: '#3b82f6' },
+  { bg: 'bg-emerald-100', text: 'text-emerald-700', avatar: '#10b981' },
+  { bg: 'bg-purple-100', text: 'text-purple-700', avatar: '#8b5cf6' },
+  { bg: 'bg-amber-100', text: 'text-amber-700', avatar: '#f59e0b' },
+  { bg: 'bg-rose-100', text: 'text-rose-700', avatar: '#f43f5e' },
+  { bg: 'bg-cyan-100', text: 'text-cyan-700', avatar: '#06b6d4' },
+  { bg: 'bg-indigo-100', text: 'text-indigo-700', avatar: '#6366f1' },
+  { bg: 'bg-orange-100', text: 'text-orange-700', avatar: '#f97316' },
+];
+export { USER_COLORS };
+
+export function getUserColor(userId) {
+  let hash = 0;
+  for (let i = 0; i < (userId || '').length; i++) hash = ((hash << 5) - hash + (userId || '').charCodeAt(i)) | 0;
+  return USER_COLORS[Math.abs(hash) % USER_COLORS.length];
+}
+
 export function getInitials(name) {
   if (!name || !name.trim()) return '؟';
   const parts = name.trim().split(/\s+/);
