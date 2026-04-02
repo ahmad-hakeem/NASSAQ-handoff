@@ -325,43 +325,58 @@ export function ProductHubIssuePage() {
                   <span className="text-sm font-bold text-brand-navy">لوحة التحكم</span>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr_auto_auto] gap-4 items-start">
-                  {/* Status Change */}
-                  {allowedTransitions.length > 0 && (
-                    <div>
-                      <p className="text-[11px] text-muted-foreground mb-2 font-medium">تغيير الحالة</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {allowedTransitions.map(s => {
-                          const cfg = STATUS_CONFIG[s] || {};
-                          return (
-                            <Button
-                              key={s}
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleStatusChange(s)}
-                              disabled={updatingStatus}
-                              className="text-[11px] rounded-lg h-8 px-3"
-                            >
-                              {updatingStatus && <Loader2 className="h-3 w-3 animate-spin ml-1" />}
-                              {cfg.label || s}
-                            </Button>
-                          );
-                        })}
-                      </div>
-                      <Input
-                        value={statusNote}
-                        onChange={(e) => setStatusNote(e.target.value)}
-                        placeholder="ملاحظة (اختياري)"
-                        className="mt-2 text-right text-xs rounded-lg h-8"
-                      />
-                    </div>
-                  )}
+                <div className="flex flex-col lg:flex-row gap-4 items-start">
+                  {/* Status Action Buttons */}
+                  <div className="flex-1">
+                    <p className="text-[11px] text-muted-foreground mb-3 font-medium">تغيير الحالة</p>
+                    <div className="flex flex-wrap gap-3">
+                      {issue.status !== 'in_progress' && (
+                        <Button
+                          onClick={() => handleStatusChange('in_progress')}
+                          disabled={updatingStatus}
+                          className="h-12 px-6 text-sm font-bold rounded-xl gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-200 transition-all"
+                        >
+                          {updatingStatus ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                          قيد التنفيذ
+                        </Button>
+                      )}
+                      {issue.status === 'in_progress' && (
+                        <div className="flex items-center gap-2 h-12 px-5 rounded-xl bg-blue-50 border-2 border-blue-200 text-blue-700 font-bold text-sm">
+                          <CheckCircle2 className="h-4 w-4" />
+                          قيد التنفيذ حالياً
+                        </div>
+                      )}
 
-                  {allowedTransitions.length > 0 && <Separator orientation="vertical" className="h-16 hidden lg:block" />}
+                      {issue.status !== 'done' && issue.status !== 'user_feedback_confirmed' && (
+                        <Button
+                          onClick={() => handleStatusChange('done')}
+                          disabled={updatingStatus}
+                          className="h-12 px-6 text-sm font-bold rounded-xl gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-200 transition-all"
+                        >
+                          {updatingStatus ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                          مكتمل
+                        </Button>
+                      )}
+                      {(issue.status === 'done' || issue.status === 'user_feedback_confirmed') && (
+                        <div className="flex items-center gap-2 h-12 px-5 rounded-xl bg-emerald-50 border-2 border-emerald-200 text-emerald-700 font-bold text-sm">
+                          <CheckCircle2 className="h-4 w-4" />
+                          مكتمل
+                        </div>
+                      )}
+                    </div>
+                    <Input
+                      value={statusNote}
+                      onChange={(e) => setStatusNote(e.target.value)}
+                      placeholder="ملاحظة (اختياري)"
+                      className="mt-3 text-right text-xs rounded-lg h-8 max-w-xs"
+                    />
+                  </div>
+
+                  <Separator orientation="vertical" className="h-20 hidden lg:block" />
 
                   {/* Team Assignment */}
                   <div>
-                    <p className="text-[11px] text-muted-foreground mb-2 font-medium">تعيين الفريق</p>
+                    <p className="text-[11px] text-muted-foreground mb-3 font-medium">تعيين الفريق</p>
                     <div className="flex gap-2">
                       <Select value={assignTeam} onValueChange={setAssignTeam}>
                         <SelectTrigger className="text-xs rounded-lg h-8 min-w-[140px]">
@@ -389,12 +404,12 @@ export function ProductHubIssuePage() {
                     )}
                   </div>
 
-                  <Separator orientation="vertical" className="h-16 hidden lg:block" />
+                  <Separator orientation="vertical" className="h-20 hidden lg:block" />
 
                   {/* Prompt Status Indicator */}
                   <div>
-                    <p className="text-[11px] text-muted-foreground mb-2 font-medium">البرومبت</p>
-                    <div className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg ${issue.generated_prompt ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
+                    <p className="text-[11px] text-muted-foreground mb-3 font-medium">البرومبت</p>
+                    <div className={`flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg ${issue.generated_prompt ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
                       {issue.generated_prompt ? <CheckCircle2 className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
                       {issue.generated_prompt ? 'Generated' : 'Not Generated'}
                     </div>

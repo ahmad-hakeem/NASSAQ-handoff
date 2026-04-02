@@ -622,7 +622,8 @@ async def update_issue_status(
     if current_status in FINAL_STATUSES and new_status == "under_review":
         enforce_permission(current_user, HubAction.REOPEN_ISSUE)
 
-    if not validate_status_transition(current_status, new_status):
+    main_admin_override = is_main_admin(current_user) and new_status in {"in_progress", "done"}
+    if not main_admin_override and not validate_status_transition(current_status, new_status):
         _hub_error(400, "INVALID_TRANSITION", get_transition_error(current_status, new_status), {
             "current_status": current_status,
             "requested_status": new_status,
@@ -829,19 +830,31 @@ async def regenerate_prompt(
     prompt = await _generate_prompt(issue)
 
     now = _now_iso()
+    update_set = {
+        "generated_prompt": prompt,
+        "ai.generated_prompt": prompt,
+        "updated_at": now,
+        "system.updated_at": now,
+    }
+
+    current_status = issue.get("status", "new")
+    if current_status != "in_progress":
+        update_set["status"] = "in_progress"
+        update_set["system.last_status_changed_at"] = now
+
     await db.product_issues.update_one(
         {"id": issue_id},
-        {"$set": {
-            "generated_prompt": prompt,
-            "ai.generated_prompt": prompt,
-            "updated_at": now,
-            "system.updated_at": now,
-        }}
+        {"$set": update_set}
     )
+
+    if current_status != "in_progress":
+        await handle_status_changed(issue_id, current_user, current_status, "in_progress", "")
+        await audit_status_changed(issue_id, current_user, current_status, "in_progress", "Auto: prompt generated")
+
     await handle_prompt_generated(issue_id, current_user)
     await audit_prompt_generated(issue_id, current_user)
 
-    return {"success": True, "prompt": prompt, "issue_id": issue_id}
+    return {"success": True, "prompt": prompt, "issue_id": issue_id, "new_status": "in_progress"}
 
 
 @router.get("/issues/{issue_id}/hakim-insights")
