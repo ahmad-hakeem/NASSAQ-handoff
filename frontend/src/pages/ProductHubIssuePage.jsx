@@ -18,7 +18,7 @@ import {
   CommentInput, CommentBubble,
   STATUS_CONFIG, TYPE_CONFIG, STATUS_PROGRESS,
   FINAL_STATUSES, TEAMS, EVENT_LABELS, COMMENT_TYPE_CONFIG, IMPACT_LABELS,
-  formatDualDate, formatDualDateTime, formatDualDateCompact, getInitials,
+  formatDualDate, formatDualDateTime, formatDualDateCompact, getInitials, getUserColor,
 } from '../components/product-hub';
 import {
   ArrowRight, Brain, Copy, Send, Shield, MessageSquare, Activity,
@@ -654,16 +654,18 @@ export function ProductHubIssuePage() {
                   <CardContent className="space-y-4">
                     {issue.comments?.map(c => {
                       const cTypeCfg = COMMENT_TYPE_CONFIG[c.type] || COMMENT_TYPE_CONFIG.general;
+                      const uColor = getUserColor(c.created_by || c.user_id);
                       return (
                         <div key={c.id} className={`flex gap-3 p-3 rounded-xl border ${cTypeCfg.borderColor} ${cTypeCfg.bgColor}`}>
-                          <Avatar className="h-8 w-8 flex-shrink-0">
-                            <AvatarFallback className="bg-brand-navy text-white text-xs">
-                              {(c.user_name || '?')[0]}
-                            </AvatarFallback>
-                          </Avatar>
+                          <div
+                            className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0 shadow-sm"
+                            style={{ backgroundColor: uColor.avatar }}
+                          >
+                            {getInitials(c.user_name)}
+                          </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 text-xs flex-wrap">
-                              <span className="font-semibold text-foreground">{c.user_name}</span>
+                              <span className={`font-semibold ${uColor.text}`}>{c.user_name}</span>
                               {c.user_role === 'platform_admin' && (
                                 <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4">مدير</Badge>
                               )}

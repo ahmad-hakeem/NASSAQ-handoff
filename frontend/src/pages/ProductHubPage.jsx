@@ -717,8 +717,8 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
       >
         {/* ─── ROW 1: Title + Issue Number + Expand ─── */}
         <div className="px-5 pt-5 pb-2.5">
-          <div className="flex items-start gap-3">
-            <div className="flex-1 min-w-0">
+          <div className="flex items-start gap-3" dir="rtl">
+            <div className="flex-1 min-w-0 text-right">
               <h3 className={`text-base font-bold leading-relaxed ${isDone ? 'text-emerald-800' : isRejected ? 'text-red-400' : 'text-brand-navy'}`}>
                 {isDone && <CheckCircle2 className="h-4 w-4 text-emerald-500 inline-block ml-1.5 -mt-0.5" />}
                 {issue.title}
@@ -741,9 +741,9 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
           </div>
         </div>
 
-        {/* ─── ROW 2: Badges+Reporter aligned LEFT (end in RTL) ─── */}
-        <div className="px-5 pb-3">
-          <div className="flex items-center justify-end gap-3 flex-wrap">
+        {/* ─── ROW 2: Reporter + Badges ─── */}
+        <div className="px-5 pb-3" dir="rtl">
+          <div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-2">
               <div
                 className="w-6 h-6 rounded-full flex items-center justify-center text-[8px] font-bold text-white flex-shrink-0 shadow-sm"
@@ -766,7 +766,7 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
         </div>
 
         {/* ─── ROW 3: Progress Bar ─── */}
-        <div className="px-5 pb-3">
+        <div className="px-5 pb-3" dir="rtl">
           <div className="flex items-center justify-between mb-1.5">
             <div className="flex items-center gap-2">
               <span className="text-[11px] text-slate-500 font-medium">التقدم</span>
@@ -784,38 +784,9 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
           </div>
         </div>
 
-        {/* ─── ROW 4: Recent Comments Preview ─── */}
-        {recentComments.length > 0 && (
-          <div className="px-5 pb-3">
-            <div className="space-y-1.5 border-t border-slate-100 pt-2.5">
-              {recentComments.slice(0, 2).map((c, i) => {
-                const uColor = getUserColor(c.created_by);
-                return (
-                  <div key={i} className="flex items-start gap-2">
-                    <div
-                      className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold text-white flex-shrink-0 mt-0.5"
-                      style={{ backgroundColor: uColor.avatar }}
-                    >
-                      {getInitials(c.user_name)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <span className={`text-[10px] font-semibold ${uColor.text}`}>{c.user_name}</span>
-                      </div>
-                      <p className="text-[10px] text-slate-500 leading-snug line-clamp-1 mt-0.5">{c.content}</p>
-                    </div>
-                  </div>
-                );
-              })}
-              {commentCount > 2 && (
-                <p className="text-[9px] text-slate-400 font-medium pr-7">+{commentCount - 2} تعليقات أخرى</p>
-              )}
-            </div>
-          </div>
-        )}
 
-        {/* ─── ROW 5: Footer — Date + Metadata ─── */}
-        <div className="px-5 pb-4 pt-1">
+        {/* ─── ROW 4: Footer — Date + Metadata ─── */}
+        <div className="px-5 pb-4 pt-1" dir="rtl">
           <div className="flex items-center justify-between border-t border-slate-100 pt-2.5">
             <div className="flex items-center gap-2">
               <Clock className="h-3 w-3 text-slate-300" />
@@ -972,18 +943,33 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
                       <p className="text-[10px] text-muted-foreground mt-0.5">كن أول من يعلّق</p>
                     </div>
                   ) : (
-                    comments.map((comment, idx) => (
-                      <div key={comment.id} className="hub-comment-enter" style={{ animationDelay: `${Math.min(idx * 40, 200)}ms` }}>
-                        <CommentBubble
-                          comment={comment}
-                          currentUserId={userId}
-                          isMainAdmin={isMainAdmin}
-                          isAdmin={isAdmin}
-                          onEdit={handleEditComment}
-                          onDelete={handleDeleteComment}
-                        />
-                      </div>
-                    ))
+                    comments.map((comment, idx) => {
+                      const uColor = getUserColor(comment.created_by || comment.user_id);
+                      return (
+                        <div key={comment.id} className="hub-comment-enter flex gap-2.5" style={{ animationDelay: `${Math.min(idx * 40, 200)}ms` }}>
+                          <div
+                            className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0 mt-0.5 shadow-sm"
+                            style={{ backgroundColor: uColor.avatar }}
+                          >
+                            {getInitials(comment.user_name)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 mb-0.5">
+                              <span className={`text-[11px] font-semibold ${uColor.text}`}>{comment.user_name}</span>
+                              <span className="text-[9px] text-slate-400">{formatDualDateCompact(comment.timestamp)}</span>
+                            </div>
+                            <CommentBubble
+                              comment={comment}
+                              currentUserId={userId}
+                              isMainAdmin={isMainAdmin}
+                              isAdmin={isAdmin}
+                              onEdit={handleEditComment}
+                              onDelete={handleDeleteComment}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })
                   )}
                 </div>
 
