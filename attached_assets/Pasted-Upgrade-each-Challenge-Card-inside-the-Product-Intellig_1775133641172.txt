@@ -1,0 +1,253 @@
+Upgrade each Challenge Card inside the "Product Intelligence Hub" into an Expandable Smart Panel with integrated Hakim AI (Live Assistant).
+
+IMPORTANT:
+This is an enhancement of the internal card structure.
+Do NOT redesign the main page layout.
+Each card becomes an interactive workspace.
+
+==================================================
+1) CORE CONCEPT
+==================================================
+
+Each Challenge Card should behave as:
+
+→ Collapsed State = Smart Preview Card  
+→ Expanded State = Full Smart Panel Workspace  
+
+With Hakim AI embedded directly inside the card.
+
+==================================================
+2) COLLAPSED STATE (DEFAULT VIEW)
+==================================================
+
+The card initially appears as a compact preview:
+
+- Title
+- Reporter
+- Progress (full width bar)
+- Status
+- Challenge ID
+- Date
+
++ Add:
+→ "Expand" CTA (click anywhere or arrow icon)
+
+NO detailed content here.
+
+==================================================
+3) EXPANDED STATE (SMART PANEL)
+==================================================
+
+When expanded:
+
+- Card smoothly expands (animated)
+- Takes FULL WIDTH
+- Pushes other cards down (accordion behavior)
+- Only ONE card expanded at a time (recommended)
+
+==================================================
+4) INTERNAL SMART PANEL STRUCTURE
+==================================================
+
+The expanded panel is divided into 3 main zones:
+
+--------------------------------------------------
+A) DETAILS ZONE (LEFT or TOP)
+--------------------------------------------------
+
+- Title (large, enhanced)
+- Reporter (highlighted)
+- Status / Priority (badges)
+- Progress bar (visual)
+- Context (Section / Page / Platform)
+
+- Current Behavior
+- Expected Behavior
+- Impact
+
+- Clean typography
+- Clear spacing
+
+--------------------------------------------------
+B) COMMENTS ZONE (RIGHT or BOTTOM)
+--------------------------------------------------
+
+- Full comment thread
+- User identity + timestamp
+- Mentions (@)
+- Multi-line input
+- Send button
+
+- Feels like:
+→ Slack / Notion discussion panel
+
+--------------------------------------------------
+C) HAKIM AI ZONE (CRITICAL — NEW)
+--------------------------------------------------
+
+Hakim must be embedded INSIDE the card, not separate.
+
+Display as:
+
+→ Floating panel OR side assistant OR inline smart block
+
+==================================================
+5) HAKIM AI — LIVE BEHAVIOR
+==================================================
+
+Hakim must feel:
+
+→ alive
+→ contextual
+→ proactive
+
+--------------------------------------------------
+A) AUTO ANALYSIS (ON EXPAND)
+--------------------------------------------------
+
+When card expands:
+
+Hakim automatically:
+
+- analyzes the challenge
+- detects:
+  → issue type
+  → priority
+  → possible root cause
+  → duplication risk
+
+Display:
+
+👉 "Hakim Insight Panel"
+
+Example:
+- Suggested Priority: High
+- Similar Issues Found: 3
+- Risk Level: Medium
+- Suggested Fix Direction
+
+--------------------------------------------------
+B) ACTIONS (INTERACTIVE)
+--------------------------------------------------
+
+Hakim provides buttons:
+
+- Generate Prompt
+- Improve Title
+- Suggest Expected Behavior
+- Detect Duplicate
+- Suggest Fix Plan
+
+--------------------------------------------------
+C) PROMPT GENERATION (FOR ADMINS ONLY)
+--------------------------------------------------
+
+Only visible for:
+- zalat@nassaqapp.com
+- hakim@nassaqapp.com
+
+Hakim generates:
+
+→ structured execution prompt
+
+With:
+- Copy button
+- Regenerate button
+
+--------------------------------------------------
+D) CONTEXTUAL SUGGESTIONS
+--------------------------------------------------
+
+Hakim reacts to user actions:
+
+Example:
+- When user edits description:
+  → Hakim suggests improvements
+
+- When impact is missing:
+  → Hakim prompts user to complete it
+
+==================================================
+6) UI INTEGRATION OF HAKIM
+==================================================
+
+Hakim must NOT feel like a chatbot.
+
+Instead:
+
+- appears as:
+  → smart assistant layer
+  → contextual UI blocks
+  → inline suggestions
+
+- use:
+  → Hakim avatar (dynamic)
+  → subtle animations
+  → micro-interactions
+
+==================================================
+7) EXPAND / COLLAPSE UX
+==================================================
+
+- Smooth animation (300–500ms)
+- Maintain scroll position
+- Option:
+  → "Collapse All"
+
+- Visual indicator:
+  → expanded card is clearly active
+
+==================================================
+8) PERFORMANCE OPTIMIZATION
+==================================================
+
+- Load heavy data ONLY on expand:
+  - comments
+  - Hakim analysis
+
+- Use:
+  → lazy loading
+  → caching
+
+==================================================
+9) RESPONSIVENESS
+==================================================
+
+Desktop:
+→ Split layout (Details + Comments + Hakim)
+
+Tablet:
+→ Stacked sections
+
+Mobile:
+→ Vertical flow:
+  Details → Hakim → Comments
+
+==================================================
+10) EXPERIENCE GOAL
+==================================================
+
+Transform each card into:
+
+→ Smart Decision Unit  
+→ Execution Workspace  
+→ AI-assisted collaboration panel  
+
+User should be able to:
+
+- understand the challenge
+- collaborate
+- take action
+- generate solution
+
+ALL without leaving the card
+
+==================================================
+11) FINAL VISION
+==================================================
+
+This is NOT a card anymore.
+
+This is:
+
+→ "Mini Operating System for each Challenge"

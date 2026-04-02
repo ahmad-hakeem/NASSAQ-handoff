@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { isGenericName } from '../components/GenericNameGuard';
 import { Sidebar } from '../components/layout/Sidebar';
 import { HakimAssistant } from '../components/hakim/HakimAssistant';
 import { Button } from '../components/ui/button';
@@ -261,6 +262,10 @@ export const AccountSettingsPage = () => {
   const profileChanged = originalProfile && JSON.stringify(profile) !== JSON.stringify(originalProfile);
 
   const handleSaveProfile = async () => {
+    if (isGenericName(profile.full_name)) {
+      nassaqError(isRTL ? 'يجب استخدام اسمك الشخصي الحقيقي بدلاً من اسم عام أو وظيفي' : 'You must use your real personal name');
+      return;
+    }
     setSaving(true);
     setSaveSuccess(null);
     try {
@@ -575,7 +580,13 @@ export const AccountSettingsPage = () => {
                           </Select>
                         </FieldGroup>
                         <FieldGroup label={isRTL ? 'الاسم الكامل (عربي)' : 'Full Name (Arabic)'} icon={User}>
-                          <Input value={profile.full_name} onChange={(e) => setProfile({ ...profile, full_name: e.target.value })} className="rounded-xl" data-testid="profile-name-ar" dir="rtl" />
+                          <Input value={profile.full_name} onChange={(e) => setProfile({ ...profile, full_name: e.target.value })} className={`rounded-xl ${isGenericName(profile.full_name) ? 'border-amber-400 focus:border-amber-500' : ''}`} data-testid="profile-name-ar" dir="rtl" />
+                          {isGenericName(profile.full_name) && (
+                            <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                              <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+                              {isRTL ? 'يجب استخدام اسمك الشخصي الحقيقي بدلاً من اسم عام أو وظيفي' : 'You must use your real personal name, not a generic role title'}
+                            </p>
+                          )}
                         </FieldGroup>
                         <FieldGroup label={isRTL ? 'الاسم الكامل (إنجليزي)' : 'Full Name (English)'} icon={User}>
                           <Input value={profile.full_name_en} onChange={(e) => setProfile({ ...profile, full_name_en: e.target.value })} className="rounded-xl" data-testid="profile-name-en" dir="ltr" />

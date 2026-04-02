@@ -560,6 +560,12 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
         if not existing:
             raise HTTPException(status_code=404, detail="المستخدم غير موجود")
 
+        if settings.name:
+            from engines.name_validation import validate_personal_name
+            valid, err_msg = validate_personal_name(settings.name)
+            if not valid:
+                raise HTTPException(status_code=400, detail=err_msg)
+
         field_map = {
             "name": {"old_key": "full_name", "new_val": settings.name, "label": "الاسم"},
             "title": {"old_key": "title", "new_val": settings.title, "label": "اللقب"},

@@ -631,6 +631,10 @@ async def update_current_user_profile(
     update_data = {"updated_at": datetime.now(timezone.utc).isoformat()}
     
     if data.full_name is not None:
+        from engines.name_validation import validate_personal_name
+        valid, err_msg = validate_personal_name(data.full_name)
+        if not valid:
+            raise HTTPException(status_code=400, detail=err_msg)
         update_data["full_name"] = data.full_name
     if data.full_name_en is not None:
         update_data["full_name_en"] = data.full_name_en
@@ -804,6 +808,10 @@ async def update_user_profile_extended(
     if data.title is not None:
         update_data["title"] = data.title if data.title != "none" else ""
     if data.full_name is not None:
+        from engines.name_validation import validate_personal_name
+        valid, err_msg = validate_personal_name(data.full_name)
+        if not valid:
+            raise HTTPException(status_code=400, detail=err_msg)
         update_data["full_name"] = data.full_name
     if data.full_name_en is not None:
         update_data["full_name_en"] = data.full_name_en

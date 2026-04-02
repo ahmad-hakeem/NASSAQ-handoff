@@ -1,0 +1,176 @@
+Redesign the internal UI structure of each Challenge Card inside the "Product Intelligence Hub" page.
+
+IMPORTANT:
+This task is NOT about redesigning the page layout.
+This is strictly about redesigning the internal structure of each individual card.
+
+==================================================
+1) CORE OBJECTIVE
+==================================================
+
+Transform each Challenge Card from a compact/simple card into a structured, full-width internal workspace that clearly presents all important data.
+
+The card should feel like:
+→ a mini workspace
+→ not a small summary box
+
+==================================================
+2) FULL WIDTH CONTENT INSIDE CARD
+==================================================
+
+- The internal content of the card must expand to use FULL available width
+- Avoid narrow columns or cramped layouts
+- No compressed content
+
+==================================================
+3) INTERNAL STRUCTURE (MANDATORY)
+==================================================
+
+Each card must be divided into clear internal sections:
+
+--------------------------------------------------
+A) DETAILS SECTION
+--------------------------------------------------
+
+This section must include:
+
+- Challenge Title (large and clear)
+- Reporter (highlighted clearly)
+- Status (badge)
+- Priority (badge)
+- Progress (visual bar)
+- Section / Page / Context
+- Current Behavior
+- Expected Behavior
+- Impact
+
+This section must:
+- be easy to scan
+- use proper spacing
+- use hierarchy (title > metadata > description)
+
+--------------------------------------------------
+B) COMMENTS SECTION
+--------------------------------------------------
+
+- Must be visible inside the card (NOT hidden or collapsed by default)
+- Must take full width or balanced space
+
+Include:
+- comments thread
+- user names
+- timestamps
+- mention support
+- input field (multi-line)
+- send button
+
+Comments must feel like:
+→ collaboration panel (Slack-style)
+
+==================================================
+4) LAYOUT OPTIONS (INSIDE CARD)
+==================================================
+
+Choose ONE of the following (based on best UX):
+
+Option A:
+- Details (top)
+- Comments (bottom)
+
+Option B:
+- Details (left)
+- Comments (right)
+
+Decision must prioritize:
+- readability
+- clarity
+- non-crowded layout
+
+==================================================
+5) VISUAL HIERARCHY
+==================================================
+
+Make the following elements visually dominant:
+
+- Title → biggest
+- Reporter → clearly highlighted
+- Status / Priority → colored badges
+- Progress → clear bar
+
+Less important data:
+- placed secondary
+- smaller text
+
+==================================================
+6) UI CLEANUP
+==================================================
+
+Inside the card:
+
+- Remove:
+  - unnecessary duplication
+  - cluttered elements
+  - tight spacing
+
+- Ensure:
+  - clean alignment
+  - consistent spacing
+  - clear separation between sections
+
+==================================================
+7) COMMENTS EXPERIENCE
+==================================================
+
+Comments must:
+
+- be easy to read
+- be clearly separated
+- show author identity
+- support @mentions
+- support multi-line input
+- not feel compressed
+
+==================================================
+8) RESPONSIVENESS
+==================================================
+
+Desktop:
+→ full structured layout inside card
+
+Tablet:
+→ stacked sections
+
+Mobile:
+→ vertical layout
+→ scroll inside card if needed
+
+==================================================
+9) PERFORMANCE / UX
+==================================================
+
+- Avoid heavy rendering
+- Ensure smooth scrolling inside card if long
+- Maintain responsiveness
+
+==================================================
+10) GOAL
+==================================================
+
+Transform each card from:
+
+→ a simple display unit
+
+To:
+
+→ a structured mini workspace that includes:
+   - full details
+   - comments
+   - interaction
+
+Without changing the main page layout.
+
+The user should be able to:
+- read everything
+- understand quickly
+- interact directly
+without opening a separate page

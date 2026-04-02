@@ -6,6 +6,7 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import { WebSocketProvider } from "./contexts/WebSocketContext";
 import { NassaqAlertProvider } from "./components/ui/NassaqAlertDialog";
 import ErrorBoundary from "./components/ErrorBoundary";
+import { GenericNameGuard } from "./components/GenericNameGuard";
 
 // Pages
 import { LandingPage } from "./pages/LandingPage";
@@ -967,7 +968,9 @@ function App() {
           <WebSocketProvider>
             <NassaqAlertProvider>
               <BrowserRouter>
-                <AppRoutes />
+                <GenericNameGuard>
+                  <AppRoutes />
+                </GenericNameGuard>
                 <Toaster position="top-center" richColors />
               </BrowserRouter>
             </NassaqAlertProvider>

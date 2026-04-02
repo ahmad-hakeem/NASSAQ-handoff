@@ -137,6 +137,7 @@ async def login(credentials: UserLogin):
         email=credentials.email
     )
     
+    from engines.name_validation import is_generic_name
     user_response = UserResponse(
         id=user_id,
         email=user["email"],
@@ -147,6 +148,7 @@ async def login(credentials: UserLogin):
         phone=user.get("phone"),
         avatar_url=user.get("avatar_url"),
         is_active=user.get("is_active", True),
+        has_generic_name=is_generic_name(user.get("full_name")),
         preferred_language=user.get("preferred_language", "ar"),
         preferred_theme=user.get("preferred_theme", "light"),
         created_at=user.get("created_at", ""),
@@ -159,6 +161,7 @@ async def login(credentials: UserLogin):
 
 @router.get("/auth/me", response_model=UserResponse)
 async def get_me(current_user: dict = Depends(get_current_user)):
+    from engines.name_validation import is_generic_name
     return UserResponse(
         id=current_user["id"],
         email=current_user["email"],
@@ -171,6 +174,7 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         avatar_url=current_user.get("avatar_url"),
         is_active=current_user.get("is_active", True),
         must_change_password=current_user.get("must_change_password", False),
+        has_generic_name=is_generic_name(current_user.get("full_name")),
         preferred_language=current_user.get("preferred_language", "ar"),
         preferred_theme=current_user.get("preferred_theme", "light"),
         created_at=current_user["created_at"],

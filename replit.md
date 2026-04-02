@@ -115,6 +115,15 @@ Each fix report must include: root cause, why it wasn't caught before, what chan
 - **Hakim AI**: `AI_INTEGRATIONS_OPENAI_API_KEY`, model `gpt-4o-mini`, fallback `_fallback_analysis()`
 - **Platform admin accounts**: `zalat@nassaqapp.com`, `hakim@nassaqapp.com` (seeded on startup)
 
+### Real Personal Name Enforcement
+- **Backend Validation Engine**: `backend/engines/name_validation.py` — `is_generic_name(name)` checks against GENERIC_NAMES_AR (50+ Arabic role/department names), GENERIC_NAMES_EN (40+ English generic names), GENERIC_PATTERNS regex (admin/manager/supervisor/coordinator/etc.), numbers-only, repeated chars, names < 3 chars. `validate_personal_name(name)` raises HTTPException 400 with Arabic message if invalid.
+- **API Integration**: `has_generic_name` field added to `UserResponse` in `shared_models.py`, `models/user.py`, and `server.py`. Computed dynamically via `is_generic_name()` on `/auth/me` and `/auth/login` responses (not persisted to DB).
+- **Backend Enforcement**: Name validation enforced on `PUT /settings/account`, `PUT /users/me/profile`, and extended profile update. Rejects saves with generic names (HTTP 400).
+- **Frontend Guard**: `frontend/src/components/GenericNameGuard.jsx` — wraps `AppRoutes` in `App.js`. Shows persistent amber warning banner for users with `has_generic_name === true`. Auto-shows forced modal after 800ms delay (once per session) requiring name change. Exempt pages: `/login`, `/register`, `/change-password`, `/`, `/registration-confirmation`.
+- **Name Update Modal**: Inline validation with `isGenericName()` (mirrors backend logic), saves via `PUT /api/settings/account`, calls `updateUser + refreshUser` from AuthContext on success.
+- **Account Settings Integration**: `AccountSettingsPage.jsx` — inline amber warning under Arabic name input when generic name detected, blocks profile save if name is still generic.
+- **Exported Utility**: `isGenericName(name)` exported from `GenericNameGuard.jsx` for reuse across frontend.
+
 ### Unified Approval Engine
 - **Backend**: `backend/engines/approval_engine.py` — handler registry + transition validation + structured event logging
 - **Handlers**: `backend/engines/approval_handlers.py` — Teacher + School handlers with `verify_after_approve()`

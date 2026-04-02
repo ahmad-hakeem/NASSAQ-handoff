@@ -47,6 +47,7 @@ class UserResponse(BaseModel):
     avatar_url: Optional[str] = None
     is_active: bool
     must_change_password: bool = False
+    has_generic_name: bool = False
     preferred_language: str
     preferred_theme: str
     created_at: str
