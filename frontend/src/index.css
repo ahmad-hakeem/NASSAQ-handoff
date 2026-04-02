@@ -539,6 +539,15 @@
   animation: hubEmptyFade 400ms ease-out;
 }
 
+/* --- Count-Up Number --- */
+@keyframes hubCountUpReveal {
+  from { opacity: 0; transform: scale(0.85) translateY(6px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.hub-countup-number {
+  animation: hubCountUpReveal 600ms cubic-bezier(0.22,0.61,0.36,1) both;
+}
+
 /* ═══ REDUCED MOTION SUPPORT ═══ */
 @media (prefers-reduced-motion: reduce) {
   .hub-card,
@@ -573,6 +582,7 @@
   .hub-success-pulse,
   .hub-card-done,
   .hub-empty-state,
+  .hub-countup-number,
   .hub-skeleton {
     animation: none !important;
     opacity: 1 !important;

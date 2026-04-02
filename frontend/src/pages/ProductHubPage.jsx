@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Sidebar } from '../components/layout/Sidebar';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -31,6 +31,43 @@ const authHeaders = () => {
 };
 
 const SLA_HOURS = { critical: 24, high: 72, medium: 120, low: 240 };
+
+function useCountUp(end, duration = 1200) {
+  const [value, setValue] = useState(0);
+  const prevEnd = useRef(0);
+  const rafRef = useRef(null);
+  const prefersReducedMotion = useRef(
+    typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+  );
+
+  useEffect(() => {
+    if (prefersReducedMotion.current || end === 0) {
+      setValue(end);
+      return;
+    }
+    const startVal = prevEnd.current;
+    prevEnd.current = end;
+    const diff = end - startVal;
+    if (diff === 0) return;
+
+    const startTime = performance.now();
+    const dur = Math.min(Math.max(duration, 600), 1800);
+
+    const step = (now) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / dur, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setValue(Math.round(startVal + diff * eased));
+      if (progress < 1) {
+        rafRef.current = requestAnimationFrame(step);
+      }
+    };
+    rafRef.current = requestAnimationFrame(step);
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, [end, duration]);
+
+  return value;
+}
 
 function computePredictions(issue, _nowBucket) {
   const progress = STATUS_PROGRESS[issue.status] || 0;
@@ -304,13 +341,13 @@ export function ProductHubPage() {
                   <IssuesStatusFlow issues={issues} onStatusFilter={updateFilter} activeStatus={filters.status} />
                 </div>
                 <div className="flex flex-col justify-center gap-2 p-4 rounded-2xl border bg-gradient-to-br from-brand-navy/[0.03] to-brand-turquoise/[0.05] shadow-sm">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-xl bg-brand-turquoise/10 flex items-center justify-center">
-                      <BarChart3 className="h-4 w-4 text-brand-turquoise" />
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-navy to-brand-turquoise/80 flex items-center justify-center shadow-sm">
+                      <Layers className="h-5 w-5 text-white" />
                     </div>
                     <div>
                       <p className="text-[10px] text-muted-foreground font-medium">إجمالي التحديات</p>
-                      <p className="text-xl font-bold text-brand-navy">{total}</p>
+                      <p className="text-2xl font-extrabold text-brand-navy tracking-tight tabular-nums">{total}</p>
                     </div>
                   </div>
                   {hasActiveFilters && (
@@ -1208,6 +1245,20 @@ function IssuesTableView({ issues, loading, total, page, totalPages, onPageChang
 
 
 function DashboardView({ data, loading, isAdmin, navigate }) {
+  const total = data?.total_issues || 0;
+  const resolved = data?.total_resolved || 0;
+  const open = data?.total_open || 0;
+  const rejected = data?.total_rejected || 0;
+  const resRate = data?.resolution_rate || 0;
+  const unresolvedPct = total > 0 ? Math.round((open / total) * 100) : 0;
+  const resolvedPct = total > 0 ? Math.round((resolved / total) * 100) : 0;
+  const rejectedPct = total > 0 ? Math.round((rejected / total) * 100) : 0;
+
+  const animTotal = useCountUp(total, 1400);
+  const animResolved = useCountUp(resolved, 1200);
+  const animOpen = useCountUp(open, 1000);
+  const animCritical = useCountUp(data?.critical_open || 0, 800);
+
   if (loading || !data) {
     return (
       <div className="flex justify-center items-center py-20">
@@ -1218,15 +1269,6 @@ function DashboardView({ data, loading, isAdmin, navigate }) {
       </div>
     );
   }
-
-  const total = data.total_issues || 0;
-  const resolved = data.total_resolved || 0;
-  const open = data.total_open || 0;
-  const rejected = data.total_rejected || 0;
-  const resRate = data.resolution_rate || 0;
-  const unresolvedPct = total > 0 ? Math.round((open / total) * 100) : 0;
-  const resolvedPct = total > 0 ? Math.round((resolved / total) * 100) : 0;
-  const rejectedPct = total > 0 ? Math.round((rejected / total) * 100) : 0;
 
   const statusFlow = [
     { label: 'جديدة', value: data.new_count || 0, color: 'bg-sky-500', icon: CircleDot },
@@ -1242,26 +1284,37 @@ function DashboardView({ data, loading, isAdmin, navigate }) {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-brand-navy to-brand-navy/90 p-5 shadow-lg text-white">
+        <div className="relative overflow-hidden rounded-2xl border-0 bg-gradient-to-br from-brand-navy via-brand-navy/95 to-brand-turquoise/80 p-5 shadow-xl shadow-brand-navy/20 text-white hub-card">
           <div className="flex items-start justify-between">
-            <div className="p-2.5 rounded-xl bg-white/10">
+            <div className="p-2.5 rounded-xl bg-white/10 backdrop-blur-sm">
               <Layers className="h-5 w-5 text-white" />
             </div>
             {data.new_this_week > 0 && (
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white/15 flex items-center gap-0.5">
+              <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-white/15 backdrop-blur-sm flex items-center gap-1 border border-white/10">
                 <ArrowUpRight className="h-3 w-3" />
                 +{data.new_this_week} هذا الأسبوع
               </span>
             )}
           </div>
-          <div className="mt-3">
-            <p className="text-4xl font-bold tracking-tight">{total}</p>
-            <p className="text-sm text-white/70 mt-0.5">إجمالي التحديات</p>
+          <div className="mt-4 mb-1">
+            <p className="text-6xl font-extrabold tracking-tighter leading-none tabular-nums hub-countup-number">
+              {animTotal.toLocaleString('ar-SA')}
+            </p>
+            <p className="text-sm text-white/60 mt-2 font-medium">إجمالي التحديات</p>
           </div>
-          <div className="absolute -bottom-6 -left-6 h-24 w-24 rounded-full bg-white/5" />
+          {resolved > 0 && (
+            <div className="mt-3 flex items-center gap-2">
+              <div className="flex-1 bg-white/10 rounded-full h-1.5 overflow-hidden">
+                <div className="bg-brand-turquoise h-1.5 rounded-full hub-progress-fill" style={{ width: `${resolvedPct}%` }} />
+              </div>
+              <span className="text-[10px] text-white/50 font-semibold tabular-nums">{resolvedPct}% مكتمل</span>
+            </div>
+          )}
+          <div className="absolute -bottom-8 -left-8 h-28 w-28 rounded-full bg-brand-turquoise/10" />
+          <div className="absolute -top-4 -right-4 h-16 w-16 rounded-full bg-white/5" />
         </div>
 
-        <div className="relative overflow-hidden rounded-2xl border bg-white p-5 shadow-sm group hover:shadow-md transition-all">
+        <div className="relative overflow-hidden rounded-2xl border bg-white p-5 shadow-sm group hover:shadow-md transition-all hub-card">
           <div className="flex items-start justify-between">
             <div className="p-2.5 rounded-xl bg-emerald-50 transition-transform group-hover:scale-110">
               <CheckCircle2 className="h-5 w-5 text-emerald-600" />
@@ -1271,16 +1324,16 @@ function DashboardView({ data, loading, isAdmin, navigate }) {
             </span>
           </div>
           <div className="mt-3">
-            <p className="text-4xl font-bold text-brand-navy tracking-tight">{resolved}</p>
+            <p className="text-4xl font-extrabold text-brand-navy tracking-tighter tabular-nums">{animResolved.toLocaleString('ar-SA')}</p>
             <p className="text-sm text-muted-foreground mt-0.5">تم حلها</p>
           </div>
           <div className="mt-2 w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-            <div className="bg-emerald-500 h-1.5 rounded-full transition-all duration-700" style={{ width: `${resolvedPct}%` }} />
+            <div className="bg-emerald-500 h-1.5 rounded-full hub-progress-fill" style={{ width: `${resolvedPct}%` }} />
           </div>
           <div className="absolute -bottom-4 -left-4 h-20 w-20 rounded-full bg-emerald-50 opacity-50" />
         </div>
 
-        <div className="relative overflow-hidden rounded-2xl border bg-white p-5 shadow-sm group hover:shadow-md transition-all">
+        <div className="relative overflow-hidden rounded-2xl border bg-white p-5 shadow-sm group hover:shadow-md transition-all hub-card">
           <div className="flex items-start justify-between">
             <div className="p-2.5 rounded-xl bg-amber-50 transition-transform group-hover:scale-110">
               <AlertTriangle className="h-5 w-5 text-amber-600" />
@@ -1290,16 +1343,16 @@ function DashboardView({ data, loading, isAdmin, navigate }) {
             </span>
           </div>
           <div className="mt-3">
-            <p className="text-4xl font-bold text-brand-navy tracking-tight">{open}</p>
+            <p className="text-4xl font-extrabold text-brand-navy tracking-tighter tabular-nums">{animOpen.toLocaleString('ar-SA')}</p>
             <p className="text-sm text-muted-foreground mt-0.5">لم تُحل بعد</p>
           </div>
           <div className="mt-2 w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-            <div className="bg-amber-500 h-1.5 rounded-full transition-all duration-700" style={{ width: `${unresolvedPct}%` }} />
+            <div className="bg-amber-500 h-1.5 rounded-full hub-progress-fill" style={{ width: `${unresolvedPct}%` }} />
           </div>
           <div className="absolute -bottom-4 -left-4 h-20 w-20 rounded-full bg-amber-50 opacity-50" />
         </div>
 
-        <div className="relative overflow-hidden rounded-2xl border bg-white p-5 shadow-sm group hover:shadow-md transition-all">
+        <div className="relative overflow-hidden rounded-2xl border bg-white p-5 shadow-sm group hover:shadow-md transition-all hub-card">
           <div className="flex items-start justify-between">
             <div className="p-2.5 rounded-xl bg-red-50 transition-transform group-hover:scale-110">
               <AlertOctagon className="h-5 w-5 text-red-600" />
@@ -1311,11 +1364,11 @@ function DashboardView({ data, loading, isAdmin, navigate }) {
             )}
           </div>
           <div className="mt-3">
-            <p className="text-4xl font-bold text-brand-navy tracking-tight">{data.critical_open || 0}</p>
+            <p className="text-4xl font-extrabold text-brand-navy tracking-tighter tabular-nums">{animCritical.toLocaleString('ar-SA')}</p>
             <p className="text-sm text-muted-foreground mt-0.5">حرجة مفتوحة</p>
           </div>
           <div className="mt-2 w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-            <div className="bg-red-500 h-1.5 rounded-full transition-all duration-700" style={{ width: `${total > 0 ? Math.round(((data.critical_open || 0) / total) * 100) : 0}%` }} />
+            <div className="bg-red-500 h-1.5 rounded-full hub-progress-fill" style={{ width: `${total > 0 ? Math.round(((data.critical_open || 0) / total) * 100) : 0}%` }} />
           </div>
           <div className="absolute -bottom-4 -left-4 h-20 w-20 rounded-full bg-red-50 opacity-50" />
         </div>
