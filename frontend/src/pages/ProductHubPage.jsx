@@ -549,12 +549,12 @@ function IssuesStatusFlow({ issues, onStatusFilter, activeStatus }) {
   const total = issues?.length || 0;
 
   const flow = [
-    { key: 'new', label: 'جديدة', value: counts.new, color: 'bg-sky-500', icon: CircleDot },
-    { key: 'under_review', label: 'قيد المراجعة', value: counts.under_review, color: 'bg-amber-500', icon: Eye },
-    { key: 'in_progress', label: 'قيد التنفيذ', value: counts.in_progress, color: 'bg-violet-500', icon: Activity },
-    { key: 'qa_validation', label: 'فحص الجودة', value: counts.qa_validation, color: 'bg-blue-500', icon: ShieldCheck },
-    { key: 'done,user_feedback_confirmed', label: 'تم الحل', value: counts.done + counts.user_feedback_confirmed, color: 'bg-emerald-500', icon: CheckCircle2 },
-    { key: 'rejected', label: 'مرفوضة', value: counts.rejected, color: 'bg-red-500', icon: XCircle },
+    { key: 'new', label: 'جديدة', value: counts.new, bg: 'bg-sky-500', bgLight: 'bg-sky-50', bgHover: 'hover:bg-sky-100', borderActive: 'border-sky-400 ring-sky-300', textColor: 'text-sky-700', iconColor: 'text-sky-500', icon: CircleDot },
+    { key: 'under_review', label: 'قيد المراجعة', value: counts.under_review, bg: 'bg-amber-500', bgLight: 'bg-amber-50', bgHover: 'hover:bg-amber-100', borderActive: 'border-amber-400 ring-amber-300', textColor: 'text-amber-700', iconColor: 'text-amber-500', icon: Eye },
+    { key: 'in_progress', label: 'قيد التنفيذ', value: counts.in_progress, bg: 'bg-violet-500', bgLight: 'bg-violet-50', bgHover: 'hover:bg-violet-100', borderActive: 'border-violet-400 ring-violet-300', textColor: 'text-violet-700', iconColor: 'text-violet-500', icon: Activity },
+    { key: 'qa_validation', label: 'فحص الجودة', value: counts.qa_validation, bg: 'bg-blue-500', bgLight: 'bg-blue-50', bgHover: 'hover:bg-blue-100', borderActive: 'border-blue-400 ring-blue-300', textColor: 'text-blue-700', iconColor: 'text-blue-500', icon: ShieldCheck },
+    { key: 'done,user_feedback_confirmed', label: 'تم الحل', value: counts.done + counts.user_feedback_confirmed, bg: 'bg-emerald-500', bgLight: 'bg-emerald-50', bgHover: 'hover:bg-emerald-100', borderActive: 'border-emerald-400 ring-emerald-300', textColor: 'text-emerald-700', iconColor: 'text-emerald-500', icon: CheckCircle2 },
+    { key: 'rejected', label: 'مرفوضة', value: counts.rejected, bg: 'bg-red-500', bgLight: 'bg-red-50', bgHover: 'hover:bg-red-100', borderActive: 'border-red-400 ring-red-300', textColor: 'text-red-700', iconColor: 'text-red-500', icon: XCircle },
   ];
 
   return (
@@ -571,7 +571,7 @@ function IssuesStatusFlow({ issues, onStatusFilter, activeStatus }) {
           {flow.map((s, i) => {
             const pct = total > 0 ? (s.value / total) * 100 : 0;
             return pct > 0 ? (
-              <div key={i} className={`${s.color} h-3 transition-all duration-700 first:rounded-r-full last:rounded-l-full`} style={{ width: `${pct}%` }} title={`${s.label}: ${s.value}`} />
+              <div key={i} className={`${s.bg} h-3 transition-all duration-700 first:rounded-r-full last:rounded-l-full`} style={{ width: `${pct}%` }} title={`${s.label}: ${s.value}`} />
             ) : null;
           })}
         </div>
@@ -584,14 +584,13 @@ function IssuesStatusFlow({ issues, onStatusFilter, activeStatus }) {
               <button
                 key={i}
                 onClick={() => onStatusFilter('status', isActive ? '' : s.key)}
-                className={`text-center p-2.5 rounded-xl border transition-all duration-200 cursor-pointer ${isActive ? 'bg-brand-navy/5 border-brand-navy/30 ring-1 ring-brand-navy/20 shadow-sm' : 'bg-slate-50/60 border-slate-100 hover:border-slate-200 hover:bg-white hover:shadow-sm'}`}
+                className={`group/card text-center p-3 rounded-xl border-2 transition-all duration-200 cursor-pointer active:scale-95 ${isActive ? `${s.bgLight} ${s.borderActive} ring-2 shadow-md` : `${s.bgLight} border-transparent ${s.bgHover} hover:shadow-md hover:border-current/10 hover:-translate-y-0.5`}`}
               >
-                <div className="flex items-center justify-center mb-1">
-                  <div className={`w-2 h-2 rounded-full ${s.color} ml-1`} />
-                  <Ic className="h-3 w-3 text-slate-500" />
+                <div className="flex items-center justify-center mb-1.5">
+                  <Ic className={`h-4 w-4 ${s.iconColor}`} />
                 </div>
-                <p className="text-lg font-bold text-brand-navy">{s.value}</p>
-                <p className="text-[9px] text-muted-foreground leading-tight">{s.label}</p>
+                <p className={`text-xl font-bold ${s.textColor}`}>{s.value}</p>
+                <p className={`text-[9px] ${s.textColor} opacity-70 leading-tight font-medium mt-0.5`}>{s.label}</p>
               </button>
             );
           })}
