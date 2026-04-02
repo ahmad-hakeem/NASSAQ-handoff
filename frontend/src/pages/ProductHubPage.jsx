@@ -346,21 +346,23 @@ export function ProductHubPage() {
                 <div className="lg:col-span-3">
                   <IssuesStatusFlow issues={issues} onStatusFilter={updateFilter} activeStatus={filters.status} />
                 </div>
-                <div className="flex flex-col justify-center gap-2 p-4 rounded-2xl border bg-gradient-to-br from-brand-navy/[0.03] to-brand-turquoise/[0.05] shadow-sm">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-navy to-brand-turquoise/80 flex items-center justify-center shadow-sm">
+                <div className="relative overflow-hidden flex flex-col items-center justify-center text-center p-5 rounded-2xl bg-gradient-to-br from-brand-navy via-brand-navy/95 to-brand-turquoise/80 text-white shadow-lg">
+                  <div className="absolute -bottom-6 -left-6 h-20 w-20 rounded-full bg-brand-turquoise/15" />
+                  <div className="absolute -top-4 -right-4 h-14 w-14 rounded-full bg-white/5" />
+                  <div className="relative z-10 flex flex-col items-center gap-1">
+                    <div className="p-2 rounded-xl bg-white/10 backdrop-blur-sm mb-1">
                       <Layers className="h-5 w-5 text-white" />
                     </div>
-                    <div>
-                      <p className="text-[10px] text-muted-foreground font-medium">إجمالي التحديات</p>
-                      <p className="text-2xl font-extrabold text-brand-navy tracking-tight tabular-nums">{total}</p>
-                    </div>
-                  </div>
-                  {hasActiveFilters && (
-                    <p className="text-[10px] text-brand-turquoise font-medium mt-1">
-                      عرض {sortedIssues.length} من {total} نتيجة
+                    <p className="text-5xl font-extrabold tracking-tighter leading-none tabular-nums hub-countup-number">
+                      {total.toLocaleString('ar-SA')}
                     </p>
-                  )}
+                    <p className="text-[11px] text-white/65 font-medium mt-1">إجمالي التحديات</p>
+                    {hasActiveFilters && (
+                      <p className="text-[10px] text-brand-turquoise font-medium mt-1 bg-white/10 px-2 py-0.5 rounded-full">
+                        عرض {sortedIssues.length} من {total} نتيجة
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
 
