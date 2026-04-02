@@ -40,7 +40,6 @@ export function ProductHubIssuePage() {
   const [loading, setLoading] = useState(true);
   const [commentType, setCommentType] = useState('general');
   const [submittingComment, setSubmittingComment] = useState(false);
-  const [mentionableUsers, setMentionableUsers] = useState([]);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [statusNote, setStatusNote] = useState('');
   const [assignTeam, setAssignTeam] = useState('');
@@ -65,14 +64,6 @@ export function ProductHubIssuePage() {
   }, [issueId, navigate]);
 
   useEffect(() => { fetchIssue(); }, [fetchIssue]);
-
-  useEffect(() => {
-    if (isMainAdmin) {
-      axios.get('/api/product-hub/mentionable-users', { headers: authHeaders() })
-        .then(res => setMentionableUsers(res.data.users || []))
-        .catch(() => {});
-    }
-  }, [isMainAdmin]);
 
   const handleStatusChange = async (newStatus) => {
     if (FINAL_STATUSES.has(newStatus) && !isMainAdmin) {
@@ -119,19 +110,23 @@ export function ProductHubIssuePage() {
       setCommentType('general');
       fetchIssue();
     } catch (err) {
-      toast.error('فشل في إضافة التعليق');
+      const detail = err.response?.data?.detail;
+      const msg = typeof detail === 'object' ? detail.message : (detail || 'فشل في إضافة التعليق');
+      toast.error(msg);
     } finally {
       setSubmittingComment(false);
     }
   };
 
-  const handleEditComment = async (commentId, content) => {
+  const handleEditComment = async (commentId, content, mentions = []) => {
     try {
-      await axios.put(`/api/product-hub/issues/${issueId}/comments/${commentId}`, { content }, { headers: authHeaders() });
+      await axios.put(`/api/product-hub/issues/${issueId}/comments/${commentId}`, { content, mentions }, { headers: authHeaders() });
       toast.success('تم تعديل التعليق');
       fetchIssue();
-    } catch {
-      toast.error('فشل في تعديل التعليق');
+    } catch (err) {
+      const detail = err.response?.data?.detail;
+      const msg = typeof detail === 'object' ? detail.message : (detail || 'فشل في تعديل التعليق');
+      toast.error(msg);
     }
   };
 
@@ -684,9 +679,9 @@ export function ProductHubIssuePage() {
                               comment={c}
                               currentUserId={user?.id}
                               isMainAdmin={isMainAdmin}
+                              isAdmin={isAdmin}
                               onEdit={handleEditComment}
                               onDelete={handleDeleteComment}
-                              mentionableUsers={mentionableUsers}
                             />
                           </div>
                         </div>
@@ -703,6 +698,7 @@ export function ProductHubIssuePage() {
                       onSubmit={handleComment}
                       submitting={submittingComment}
                       isMainAdmin={isMainAdmin}
+                      isAdmin={isAdmin}
                       commentType={commentType}
                       setCommentType={setCommentType}
                       COMMENT_TYPE_CONFIG={COMMENT_TYPE_CONFIG}

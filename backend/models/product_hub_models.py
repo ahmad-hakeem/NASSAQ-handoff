@@ -701,6 +701,7 @@ class IssueComment(BaseModel):
 
 class CommentUpdate(BaseModel):
     content: str
+    mentions: Optional[List[str]] = []
 
     @field_validator("content")
     @classmethod

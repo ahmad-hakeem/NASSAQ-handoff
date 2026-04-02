@@ -42,7 +42,7 @@ from engines.product_hub_rbac import (
     enforce_permission, enforce_ownership_or_admin,
     check_resource_ownership, can_access_comments, redact_issue_for_role,
     require_hub_action, get_user_id, resolve_hub_role,
-    is_main_admin, is_super_admin,
+    is_main_admin, is_super_admin, MAIN_ADMIN_EMAILS,
 )
 from engines.product_hub_events import (
     HubEvent, emit_event,
@@ -741,6 +741,8 @@ async def add_comment(
     user_role = current_user.get("role", "")
     resolved_role = "platform_admin" if user_role == "platform_admin" else "internal_user"
 
+    await _validate_mentions(data.mentions or [], current_user)
+
     safe_comment_type = data.comment_type or "general"
     if safe_comment_type != "general" and not is_main_admin(current_user):
         safe_comment_type = "general"
@@ -788,10 +790,16 @@ async def edit_comment(
         if not is_main_admin(current_user):
             _hub_error(403, "FORBIDDEN", "لا يمكنك تعديل تعليق مستخدم آخر")
 
-    await db.issue_comments.update_one(
-        {"id": comment_id},
-        {"$set": {"content": data.content, "comment": data.content, "edited": True, "edited_at": _now_iso()}}
-    )
+    await _validate_mentions(data.mentions or [], current_user)
+
+    update_fields = {
+        "content": data.content,
+        "comment": data.content,
+        "edited": True,
+        "edited_at": _now_iso(),
+        "mentions": data.mentions or [],
+    }
+    await db.issue_comments.update_one({"id": comment_id}, {"$set": update_fields})
     return {"success": True, "message": "تم تعديل التعليق"}
 
 
@@ -834,6 +842,42 @@ async def get_comments(
     return {"comments": comments, "total": len(comments)}
 
 
+async def _get_allowed_mention_ids(current_user: dict) -> set:
+    caller_email = (current_user.get("email") or "").lower()
+    caller_is_main = is_main_admin(current_user)
+
+    if caller_is_main:
+        all_admins = await db.users.find(
+            {"is_active": True, "role": {"$in": [
+                "platform_admin", "platform_operations_manager",
+                "platform_technical_admin", "platform_support_specialist",
+            ]}},
+            {"id": 1}
+        ).to_list(200)
+        ids = {u["id"] for u in all_admins if u.get("id")}
+        own_id = get_user_id(current_user)
+        ids.discard(own_id)
+        return ids
+
+    if is_platform_admin(current_user):
+        main_users = await db.users.find(
+            {"is_active": True, "email": {"$in": list(MAIN_ADMIN_EMAILS)}},
+            {"id": 1}
+        ).to_list(10)
+        return {u["id"] for u in main_users if u.get("id")}
+
+    return set()
+
+
+async def _validate_mentions(mention_ids: list, current_user: dict):
+    if not mention_ids:
+        return
+    allowed = await _get_allowed_mention_ids(current_user)
+    for mid in mention_ids:
+        if mid not in allowed:
+            _hub_error(403, "UNAUTHORIZED_MENTION", "لا يُسمح لك بالإشارة إلى هذا المستخدم")
+
+
 @router.get("/mentionable-users")
 async def get_mentionable_users(
     current_user: dict = Depends(get_current_user),
@@ -841,10 +885,14 @@ async def get_mentionable_users(
     if not is_platform_admin(current_user):
         _hub_error(403, "FORBIDDEN", "غير مسموح")
 
+    allowed_ids = await _get_allowed_mention_ids(current_user)
+    if not allowed_ids:
+        return {"users": []}
+
     users = await db.users.find(
-        {"is_active": True, "role": {"$in": ["platform_admin", "platform_operations_manager", "platform_technical_admin", "platform_support_specialist"]}},
+        {"is_active": True, "id": {"$in": list(allowed_ids)}},
         {"_id": 0, "id": 1, "full_name": 1, "email": 1, "role": 1, "avatar_url": 1}
-    ).sort("full_name", 1).to_list(100)
+    ).sort("full_name", 1).to_list(200)
 
     return {"users": [
         {"id": u.get("id", ""), "name": u.get("full_name", ""), "email": u.get("email", ""), "role": u.get("role", ""), "avatar": u.get("avatar_url")}
