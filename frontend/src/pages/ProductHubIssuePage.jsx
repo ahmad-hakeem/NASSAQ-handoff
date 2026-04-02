@@ -372,48 +372,6 @@ export function ProductHubIssuePage() {
                     />
                   </div>
 
-                  <Separator orientation="vertical" className="h-20 hidden lg:block" />
-
-                  {/* Team Assignment */}
-                  <div>
-                    <p className="text-[11px] text-muted-foreground mb-3 font-medium">تعيين الفريق</p>
-                    <div className="flex gap-2">
-                      <Select value={assignTeam} onValueChange={setAssignTeam}>
-                        <SelectTrigger className="text-xs rounded-lg h-8 min-w-[140px]">
-                          <SelectValue placeholder="اختر الفريق" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {TEAMS.map(t => (
-                            <SelectItem key={t} value={t}>{t}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        onClick={handleAssign}
-                        disabled={!assignTeam}
-                        size="sm"
-                        className="bg-brand-navy hover:bg-brand-navy/90 text-white rounded-lg h-8"
-                      >
-                        <UserPlus className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                    {issue.assigned_team && (
-                      <p className="text-[11px] text-muted-foreground mt-1.5">
-                        الحالي: <span className="text-brand-turquoise font-medium">{issue.assigned_team}</span>
-                      </p>
-                    )}
-                  </div>
-
-                  <Separator orientation="vertical" className="h-20 hidden lg:block" />
-
-                  {/* Prompt Status Indicator */}
-                  <div>
-                    <p className="text-[11px] text-muted-foreground mb-3 font-medium">البرومبت</p>
-                    <div className={`flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg ${issue.generated_prompt ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
-                      {issue.generated_prompt ? <CheckCircle2 className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
-                      {issue.generated_prompt ? 'Generated' : 'Not Generated'}
-                    </div>
-                  </div>
                 </div>
               </CardContent>
             </Card>
