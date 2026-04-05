@@ -123,6 +123,7 @@ class AuditLogEngine:
             
             AuditAction.GRADE_RECORDED.value: AuditSeverity.MEDIUM.value,
             AuditAction.GRADE_UPDATED.value: AuditSeverity.MEDIUM.value,
+            AuditAction.GRADES_BULK_RECORDED.value: AuditSeverity.MEDIUM.value,
             AuditAction.ASSESSMENT_CREATED.value: AuditSeverity.LOW.value,
             AuditAction.ASSESSMENT_PUBLISHED.value: AuditSeverity.MEDIUM.value,
             AuditAction.REPORT_CARD_GENERATED.value: AuditSeverity.MEDIUM.value,
