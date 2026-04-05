@@ -29,7 +29,7 @@ from engines.assessment_engine import AssessmentEngine
 
 router = APIRouter()
 
-_assessment_engine = AssessmentEngine(db)
+_assessment_engine = AssessmentEngine(db, audit_engine=audit_engine)
 
 
 

@@ -459,10 +459,9 @@ async def suspend_school(
         }}
     )
 
-    # Deactivate all school users
     await db.users.update_many(
         {"tenant_id": school_id, "is_active": True},
-        {"$set": {"is_active": False, "suspended_at": now}}
+        {"$set": {"is_active": False, "suspended_at": now, "suspended_by_school": True}}
     )
 
     # Audit log
@@ -520,10 +519,9 @@ async def activate_school(
         }}
     )
 
-    # Re-activate all school users (that were active before suspension)
     await db.users.update_many(
-        {"tenant_id": school_id, "is_active": False},
-        {"$set": {"is_active": True, "activated_at": now}}
+        {"tenant_id": school_id, "is_active": False, "suspended_by_school": True},
+        {"$set": {"is_active": True, "activated_at": now, "suspended_by_school": False}}
     )
 
     # Audit log

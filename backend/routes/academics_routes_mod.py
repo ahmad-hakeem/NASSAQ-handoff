@@ -212,20 +212,33 @@ async def create_student(
     
     await db.students.insert_one(student_doc)
     
-    # Update school student count
     await db.schools.update_one(
         {"id": student_data.school_id},
         {"$inc": {"current_students": 1}}
     )
     
-    # Update class student count if assigned
     if student_data.class_id:
         await db.classes.update_one(
             {"id": student_data.class_id},
             {"$inc": {"current_students": 1}}
         )
     
-    # Get class name for response
+    await audit_engine.log(
+        action=AuditAction.USER_CREATED.value,
+        performed_by=current_user.get("id"),
+        tenant_id=student_data.school_id,
+        entity_type="student",
+        entity_id=student_id,
+        details={
+            "full_name": student_data.full_name,
+            "school_id": student_data.school_id,
+            "class_id": student_data.class_id,
+        },
+        actor_name=current_user.get("full_name"),
+        actor_role=current_user.get("role"),
+        actor_email=current_user.get("email"),
+    )
+    
     class_name = None
     if student_data.class_id:
         class_doc = await db.classes.find_one({"id": student_data.class_id}, {"_id": 0})
@@ -479,6 +492,19 @@ async def update_student(
     result = await db.students.update_one(query, {"$set": update_fields})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
+    
+    await audit_engine.log(
+        action=AuditAction.USER_UPDATED.value,
+        performed_by=current_user.get("id"),
+        tenant_id=school_id,
+        entity_type="student",
+        entity_id=student_id,
+        details={"updated_fields": list(update_fields.keys())},
+        actor_name=current_user.get("full_name"),
+        actor_role=current_user.get("role"),
+        actor_email=current_user.get("email"),
+    )
+    
     return {"message": "تم تحديث بيانات الطالب وحفظها في قاعدة البيانات بنجاح", "success": True}
 
 @router.post("/students/transfer-class")
@@ -559,6 +585,22 @@ async def delete_student(
     school_id = student.get("school_id")
     class_id = student.get("class_id")
     user_id = student.get("user_id")
+
+    await audit_engine.log(
+        action=AuditAction.USER_DELETED.value,
+        performed_by=current_user.get("id"),
+        tenant_id=school_id,
+        entity_type="student",
+        entity_id=student_id,
+        details={
+            "full_name": student.get("full_name"),
+            "school_id": school_id,
+            "class_id": class_id,
+        },
+        actor_name=current_user.get("full_name"),
+        actor_role=current_user.get("role"),
+        actor_email=current_user.get("email"),
+    )
 
     cleanup = {}
     await db.students.delete_one({"id": student_id})

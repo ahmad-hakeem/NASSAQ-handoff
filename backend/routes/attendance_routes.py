@@ -16,6 +16,8 @@ from pydantic import BaseModel
 from datetime import datetime, date
 import logging
 
+from dependencies import audit_engine, AuditAction
+
 logger = logging.getLogger("nassaq.attendance_routes")
 
 
@@ -128,6 +130,23 @@ def create_attendance_router(db, get_current_user, require_roles, UserRole):
             period=data.period
         )
         
+        await audit_engine.log(
+            action=AuditAction.ATTENDANCE_RECORDED.value,
+            performed_by=current_user["id"],
+            tenant_id=tenant_id,
+            entity_type="attendance",
+            entity_id=record.get("id", ""),
+            details={
+                "student_id": data.student_id,
+                "section_id": data.section_id,
+                "date": data.attendance_date,
+                "status": data.status,
+            },
+            actor_name=current_user.get("full_name"),
+            actor_role=current_user.get("role"),
+            actor_email=current_user.get("email"),
+        )
+        
         return record
     
     @router.post("/bulk")
@@ -151,6 +170,23 @@ def create_attendance_router(db, get_current_user, require_roles, UserRole):
             attendance_date=data.attendance_date,
             attendance_records=[r.dict() for r in data.records],
             recorded_by=current_user["id"]
+        )
+        
+        await audit_engine.log(
+            action=AuditAction.ATTENDANCE_BULK_RECORDED.value,
+            performed_by=current_user["id"],
+            tenant_id=tenant_id,
+            entity_type="attendance",
+            entity_id=data.section_id,
+            details={
+                "section_id": data.section_id,
+                "date": data.attendance_date,
+                "total_records": len(data.records),
+                "processed": results.get("processed", 0),
+            },
+            actor_name=current_user.get("full_name"),
+            actor_role=current_user.get("role"),
+            actor_email=current_user.get("email"),
         )
         
         return {
@@ -179,6 +215,24 @@ def create_attendance_router(db, get_current_user, require_roles, UserRole):
             attendance_date=data.attendance_date,
             recorded_by=current_user["id"],
             student_ids=data.student_ids
+        )
+        
+        await audit_engine.log(
+            action=AuditAction.ATTENDANCE_BULK_RECORDED.value,
+            performed_by=current_user["id"],
+            tenant_id=tenant_id,
+            entity_type="attendance",
+            entity_id=data.section_id,
+            details={
+                "section_id": data.section_id,
+                "date": data.attendance_date,
+                "status": "present",
+                "student_count": len(data.student_ids),
+                "processed": results.get("processed", 0),
+            },
+            actor_name=current_user.get("full_name"),
+            actor_role=current_user.get("role"),
+            actor_email=current_user.get("email"),
         )
         
         return {
@@ -523,6 +577,22 @@ def create_attendance_router(db, get_current_user, require_roles, UserRole):
                 await db.teacher_attendance.insert_one(attendance_data)
             
             saved.append(attendance_data)
+        
+        await audit_engine.log(
+            action=AuditAction.ATTENDANCE_BULK_RECORDED.value,
+            performed_by=current_user.get("id"),
+            tenant_id=tenant_id,
+            entity_type="teacher_attendance",
+            entity_id=tenant_id,
+            details={
+                "date": records[0].get("date") if records else None,
+                "teacher_count": len(records),
+                "saved_count": len(saved),
+            },
+            actor_name=current_user.get("full_name"),
+            actor_role=current_user.get("role"),
+            actor_email=current_user.get("email"),
+        )
         
         return {"message": "تم حفظ الحضور بنجاح", "count": len(saved)}
     

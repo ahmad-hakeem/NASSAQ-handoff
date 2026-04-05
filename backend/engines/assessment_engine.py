@@ -14,6 +14,9 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 from enum import Enum
 import uuid
+import logging
+
+logger = logging.getLogger("nassaq.assessment_engine")
 
 
 class AssessmentType(str, Enum):
@@ -41,13 +44,14 @@ class AssessmentEngine:
     Manages assessments, grading, and academic performance
     """
     
-    def __init__(self, db):
+    def __init__(self, db, audit_engine=None):
         self.db = db
         self.assessments_collection = db.assessments
         self.grades_collection = db.student_grades
         self.grade_weights_collection = db.grade_weights
         self.report_cards_collection = db.report_cards
         self.audit_collection = db.audit_logs
+        self._audit_engine = audit_engine
     
     # ============== ASSESSMENT MANAGEMENT ==============
     
@@ -97,6 +101,26 @@ class AssessmentEngine:
         }
         
         await self.assessments_collection.insert_one(assessment_doc)
+        
+        if self._audit_engine:
+            try:
+                from engines.audit_engine import AuditAction
+                await self._audit_engine.log(
+                    action=AuditAction.ASSESSMENT_CREATED.value,
+                    performed_by=created_by,
+                    tenant_id=tenant_id,
+                    entity_type="assessment",
+                    entity_id=assessment_id,
+                    details={
+                        "title": title,
+                        "assessment_type": assessment_type,
+                        "max_score": max_score,
+                        "subject_id": subject_id,
+                        "section_ids": section_ids,
+                    },
+                )
+            except Exception as e:
+                logger.warning(f"Audit log failed for assessment creation: {e}")
         
         return assessment_doc
     
@@ -226,7 +250,7 @@ class AssessmentEngine:
         is_passing = score >= passing_score
         
         if existing:
-            # Update existing grade
+            old_score = existing.get("score")
             updates = {
                 "score": score,
                 "percentage": percentage,
@@ -245,12 +269,31 @@ class AssessmentEngine:
             existing.update(updates)
             existing.pop("_id", None)
             
-            # Update assessment metadata
             await self._update_assessment_metadata(assessment_id)
+            
+            if self._audit_engine:
+                try:
+                    from engines.audit_engine import AuditAction
+                    await self._audit_engine.log(
+                        action=AuditAction.GRADE_UPDATED.value,
+                        performed_by=graded_by,
+                        tenant_id=assessment.get("tenant_id"),
+                        entity_type="grade",
+                        entity_id=existing["id"],
+                        details={
+                            "assessment_id": assessment_id,
+                            "student_id": student_id,
+                            "old_score": old_score,
+                            "new_score": score,
+                            "max_score": max_score,
+                            "percentage": percentage,
+                        },
+                    )
+                except Exception as e:
+                    logger.warning(f"Audit log failed for grade update: {e}")
             
             return existing
         
-        # Create new grade
         grade_id = str(uuid.uuid4())
         
         grade_doc = {
@@ -274,8 +317,27 @@ class AssessmentEngine:
         
         await self.grades_collection.insert_one(grade_doc)
         
-        # Update assessment metadata
         await self._update_assessment_metadata(assessment_id)
+        
+        if self._audit_engine:
+            try:
+                from engines.audit_engine import AuditAction
+                await self._audit_engine.log(
+                    action=AuditAction.GRADE_RECORDED.value,
+                    performed_by=graded_by,
+                    tenant_id=assessment.get("tenant_id"),
+                    entity_type="grade",
+                    entity_id=grade_id,
+                    details={
+                        "assessment_id": assessment_id,
+                        "student_id": student_id,
+                        "score": score,
+                        "max_score": max_score,
+                        "percentage": percentage,
+                    },
+                )
+            except Exception as e:
+                logger.warning(f"Audit log failed for grade recording: {e}")
         
         return grade_doc
     

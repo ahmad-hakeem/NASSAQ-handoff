@@ -198,6 +198,23 @@ async def create_attendance(
     }
     await db.events.insert_one(event_doc)
     
+    await audit_engine.log(
+        action=AuditAction.ATTENDANCE_RECORDED.value,
+        performed_by=current_user['id'],
+        tenant_id=current_user.get('tenant_id'),
+        entity_type="attendance",
+        entity_id=attendance_id,
+        details={
+            "student_id": attendance.student_id,
+            "class_id": attendance.class_id,
+            "date": today,
+            "status": attendance.status.value,
+        },
+        actor_name=current_user.get("full_name"),
+        actor_role=current_user.get("role"),
+        actor_email=current_user.get("email"),
+    )
+    
     return AttendanceResponse(
         id=attendance_id,
         student_id=attendance.student_id,
@@ -340,6 +357,25 @@ async def create_bulk_attendance(
                     
         except Exception as e:
             errors.append({"student_id": record.get('student_id'), "error": str(e)})
+    
+    await audit_engine.log(
+        action=AuditAction.ATTENDANCE_BULK_RECORDED.value,
+        performed_by=current_user['id'],
+        tenant_id=current_user.get('tenant_id'),
+        entity_type="attendance",
+        entity_id=bulk_data.class_id,
+        details={
+            "class_id": bulk_data.class_id,
+            "date": bulk_data.date,
+            "total_records": len(bulk_data.records),
+            "created": created_count,
+            "updated": updated_count,
+            "errors_count": len(errors),
+        },
+        actor_name=current_user.get("full_name"),
+        actor_role=current_user.get("role"),
+        actor_email=current_user.get("email"),
+    )
     
     return {
         "message": "تم تسجيل الحضور بنجاح",

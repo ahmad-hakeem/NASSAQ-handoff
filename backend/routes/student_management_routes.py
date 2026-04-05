@@ -8,6 +8,8 @@ from pydantic import BaseModel, Field, EmailStr
 from enum import Enum
 import logging
 
+from dependencies import audit_engine, AuditAction
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/students", tags=["Students"])
@@ -234,10 +236,11 @@ def create_student_routes(db, get_current_user):
             save_as_draft=request.save_as_draft
         )
         
+        creator_id = str(current_user.get("_id", current_user.get("id", "system")))
         result = await engine.create_student(
             engine_request,
             tenant_id,
-            str(current_user.get("_id", current_user.get("id", "system")))
+            creator_id
         )
         
         if not result.get("success"):
@@ -245,6 +248,23 @@ def create_student_routes(db, get_current_user):
                 status_code=400,
                 detail=result.get("error", "Failed to create student")
             )
+        
+        await audit_engine.log(
+            action=AuditAction.USER_CREATED.value,
+            performed_by=creator_id,
+            tenant_id=tenant_id,
+            entity_type="student",
+            entity_id=result.get("student", {}).get("id", ""),
+            details={
+                "full_name": request.basic_info.full_name_ar,
+                "national_id": request.basic_info.national_id,
+                "grade_id": request.basic_info.grade_id,
+                "section_id": request.basic_info.section_id,
+            },
+            actor_name=current_user.get("full_name"),
+            actor_role=current_user.get("role"),
+            actor_email=current_user.get("email"),
+        )
         
         return result
     

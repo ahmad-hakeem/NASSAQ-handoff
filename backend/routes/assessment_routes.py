@@ -100,7 +100,8 @@ def create_assessment_router(db, get_current_user, require_roles, UserRole):
     
     # Initialize engine
     from engines.assessment_engine import AssessmentEngine
-    engine = AssessmentEngine(db)
+    from dependencies import audit_engine
+    engine = AssessmentEngine(db, audit_engine=audit_engine)
     
     # ============== ASSESSMENTS ==============
     
