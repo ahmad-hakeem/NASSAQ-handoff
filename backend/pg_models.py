@@ -27,8 +27,8 @@ class User(Base):
 
     id = Column(String, primary_key=True, default=_uuid)
     email = Column(String, unique=True, nullable=False, index=True)
-    phone = Column(String, nullable=True)
-    national_id = Column(String, nullable=True)
+    phone = Column(String, nullable=True, index=True)
+    national_id = Column(String, nullable=True, index=True)
     full_name = Column(String, nullable=False)
     full_name_en = Column(String, nullable=True)
     title = Column(String, nullable=True)
@@ -143,7 +143,7 @@ class Teacher(Base):
     qualification = Column(String, nullable=True)
     years_of_experience = Column(Integer, default=0)
     gender = Column(String, nullable=True)
-    national_id = Column(String, nullable=True)
+    national_id = Column(String, nullable=True, index=True)
     weekly_periods = Column(Integer, nullable=True)
     max_daily_periods = Column(Integer, nullable=True)
     is_active = Column(Boolean, default=True)
@@ -155,6 +155,7 @@ class Teacher(Base):
 
     __table_args__ = (
         Index("idx_pg_teachers_school_active", "school_id", "is_active"),
+        UniqueConstraint("national_id", "school_id", name="uq_teachers_national_id_school"),
     )
 
 
@@ -172,11 +173,11 @@ class Student(Base):
     grade = Column(String, nullable=True)
     date_of_birth = Column(String, nullable=True)
     gender = Column(String, nullable=True)
-    national_id = Column(String, nullable=True)
+    national_id = Column(String, nullable=True, index=True)
     parent_phone = Column(String, nullable=True)
     parent_email = Column(String, nullable=True)
     parent_name = Column(String, nullable=True)
-    parent_id = Column(String, ForeignKey("parents.id", ondelete="SET NULL"), nullable=True)
+    parent_id = Column(String, ForeignKey("parents.id", ondelete="SET NULL"), nullable=True, index=True)
     qr_code = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(String, default=lambda: _utcnow().isoformat())
@@ -191,6 +192,8 @@ class Student(Base):
         Index("idx_pg_students_school_class", "school_id", "class_id"),
         Index("idx_pg_students_school_active", "school_id", "is_active"),
         Index("idx_pg_students_number_school", "student_number", "school_id"),
+        UniqueConstraint("student_number", "school_id", name="uq_students_number_school"),
+        UniqueConstraint("national_id", "school_id", name="uq_students_national_id_school"),
     )
 
 
@@ -246,12 +249,12 @@ class Subject(Base):
     __tablename__ = "subjects"
 
     id = Column(String, primary_key=True, default=_uuid)
-    name = Column(String, nullable=True)
+    name = Column(String, nullable=False)
     name_ar = Column(String, nullable=True)
     name_en = Column(String, nullable=True)
     code = Column(String, nullable=True)
     description = Column(Text, nullable=True)
-    school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=True, index=True)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=False, index=True)
     tenant_id = Column(String, nullable=True)
     category = Column(String, default="core")
     default_periods_per_week = Column(Integer, default=4)
@@ -351,7 +354,7 @@ class ScheduleSession(Base):
 
     id = Column(String, primary_key=True, default=_uuid)
     school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=False, index=True)
-    schedule_id = Column(String, nullable=False)
+    schedule_id = Column(String, nullable=False, index=True)
     assignment_id = Column(String, ForeignKey("teacher_assignments.id", ondelete="SET NULL"), nullable=True)
     teacher_id = Column(String, ForeignKey("teachers.id", ondelete="SET NULL"), nullable=True, index=True)
     class_id = Column(String, ForeignKey("classes.id", ondelete="SET NULL"), nullable=True, index=True)
@@ -384,7 +387,7 @@ class Attendance(Base):
     school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=False, index=True)
     class_id = Column(String, ForeignKey("classes.id", ondelete="SET NULL"), nullable=True, index=True)
     student_id = Column(String, ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
-    session_id = Column(String, nullable=True)
+    session_id = Column(String, nullable=True, index=True)
     date = Column(String, nullable=False)
     status = Column(String, nullable=False)
     recorded_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
@@ -584,7 +587,7 @@ class AuditLog(Base):
     actor_name = Column(String, nullable=True)
     actor_role = Column(String, nullable=True)
     actor_email = Column(String, nullable=True)
-    target_id = Column(String, nullable=True)
+    target_id = Column(String, nullable=True, index=True)
     target_type = Column(String, nullable=True)
     target_name = Column(String, nullable=True)
     device_info = Column(JSONB, nullable=True)
