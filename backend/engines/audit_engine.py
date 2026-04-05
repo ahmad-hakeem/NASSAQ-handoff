@@ -43,6 +43,7 @@ class AuditAction(str, Enum):
     # Academic
     GRADE_RECORDED = "academic.grade_recorded"
     GRADE_UPDATED = "academic.grade_updated"
+    GRADES_BULK_RECORDED = "academic.grades_bulk_recorded"
     ASSESSMENT_CREATED = "academic.assessment_created"
     ASSESSMENT_PUBLISHED = "academic.assessment_published"
     REPORT_CARD_GENERATED = "academic.report_card_generated"

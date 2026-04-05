@@ -395,10 +395,13 @@ class AssessmentEngine:
         
         if self._audit_engine:
             try:
+                from engines.audit_engine import AuditAction
+                assessment = await self.assessments_collection.find_one({"id": assessment_id})
+                bulk_tenant_id = assessment.get("tenant_id", "") if assessment else ""
                 await self._audit_engine.log(
-                    action="GRADES_BULK_RECORDED",
+                    action=AuditAction.GRADES_BULK_RECORDED.value,
                     performed_by=graded_by,
-                    tenant_id="",
+                    tenant_id=bulk_tenant_id,
                     entity_type="assessment",
                     entity_id=assessment_id,
                     details={

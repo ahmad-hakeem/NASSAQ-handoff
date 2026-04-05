@@ -265,6 +265,7 @@ async def create_bulk_attendance(
     created_count = 0
     updated_count = 0
     errors = []
+    transitions = []
     
     for record in bulk_data.records:
         try:
@@ -272,7 +273,6 @@ async def create_bulk_attendance(
             status = record.get('status', 'present')
             notes = record.get('notes')
             
-            # Check if attendance already exists
             existing = await db.attendance.find_one({
                 "student_id": student_id,
                 "class_id": bulk_data.class_id,
@@ -281,7 +281,7 @@ async def create_bulk_attendance(
             })
             
             if existing:
-                # Update existing
+                old_status = existing.get('status')
                 await db.attendance.update_one(
                     {"id": existing['id']},
                     {"$set": {
@@ -292,6 +292,7 @@ async def create_bulk_attendance(
                     }}
                 )
                 updated_count += 1
+                transitions.append({"student_id": student_id, "old_status": old_status, "new_status": status})
             else:
                 # Create new
                 attendance_doc = {
@@ -310,8 +311,8 @@ async def create_bulk_attendance(
                 }
                 await db.attendance.insert_one(attendance_doc)
                 created_count += 1
+                transitions.append({"student_id": student_id, "old_status": None, "new_status": status})
                 
-                # Create event for absent students
                 if status in ['absent', 'late']:
                     event_doc = {
                         "id": str(uuid.uuid4()),
@@ -378,11 +379,6 @@ async def create_bulk_attendance(
         except Exception as e:
             errors.append({"student_id": record.get('student_id'), "error": str(e)})
     
-    status_counts = {}
-    for rec in bulk_data.records:
-        s = rec.get("status", "unknown") if isinstance(rec, dict) else getattr(rec, "status", "unknown")
-        status_counts[s] = status_counts.get(s, 0) + 1
-
     await audit_engine.log(
         action=AuditAction.ATTENDANCE_BULK_RECORDED.value,
         performed_by=current_user['id'],
@@ -396,7 +392,7 @@ async def create_bulk_attendance(
             "created": created_count,
             "updated": updated_count,
             "errors_count": len(errors),
-            "status_breakdown": status_counts,
+            "transitions": transitions,
         },
         actor_name=current_user.get("full_name"),
         actor_role=current_user.get("role"),

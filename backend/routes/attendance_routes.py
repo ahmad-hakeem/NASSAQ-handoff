@@ -173,11 +173,6 @@ def create_attendance_router(db, get_current_user, require_roles, UserRole):
             recorded_by=current_user["id"]
         )
         
-        status_counts = {}
-        for r in data.records:
-            s = r.status if hasattr(r, "status") else r.get("status", "unknown")
-            status_counts[s] = status_counts.get(s, 0) + 1
-
         await audit_engine.log(
             action=AuditAction.ATTENDANCE_BULK_RECORDED.value,
             performed_by=current_user["id"],
@@ -189,7 +184,9 @@ def create_attendance_router(db, get_current_user, require_roles, UserRole):
                 "date": data.attendance_date,
                 "total_records": len(data.records),
                 "processed": results.get("processed", 0),
-                "status_breakdown": status_counts,
+                "created": results.get("created", 0),
+                "updated": results.get("updated", 0),
+                "transitions": results.get("transitions", []),
             },
             actor_name=current_user.get("full_name"),
             actor_role=current_user.get("role"),
@@ -236,6 +233,9 @@ def create_attendance_router(db, get_current_user, require_roles, UserRole):
                 "new_status": "present",
                 "student_count": len(data.student_ids),
                 "processed": results.get("processed", 0),
+                "created": results.get("created", 0),
+                "updated": results.get("updated", 0),
+                "transitions": results.get("transitions", []),
             },
             actor_name=current_user.get("full_name"),
             actor_role=current_user.get("role"),

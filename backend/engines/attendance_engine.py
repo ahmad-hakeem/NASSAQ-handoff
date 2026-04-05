@@ -68,7 +68,7 @@ class AttendanceEngine:
         })
         
         if existing:
-            # Update existing record
+            old_status = existing.get("status")
             updates = {
                 "status": status,
                 "updated_at": now,
@@ -89,6 +89,7 @@ class AttendanceEngine:
             
             existing.update(updates)
             existing.pop("_id", None)
+            existing["old_status"] = old_status
             return existing
         
         # Create new record
@@ -127,7 +128,8 @@ class AttendanceEngine:
             "processed": 0,
             "created": 0,
             "updated": 0,
-            "errors": []
+            "errors": [],
+            "transitions": []
         }
         
         for record in attendance_records:
@@ -139,7 +141,7 @@ class AttendanceEngine:
                     results["errors"].append({"error": "معرف الطالب مفقود"})
                     continue
                 
-                await self.record_attendance(
+                result_doc = await self.record_attendance(
                     tenant_id=tenant_id,
                     student_id=student_id,
                     section_id=section_id,
@@ -154,6 +156,16 @@ class AttendanceEngine:
                 )
                 
                 results["processed"] += 1
+                old = result_doc.get("old_status")
+                if old is not None:
+                    results["updated"] += 1
+                else:
+                    results["created"] += 1
+                results["transitions"].append({
+                    "student_id": student_id,
+                    "old_status": old,
+                    "new_status": status,
+                })
                 
             except Exception as e:
                 results["errors"].append({
