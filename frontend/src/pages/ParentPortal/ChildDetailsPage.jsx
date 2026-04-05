@@ -54,10 +54,10 @@ const ChildDetailsPage = () => {
   const fetchChildData = async () => {
     try {
       const [childRes, gradesRes, attendanceRes, scheduleRes] = await Promise.all([
-        api.get('/parent-portal/child/${childId}'),
-        api.get('/parent-portal/child/${childId}/grades'),
-        api.get('/parent-portal/child/${childId}/attendance'),
-        api.get('/parent-portal/child/${childId}/schedule')
+        api.get(`/parent-portal/child/${childId}`),
+        api.get(`/parent-portal/child/${childId}/grades`),
+        api.get(`/parent-portal/child/${childId}/attendance`),
+        api.get(`/parent-portal/child/${childId}/schedule`)
       ]);
       
       setChild(childRes.data);

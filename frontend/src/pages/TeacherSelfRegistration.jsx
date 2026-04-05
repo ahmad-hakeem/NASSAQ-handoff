@@ -134,7 +134,7 @@ export const TeacherSelfRegistration = () => {
       if (!inviteCode) return;
       
       try {
-        const response = await api.get('/teacher-registration/invite/${inviteCode}');
+        const response = await api.get(`/teacher-registration/invite/${inviteCode}`);
         if (response.data.valid) {
           setInviteInfo(response.data);
           // Pre-fill some data
@@ -319,7 +319,7 @@ export const TeacherSelfRegistration = () => {
     setIsTracking(true);
     
     try {
-      const response = await api.get('/teacher-registration/status/${trackingCode}');
+      const response = await api.get(`/teacher-registration/status/${trackingCode}`);
       setTrackingResult(response.data);
     } catch (error) {
       console.error('Tracking error:', error);

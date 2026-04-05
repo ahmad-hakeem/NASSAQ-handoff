@@ -21,7 +21,7 @@ const ChildBehaviorPage = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const res = await api.get('/parent-portal/child/${childId}/behaviour');
+        const res = await api.get(`/parent-portal/child/${childId}/behaviour`);
         setData(res.data);
       } catch (err) {
         console.error('Error:', err);

@@ -33,7 +33,7 @@ const ParentReportsPage = () => {
         const reportsMap = {};
         for (const child of children) {
           try {
-            const r = await api.get('/parent-portal/child/${child.id}/progress-report');
+            const r = await api.get(`/parent-portal/child/${child.id}/progress-report`);
             reportsMap[child.id] = r.data;
           } catch (e) {
             reportsMap[child.id] = null;

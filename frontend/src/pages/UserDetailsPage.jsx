@@ -206,7 +206,6 @@ export default function UserDetailsPage() {
   const [selectedImage, setSelectedImage] = useState(null);
   
   const { nassaqError, nassaqWarning } = useNassaqAlert();
-  const { api } = useAuth();
   
   // Fetch user data
   useEffect(() => {

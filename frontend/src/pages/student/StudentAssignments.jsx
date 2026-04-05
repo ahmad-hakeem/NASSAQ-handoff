@@ -163,7 +163,7 @@ export const StudentAssignments = () => {
         response = await api.get('/student-portal/assignments');
       } catch {
         // Fallback: get assignments for student
-        response = await api.get('/assignments/student/${user?.id}');
+        response = await api.get(`/assignments/student/${user?.id}`);
       }
       
       const data = response.data?.assignments || response.data || [];
@@ -229,7 +229,7 @@ export const StudentAssignments = () => {
     
     setSubmitting(true);
     try {
-      await api.post('/assignments/${selectedAssignment.id}/submit', {
+      await api.post(`/assignments/${selectedAssignment.id}/submit`, {
         content: submissionText,
         student_id: user?.id
       });

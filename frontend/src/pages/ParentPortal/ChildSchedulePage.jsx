@@ -42,8 +42,8 @@ const ChildSchedulePage = () => {
   const fetchData = async () => {
     try {
       const [scheduleRes, childRes] = await Promise.all([
-        api.get('/parent-portal/child/${childId}/schedule'),
-        api.get('/parent-portal/child/${childId}').catch(() => ({ data: null }))
+        api.get(`/parent-portal/child/${childId}/schedule`),
+        api.get(`/parent-portal/child/${childId}`).catch(() => ({ data: null }))
       ]);
       setSchedule(scheduleRes.data);
       setChild(childRes.data);

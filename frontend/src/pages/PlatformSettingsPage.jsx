@@ -893,7 +893,7 @@ export const PlatformSettingsPage = () => {
   // End session
   const handleEndSession = async (sessionId) => {
     try {
-      await api.delete('/settings/sessions/${sessionId}');
+      await api.delete(`/settings/sessions/${sessionId}`);
       toast.success(isRTL ? 'تم إنهاء الجلسة' : 'Session ended');
     } catch (error) {
       nassaqError(isRTL ? 'فشل إنهاء الجلسة' : 'Failed to end session');
@@ -930,7 +930,7 @@ export const PlatformSettingsPage = () => {
       const currentVersion = parseFloat(data.version) || 1.0;
       const newVersion = (currentVersion + 0.1).toFixed(1);
       
-      await api.put('/settings/platform/${type}', {
+      await api.put(`/settings/platform/${type}`, {
         content: data.content,
         version: newVersion,
         effective_date: new Date().toISOString(),
@@ -955,7 +955,7 @@ export const PlatformSettingsPage = () => {
   // Load version history
   const loadVersionHistory = async (docType) => {
     try {
-      const response = await api.get('/settings/legal-versions/${docType}');
+      const response = await api.get(`/settings/legal-versions/${docType}`);
       setVersionHistory(response.data.versions || []);
       setShowVersionHistoryDialog(true);
     } catch (error) {

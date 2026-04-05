@@ -21,7 +21,7 @@ const ChildHomeworkPage = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const res = await api.get('/parent-portal/child/${childId}/homework');
+        const res = await api.get(`/parent-portal/child/${childId}/homework`);
         setData(res.data);
       } catch (err) {
         console.error('Error:', err);
