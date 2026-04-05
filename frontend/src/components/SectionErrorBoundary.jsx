@@ -27,7 +27,7 @@ class SectionErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       const { isRTL, className, fallbackMessage } = this.props;
-      const rtl = isRTL !== false;
+      const rtl = isRTL === true;
       const defaultMessage = rtl ? 'حدث خطأ في هذا القسم' : 'An error occurred in this section';
 
       return (

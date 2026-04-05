@@ -827,7 +827,7 @@ export const SchoolDashboardContent = () => {
         </div>
       </div>
 
-      <SectionErrorBoundary name="SchoolDayProgress" isRTL={isRTL}>
+      <SectionErrorBoundary name="SchoolDayProgress" isRTL={isRTL} fallbackMessage={isRTL ? 'تعذّر تحميل تقدّم اليوم الدراسي' : 'Failed to load school day progress'}>
         <SchoolDayProgress isRTL={isRTL} />
       </SectionErrorBoundary>
 
@@ -881,10 +881,10 @@ export const SchoolDashboardContent = () => {
       </section>
 
       <section className="grid lg:grid-cols-2 gap-5" data-testid="dashboard-kpi-section">
-        <SectionErrorBoundary name="AttendanceRadial" isRTL={isRTL}>
+        <SectionErrorBoundary name="AttendanceRadial" isRTL={isRTL} fallbackMessage={isRTL ? 'تعذّر تحميل بيانات الحضور' : 'Failed to load attendance data'}>
           <AttendanceRadial data={dashboardData?.attendance} isRTL={isRTL} />
         </SectionErrorBoundary>
-        <SectionErrorBoundary name="DailyOpsPanel" isRTL={isRTL}>
+        <SectionErrorBoundary name="DailyOpsPanel" isRTL={isRTL} fallbackMessage={isRTL ? 'تعذّر تحميل لوحة العمليات' : 'Failed to load operations panel'}>
           <DailyOpsPanel data={dashboardData?.interventions} isRTL={isRTL} onNavigate={(path) => navigate(path)} />
         </SectionErrorBoundary>
       </section>

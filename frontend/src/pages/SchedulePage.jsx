@@ -962,7 +962,7 @@ export const SchedulePage = () => {
               </CardContent>
             </Card>
           ) : (
-            <SectionErrorBoundary name="ScheduleGrid" isRTL={isRTL}>
+            <SectionErrorBoundary name="ScheduleGrid" isRTL={isRTL} fallbackMessage={isRTL ? 'تعذّر تحميل جدول الحصص' : 'Failed to load timetable grid'}>
             <DndContext
               sensors={sensors}
               collisionDetection={closestCenter}

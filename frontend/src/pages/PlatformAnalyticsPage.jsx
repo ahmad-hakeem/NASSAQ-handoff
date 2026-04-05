@@ -1010,7 +1010,7 @@ export const PlatformAnalyticsPage = () => {
               </div>
               
               {/* Charts Row */}
-              <SectionErrorBoundary name="AnalyticsCharts" isRTL={isRTL}>
+              <SectionErrorBoundary name="AnalyticsCharts" isRTL={isRTL} fallbackMessage={isRTL ? 'تعذّر تحميل الرسوم البيانية' : 'Failed to load analytics charts'}>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* School Distribution by City */}
                 <Card>
