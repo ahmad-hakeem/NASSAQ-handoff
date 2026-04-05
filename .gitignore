@@ -3,7 +3,6 @@ node_modules/
 __pycache__/
 uploads/
 dist/
-build/
 *.pyc
 .mongodb/
 attached_assets/
@@ -11,3 +10,4 @@ test_reports/
 .cache/
 .pythonlibs/
 memory/
+.git/lfs/
