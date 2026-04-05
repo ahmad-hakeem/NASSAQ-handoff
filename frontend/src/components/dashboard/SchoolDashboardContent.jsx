@@ -695,7 +695,7 @@ const QuickAddBar = ({ onAction, isRTL }) => {
 
 export const SchoolDashboardContent = () => {
   const { isRTL } = useTheme();
-  const { api } = useAuth();
+  const { api, schoolContext, isImpersonating } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -758,7 +758,7 @@ export const SchoolDashboardContent = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [isRTL, api]);
+  }, [isRTL, api, schoolContext, isImpersonating]);
 
   useEffect(() => {
     fetchDashboardData();
