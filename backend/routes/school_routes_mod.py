@@ -525,6 +525,13 @@ async def get_school_detail(
     teachers = await db.teachers.find({"school_id": school_id}, {"_id": 0}).to_list(500)
     classes = await db.classes.find({"school_id": school_id}, {"_id": 0}).to_list(200)
 
+    # Find principal account (school admin login)
+    principal_account = await db.users.find_one(
+        {"tenant_id": school_id, "role": UserRole.SCHOOL_PRINCIPAL.value},
+        {"_id": 0, "password_hash": 0}
+    )
+    has_credentials = principal_account is not None
+
     # Audit logs for this school
     audit_logs = await db.audit_logs.find(
         {"$or": [{"tenant_id": school_id}, {"entity_id": school_id}]},
@@ -552,11 +559,126 @@ async def get_school_detail(
             "total_teachers": len(teachers),
             "total_classes": len(classes),
         },
+        "principal_account": principal_account,
+        "has_credentials": has_credentials,
         "users": users[:100],
         "students": students[:100],
         "teachers": teachers[:100],
         "classes": classes[:50],
         "audit_logs": audit_logs,
+    }
+
+
+class SchoolCredentialsRequest(BaseModel):
+    email: str = Field(..., min_length=5, description="البريد الإلكتروني لمدير المدرسة")
+    name: Optional[str] = None
+    password: Optional[str] = Field(None, min_length=8, description="كلمة المرور الجديدة (اختياري - يُولَّد تلقائياً إن لم تُحدَّد)")
+
+
+@router.post("/schools/{school_id}/credentials")
+async def manage_school_credentials(
+    school_id: str,
+    body: SchoolCredentialsRequest,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+):
+    """Create or update the school principal account credentials (email + password)"""
+    school = await db.schools.find_one({"id": school_id})
+    if not school:
+        raise HTTPException(status_code=404, detail="المدرسة غير موجودة")
+
+    import secrets, string as _string
+    now = datetime.now(timezone.utc).isoformat()
+    principal_name = body.name or school.get("principal_name") or "مدير المدرسة"
+
+    # Find existing principal account for this school
+    existing_principal = await db.users.find_one({
+        "tenant_id": school_id,
+        "role": UserRole.SCHOOL_PRINCIPAL.value
+    })
+
+    # Determine password handling
+    raw_password = None
+    generated = False
+    if body.password:
+        raw_password = body.password
+    elif not existing_principal:
+        # New account — auto-generate password
+        chars = _string.ascii_letters + _string.digits + "!@#$%"
+        raw_password = ''.join(secrets.choice(chars) for _ in range(14))
+        generated = True
+    # If updating existing and no password provided — keep current password (no override)
+
+    is_new = False
+    if existing_principal:
+        # Update credentials (only password if explicitly provided)
+        update_fields = {
+            "email": body.email,
+            "full_name": principal_name,
+            "must_change_password": True if raw_password else existing_principal.get("must_change_password", False),
+            "updated_at": now,
+        }
+        if raw_password:
+            update_fields["password_hash"] = hash_password(raw_password)
+        await db.users.update_one(
+            {"id": existing_principal["id"]},
+            {"$set": update_fields}
+        )
+        principal_id = existing_principal["id"]
+    else:
+        # Create new principal
+        hashed = hash_password(raw_password)
+        principal_id = str(uuid.uuid4())
+        await db.users.insert_one({
+            "id": principal_id,
+            "email": body.email,
+            "password_hash": hashed,
+            "full_name": principal_name,
+            "role": UserRole.SCHOOL_PRINCIPAL.value,
+            "tenant_id": school_id,
+            "is_active": True,
+            "must_change_password": True,
+            "preferred_language": "ar",
+            "preferred_theme": "light",
+            "created_at": now,
+            "updated_at": now,
+        })
+        is_new = True
+
+    # Update school record with principal info
+    await db.schools.update_one(
+        {"id": school_id},
+        {"$set": {
+            "principal_email": body.email,
+            "principal_name": principal_name,
+            "updated_at": now,
+        }}
+    )
+
+    # Audit log
+    performer_id = current_user.get("id", current_user.get("user_id"))
+    await audit_engine.log_data_change(
+        action=AuditAction.USER_CREATED.value if is_new else AuditAction.USER_UPDATED.value,
+        performed_by=performer_id,
+        entity_type="user",
+        entity_id=principal_id,
+        tenant_id=school_id,
+        new_values={
+            "action": "SET_SCHOOL_CREDENTIALS",
+            "email": body.email,
+            "school_name": school.get("name", ""),
+            "is_new_account": is_new,
+        }
+    )
+
+    return {
+        "success": True,
+        "is_new": is_new,
+        "email": body.email,
+        "name": principal_name,
+        "temp_password": raw_password,
+        "password_was_generated": generated,
+        "password_was_changed": raw_password is not None,
+        "message": "تم إنشاء حساب المدير بنجاح" if is_new else "تم تحديث بيانات الدخول بنجاح",
     }
 
 

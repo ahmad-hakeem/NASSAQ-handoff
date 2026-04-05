@@ -19,8 +19,9 @@ import {
   Building2, ArrowRight, ArrowLeft, Users, GraduationCap, BookOpen,
   CreditCard, Activity, MapPin, Mail, Phone, Calendar, Hash,
   Edit, Save, X, Pause, Play, AlertTriangle, Loader2,
-  UserCheck, CheckCircle2, XCircle, Clock, Shield, Eye,
-  ChevronRight, School, LayoutDashboard, RefreshCw,
+  UserCheck, CheckCircle2, XCircle, Clock, Shield, Eye, EyeOff,
+  ChevronRight, School, LayoutDashboard, RefreshCw, Key, Copy,
+  Lock, Unlock, Sparkles, UserPlus, RotateCcw,
 } from 'lucide-react';
 
 const STATUS_CONFIG = {
@@ -68,6 +69,23 @@ export default function PlatformSchoolDetailPage() {
   const [actionReason, setActionReason] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
 
+  const [credForm, setCredForm] = useState({ email: '', name: '', password: '', confirmPassword: '' });
+  const [credFormOpen, setCredFormOpen] = useState(false);
+  const [credLoading, setCredLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [credResult, setCredResult] = useState(null);
+
+  const generatePassword = () => {
+    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$';
+    const pwd = Array.from({ length: 14 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+    setCredForm(f => ({ ...f, password: pwd, confirmPassword: pwd }));
+  };
+
+  const copyToClipboard = (text, label = '') => {
+    navigator.clipboard.writeText(text);
+    toast.success(isRTL ? `تم نسخ ${label}` : `${label} copied`);
+  };
+
   const fetchDetail = useCallback(async () => {
     setLoading(true);
     try {
@@ -103,6 +121,53 @@ export default function PlatformSchoolDetailPage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSaveCredentials = async () => {
+    if (!credForm.email.trim()) {
+      nassaqError(isRTL ? 'البريد الإلكتروني مطلوب' : 'Email is required');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(credForm.email)) {
+      nassaqError(isRTL ? 'صيغة البريد الإلكتروني غير صحيحة' : 'Invalid email format');
+      return;
+    }
+    if (credForm.password && credForm.password !== credForm.confirmPassword) {
+      nassaqError(isRTL ? 'كلمة المرور وتأكيدها غير متطابقتين' : 'Passwords do not match');
+      return;
+    }
+    if (credForm.password && credForm.password.length < 8) {
+      nassaqError(isRTL ? 'كلمة المرور يجب أن تكون 8 أحرف على الأقل' : 'Password must be at least 8 characters');
+      return;
+    }
+    setCredLoading(true);
+    try {
+      const payload = { email: credForm.email, name: credForm.name || undefined };
+      if (credForm.password) payload.password = credForm.password;
+      const res = await api.post(`/schools/${schoolId}/credentials`, payload);
+      setCredResult(res.data);
+      toast.success(res.data.is_new
+        ? (isRTL ? 'تم إنشاء حساب المدير بنجاح' : 'Principal account created successfully')
+        : (isRTL ? 'تم تحديث بيانات الدخول بنجاح' : 'Credentials updated successfully')
+      );
+      setCredFormOpen(false);
+      fetchDetail();
+    } catch (err) {
+      nassaqError(err.response?.data?.detail || (isRTL ? 'فشل حفظ بيانات الدخول' : 'Failed to save credentials'));
+    } finally {
+      setCredLoading(false);
+    }
+  };
+
+  const openCredForm = (principal) => {
+    setCredForm({
+      email: principal?.email || detail?.school?.principal_email || detail?.school?.email || '',
+      name: principal?.full_name || detail?.school?.principal_name || '',
+      password: '',
+      confirmPassword: '',
+    });
+    setCredResult(null);
+    setCredFormOpen(true);
   };
 
   const handleSuspend = async () => {
@@ -384,6 +449,133 @@ export default function PlatformSchoolDetailPage() {
                   </div>
                 </CardContent>
               </Card>
+
+              {/* ─── Credentials Card ─── */}
+              {(() => {
+                const principal = detail.principal_account;
+                const hasCreds = detail.has_credentials;
+                return (
+                  <Card className="card-nassaq border-2 border-dashed border-brand-navy/20 dark:border-brand-navy/30">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <CardTitle className="font-cairo flex items-center gap-2 text-brand-navy dark:text-brand-turquoise">
+                          <Key className="h-5 w-5" />
+                          {isRTL ? 'بيانات الدخول للنظام' : 'System Login Credentials'}
+                        </CardTitle>
+                        <Button
+                          size="sm"
+                          onClick={() => openCredForm(principal)}
+                          className={`gap-2 text-sm font-cairo ${hasCreds
+                            ? 'bg-brand-navy/10 text-brand-navy hover:bg-brand-navy hover:text-white dark:bg-brand-navy/20 dark:text-brand-turquoise dark:hover:bg-brand-navy dark:hover:text-white'
+                            : 'bg-brand-navy text-white hover:bg-brand-navy/90'
+                          }`}
+                          variant="ghost"
+                        >
+                          {hasCreds
+                            ? <><RotateCcw className="h-4 w-4" />{isRTL ? 'تحديث بيانات الدخول' : 'Update Credentials'}</>
+                            : <><UserPlus className="h-4 w-4" />{isRTL ? 'إنشاء حساب المدير' : 'Create Principal Account'}</>
+                          }
+                        </Button>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      {hasCreds && principal ? (
+                        <div className="space-y-4">
+                          <div className="flex items-center gap-3 p-3 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-xl">
+                            <div className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center flex-shrink-0">
+                              <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300 font-cairo">
+                                {isRTL ? 'الحساب مُفعَّل' : 'Account Active'}
+                              </p>
+                              <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                                {isRTL ? 'حساب مدير المدرسة موجود ويمكن تسجيل الدخول به' : 'Principal account exists and is accessible'}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                              <p className="text-xs text-slate-500 font-medium">{isRTL ? 'الاسم الكامل' : 'Full Name'}</p>
+                              <div className="flex items-center gap-2 p-2.5 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-700">
+                                <span className="text-sm font-medium text-slate-800 dark:text-white flex-1">{principal.full_name || '—'}</span>
+                              </div>
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-xs text-slate-500 font-medium">{isRTL ? 'البريد الإلكتروني' : 'Email'}</p>
+                              <div className="flex items-center gap-2 p-2.5 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-700">
+                                <span className="text-sm font-mono text-slate-800 dark:text-white flex-1 truncate">{principal.email}</span>
+                                <button onClick={() => copyToClipboard(principal.email, isRTL ? 'البريد' : 'email')} className="flex-shrink-0 text-slate-400 hover:text-brand-navy transition-colors">
+                                  <Copy className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-xs text-slate-500 font-medium">{isRTL ? 'حالة الحساب' : 'Account Status'}</p>
+                              <div className="flex items-center gap-2 p-2.5 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-700">
+                                <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full border ${principal.is_active !== false ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-red-100 text-red-700 border-red-200'}`}>
+                                  {principal.is_active !== false ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+                                  {principal.is_active !== false ? (isRTL ? 'نشط' : 'Active') : (isRTL ? 'موقوف' : 'Suspended')}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-xs text-slate-500 font-medium">{isRTL ? 'تغيير كلمة المرور مطلوب' : 'Must Change Password'}</p>
+                              <div className="flex items-center gap-2 p-2.5 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-700">
+                                <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full border ${principal.must_change_password ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                                  {principal.must_change_password ? <AlertTriangle className="h-3 w-3" /> : <CheckCircle2 className="h-3 w-3" />}
+                                  {principal.must_change_password ? (isRTL ? 'نعم' : 'Yes') : (isRTL ? 'لا' : 'No')}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-8 text-center gap-3">
+                          <div className="w-16 h-16 rounded-full bg-amber-50 dark:bg-amber-950/30 border-2 border-dashed border-amber-200 dark:border-amber-700 flex items-center justify-center">
+                            <Lock className="h-7 w-7 text-amber-500" />
+                          </div>
+                          <div>
+                            <p className="font-semibold text-slate-700 dark:text-white font-cairo">
+                              {isRTL ? 'لا يوجد حساب دخول للمدرسة' : 'No Login Account Configured'}
+                            </p>
+                            <p className="text-sm text-slate-500 mt-1">
+                              {isRTL ? 'أنشئ حساباً لمدير المدرسة حتى يتمكن من الدخول للنظام' : 'Create a principal account so the school can access the system'}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Last result banner */}
+                      {credResult && (
+                        <div className="mt-4 p-4 bg-brand-navy/5 border border-brand-navy/20 rounded-xl space-y-3">
+                          <p className="text-sm font-semibold text-brand-navy dark:text-brand-turquoise font-cairo flex items-center gap-2">
+                            <Sparkles className="h-4 w-4" />
+                            {credResult.is_new ? (isRTL ? 'تم إنشاء الحساب — احفظ هذه البيانات' : 'Account Created — Save These Credentials') : (isRTL ? 'تم تحديث بيانات الدخول' : 'Credentials Updated')}
+                          </p>
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2 p-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+                              <Mail className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
+                              <span className="text-sm font-mono flex-1">{credResult.email}</span>
+                              <button onClick={() => copyToClipboard(credResult.email, 'email')} className="text-slate-400 hover:text-brand-navy"><Copy className="h-3.5 w-3.5" /></button>
+                            </div>
+                            {credResult.password_was_changed && credResult.temp_password && (
+                              <div className="flex items-center gap-2 p-2 bg-white dark:bg-slate-800 rounded-lg border border-amber-200 dark:border-amber-700">
+                                <Key className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" />
+                                <span className="text-sm font-mono flex-1 tracking-wider">{credResult.temp_password}</span>
+                                <button onClick={() => copyToClipboard(credResult.temp_password, isRTL ? 'كلمة المرور' : 'password')} className="text-slate-400 hover:text-amber-600"><Copy className="h-3.5 w-3.5" /></button>
+                              </div>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-500">
+                            {isRTL ? 'سيُطلب من المدير تغيير كلمة المرور عند أول تسجيل دخول' : 'Principal will be prompted to change password on first login'}
+                          </p>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })()}
             </TabsContent>
 
             {/* ─── Tab: Users ─── */}
@@ -601,6 +793,133 @@ export default function PlatformSchoolDetailPage() {
 
         </div>
       </div>
+
+      {/* Credentials Dialog */}
+      <Dialog open={credFormOpen} onOpenChange={(o) => { setCredFormOpen(o); if (!o) { setShowPassword(false); } }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-cairo flex items-center gap-2 text-brand-navy dark:text-brand-turquoise">
+              <Key className="h-5 w-5" />
+              {detail?.has_credentials
+                ? (isRTL ? 'تحديث بيانات دخول المدرسة' : 'Update School Login Credentials')
+                : (isRTL ? 'إنشاء حساب مدير المدرسة' : 'Create School Principal Account')
+              }
+            </DialogTitle>
+            <DialogDescription>
+              {detail?.has_credentials
+                ? (isRTL ? 'تعديل البريد الإلكتروني و/أو كلمة المرور لحساب مدير المدرسة.' : 'Update the email and/or password for the school principal account.')
+                : (isRTL ? 'أنشئ حساباً جديداً لمدير المدرسة للدخول على النظام.' : 'Create a new account for the school principal to access the system.')
+              }
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Email */}
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium font-cairo">
+                {isRTL ? 'البريد الإلكتروني' : 'Email Address'} <span className="text-red-500">*</span>
+              </Label>
+              <div className="relative">
+                <Mail className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <Input
+                  type="email"
+                  dir="ltr"
+                  placeholder="principal@school.edu"
+                  value={credForm.email}
+                  onChange={(e) => setCredForm(f => ({ ...f, email: e.target.value }))}
+                  className="ps-9 rounded-xl font-mono"
+                />
+              </div>
+            </div>
+
+            {/* Name */}
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium font-cairo">
+                {isRTL ? 'الاسم الكامل' : 'Full Name'}
+              </Label>
+              <Input
+                placeholder={isRTL ? 'اسم مدير المدرسة' : 'Principal full name'}
+                value={credForm.name}
+                onChange={(e) => setCredForm(f => ({ ...f, name: e.target.value }))}
+                className="rounded-xl"
+              />
+            </div>
+
+            {/* Password */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium font-cairo">
+                  {detail?.has_credentials
+                    ? (isRTL ? 'كلمة المرور الجديدة (اتركها فارغة للإبقاء على الحالية)' : 'New Password (leave blank to keep current)')
+                    : (isRTL ? 'كلمة المرور' : 'Password')
+                  }
+                  {!detail?.has_credentials && <span className="text-slate-400 ms-1">({isRTL ? 'يُولَّد تلقائياً إن تُركت فارغة' : 'auto-generated if blank'})</span>}
+                </Label>
+                <button
+                  type="button"
+                  onClick={generatePassword}
+                  className="text-xs text-brand-turquoise hover:underline flex items-center gap-1 font-cairo"
+                >
+                  <Sparkles className="h-3 w-3" />
+                  {isRTL ? 'توليد تلقائي' : 'Generate'}
+                </button>
+              </div>
+              <div className="relative">
+                <Lock className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <Input
+                  type={showPassword ? 'text' : 'password'}
+                  dir="ltr"
+                  placeholder={isRTL ? '••••••••••••' : '••••••••••••'}
+                  value={credForm.password}
+                  onChange={(e) => setCredForm(f => ({ ...f, password: e.target.value }))}
+                  className="ps-9 pe-10 rounded-xl font-mono tracking-wider"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(s => !s)}
+                  className="absolute end-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Confirm Password — only if password has value */}
+            {credForm.password && (
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium font-cairo">
+                  {isRTL ? 'تأكيد كلمة المرور' : 'Confirm Password'} <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  type={showPassword ? 'text' : 'password'}
+                  dir="ltr"
+                  placeholder={isRTL ? 'أعد كتابة كلمة المرور' : 'Re-enter password'}
+                  value={credForm.confirmPassword}
+                  onChange={(e) => setCredForm(f => ({ ...f, confirmPassword: e.target.value }))}
+                  className={`rounded-xl font-mono tracking-wider ${credForm.password && credForm.confirmPassword && credForm.password !== credForm.confirmPassword ? 'border-red-400 focus:ring-red-300' : ''}`}
+                />
+                {credForm.password && credForm.confirmPassword && credForm.password !== credForm.confirmPassword && (
+                  <p className="text-xs text-red-500 font-cairo">{isRTL ? 'كلمتا المرور غير متطابقتين' : 'Passwords do not match'}</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="flex-row-reverse gap-2">
+            <Button variant="outline" onClick={() => setCredFormOpen(false)} disabled={credLoading}>
+              {isRTL ? 'إلغاء' : 'Cancel'}
+            </Button>
+            <Button
+              onClick={handleSaveCredentials}
+              disabled={credLoading || !credForm.email || (credForm.password && credForm.password !== credForm.confirmPassword)}
+              className="bg-brand-navy text-white hover:bg-brand-navy/90 gap-2"
+            >
+              {credLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {detail?.has_credentials ? (isRTL ? 'تحديث' : 'Update') : (isRTL ? 'إنشاء الحساب' : 'Create Account')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Suspend Dialog */}
       <Dialog open={suspendDialog} onOpenChange={(o) => { setSuspendDialog(o); if (!o) setActionReason(''); }}>
