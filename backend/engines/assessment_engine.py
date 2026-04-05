@@ -292,6 +292,7 @@ class AssessmentEngine:
                 except Exception as e:
                     logger.warning(f"Audit log failed for grade update: {e}")
             
+            existing["_was_update"] = True
             return existing
         
         grade_id = str(uuid.uuid4())
@@ -371,7 +372,7 @@ class AssessmentEngine:
                     })
                     continue
                 
-                await self.record_grade(
+                grade_doc = await self.record_grade(
                     assessment_id=assessment_id,
                     student_id=student_id,
                     score=float(score),
@@ -381,12 +382,35 @@ class AssessmentEngine:
                 )
                 
                 results["processed"] += 1
+                if grade_doc and grade_doc.get("_was_update"):
+                    results["updated"] += 1
+                else:
+                    results["created"] += 1
                 
             except Exception as e:
                 results["errors"].append({
                     "student_id": grade_data.get("student_id"),
                     "error": str(e)
                 })
+        
+        if self._audit_engine:
+            try:
+                await self._audit_engine.log(
+                    action="GRADES_BULK_RECORDED",
+                    performed_by=graded_by,
+                    tenant_id="",
+                    entity_type="assessment",
+                    entity_id=assessment_id,
+                    details={
+                        "total_submitted": len(grades),
+                        "processed": results["processed"],
+                        "created": results["created"],
+                        "updated": results["updated"],
+                        "errors_count": len(results["errors"]),
+                    },
+                )
+            except Exception as e:
+                logger.warning(f"Audit log failed for bulk grade recording: {e}")
         
         return results
     

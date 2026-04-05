@@ -148,7 +148,7 @@ async def create_attendance(
     })
     
     if existing:
-        # Update existing record
+        old_status = existing.get('status')
         await db.attendance.update_one(
             {"id": existing['id']},
             {"$set": {
@@ -158,6 +158,25 @@ async def create_attendance(
                 "recorded_at": datetime.now(timezone.utc).isoformat()
             }}
         )
+        
+        await audit_engine.log(
+            action=AuditAction.ATTENDANCE_RECORDED.value,
+            performed_by=current_user['id'],
+            tenant_id=current_user.get('tenant_id'),
+            entity_type="attendance",
+            entity_id=existing['id'],
+            details={
+                "student_id": attendance.student_id,
+                "class_id": attendance.class_id,
+                "date": today,
+                "old_status": old_status,
+                "new_status": attendance.status.value,
+            },
+            actor_name=current_user.get("full_name"),
+            actor_role=current_user.get("role"),
+            actor_email=current_user.get("email"),
+        )
+        
         updated = await db.attendance.find_one({"id": existing['id']}, {"_id": 0})
         updated['student_name'] = student.get('full_name')
         updated['class_name'] = class_info.get('name') if class_info else None
@@ -208,7 +227,8 @@ async def create_attendance(
             "student_id": attendance.student_id,
             "class_id": attendance.class_id,
             "date": today,
-            "status": attendance.status.value,
+            "old_status": None,
+            "new_status": attendance.status.value,
         },
         actor_name=current_user.get("full_name"),
         actor_role=current_user.get("role"),
@@ -358,6 +378,11 @@ async def create_bulk_attendance(
         except Exception as e:
             errors.append({"student_id": record.get('student_id'), "error": str(e)})
     
+    status_counts = {}
+    for rec in bulk_data.records:
+        s = rec.get("status", "unknown") if isinstance(rec, dict) else getattr(rec, "status", "unknown")
+        status_counts[s] = status_counts.get(s, 0) + 1
+
     await audit_engine.log(
         action=AuditAction.ATTENDANCE_BULK_RECORDED.value,
         performed_by=current_user['id'],
@@ -371,6 +396,7 @@ async def create_bulk_attendance(
             "created": created_count,
             "updated": updated_count,
             "errors_count": len(errors),
+            "status_breakdown": status_counts,
         },
         actor_name=current_user.get("full_name"),
         actor_role=current_user.get("role"),
