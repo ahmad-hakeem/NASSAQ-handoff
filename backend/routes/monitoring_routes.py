@@ -10,6 +10,7 @@ import platform
 
 from dependencies import db, get_current_user, require_roles, UserRole
 from sqlalchemy import text as sa_text
+from sqlalchemy.exc import SQLAlchemyError
 import logging
 
 logger = logging.getLogger("nassaq.monitoring_routes")
@@ -46,8 +47,10 @@ async def health_check():
     db_latency_ms = 0
     try:
         db_ok, db_latency_ms = await _pg_ping(db)
-    except Exception as e:
+    except (SQLAlchemyError, ConnectionError, OSError) as e:
         logger.error(f"Health check DB ping failed: {e}")
+    except Exception as e:
+        logger.error(f"Health check unexpected error: {e}")
 
     uptime_seconds = round(time.time() - _start_time)
     status = "healthy" if db_ok else "degraded"
@@ -120,8 +123,10 @@ async def deployment_safety_check(current_user: dict = Depends(require_roles([Us
         if db_ok:
             for coll_name in ["users", "schools", "teachers", "students", "product_issues"]:
                 collection_counts[coll_name] = await db[coll_name].count_documents({})
-    except Exception as e:
+    except (SQLAlchemyError, ConnectionError, OSError) as e:
         logger.error(f"Deployment safety check DB query failed: {e}")
+    except Exception as e:
+        logger.error(f"Deployment safety check unexpected error: {e}")
 
     return {
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -182,12 +187,20 @@ async def system_alerts(current_user: dict = Depends(require_roles([UserRole.PLA
                 "message": f"Database latency high: {latency}ms",
                 "timestamp": datetime.now(timezone.utc).isoformat()
             })
-    except Exception as e:
+    except (SQLAlchemyError, ConnectionError, OSError) as e:
         logger.error(f"System alerts DB check failed: {e}")
         alerts.append({
             "id": "db-check-error",
             "type": "critical",
             "message": f"Failed to check database status: {e}",
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        })
+    except Exception as e:
+        logger.error(f"System alerts unexpected error: {e}")
+        alerts.append({
+            "id": "db-check-error",
+            "type": "critical",
+            "message": "Unexpected error checking database status",
             "timestamp": datetime.now(timezone.utc).isoformat()
         })
     return alerts
@@ -220,8 +233,11 @@ async def system_metrics(current_user: dict = Depends(require_roles([UserRole.PL
             "sessions": await db.teacher_sessions.count_documents({}),
             "audit_logs": await db.audit_logs.count_documents({}),
         }
-    except Exception as e:
+    except (SQLAlchemyError, ConnectionError, OSError) as e:
         logger.error(f"System metrics DB query failed: {e}")
+        db_counts = {"error": "database unavailable"}
+    except Exception as e:
+        logger.error(f"System metrics unexpected error: {e}")
         db_counts = {"error": "database unavailable"}
 
     return {

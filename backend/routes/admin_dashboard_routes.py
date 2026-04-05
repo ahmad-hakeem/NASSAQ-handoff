@@ -9,6 +9,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone, timedelta
 import uuid
 import logging
+from sqlalchemy.exc import SQLAlchemyError
 
 logger = logging.getLogger("nassaq.admin_dashboard")
 
@@ -276,8 +277,11 @@ def setup_admin_routes(db, get_current_user, require_roles, UserRole):
                     total_tables = tbl_result.scalar() or 0
                 else:
                     db_healthy = False
-            except Exception as e:
+            except (SQLAlchemyError, ConnectionError, OSError) as e:
                 logger.error(f"System health DB check failed: {e}")
+                db_healthy = False
+            except Exception as e:
+                logger.error(f"System health unexpected error: {e}")
                 db_healthy = False
 
             return {
