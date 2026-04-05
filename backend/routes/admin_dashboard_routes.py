@@ -263,17 +263,26 @@ def setup_admin_routes(db, get_current_user, require_roles, UserRole):
         try:
             now = datetime.now(timezone.utc)
             db_healthy = True
+            total_tables = 0
             try:
-                await db.command("ping")
+                from sqlalchemy import text as sa_text
+                session = db._get_session()
+                if session:
+                    result = await session.execute(sa_text("SELECT 1"))
+                    result.scalar()
+                    tbl_result = await session.execute(sa_text(
+                        "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'"
+                    ))
+                    total_tables = tbl_result.scalar() or 0
+                else:
+                    db_healthy = False
             except Exception:
                 db_healthy = False
-
-            total_collections = len(await db.list_collection_names())
 
             return {
                 "database": {
                     "status": "healthy" if db_healthy else "error",
-                    "collections": total_collections,
+                    "collections": total_tables,
                     "last_check": now.isoformat()
                 },
                 "api": {
