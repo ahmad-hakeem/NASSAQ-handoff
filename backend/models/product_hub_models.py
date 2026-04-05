@@ -604,6 +604,7 @@ class IssueCreate(BaseModel):
             "url": self.url,
             "device": self.device,
             "browser": self.browser,
+            "is_deleted": False,
             "assigned_team": None,
             "assigned_to": None,
             "assigned_to_name": None,
