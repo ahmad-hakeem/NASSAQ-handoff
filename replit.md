@@ -94,8 +94,13 @@ Each fix report must include: root cause, why it wasn't caught before, what chan
 ## Architecture
 
 - **Frontend**: React (Create React App + CRACO), Tailwind CSS, Radix UI — port 5000
-- **Backend**: FastAPI (Python), MongoDB (motor), JWT auth — port 8000
-- **Database**: MongoDB at `localhost:27017`, DB: `test_database`
+- **Backend**: FastAPI (Python), JWT auth — port 8000
+- **Database (migrating)**: MongoDB (motor, legacy — being replaced) + PostgreSQL (async SQLAlchemy + asyncpg, new primary)
+  - **PostgreSQL**: Replit built-in via `DATABASE_URL`, 47 tables, 191 indexes, Alembic migrations
+  - **MongoDB**: `localhost:27017`, DB: `test_database` — still active during migration, will be removed in Task #12
+  - **Migration files**: `backend/db.py` (async engine), `backend/pg_models.py` (47 ORM models), `backend/pg_helpers.py` (utilities), `backend/alembic/` (migrations)
+  - **asyncpg SSL fix**: `sslmode` param stripped from DATABASE_URL (asyncpg uses `ssl=True` instead)
+  - **Coexistence**: Both DBs run in parallel; routes migrate one-by-one in Task #11
 
 ### Product Intelligence Hub (مركز ذكاء المنتج)
 - **Database Models**: `backend/models/product_hub_models.py` — Production-ready Pydantic schemas: 12 enums (IssueType, IssueStatus, IssuePriority, Reproducible, TeamEnum, ImpactType, RelatedTo, AccountType, Platform, CommentType, AuditAction, AuditRole), structured sub-models (IssueContext, IssueDescription, IssueTechnical, IssueBusiness, IssueAssignment, IssueAI, SubmissionMetadata, IssueVisibility, IssueSystem), `IssueCreate.to_issue_document()` builder, backward-compatible `ISSUE_TYPE_COMPAT` map (performance→performance_issue, etc.), attachment validation (max 10 files, allowed extensions), field length limits
@@ -233,6 +238,11 @@ import { getPose, getPoseForPath, getRandomPoseFromCategory, HERO_POSES } from '
 /backend          FastAPI backend
   server.py       Thin orchestrator (~754 lines, app init + router registration)
   config.py       Centralized production config with validation
+  db.py           PostgreSQL async engine (SQLAlchemy + asyncpg), session factory, init_pg_tables()
+  pg_models.py    47 SQLAlchemy ORM table models for PostgreSQL
+  pg_helpers.py   PostgreSQL helper utilities (generate_id, serialize, issue sequence)
+  alembic/        Alembic async migration framework (env.py, versions/)
+  alembic.ini     Alembic configuration
   dependencies.py Shared deps: db, auth, engines, helpers, enums
   shared_models.py Shared Pydantic models (UserResponse, TokenResponse, etc.)
   db_indexes.py   Database index management (auto-runs on startup)

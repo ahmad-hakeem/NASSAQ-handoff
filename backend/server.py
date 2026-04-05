@@ -137,6 +137,13 @@ async def startup_tasks():
         failed = {k: v for k, v in checklist.items() if v is False}
         logger.error(f"DEPLOYMENT SAFETY: Pre-flight checks FAILED: {failed}")
 
+    try:
+        from db import init_pg_tables
+        await init_pg_tables()
+        logger.info("PostgreSQL tables verified on startup")
+    except Exception as e:
+        logger.warning(f"PostgreSQL init on startup: {e}")
+
     from db_indexes import create_indexes
     try:
         await create_indexes()
