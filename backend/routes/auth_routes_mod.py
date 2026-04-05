@@ -312,11 +312,14 @@ async def set_active_role_context(
         }}
     )
     
+    original_role = current_user.get("original_role") or current_user.get("role")
     new_token = create_access_token({
         "sub": user_id,
         "role": context.role_id,
         "tenant_id": school_id,
         "email": current_user.get("email", ""),
+        "is_switched": True,
+        "original_role": original_role,
     })
 
     return ActiveRoleContextResponse(
@@ -547,6 +550,8 @@ async def switch_user_role(
         "role": target_role,
         "tenant_id": target_tenant_id,
         "email": user.get("email", ""),
+        "is_switched": True,
+        "original_role": primary_role,
     })
 
     return {
