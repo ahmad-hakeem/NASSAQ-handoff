@@ -74,14 +74,14 @@ class AttendanceResponse(BaseModel):
     class_name: Optional[str] = None
     subject_id: Optional[str] = None
     subject_name: Optional[str] = None
-    teacher_id: str
+    teacher_id: Optional[str] = None
     teacher_name: Optional[str] = None
     date: str
     time_slot_id: Optional[str] = None
     status: AttendanceStatus
     notes: Optional[str] = None
-    recorded_by: str
-    recorded_at: str
+    recorded_by: Optional[str] = None
+    recorded_at: Optional[str] = None
 
 class AttendanceSummary(BaseModel):
     total_students: int

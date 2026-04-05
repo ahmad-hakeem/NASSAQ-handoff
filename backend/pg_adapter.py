@@ -984,6 +984,8 @@ class PgCollection:
                 for k, v in doc.items():
                     if k in col_keys:
                         setattr(obj, k, v)
+                    elif COLUMN_ALIASES.get(k) in col_keys:
+                        setattr(obj, COLUMN_ALIASES[k], v)
                 session.add(obj)
 
             await session.flush()
@@ -993,10 +995,17 @@ class PgCollection:
         except Exception as e:
             if own:
                 await session.rollback()
+            else:
+                try:
+                    await session.rollback()
+                except Exception:
+                    pass
             from sqlalchemy.exc import IntegrityError
             if isinstance(e, IntegrityError):
                 detail = str(e.orig) if hasattr(e, 'orig') else str(e)
-                raise DuplicateKeyError(f"Duplicate key in {self._name}: {detail}")
+                if "unique" in detail.lower() or "duplicate" in detail.lower():
+                    raise DuplicateKeyError(f"Duplicate key in {self._name}: {detail}")
+                raise ValueError(f"Integrity error in {self._name}: {detail}")
             raise
         finally:
             if own:

@@ -166,19 +166,20 @@ async def create_assessment(
         raise HTTPException(status_code=404, detail="Subject not found")
     
     assessment_id = str(uuid.uuid4())
+    is_pub = getattr(assessment, 'is_published', False)
     assessment_doc = {
         "id": assessment_id,
         "class_id": assessment.class_id,
         "subject_id": assessment.subject_id,
         "teacher_id": current_user['id'],
-        "title": assessment.title,
-        "title_en": assessment.title_en,
-        "assessment_type": assessment.assessment_type.value,
+        "name": assessment.title,
+        "name_en": getattr(assessment, 'title_en', None),
+        "type": assessment.assessment_type.value,
         "max_score": assessment.max_score,
         "weight": assessment.weight,
-        "date": assessment.date,
+        "due_date": assessment.date,
         "description": assessment.description,
-        "is_published": assessment.is_published,
+        "status": "published" if is_pub else "draft",
         "school_id": current_user.get('tenant_id') or class_info.get('school_id'),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()

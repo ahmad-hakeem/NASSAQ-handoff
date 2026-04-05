@@ -190,16 +190,16 @@ async def create_student(
     
     student_doc = {
         "id": student_id,
-        "user_id": None,  # Students may not have user accounts initially
+        "user_id": None,
         "full_name": student_data.full_name,
-        "full_name_en": student_data.full_name_en,
+        "full_name_en": getattr(student_data, 'full_name_en', None),
         "email": student_data.email,
         "phone": student_data.phone,
-        "school_id": student_data.school_id,
+        "school_id": getattr(student_data, 'school_id', None) or current_user.get("tenant_id"),
         "class_id": student_data.class_id,
         "student_number": student_data.student_number,
-        "date_of_birth": student_data.date_of_birth,
-        "gender": student_data.gender,
+        "date_of_birth": getattr(student_data, 'date_of_birth', None),
+        "gender": getattr(student_data, 'gender', None),
         "parent_phone": student_data.parent_phone,
         "parent_name": student_data.parent_name,
         "talents": getattr(student_data, 'talents', []) or [],
@@ -213,7 +213,7 @@ async def create_student(
     await db.students.insert_one(student_doc)
     
     await db.schools.update_one(
-        {"id": student_data.school_id},
+        {"id": student_doc["school_id"]},
         {"$inc": {"current_students": 1}}
     )
     
@@ -226,12 +226,12 @@ async def create_student(
     await audit_engine.log(
         action=AuditAction.USER_CREATED.value,
         performed_by=current_user.get("id"),
-        tenant_id=student_data.school_id,
+        tenant_id=student_doc["school_id"],
         entity_type="student",
         entity_id=student_id,
         details={
             "full_name": student_data.full_name,
-            "school_id": student_data.school_id,
+            "school_id": student_doc["school_id"],
             "class_id": student_data.class_id,
         },
         actor_name=current_user.get("full_name"),
@@ -1123,13 +1123,13 @@ async def create_class(
     class_doc = {
         "id": class_id,
         "name": class_data.name,
-        "name_en": class_data.name_en,
-        "school_id": class_data.school_id,
-        "grade_level": class_data.grade_level,
+        "name_en": getattr(class_data, 'name_en', None),
+        "school_id": getattr(class_data, 'school_id', None) or current_user.get("tenant_id"),
+        "grade_level": getattr(class_data, 'grade_level', None) or getattr(class_data, 'grade', None),
         "section": class_data.section,
         "capacity": class_data.capacity,
         "current_students": 0,
-        "homeroom_teacher_id": class_data.homeroom_teacher_id,
+        "homeroom_teacher_id": getattr(class_data, 'homeroom_teacher_id', None) or getattr(class_data, 'class_teacher_id', None),
         "is_active": True,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()
@@ -1139,8 +1139,8 @@ async def create_class(
     
     # Get homeroom teacher name
     teacher_name = None
-    if class_data.homeroom_teacher_id:
-        teacher = await db.teachers.find_one({"id": class_data.homeroom_teacher_id}, {"_id": 0})
+    if class_doc["homeroom_teacher_id"]:
+        teacher = await db.teachers.find_one({"id": class_doc["homeroom_teacher_id"]}, {"_id": 0})
         if teacher:
             teacher_name = teacher.get("full_name")
     
@@ -1533,13 +1533,13 @@ async def create_subject(
     
     subject_doc = {
         "id": subject_id,
-        "name": subject_data.name,
-        "name_en": subject_data.name_en,
-        "school_id": subject_data.school_id,
-        "code": subject_data.code,
-        "description": subject_data.description,
-        "weekly_hours": subject_data.weekly_hours,
-        "grade_levels": subject_data.grade_levels,
+        "name": getattr(subject_data, 'name', None) or getattr(subject_data, 'name_ar', None),
+        "name_en": getattr(subject_data, 'name_en', None),
+        "school_id": getattr(subject_data, 'school_id', None) or current_user.get("tenant_id"),
+        "code": getattr(subject_data, 'code', None),
+        "description": getattr(subject_data, 'description', None),
+        "weekly_hours": getattr(subject_data, 'weekly_hours', None) or getattr(subject_data, 'weekly_periods', 4),
+        "grade_levels": getattr(subject_data, 'grade_levels', None),
         "is_active": True,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()
