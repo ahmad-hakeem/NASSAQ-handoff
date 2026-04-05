@@ -294,142 +294,140 @@ DEFAULT_SCHOOL_SETTINGS = {
 
 async def seed_all_reference_data():
     """تثبيت جميع البيانات المرجعية"""
-    _seed_ctx = get_seed_db()
+    async with get_seed_db() as db:
 
-    db = await _seed_ctx.__aenter__()
-    
-    print("=" * 60)
-    print("🚀 بدء تثبيت البيانات المرجعية الكاملة")
-    print("=" * 60)
-    
-    # 1. المراحل الدراسية
-    print("\n📚 تثبيت المراحل الدراسية...")
-    await db.reference_stages.delete_many({})
-    for stage in STAGES:
-        stage["created_at"] = datetime.now(timezone.utc).isoformat()
-    await db.reference_stages.insert_many(STAGES)
-    print(f"   ✓ تم تثبيت {len(STAGES)} مراحل دراسية")
-    
-    # 2. الصفوف الدراسية
-    print("\n📖 تثبيت الصفوف الدراسية...")
-    await db.reference_grades.delete_many({})
-    for grade in GRADES:
-        grade["created_at"] = datetime.now(timezone.utc).isoformat()
-        # إضافة اسم المرحلة
-        stage = next((s for s in STAGES if s["id"] == grade["stage_id"]), None)
-        if stage:
-            grade["stage_name_ar"] = stage["name_ar"]
-            grade["stage_name_en"] = stage["name_en"]
-    await db.reference_grades.insert_many(GRADES)
-    print(f"   ✓ تم تثبيت {len(GRADES)} صف دراسي")
-    
-    # 3. المسارات التعليمية
-    print("\n🛤️ تثبيت المسارات التعليمية...")
-    await db.reference_tracks.delete_many({})
-    for track in TRACKS:
-        track["created_at"] = datetime.now(timezone.utc).isoformat()
-    await db.reference_tracks.insert_many(TRACKS)
-    print(f"   ✓ تم تثبيت {len(TRACKS)} مسار تعليمي")
-    
-    # 4. المواد الدراسية
-    print("\n📕 تثبيت المواد الدراسية...")
-    subjects = get_subjects()
-    await db.reference_subjects.delete_many({})
-    for subj in subjects:
-        subj["created_at"] = datetime.now(timezone.utc).isoformat()
-    await db.reference_subjects.insert_many(subjects)
-    print(f"   ✓ تم تثبيت {len(subjects)} مادة دراسية")
-    
-    # 5. رتب المعلمين
-    print("\n👨‍🏫 تثبيت رتب المعلمين...")
-    await db.reference_teacher_ranks.delete_many({})
-    for rank in TEACHER_RANKS:
-        rank["created_at"] = datetime.now(timezone.utc).isoformat()
-    await db.reference_teacher_ranks.insert_many(TEACHER_RANKS)
-    print(f"   ✓ تم تثبيت {len(TEACHER_RANKS)} رتبة معلم")
-    
-    # 6. القيود الإدارية
-    print("\n🚫 تثبيت القيود الإدارية...")
-    await db.reference_admin_constraints.delete_many({})
-    for const in ADMIN_CONSTRAINTS:
-        const["created_at"] = datetime.now(timezone.utc).isoformat()
-    await db.reference_admin_constraints.insert_many(ADMIN_CONSTRAINTS)
-    print(f"   ✓ تم تثبيت {len(ADMIN_CONSTRAINTS)} قيد إداري")
-    
-    # 7. الإعدادات الافتراضية
-    print("\n⚙️ تثبيت الإعدادات الافتراضية...")
-    await db.default_school_settings.delete_many({})
-    await db.default_school_settings.insert_one(DEFAULT_SCHOOL_SETTINGS)
-    print("   ✓ تم تثبيت الإعدادات الافتراضية للمدارس")
-    
-    # 8. تطبيق الإعدادات على المدارس الحالية
-    print("\n🏫 تطبيق الإعدادات على المدارس الحالية...")
-    schools = await db.schools.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(None)
-    for school in schools:
-        school_id = school["id"]
-        
-        # تحديث أو إنشاء إعدادات المدرسة
-        existing = await db.school_settings.find_one({"school_id": school_id})
-        if not existing:
-            school_settings = {
-                "school_id": school_id,
-                **{k: v for k, v in DEFAULT_SCHOOL_SETTINGS.items() if k not in ["id", "name", "name_en"]},
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            }
-            await db.school_settings.insert_one(school_settings)
-        else:
-            # تحديث الإعدادات الحالية
-            await db.school_settings.update_one(
-                {"school_id": school_id},
-                {"$set": {
-                    "time_slots": DEFAULT_SCHOOL_SETTINGS["time_slots"],
-                    "default_availability": DEFAULT_SCHOOL_SETTINGS["default_availability"],
-                    "updated_at": datetime.now(timezone.utc).isoformat(),
-                }}
-            )
-        print(f"   ✓ تم تحديث إعدادات: {school['name']}")
-    
-    # 9. إنشاء time_slots للمدارس
-    print("\n⏰ تثبيت الفترات الزمنية للمدارس...")
-    for school in schools:
-        school_id = school["id"]
-        await db.time_slots.delete_many({"school_id": school_id})
-        
-        time_slots = []
-        for slot in DEFAULT_SCHOOL_SETTINGS["time_slots"]:
-            time_slots.append({
-                "id": str(uuid.uuid4()),
-                "school_id": school_id,
-                "name": slot["name_ar"],
-                "name_en": slot["name_en"],
-                "start_time": slot["start_time"],
-                "end_time": slot["end_time"],
-                "slot_number": slot["slot_number"],
-                "duration_minutes": slot["duration"],
-                "is_break": slot["type"] in ["break", "prayer"],
-                "slot_type": slot["type"],
-                "is_active": True,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            })
-        
-        if time_slots:
-            await db.time_slots.insert_many(time_slots)
-        print(f"   ✓ تم تثبيت {len(time_slots)} فترة زمنية لـ {school['name']}")
-    
-    print("\n" + "=" * 60)
-    print("✅ تم تثبيت جميع البيانات المرجعية بنجاح!")
-    print("=" * 60)
-    
-    # ملخص
-    print("\n📊 ملخص البيانات:")
-    print(f"   • المراحل: {len(STAGES)}")
-    print(f"   • الصفوف: {len(GRADES)}")
-    print(f"   • المسارات: {len(TRACKS)}")
-    print(f"   • المواد: {len(subjects)}")
-    print(f"   • رتب المعلمين: {len(TEACHER_RANKS)}")
-    print(f"   • القيود الإدارية: {len(ADMIN_CONSTRAINTS)}")
-    print(f"   • المدارس المحدّثة: {len(schools)}")
+        print("=" * 60)
+        print("🚀 بدء تثبيت البيانات المرجعية الكاملة")
+        print("=" * 60)
+
+        # 1. المراحل الدراسية
+        print("\n📚 تثبيت المراحل الدراسية...")
+        await db.reference_stages.delete_many({})
+        for stage in STAGES:
+            stage["created_at"] = datetime.now(timezone.utc).isoformat()
+        await db.reference_stages.insert_many(STAGES)
+        print(f"   ✓ تم تثبيت {len(STAGES)} مراحل دراسية")
+
+        # 2. الصفوف الدراسية
+        print("\n📖 تثبيت الصفوف الدراسية...")
+        await db.reference_grades.delete_many({})
+        for grade in GRADES:
+            grade["created_at"] = datetime.now(timezone.utc).isoformat()
+            # إضافة اسم المرحلة
+            stage = next((s for s in STAGES if s["id"] == grade["stage_id"]), None)
+            if stage:
+                grade["stage_name_ar"] = stage["name_ar"]
+                grade["stage_name_en"] = stage["name_en"]
+        await db.reference_grades.insert_many(GRADES)
+        print(f"   ✓ تم تثبيت {len(GRADES)} صف دراسي")
+
+        # 3. المسارات التعليمية
+        print("\n🛤️ تثبيت المسارات التعليمية...")
+        await db.reference_tracks.delete_many({})
+        for track in TRACKS:
+            track["created_at"] = datetime.now(timezone.utc).isoformat()
+        await db.reference_tracks.insert_many(TRACKS)
+        print(f"   ✓ تم تثبيت {len(TRACKS)} مسار تعليمي")
+
+        # 4. المواد الدراسية
+        print("\n📕 تثبيت المواد الدراسية...")
+        subjects = get_subjects()
+        await db.reference_subjects.delete_many({})
+        for subj in subjects:
+            subj["created_at"] = datetime.now(timezone.utc).isoformat()
+        await db.reference_subjects.insert_many(subjects)
+        print(f"   ✓ تم تثبيت {len(subjects)} مادة دراسية")
+
+        # 5. رتب المعلمين
+        print("\n👨‍🏫 تثبيت رتب المعلمين...")
+        await db.reference_teacher_ranks.delete_many({})
+        for rank in TEACHER_RANKS:
+            rank["created_at"] = datetime.now(timezone.utc).isoformat()
+        await db.reference_teacher_ranks.insert_many(TEACHER_RANKS)
+        print(f"   ✓ تم تثبيت {len(TEACHER_RANKS)} رتبة معلم")
+
+        # 6. القيود الإدارية
+        print("\n🚫 تثبيت القيود الإدارية...")
+        await db.reference_admin_constraints.delete_many({})
+        for const in ADMIN_CONSTRAINTS:
+            const["created_at"] = datetime.now(timezone.utc).isoformat()
+        await db.reference_admin_constraints.insert_many(ADMIN_CONSTRAINTS)
+        print(f"   ✓ تم تثبيت {len(ADMIN_CONSTRAINTS)} قيد إداري")
+
+        # 7. الإعدادات الافتراضية
+        print("\n⚙️ تثبيت الإعدادات الافتراضية...")
+        await db.default_school_settings.delete_many({})
+        await db.default_school_settings.insert_one(DEFAULT_SCHOOL_SETTINGS)
+        print("   ✓ تم تثبيت الإعدادات الافتراضية للمدارس")
+
+        # 8. تطبيق الإعدادات على المدارس الحالية
+        print("\n🏫 تطبيق الإعدادات على المدارس الحالية...")
+        schools = await db.schools.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(None)
+        for school in schools:
+            school_id = school["id"]
+
+            # تحديث أو إنشاء إعدادات المدرسة
+            existing = await db.school_settings.find_one({"school_id": school_id})
+            if not existing:
+                school_settings = {
+                    "school_id": school_id,
+                    **{k: v for k, v in DEFAULT_SCHOOL_SETTINGS.items() if k not in ["id", "name", "name_en"]},
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                }
+                await db.school_settings.insert_one(school_settings)
+            else:
+                # تحديث الإعدادات الحالية
+                await db.school_settings.update_one(
+                    {"school_id": school_id},
+                    {"$set": {
+                        "time_slots": DEFAULT_SCHOOL_SETTINGS["time_slots"],
+                        "default_availability": DEFAULT_SCHOOL_SETTINGS["default_availability"],
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                    }}
+                )
+            print(f"   ✓ تم تحديث إعدادات: {school['name']}")
+
+        # 9. إنشاء time_slots للمدارس
+        print("\n⏰ تثبيت الفترات الزمنية للمدارس...")
+        for school in schools:
+            school_id = school["id"]
+            await db.time_slots.delete_many({"school_id": school_id})
+
+            time_slots = []
+            for slot in DEFAULT_SCHOOL_SETTINGS["time_slots"]:
+                time_slots.append({
+                    "id": str(uuid.uuid4()),
+                    "school_id": school_id,
+                    "name": slot["name_ar"],
+                    "name_en": slot["name_en"],
+                    "start_time": slot["start_time"],
+                    "end_time": slot["end_time"],
+                    "slot_number": slot["slot_number"],
+                    "duration_minutes": slot["duration"],
+                    "is_break": slot["type"] in ["break", "prayer"],
+                    "slot_type": slot["type"],
+                    "is_active": True,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                })
+
+            if time_slots:
+                await db.time_slots.insert_many(time_slots)
+            print(f"   ✓ تم تثبيت {len(time_slots)} فترة زمنية لـ {school['name']}")
+
+        print("\n" + "=" * 60)
+        print("✅ تم تثبيت جميع البيانات المرجعية بنجاح!")
+        print("=" * 60)
+
+        # ملخص
+        print("\n📊 ملخص البيانات:")
+        print(f"   • المراحل: {len(STAGES)}")
+        print(f"   • الصفوف: {len(GRADES)}")
+        print(f"   • المسارات: {len(TRACKS)}")
+        print(f"   • المواد: {len(subjects)}")
+        print(f"   • رتب المعلمين: {len(TEACHER_RANKS)}")
+        print(f"   • القيود الإدارية: {len(ADMIN_CONSTRAINTS)}")
+        print(f"   • المدارس المحدّثة: {len(schools)}")
 
 
-if __name__ == "__main__":
-    asyncio.run(seed_all_reference_data())
+    if __name__ == "__main__":
+        asyncio.run(seed_all_reference_data())

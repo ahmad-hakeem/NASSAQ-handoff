@@ -276,30 +276,28 @@ ALL_SUBJECT_DETAILS_SECONDARY = (
 
 async def seed_subject_details_secondary():
     """Seed subject details for secondary schools"""
-    _seed_ctx = get_seed_db()
+    async with get_seed_db() as db:
 
-    db = await _seed_ctx.__aenter__()
-    
-    print("=" * 60)
-    print("تثبيت توزيع المواد - المرحلة الثانوية")
-    print("=" * 60)
-    
-    try:
-        count = 0
-        for detail in ALL_SUBJECT_DETAILS_SECONDARY:
-            detail["created_at"] = datetime.now(timezone.utc).isoformat()
-            await db.official_curriculum_subject_details.update_one(
-                {"id": detail["id"]},
-                {"$set": detail},
-                upsert=True
-            )
-            count += 1
-        
-        print(f"✓ تم تثبيت {count} توزيعة للمرحلة الثانوية")
-        
-    except Exception as e:
-        print(f"❌ خطأ: {e}")
-        raise
-    finally:
-if __name__ == "__main__":
-    asyncio.run(seed_subject_details_secondary())
+        print("=" * 60)
+        print("تثبيت توزيع المواد - المرحلة الثانوية")
+        print("=" * 60)
+
+        try:
+            count = 0
+            for detail in ALL_SUBJECT_DETAILS_SECONDARY:
+                detail["created_at"] = datetime.now(timezone.utc).isoformat()
+                await db.official_curriculum_subject_details.update_one(
+                    {"id": detail["id"]},
+                    {"$set": detail},
+                    upsert=True
+                )
+                count += 1
+
+            print(f"✓ تم تثبيت {count} توزيعة للمرحلة الثانوية")
+
+        except Exception as e:
+            print(f"❌ خطأ: {e}")
+            raise
+        finally:
+    if __name__ == "__main__":
+        asyncio.run(seed_subject_details_secondary())

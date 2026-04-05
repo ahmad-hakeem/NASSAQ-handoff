@@ -108,7 +108,7 @@ async def deployment_safety_check(current_user: dict = Depends(require_roles([Us
     return {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "environment": config.ENVIRONMENT,
-        "database_name": config.DB_NAME,
+        "database_name": "nassaq_postgres",
         "database_connected": db_ok,
         "seed_scripts_blocked": not config.seed_allowed(),
         "destructive_ops_blocked": not config.destructive_ops_allowed(),

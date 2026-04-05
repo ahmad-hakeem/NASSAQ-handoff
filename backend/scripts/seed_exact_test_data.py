@@ -392,390 +392,388 @@ TEACHER_CONSTRAINTS = [
 
 
 async def main():
-    _seed_ctx = get_seed_db()
+    async with get_seed_db() as db:
+        now = datetime.now(timezone.utc)
 
-    db = await _seed_ctx.__aenter__()
-    now = datetime.now(timezone.utc)
-    
-    print("=" * 70)
-    print("🚀 بدء تثبيت بيانات الاختبار - المرحلة الثالثة")
-    print("=" * 70)
-    
-    # ============================================
-    # STEP 1: Clean old data (except protected)
-    # ============================================
-    print("\n[1/7] 🧹 تنظيف البيانات القديمة...")
-    
-    # Delete old schools (except new ones)
-    old_schools = await db.schools.delete_many({
-        "id": {"$nin": ["SCH-001", "SCH-002"]}
-    })
-    print(f"  - حذف {old_schools.deleted_count} مدرسة قديمة")
-    
-    # Delete old school settings
-    old_settings = await db.school_settings.delete_many({
-        "school_id": {"$nin": ["SCH-001", "SCH-002"]}
-    })
-    print(f"  - حذف {old_settings.deleted_count} إعدادات قديمة")
-    
-    # Delete old teachers (except protected)
-    protected_teacher_emails = ['teacher1@nor.edu.sa']
-    old_teachers = await db.teachers.delete_many({
-        "email": {"$nin": [t["email"] for t in TEACHERS]}
-    })
-    print(f"  - حذف {old_teachers.deleted_count} معلم قديم")
-    
-    # Delete old students
-    old_students = await db.students.delete_many({
-        "id": {"$nin": [s["id"] for s in STUDENTS]}
-    })
-    print(f"  - حذف {old_students.deleted_count} طالب قديم")
-    
-    # Delete old classes
-    old_classes = await db.classes.delete_many({
-        "id": {"$nin": [c["id"] for c in CLASSES]}
-    })
-    print(f"  - حذف {old_classes.deleted_count} فصل قديم")
-    
-    # Delete old users (except protected)
-    new_emails = [t["email"] for t in TEACHERS] + PROTECTED_EMAILS
-    old_users = await db.users.delete_many({
-        "email": {"$nin": new_emails},
-        "role": {"$in": ["teacher", "student", "parent", "school_principal"]}
-    })
-    print(f"  - حذف {old_users.deleted_count} مستخدم قديم")
-    
-    # ============================================
-    # STEP 2: Create Schools
-    # ============================================
-    print("\n[2/7] 🏫 إنشاء المدارس...")
-    
-    for school in SCHOOLS:
-        school_doc = {
-            **school,
-            "student_capacity": 500,
-            "current_students": 0,
-            "current_teachers": 0,
-            "current_classes": 0,
-            "language": "ar",
-            "calendar_system": "hijri_gregorian",
-            "school_type": "public",
-            "stage": "all",
-            "logo_url": None,
-            "created_at": now.isoformat(),
-            "updated_at": now.isoformat()
-        }
-        await db.schools.update_one(
-            {"id": school["id"]},
-            {"$set": school_doc},
-            upsert=True
-        )
-        print(f"  ✓ {school['name']}")
-    
-    # ============================================
-    # STEP 3: Apply default settings to schools
-    # ============================================
-    print("\n[3/7] ⚙️ تطبيق الإعدادات الافتراضية...")
-    
-    default_settings = await db.default_settings.find_one({"id": "default-school-settings"}, {"_id": 0})
-    
-    for school in SCHOOLS:
-        school_settings = {
-            "id": f"settings-{school['id']}",
-            "school_id": school["id"],
-            "working_days": default_settings.get("working_days") if default_settings else {},
-            "working_days_ar": default_settings.get("working_days_ar", []) if default_settings else [],
-            "working_days_en": default_settings.get("working_days_en", []) if default_settings else [],
-            "weekend_days_ar": default_settings.get("weekend_days_ar", []) if default_settings else [],
-            "weekend_days_en": default_settings.get("weekend_days_en", []) if default_settings else [],
-            "periods_per_day": default_settings.get("periods_per_day", 7) if default_settings else 7,
-            "period_duration_minutes": default_settings.get("period_duration_minutes", 45) if default_settings else 45,
-            "break_duration_minutes": default_settings.get("break_duration_minutes", 20) if default_settings else 20,
-            "prayer_duration_minutes": default_settings.get("prayer_duration_minutes", 20) if default_settings else 20,
-            "school_day_start": default_settings.get("school_day_start", "07:00") if default_settings else "07:00",
-            "school_day_end": default_settings.get("school_day_end", "13:15") if default_settings else "13:15",
-            "time_slots": default_settings.get("time_slots", []) if default_settings else [],
-            "education_track": "track-general",
-            "created_at": now.isoformat(),
-            "updated_at": now.isoformat()
-        }
-        await db.school_settings.update_one(
-            {"school_id": school["id"]},
-            {"$set": school_settings},
-            upsert=True
-        )
-        print(f"  ✓ إعدادات {school['name']}")
-    
-    # ============================================
-    # STEP 4: Create Classes
-    # ============================================
-    print("\n[4/7] 📚 إنشاء الفصول...")
-    
-    for cls in CLASSES:
-        class_doc = {
-            **cls,
-            "stage_id": "stage-elementary" if cls["grade_id"] in ["grade-1", "grade-2"] else "stage-middle",
-            "current_students": 0,
-            "education_track": "track-general",
-            "is_active": True,
-            "academic_year": "2025-2026",
-            "created_at": now.isoformat(),
-            "updated_at": now.isoformat()
-        }
-        await db.classes.update_one(
-            {"id": cls["id"]},
-            {"$set": class_doc},
-            upsert=True
-        )
-        school_name = "مدرسة النور" if cls["school_id"] == "SCH-001" else "مدرسة الأحساء"
-        print(f"  ✓ {cls['name_ar']} ({school_name})")
-    
-    # ============================================
-    # STEP 5: Create Teachers with User Accounts
-    # ============================================
-    print("\n[5/7] 👨‍🏫 إنشاء المعلمين...")
-    
-    teacher_password = hash_password("Teacher@123")
-    
-    for teacher in TEACHERS:
-        # Create user account
-        user_doc = {
-            "id": teacher["id"],
-            "email": teacher["email"],
-            "password": teacher_password,
-            "full_name": teacher["full_name_ar"],
-            "full_name_en": teacher["full_name_en"],
-            "phone": teacher["phone"],
-            "role": "teacher",
-            "tenant_id": teacher["school_id"],
-            "is_active": True,
-            "must_change_password": False,
-            "preferred_language": "ar",
-            "preferred_theme": "light",
-            "created_at": now.isoformat(),
-            "updated_at": now.isoformat()
-        }
-        await db.users.update_one(
-            {"email": teacher["email"]},
-            {"$set": user_doc},
-            upsert=True
-        )
-        
-        # Create teacher profile
-        teacher_doc = {
-            "id": teacher["id"],
-            "user_id": teacher["id"],
-            "school_id": teacher["school_id"],
-            "full_name_ar": teacher["full_name_ar"],
-            "full_name_en": teacher["full_name_en"],
-            "email": teacher["email"],
-            "phone": teacher["phone"],
-            "rank_id": teacher["rank_id"],
-            "rank_name_ar": teacher["rank_name"],
-            "rank_name_en": teacher.get("rank_name_en", ""),
-            "weekly_periods": teacher["weekly_periods"],
-            "subjects": teacher["subjects"],
-            "subject_name": teacher["subject_name"],
-            "gender": teacher["gender"],
-            "availability": teacher["availability"],
-            "is_active": True,
-            "created_at": now.isoformat(),
-            "updated_at": now.isoformat()
-        }
-        await db.teachers.update_one(
-            {"id": teacher["id"]},
-            {"$set": teacher_doc},
-            upsert=True
-        )
-        
-        school_name = "مدرسة النور" if teacher["school_id"] == "SCH-001" else "مدرسة الأحساء"
-        print(f"  ✓ {teacher['full_name_ar']} - {teacher['subject_name']} ({school_name})")
-    
-    # ============================================
-    # STEP 6: Create Students with User Accounts
-    # ============================================
-    print("\n[6/7] 👨‍🎓 إنشاء الطلاب...")
-    
-    student_password = hash_password("Student@123")
-    student_counter = {"SCH-001": 0, "SCH-002": 0}
-    
-    for student in STUDENTS:
-        school_code = "nor" if student["school_id"] == "SCH-001" else "ahsa"
-        student_counter[student["school_id"]] += 1
-        email = f"student{student_counter[student['school_id']]}@{school_code}.edu.sa"
-        
-        # Create user account
-        user_doc = {
-            "id": student["id"],
-            "email": email,
-            "password": student_password,
-            "full_name": student["full_name_ar"],
-            "role": "student",
-            "tenant_id": student["school_id"],
-            "is_active": True,
-            "preferred_language": "ar",
-            "created_at": now.isoformat(),
-            "updated_at": now.isoformat()
-        }
-        await db.users.update_one(
-            {"email": email},
-            {"$set": user_doc},
-            upsert=True
-        )
-        
-        # Create student profile
-        student_doc = {
-            "id": student["id"],
-            "user_id": student["id"],
-            "school_id": student["school_id"],
-            "class_id": student["class_id"],
-            "grade_id": student["grade_id"],
-            "full_name_ar": student["full_name_ar"],
-            "email": email,
-            "gender": student["gender"],
-            "student_number": student["id"],
-            "enrollment_date": now.strftime("%Y-%m-%d"),
-            "is_active": True,
-            "created_at": now.isoformat(),
-            "updated_at": now.isoformat()
-        }
-        await db.students.update_one(
-            {"id": student["id"]},
-            {"$set": student_doc},
-            upsert=True
-        )
-    
-    # Count per school
-    nor_students = len([s for s in STUDENTS if s["school_id"] == "SCH-001"])
-    ahsa_students = len([s for s in STUDENTS if s["school_id"] == "SCH-002"])
-    print(f"  ✓ مدرسة النور: {nor_students} طالب")
-    print(f"  ✓ مدرسة الأحساء: {ahsa_students} طالب")
-    
-    # ============================================
-    # STEP 7: Create Teacher Constraints
-    # ============================================
-    print("\n[7/7] 🚫 إنشاء القيود الإدارية الخاصة...")
-    
-    for constraint in TEACHER_CONSTRAINTS:
-        constraint_doc = {
-            **constraint,
-            "is_active": True,
-            "created_at": now.isoformat(),
-            "updated_at": now.isoformat()
-        }
-        await db.teacher_constraints.update_one(
-            {"id": constraint["id"]},
-            {"$set": constraint_doc},
-            upsert=True
-        )
-        print(f"  ✓ {constraint['description_ar']}")
-    
-    # ============================================
-    # Update school statistics
-    # ============================================
-    print("\n📊 تحديث إحصائيات المدارس...")
-    
-    for school in SCHOOLS:
-        school_id = school["id"]
-        students_count = await db.students.count_documents({"school_id": school_id})
-        teachers_count = await db.teachers.count_documents({"school_id": school_id})
-        classes_count = await db.classes.count_documents({"school_id": school_id})
-        
-        await db.schools.update_one(
-            {"id": school_id},
-            {"$set": {
-                "current_students": students_count,
-                "current_teachers": teachers_count,
-                "current_classes": classes_count,
+        print("=" * 70)
+        print("🚀 بدء تثبيت بيانات الاختبار - المرحلة الثالثة")
+        print("=" * 70)
+
+        # ============================================
+        # STEP 1: Clean old data (except protected)
+        # ============================================
+        print("\n[1/7] 🧹 تنظيف البيانات القديمة...")
+
+        # Delete old schools (except new ones)
+        old_schools = await db.schools.delete_many({
+            "id": {"$nin": ["SCH-001", "SCH-002"]}
+        })
+        print(f"  - حذف {old_schools.deleted_count} مدرسة قديمة")
+
+        # Delete old school settings
+        old_settings = await db.school_settings.delete_many({
+            "school_id": {"$nin": ["SCH-001", "SCH-002"]}
+        })
+        print(f"  - حذف {old_settings.deleted_count} إعدادات قديمة")
+
+        # Delete old teachers (except protected)
+        protected_teacher_emails = ['teacher1@nor.edu.sa']
+        old_teachers = await db.teachers.delete_many({
+            "email": {"$nin": [t["email"] for t in TEACHERS]}
+        })
+        print(f"  - حذف {old_teachers.deleted_count} معلم قديم")
+
+        # Delete old students
+        old_students = await db.students.delete_many({
+            "id": {"$nin": [s["id"] for s in STUDENTS]}
+        })
+        print(f"  - حذف {old_students.deleted_count} طالب قديم")
+
+        # Delete old classes
+        old_classes = await db.classes.delete_many({
+            "id": {"$nin": [c["id"] for c in CLASSES]}
+        })
+        print(f"  - حذف {old_classes.deleted_count} فصل قديم")
+
+        # Delete old users (except protected)
+        new_emails = [t["email"] for t in TEACHERS] + PROTECTED_EMAILS
+        old_users = await db.users.delete_many({
+            "email": {"$nin": new_emails},
+            "role": {"$in": ["teacher", "student", "parent", "school_principal"]}
+        })
+        print(f"  - حذف {old_users.deleted_count} مستخدم قديم")
+
+        # ============================================
+        # STEP 2: Create Schools
+        # ============================================
+        print("\n[2/7] 🏫 إنشاء المدارس...")
+
+        for school in SCHOOLS:
+            school_doc = {
+                **school,
+                "student_capacity": 500,
+                "current_students": 0,
+                "current_teachers": 0,
+                "current_classes": 0,
+                "language": "ar",
+                "calendar_system": "hijri_gregorian",
+                "school_type": "public",
+                "stage": "all",
+                "logo_url": None,
+                "created_at": now.isoformat(),
                 "updated_at": now.isoformat()
-            }}
-        )
-        print(f"  ✓ {school['name']}: {students_count} طالب، {teachers_count} معلم، {classes_count} فصل")
-    
-    # Update class student counts
-    for cls in CLASSES:
-        count = await db.students.count_documents({"class_id": cls["id"]})
-        await db.classes.update_one(
-            {"id": cls["id"]},
-            {"$set": {"current_students": count}}
-        )
-    
-    # ============================================
-    # Create Principal Accounts
-    # ============================================
-    print("\n👔 إنشاء حسابات مديري المدارس...")
-    
-    principal_password = hash_password("Principal@123")
-    
-    principals = [
-        {
-            "id": "principal-001",
-            "email": "principal1@nassaq.com",
-            "full_name": "الأستاذ طلال أحمد",
-            "tenant_id": "SCH-001"
-        },
-        {
-            "id": "principal-004",
-            "email": "principal4@nassaq.com",
-            "full_name": "الأستاذ محمد عبد العزيز",
-            "tenant_id": "SCH-002"
-        }
-    ]
-    
-    for principal in principals:
-        user_doc = {
-            "id": principal["id"],
-            "email": principal["email"],
-            "password": principal_password,
-            "full_name": principal["full_name"],
-            "role": "school_principal",
-            "tenant_id": principal["tenant_id"],
-            "is_active": True,
-            "preferred_language": "ar",
-            "created_at": now.isoformat(),
-            "updated_at": now.isoformat()
-        }
-        await db.users.update_one(
-            {"email": principal["email"]},
-            {"$set": user_doc},
-            upsert=True
-        )
-        school_name = "مدرسة النور" if principal["tenant_id"] == "SCH-001" else "مدرسة الأحساء"
-        print(f"  ✓ {principal['full_name']} ({school_name})")
-    
-    # ============================================
-    # Summary
-    # ============================================
-    print("\n" + "=" * 70)
-    print("✅ اكتمل تثبيت بيانات الاختبار بنجاح!")
-    print("=" * 70)
-    
-    print("\n📊 ملخص البيانات:")
-    print(f"  • المدارس: 2")
-    print(f"  • الفصول: 6 (3 لكل مدرسة)")
-    print(f"  • المعلمين: 10 (5 لكل مدرسة)")
-    print(f"  • الطلاب: 50 (25 لكل مدرسة)")
-    print(f"  • القيود الإدارية: 4")
-    
-    print("\n📝 توزيع الطلاب:")
-    print("  مدرسة النور:")
-    print("    - الصف الأول الابتدائي: 10 طلاب")
-    print("    - الصف الثاني الابتدائي: 8 طلاب")
-    print("    - الصف الأول المتوسط: 7 طلاب")
-    print("  مدرسة الأحساء:")
-    print("    - الصف الأول الابتدائي: 10 طلاب")
-    print("    - الصف الثاني الابتدائي: 8 طلاب")
-    print("    - الصف الأول المتوسط: 7 طلاب")
-    
-    print("\n🔑 بيانات الدخول:")
-    print("  مدير المنصة: admin@nassaq.com / Admin@123")
-    print("  مدير مدرسة النور: principal1@nassaq.com / Principal@123")
-    print("  مدير مدرسة الأحساء: principal4@nassaq.com / Principal@123")
-    print("  معلم (النور): teacher1@nor.edu.sa / Teacher@123")
-    print("  معلم (الأحساء): teacher1@ahsa.edu.sa / Teacher@123")
-    print("  طالب (النور): student1@nor.edu.sa / Student@123")
-    print("  طالب (الأحساء): student1@ahsa.edu.sa / Student@123")
+            }
+            await db.schools.update_one(
+                {"id": school["id"]},
+                {"$set": school_doc},
+                upsert=True
+            )
+            print(f"  ✓ {school['name']}")
+
+        # ============================================
+        # STEP 3: Apply default settings to schools
+        # ============================================
+        print("\n[3/7] ⚙️ تطبيق الإعدادات الافتراضية...")
+
+        default_settings = await db.default_settings.find_one({"id": "default-school-settings"}, {"_id": 0})
+
+        for school in SCHOOLS:
+            school_settings = {
+                "id": f"settings-{school['id']}",
+                "school_id": school["id"],
+                "working_days": default_settings.get("working_days") if default_settings else {},
+                "working_days_ar": default_settings.get("working_days_ar", []) if default_settings else [],
+                "working_days_en": default_settings.get("working_days_en", []) if default_settings else [],
+                "weekend_days_ar": default_settings.get("weekend_days_ar", []) if default_settings else [],
+                "weekend_days_en": default_settings.get("weekend_days_en", []) if default_settings else [],
+                "periods_per_day": default_settings.get("periods_per_day", 7) if default_settings else 7,
+                "period_duration_minutes": default_settings.get("period_duration_minutes", 45) if default_settings else 45,
+                "break_duration_minutes": default_settings.get("break_duration_minutes", 20) if default_settings else 20,
+                "prayer_duration_minutes": default_settings.get("prayer_duration_minutes", 20) if default_settings else 20,
+                "school_day_start": default_settings.get("school_day_start", "07:00") if default_settings else "07:00",
+                "school_day_end": default_settings.get("school_day_end", "13:15") if default_settings else "13:15",
+                "time_slots": default_settings.get("time_slots", []) if default_settings else [],
+                "education_track": "track-general",
+                "created_at": now.isoformat(),
+                "updated_at": now.isoformat()
+            }
+            await db.school_settings.update_one(
+                {"school_id": school["id"]},
+                {"$set": school_settings},
+                upsert=True
+            )
+            print(f"  ✓ إعدادات {school['name']}")
+
+        # ============================================
+        # STEP 4: Create Classes
+        # ============================================
+        print("\n[4/7] 📚 إنشاء الفصول...")
+
+        for cls in CLASSES:
+            class_doc = {
+                **cls,
+                "stage_id": "stage-elementary" if cls["grade_id"] in ["grade-1", "grade-2"] else "stage-middle",
+                "current_students": 0,
+                "education_track": "track-general",
+                "is_active": True,
+                "academic_year": "2025-2026",
+                "created_at": now.isoformat(),
+                "updated_at": now.isoformat()
+            }
+            await db.classes.update_one(
+                {"id": cls["id"]},
+                {"$set": class_doc},
+                upsert=True
+            )
+            school_name = "مدرسة النور" if cls["school_id"] == "SCH-001" else "مدرسة الأحساء"
+            print(f"  ✓ {cls['name_ar']} ({school_name})")
+
+        # ============================================
+        # STEP 5: Create Teachers with User Accounts
+        # ============================================
+        print("\n[5/7] 👨‍🏫 إنشاء المعلمين...")
+
+        teacher_password = hash_password("Teacher@123")
+
+        for teacher in TEACHERS:
+            # Create user account
+            user_doc = {
+                "id": teacher["id"],
+                "email": teacher["email"],
+                "password": teacher_password,
+                "full_name": teacher["full_name_ar"],
+                "full_name_en": teacher["full_name_en"],
+                "phone": teacher["phone"],
+                "role": "teacher",
+                "tenant_id": teacher["school_id"],
+                "is_active": True,
+                "must_change_password": False,
+                "preferred_language": "ar",
+                "preferred_theme": "light",
+                "created_at": now.isoformat(),
+                "updated_at": now.isoformat()
+            }
+            await db.users.update_one(
+                {"email": teacher["email"]},
+                {"$set": user_doc},
+                upsert=True
+            )
+
+            # Create teacher profile
+            teacher_doc = {
+                "id": teacher["id"],
+                "user_id": teacher["id"],
+                "school_id": teacher["school_id"],
+                "full_name_ar": teacher["full_name_ar"],
+                "full_name_en": teacher["full_name_en"],
+                "email": teacher["email"],
+                "phone": teacher["phone"],
+                "rank_id": teacher["rank_id"],
+                "rank_name_ar": teacher["rank_name"],
+                "rank_name_en": teacher.get("rank_name_en", ""),
+                "weekly_periods": teacher["weekly_periods"],
+                "subjects": teacher["subjects"],
+                "subject_name": teacher["subject_name"],
+                "gender": teacher["gender"],
+                "availability": teacher["availability"],
+                "is_active": True,
+                "created_at": now.isoformat(),
+                "updated_at": now.isoformat()
+            }
+            await db.teachers.update_one(
+                {"id": teacher["id"]},
+                {"$set": teacher_doc},
+                upsert=True
+            )
+
+            school_name = "مدرسة النور" if teacher["school_id"] == "SCH-001" else "مدرسة الأحساء"
+            print(f"  ✓ {teacher['full_name_ar']} - {teacher['subject_name']} ({school_name})")
+
+        # ============================================
+        # STEP 6: Create Students with User Accounts
+        # ============================================
+        print("\n[6/7] 👨‍🎓 إنشاء الطلاب...")
+
+        student_password = hash_password("Student@123")
+        student_counter = {"SCH-001": 0, "SCH-002": 0}
+
+        for student in STUDENTS:
+            school_code = "nor" if student["school_id"] == "SCH-001" else "ahsa"
+            student_counter[student["school_id"]] += 1
+            email = f"student{student_counter[student['school_id']]}@{school_code}.edu.sa"
+
+            # Create user account
+            user_doc = {
+                "id": student["id"],
+                "email": email,
+                "password": student_password,
+                "full_name": student["full_name_ar"],
+                "role": "student",
+                "tenant_id": student["school_id"],
+                "is_active": True,
+                "preferred_language": "ar",
+                "created_at": now.isoformat(),
+                "updated_at": now.isoformat()
+            }
+            await db.users.update_one(
+                {"email": email},
+                {"$set": user_doc},
+                upsert=True
+            )
+
+            # Create student profile
+            student_doc = {
+                "id": student["id"],
+                "user_id": student["id"],
+                "school_id": student["school_id"],
+                "class_id": student["class_id"],
+                "grade_id": student["grade_id"],
+                "full_name_ar": student["full_name_ar"],
+                "email": email,
+                "gender": student["gender"],
+                "student_number": student["id"],
+                "enrollment_date": now.strftime("%Y-%m-%d"),
+                "is_active": True,
+                "created_at": now.isoformat(),
+                "updated_at": now.isoformat()
+            }
+            await db.students.update_one(
+                {"id": student["id"]},
+                {"$set": student_doc},
+                upsert=True
+            )
+
+        # Count per school
+        nor_students = len([s for s in STUDENTS if s["school_id"] == "SCH-001"])
+        ahsa_students = len([s for s in STUDENTS if s["school_id"] == "SCH-002"])
+        print(f"  ✓ مدرسة النور: {nor_students} طالب")
+        print(f"  ✓ مدرسة الأحساء: {ahsa_students} طالب")
+
+        # ============================================
+        # STEP 7: Create Teacher Constraints
+        # ============================================
+        print("\n[7/7] 🚫 إنشاء القيود الإدارية الخاصة...")
+
+        for constraint in TEACHER_CONSTRAINTS:
+            constraint_doc = {
+                **constraint,
+                "is_active": True,
+                "created_at": now.isoformat(),
+                "updated_at": now.isoformat()
+            }
+            await db.teacher_constraints.update_one(
+                {"id": constraint["id"]},
+                {"$set": constraint_doc},
+                upsert=True
+            )
+            print(f"  ✓ {constraint['description_ar']}")
+
+        # ============================================
+        # Update school statistics
+        # ============================================
+        print("\n📊 تحديث إحصائيات المدارس...")
+
+        for school in SCHOOLS:
+            school_id = school["id"]
+            students_count = await db.students.count_documents({"school_id": school_id})
+            teachers_count = await db.teachers.count_documents({"school_id": school_id})
+            classes_count = await db.classes.count_documents({"school_id": school_id})
+
+            await db.schools.update_one(
+                {"id": school_id},
+                {"$set": {
+                    "current_students": students_count,
+                    "current_teachers": teachers_count,
+                    "current_classes": classes_count,
+                    "updated_at": now.isoformat()
+                }}
+            )
+            print(f"  ✓ {school['name']}: {students_count} طالب، {teachers_count} معلم، {classes_count} فصل")
+
+        # Update class student counts
+        for cls in CLASSES:
+            count = await db.students.count_documents({"class_id": cls["id"]})
+            await db.classes.update_one(
+                {"id": cls["id"]},
+                {"$set": {"current_students": count}}
+            )
+
+        # ============================================
+        # Create Principal Accounts
+        # ============================================
+        print("\n👔 إنشاء حسابات مديري المدارس...")
+
+        principal_password = hash_password("Principal@123")
+
+        principals = [
+            {
+                "id": "principal-001",
+                "email": "principal1@nassaq.com",
+                "full_name": "الأستاذ طلال أحمد",
+                "tenant_id": "SCH-001"
+            },
+            {
+                "id": "principal-004",
+                "email": "principal4@nassaq.com",
+                "full_name": "الأستاذ محمد عبد العزيز",
+                "tenant_id": "SCH-002"
+            }
+        ]
+
+        for principal in principals:
+            user_doc = {
+                "id": principal["id"],
+                "email": principal["email"],
+                "password": principal_password,
+                "full_name": principal["full_name"],
+                "role": "school_principal",
+                "tenant_id": principal["tenant_id"],
+                "is_active": True,
+                "preferred_language": "ar",
+                "created_at": now.isoformat(),
+                "updated_at": now.isoformat()
+            }
+            await db.users.update_one(
+                {"email": principal["email"]},
+                {"$set": user_doc},
+                upsert=True
+            )
+            school_name = "مدرسة النور" if principal["tenant_id"] == "SCH-001" else "مدرسة الأحساء"
+            print(f"  ✓ {principal['full_name']} ({school_name})")
+
+        # ============================================
+        # Summary
+        # ============================================
+        print("\n" + "=" * 70)
+        print("✅ اكتمل تثبيت بيانات الاختبار بنجاح!")
+        print("=" * 70)
+
+        print("\n📊 ملخص البيانات:")
+        print(f"  • المدارس: 2")
+        print(f"  • الفصول: 6 (3 لكل مدرسة)")
+        print(f"  • المعلمين: 10 (5 لكل مدرسة)")
+        print(f"  • الطلاب: 50 (25 لكل مدرسة)")
+        print(f"  • القيود الإدارية: 4")
+
+        print("\n📝 توزيع الطلاب:")
+        print("  مدرسة النور:")
+        print("    - الصف الأول الابتدائي: 10 طلاب")
+        print("    - الصف الثاني الابتدائي: 8 طلاب")
+        print("    - الصف الأول المتوسط: 7 طلاب")
+        print("  مدرسة الأحساء:")
+        print("    - الصف الأول الابتدائي: 10 طلاب")
+        print("    - الصف الثاني الابتدائي: 8 طلاب")
+        print("    - الصف الأول المتوسط: 7 طلاب")
+
+        print("\n🔑 بيانات الدخول:")
+        print("  مدير المنصة: admin@nassaq.com / Admin@123")
+        print("  مدير مدرسة النور: principal1@nassaq.com / Principal@123")
+        print("  مدير مدرسة الأحساء: principal4@nassaq.com / Principal@123")
+        print("  معلم (النور): teacher1@nor.edu.sa / Teacher@123")
+        print("  معلم (الأحساء): teacher1@ahsa.edu.sa / Teacher@123")
+        print("  طالب (النور): student1@nor.edu.sa / Student@123")
+        print("  طالب (الأحساء): student1@ahsa.edu.sa / Student@123")
 
 
-if __name__ == "__main__":
-    asyncio.run(main())
+    if __name__ == "__main__":
+        asyncio.run(main())

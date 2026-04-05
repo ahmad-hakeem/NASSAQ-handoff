@@ -395,80 +395,78 @@ OFFICIAL_TEACHER_RANK_LOADS = [
 
 async def seed_official_curriculum():
     """Seed all official curriculum data into the database"""
-    _seed_ctx = get_seed_db()
+    async with get_seed_db() as db:
 
-    db = await _seed_ctx.__aenter__()
-    
-    print("=" * 60)
-    print("بدء تثبيت بيانات المنهج الرسمي الكامل")
-    print("Starting Official Curriculum Seed")
-    print("=" * 60)
-    
-    try:
-        # Drop existing official collections
-        print("\n[1/6] حذف البيانات القديمة...")
-        await db.official_curriculum_stages.drop()
-        await db.official_curriculum_tracks.drop()
-        await db.official_curriculum_grades.drop()
-        await db.official_curriculum_subjects.drop()
-        await db.official_curriculum_subject_details.drop()
-        await db.official_teacher_rank_loads.drop()
-        print("✓ تم حذف البيانات القديمة")
-        
-        # Insert stages
-        print("\n[2/6] تثبيت المراحل الدراسية...")
-        for stage in OFFICIAL_STAGES:
-            stage["created_at"] = datetime.now(timezone.utc).isoformat()
-            await db.official_curriculum_stages.insert_one(stage)
-        print(f"✓ تم تثبيت {len(OFFICIAL_STAGES)} مراحل")
-        
-        # Insert tracks
-        print("\n[3/6] تثبيت المسارات التعليمية...")
-        for track in OFFICIAL_TRACKS:
-            track["created_at"] = datetime.now(timezone.utc).isoformat()
-            await db.official_curriculum_tracks.insert_one(track)
-        print(f"✓ تم تثبيت {len(OFFICIAL_TRACKS)} مسارات")
-        
-        # Insert grades
-        print("\n[4/6] تثبيت الصفوف والسنوات...")
-        for grade in OFFICIAL_GRADES:
-            grade["created_at"] = datetime.now(timezone.utc).isoformat()
-            await db.official_curriculum_grades.insert_one(grade)
-        print(f"✓ تم تثبيت {len(OFFICIAL_GRADES)} صف/سنة")
-        
-        # Insert subjects
-        print("\n[5/6] تثبيت المواد الدراسية...")
-        for subj in OFFICIAL_SUBJECTS:
-            subj["created_at"] = datetime.now(timezone.utc).isoformat()
-            await db.official_curriculum_subjects.insert_one(subj)
-        print(f"✓ تم تثبيت {len(OFFICIAL_SUBJECTS)} مادة")
-        
-        # Insert teacher rank loads
-        print("\n[6/6] تثبيت النصاب الرسمي للمعلمين...")
-        for rank in OFFICIAL_TEACHER_RANK_LOADS:
-            rank["created_at"] = datetime.now(timezone.utc).isoformat()
-            await db.official_teacher_rank_loads.insert_one(rank)
-        print(f"✓ تم تثبيت {len(OFFICIAL_TEACHER_RANK_LOADS)} رتب")
-        
-        # Create indexes
-        print("\n[*] إنشاء الفهارس...")
-        await db.official_curriculum_stages.create_index("id", unique=True)
-        await db.official_curriculum_tracks.create_index("id", unique=True)
-        await db.official_curriculum_grades.create_index("id", unique=True)
-        await db.official_curriculum_grades.create_index([("stage_id", 1), ("track_id", 1)])
-        await db.official_curriculum_subjects.create_index("id", unique=True)
-        await db.official_curriculum_subject_details.create_index("id", unique=True)
-        await db.official_curriculum_subject_details.create_index([("grade_id", 1), ("subject_id", 1)])
-        await db.official_teacher_rank_loads.create_index("id", unique=True)
-        print("✓ تم إنشاء الفهارس")
-        
-        print("\n" + "=" * 60)
-        print("✅ تم تثبيت جميع البيانات الأساسية بنجاح!")
         print("=" * 60)
-        
-    except Exception as e:
-        print(f"\n❌ خطأ: {e}")
-        raise
-    finally:
-if __name__ == "__main__":
-    asyncio.run(seed_official_curriculum())
+        print("بدء تثبيت بيانات المنهج الرسمي الكامل")
+        print("Starting Official Curriculum Seed")
+        print("=" * 60)
+
+        try:
+            # Drop existing official collections
+            print("\n[1/6] حذف البيانات القديمة...")
+            await db.official_curriculum_stages.drop()
+            await db.official_curriculum_tracks.drop()
+            await db.official_curriculum_grades.drop()
+            await db.official_curriculum_subjects.drop()
+            await db.official_curriculum_subject_details.drop()
+            await db.official_teacher_rank_loads.drop()
+            print("✓ تم حذف البيانات القديمة")
+
+            # Insert stages
+            print("\n[2/6] تثبيت المراحل الدراسية...")
+            for stage in OFFICIAL_STAGES:
+                stage["created_at"] = datetime.now(timezone.utc).isoformat()
+                await db.official_curriculum_stages.insert_one(stage)
+            print(f"✓ تم تثبيت {len(OFFICIAL_STAGES)} مراحل")
+
+            # Insert tracks
+            print("\n[3/6] تثبيت المسارات التعليمية...")
+            for track in OFFICIAL_TRACKS:
+                track["created_at"] = datetime.now(timezone.utc).isoformat()
+                await db.official_curriculum_tracks.insert_one(track)
+            print(f"✓ تم تثبيت {len(OFFICIAL_TRACKS)} مسارات")
+
+            # Insert grades
+            print("\n[4/6] تثبيت الصفوف والسنوات...")
+            for grade in OFFICIAL_GRADES:
+                grade["created_at"] = datetime.now(timezone.utc).isoformat()
+                await db.official_curriculum_grades.insert_one(grade)
+            print(f"✓ تم تثبيت {len(OFFICIAL_GRADES)} صف/سنة")
+
+            # Insert subjects
+            print("\n[5/6] تثبيت المواد الدراسية...")
+            for subj in OFFICIAL_SUBJECTS:
+                subj["created_at"] = datetime.now(timezone.utc).isoformat()
+                await db.official_curriculum_subjects.insert_one(subj)
+            print(f"✓ تم تثبيت {len(OFFICIAL_SUBJECTS)} مادة")
+
+            # Insert teacher rank loads
+            print("\n[6/6] تثبيت النصاب الرسمي للمعلمين...")
+            for rank in OFFICIAL_TEACHER_RANK_LOADS:
+                rank["created_at"] = datetime.now(timezone.utc).isoformat()
+                await db.official_teacher_rank_loads.insert_one(rank)
+            print(f"✓ تم تثبيت {len(OFFICIAL_TEACHER_RANK_LOADS)} رتب")
+
+            # Create indexes
+            print("\n[*] إنشاء الفهارس...")
+            await db.official_curriculum_stages.create_index("id", unique=True)
+            await db.official_curriculum_tracks.create_index("id", unique=True)
+            await db.official_curriculum_grades.create_index("id", unique=True)
+            await db.official_curriculum_grades.create_index([("stage_id", 1), ("track_id", 1)])
+            await db.official_curriculum_subjects.create_index("id", unique=True)
+            await db.official_curriculum_subject_details.create_index("id", unique=True)
+            await db.official_curriculum_subject_details.create_index([("grade_id", 1), ("subject_id", 1)])
+            await db.official_teacher_rank_loads.create_index("id", unique=True)
+            print("✓ تم إنشاء الفهارس")
+
+            print("\n" + "=" * 60)
+            print("✅ تم تثبيت جميع البيانات الأساسية بنجاح!")
+            print("=" * 60)
+
+        except Exception as e:
+            print(f"\n❌ خطأ: {e}")
+            raise
+        finally:
+    if __name__ == "__main__":
+        asyncio.run(seed_official_curriculum())

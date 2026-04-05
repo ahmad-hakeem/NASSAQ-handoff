@@ -573,118 +573,116 @@ OPTIONAL_POOLS = [
 ]
 
 async def seed():
-    _seed_ctx = get_seed_db()
+    async with get_seed_db() as db:
+        now = datetime.now(timezone.utc).isoformat()
 
-    db = await _seed_ctx.__aenter__()
-    now = datetime.now(timezone.utc).isoformat()
-    
-    print("Clearing existing official curriculum data...")
-    for col in ["official_curriculum_stages", "official_curriculum_tracks", "official_curriculum_grades",
-                 "official_curriculum_subjects", "official_curriculum_grade_subjects",
-                 "official_teacher_rank_loads", "official_optional_subject_pools", "official_optional_subject_pool_items"]:
-        await db[col].drop()
-    
-    print("Seeding stages...")
-    for stage in STAGES:
-        await db.official_curriculum_stages.insert_one({**stage, "is_official": True, "is_read_only": True, "created_at": now})
-    
-    print("Seeding tracks...")
-    for track in TRACKS:
-        await db.official_curriculum_tracks.insert_one({**track, "is_official": True, "is_read_only": True, "created_at": now})
-    
-    print("Seeding grades...")
-    for grade in GRADES:
-        await db.official_curriculum_grades.insert_one({**grade, "is_official": True, "is_read_only": True, "created_at": now})
-    
-    print("Seeding subjects and grade-subject mappings...")
-    # Collect all unique subject names
-    all_subjects = {}
-    for grade_id, subjects in GRADE_SUBJECTS.items():
-        for (subj_name, sessions, item_type) in subjects:
-            if subj_name not in all_subjects:
-                sub_id = "ocs-" + subj_name.replace(" ", "-").replace("(", "").replace(")", "")[:30]
-                all_subjects[subj_name] = sub_id
-                await db.official_curriculum_subjects.insert_one({
-                    "id": sub_id,
-                    "name_ar": subj_name,
-                    "name_en": subj_name,
-                    "is_official": True,
-                    "is_read_only": True,
-                    "created_at": now,
-                })
-    
-    print(f"  Created {len(all_subjects)} unique subjects")
-    
-    # Grade-subject mappings
-    total_mappings = 0
-    for grade_id, subjects in GRADE_SUBJECTS.items():
-        for order, (subj_name, sessions, item_type) in enumerate(subjects):
-            sub_id = all_subjects[subj_name]
-            grade = next((g for g in GRADES if g["id"] == grade_id), None)
-            if grade:
-                await db.official_curriculum_grade_subjects.insert_one({
-                    "id": str(uuid.uuid4()),
-                    "grade_id": grade_id,
-                    "stage_id": grade["stage_id"],
-                    "track_id": grade["track_id"],
-                    "subject_id": sub_id,
-                    "subject_name_ar": subj_name,
-                    "annual_sessions": sessions,
-                    "item_type": item_type,
-                    "is_official": True,
-                    "is_read_only": True,
-                    "display_order": order + 1,
-                    "created_at": now,
-                })
-                total_mappings += 1
-    
-    print(f"  Created {total_mappings} grade-subject mappings")
-    
-    print("Seeding teacher rank loads...")
-    for rank in TEACHER_RANK_LOADS:
-        await db.official_teacher_rank_loads.insert_one({
-            "id": str(uuid.uuid4()),
-            **rank,
-            "is_official": True,
-            "is_read_only": True,
-            "created_at": now,
-        })
-    
-    print("Seeding optional subject pools...")
-    for pool in OPTIONAL_POOLS:
-        pool_id = pool["id"]
-        await db.official_optional_subject_pools.insert_one({
-            "id": pool_id,
-            "grade_id": pool["grade_id"],
-            "name_ar": pool["name_ar"],
-            "total_sessions": pool["total_sessions"],
-            "is_official": True,
-            "is_read_only": True,
-            "created_at": now,
-        })
-        for item in pool["items"]:
-            await db.official_optional_subject_pool_items.insert_one({
+        print("Clearing existing official curriculum data...")
+        for col in ["official_curriculum_stages", "official_curriculum_tracks", "official_curriculum_grades",
+                     "official_curriculum_subjects", "official_curriculum_grade_subjects",
+                     "official_teacher_rank_loads", "official_optional_subject_pools", "official_optional_subject_pool_items"]:
+            await db[col].drop()
+
+        print("Seeding stages...")
+        for stage in STAGES:
+            await db.official_curriculum_stages.insert_one({**stage, "is_official": True, "is_read_only": True, "created_at": now})
+
+        print("Seeding tracks...")
+        for track in TRACKS:
+            await db.official_curriculum_tracks.insert_one({**track, "is_official": True, "is_read_only": True, "created_at": now})
+
+        print("Seeding grades...")
+        for grade in GRADES:
+            await db.official_curriculum_grades.insert_one({**grade, "is_official": True, "is_read_only": True, "created_at": now})
+
+        print("Seeding subjects and grade-subject mappings...")
+        # Collect all unique subject names
+        all_subjects = {}
+        for grade_id, subjects in GRADE_SUBJECTS.items():
+            for (subj_name, sessions, item_type) in subjects:
+                if subj_name not in all_subjects:
+                    sub_id = "ocs-" + subj_name.replace(" ", "-").replace("(", "").replace(")", "")[:30]
+                    all_subjects[subj_name] = sub_id
+                    await db.official_curriculum_subjects.insert_one({
+                        "id": sub_id,
+                        "name_ar": subj_name,
+                        "name_en": subj_name,
+                        "is_official": True,
+                        "is_read_only": True,
+                        "created_at": now,
+                    })
+
+        print(f"  Created {len(all_subjects)} unique subjects")
+
+        # Grade-subject mappings
+        total_mappings = 0
+        for grade_id, subjects in GRADE_SUBJECTS.items():
+            for order, (subj_name, sessions, item_type) in enumerate(subjects):
+                sub_id = all_subjects[subj_name]
+                grade = next((g for g in GRADES if g["id"] == grade_id), None)
+                if grade:
+                    await db.official_curriculum_grade_subjects.insert_one({
+                        "id": str(uuid.uuid4()),
+                        "grade_id": grade_id,
+                        "stage_id": grade["stage_id"],
+                        "track_id": grade["track_id"],
+                        "subject_id": sub_id,
+                        "subject_name_ar": subj_name,
+                        "annual_sessions": sessions,
+                        "item_type": item_type,
+                        "is_official": True,
+                        "is_read_only": True,
+                        "display_order": order + 1,
+                        "created_at": now,
+                    })
+                    total_mappings += 1
+
+        print(f"  Created {total_mappings} grade-subject mappings")
+
+        print("Seeding teacher rank loads...")
+        for rank in TEACHER_RANK_LOADS:
+            await db.official_teacher_rank_loads.insert_one({
                 "id": str(uuid.uuid4()),
-                "pool_id": pool_id,
-                "name_ar": item["name_ar"],
-                "learning_type": item["learning_type"],
+                **rank,
                 "is_official": True,
                 "is_read_only": True,
                 "created_at": now,
             })
-    
-    # Create indexes
-    await db.official_curriculum_stages.create_index("id", unique=True)
-    await db.official_curriculum_tracks.create_index("id", unique=True)
-    await db.official_curriculum_grades.create_index("id", unique=True)
-    await db.official_curriculum_grade_subjects.create_index([("grade_id", 1), ("subject_id", 1)])
-    
-    print("\n========= CURRICULUM SEED COMPLETE =========")
-    print(f"Stages: {len(STAGES)}")
-    print(f"Tracks: {len(TRACKS)}")
-    print(f"Grades: {len(GRADES)}")
-    print(f"Subjects: {len(all_subjects)}")
-    print(f"Grade-Subject mappings: {total_mappings}")
-    print(f"Teacher rank loads: {len(TEACHER_RANK_LOADS)}")
-if __name__ == "__main__":
-    asyncio.run(seed())
+
+        print("Seeding optional subject pools...")
+        for pool in OPTIONAL_POOLS:
+            pool_id = pool["id"]
+            await db.official_optional_subject_pools.insert_one({
+                "id": pool_id,
+                "grade_id": pool["grade_id"],
+                "name_ar": pool["name_ar"],
+                "total_sessions": pool["total_sessions"],
+                "is_official": True,
+                "is_read_only": True,
+                "created_at": now,
+            })
+            for item in pool["items"]:
+                await db.official_optional_subject_pool_items.insert_one({
+                    "id": str(uuid.uuid4()),
+                    "pool_id": pool_id,
+                    "name_ar": item["name_ar"],
+                    "learning_type": item["learning_type"],
+                    "is_official": True,
+                    "is_read_only": True,
+                    "created_at": now,
+                })
+
+        # Create indexes
+        await db.official_curriculum_stages.create_index("id", unique=True)
+        await db.official_curriculum_tracks.create_index("id", unique=True)
+        await db.official_curriculum_grades.create_index("id", unique=True)
+        await db.official_curriculum_grade_subjects.create_index([("grade_id", 1), ("subject_id", 1)])
+
+        print("\n========= CURRICULUM SEED COMPLETE =========")
+        print(f"Stages: {len(STAGES)}")
+        print(f"Tracks: {len(TRACKS)}")
+        print(f"Grades: {len(GRADES)}")
+        print(f"Subjects: {len(all_subjects)}")
+        print(f"Grade-Subject mappings: {total_mappings}")
+        print(f"Teacher rank loads: {len(TEACHER_RANK_LOADS)}")
+    if __name__ == "__main__":
+        asyncio.run(seed())

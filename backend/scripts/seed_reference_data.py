@@ -272,182 +272,178 @@ DEFAULT_TEACHER_AVAILABILITY = {
 
 async def seed_reference_data():
     """Main function to seed all reference data"""
-    _seed_ctx = get_seed_db()
+    async with get_seed_db() as db:
 
-    db = await _seed_ctx.__aenter__()
-    
-    now = datetime.now(timezone.utc)
-    
-    print("=" * 60)
-    print("Starting NASSAQ Reference Data Seeding")
-    print("=" * 60)
-    
-    # 1. Seed Academic Stages
-    print("\n[1/8] Seeding Academic Stages...")
-    for stage in ACADEMIC_STAGES:
-        stage['created_at'] = now
-        stage['updated_at'] = now
-        await db.academic_stages.update_one(
-            {"id": stage["id"]},
-            {"$set": stage},
+        now = datetime.now(timezone.utc)
+
+        print("=" * 60)
+        print("Starting NASSAQ Reference Data Seeding")
+        print("=" * 60)
+
+        # 1. Seed Academic Stages
+        print("\n[1/8] Seeding Academic Stages...")
+        for stage in ACADEMIC_STAGES:
+            stage['created_at'] = now
+            stage['updated_at'] = now
+            await db.academic_stages.update_one(
+                {"id": stage["id"]},
+                {"$set": stage},
+                upsert=True
+            )
+        print(f"  ✓ {len(ACADEMIC_STAGES)} stages seeded")
+
+        # 2. Seed Academic Grades
+        print("\n[2/8] Seeding Academic Grades...")
+        for grade in ACADEMIC_GRADES:
+            grade['created_at'] = now
+            grade['updated_at'] = now
+            await db.academic_grades.update_one(
+                {"id": grade["id"]},
+                {"$set": grade},
+                upsert=True
+            )
+        print(f"  ✓ {len(ACADEMIC_GRADES)} grades seeded")
+
+        # 3. Seed Education Tracks
+        print("\n[3/8] Seeding Education Tracks...")
+        for track in EDUCATION_TRACKS:
+            track['created_at'] = now
+            track['updated_at'] = now
+            await db.education_tracks.update_one(
+                {"id": track["id"]},
+                {"$set": track},
+                upsert=True
+            )
+        print(f"  ✓ {len(EDUCATION_TRACKS)} tracks seeded")
+
+        # 4. Seed Subjects
+        print("\n[4/8] Seeding Subjects...")
+        for subject in BASE_SUBJECTS:
+            subject['created_at'] = now
+            subject['updated_at'] = now
+            subject['is_active'] = True
+            await db.subjects.update_one(
+                {"id": subject["id"]},
+                {"$set": subject},
+                upsert=True
+            )
+        print(f"  ✓ {len(BASE_SUBJECTS)} subjects seeded")
+
+        # 5. Seed Subject Mappings
+        print("\n[5/8] Seeding Subject Mappings...")
+        for mapping in SUBJECT_MAPPINGS:
+            mapping['id'] = f"mapping-{mapping['stage_id']}-{mapping['track_id']}-{'-'.join(mapping['grade_ids'])}"
+            mapping['created_at'] = now
+            mapping['updated_at'] = now
+            await db.subject_mappings.update_one(
+                {"id": mapping["id"]},
+                {"$set": mapping},
+                upsert=True
+            )
+        print(f"  ✓ {len(SUBJECT_MAPPINGS)} subject mappings seeded")
+
+        # 6. Seed Teacher Ranks
+        print("\n[6/8] Seeding Teacher Ranks...")
+        for rank in TEACHER_RANKS:
+            rank['created_at'] = now
+            rank['updated_at'] = now
+            rank['is_active'] = True
+            await db.teacher_ranks.update_one(
+                {"id": rank["id"]},
+                {"$set": rank},
+                upsert=True
+            )
+        print(f"  ✓ {len(TEACHER_RANKS)} teacher ranks seeded")
+
+        # 7. Seed Administrative Constraints
+        print("\n[7/8] Seeding Administrative Constraints...")
+        for constraint in ADMIN_CONSTRAINTS:
+            constraint['created_at'] = now
+            constraint['updated_at'] = now
+            await db.admin_constraints.update_one(
+                {"id": constraint["id"]},
+                {"$set": constraint},
+                upsert=True
+            )
+        print(f"  ✓ {len(ADMIN_CONSTRAINTS)} constraints seeded")
+
+        # 8. Seed Default School Settings Template
+        print("\n[8/8] Seeding Default School Settings Template...")
+        settings_template = {
+            "id": "default-school-settings",
+            "name_ar": "الإعدادات الافتراضية للمدارس",
+            "name_en": "Default School Settings",
+            **DEFAULT_SCHOOL_SETTINGS,
+            "default_teacher_availability": DEFAULT_TEACHER_AVAILABILITY,
+            "created_at": now,
+            "updated_at": now
+        }
+        await db.default_settings.update_one(
+            {"id": "default-school-settings"},
+            {"$set": settings_template},
             upsert=True
         )
-    print(f"  ✓ {len(ACADEMIC_STAGES)} stages seeded")
-    
-    # 2. Seed Academic Grades
-    print("\n[2/8] Seeding Academic Grades...")
-    for grade in ACADEMIC_GRADES:
-        grade['created_at'] = now
-        grade['updated_at'] = now
-        await db.academic_grades.update_one(
-            {"id": grade["id"]},
-            {"$set": grade},
-            upsert=True
-        )
-    print(f"  ✓ {len(ACADEMIC_GRADES)} grades seeded")
-    
-    # 3. Seed Education Tracks
-    print("\n[3/8] Seeding Education Tracks...")
-    for track in EDUCATION_TRACKS:
-        track['created_at'] = now
-        track['updated_at'] = now
-        await db.education_tracks.update_one(
-            {"id": track["id"]},
-            {"$set": track},
-            upsert=True
-        )
-    print(f"  ✓ {len(EDUCATION_TRACKS)} tracks seeded")
-    
-    # 4. Seed Subjects
-    print("\n[4/8] Seeding Subjects...")
-    for subject in BASE_SUBJECTS:
-        subject['created_at'] = now
-        subject['updated_at'] = now
-        subject['is_active'] = True
-        await db.subjects.update_one(
-            {"id": subject["id"]},
-            {"$set": subject},
-            upsert=True
-        )
-    print(f"  ✓ {len(BASE_SUBJECTS)} subjects seeded")
-    
-    # 5. Seed Subject Mappings
-    print("\n[5/8] Seeding Subject Mappings...")
-    for mapping in SUBJECT_MAPPINGS:
-        mapping['id'] = f"mapping-{mapping['stage_id']}-{mapping['track_id']}-{'-'.join(mapping['grade_ids'])}"
-        mapping['created_at'] = now
-        mapping['updated_at'] = now
-        await db.subject_mappings.update_one(
-            {"id": mapping["id"]},
-            {"$set": mapping},
-            upsert=True
-        )
-    print(f"  ✓ {len(SUBJECT_MAPPINGS)} subject mappings seeded")
-    
-    # 6. Seed Teacher Ranks
-    print("\n[6/8] Seeding Teacher Ranks...")
-    for rank in TEACHER_RANKS:
-        rank['created_at'] = now
-        rank['updated_at'] = now
-        rank['is_active'] = True
-        await db.teacher_ranks.update_one(
-            {"id": rank["id"]},
-            {"$set": rank},
-            upsert=True
-        )
-    print(f"  ✓ {len(TEACHER_RANKS)} teacher ranks seeded")
-    
-    # 7. Seed Administrative Constraints
-    print("\n[7/8] Seeding Administrative Constraints...")
-    for constraint in ADMIN_CONSTRAINTS:
-        constraint['created_at'] = now
-        constraint['updated_at'] = now
-        await db.admin_constraints.update_one(
-            {"id": constraint["id"]},
-            {"$set": constraint},
-            upsert=True
-        )
-    print(f"  ✓ {len(ADMIN_CONSTRAINTS)} constraints seeded")
-    
-    # 8. Seed Default School Settings Template
-    print("\n[8/8] Seeding Default School Settings Template...")
-    settings_template = {
-        "id": "default-school-settings",
-        "name_ar": "الإعدادات الافتراضية للمدارس",
-        "name_en": "Default School Settings",
-        **DEFAULT_SCHOOL_SETTINGS,
-        "default_teacher_availability": DEFAULT_TEACHER_AVAILABILITY,
-        "created_at": now,
-        "updated_at": now
-    }
-    await db.default_settings.update_one(
-        {"id": "default-school-settings"},
-        {"$set": settings_template},
-        upsert=True
-    )
-    print("  ✓ Default school settings template seeded")
-    
-    print("\n" + "=" * 60)
-    print("Reference Data Seeding Complete!")
-    print("=" * 60)
-    
-    return True
+        print("  ✓ Default school settings template seeded")
+
+        print("\n" + "=" * 60)
+        print("Reference Data Seeding Complete!")
+        print("=" * 60)
+
+        return True
 
 
 async def apply_settings_to_existing_schools():
     """Apply default settings to all existing schools"""
-    _seed_ctx = get_seed_db()
+    async with get_seed_db() as db:
 
-    db = await _seed_ctx.__aenter__()
-    
-    now = datetime.now(timezone.utc)
-    
-    print("\n" + "=" * 60)
-    print("Applying Default Settings to Existing Schools")
-    print("=" * 60)
-    
-    # Get default settings
-    default_settings = await db.default_settings.find_one({"id": "default-school-settings"})
-    if not default_settings:
-        print("ERROR: Default settings not found!")
-        return False
-    
-    # Get all schools
-    schools = await db.schools.find({}).to_list(None)
-    
-    for school in schools:
-        school_id = school.get('id')
-        
-        # Create school-specific settings
-        school_settings = {
-            "id": f"settings-{school_id}",
-            "school_id": school_id,
-            "working_days": default_settings.get("working_days"),
-            "working_days_ar": default_settings.get("working_days_ar"),
-            "working_days_en": default_settings.get("working_days_en"),
-            "weekend_days_ar": default_settings.get("weekend_days_ar"),
-            "weekend_days_en": default_settings.get("weekend_days_en"),
-            "periods_per_day": default_settings.get("periods_per_day"),
-            "period_duration_minutes": default_settings.get("period_duration_minutes"),
-            "break_duration_minutes": default_settings.get("break_duration_minutes"),
-            "prayer_duration_minutes": default_settings.get("prayer_duration_minutes"),
-            "school_day_start": default_settings.get("school_day_start"),
-            "school_day_end": default_settings.get("school_day_end"),
-            "time_slots": default_settings.get("time_slots"),
-            "education_track": "track-general",  # Default to general education
-            "created_at": now,
-            "updated_at": now
-        }
-        
-        await db.school_settings.update_one(
-            {"school_id": school_id},
-            {"$set": school_settings},
-            upsert=True
-        )
-        print(f"  ✓ Settings applied to: {school.get('name')}")
-    
-    print(f"\n  Total: {len(schools)} schools updated")
-    return True
+        now = datetime.now(timezone.utc)
+
+        print("\n" + "=" * 60)
+        print("Applying Default Settings to Existing Schools")
+        print("=" * 60)
+
+        # Get default settings
+        default_settings = await db.default_settings.find_one({"id": "default-school-settings"})
+        if not default_settings:
+            print("ERROR: Default settings not found!")
+            return False
+
+        # Get all schools
+        schools = await db.schools.find({}).to_list(None)
+
+        for school in schools:
+            school_id = school.get('id')
+
+            # Create school-specific settings
+            school_settings = {
+                "id": f"settings-{school_id}",
+                "school_id": school_id,
+                "working_days": default_settings.get("working_days"),
+                "working_days_ar": default_settings.get("working_days_ar"),
+                "working_days_en": default_settings.get("working_days_en"),
+                "weekend_days_ar": default_settings.get("weekend_days_ar"),
+                "weekend_days_en": default_settings.get("weekend_days_en"),
+                "periods_per_day": default_settings.get("periods_per_day"),
+                "period_duration_minutes": default_settings.get("period_duration_minutes"),
+                "break_duration_minutes": default_settings.get("break_duration_minutes"),
+                "prayer_duration_minutes": default_settings.get("prayer_duration_minutes"),
+                "school_day_start": default_settings.get("school_day_start"),
+                "school_day_end": default_settings.get("school_day_end"),
+                "time_slots": default_settings.get("time_slots"),
+                "education_track": "track-general",  # Default to general education
+                "created_at": now,
+                "updated_at": now
+            }
+
+            await db.school_settings.update_one(
+                {"school_id": school_id},
+                {"$set": school_settings},
+                upsert=True
+            )
+            print(f"  ✓ Settings applied to: {school.get('name')}")
+
+        print(f"\n  Total: {len(schools)} schools updated")
+        return True
 
 
 if __name__ == "__main__":

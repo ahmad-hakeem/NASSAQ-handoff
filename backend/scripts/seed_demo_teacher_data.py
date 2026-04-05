@@ -248,124 +248,122 @@ def generate_sessions_and_interactions(class_id, student_ids, school_days):
 
 
 async def main():
-    _seed_ctx = get_seed_db()
+    async with get_seed_db() as db:
 
-    db = await _seed_ctx.__aenter__()
+        print("🧹 Cleaning old seeded data for school-demo-001...")
+        class_ids = list(CLASS_INFO.keys())
+        old_students = await db.students.find(
+            {"school_id": SCHOOL_ID, "class_id": {"$in": class_ids}},
+            {"id": 1}
+        ).to_list(None)
+        old_student_ids = [s["id"] for s in old_students]
 
-    print("🧹 Cleaning old seeded data for school-demo-001...")
-    class_ids = list(CLASS_INFO.keys())
-    old_students = await db.students.find(
-        {"school_id": SCHOOL_ID, "class_id": {"$in": class_ids}},
-        {"id": 1}
-    ).to_list(None)
-    old_student_ids = [s["id"] for s in old_students]
+        if old_student_ids:
+            await db.students.delete_many({"id": {"$in": old_student_ids}})
+            await db.attendance.delete_many({"student_id": {"$in": old_student_ids}})
+            await db.session_attendance.delete_many({"student_id": {"$in": old_student_ids}})
+            await db.session_interactions.delete_many({"student_id": {"$in": old_student_ids}})
+            await db.student_daily_scores.delete_many({"student_id": {"$in": old_student_ids}})
+            await db.student_score_ledger.delete_many({"student_id": {"$in": old_student_ids}})
 
-    if old_student_ids:
-        await db.students.delete_many({"id": {"$in": old_student_ids}})
-        await db.attendance.delete_many({"student_id": {"$in": old_student_ids}})
-        await db.session_attendance.delete_many({"student_id": {"$in": old_student_ids}})
-        await db.session_interactions.delete_many({"student_id": {"$in": old_student_ids}})
-        await db.student_daily_scores.delete_many({"student_id": {"$in": old_student_ids}})
-        await db.student_score_ledger.delete_many({"student_id": {"$in": old_student_ids}})
+        await db.class_sessions.delete_many({"teacher_id": TEACHER_ID, "status": "completed"})
 
-    await db.class_sessions.delete_many({"teacher_id": TEACHER_ID, "status": "completed"})
-
-    print("👤 Fixing teacher user record...")
-    await db.users.update_one(
-        {"email": "teacher@alnoor.edu.sa"},
-        {"$set": {"teacher_id": "teacher-1", "tenant_id": SCHOOL_ID}}
-    )
-
-    print("🏫 Fixing class tenant_id fields...")
-    for cid, info in CLASS_INFO.items():
-        await db.classes.update_one(
-            {"id": cid},
-            {"$set": {"tenant_id": SCHOOL_ID, "school_id": SCHOOL_ID}}
+        print("👤 Fixing teacher user record...")
+        await db.users.update_one(
+            {"email": "teacher@alnoor.edu.sa"},
+            {"$set": {"teacher_id": "teacher-1", "tenant_id": SCHOOL_ID}}
         )
 
-    print("👨‍🎓 Seeding students...")
-    all_students = []
-    class_student_map = {}
-    students_per_class = 25
-    for class_id, info in CLASS_INFO.items():
-        class_students = [generate_student(class_id, info, i) for i in range(students_per_class)]
-        all_students.extend(class_students)
-        class_student_map[class_id] = [s["id"] for s in class_students]
+        print("🏫 Fixing class tenant_id fields...")
+        for cid, info in CLASS_INFO.items():
+            await db.classes.update_one(
+                {"id": cid},
+                {"$set": {"tenant_id": SCHOOL_ID, "school_id": SCHOOL_ID}}
+            )
 
-    if all_students:
-        await db.students.insert_many(all_students)
-    print(f"   ✅ {len(all_students)} students across {len(CLASS_INFO)} classes")
+        print("👨‍🎓 Seeding students...")
+        all_students = []
+        class_student_map = {}
+        students_per_class = 25
+        for class_id, info in CLASS_INFO.items():
+            class_students = [generate_student(class_id, info, i) for i in range(students_per_class)]
+            all_students.extend(class_students)
+            class_student_map[class_id] = [s["id"] for s in class_students]
 
-    school_days = get_school_days(weeks_back=6)
-    print(f"📅 School days (last 6 weeks): {len(school_days)} days")
+        if all_students:
+            await db.students.insert_many(all_students)
+        print(f"   ✅ {len(all_students)} students across {len(CLASS_INFO)} classes")
 
-    print("📋 Seeding attendance records...")
-    all_attendance = []
-    for student in all_students:
-        all_attendance.extend(generate_attendance(student["id"], student["class_id"], school_days))
-    if all_attendance:
-        await db.attendance.insert_many(all_attendance)
-    print(f"   ✅ {len(all_attendance)} attendance records")
+        school_days = get_school_days(weeks_back=6)
+        print(f"📅 School days (last 6 weeks): {len(school_days)} days")
 
-    print("📚 Seeding class sessions + interactions...")
-    all_sessions = []
-    all_sa = []
-    all_interactions = []
-    all_scores = []
-    all_ledger = []
+        print("📋 Seeding attendance records...")
+        all_attendance = []
+        for student in all_students:
+            all_attendance.extend(generate_attendance(student["id"], student["class_id"], school_days))
+        if all_attendance:
+            await db.attendance.insert_many(all_attendance)
+        print(f"   ✅ {len(all_attendance)} attendance records")
 
-    for class_id, student_ids in class_student_map.items():
-        sess, sa, inter, scores, ledger = generate_sessions_and_interactions(
-            class_id, student_ids, school_days
-        )
-        all_sessions.extend(sess)
-        all_sa.extend(sa)
-        all_interactions.extend(inter)
-        all_scores.extend(scores)
-        all_ledger.extend(ledger)
+        print("📚 Seeding class sessions + interactions...")
+        all_sessions = []
+        all_sa = []
+        all_interactions = []
+        all_scores = []
+        all_ledger = []
 
-    if all_sessions:
-        await db.class_sessions.insert_many(all_sessions)
-    if all_sa:
-        await db.session_attendance.insert_many(all_sa)
-    if all_interactions:
-        await db.session_interactions.insert_many(all_interactions)
-    if all_scores:
-        await db.student_daily_scores.insert_many(all_scores)
-    if all_ledger:
-        await db.student_score_ledger.insert_many(all_ledger)
+        for class_id, student_ids in class_student_map.items():
+            sess, sa, inter, scores, ledger = generate_sessions_and_interactions(
+                class_id, student_ids, school_days
+            )
+            all_sessions.extend(sess)
+            all_sa.extend(sa)
+            all_interactions.extend(inter)
+            all_scores.extend(scores)
+            all_ledger.extend(ledger)
 
-    print(f"   ✅ {len(all_sessions)} sessions")
-    print(f"   ✅ {len(all_sa)} session attendance records")
-    print(f"   ✅ {len(all_interactions)} interactions")
-    print(f"   ✅ {len(all_scores)} daily score entries")
-    print(f"   ✅ {len(all_ledger)} ledger entries")
+        if all_sessions:
+            await db.class_sessions.insert_many(all_sessions)
+        if all_sa:
+            await db.session_attendance.insert_many(all_sa)
+        if all_interactions:
+            await db.session_interactions.insert_many(all_interactions)
+        if all_scores:
+            await db.student_daily_scores.insert_many(all_scores)
+        if all_ledger:
+            await db.student_score_ledger.insert_many(all_ledger)
 
-    print("\n🔍 Verification...")
-    user = await db.users.find_one({"email": "teacher@alnoor.edu.sa"}, {"_id": 0, "teacher_id": 1, "tenant_id": 1})
-    print(f"   User teacher_id: {user.get('teacher_id')}, tenant_id: {user.get('tenant_id')}")
+        print(f"   ✅ {len(all_sessions)} sessions")
+        print(f"   ✅ {len(all_sa)} session attendance records")
+        print(f"   ✅ {len(all_interactions)} interactions")
+        print(f"   ✅ {len(all_scores)} daily score entries")
+        print(f"   ✅ {len(all_ledger)} ledger entries")
 
-    total_students = await db.students.count_documents({"school_id": SCHOOL_ID, "class_id": {"$in": class_ids}})
-    print(f"   Total students in teacher-1 classes: {total_students}")
+        print("\n🔍 Verification...")
+        user = await db.users.find_one({"email": "teacher@alnoor.edu.sa"}, {"_id": 0, "teacher_id": 1, "tenant_id": 1})
+        print(f"   User teacher_id: {user.get('teacher_id')}, tenant_id: {user.get('tenant_id')}")
 
-    total_att = await db.attendance.count_documents({"school_id": SCHOOL_ID, "teacher_id": TEACHER_ID})
-    print(f"   Total attendance records: {total_att}")
-    att_sample = await db.attendance.find_one({"school_id": SCHOOL_ID, "teacher_id": TEACHER_ID}, {"_id": 0})
-    att_keys = sorted(att_sample.keys()) if att_sample else []
-    print(f"   Attendance fields: {att_keys}")
+        total_students = await db.students.count_documents({"school_id": SCHOOL_ID, "class_id": {"$in": class_ids}})
+        print(f"   Total students in teacher-1 classes: {total_students}")
 
-    total_sessions = await db.class_sessions.count_documents({"teacher_id": TEACHER_ID, "status": "completed"})
-    print(f"   Completed sessions: {total_sessions}")
+        total_att = await db.attendance.count_documents({"school_id": SCHOOL_ID, "teacher_id": TEACHER_ID})
+        print(f"   Total attendance records: {total_att}")
+        att_sample = await db.attendance.find_one({"school_id": SCHOOL_ID, "teacher_id": TEACHER_ID}, {"_id": 0})
+        att_keys = sorted(att_sample.keys()) if att_sample else []
+        print(f"   Attendance fields: {att_keys}")
 
-    assignments = await db.teacher_assignments.count_documents({"teacher_id": TEACHER_ID})
-    timetable = await db.timetable_sessions.count_documents({"teacher_id": TEACHER_ID})
-    print(f"   Teacher assignments: {assignments}")
-    print(f"   Timetable sessions: {timetable}")
-    if assignments == 0:
-        print("   ⚠️  WARNING: No teacher_assignments found — run AI timetable generator first")
-    if timetable == 0:
-        print("   ⚠️  WARNING: No timetable_sessions found — schedule page will be empty")
+        total_sessions = await db.class_sessions.count_documents({"teacher_id": TEACHER_ID, "status": "completed"})
+        print(f"   Completed sessions: {total_sessions}")
 
-    print("\n✅ Demo teacher data seeding complete!")
-if __name__ == "__main__":
-    asyncio.run(main())
+        assignments = await db.teacher_assignments.count_documents({"teacher_id": TEACHER_ID})
+        timetable = await db.timetable_sessions.count_documents({"teacher_id": TEACHER_ID})
+        print(f"   Teacher assignments: {assignments}")
+        print(f"   Timetable sessions: {timetable}")
+        if assignments == 0:
+            print("   ⚠️  WARNING: No teacher_assignments found — run AI timetable generator first")
+        if timetable == 0:
+            print("   ⚠️  WARNING: No timetable_sessions found — schedule page will be empty")
+
+        print("\n✅ Demo teacher data seeding complete!")
+    if __name__ == "__main__":
+        asyncio.run(main())
