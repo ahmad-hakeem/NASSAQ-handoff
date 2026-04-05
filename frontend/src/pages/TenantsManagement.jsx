@@ -23,6 +23,7 @@ import {
   MapPin, Brain, Eye, Pause, Play, RefreshCw, CheckCircle2, XCircle,
   AlertTriangle, Clock, ArrowLeft, ChevronRight, School, Sparkles, X,
   Loader2, Layers, Calendar, Activity, UserCheck, Hash, ExternalLink,
+  FileEdit, Trash2, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { Textarea } from '../components/ui/textarea';
 import CreateSchoolWizard from '../components/wizards/CreateSchoolWizard';
@@ -159,6 +160,9 @@ export default function TenantsManagement() {
   const [actionReason, setActionReason] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
 
+  const [showDrafts, setShowDrafts] = useState(true);
+  const [deletingDraftId, setDeletingDraftId] = useState(null);
+
   const [filters, setFilters] = useState({
     status: 'all',
     city: 'all',
@@ -211,12 +215,18 @@ export default function TenantsManagement() {
 
   useEffect(() => { fetchSchools(); }, [fetchSchools]);
 
+  const draftSchools = React.useMemo(() => schools.filter(s => s.status === 'setup'), [schools]);
+
   const filteredSchools = React.useMemo(() => {
     let result = [...schools];
-    if (activeStatusFilter) {
+    if (activeStatusFilter === 'setup') {
+      result = result.filter(s => s.status === 'setup');
+    } else if (activeStatusFilter) {
       result = result.filter(s => s.status === activeStatusFilter);
     } else if (filters.status !== 'all') {
       result = result.filter(s => s.status === filters.status);
+    } else {
+      result = result.filter(s => s.status !== 'setup');
     }
     if (filters.city !== 'all') {
       result = result.filter(s => s.city === filters.city);
@@ -235,10 +245,11 @@ export default function TenantsManagement() {
   const cities = [...new Set(schools.map(s => s.city).filter(Boolean))];
 
   const stats = {
-    total: schools.length,
+    total: schools.filter(s => s.status !== 'setup').length,
     active: schools.filter(s => s.status === 'active').length,
     suspended: schools.filter(s => s.status === 'suspended').length,
-    pending: schools.filter(s => s.status === 'pending' || s.status === 'setup').length,
+    pending: schools.filter(s => s.status === 'pending').length,
+    drafts: draftSchools.length,
     totalStudents: schools.reduce((sum, s) => sum + (s.student_count || 0), 0),
     totalTeachers: schools.reduce((sum, s) => sum + (s.teacher_count || 0), 0),
     totalClasses: schools.reduce((sum, s) => sum + (s.class_count || 0), 0),
@@ -313,6 +324,19 @@ export default function TenantsManagement() {
     fetchSchools(true);
   };
 
+  const handleDeleteDraft = async (draft) => {
+    setDeletingDraftId(draft.id);
+    try {
+      await api.delete(`/schools/${draft.id}/draft`);
+      setSchools(prev => prev.filter(s => s.id !== draft.id));
+      toast.success(isRTL ? `تم حذف مسودة "${draft.name}"` : `Draft "${draft.name}" deleted`);
+    } catch (err) {
+      nassaqError(err.response?.data?.detail || (isRTL ? 'فشل حذف المسودة' : 'Failed to delete draft'));
+    } finally {
+      setDeletingDraftId(null);
+    }
+  };
+
   const getLogoGradient = (id) => {
     const hash = (id || '').split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
     return LOGO_GRADIENTS[hash % LOGO_GRADIENTS.length];
@@ -381,6 +405,7 @@ export default function TenantsManagement() {
                 { label: t.activeSchools, value: stats.active, icon: CheckCircle2, onClick: () => handleStatusFilter('active'), active: activeStatusFilter === 'active', color: 'text-emerald-400' },
                 { label: t.suspendedSchools, value: stats.suspended, icon: XCircle, onClick: () => handleStatusFilter('suspended'), active: activeStatusFilter === 'suspended', color: 'text-red-400' },
                 { label: t.pendingSchools, value: stats.pending, icon: Clock, onClick: () => handleStatusFilter('pending'), active: activeStatusFilter === 'pending', color: 'text-amber-400' },
+                ...(stats.drafts > 0 ? [{ label: isRTL ? 'مسودات' : 'Drafts', value: stats.drafts, icon: FileEdit, onClick: () => handleStatusFilter('setup'), active: activeStatusFilter === 'setup', color: 'text-orange-400' }] : []),
                 { label: t.totalStudents, value: stats.totalStudents.toLocaleString(), icon: GraduationCap },
                 { label: t.totalTeachers, value: stats.totalTeachers, icon: UserCheck },
                 { label: t.totalClasses, value: stats.totalClasses, icon: Layers },
@@ -473,6 +498,84 @@ export default function TenantsManagement() {
               <Filter className="h-5 w-5" />
             </Button>
           </div>
+
+          {/* Drafts Section */}
+          {draftSchools.length > 0 && !activeStatusFilter && (
+            <div className="space-y-3">
+              <button
+                onClick={() => setShowDrafts(p => !p)}
+                className="w-full flex items-center justify-between p-3 rounded-xl bg-amber-50 dark:bg-amber-950/20 border-2 border-dashed border-amber-300 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-amber-950/30 transition-colors group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center">
+                    <FileEdit className="h-5 w-5 text-amber-600" />
+                  </div>
+                  <div className="text-start">
+                    <p className="text-sm font-bold text-amber-800 dark:text-amber-300 font-cairo">
+                      {isRTL ? `مسودات الإنشاء (${draftSchools.length})` : `School Drafts (${draftSchools.length})`}
+                    </p>
+                    <p className="text-xs text-amber-600/70 dark:text-amber-400/60">
+                      {isRTL ? 'مدارس لم يكتمل إنشاؤها بعد — يمكنك متابعة الإعداد أو حذفها' : 'Schools not fully set up yet — continue setup or delete'}
+                    </p>
+                  </div>
+                </div>
+                {showDrafts ? <ChevronUp className="h-5 w-5 text-amber-500" /> : <ChevronDown className="h-5 w-5 text-amber-500" />}
+              </button>
+
+              {showDrafts && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {draftSchools.map((draft) => (
+                    <div
+                      key={draft.id}
+                      className="relative p-4 rounded-xl bg-white dark:bg-slate-900 border-2 border-dashed border-amber-200 dark:border-amber-800 hover:border-amber-400 dark:hover:border-amber-600 transition-all group/card"
+                    >
+                      <div className="flex items-start gap-3 mb-3">
+                        <div className={`w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-amber-400 flex items-center justify-center flex-shrink-0`}>
+                          <span className="text-white font-bold text-sm">{draft.name?.charAt(0) || '?'}</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-slate-800 dark:text-white truncate font-cairo text-sm">{draft.name || (isRTL ? 'مسودة مدرسة' : 'Draft School')}</p>
+                          <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-0.5">
+                            {draft.city && <><MapPin className="h-3 w-3" /><span>{draft.city}</span></>}
+                            {draft.created_at && (
+                              <span className="ms-auto text-[10px]">
+                                {new Date(draft.created_at).toLocaleDateString(isRTL ? 'ar-SA' : 'en-GB')}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <Badge className="mb-3 bg-amber-100 text-amber-700 border-amber-200 text-[10px]">
+                        <Clock className="h-3 w-3 me-1" />
+                        {isRTL ? 'قيد الإعداد' : 'Setup'}
+                      </Badge>
+
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          className="flex-1 bg-brand-navy text-white hover:bg-brand-navy/90 text-xs gap-1.5 h-8"
+                          onClick={() => navigate(`/platform/schools/${draft.id}`)}
+                        >
+                          <FileEdit className="h-3.5 w-3.5" />
+                          {isRTL ? 'متابعة الإعداد' : 'Continue Setup'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-red-500 border-red-200 hover:bg-red-50 hover:text-red-600 dark:border-red-800 dark:hover:bg-red-950/30 h-8 w-8 p-0"
+                          onClick={() => handleDeleteDraft(draft)}
+                          disabled={deletingDraftId === draft.id}
+                        >
+                          {deletingDraftId === draft.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Schools Content */}
           {filteredSchools.length === 0 ? (

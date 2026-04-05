@@ -332,6 +332,39 @@ async def create_school_draft(
         created_at=school_doc["created_at"]
     )
 
+@router.delete("/schools/{school_id}/draft")
+async def delete_school_draft(
+    school_id: str,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+):
+    """Delete a school draft (only if status is 'setup')"""
+    school = await db.schools.find_one({"id": school_id})
+    if not school:
+        raise HTTPException(status_code=404, detail="المدرسة غير موجودة")
+
+    if school.get("status") != "setup":
+        raise HTTPException(status_code=400, detail="يمكن حذف المسودات فقط (الحالة: قيد الإعداد)")
+
+    await db.schools.delete_one({"id": school_id})
+
+    # Clean up any associated data
+    await db.users.delete_many({"tenant_id": school_id})
+    await db.school_settings.delete_many({"school_id": school_id})
+
+    await audit_engine.log_data_change(
+        action=AuditAction.TENANT_UPDATED.value,
+        performed_by=current_user.get("id", current_user.get("user_id")),
+        entity_type="tenant",
+        entity_id=school_id,
+        new_values={
+            "action": "DRAFT_DELETED",
+            "school_name": school.get("name", ""),
+        }
+    )
+
+    return {"success": True, "message": "تم حذف المسودة بنجاح"}
+
+
 def _normalize_school(s: dict) -> dict:
     """Normalize school document to match SchoolResponse fields."""
     return {
