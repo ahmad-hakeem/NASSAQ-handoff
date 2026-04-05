@@ -89,7 +89,7 @@ async def login(credentials: UserLogin):
         # Log failed login attempt
         await audit_engine.log_auth_event(
             action=AuditAction.LOGIN_FAILED.value,
-            user_id="unknown",
+            user_id=None,
             success=False,
             email=credentials.email,
             reason="user_not_found"

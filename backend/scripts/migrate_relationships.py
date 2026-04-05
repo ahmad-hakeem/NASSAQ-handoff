@@ -7,8 +7,12 @@ import asyncio
 import sys
 sys.path.insert(0, "/home/runner/workspace/backend")
 
-from motor.motor_asyncio import AsyncIOMotorClient
 from datetime import datetime, timezone
+
+import sys as _sys
+import os as _os
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), ".."))
+from scripts.seed_db_helper import get_seed_db
 
 RELATIONSHIP_TYPE_MAP = {
     "parent_child": {
@@ -65,8 +69,9 @@ RELATIONSHIP_TYPE_MAP = {
 
 
 async def migrate():
-    client = AsyncIOMotorClient("mongodb://127.0.0.1:27017/")
-    db = client["test_database"]
+    _seed_ctx = get_seed_db()
+
+    db = await _seed_ctx.__aenter__()
     
     total = await db.user_relationships.count_documents({})
     print(f"Total user_relationships: {total}")
@@ -116,7 +121,7 @@ async def migrate():
             "updated_at": now
         }
         
-        from pymongo import UpdateOne
+        from bson_compat import UpdateOne
         batch_ops.append(UpdateOne(
             {"id": doc["id"]},
             {"$set": update_fields}
@@ -151,9 +156,5 @@ async def migrate():
     print("\nRelationship types after migration:")
     async for doc in db.user_relationships.aggregate(pipeline):
         print(f"  {doc['_id']}: {doc['count']}")
-    
-    client.close()
-
-
 if __name__ == "__main__":
     asyncio.run(migrate())

@@ -5,14 +5,16 @@ The /api/students endpoint reads from db.students, not db.users
 import asyncio
 import uuid
 from datetime import datetime, timezone
-from motor.motor_asyncio import AsyncIOMotorClient
 
-MONGO_URL = "mongodb://127.0.0.1:27017/"
-DB_NAME = "test_database"
+import sys as _sys
+import os as _os
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), ".."))
+from scripts.seed_db_helper import get_seed_db
 
 async def migrate():
-    client = AsyncIOMotorClient(MONGO_URL)
-    db = client[DB_NAME]
+    _seed_ctx = get_seed_db()
+
+    db = await _seed_ctx.__aenter__()
     now = datetime.now(timezone.utc).isoformat()
     
     print("=== MIGRATING STUDENTS to students collection ===")
@@ -89,8 +91,5 @@ async def migrate():
     for school in schools:
         count = await db.students.count_documents({"school_id": school["id"]})
         print(f"  {school['id']}: {count} students")
-    
-    client.close()
-
 if __name__ == "__main__":
     asyncio.run(migrate())

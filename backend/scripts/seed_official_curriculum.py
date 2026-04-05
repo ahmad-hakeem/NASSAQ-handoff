@@ -6,10 +6,11 @@ import asyncio
 import sys
 import uuid
 from datetime import datetime, timezone
-from motor.motor_asyncio import AsyncIOMotorClient
 
-MONGO_URL = "mongodb://127.0.0.1:27017/"
-DB_NAME = "test_database"
+import sys as _sys
+import os as _os
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), ".."))
+from scripts.seed_db_helper import get_seed_db
 
 # ============ STAGES ============
 STAGES = [
@@ -572,8 +573,9 @@ OPTIONAL_POOLS = [
 ]
 
 async def seed():
-    client = AsyncIOMotorClient(MONGO_URL)
-    db = client[DB_NAME]
+    _seed_ctx = get_seed_db()
+
+    db = await _seed_ctx.__aenter__()
     now = datetime.now(timezone.utc).isoformat()
     
     print("Clearing existing official curriculum data...")
@@ -684,8 +686,5 @@ async def seed():
     print(f"Subjects: {len(all_subjects)}")
     print(f"Grade-Subject mappings: {total_mappings}")
     print(f"Teacher rank loads: {len(TEACHER_RANK_LOADS)}")
-    
-    client.close()
-
 if __name__ == "__main__":
     asyncio.run(seed())

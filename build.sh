@@ -7,15 +7,15 @@ echo "=========================================="
 
 ENV="${ENVIRONMENT:-development}"
 echo "Environment: $ENV"
-echo "DB_NAME: ${DB_NAME:-test_database}"
 
 if [ "$ENV" = "production" ]; then
   echo ""
   echo "[SAFETY] Production deployment detected"
   echo "[SAFETY] Verifying deployment safety rules..."
 
-  if [ "${DB_NAME:-test_database}" = "test_database" ]; then
-    echo "[WARNING] DB_NAME is 'test_database' in production — verify this is intentional"
+  if [ -z "$DATABASE_URL" ]; then
+    echo "[ERROR] DATABASE_URL is not set for production!"
+    exit 1
   fi
 
   if [ -z "$JWT_SECRET_KEY" ]; then

@@ -95,13 +95,13 @@ Each fix report must include: root cause, why it wasn't caught before, what chan
 
 - **Frontend**: React (Create React App + CRACO), Tailwind CSS, Radix UI — port 5000
 - **Backend**: FastAPI (Python), JWT auth — port 8000
-- **Database**: PostgreSQL (async SQLAlchemy + asyncpg) — MongoDB fully replaced via adapter layer
+- **Database**: PostgreSQL (async SQLAlchemy + asyncpg) — MongoDB fully removed
   - **PostgreSQL**: Replit built-in via `DATABASE_URL`, 47+ ORM tables + GenericDocument fallback, Alembic migrations
   - **Adapter layer**: `backend/pg_adapter.py` — MongoDB-compatible API (find_one, find, update_one, aggregate, etc.) over SQLAlchemy; all routes/engines use adapter transparently
   - **Compatibility stubs**: `backend/bson_compat.py` — ObjectId + UpdateOne stubs for code that imported from bson/pymongo
-  - **Migration files**: `backend/db.py` (async engine), `backend/pg_models.py` (47+ ORM models + GenericDocument), `backend/pg_helpers.py` (utilities), `backend/alembic/` (migrations, head: e052f4eb5993)
+  - **Core files**: `backend/db.py` (async engine), `backend/pg_models.py` (47+ ORM models + GenericDocument), `backend/pg_helpers.py` (utilities), `backend/alembic/` (migrations, head: f3a1b2c4d5e6)
   - **asyncpg SSL fix**: `sslmode` param stripped from DATABASE_URL (asyncpg uses `ssl=True` instead)
-  - **MongoDB**: Still installed (mongod binary) but NO code imports motor/pymongo/bson — will be fully removed in Task #12
+  - **No MongoDB**: motor/pymongo removed from dependencies, mongod removed from workflow/deployment commands, .mongodb data directory deleted, seed scripts updated to use pg_adapter
 
 ### Product Intelligence Hub (مركز ذكاء المنتج)
 - **Database Models**: `backend/models/product_hub_models.py` — Production-ready Pydantic schemas: 12 enums (IssueType, IssueStatus, IssuePriority, Reproducible, TeamEnum, ImpactType, RelatedTo, AccountType, Platform, CommentType, AuditAction, AuditRole), structured sub-models (IssueContext, IssueDescription, IssueTechnical, IssueBusiness, IssueAssignment, IssueAI, SubmissionMetadata, IssueVisibility, IssueSystem), `IssueCreate.to_issue_document()` builder, backward-compatible `ISSUE_TYPE_COMPAT` map (performance→performance_issue, etc.), attachment validation (max 10 files, allowed extensions), field length limits
@@ -311,7 +311,7 @@ The scheduling engine uses contiguous-fill scoring to distribute sessions evenly
 ## Workflows
 
 - **Start application** — Frontend dev server: `cd frontend && npm run start` (port 3000)
-- **Backend API** — MongoDB + FastAPI: mongod start + `cd backend && uvicorn server:app --host 0.0.0.0 --port 8000`
+- **Backend API** — PostgreSQL + FastAPI: `cd backend && uvicorn server:app --host 0.0.0.0 --port 8000`
 
 ## Environment
 
@@ -321,8 +321,7 @@ The scheduling engine uses contiguous-fill scoring to distribute sessions evenly
 - `DANGEROUSLY_DISABLE_HOST_CHECK=true` — Required for Replit proxy
 
 ### Backend (`backend/.env`)
-- `MONGO_URL` — MongoDB connection string
-- `DB_NAME` — Database name (`test_database`)
+- `DATABASE_URL` — PostgreSQL connection string
 - `JWT_SECRET_KEY` — JWT signing key
 - `CORS_ORIGINS=*` — CORS allowed origins
 
@@ -620,7 +619,7 @@ Real data-driven academic intelligence engine. No mock data — queries attendan
 - `GET /api/hakim/insights?limit=20` — Retrieve stored insights
 
 ### Reporting Engine (`backend/engines/reporting_engine.py`)
-Centralized report generation with 9 report types using MongoDB aggregation pipelines.
+Centralized report generation with 9 report types using PostgreSQL aggregation queries.
 
 **Unified endpoint**: `GET /api/reports/generate/{report_type}` with query params:
 - `start_date`, `end_date` (YYYY-MM-DD, defaults to last 30 days)
@@ -820,7 +819,7 @@ Sub-pages (accessible from within classes/sessions, not top-level sidebar):
 ## Dependencies
 
 - Frontend: React 19, react-router-dom v7, Radix UI, Tailwind CSS, recharts, axios, @dnd-kit
-- Backend: FastAPI, motor (MongoDB async), PyJWT, bcrypt, qrcode, pandas, google-generativeai, reportlab, xlsxwriter, psutil, python-docx
+- Backend: FastAPI, SQLAlchemy (async PostgreSQL), PyJWT, bcrypt, qrcode, pandas, google-generativeai, reportlab, xlsxwriter, psutil, python-docx
 
 ## Student Profile Page (Full Dedicated Page — Redesigned)
 - **Route**: `/admin/students/:studentId` and `/principal/students/:studentId`

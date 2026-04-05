@@ -13,11 +13,12 @@ import asyncio
 import uuid
 import random
 from datetime import datetime, timezone, timedelta
-from motor.motor_asyncio import AsyncIOMotorClient
 
+import sys as _sys
+import os as _os
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), ".."))
+from scripts.seed_db_helper import get_seed_db
 
-MONGO_URI = "mongodb://localhost:27017"
-DB_NAME = "test_database"
 
 RELATIONSHIP_TYPES = [
     "parent_child", "sibling", "teacher_class", "teacher_subject",
@@ -61,8 +62,9 @@ def now_iso():
 
 
 async def main():
-    client = AsyncIOMotorClient(MONGO_URI)
-    db = client[DB_NAME]
+    _seed_ctx = get_seed_db()
+
+    db = await _seed_ctx.__aenter__()
 
     print("=" * 60)
     print("NASSAQ — Relationship Graph & Identity Seeder")
@@ -592,9 +594,5 @@ async def main():
 
     print("\n" + "=" * 60)
     print("DONE!")
-
-    client.close()
-
-
 if __name__ == "__main__":
     asyncio.run(main())

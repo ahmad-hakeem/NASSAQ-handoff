@@ -7,13 +7,14 @@ Script to seed exact test data as specified by user
 """
 
 import asyncio
-from motor.motor_asyncio import AsyncIOMotorClient
 from datetime import datetime, timezone
 import os
 import bcrypt
 
-MONGO_URL = os.environ.get('MONGO_URL')
-DB_NAME = os.environ.get('DB_NAME', 'test_database')
+import sys as _sys
+import os as _os
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), ".."))
+from scripts.seed_db_helper import get_seed_db
 
 def hash_password(password: str) -> str:
     salt = bcrypt.gensalt()
@@ -391,8 +392,9 @@ TEACHER_CONSTRAINTS = [
 
 
 async def main():
-    client = AsyncIOMotorClient(MONGO_URL)
-    db = client[DB_NAME]
+    _seed_ctx = get_seed_db()
+
+    db = await _seed_ctx.__aenter__()
     now = datetime.now(timezone.utc)
     
     print("=" * 70)

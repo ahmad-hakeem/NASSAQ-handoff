@@ -181,7 +181,7 @@ class AuditLogEngine:
     async def log_auth_event(
         self,
         action: str,
-        user_id: str,
+        user_id: Optional[str] = None,
         tenant_id: Optional[str] = None,
         success: bool = True,
         **kwargs

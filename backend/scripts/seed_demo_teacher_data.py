@@ -16,10 +16,12 @@ import asyncio
 import uuid
 import random
 from datetime import datetime, timedelta, timezone
-from motor.motor_asyncio import AsyncIOMotorClient
 
-MONGO_URL = "mongodb://127.0.0.1:27017"
-DB_NAME = "test_database"
+import sys as _sys
+import os as _os
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), ".."))
+from scripts.seed_db_helper import get_seed_db
+
 SCHOOL_ID = "school-demo-001"
 TEACHER_ID = "teacher-1"
 
@@ -246,8 +248,9 @@ def generate_sessions_and_interactions(class_id, student_ids, school_days):
 
 
 async def main():
-    client = AsyncIOMotorClient(MONGO_URL)
-    db = client[DB_NAME]
+    _seed_ctx = get_seed_db()
+
+    db = await _seed_ctx.__aenter__()
 
     print("🧹 Cleaning old seeded data for school-demo-001...")
     class_ids = list(CLASS_INFO.keys())
@@ -364,8 +367,5 @@ async def main():
         print("   ⚠️  WARNING: No timetable_sessions found — schedule page will be empty")
 
     print("\n✅ Demo teacher data seeding complete!")
-    client.close()
-
-
 if __name__ == "__main__":
     asyncio.run(main())

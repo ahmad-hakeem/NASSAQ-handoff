@@ -16,13 +16,14 @@ ALL DATA IS READ-ONLY AND CANNOT BE MODIFIED BY SCHOOL PRINCIPALS
 import asyncio
 import os
 from datetime import datetime, timezone
-from motor.motor_asyncio import AsyncIOMotorClient
 import uuid
 
-# Database connection
-MONGO_URL = os.environ.get('MONGO_URL', 'mongodb://localhost:27017')
-DB_NAME = os.environ.get('DB_NAME', 'test_database')
+import sys as _sys
+import os as _os
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), ".."))
+from scripts.seed_db_helper import get_seed_db
 
+# Database connection
 def generate_id(prefix: str) -> str:
     """Generate a unique ID with prefix"""
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
@@ -394,8 +395,9 @@ OFFICIAL_TEACHER_RANK_LOADS = [
 
 async def seed_official_curriculum():
     """Seed all official curriculum data into the database"""
-    client = AsyncIOMotorClient(MONGO_URL)
-    db = client[DB_NAME]
+    _seed_ctx = get_seed_db()
+
+    db = await _seed_ctx.__aenter__()
     
     print("=" * 60)
     print("بدء تثبيت بيانات المنهج الرسمي الكامل")
@@ -468,7 +470,5 @@ async def seed_official_curriculum():
         print(f"\n❌ خطأ: {e}")
         raise
     finally:
-        client.close()
-
 if __name__ == "__main__":
     asyncio.run(seed_official_curriculum())

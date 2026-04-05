@@ -32,7 +32,7 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "mongod --dbpath /home/runner/workspace/.mongodb/data --logpath /home/runner/workspace/.mongodb/logs/mongod.log --port 27017 --bind_ip 127.0.0.1 --fork && cd backend && uvicorn server:app --host 0.0.0.0 --port 8000"
+args = "cd backend && uvicorn server:app --host 0.0.0.0 --port 8000"
 waitForPort = 8000
 
 [[workflows.workflow]]
@@ -65,7 +65,7 @@ externalPort = 80
 
 [deployment]
 deploymentTarget = "vm"
-run = ["bash", "-c", "mongod --dbpath /home/runner/workspace/.mongodb/data --logpath /home/runner/workspace/.mongodb/logs/mongod.log --port 27017 --bind_ip 127.0.0.1 --fork && cd /home/runner/workspace/backend && uvicorn server:app --host 0.0.0.0 --port 8000"]
+run = ["bash", "-c", "cd /home/runner/workspace/backend && uvicorn server:app --host 0.0.0.0 --port 8000"]
 build = ["bash", "/home/runner/workspace/build.sh"]
 
 [userenv]

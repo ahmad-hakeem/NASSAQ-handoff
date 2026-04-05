@@ -9,15 +9,16 @@ This includes:
 """
 
 import asyncio
-from motor.motor_asyncio import AsyncIOMotorClient
 from datetime import datetime, timezone
 import os
 import uuid
 
-# MongoDB connection
-MONGO_URL = os.environ.get('MONGO_URL')
-DB_NAME = os.environ.get('DB_NAME', 'test_database')
+import sys as _sys
+import os as _os
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), ".."))
+from scripts.seed_db_helper import get_seed_db
 
+# MongoDB connection
 # ============================================
 # 1. DEFAULT SCHOOL SETTINGS
 # ============================================
@@ -271,8 +272,9 @@ DEFAULT_TEACHER_AVAILABILITY = {
 
 async def seed_reference_data():
     """Main function to seed all reference data"""
-    client = AsyncIOMotorClient(MONGO_URL)
-    db = client[DB_NAME]
+    _seed_ctx = get_seed_db()
+
+    db = await _seed_ctx.__aenter__()
     
     now = datetime.now(timezone.utc)
     
@@ -394,8 +396,9 @@ async def seed_reference_data():
 
 async def apply_settings_to_existing_schools():
     """Apply default settings to all existing schools"""
-    client = AsyncIOMotorClient(MONGO_URL)
-    db = client[DB_NAME]
+    _seed_ctx = get_seed_db()
+
+    db = await _seed_ctx.__aenter__()
     
     now = datetime.now(timezone.utc)
     

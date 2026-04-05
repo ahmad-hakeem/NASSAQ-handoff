@@ -19,7 +19,6 @@ from .auth_service import (
 
 from .database_service import (
     get_database,
-    get_client,
     close_database,
     serialize_doc,
     serialize_docs,
@@ -50,7 +49,6 @@ __all__ = [
     "ACCESS_TOKEN_EXPIRE",
     # Database
     "get_database",
-    "get_client",
     "close_database",
     "serialize_doc",
     "serialize_docs",

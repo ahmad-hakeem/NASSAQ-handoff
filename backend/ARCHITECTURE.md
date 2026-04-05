@@ -1,14 +1,13 @@
 # NASSAQ Backend Architecture Guide
-# دليل بنية الباك إند
 
-## Overview | نظرة عامة
+## Overview
 
 The NASSAQ backend has been refactored into a modular architecture following best practices for maintainability and scalability.
 
-## Directory Structure | هيكل المجلدات
+## Directory Structure
 
 ```
-/app/backend/
+/backend/
 ├── models/              # Pydantic models & enums
 │   ├── __init__.py     # Central exports
 │   ├── enums.py        # All enumerations (UserRole, SchoolStatus, etc.)
@@ -41,27 +40,24 @@ The NASSAQ backend has been refactored into a modular architecture following bes
 │   └── ... (more routes)
 │
 ├── engines/            # Core business engines
-│   ├── academic_engine.py
-│   ├── attendance_engine.py
-│   ├── scheduling_engine.py
-│   └── ... (more engines)
 │
 ├── middleware/         # Request middleware
 │   ├── rbac.py        # Role-based access control
 │   └── tenant_isolation.py # Multi-tenant isolation
 │
-├── scripts/            # Utility scripts
-│   ├── seed_controlled_demo.py
-│   └── ... (seeding scripts)
+├── scripts/            # Seed and migration scripts
 │
-├── tests/              # Test files
-│
+├── db.py               # Async SQLAlchemy engine, session factory
+├── pg_adapter.py       # MongoDB-compatible API adapter over SQLAlchemy
+├── pg_models.py        # 47+ ORM table models
+├── bson_compat.py      # ObjectId + UpdateOne compatibility stubs
+├── alembic/            # Database migrations
 └── server.py           # Main FastAPI application
 ```
 
-## Key Concepts | المفاهيم الأساسية
+## Key Concepts
 
-### 1. Multi-Tenant Architecture | البنية متعددة المستأجرين
+### 1. Multi-Tenant Architecture
 - Each school is a separate tenant
 - All data queries filtered by `school_id` or `tenant_id`
 - Tenant isolation enforced at API level
@@ -71,11 +67,11 @@ The NASSAQ backend has been refactored into a modular architecture following bes
 - `require_roles()` dependency for route protection
 - Hierarchical permissions
 
-### 3. Models Layer
-Import from `models` package:
-```python
-from models import UserRole, UserResponse, SchoolStatus
-```
+### 3. Database Layer
+- PostgreSQL via async SQLAlchemy + asyncpg
+- `pg_adapter.py` provides MongoDB-compatible API (find_one, find, update_one, aggregate)
+- All routes/engines use adapter transparently
+- Alembic manages schema migrations
 
 ### 4. Services Layer
 Import from `services` package:
@@ -88,48 +84,10 @@ Each route module exports a factory function:
 ```python
 def create_auth_routes(db, get_current_user):
     router = APIRouter(prefix="/auth")
-    # ... define routes
     return router
 ```
 
-## Adding New Features | إضافة ميزات جديدة
-
-### 1. Add a new Model
-Create in `/models/` and export in `__init__.py`:
-```python
-# models/my_feature.py
-from pydantic import BaseModel
-
-class MyFeature(BaseModel):
-    name: str
-    value: int
-```
-
-### 2. Add a new Route
-Create in `/routes/` and register in `server.py`:
-```python
-# routes/my_feature_routes.py
-def create_my_feature_routes(db, get_current_user):
-    router = APIRouter(prefix="/my-feature")
-    
-    @router.get("")
-    async def get_features(current_user: dict = Depends(get_current_user)):
-        # ... implementation
-        pass
-    
-    return router
-```
-
-### 3. Add a new Service
-Create in `/services/` and export in `__init__.py`:
-```python
-# services/my_service.py
-async def my_utility_function(db, param1, param2):
-    # ... implementation
-    pass
-```
-
-## API Conventions | اتفاقيات API
+## API Conventions
 
 1. All routes prefixed with `/api`
 2. Use Arabic error messages with English fallback
@@ -137,27 +95,13 @@ async def my_utility_function(db, param1, param2):
 4. Use `HTTPException` for errors
 5. Always audit important actions
 
-## Testing | الاختبار
+## Environment Variables
 
-```bash
-# Run all tests
-pytest tests/
-
-# Run specific test
-pytest tests/test_auth_api.py
-
-# Run with coverage
-pytest --cov=. tests/
-```
-
-## Environment Variables | متغيرات البيئة
-
-Required in `/app/backend/.env`:
-- `MONGO_URL` - MongoDB connection string
-- `DB_NAME` - Database name
+Required:
+- `DATABASE_URL` - PostgreSQL connection string
 - `JWT_SECRET_KEY` - JWT signing key
 - `JWT_ALGORITHM` - JWT algorithm (default: HS256)
 - `ACCESS_TOKEN_EXPIRE_MINUTES` - Token expiry (default: 30)
 
 ---
-Last Updated: 2025-03
+Last Updated: 2026-04

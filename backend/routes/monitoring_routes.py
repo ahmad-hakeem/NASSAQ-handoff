@@ -79,7 +79,7 @@ async def system_status(current_user: dict = Depends(require_roles([UserRole.PLA
         "python_version": platform.python_version(),
         "database": {
             "connected": db_ok,
-            "name": os.environ.get("DB_NAME", "unknown"),
+            "name": "nassaq_postgres",
             "collections_count": len(collections),
         },
         "stats": {

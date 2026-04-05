@@ -8,11 +8,10 @@ import os
 import uuid
 import random
 from datetime import datetime, timezone, timedelta
-from motor.motor_asyncio import AsyncIOMotorClient
 import bcrypt
 
-MONGO_URL = "mongodb://127.0.0.1:27017/"
-DB_NAME = "test_database"
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+from scripts.seed_db_helper import get_seed_db
 PASSWORD = "NassaqAdmin2026!##$$HBJ"
 
 SCHOOLS = [
@@ -188,9 +187,10 @@ def gen_name(female=False, school_idx=0):
     return f"{first} {family}"
 
 async def seed():
-    client = AsyncIOMotorClient(MONGO_URL)
-    db = client[DB_NAME]
-    
+    async with get_seed_db() as db:
+        await _seed_impl(db)
+
+async def _seed_impl(db):
     pw_hash = hash_password(PASSWORD)
     now = datetime.now(timezone.utc).isoformat()
     
@@ -666,8 +666,6 @@ async def seed():
     print(f"Total students: {total_students}")
     print(f"Total classes: {total_classes}")
     print(f"School admins+sub-admins: {total_users}")
-    
-    client.close()
 
 if __name__ == "__main__":
     asyncio.run(seed())

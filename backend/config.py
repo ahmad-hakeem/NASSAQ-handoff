@@ -19,8 +19,6 @@ DESTRUCTIVE_MIGRATION_OPS = {"drop", "delete", "rename", "remove", "truncate", "
 
 
 class NassaqConfig:
-    MONGO_URL: str = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
-    DB_NAME: str = os.environ.get("DB_NAME", "test_database")
     DATABASE_URL: str = os.environ.get("DATABASE_URL", "")
     JWT_SECRET: str = os.environ.get("JWT_SECRET_KEY", "")
     JWT_ALGORITHM: str = "HS256"
@@ -73,8 +71,6 @@ class NassaqConfig:
             raise ValueError("CORS_ORIGINS must be explicitly set in production (wildcard '*' is not allowed)")
         if cls.is_production() and cls.DEBUG:
             issues.append("DEBUG should be false in production")
-        if cls.is_production() and cls.DB_NAME == "test_database":
-            issues.append("DB_NAME is 'test_database' in production — use a production database name")
         if cls.is_production() and not cls.DATABASE_URL:
             raise ValueError("DATABASE_URL must be set in production environment")
         return issues
@@ -84,8 +80,7 @@ class NassaqConfig:
         checks = {
             "environment_set": cls.ENVIRONMENT != "",
             "environment_value": cls.ENVIRONMENT,
-            "database_name": cls.DB_NAME,
-            "database_is_production_safe": cls.DB_NAME != "test_database" if cls.is_production() else True,
+            "database_url_set": bool(cls.DATABASE_URL),
             "seed_blocked": not cls.seed_allowed() if cls.is_production() else "n/a",
             "destructive_ops_blocked": not cls.destructive_ops_allowed() if cls.is_production() else "n/a",
             "jwt_secret_set": bool(cls.JWT_SECRET),

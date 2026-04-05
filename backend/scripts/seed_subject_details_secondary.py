@@ -8,12 +8,13 @@ This script seeds all subject distributions for secondary stage
 import asyncio
 import os
 from datetime import datetime, timezone
-from motor.motor_asyncio import AsyncIOMotorClient
+
+import sys as _sys
+import os as _os
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), ".."))
+from scripts.seed_db_helper import get_seed_db
 
 # Database connection
-MONGO_URL = os.environ.get('MONGO_URL', 'mongodb://localhost:27017')
-DB_NAME = os.environ.get('DB_NAME', 'test_database')
-
 # Helper function to create subject detail
 def create_subject_detail(grade_id, subject_id, annual_periods, period_type="class_period", order=1):
     return {
@@ -275,8 +276,9 @@ ALL_SUBJECT_DETAILS_SECONDARY = (
 
 async def seed_subject_details_secondary():
     """Seed subject details for secondary schools"""
-    client = AsyncIOMotorClient(MONGO_URL)
-    db = client[DB_NAME]
+    _seed_ctx = get_seed_db()
+
+    db = await _seed_ctx.__aenter__()
     
     print("=" * 60)
     print("تثبيت توزيع المواد - المرحلة الثانوية")
@@ -299,7 +301,5 @@ async def seed_subject_details_secondary():
         print(f"❌ خطأ: {e}")
         raise
     finally:
-        client.close()
-
 if __name__ == "__main__":
     asyncio.run(seed_subject_details_secondary())

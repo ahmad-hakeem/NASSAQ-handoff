@@ -64,4 +64,4 @@ Production data must NEVER be lost, overwritten, or replaced during any deployme
 If unexpected behavior occurs after deployment:
 1. Check `/system/deployment-safety` for data snapshot
 2. Use Replit checkpoint rollback if needed
-3. MongoDB data is persisted at `/home/runner/workspace/.mongodb/data`
+3. PostgreSQL data is managed via Replit's built-in PostgreSQL service (DATABASE_URL)
