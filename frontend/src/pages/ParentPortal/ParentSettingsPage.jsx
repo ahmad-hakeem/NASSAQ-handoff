@@ -7,12 +7,10 @@ import { Button } from '../../components/ui/button';
 import { Skeleton } from '../../components/ui/skeleton';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
-import axios from 'axios';
 import {
   Settings, Bell, Globe, Mail, MessageCircle, Shield
 } from 'lucide-react';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 const Toggle = ({ checked, onChange }) => (
   <button
@@ -26,7 +24,7 @@ const Toggle = ({ checked, onChange }) => (
 );
 
 const ParentSettingsPage = () => {
-  const { token, user } = useAuth();
+  const { token, user, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
   const [settings, setSettings] = useState(null);
@@ -36,9 +34,7 @@ const ParentSettingsPage = () => {
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        const res = await axios.get(`${API_URL}/api/parent-portal/settings`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const res = await api.get('/parent-portal/settings');
         setSettings(res.data);
       } catch (err) {
         console.error('Error:', err);
@@ -59,9 +55,7 @@ const ParentSettingsPage = () => {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await axios.put(`${API_URL}/api/parent-portal/settings`, settings, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.put('/parent-portal/settings', settings);
       toast.success(isRTL ? 'تم حفظ الإعدادات' : 'Settings saved');
     } catch (err) {
       nassaqError(isRTL ? 'خطأ في الحفظ' : 'Error saving');

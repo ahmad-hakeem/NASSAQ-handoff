@@ -35,7 +35,6 @@ import {
 } from 'lucide-react';
 import NotificationBell from '../components/NotificationBell';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 // ============================================
 // مكون كارت قابل للتوسيع

@@ -13,7 +13,6 @@ import {
 import { Badge } from '../ui/badge';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../ui/NassaqAlertDialog';
-import axios from 'axios';
 import {
   LayoutDashboard,
   Building2,
@@ -51,7 +50,6 @@ import {
   Lightbulb,
 } from 'lucide-react';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 const LOGO_WHITE = 'https://customer-assets.emergentagent.com/job_f5ea20bb-5cf5-462f-a7f0-958201e27f89/artifacts/q04svb5j_Nassaq%20LinkedIn%20Logo%20White.png';
 
@@ -77,7 +75,7 @@ export const Sidebar = ({ children }) => {
   const [loadingRoles, setLoadingRoles] = useState(false);
   const [switchingRole, setSwitchingRole] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
-  const { user, logout, isImpersonating, schoolContext, getEffectiveRole, exitSchoolContext, token, updateToken, isSwitchedRole, originalRole } = useAuth();
+  const { user, logout, isImpersonating, schoolContext, getEffectiveRole, exitSchoolContext, token, updateToken, isSwitchedRole, originalRole, api } = useAuth();
   const { isRTL } = useTheme();
   const { t } = useTranslation();
   const location = useLocation();
@@ -112,9 +110,7 @@ export const Sidebar = ({ children }) => {
     
     setLoadingRoles(true);
     try {
-      const response = await axios.get(`${API_URL}/api/user-roles/my-roles`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await api.get('/user-roles/my-roles');
       setAvailableRoles(response.data.available_roles || []);
     } catch (error) {
       console.error('Error fetching roles:', error);
@@ -133,11 +129,9 @@ export const Sidebar = ({ children }) => {
     
     setSwitchingRole(true);
     try {
-      const response = await axios.post(`${API_URL}/api/user-roles/switch`, {
+      const response = await api.post('/user-roles/switch', {
         target_role: role.role,
         target_tenant_id: role.tenant_id
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
       });
       
       if (response.data.success) {
@@ -166,9 +160,7 @@ export const Sidebar = ({ children }) => {
   const handleReturnToOriginal = async () => {
     setSwitchingRole(true);
     try {
-      const response = await axios.post(`${API_URL}/api/user-roles/return-to-original`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await api.post('/user-roles/return-to-original', {});
       
       if (response.data.success) {
         if (updateToken) {
@@ -200,9 +192,7 @@ export const Sidebar = ({ children }) => {
         onConfirm: async () => {
           setLoggingOut(true);
           try {
-            await axios.post(`${API_URL}/api/auth/logout`, {}, {
-              headers: { Authorization: `Bearer ${token}` }
-            }).catch(() => {});
+            await api.post('/auth/logout', {}).catch(() => {});
             logout();
             navigate('/login');
           } catch (e) {

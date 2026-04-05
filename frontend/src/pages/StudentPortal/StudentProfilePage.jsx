@@ -7,16 +7,14 @@ import { Badge } from '../../components/ui/badge';
 import { Progress } from '../../components/ui/progress';
 import { Skeleton } from '../../components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
-import axios from 'axios';
 import {
   User, GraduationCap, MapPin, Calendar, CheckCircle,
   TrendingUp, Star, Award, Mail, Phone, Hash, Activity
 } from 'lucide-react';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 const StudentProfilePage = () => {
-  const { token } = useAuth();
+  const { token, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState(null);
@@ -27,8 +25,8 @@ const StudentProfilePage = () => {
       try {
         const headers = { Authorization: `Bearer ${token}` };
         const [profileRes, actRes] = await Promise.all([
-          axios.get(`${API_URL}/api/student-portal/profile`, { headers }),
-          axios.get(`${API_URL}/api/student-portal/activities`, { headers }).catch(() => ({ data: { activities: [] } })),
+          api.get('/student-portal/profile'),
+          api.get('/student-portal/activities').catch(() => ({ data: { activities: [] } })),
         ]);
         setProfile(profileRes.data);
         setActivities(actRes.data?.activities || []);

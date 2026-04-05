@@ -33,13 +33,11 @@ import {
   User,
   BookOpen,
 } from 'lucide-react';
-import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 export const CreateScheduleWizard = ({ open, onClose, onOpenChange }) => {
   const { isRTL } = useTheme();
-  const { token } = useAuth();
+  const { token, api } = useAuth();
   const { nassaqWarning, nassaqError } = useNassaqAlert();
   
   const [loading, setLoading] = useState(false);
@@ -81,12 +79,12 @@ export const CreateScheduleWizard = ({ open, onClose, onOpenChange }) => {
     const headers = token ? { Authorization: `Bearer ${token}` } : {};
     try {
       const [periodsRes, daysRes, teachersRes, subjectsRes, classesRes, gradesRes] = await Promise.all([
-        axios.get(`${API_URL}/api/schedules/options/periods`, { headers }).catch(() => ({ data: { periods: [] } })),
-        axios.get(`${API_URL}/api/schedules/options/days`, { headers }).catch(() => ({ data: { days: [] } })),
-        axios.get(`${API_URL}/api/schedules/options/teachers`, { headers }).catch(() => ({ data: { teachers: [] } })),
-        axios.get(`${API_URL}/api/schedules/options/subjects`, { headers }).catch(() => ({ data: { subjects: [] } })),
-        axios.get(`${API_URL}/api/schedules/options/classes`, { headers }).catch(() => ({ data: { classes: [] } })),
-        axios.get(`${API_URL}/api/classes/options/grades`, { headers }).catch(() => ({ data: { grades: [] } })),
+        api.get('/schedules/options/periods').catch(() => ({ data: { periods: [] } })),
+        api.get('/schedules/options/days').catch(() => ({ data: { days: [] } })),
+        api.get('/schedules/options/teachers').catch(() => ({ data: { teachers: [] } })),
+        api.get('/schedules/options/subjects').catch(() => ({ data: { subjects: [] } })),
+        api.get('/schedules/options/classes').catch(() => ({ data: { classes: [] } })),
+        api.get('/classes/options/grades').catch(() => ({ data: { grades: [] } })),
       ]);
 
       setOptions({
@@ -165,7 +163,7 @@ export const CreateScheduleWizard = ({ open, onClose, onOpenChange }) => {
         days,
       };
 
-      const response = await axios.post(`${API_URL}/api/schedules/create`, payload, { headers });
+      const response = await api.post('/schedules/create', payload);
       
       if (response.data.success) {
         setResult(response.data);

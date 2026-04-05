@@ -40,9 +40,7 @@ import {
   FileText,
   Shield,
 } from 'lucide-react';
-import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 const StepProgress = ({ currentStep, steps, isRTL }) => {
   const totalSteps = steps.length;
@@ -118,7 +116,7 @@ const SectionHeader = ({ icon: Icon, title, subtitle, color = 'green' }) => {
 
 export const AddTeacherWizard = ({ open, onOpenChange, onSuccess, api }) => {
   const { isRTL } = useTheme();
-  const { token } = useAuth();
+  const { token, api } = useAuth();
   const { nassaqError } = useNassaqAlert();
 
   const handleCloseDialog = (val) => {
@@ -146,7 +144,7 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess, api }) => {
     if (open) fetchOptions();
   }, [open]);
 
-  const apiClient = api || axios.create({ baseURL: `${API_URL}/api`, headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  const apiClient = api;
 
   const fetchOptions = async () => {
     setLoading(true);

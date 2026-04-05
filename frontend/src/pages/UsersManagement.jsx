@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import axios from 'axios';
 import { Sidebar } from '../components/layout/Sidebar';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -34,8 +33,8 @@ import {
 } from 'lucide-react';
 import CreateUserWizard from '../components/wizards/CreateUserWizard';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
 
+import { useAuth } from '../contexts/AuthContext';
 // User Roles Configuration
 const USER_ROLES = [
   { id: 'platform_admin', name: 'مدير المنصة', name_en: 'Platform Admin', color: 'bg-purple-600', icon: Shield },
@@ -248,35 +247,13 @@ export default function UsersManagement() {
   // More info request form
   const [moreInfoMessage, setMoreInfoMessage] = useState('');
   
-  // API instance with interceptor
-  const api = useMemo(() => {
-    const instance = axios.create({
-      baseURL: API_URL,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-    
-    // Add request interceptor to attach token dynamically
-    instance.interceptors.request.use(
-      (config) => {
-        const token = localStorage.getItem('nassaq_token');
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`;
-        }
-        return config;
-      },
-      (error) => Promise.reject(error)
-    );
-    
-    return instance;
-  }, []);
+  const { api } = useAuth();
   
   // Fetch users
   const fetchUsers = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await api.get('/api/users/platform-users', {
+      const response = await api.get('/users/platform-users', {
         params: {
           search: searchQuery || undefined,
           role: selectedRole !== 'all' ? selectedRole : undefined,
@@ -360,7 +337,7 @@ export default function UsersManagement() {
   const fetchRequestsByType = useCallback(async (requestType) => {
     try {
       console.log(`[NASSAQ:ApprovalQueue] Fetching requests for type="${requestType}"`);
-      const response = await api.get('/api/registration-requests', {
+      const response = await api.get('/registration-requests', {
         params: { account_type: requestType }
       });
       const requests = response.data?.requests || response.data || [];
@@ -402,7 +379,7 @@ export default function UsersManagement() {
   const fetchSchoolUsers = useCallback(async () => {
     try {
       // First get all schools
-      const schoolsResponse = await api.get('/api/schools');
+      const schoolsResponse = await api.get('/schools');
       const schoolsList = schoolsResponse.data || [];
       setSchools(schoolsList);
       
@@ -417,7 +394,7 @@ export default function UsersManagement() {
       const schoolUsersMap = {};
       for (const school of schoolsList) {
         try {
-          const usersResponse = await api.get('/api/users', {
+          const usersResponse = await api.get('/users', {
             params: { tenant_id: school.id }
           });
           const schoolUsersList = usersResponse.data || [];
@@ -446,7 +423,7 @@ export default function UsersManagement() {
   // Fetch command center stats
   const fetchCommandCenterStats = useCallback(async () => {
     try {
-      const response = await api.get('/api/admin/command-center/stats');
+      const response = await api.get('/admin/command-center/stats');
       setStats(prev => ({
         ...prev,
         totalSchools: response.data.registered_schools || prev.totalSchools,

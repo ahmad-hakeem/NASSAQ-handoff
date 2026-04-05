@@ -5,13 +5,11 @@ import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
 import { Skeleton } from '../../components/ui/skeleton';
-import axios from 'axios';
 import {
   Trophy, Star, TrendingUp, CheckCircle, ClipboardCheck,
   Award, Heart, Lock, AlertCircle
 } from 'lucide-react';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 const ICON_MAP = {
   'star': Star,
@@ -69,7 +67,7 @@ const AchievementCard = ({ achievement, isRTL, earned = true }) => {
 };
 
 const StudentAchievementsPage = () => {
-  const { token } = useAuth();
+  const { token, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
@@ -77,9 +75,7 @@ const StudentAchievementsPage = () => {
   useEffect(() => {
     const fetchAchievements = async () => {
       try {
-        const res = await axios.get(`${API_URL}/api/student-portal/achievements`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const res = await api.get('/student-portal/achievements');
         setData(res.data);
       } catch (err) {
         console.error('Error fetching achievements:', err);

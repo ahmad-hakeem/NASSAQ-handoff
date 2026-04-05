@@ -15,7 +15,6 @@ import { ScrollArea } from '../../components/ui/scroll-area';
 import { Button } from '../../components/ui/button';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
-import axios from 'axios';
 import {
   CheckCircle,
   XCircle,
@@ -26,7 +25,6 @@ import {
   ChevronRight,
 } from 'lucide-react';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 const MONTHS = [
   'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
@@ -34,7 +32,7 @@ const MONTHS = [
 ];
 
 const StudentAttendancePage = () => {
-  const { token } = useAuth();
+  const { token, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
   const [attendanceData, setAttendanceData] = useState(null);
@@ -49,7 +47,7 @@ const StudentAttendancePage = () => {
   const fetchAttendance = async () => {
     setLoading(true);
     try {
-      const response = await axios.get(`${API_URL}/api/student-portal/attendance`, {
+      const response = await api.get('/student-portal/attendance', {
         headers: { Authorization: `Bearer ${token}` },
         params: { month: currentMonth, year: currentYear }
       });

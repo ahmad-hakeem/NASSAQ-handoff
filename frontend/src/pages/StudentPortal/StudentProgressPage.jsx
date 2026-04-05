@@ -5,13 +5,11 @@ import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Progress } from '../../components/ui/progress';
 import { Skeleton } from '../../components/ui/skeleton';
-import axios from 'axios';
 import {
   CheckCircle, BookOpen, Users, Heart, TrendingUp,
   BarChart3, AlertCircle
 } from 'lucide-react';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 const ProgressCard = ({ icon: Icon, title, value, maxValue, color, detail }) => (
   <Card className="rounded-2xl border-0 shadow-sm">
@@ -32,7 +30,7 @@ const ProgressCard = ({ icon: Icon, title, value, maxValue, color, detail }) => 
 );
 
 const StudentProgressPage = () => {
-  const { token } = useAuth();
+  const { token, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState(null);
@@ -40,9 +38,7 @@ const StudentProgressPage = () => {
   useEffect(() => {
     const fetchProgress = async () => {
       try {
-        const res = await axios.get(`${API_URL}/api/student-portal/progress`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const res = await api.get('/student-portal/progress');
         setProgress(res.data);
       } catch (err) {
         console.error('Error fetching progress:', err);

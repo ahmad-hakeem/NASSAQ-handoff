@@ -34,13 +34,11 @@ import {
   Calendar,
   Megaphone,
 } from 'lucide-react';
-import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
   const { isRTL } = useTheme();
-  const { token } = useAuth();
+  const { token, api } = useAuth();
   const { nassaqWarning, nassaqError } = useNassaqAlert();
   
   const [loading, setLoading] = useState(false);
@@ -79,11 +77,11 @@ export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
     const headers = token ? { Authorization: `Bearer ${token}` } : {};
     try {
       const [recipientRes, notifTypeRes, priorityRes, gradesRes, classesRes] = await Promise.all([
-        axios.get(`${API_URL}/api/notifications/options/recipient-types`, { headers }).catch(() => ({ data: { types: [] } })),
-        axios.get(`${API_URL}/api/notifications/options/notification-types`, { headers }).catch(() => ({ data: { types: [] } })),
-        axios.get(`${API_URL}/api/notifications/options/priorities`, { headers }).catch(() => ({ data: { priorities: [] } })),
-        axios.get(`${API_URL}/api/classes/options/grades`, { headers }).catch(() => ({ data: { grades: [] } })),
-        axios.get(`${API_URL}/api/classes/`, { headers }).catch(() => ({ data: { classes: [] } })),
+        api.get('/notifications/options/recipient-types').catch(() => ({ data: { types: [] } })),
+        api.get('/notifications/options/notification-types').catch(() => ({ data: { types: [] } })),
+        api.get('/notifications/options/priorities').catch(() => ({ data: { priorities: [] } })),
+        api.get('/classes/options/grades').catch(() => ({ data: { grades: [] } })),
+        api.get('/classes/').catch(() => ({ data: { classes: [] } })),
       ]);
 
       setOptions({
@@ -136,7 +134,7 @@ export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
         recipient_filter: needsFilter ? data.recipient_filter : null,
       };
 
-      const response = await axios.post(`${API_URL}/api/notifications/send`, payload, { headers });
+      const response = await api.post('/notifications/send', payload);
       
       if (response.data.success) {
         setResult(response.data);

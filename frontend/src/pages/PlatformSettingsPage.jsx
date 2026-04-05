@@ -96,20 +96,6 @@ import {
   Zap,
   Trash2,
 } from 'lucide-react';
-import axios from 'axios';
-
-const API_URL = process.env.REACT_APP_BACKEND_URL;
-
-// Create axios instance with auth headers
-const createApi = (token) => {
-  return axios.create({
-    baseURL: `${API_URL}/api`,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token && { Authorization: `Bearer ${token}` })
-    }
-  });
-};
 
 // Translations
 const translations = {
@@ -330,13 +316,10 @@ const INITIAL_VERSION_HISTORY = [];
 
 export const PlatformSettingsPage = () => {
   const { isRTL = true, isDark, toggleTheme, toggleLanguage } = useTheme();
-  const { user, logout, token, refreshUser } = useAuth();
+  const { user, logout, token, refreshUser, api } = useAuth();
   const navigate = useNavigate();
   const { nassaqError, nassaqWarning } = useNassaqAlert();
   const t = translations[isRTL ? 'ar' : 'en'];
-  
-  // Create API instance with auth token
-  const api = React.useMemo(() => createApi(token), [token]);
   
   // States
   const [activeTab, setActiveTab] = useState('account');
@@ -892,11 +875,9 @@ export const PlatformSettingsPage = () => {
     }
     setLoading(true);
     try {
-      await axios.post(`${API_URL}/api/auth/change-password`, {
+      await api.post('/auth/change-password', {
         current_password: passwordForm.currentPassword,
         new_password: passwordForm.newPassword,
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
       });
       toast.success(isRTL ? 'تم تغيير كلمة المرور بنجاح' : 'Password changed successfully');
       setShowPasswordDialog(false);
@@ -912,9 +893,7 @@ export const PlatformSettingsPage = () => {
   // End session
   const handleEndSession = async (sessionId) => {
     try {
-      await axios.delete(`${API_URL}/api/settings/sessions/${sessionId}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.delete('/settings/sessions/${sessionId}');
       toast.success(isRTL ? 'تم إنهاء الجلسة' : 'Session ended');
     } catch (error) {
       nassaqError(isRTL ? 'فشل إنهاء الجلسة' : 'Failed to end session');
@@ -924,9 +903,7 @@ export const PlatformSettingsPage = () => {
   // End all sessions
   const handleEndAllSessions = async () => {
     try {
-      await axios.post(`${API_URL}/api/settings/sessions/end-all`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.post('/settings/sessions/end-all', {});
       toast.success(isRTL ? 'تم إنهاء جميع الجلسات الأخرى' : 'All other sessions ended');
     } catch (error) {
       nassaqError(isRTL ? 'فشل إنهاء الجلسات' : 'Failed to end sessions');
@@ -953,12 +930,10 @@ export const PlatformSettingsPage = () => {
       const currentVersion = parseFloat(data.version) || 1.0;
       const newVersion = (currentVersion + 0.1).toFixed(1);
       
-      await axios.put(`${API_URL}/api/settings/platform/${type}`, {
+      await api.put('/settings/platform/${type}', {
         content: data.content,
         version: newVersion,
         effective_date: new Date().toISOString(),
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
       });
       
       setData(prev => ({
@@ -980,9 +955,7 @@ export const PlatformSettingsPage = () => {
   // Load version history
   const loadVersionHistory = async (docType) => {
     try {
-      const response = await axios.get(`${API_URL}/api/settings/legal-versions/${docType}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await api.get('/settings/legal-versions/${docType}');
       setVersionHistory(response.data.versions || []);
       setShowVersionHistoryDialog(true);
     } catch (error) {

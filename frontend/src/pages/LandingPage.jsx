@@ -5,6 +5,7 @@ import { HakimAssistant } from '../components/hakim/HakimAssistant';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import {
   ArrowLeft,
   Sparkles,
@@ -154,6 +155,7 @@ function FloatingIcon({ icon: Icon, className, delay = '0s' }) {
 
 export const LandingPage = () => {
   const { isRTL, toggleLanguage, toggleTheme, isDark } = useTheme();
+  const { api } = useAuth();
   const [activeJourneyStep, setActiveJourneyStep] = useState(0);
   const [activeAIStep, setActiveAIStep] = useState(0);
   const [activeEcosystemRole, setActiveEcosystemRole] = useState(0);
@@ -193,15 +195,13 @@ export const LandingPage = () => {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const API_URL = process.env.REACT_APP_BACKEND_URL || '';
-        const response = await fetch(`${API_URL}/api/public/stats`);
-        if (response.ok) {
-          const data = await response.json();
+                const response = await api.get('/public/stats');
+        if (response.data) {
           setPlatformStats({
-            schools: data.schools || 0,
-            students: data.students || 0,
-            teachers: data.teachers || 0,
-            parents: data.parents || 0,
+            schools: response.data.schools || 0,
+            students: response.data.students || 0,
+            teachers: response.data.teachers || 0,
+            parents: response.data.parents || 0,
           });
         }
       } catch (error) {

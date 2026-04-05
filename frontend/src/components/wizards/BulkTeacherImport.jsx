@@ -39,7 +39,6 @@ import {
 } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 // Required fields for teacher import
 const REQUIRED_FIELDS = [

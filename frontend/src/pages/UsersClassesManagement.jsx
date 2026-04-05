@@ -1237,26 +1237,15 @@ export default function UsersClassesManagement() {
   const downloadTemplate = async (type) => {
     setDownloadingTemplate(true);
     try {
-      const token = localStorage.getItem('nassaq_token');
-      const baseUrl = process.env.REACT_APP_BACKEND_URL || '';
-      const headers = {};
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-      const response = await fetch(`${baseUrl}/api/bulk/template/${type}`, { headers });
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => '');
-        throw new Error(isRTL
-          ? `خطأ ${response.status}: ${errorText || 'فشل في تحميل القالب'}`
-          : `Error ${response.status}: ${errorText || 'Failed to download template'}`);
-      }
-      const contentType = response.headers.get('content-type') || '';
+      const response = await api.get(`/bulk/template/${type}`, { responseType: 'blob' });
+      const contentType = response.headers['content-type'] || '';
       if (!contentType.includes('spreadsheet') && !contentType.includes('octet-stream') && !contentType.includes('excel')) {
         throw new Error(isRTL ? 'الاستجابة ليست ملف صالح' : 'Response is not a valid file');
       }
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
+      const url = window.URL.createObjectURL(response.data);
       const link = document.createElement('a');
       link.href = url;
-      const disposition = response.headers.get('content-disposition');
+      const disposition = response.headers['content-disposition'];
       let filename = type === 'students' ? 'قالب_استيراد_الطلاب.xlsx' : 'قالب_استيراد_المعلمين.xlsx';
       if (disposition) {
         try {
@@ -1309,14 +1298,8 @@ export default function UsersClassesManagement() {
   const handleExport = async () => {
     setExporting(true);
     try {
-      const token = localStorage.getItem('nassaq_token');
-      const baseUrl = process.env.REACT_APP_BACKEND_URL || '';
-      const response = await fetch(`${baseUrl}/api/bulk/export/${exportType}?format=${exportFormat}`, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
+      const response = await api.get(`/bulk/export/${exportType}?format=${exportFormat}`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(response.data);
       const link = document.createElement('a');
       link.href = url;
       link.setAttribute('download', `export_${exportType}.${exportFormat}`);

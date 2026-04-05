@@ -9,16 +9,14 @@ import { Progress } from '../../components/ui/progress';
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
 import { Button } from '../../components/ui/button';
 import { Skeleton } from '../../components/ui/skeleton';
-import axios from 'axios';
 import {
   Users, GraduationCap, CheckCircle, TrendingUp, Calendar,
   ChevronLeft, BookOpen, ClipboardList, Heart, MessageSquare, AlertCircle
 } from 'lucide-react';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 const ParentChildrenPage = () => {
-  const { token, user } = useAuth();
+  const { token, user, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
   const [children, setChildren] = useState([]);
@@ -26,16 +24,12 @@ const ParentChildrenPage = () => {
   useEffect(() => {
     const fetchChildren = async () => {
       try {
-        const res = await axios.get(`${API_URL}/api/parent-portal/children`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const res = await api.get('/parent-portal/children');
         setChildren(res.data.children || []);
       } catch (err) {
         console.error('Error:', err);
         try {
-          const res2 = await axios.get(`${API_URL}/api/parent-portal/dashboard`, {
-            headers: { Authorization: `Bearer ${token}` }
-          });
+          const res2 = await api.get('/parent-portal/dashboard');
           setChildren(res2.data.children || []);
         } catch { setChildren([]); }
       } finally {

@@ -28,7 +28,6 @@ import {
   Loader2
 } from 'lucide-react';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 const StudentHomeworkPage = () => {
   const { token, api } = useAuth();

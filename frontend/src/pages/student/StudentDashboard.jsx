@@ -12,7 +12,6 @@ import { Badge } from '../components/ui/badge';
 import { Progress } from '../components/ui/progress';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Skeleton } from '../components/ui/skeleton';
-import axios from 'axios';
 import {
   GraduationCap,
   Calendar,
@@ -27,10 +26,9 @@ import {
   MapPin,
 } from 'lucide-react';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 export const StudentDashboard = () => {
-  const { token, user } = useAuth();
+  const { token, user, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
   const [dashboard, setDashboard] = useState(null);
@@ -41,9 +39,7 @@ export const StudentDashboard = () => {
 
   const fetchDashboard = async () => {
     try {
-      const response = await axios.get(`${API_URL}/api/student-portal/dashboard`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await api.get('/student-portal/dashboard');
       setDashboard(response.data);
     } catch (error) {
       console.error('Error fetching dashboard:', error);

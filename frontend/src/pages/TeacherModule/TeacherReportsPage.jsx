@@ -218,14 +218,8 @@ export default function TeacherReportsPage() {
     setExporting(fmt);
     try {
       toast.info(isRTL ? 'جاري تحضير التقرير...' : 'Preparing report...');
-      const token = localStorage.getItem('nassaq_token');
-      const baseUrl = process.env.REACT_APP_BACKEND_URL || '';
-      const response = await fetch(`${baseUrl}/api/export/report/teacher_activity?format=${fmt}`, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
+      const response = await api.get(`/export/report/teacher_activity?format=${fmt}`, { responseType: 'blob' });
+      const url = URL.createObjectURL(response.data);
       const a = document.createElement('a');
       a.href = url; a.download = `teacher_activity.${fmt}`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
       toast.success(isRTL ? 'تم تصدير التقرير بنجاح' : 'Report exported successfully');

@@ -9,14 +9,12 @@ import { Input } from '../../components/ui/input';
 import { Skeleton } from '../../components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { toast } from 'sonner';
-import axios from 'axios';
 import {
   CalendarCheck, Send, Calendar, Clock, CheckCircle, XCircle,
   AlertCircle, Loader2, Phone, Mail, MapPin, History,
   MessageSquare, User
 } from 'lucide-react';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 const STATUS_CONFIG = {
   pending: { label: 'قيد الانتظار', labelEn: 'Pending', color: 'bg-amber-100 text-amber-700 border-amber-200', icon: Clock },
@@ -31,7 +29,7 @@ const CONTACT_OPTIONS = [
 ];
 
 const ParentMeetingRequestPage = () => {
-  const { token, user } = useAuth();
+  const { token, user, api } = useAuth();
   const { isRTL } = useTheme();
   const [meetings, setMeetings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -50,9 +48,7 @@ const ParentMeetingRequestPage = () => {
 
   const fetchMeetings = async () => {
     try {
-      const res = await axios.get(`${API_URL}/api/parent-portal/meeting-requests`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await api.get('/parent-portal/meeting-requests');
       setMeetings(res.data?.meetings || []);
     } catch (err) {
       console.error('Error fetching meetings:', err);
@@ -69,14 +65,12 @@ const ParentMeetingRequestPage = () => {
     }
     setSubmitting(true);
     try {
-      const res = await axios.post(`${API_URL}/api/parent-portal/meeting-request`, {
+      const res = await api.post('/parent-portal/meeting-request', {
         preferred_date: preferredDate,
         preferred_time: preferredTime,
         topic: topic.trim(),
         details: details.trim(),
         contact_preference: contactPreference,
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
       });
       toast.success(isRTL ? 'تم إرسال طلب الاجتماع بنجاح' : 'Meeting request submitted successfully');
       setMeetings(prev => [res.data.meeting, ...prev]);

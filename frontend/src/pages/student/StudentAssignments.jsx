@@ -19,7 +19,6 @@ import { Textarea } from '../../components/ui/textarea';
 import { Input } from '../../components/ui/input';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
-import axios from 'axios';
 import {
   BookOpen,
   Calendar,
@@ -40,7 +39,6 @@ import {
   Loader2,
 } from 'lucide-react';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 // Assignment status badge component
 const StatusBadge = ({ status }) => {
@@ -162,14 +160,10 @@ export const StudentAssignments = () => {
       // Try student portal API first
       let response;
       try {
-        response = await axios.get(`${API_URL}/api/student-portal/assignments`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        response = await api.get('/student-portal/assignments');
       } catch {
         // Fallback: get assignments for student
-        response = await axios.get(`${API_URL}/api/assignments/student/${user?.id}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        response = await api.get('/assignments/student/${user?.id}');
       }
       
       const data = response.data?.assignments || response.data || [];
@@ -235,11 +229,9 @@ export const StudentAssignments = () => {
     
     setSubmitting(true);
     try {
-      await axios.post(`${API_URL}/api/assignments/${selectedAssignment.id}/submit`, {
+      await api.post('/assignments/${selectedAssignment.id}/submit', {
         content: submissionText,
         student_id: user?.id
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
       });
       
       toast.success('تم تسليم الواجب بنجاح!');

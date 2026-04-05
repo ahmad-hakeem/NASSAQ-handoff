@@ -8,16 +8,14 @@ import { Progress } from '../../components/ui/progress';
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
 import { Skeleton } from '../../components/ui/skeleton';
 import { Button } from '../../components/ui/button';
-import axios from 'axios';
 import {
   FileText, CheckCircle, TrendingUp, Heart, Users, Star,
   AlertCircle, ChevronDown, ChevronUp
 } from 'lucide-react';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 const ParentReportsPage = () => {
-  const { token } = useAuth();
+  const { token, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
   const [dashboard, setDashboard] = useState(null);
@@ -28,14 +26,14 @@ const ParentReportsPage = () => {
     const fetchData = async () => {
       try {
         const headers = { Authorization: `Bearer ${token}` };
-        const dashRes = await axios.get(`${API_URL}/api/parent-portal/dashboard`, { headers });
+        const dashRes = await api.get('/parent-portal/dashboard');
         setDashboard(dashRes.data);
 
         const children = dashRes.data?.children || [];
         const reportsMap = {};
         for (const child of children) {
           try {
-            const r = await axios.get(`${API_URL}/api/parent-portal/child/${child.id}/progress-report`, { headers });
+            const r = await api.get('/parent-portal/child/${child.id}/progress-report');
             reportsMap[child.id] = r.data;
           } catch (e) {
             reportsMap[child.id] = null;

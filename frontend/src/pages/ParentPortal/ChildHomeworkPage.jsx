@@ -6,16 +6,14 @@ import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
 import { Skeleton } from '../../components/ui/skeleton';
-import axios from 'axios';
 import {
   ClipboardList, Clock, CheckCircle, AlertCircle, BookOpen, Calendar
 } from 'lucide-react';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 const ChildHomeworkPage = () => {
   const { childId } = useParams();
-  const { token } = useAuth();
+  const { token, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
@@ -23,9 +21,7 @@ const ChildHomeworkPage = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const res = await axios.get(`${API_URL}/api/parent-portal/child/${childId}/homework`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const res = await api.get('/parent-portal/child/${childId}/homework');
         setData(res.data);
       } catch (err) {
         console.error('Error:', err);

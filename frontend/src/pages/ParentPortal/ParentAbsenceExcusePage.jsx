@@ -9,13 +9,11 @@ import { Input } from '../../components/ui/input';
 import { Skeleton } from '../../components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { toast } from 'sonner';
-import axios from 'axios';
 import {
   FileText, Send, Calendar, Clock, CheckCircle, XCircle,
   AlertCircle, Loader2, Upload, User, ChevronDown, History
 } from 'lucide-react';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 const STATUS_CONFIG = {
   pending: { label: 'قيد المراجعة', labelEn: 'Pending', color: 'bg-amber-100 text-amber-700 border-amber-200', icon: Clock },
@@ -24,7 +22,7 @@ const STATUS_CONFIG = {
 };
 
 const ParentAbsenceExcusePage = () => {
-  const { token, user } = useAuth();
+  const { token, user, api } = useAuth();
   const { isRTL } = useTheme();
   const [children, setChildren] = useState([]);
   const [excuses, setExcuses] = useState([]);
@@ -44,12 +42,8 @@ const ParentAbsenceExcusePage = () => {
   const fetchData = async () => {
     try {
       const [childrenRes, excusesRes] = await Promise.all([
-        axios.get(`${API_URL}/api/parent-portal/children`, {
-          headers: { Authorization: `Bearer ${token}` }
-        }),
-        axios.get(`${API_URL}/api/parent-portal/absence-excuses`, {
-          headers: { Authorization: `Bearer ${token}` }
-        })
+        api.get('/parent-portal/children'),
+        api.get('/parent-portal/absence-excuses')
       ]);
       const childList = childrenRes.data?.children || [];
       setChildren(childList);
@@ -70,13 +64,11 @@ const ParentAbsenceExcusePage = () => {
     }
     setSubmitting(true);
     try {
-      const res = await axios.post(`${API_URL}/api/parent-portal/absence-excuse`, {
+      const res = await api.post('/parent-portal/absence-excuse', {
         child_id: selectedChild,
         absence_date: absenceDate,
         reason: reason.trim(),
         attachment_name: attachmentName || null,
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
       });
       toast.success(isRTL ? 'تم إرسال العذر بنجاح' : 'Excuse submitted successfully');
       setExcuses(prev => [res.data.excuse, ...prev]);

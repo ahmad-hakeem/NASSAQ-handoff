@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
 import { Sidebar } from '../components/layout/Sidebar';
 import { PageHeader } from '../components/layout/PageHeader';
 import { useTheme } from '../contexts/ThemeContext';
@@ -96,7 +95,7 @@ import {
   X,
 } from 'lucide-react';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
+const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 
 // Translations
 const translations = {
@@ -273,7 +272,7 @@ const INITIAL_LOGS = [];
 export default function IntegrationsPage() {
   const { isRTL = true, isDark } = useTheme();
   const navigate = useNavigate();
-  const { token } = useAuth();
+  const { token, api } = useAuth();
   const { nassaqError, nassaqWarning } = useNassaqAlert();
   const t = translations[isRTL ? 'ar' : 'en'];
   
@@ -325,16 +324,13 @@ export default function IntegrationsPage() {
     });
   };
   
-  const API_URL = process.env.REACT_APP_BACKEND_URL;
-  
+    
   // Fetch integrations from API
   useEffect(() => {
     const fetchIntegrations = async () => {
       setLoading(true);
       try {
-        const response = await axios.get(`${API_URL}/api/integrations`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const response = await api.get('/integrations');
         // API returns {integrations: [...]} not direct array
         const data = response.data?.integrations || response.data || [];
         setIntegrations(Array.isArray(data) ? data : []);
@@ -348,9 +344,7 @@ export default function IntegrationsPage() {
     
     const fetchApiKeys = async () => {
       try {
-        const response = await axios.get(`${API_URL}/api/api-keys`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const response = await api.get('/api-keys');
         // Handle both array and object response formats
         const data = response.data?.keys || response.data || [];
         setApiKeys(Array.isArray(data) ? data : []);

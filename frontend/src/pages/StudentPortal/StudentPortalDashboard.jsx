@@ -9,19 +9,17 @@ import { Progress } from '../../components/ui/progress';
 import { ScrollArea } from '../../components/ui/scroll-area';
 import { Skeleton } from '../../components/ui/skeleton';
 import { Button } from '../../components/ui/button';
-import axios from 'axios';
 import {
   GraduationCap, Calendar, Clock, CheckCircle,
   AlertCircle, Bell, TrendingUp, MapPin, Award,
   Star, Trophy, Sparkles
 } from 'lucide-react';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 import { formatHijriDate } from '../../utils/hijriDate';
 
 const StudentPortalDashboard = () => {
-  const { token } = useAuth();
+  const { token, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
   const [dashboard, setDashboard] = useState(null);
@@ -35,9 +33,9 @@ const StudentPortalDashboard = () => {
       try {
         const headers = { Authorization: `Bearer ${token}` };
         const [dashRes, pointsRes, actRes] = await Promise.all([
-          axios.get(`${API_URL}/api/student-portal/dashboard`, { headers }),
-          axios.get(`${API_URL}/api/student-portal/points`, { headers }).catch(() => ({ data: null })),
-          axios.get(`${API_URL}/api/student-portal/activities`, { headers }).catch(() => ({ data: { activities: [] } })),
+          api.get('/student-portal/dashboard'),
+          api.get('/student-portal/points').catch(() => ({ data: null })),
+          api.get('/student-portal/activities').catch(() => ({ data: { activities: [] } })),
         ]);
         setDashboard(dashRes.data);
         setPoints(pointsRes.data);

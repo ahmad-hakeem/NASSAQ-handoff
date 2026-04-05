@@ -18,7 +18,6 @@ import { Skeleton } from '../../components/ui/skeleton';
 import { ScrollArea } from '../../components/ui/scroll-area';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
-import axios from 'axios';
 import {
   User,
   Calendar,
@@ -36,12 +35,11 @@ import {
   Mail,
 } from 'lucide-react';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 const ChildDetailsPage = () => {
   const { nassaqError, nassaqWarning } = useNassaqAlert();
   const { childId } = useParams();
-  const { token } = useAuth();
+  const { token, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
   const [child, setChild] = useState(null);
@@ -56,18 +54,10 @@ const ChildDetailsPage = () => {
   const fetchChildData = async () => {
     try {
       const [childRes, gradesRes, attendanceRes, scheduleRes] = await Promise.all([
-        axios.get(`${API_URL}/api/parent-portal/child/${childId}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        }),
-        axios.get(`${API_URL}/api/parent-portal/child/${childId}/grades`, {
-          headers: { Authorization: `Bearer ${token}` }
-        }),
-        axios.get(`${API_URL}/api/parent-portal/child/${childId}/attendance`, {
-          headers: { Authorization: `Bearer ${token}` }
-        }),
-        axios.get(`${API_URL}/api/parent-portal/child/${childId}/schedule`, {
-          headers: { Authorization: `Bearer ${token}` }
-        })
+        api.get('/parent-portal/child/${childId}'),
+        api.get('/parent-portal/child/${childId}/grades'),
+        api.get('/parent-portal/child/${childId}/attendance'),
+        api.get('/parent-portal/child/${childId}/schedule')
       ]);
       
       setChild(childRes.data);

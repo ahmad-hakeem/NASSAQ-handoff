@@ -16,7 +16,6 @@ import { Button } from '../../components/ui/button';
 import { Skeleton } from '../../components/ui/skeleton';
 import { ScrollArea } from '../../components/ui/scroll-area';
 import { toast } from 'sonner';
-import axios from 'axios';
 import {
   Users,
   GraduationCap,
@@ -34,12 +33,11 @@ import {
   BookOpen,
 } from 'lucide-react';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 import { formatHijriDate } from '../../utils/hijriDate';
 
 const ParentPortalDashboard = () => {
-  const { token, user } = useAuth();
+  const { token, user, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
   const [dashboard, setDashboard] = useState(null);
@@ -51,9 +49,7 @@ const ParentPortalDashboard = () => {
 
   const fetchDashboard = async () => {
     try {
-      const response = await axios.get(`${API_URL}/api/parent-portal/dashboard`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await api.get('/parent-portal/dashboard');
       setDashboard(response.data);
     } catch (error) {
       console.error('Error fetching dashboard:', error);

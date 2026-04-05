@@ -71,9 +71,9 @@ import {
   Save,
   X,
 } from 'lucide-react';
-import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
+
+const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 
 // Role configurations
 const USER_ROLES = {
@@ -181,7 +181,7 @@ export default function UserDetailsPage() {
   const { userId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { isRTL = true } = useAuth();
+  const { isRTL = true, api } = useAuth();
   const fileInputRef = useRef(null);
   
   const [user, setUser] = useState(null);
@@ -205,22 +205,15 @@ export default function UserDetailsPage() {
   const [userPermissions, setUserPermissions] = useState([]);
   const [selectedImage, setSelectedImage] = useState(null);
   
-  // API instance
   const { nassaqError, nassaqWarning } = useNassaqAlert();
-  const api = axios.create({
-    baseURL: API_URL,
-    headers: {
-      'Authorization': `Bearer ${localStorage.getItem('nassaq_token')}`,
-      'Content-Type': 'application/json',
-    },
-  });
+  const { api } = useAuth();
   
   // Fetch user data
   useEffect(() => {
     const fetchUser = async () => {
       setLoading(true);
       try {
-        const response = await api.get(`/api/users/${userId}`);
+        const response = await api.get(`/users/${userId}`);
         setUser(response.data);
         setEditForm(response.data);
         setUserPermissions(response.data.permissions || []);
@@ -299,7 +292,7 @@ export default function UserDetailsPage() {
   // Handle suspend toggle
   const handleSuspendToggle = async () => {
     try {
-      await api.patch(`/api/users/${userId}/status`, { is_active: !user.is_active });
+      await api.patch(`/users/${userId}/status`, { is_active: !user.is_active });
       setUser(prev => ({ ...prev, is_active: !prev.is_active }));
       toast.success(user.is_active ? 'تم تعليق الحساب بنجاح' : 'تم تفعيل الحساب بنجاح');
     } catch (error) {
@@ -312,7 +305,7 @@ export default function UserDetailsPage() {
   // Handle delete
   const handleDelete = async () => {
     try {
-      await api.delete(`/api/users/${userId}`);
+      await api.delete(`/users/${userId}`);
       toast.success('تم أرشفة الحساب بنجاح');
       navigate('/admin/users');
     } catch (error) {
@@ -327,7 +320,7 @@ export default function UserDetailsPage() {
     setNewPassword(password);
     
     try {
-      await api.post(`/api/users/${userId}/reset-password`, { new_password: password });
+      await api.post(`/users/${userId}/reset-password`, { new_password: password });
       setShowResetPasswordDialog(false);
       setShowPasswordResultDialog(true);
     } catch (error) {
@@ -370,7 +363,7 @@ ${API_URL}/login
   // Handle edit submit
   const handleEditSubmit = async () => {
     try {
-      await api.put(`/api/users/${userId}`, editForm);
+      await api.put(`/users/${userId}`, editForm);
       setUser(prev => ({ ...prev, ...editForm }));
       toast.success('تم تحديث البيانات بنجاح');
     } catch (error) {
@@ -383,7 +376,7 @@ ${API_URL}/login
   // Handle permissions update
   const handlePermissionsUpdate = async () => {
     try {
-      await api.put(`/api/users/${userId}/permissions`, { permissions: userPermissions });
+      await api.put(`/users/${userId}/permissions`, { permissions: userPermissions });
       setUser(prev => ({ ...prev, permissions: userPermissions }));
       toast.success('تم تحديث الصلاحيات بنجاح');
     } catch (error) {

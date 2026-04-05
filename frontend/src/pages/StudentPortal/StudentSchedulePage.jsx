@@ -13,7 +13,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/ta
 import { Skeleton } from '../../components/ui/skeleton';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
-import axios from 'axios';
 import {
   Calendar,
   Clock,
@@ -22,12 +21,11 @@ import {
   MapPin,
 } from 'lucide-react';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 const DAYS = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'];
 
 const StudentSchedulePage = () => {
-  const { token } = useAuth();
+  const { token, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
   const [schedule, setSchedule] = useState({});
@@ -54,9 +52,7 @@ const StudentSchedulePage = () => {
 
   const fetchSchedule = async () => {
     try {
-      const response = await axios.get(`${API_URL}/api/student-portal/schedule`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await api.get('/student-portal/schedule');
       setSchedule(response.data.schedule || {});
       setStudentInfo(response.data.student_info);
     } catch (error) {

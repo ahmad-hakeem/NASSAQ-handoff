@@ -7,15 +7,13 @@ import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { Skeleton } from '../../components/ui/skeleton';
 import { Avatar, AvatarFallback } from '../../components/ui/avatar';
-import axios from 'axios';
 import {
   MessageSquare, Send, ArrowUpRight, ArrowDownLeft, Clock, AlertCircle
 } from 'lucide-react';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 const ParentMessagesPage = () => {
-  const { token } = useAuth();
+  const { token, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
   const [messages, setMessages] = useState([]);
@@ -23,9 +21,7 @@ const ParentMessagesPage = () => {
   useEffect(() => {
     const fetchMessages = async () => {
       try {
-        const res = await axios.get(`${API_URL}/api/parent-portal/messages`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const res = await api.get('/parent-portal/messages');
         setMessages(res.data?.messages || []);
       } catch (err) {
         console.error('Error:', err);

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Sidebar } from '../components/layout/Sidebar';
 import { PageHeader } from '../components/layout/PageHeader';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
@@ -297,6 +298,7 @@ export const RulesManagementPage = () => {
   const { isRTL = true, isDark } = useTheme();
   const navigate = useNavigate();
   const { nassaqError, nassaqWarning } = useNassaqAlert();
+  const { api } = useAuth();
   const t = translations[isRTL ? 'ar' : 'en'];
   
   // States
@@ -309,31 +311,13 @@ export const RulesManagementPage = () => {
   const [activeTab, setActiveTab] = useState('all');
   const [loading, setLoading] = useState(true);
   
-  // Get API base URL
-  const API_URL = process.env.REACT_APP_BACKEND_URL || '';
-  
-  // Get auth token
-  const getAuthToken = () => {
-    return localStorage.getItem('nassaq_token') || null;
-  };
-  
-  // Fetch rules from API
   const fetchRules = async () => {
     setLoading(true);
     try {
-      const token = getAuthToken();
-      const response = await fetch(`${API_URL}/api/system/rules`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setRules(data.rules || []);
-        setFilteredRules(data.rules || []);
-      } else {
-        console.error('Failed to fetch rules');
-        nassaqError(isRTL ? 'فشل في تحميل القواعد' : 'Failed to load rules');
-      }
+      const response = await api.get('/system/rules');
+      const data = response.data;
+      setRules(data.rules || []);
+      setFilteredRules(data.rules || []);
     } catch (error) {
       console.error('Error fetching rules:', error);
       nassaqError(isRTL ? 'فشل في تحميل القواعد' : 'Failed to load rules');
@@ -420,24 +404,11 @@ export const RulesManagementPage = () => {
   // Handle create rule - connected to API
   const handleCreateRule = async () => {
     try {
-      const token = getAuthToken();
-      const response = await fetch(`${API_URL}/api/system/rules`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify(formData)
-      });
-      
-      if (response.ok) {
-        toast.success(t.ruleCreated);
-        setShowCreateDialog(false);
-        resetForm();
-        fetchRules(); // Refresh data from API
-      } else {
-        nassaqError(isRTL ? 'فشل في إنشاء القاعدة' : 'Failed to create rule');
-      }
+      await api.post('/system/rules', formData);
+      toast.success(t.ruleCreated);
+      setShowCreateDialog(false);
+      resetForm();
+      fetchRules();
     } catch (error) {
       console.error('Error creating rule:', error);
       nassaqError(isRTL ? 'فشل في إنشاء القاعدة' : 'Failed to create rule');
@@ -447,24 +418,11 @@ export const RulesManagementPage = () => {
   // Handle edit rule - connected to API
   const handleEditRule = async () => {
     try {
-      const token = getAuthToken();
-      const response = await fetch(`${API_URL}/api/system/rules/${showEditSheet.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify(formData)
-      });
-      
-      if (response.ok) {
-        toast.success(t.ruleUpdated);
-        setShowEditSheet(null);
-        resetForm();
-        fetchRules(); // Refresh data from API
-      } else {
-        nassaqError(isRTL ? 'فشل في تحديث القاعدة' : 'Failed to update rule');
-      }
+      await api.put(`/system/rules/${showEditSheet.id}`, formData);
+      toast.success(t.ruleUpdated);
+      setShowEditSheet(null);
+      resetForm();
+      fetchRules();
     } catch (error) {
       console.error('Error updating rule:', error);
       nassaqError(isRTL ? 'فشل في تحديث القاعدة' : 'Failed to update rule');
@@ -474,19 +432,10 @@ export const RulesManagementPage = () => {
   // Handle delete rule - connected to API
   const handleDeleteRule = async () => {
     try {
-      const token = getAuthToken();
-      const response = await fetch(`${API_URL}/api/system/rules/${showDeleteDialog.id}`, {
-        method: 'DELETE',
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
-      
-      if (response.ok) {
-        toast.success(t.ruleDeleted);
-        setShowDeleteDialog(null);
-        fetchRules(); // Refresh data from API
-      } else {
-        nassaqError(isRTL ? 'فشل في حذف القاعدة' : 'Failed to delete rule');
-      }
+      await api.delete(`/system/rules/${showDeleteDialog.id}`);
+      toast.success(t.ruleDeleted);
+      setShowDeleteDialog(null);
+      fetchRules();
     } catch (error) {
       console.error('Error deleting rule:', error);
       nassaqError(isRTL ? 'فشل في حذف القاعدة' : 'Failed to delete rule');
@@ -510,22 +459,9 @@ export const RulesManagementPage = () => {
     };
     
     try {
-      const token = getAuthToken();
-      const response = await fetch(`${API_URL}/api/system/rules`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify(newRuleData)
-      });
-      
-      if (response.ok) {
-        toast.success(t.ruleDuplicated);
-        fetchRules(); // Refresh data from API
-      } else {
-        nassaqError(isRTL ? 'فشل في نسخ القاعدة' : 'Failed to duplicate rule');
-      }
+      await api.post('/system/rules', newRuleData);
+      toast.success(t.ruleDuplicated);
+      fetchRules();
     } catch (error) {
       console.error('Error duplicating rule:', error);
       nassaqError(isRTL ? 'فشل في نسخ القاعدة' : 'Failed to duplicate rule');

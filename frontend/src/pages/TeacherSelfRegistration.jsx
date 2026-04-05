@@ -37,16 +37,16 @@ import {
   Sparkles,
   IdCard,
 } from 'lucide-react';
-import axios from 'axios';
 
+import { useAuth } from '../contexts/AuthContext';
 // Assets
 const LOGO_WHITE = 'https://customer-assets.emergentagent.com/job_f5ea20bb-5cf5-462f-a7f0-958201e27f89/artifacts/q04svb5j_Nassaq%20LinkedIn%20Logo%20White.png';
 const BG_PATTERN = 'https://customer-assets.emergentagent.com/job_f5ea20bb-5cf5-462f-a7f0-958201e27f89/artifacts/1itjy61q_Nassaq%20Background.png';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 export const TeacherSelfRegistration = () => {
   const { isRTL, toggleLanguage } = useTheme();
+  const { api } = useAuth();
   const navigate = useNavigate();
   const { nassaqError, nassaqWarning } = useNassaqAlert();
   const [searchParams] = useSearchParams();
@@ -108,11 +108,11 @@ export const TeacherSelfRegistration = () => {
     const fetchOptions = async () => {
       try {
         const [subjectsRes, levelsRes, ranksRes, degreesRes, typesRes] = await Promise.all([
-          axios.get(`${API_URL}/api/teacher-registration/options/subjects`),
-          axios.get(`${API_URL}/api/teacher-registration/options/education-levels`),
-          axios.get(`${API_URL}/api/teacher-registration/options/teacher-ranks`),
-          axios.get(`${API_URL}/api/teacher-registration/options/academic-degrees`),
-          axios.get(`${API_URL}/api/teacher-registration/options/school-types`),
+          api.get('/teacher-registration/options/subjects'),
+          api.get('/teacher-registration/options/education-levels'),
+          api.get('/teacher-registration/options/teacher-ranks'),
+          api.get('/teacher-registration/options/academic-degrees'),
+          api.get('/teacher-registration/options/school-types'),
         ]);
         
         setSubjects(subjectsRes.data.subjects || []);
@@ -134,7 +134,7 @@ export const TeacherSelfRegistration = () => {
       if (!inviteCode) return;
       
       try {
-        const response = await axios.get(`${API_URL}/api/teacher-registration/invite/${inviteCode}`);
+        const response = await api.get('/teacher-registration/invite/${inviteCode}');
         if (response.data.valid) {
           setInviteInfo(response.data);
           // Pre-fill some data
@@ -279,7 +279,7 @@ export const TeacherSelfRegistration = () => {
     setSubmitting(true);
     
     try {
-      const response = await axios.post(`${API_URL}/api/teacher-registration/request`, {
+      const response = await api.post('/teacher-registration/request', {
         full_name: formData.full_name,
         national_id: formData.national_id,
         phone: formData.phone,
@@ -319,7 +319,7 @@ export const TeacherSelfRegistration = () => {
     setIsTracking(true);
     
     try {
-      const response = await axios.get(`${API_URL}/api/teacher-registration/status/${trackingCode}`);
+      const response = await api.get('/teacher-registration/status/${trackingCode}');
       setTrackingResult(response.data);
     } catch (error) {
       console.error('Tracking error:', error);

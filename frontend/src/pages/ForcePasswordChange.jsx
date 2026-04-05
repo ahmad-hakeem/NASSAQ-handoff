@@ -8,13 +8,11 @@ import { toast } from 'sonner';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
 import { Eye, EyeOff, Lock, Shield, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 export default function ForcePasswordChange() {
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user, logout, api } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
@@ -84,21 +82,10 @@ export default function ForcePasswordChange() {
     setIsSubmitting(true);
     
     try {
-      const token = localStorage.getItem('nassaq_token');
-      
-      await axios.post(
-        `${API_URL}/api/auth/change-password`,
-        {
-          current_password: formData.currentPassword,
-          new_password: formData.newPassword,
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      await api.post('/auth/change-password', {
+        current_password: formData.currentPassword,
+        new_password: formData.newPassword,
+      });
       
       toast.success(isRTL ? 'تم تغيير كلمة المرور بنجاح!' : 'Password changed successfully!');
       

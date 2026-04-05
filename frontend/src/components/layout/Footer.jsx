@@ -2,21 +2,21 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useTheme } from '../../contexts/ThemeContext';
 import { Mail, Phone, MapPin, Twitter, Linkedin, Facebook, Instagram, Youtube, Globe } from 'lucide-react';
-import axios from 'axios';
 
+import { useAuth } from '../../contexts/AuthContext';
 const LOGO_WHITE = 'https://customer-assets.emergentagent.com/job_f5ea20bb-5cf5-462f-a7f0-958201e27f89/artifacts/q04svb5j_Nassaq%20LinkedIn%20Logo%20White.png';
 const BG_PATTERN = 'https://customer-assets.emergentagent.com/job_f5ea20bb-5cf5-462f-a7f0-958201e27f89/artifacts/1itjy61q_Nassaq%20Background.png';
-const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 export const Footer = () => {
   const { isRTL } = useTheme();
+  const { api } = useAuth();
   const [contactInfo, setContactInfo] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchContactInfo = async () => {
       try {
-        const response = await axios.get(`${API_URL}/api/public/contact-info`);
+        const response = await api.get('/public/contact-info');
         setContactInfo(response.data);
       } catch (error) {
         console.error('Failed to fetch contact info:', error);

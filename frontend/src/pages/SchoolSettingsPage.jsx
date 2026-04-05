@@ -6,7 +6,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
 import { useAuth } from '../contexts/AuthContext';
@@ -91,7 +90,6 @@ import { AddTeacherWizard } from '../components/wizards/AddTeacherWizard';
 import AddStudentWizard from '../components/wizards/AddStudentWizard';
 import { CreateClassWizard } from '../components/wizards/CreateClassWizard';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 // =============================================================
 // قسم معلومات المدرسة الأساسية

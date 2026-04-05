@@ -15,7 +15,6 @@ import { Skeleton } from '../../components/ui/skeleton';
 import { ScrollArea } from '../../components/ui/scroll-area';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
-import axios from 'axios';
 import {
   Award,
   BookOpen,
@@ -25,10 +24,9 @@ import {
   FileText,
 } from 'lucide-react';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 const StudentGradesPage = () => {
-  const { token } = useAuth();
+  const { token, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
   const [gradesData, setGradesData] = useState(null);
@@ -41,9 +39,7 @@ const StudentGradesPage = () => {
 
   const fetchGrades = async () => {
     try {
-      const response = await axios.get(`${API_URL}/api/student-portal/grades`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await api.get('/student-portal/grades');
       setGradesData(response.data);
     } catch (error) {
       console.error('Error fetching grades:', error);

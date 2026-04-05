@@ -13,7 +13,6 @@ import { Progress } from '../components/ui/progress';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Skeleton } from '../components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import axios from 'axios';
 import {
   TrendingUp,
   BookOpen,
@@ -22,10 +21,9 @@ import {
   BarChart3,
 } from 'lucide-react';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 export const StudentGrades = () => {
-  const { token } = useAuth();
+  const { token, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
   const [grades, setGrades] = useState(null);
@@ -37,9 +35,7 @@ export const StudentGrades = () => {
 
   const fetchGrades = async () => {
     try {
-      const response = await axios.get(`${API_URL}/api/student-portal/grades`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await api.get('/student-portal/grades');
       setGrades(response.data);
     } catch (error) {
       console.error('Error fetching grades:', error);

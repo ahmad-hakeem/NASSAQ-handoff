@@ -10,12 +10,10 @@ import { Skeleton } from '../../components/ui/skeleton';
 import { ScrollArea } from '../../components/ui/scroll-area';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
-import axios from 'axios';
 import {
   Calendar, BookOpen, ChevronLeft, Clock, User, Printer
 } from 'lucide-react';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 const DAY_NAMES = {
   sunday: { ar: 'الأحد', color: 'from-blue-500 to-blue-600' },
@@ -30,7 +28,7 @@ const DAY_NAMES = {
 const ChildSchedulePage = () => {
   const { nassaqError, nassaqWarning } = useNassaqAlert();
   const { childId } = useParams();
-  const { token } = useAuth();
+  const { token, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
   const [schedule, setSchedule] = useState(null);
@@ -44,12 +42,8 @@ const ChildSchedulePage = () => {
   const fetchData = async () => {
     try {
       const [scheduleRes, childRes] = await Promise.all([
-        axios.get(`${API_URL}/api/parent-portal/child/${childId}/schedule`, {
-          headers: { Authorization: `Bearer ${token}` }
-        }),
-        axios.get(`${API_URL}/api/parent-portal/child/${childId}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        }).catch(() => ({ data: null }))
+        api.get('/parent-portal/child/${childId}/schedule'),
+        api.get('/parent-portal/child/${childId}').catch(() => ({ data: null }))
       ]);
       setSchedule(scheduleRes.data);
       setChild(childRes.data);
