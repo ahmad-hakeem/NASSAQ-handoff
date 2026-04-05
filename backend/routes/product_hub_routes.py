@@ -1384,11 +1384,11 @@ async def resequence_issue_numbers(current_user: dict = Depends(get_current_user
             await db.product_issues.update_one(
                 {"id": issue["id"]}, {"$set": {"issue_number": idx}}
             )
-    await db.counters.update_one(
-        {"_id": "product_issue_number"},
-        {"$set": {"seq": len(issues)}},
-        upsert=True,
-    )
+    from db import engine as _engine
+    from sqlalchemy import text
+    async with _engine.connect() as conn:
+        await conn.execute(text("SELECT setval('product_issue_number_seq', :val)"), {"val": len(issues)})
+        await conn.commit()
     return {"resequenced": len(updates), "total_active": len(issues), "changes": updates}
 
 

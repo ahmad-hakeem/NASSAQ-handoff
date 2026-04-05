@@ -348,15 +348,19 @@ def _set_nested_value(doc, path, value):
 def _apply_projection(doc: dict, projection: dict) -> dict:
     if not projection or not doc:
         return doc
+    exclude_id = projection.get("_id") == 0
     proj = {k: v for k, v in projection.items() if k != "_id"}
-    if not proj:
-        return doc
     includes = {k for k, v in proj.items() if v}
     excludes = {k for k, v in proj.items() if not v}
     if includes:
         has_dotted = any("." in k for k in includes)
         if has_dotted:
-            result = {"id": doc.get("id"), "_id": doc.get("_id", doc.get("id"))}
+            result = {}
+            if not exclude_id:
+                result["id"] = doc.get("id")
+                result["_id"] = doc.get("_id", doc.get("id"))
+            else:
+                result["id"] = doc.get("id")
             for k in includes:
                 if "." in k:
                     val = _get_nested_value(doc, k)
@@ -366,9 +370,23 @@ def _apply_projection(doc: dict, projection: dict) -> dict:
                     if k in doc:
                         result[k] = doc[k]
             return result
-        return {k: v for k, v in doc.items() if k in includes or k == "id" or k == "_id"}
-    if excludes:
-        return {k: v for k, v in doc.items() if k not in excludes}
+        result = {}
+        for k, v in doc.items():
+            if k == "_id":
+                if not exclude_id:
+                    result[k] = v
+            elif k in includes or k == "id":
+                result[k] = v
+        return result
+    if excludes or exclude_id:
+        result = {}
+        for k, v in doc.items():
+            if k in excludes:
+                continue
+            if k == "_id" and exclude_id:
+                continue
+            result[k] = v
+        return result
     return doc
 
 
