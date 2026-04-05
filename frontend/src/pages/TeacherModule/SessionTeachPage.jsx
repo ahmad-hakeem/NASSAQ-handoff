@@ -589,6 +589,7 @@ export default function SessionTeachPage() {
   }
 
   return (
+    <SectionErrorBoundary name="SessionTeachView" isRTL={isRTL}>
     <div className="h-screen bg-slate-900 flex flex-col overflow-hidden" dir={isRTL ? 'rtl' : 'ltr'}>
       {/* ── Header ── */}
       <header className="bg-brand-navy border-b border-white/10 px-4 py-3 flex-none">
@@ -1289,6 +1290,7 @@ export default function SessionTeachPage() {
         </DialogContent>
       </Dialog>
     </div>
+    </SectionErrorBoundary>
   );
 }
 

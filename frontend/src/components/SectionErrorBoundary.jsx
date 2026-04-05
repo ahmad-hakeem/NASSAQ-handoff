@@ -19,12 +19,16 @@ class SectionErrorBoundary extends React.Component {
 
   handleRetry = () => {
     this.setState({ hasError: false, error: null });
+    if (this.props.onRetry) {
+      this.props.onRetry();
+    }
   };
 
   render() {
     if (this.state.hasError) {
-      const { isRTL, className } = this.props;
+      const { isRTL, className, fallbackMessage } = this.props;
       const rtl = isRTL !== false;
+      const defaultMessage = rtl ? 'حدث خطأ في هذا القسم' : 'An error occurred in this section';
 
       return (
         <div dir={rtl ? 'rtl' : 'ltr'} className={`flex flex-col items-center justify-center p-8 rounded-2xl bg-red-50/50 dark:bg-red-950/20 border border-red-200/50 dark:border-red-800/30 ${className || ''}`}>
@@ -32,7 +36,7 @@ class SectionErrorBoundary extends React.Component {
             <AlertTriangle className="h-6 w-6 text-red-500" />
           </div>
           <p className="text-sm font-medium text-red-700 dark:text-red-400 mb-1">
-            {rtl ? 'حدث خطأ في هذا القسم' : 'An error occurred in this section'}
+            {fallbackMessage || defaultMessage}
           </p>
           <p className="text-xs text-red-500/70 dark:text-red-400/50 mb-4">
             {rtl ? 'باقي الصفحة تعمل بشكل طبيعي' : 'The rest of the page is working normally'}
