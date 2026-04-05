@@ -335,15 +335,45 @@ export default function CreateSchoolWizard({ open, onOpenChange, onSuccess, api,
     } catch (error) {
       console.error('Error creating school:', error);
       
-      // Show actual error message to user
-      const errorMessage = error.response?.data?.detail || 
-                          (isRTL ? 'حدث خطأ أثناء إنشاء المدرسة. يرجى المحاولة مرة أخرى.' 
-                                 : 'Error creating school. Please try again.');
-      
-      nassaqError(errorMessage);
-      
-      // Do NOT show success or set isComplete to true
-      // Let user try again or fix the issue
+      const rawDetail = error.response?.data?.detail || '';
+
+      const BACKEND_ERROR_MAP = {
+        'رمز المدرسة مستخدم مسبقاً': {
+          step: 1,
+          field: 'name',
+          userMsg: isRTL
+            ? 'حدث تعارض في رمز المدرسة المُولَّد تلقائياً. يُرجى تعديل اسم المدرسة أو المحاولة مرة أخرى.'
+            : 'Auto-generated school code conflict. Please modify the school name or try again.',
+          fieldMsg: isRTL ? 'تعارض في رمز المدرسة — جرّب تعديل الاسم' : 'School code conflict — try changing the name',
+        },
+        'البريد الإلكتروني مستخدم مسبقاً': {
+          step: 3,
+          field: 'email',
+          userMsg: isRTL
+            ? 'البريد الإلكتروني مُستخدم مسبقاً بحساب آخر. يُرجى تغييره في خطوة "بيانات المدير".'
+            : 'This email is already registered. Please change it in the "Principal Info" step.',
+          fieldMsg: isRTL ? 'هذا البريد مسجل مسبقاً — استخدم بريداً آخر' : 'This email is already registered',
+        },
+        'رقم الهاتف مستخدم مسبقاً': {
+          step: 3,
+          field: 'primaryPhone',
+          userMsg: isRTL
+            ? 'رقم الهاتف مُستخدم مسبقاً بحساب آخر. يُرجى تغييره في خطوة "بيانات المدير".'
+            : 'This phone number is already registered. Please change it in the "Principal Info" step.',
+          fieldMsg: isRTL ? 'هذا الرقم مسجل مسبقاً — استخدم رقماً آخر' : 'This phone number is already registered',
+        },
+      };
+
+      const mapped = BACKEND_ERROR_MAP[rawDetail];
+      if (mapped) {
+        setErrors(prev => ({ ...prev, [mapped.field]: mapped.fieldMsg }));
+        setCurrentStep(mapped.step);
+        nassaqError(mapped.userMsg);
+        setTimeout(() => focusFirstError([mapped.field]), 200);
+      } else {
+        const fallback = rawDetail || (isRTL ? 'حدث خطأ أثناء إنشاء المدرسة. يرجى المحاولة مرة أخرى.' : 'Error creating school. Please try again.');
+        nassaqError(fallback);
+      }
       
     } finally {
       setIsSubmitting(false);
