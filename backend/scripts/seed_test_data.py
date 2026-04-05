@@ -376,5 +376,5 @@ async def seed_test_data():
         return True
 
 
-    if __name__ == "__main__":
-        asyncio.run(seed_test_data())
+if __name__ == "__main__":
+    asyncio.run(seed_test_data())

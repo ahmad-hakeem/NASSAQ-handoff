@@ -429,5 +429,5 @@ async def seed_all_reference_data():
         print(f"   • المدارس المحدّثة: {len(schools)}")
 
 
-    if __name__ == "__main__":
-        asyncio.run(seed_all_reference_data())
+if __name__ == "__main__":
+    asyncio.run(seed_all_reference_data())

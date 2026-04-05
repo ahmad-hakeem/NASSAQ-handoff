@@ -775,5 +775,5 @@ async def main():
         print("  طالب (الأحساء): student1@ahsa.edu.sa / Student@123")
 
 
-    if __name__ == "__main__":
-        asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())

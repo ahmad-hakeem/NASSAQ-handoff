@@ -154,5 +154,5 @@ async def migrate():
         print("\nRelationship types after migration:")
         async for doc in db.user_relationships.aggregate(pipeline):
             print(f"  {doc['_id']}: {doc['count']}")
-    if __name__ == "__main__":
-        asyncio.run(migrate())
+if __name__ == "__main__":
+    asyncio.run(migrate())

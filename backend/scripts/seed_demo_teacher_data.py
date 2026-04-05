@@ -365,5 +365,5 @@ async def main():
             print("   ⚠️  WARNING: No timetable_sessions found — schedule page will be empty")
 
         print("\n✅ Demo teacher data seeding complete!")
-    if __name__ == "__main__":
-        asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())

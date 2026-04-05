@@ -684,5 +684,5 @@ async def seed():
         print(f"Subjects: {len(all_subjects)}")
         print(f"Grade-Subject mappings: {total_mappings}")
         print(f"Teacher rank loads: {len(TEACHER_RANK_LOADS)}")
-    if __name__ == "__main__":
-        asyncio.run(seed())
+if __name__ == "__main__":
+    asyncio.run(seed())

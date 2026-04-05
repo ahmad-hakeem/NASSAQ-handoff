@@ -89,5 +89,5 @@ async def migrate():
         for school in schools:
             count = await db.students.count_documents({"school_id": school["id"]})
             print(f"  {school['id']}: {count} students")
-    if __name__ == "__main__":
-        asyncio.run(migrate())
+if __name__ == "__main__":
+    asyncio.run(migrate())
