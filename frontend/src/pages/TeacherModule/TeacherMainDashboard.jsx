@@ -17,13 +17,11 @@ import {
   Timer, CircleDot, School, Sparkles, Zap, TrendingUp, Star
 } from 'lucide-react';
 import { HakimAssistant } from '../../components/hakim/HakimAssistant';
-import axios from 'axios';
-
-const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 const HAKIM_CHARACTER = '/hakim-poses/teacher-helper.png';
 
-const TeacherDayProgress = ({ isRTL, user }) => {
+const TeacherDayProgress = ({ isRTL }) => {
+  const { api } = useAuth();
   const [now, setNow] = useState(new Date());
   const [dayStatus, setDayStatus] = useState(null);
 
@@ -34,13 +32,12 @@ const TeacherDayProgress = ({ isRTL, user }) => {
 
   const fetchDayStatus = useCallback(async () => {
     try {
-      const token = localStorage.getItem('nassaq_token');
-      const headers = { Authorization: `Bearer ${token}` };
-      if (user?.tenant_id) headers['X-School-Context'] = user.tenant_id;
-      const res = await axios.get(`${API_URL}/api/school/day-status`, { headers });
+      const res = await api.get('/school/day-status');
       setDayStatus(res.data);
-    } catch {}
-  }, [user]);
+    } catch (err) {
+      console.error('Error fetching day status:', err);
+    }
+  }, [api]);
 
   useEffect(() => {
     fetchDayStatus();
@@ -395,7 +392,7 @@ export default function TeacherMainDashboard() {
             </div>
           </div>
 
-          <TeacherDayProgress isRTL={isRTL} user={user} />
+          <TeacherDayProgress isRTL={isRTL} />
 
           {/* Metric Cards */}
           <section>

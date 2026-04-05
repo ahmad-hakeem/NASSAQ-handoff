@@ -99,7 +99,7 @@ export default function PrincipalDashboard() {
         </header>
 
         <div className="p-4 sm:p-6">
-          <SchoolDashboardContent schoolContext={schoolContext} isImpersonating={isImpersonating} />
+          <SchoolDashboardContent />
         </div>
       </div>
       <HakimAssistant />

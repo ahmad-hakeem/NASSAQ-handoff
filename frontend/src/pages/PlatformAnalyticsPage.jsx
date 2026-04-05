@@ -92,9 +92,7 @@ import {
   MapPin,
   Link as LinkIcon,
 } from 'lucide-react';
-import axios from 'axios';
-
-const API_URL = process.env.REACT_APP_BACKEND_URL;
+import { useAuth } from '../contexts/AuthContext';
 
 // Translations
 const translations = {
@@ -298,6 +296,7 @@ const REPORT_TYPES = [
 
 export const PlatformAnalyticsPage = () => {
   const { isRTL = true, isDark } = useTheme();
+  const { api } = useAuth();
   const navigate = useNavigate();
   const { nassaqError, nassaqWarning } = useNassaqAlert();
   const t = translations[isRTL ? 'ar' : 'en'];
@@ -384,35 +383,10 @@ export const PlatformAnalyticsPage = () => {
   const [schoolsList, setSchoolsList] = useState([]);
   const [selectedAnalysisSchool, setSelectedAnalysisSchool] = useState('');
   
-  // Get auth token from localStorage
-  const getAuthToken = () => {
-    try {
-      // First try nassaq_token (primary storage)
-      const nassaqToken = localStorage.getItem('nassaq_token');
-      if (nassaqToken) {
-        return nassaqToken;
-      }
-      // Fallback to auth object
-      const authData = localStorage.getItem('auth');
-      if (authData) {
-        const parsed = JSON.parse(authData);
-        return parsed.token || parsed.access_token;
-      }
-    } catch (e) {
-      console.error('Error getting auth token:', e);
-    }
-    return null;
-  };
-  
-  // Fetch live stats from Super Admin Dashboard API
   const fetchLiveStats = async () => {
     setIsRefreshing(true);
-    const token = getAuthToken();
-    
     try {
-      const response = await axios.get(`${API_URL}/api/super-admin/dashboard-stats`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
+      const response = await api.get('/super-admin/dashboard-stats');
       
       if (response.data) {
         const data = response.data;
@@ -445,9 +419,9 @@ export const PlatformAnalyticsPage = () => {
       console.error('Failed to fetch live stats:', error);
       // Fallback to public stats if super admin API fails
       try {
-        const publicResponse = await fetch(`${API_URL}/api/public/stats`);
-        if (publicResponse.ok) {
-          const data = await publicResponse.json();
+        const publicResponse = await api.get('/public/stats').catch(() => null);
+        if (publicResponse?.data) {
+          const data = publicResponse.data;
           setStats(prev => ({
             ...prev,
             totalSchools: data.schools || 0,
@@ -466,12 +440,10 @@ export const PlatformAnalyticsPage = () => {
   };
   
   const fetchChartData = async () => {
-    const token = getAuthToken();
-    const headers = token ? { Authorization: `Bearer ${token}` } : {};
     try {
       const [analyticsRes, growthRes] = await Promise.all([
-        axios.get(`${API_URL}/api/platform/analytics`, { headers }).catch(() => null),
-        axios.get(`${API_URL}/api/platform/analytics/growth?months=6`, { headers }).catch(() => null),
+        api.get('/platform/analytics').catch(() => null),
+        api.get('/platform/analytics/growth?months=6').catch(() => null),
       ]);
 
       if (analyticsRes?.data?.schools?.length > 0) {
@@ -505,11 +477,8 @@ export const PlatformAnalyticsPage = () => {
   };
 
   const fetchSchoolsList = async () => {
-    const token = getAuthToken();
     try {
-      const resp = await axios.get(`${API_URL}/api/schools`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
+      const resp = await api.get('/schools');
       if (resp.data) {
         const schools = Array.isArray(resp.data) ? resp.data : [];
         setSchoolsList(schools);
@@ -525,22 +494,16 @@ export const PlatformAnalyticsPage = () => {
   const fetchHakimAnalysis = async (schoolId) => {
     if (!schoolId) return;
     setHakimLoading(true);
-    const token = getAuthToken();
     try {
-      const resp = await axios.post(
-        `${API_URL}/api/hakim/analyze/${schoolId}`,
-        {},
-        { headers: token ? { Authorization: `Bearer ${token}` } : {} }
-      );
+      const resp = await api.post(`/hakim/analyze/${schoolId}`, {});
       if (resp.data) {
         setHakimAnalysis(resp.data);
       }
     } catch (err) {
       console.error('Hakim analysis error:', err);
       try {
-        const insightsResp = await axios.get(
-          `${API_URL}/api/hakim/insights?school_id=${schoolId}&limit=20`,
-          { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+        const insightsResp = await api.get(
+          `/hakim/insights?school_id=${schoolId}&limit=20`
         );
         if (insightsResp.data && insightsResp.data.length > 0) {
           const fullAnalysis = insightsResp.data.find(i => i.type === 'full_school_analysis');
@@ -620,7 +583,6 @@ export const PlatformAnalyticsPage = () => {
   
   const handleExport = async () => {
     setLoading(true);
-    const token = getAuthToken();
     const fmtMap = { pdf: 'pdf', excel: 'xlsx', csv: 'csv' };
     const fmt = fmtMap[exportFormat] || 'pdf';
     const rtMap = {
@@ -634,12 +596,9 @@ export const PlatformAnalyticsPage = () => {
     const reportType = rtMap[filters.reportType] || 'school_attendance';
 
     try {
-      const resp = await axios.get(
-        `${API_URL}/api/export/report/${reportType}?format=${fmt}`,
-        {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-          responseType: 'blob',
-        },
+      const resp = await api.get(
+        `/export/report/${reportType}?format=${fmt}`,
+        { responseType: 'blob' },
       );
       const url = URL.createObjectURL(resp.data);
       const a = document.createElement('a');

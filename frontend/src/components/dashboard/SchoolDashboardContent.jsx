@@ -43,8 +43,8 @@ import {
   PieChart,
   Gauge,
 } from 'lucide-react';
-import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
 import AddStudentWizard from '../wizards/AddStudentWizard';
 import { AddTeacherWizard } from '../wizards/AddTeacherWizard';
 import { CreateClassWizard } from '../wizards/CreateClassWizard';
@@ -52,9 +52,8 @@ import { SendNotificationWizard } from '../wizards/SendNotificationWizard';
 import { CreateScheduleWizard } from '../wizards/CreateScheduleWizard';
 import { LiveSessionsMonitor } from '../wizards/LiveSessionsMonitor';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
-
-const SchoolDayProgress = ({ isRTL, schoolContext, isImpersonating }) => {
+const SchoolDayProgress = ({ isRTL }) => {
+  const { api } = useAuth();
   const [now, setNow] = useState(new Date());
   const [dayStatus, setDayStatus] = useState(null);
 
@@ -65,17 +64,12 @@ const SchoolDayProgress = ({ isRTL, schoolContext, isImpersonating }) => {
 
   const fetchDayStatus = useCallback(async () => {
     try {
-      const token = localStorage.getItem('nassaq_token');
-      const headers = { Authorization: `Bearer ${token}` };
-      if (isImpersonating && schoolContext?.school_id) {
-        headers['X-School-Context'] = schoolContext.school_id;
-      }
-      const res = await axios.get(`${API_URL}/api/school/day-status`, { headers });
+      const res = await api.get('/school/day-status');
       setDayStatus(res.data);
     } catch (err) {
       console.error('Error fetching day status:', err);
     }
-  }, [schoolContext, isImpersonating]);
+  }, [api]);
 
   useEffect(() => {
     fetchDayStatus();
@@ -699,8 +693,9 @@ const QuickAddBar = ({ onAction, isRTL }) => {
   );
 };
 
-export const SchoolDashboardContent = ({ schoolContext, isImpersonating }) => {
+export const SchoolDashboardContent = () => {
   const { isRTL } = useTheme();
+  const { api } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -719,12 +714,7 @@ export const SchoolDashboardContent = ({ schoolContext, isImpersonating }) => {
   const fetchDashboardData = useCallback(async (isManualRefresh = false) => {
     if (isManualRefresh) setRefreshing(true);
     try {
-      const token = localStorage.getItem('nassaq_token');
-      const headers = { Authorization: `Bearer ${token}` };
-      if (isImpersonating && schoolContext?.school_id) {
-        headers['X-School-Context'] = schoolContext.school_id;
-      }
-      const response = await axios.get(`${API_URL}/api/school/dashboard`, { headers });
+      const response = await api.get('/school/dashboard');
       const data = response.data;
       const transformedData = {
         metrics: {
@@ -767,21 +757,15 @@ export const SchoolDashboardContent = ({ schoolContext, isImpersonating }) => {
       setLoading(false);
       setRefreshing(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isRTL, isImpersonating, schoolContext]);
+  }, [isRTL, api]);
 
   useEffect(() => {
     fetchDashboardData();
     const fetchWizardData = async () => {
       try {
-        const token = localStorage.getItem('nassaq_token');
-        const headers = { Authorization: `Bearer ${token}` };
-        if (isImpersonating && schoolContext?.school_id) {
-          headers['X-School-Context'] = schoolContext.school_id;
-        }
         const [gradesRes, classesRes] = await Promise.all([
-          axios.get(`${API_URL}/api/reference/grades`, { headers }).catch(() => ({ data: [] })),
-          axios.get(`${API_URL}/api/classes`, { headers }).catch(() => ({ data: [] })),
+          api.get('/reference/grades').catch(() => ({ data: [] })),
+          api.get('/classes').catch(() => ({ data: [] })),
         ]);
         setGrades(gradesRes.data || []);
         setClasses(classesRes.data || []);
@@ -790,8 +774,7 @@ export const SchoolDashboardContent = ({ schoolContext, isImpersonating }) => {
       }
     };
     fetchWizardData();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [api, fetchDashboardData]);
 
   useEffect(() => {
     const interval = setInterval(() => fetchDashboardData(false), 20000);
@@ -842,7 +825,7 @@ export const SchoolDashboardContent = ({ schoolContext, isImpersonating }) => {
         </div>
       </div>
 
-      <SchoolDayProgress isRTL={isRTL} schoolContext={schoolContext} isImpersonating={isImpersonating} />
+      <SchoolDayProgress isRTL={isRTL} />
 
       <section data-testid="key-metrics-section">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -908,20 +891,7 @@ export const SchoolDashboardContent = ({ schoolContext, isImpersonating }) => {
         open={showAddStudentWizard} 
         onOpenChange={setShowAddStudentWizard}
         isRTL={isRTL}
-        api={{ 
-          post: (url, data) => axios.post(`${API_URL}/api${url}`, data, {
-            headers: { 
-              Authorization: `Bearer ${localStorage.getItem('nassaq_token')}`,
-              ...(isImpersonating && schoolContext?.school_id ? { 'X-School-Context': schoolContext.school_id } : {})
-            }
-          }).then(r => r),
-          get: (url) => axios.get(`${API_URL}/api${url}`, {
-            headers: { 
-              Authorization: `Bearer ${localStorage.getItem('nassaq_token')}`,
-              ...(isImpersonating && schoolContext?.school_id ? { 'X-School-Context': schoolContext.school_id } : {})
-            }
-          }).then(r => r),
-        }}
+        api={api}
         grades={grades}
         classes={classes}
         onSuccess={() => fetchDashboardData(true)}

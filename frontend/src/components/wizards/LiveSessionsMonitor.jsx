@@ -22,13 +22,10 @@ import {
   CheckCircle2,
   AlertCircle,
 } from 'lucide-react';
-import axios from 'axios';
-
-const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 export const LiveSessionsMonitor = ({ open, onClose, onOpenChange }) => {
   const { isRTL } = useTheme();
-  const { token } = useAuth();
+  const { api } = useAuth();
   
   const [loading, setLoading] = useState(true);
   const [sessions, setSessions] = useState([]);
@@ -37,12 +34,10 @@ export const LiveSessionsMonitor = ({ open, onClose, onOpenChange }) => {
 
   const fetchSessions = useCallback(async () => {
     setLoading(true);
-    const headers = token ? { Authorization: `Bearer ${token}` } : {};
-    
     try {
       const [currentRes, todayRes] = await Promise.all([
-        axios.get(`${API_URL}/api/schedules/sessions/current`, { headers }).catch(() => ({ data: { sessions: [] } })),
-        axios.get(`${API_URL}/api/schedules/sessions/today`, { headers }).catch(() => ({ data: { sessions: [] } })),
+        api.get('/schedules/sessions/current').catch(() => ({ data: { sessions: [] } })),
+        api.get('/schedules/sessions/today').catch(() => ({ data: { sessions: [] } })),
       ]);
       
       setSessions(currentRes.data.sessions || []);
@@ -53,7 +48,7 @@ export const LiveSessionsMonitor = ({ open, onClose, onOpenChange }) => {
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [api]);
 
   useEffect(() => {
     if (open) {
