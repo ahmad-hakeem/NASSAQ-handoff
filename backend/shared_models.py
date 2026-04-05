@@ -2,19 +2,38 @@
 NASSAQ Shared Pydantic Models
 All Pydantic models shared across route modules.
 """
-from pydantic import BaseModel, Field, ConfigDict, EmailStr, model_validator
+from pydantic import BaseModel, Field, ConfigDict, EmailStr, model_validator, field_validator
 from typing import List, Optional, Any, Union
 from datetime import datetime, timezone
 from enum import Enum
+import re as _re
 import uuid
 
 from dependencies import UserRole, SchoolStatus
 
+_PHONE_RE = _re.compile(r"^\+?[0-9]{7,15}$")
+_PASSWORD_MIN = 8
+_PASSWORD_MAX = 128
+_NAME_MIN = 2
+_NAME_MAX = 100
+
+
+def validate_password_complexity(password: str) -> str:
+    if len(password) < _PASSWORD_MIN:
+        raise ValueError(f"كلمة المرور يجب أن تكون {_PASSWORD_MIN} أحرف على الأقل")
+    if len(password) > _PASSWORD_MAX:
+        raise ValueError(f"كلمة المرور يجب ألا تتجاوز {_PASSWORD_MAX} حرفاً")
+    if not _re.search(r"[A-Za-z]", password):
+        raise ValueError("كلمة المرور يجب أن تحتوي على حرف واحد على الأقل")
+    if not _re.search(r"[0-9]", password):
+        raise ValueError("كلمة المرور يجب أن تحتوي على رقم واحد على الأقل")
+    return password
+
 
 class UserBase(BaseModel):
     email: EmailStr
-    full_name: str
-    full_name_en: Optional[str] = None
+    full_name: str = Field(..., min_length=_NAME_MIN, max_length=_NAME_MAX)
+    full_name_en: Optional[str] = Field(None, max_length=_NAME_MAX)
     role: UserRole
     tenant_id: Optional[str] = None
     phone: Optional[str] = None
@@ -23,14 +42,48 @@ class UserBase(BaseModel):
     preferred_language: str = "ar"
     preferred_theme: str = "light"
 
+    @field_validator("phone")
+    @classmethod
+    def validate_phone(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v != "":
+            cleaned = v.replace(" ", "").replace("-", "")
+            if not _PHONE_RE.match(cleaned):
+                raise ValueError("رقم الهاتف غير صالح — يجب أن يحتوي على 7-15 رقماً")
+            return cleaned
+        return v
+
 class UserCreate(BaseModel):
     email: EmailStr
-    password: str
-    full_name: str
-    full_name_en: Optional[str] = None
+    password: str = Field(..., min_length=_PASSWORD_MIN, max_length=_PASSWORD_MAX)
+    full_name: str = Field(..., min_length=_NAME_MIN, max_length=_NAME_MAX)
+    full_name_en: Optional[str] = Field(None, max_length=_NAME_MAX)
     role: UserRole
     tenant_id: Optional[str] = None
     phone: Optional[str] = None
+
+    @field_validator("password")
+    @classmethod
+    def check_password_complexity(cls, v: str) -> str:
+        return validate_password_complexity(v)
+
+    @field_validator("full_name")
+    @classmethod
+    def check_full_name(cls, v: str) -> str:
+        if v and v.strip() != v:
+            v = v.strip()
+        if len(v) < _NAME_MIN:
+            raise ValueError(f"الاسم يجب أن يكون {_NAME_MIN} أحرف على الأقل")
+        return v
+
+    @field_validator("phone")
+    @classmethod
+    def validate_phone(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v != "":
+            cleaned = v.replace(" ", "").replace("-", "")
+            if not _PHONE_RE.match(cleaned):
+                raise ValueError("رقم الهاتف غير صالح — يجب أن يحتوي على 7-15 رقماً")
+            return cleaned
+        return v
 
 class UserLogin(BaseModel):
     email: EmailStr

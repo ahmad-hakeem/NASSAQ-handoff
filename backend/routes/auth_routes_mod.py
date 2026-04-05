@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Depends, status, Header, Query, Bo
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import Response
 from starlette.responses import StreamingResponse
-from pydantic import BaseModel, Field, ConfigDict, EmailStr, model_validator
+from pydantic import BaseModel, Field, ConfigDict, EmailStr, model_validator, field_validator
 from typing import List, Optional, Any, Dict
 from datetime import datetime, timezone, timedelta
 from bson_compat import ObjectId
@@ -24,7 +24,8 @@ from dependencies import (
 )
 
 from shared_models import (
-    UserCreate, UserLogin, UserResponse, TokenResponse
+    UserCreate, UserLogin, UserResponse, TokenResponse,
+    validate_password_complexity,
 )
 
 router = APIRouter()
@@ -405,6 +406,11 @@ class PasswordChangeRequest(BaseModel):
     current_password: str
     new_password: str
 
+    @field_validator("new_password")
+    @classmethod
+    def check_new_password(cls, v: str) -> str:
+        return validate_password_complexity(v)
+
 @router.post("/auth/change-password")
 async def change_password(
     request: PasswordChangeRequest,
@@ -413,13 +419,8 @@ async def change_password(
     """
     Change user password. Required for first-time login with temporary password.
     """
-    # Verify current password
     if not verify_password(request.current_password, current_user.get("password_hash", "")):
         raise HTTPException(status_code=400, detail="كلمة المرور الحالية غير صحيحة")
-    
-    # Validate new password
-    if len(request.new_password) < 8:
-        raise HTTPException(status_code=400, detail="كلمة المرور يجب أن تكون 8 أحرف على الأقل")
     
     if request.current_password == request.new_password:
         raise HTTPException(status_code=400, detail="كلمة المرور الجديدة يجب أن تكون مختلفة")
