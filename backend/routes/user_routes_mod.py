@@ -248,8 +248,7 @@ async def get_users(
 ):
     query = {}
     
-    # Filter by tenant for school admins
-    if current_user["role"] in [UserRole.SCHOOL_PRINCIPAL.value, UserRole.SCHOOL_SUB_ADMIN.value]:
+    if current_user["role"] in [UserRole.SCHOOL_PRINCIPAL.value, UserRole.SCHOOL_ADMIN.value, UserRole.SCHOOL_SUB_ADMIN.value]:
         query["tenant_id"] = current_user.get("tenant_id")
     elif tenant_id:
         query["tenant_id"] = tenant_id

@@ -710,23 +710,10 @@ async def test_integration(
     if not integration:
         raise HTTPException(status_code=404, detail="التكامل غير موجود")
     
-    # Simulate connection test
-    # In production, this would actually test the connection
-    import random
-    success = random.random() > 0.2  # 80% success rate for demo
-    
-    await db.integrations.update_one(
-        {"id": integration_id},
-        {"$set": {
-            "last_test": datetime.now(timezone.utc).isoformat(),
-            "last_test_result": "success" if success else "failed"
-        }}
+    raise HTTPException(
+        status_code=501,
+        detail="اختبار الاتصال غير مُهيأ بعد لهذا التكامل"
     )
-    
-    if success:
-        return {"success": True, "message": "تم الاتصال بنجاح"}
-    else:
-        raise HTTPException(status_code=500, detail="فشل الاتصال بالخدمة")
 
 @router.post("/integrations/{integration_id}/sync")
 async def sync_integration(

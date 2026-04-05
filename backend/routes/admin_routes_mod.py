@@ -494,62 +494,6 @@ async def seed_test_accounts(current_user: dict = Depends(require_roles([UserRol
 
 
 
-# ============== DEMO DATA & ACTIVITY APIs ==============
-@router.get("/demo/schools")
-async def get_demo_schools(current_user: dict = Depends(get_current_user)):
-    """Get all demo schools with related stats"""
-    schools = await db.demo_schools.find({}, {"_id": 0}).to_list(100)
-    return schools
-
-@router.get("/demo/teachers")
-async def get_demo_teachers(
-    current_user: dict = Depends(get_current_user),
-    school_id: Optional[str] = None
-):
-    """Get demo teachers, optionally filtered by school"""
-    query = {"school_id": school_id} if school_id else {}
-    teachers = await db.demo_teachers.find(query, {"_id": 0}).to_list(500)
-    return teachers
-
-@router.get("/demo/students")
-async def get_demo_students(
-    current_user: dict = Depends(get_current_user),
-    school_id: Optional[str] = None,
-    class_id: Optional[str] = None
-):
-    """Get demo students, optionally filtered by school/class"""
-    query = {}
-    if school_id:
-        query["school_id"] = school_id
-    if class_id:
-        query["class_id"] = class_id
-    students = await db.demo_students.find(query, {"_id": 0}).to_list(1000)
-    return students
-
-@router.get("/demo/classes")
-async def get_demo_classes(
-    current_user: dict = Depends(get_current_user),
-    school_id: Optional[str] = None
-):
-    """Get demo classes, optionally filtered by school"""
-    query = {"school_id": school_id} if school_id else {}
-    classes = await db.demo_classes.find(query, {"_id": 0}).to_list(200)
-    return classes
-
-@router.get("/demo/stats")
-async def get_demo_stats(current_user: dict = Depends(get_current_user)):
-    """Get aggregated demo data statistics"""
-    schools_count = await db.demo_schools.count_documents({})
-    teachers_count = await db.demo_teachers.count_documents({})
-    students_count = await db.demo_students.count_documents({})
-    classes_count = await db.demo_classes.count_documents({})
-    
-    return {
-        "schools": schools_count,
-        "teachers": teachers_count,
-        "students": students_count,
-        "classes": classes_count
-    }
 
 @router.get("/activity/daily")
 async def get_daily_activity(
