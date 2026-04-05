@@ -36,7 +36,7 @@ class UserLogin(BaseModel):
 
 
 class UserResponse(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="ignore", from_attributes=True)
     id: str
     email: str
     full_name: str
@@ -74,7 +74,7 @@ class PlatformUserCreate(BaseModel):
 
 
 class PlatformUserResponse(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="ignore", from_attributes=True)
     id: str
     email: str
     full_name: str

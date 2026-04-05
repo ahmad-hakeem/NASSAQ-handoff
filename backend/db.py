@@ -85,7 +85,7 @@ async def init_pg_tables():
         else:
             logger.warning("Alembic version table not found — run 'alembic upgrade head' to initialize schema")
         await conn.execute(text("CREATE SEQUENCE IF NOT EXISTS issue_number_seq START WITH 1 INCREMENT BY 1"))
-    logger.info("PostgreSQL tables created/verified")
+    logger.info("PostgreSQL schema verified (Alembic-managed)")
 
 
 async def close_pg_engine():
