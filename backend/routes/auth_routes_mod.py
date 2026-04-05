@@ -265,9 +265,12 @@ async def set_active_role_context(
     
     # Check primary role first
     if current_user.get("role") == context.role_id:
+        primary_tenant = current_user.get("tenant_id")
+        if context.school_id and context.school_id != primary_tenant:
+            raise HTTPException(status_code=400, detail="المدرسة المحددة لا تتطابق مع دورك الأساسي")
         valid_role = {
             "role": current_user.get("role"),
-            "tenant_id": current_user.get("tenant_id"),
+            "tenant_id": primary_tenant,
             "is_active": True
         }
     else:
@@ -285,8 +288,8 @@ async def set_active_role_context(
     if not valid_role:
         raise HTTPException(status_code=400, detail="الدور غير متوفر للمستخدم")
     
-    # Determine school_id
-    school_id = context.school_id or valid_role.get("tenant_id") or current_user.get("tenant_id")
+    # Always use the validated role's tenant — never trust client-supplied school_id
+    school_id = valid_role.get("tenant_id") or current_user.get("tenant_id")
     
     # Get school name if school_id provided
     school_name = None
