@@ -381,6 +381,209 @@ async def update_school_status(
     return {"message": "تم تحديث حالة المدرسة"}
 
 
+class SchoolStatusChangeRequest(BaseModel):
+    reason: str = Field(..., min_length=3, description="سبب التغيير")
+
+
+@router.post("/schools/{school_id}/suspend")
+async def suspend_school(
+    school_id: str,
+    body: SchoolStatusChangeRequest,
+    request: Request,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+):
+    """Suspend a school with reason - logs full audit trail"""
+    school = await db.schools.find_one({"id": school_id})
+    if not school:
+        raise HTTPException(status_code=404, detail="المدرسة غير موجودة")
+
+    previous_status = school.get("status", "active")
+    if previous_status == "suspended":
+        raise HTTPException(status_code=400, detail="المدرسة معلقة مسبقاً")
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    # Update school status
+    await db.schools.update_one(
+        {"id": school_id},
+        {"$set": {
+            "status": "suspended",
+            "suspended_at": now,
+            "suspended_by": current_user.get("id", current_user.get("user_id")),
+            "suspension_reason": body.reason,
+            "updated_at": now,
+        }}
+    )
+
+    # Deactivate all school users
+    await db.users.update_many(
+        {"tenant_id": school_id, "is_active": True},
+        {"$set": {"is_active": False, "suspended_at": now}}
+    )
+
+    # Audit log
+    performer_id = current_user.get("id", current_user.get("user_id"))
+    await audit_engine.log_data_change(
+        action=AuditAction.TENANT_SUSPENDED.value,
+        performed_by=performer_id,
+        entity_type="school",
+        entity_id=school_id,
+        tenant_id=school_id,
+        previous_values={"status": previous_status},
+        new_values={
+            "status": "suspended",
+            "reason": body.reason,
+            "performed_by_email": current_user.get("email", ""),
+            "school_name": school.get("name", ""),
+        }
+    )
+
+    return {
+        "message": "تم تعليق المدرسة بنجاح",
+        "school_id": school_id,
+        "previous_status": previous_status,
+        "new_status": "suspended",
+        "reason": body.reason,
+        "timestamp": now,
+    }
+
+
+@router.post("/schools/{school_id}/activate")
+async def activate_school(
+    school_id: str,
+    body: SchoolStatusChangeRequest,
+    request: Request,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+):
+    """Activate a suspended school with reason - logs full audit trail"""
+    school = await db.schools.find_one({"id": school_id})
+    if not school:
+        raise HTTPException(status_code=404, detail="المدرسة غير موجودة")
+
+    previous_status = school.get("status", "suspended")
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    # Update school status
+    await db.schools.update_one(
+        {"id": school_id},
+        {"$set": {
+            "status": "active",
+            "activated_at": now,
+            "activated_by": current_user.get("id", current_user.get("user_id")),
+            "activation_reason": body.reason,
+            "updated_at": now,
+        }}
+    )
+
+    # Re-activate all school users (that were active before suspension)
+    await db.users.update_many(
+        {"tenant_id": school_id, "is_active": False},
+        {"$set": {"is_active": True, "activated_at": now}}
+    )
+
+    # Audit log
+    performer_id = current_user.get("id", current_user.get("user_id"))
+    await audit_engine.log_data_change(
+        action=AuditAction.TENANT_ACTIVATED.value,
+        performed_by=performer_id,
+        entity_type="school",
+        entity_id=school_id,
+        tenant_id=school_id,
+        previous_values={"status": previous_status},
+        new_values={
+            "status": "active",
+            "reason": body.reason,
+            "performed_by_email": current_user.get("email", ""),
+            "school_name": school.get("name", ""),
+        }
+    )
+
+    return {
+        "message": "تم تفعيل المدرسة بنجاح",
+        "school_id": school_id,
+        "previous_status": previous_status,
+        "new_status": "active",
+        "reason": body.reason,
+        "timestamp": now,
+    }
+
+
+@router.get("/schools/{school_id}/detail")
+async def get_school_detail(
+    school_id: str,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+):
+    """Get comprehensive school detail for Platform Admin"""
+    school = await db.schools.find_one({"id": school_id}, {"_id": 0})
+    if not school:
+        raise HTTPException(status_code=404, detail="المدرسة غير موجودة")
+
+    # Fetch related data
+    users = await db.users.find({"tenant_id": school_id}, {"_id": 0, "password_hash": 0}).to_list(1000)
+    students = await db.students.find({"school_id": school_id}, {"_id": 0}).to_list(500)
+    teachers = await db.teachers.find({"school_id": school_id}, {"_id": 0}).to_list(500)
+    classes = await db.classes.find({"school_id": school_id}, {"_id": 0}).to_list(200)
+
+    # Audit logs for this school
+    audit_logs = await db.audit_logs.find(
+        {"$or": [{"tenant_id": school_id}, {"entity_id": school_id}]},
+        {"_id": 0}
+    ).to_list(100)
+    audit_logs.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+    audit_logs = audit_logs[:50]
+
+    # Log VIEW_SCHOOL action
+    performer_id = current_user.get("id", current_user.get("user_id"))
+    await audit_engine.log_data_change(
+        action=AuditAction.TENANT_UPDATED.value,
+        performed_by=performer_id,
+        entity_type="school",
+        entity_id=school_id,
+        tenant_id=school_id,
+        new_values={"action": "VIEW_SCHOOL", "school_name": school.get("name", "")}
+    )
+
+    return {
+        "school": school,
+        "stats": {
+            "total_users": len(users),
+            "total_students": len(students),
+            "total_teachers": len(teachers),
+            "total_classes": len(classes),
+        },
+        "users": users[:100],
+        "students": students[:100],
+        "teachers": teachers[:100],
+        "classes": classes[:50],
+        "audit_logs": audit_logs,
+    }
+
+
+@router.patch("/schools/{school_id}")
+async def patch_school(
+    school_id: str,
+    data: dict,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
+):
+    """Patch school fields (status, ai_enabled, etc.)"""
+    school = await db.schools.find_one({"id": school_id})
+    if not school:
+        raise HTTPException(status_code=404, detail="المدرسة غير موجودة")
+
+    patchable = ["name", "name_en", "email", "phone", "address", "city", "region",
+                 "logo_url", "website", "principal_name", "status", "ai_enabled",
+                 "student_capacity", "school_type", "stage"]
+    update_data = {"updated_at": datetime.now(timezone.utc).isoformat()}
+    for field in patchable:
+        if field in data:
+            update_data[field] = data[field]
+
+    await db.schools.update_one({"id": school_id}, {"$set": update_data})
+    updated = await db.schools.find_one({"id": school_id}, {"_id": 0})
+    return updated
+
+
 
 
 # ============== UPDATE SCHOOL API ==============

@@ -22,8 +22,9 @@ import {
   Building2, Search, Filter, Plus, LayoutGrid, List, Users, GraduationCap,
   MapPin, Brain, Eye, Pause, Play, RefreshCw, CheckCircle2, XCircle,
   AlertTriangle, Clock, ArrowLeft, ChevronRight, School, Sparkles, X,
-  Loader2, Layers, Calendar, Activity, UserCheck
+  Loader2, Layers, Calendar, Activity, UserCheck, Hash, ExternalLink,
 } from 'lucide-react';
+import { Textarea } from '../components/ui/textarea';
 import CreateSchoolWizard from '../components/wizards/CreateSchoolWizard';
 import { Sidebar } from '../components/layout/Sidebar';
 
@@ -154,6 +155,9 @@ export default function TenantsManagement() {
   const [showCreateWizard, setShowCreateWizard] = useState(false);
   const [activeStatusFilter, setActiveStatusFilter] = useState(null);
   const [showSuspendDialog, setShowSuspendDialog] = useState(null);
+  const [showActivateDialog, setShowActivateDialog] = useState(null);
+  const [actionReason, setActionReason] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
 
   const [filters, setFilters] = useState({
     status: 'all',
@@ -262,15 +266,46 @@ export default function TenantsManagement() {
     navigate('/principal');
   };
 
-  const handleToggleSuspend = (school, suspend = true) => {
-    setSchools(prev => prev.map(s =>
-      s.id === school.id ? { ...s, status: suspend ? 'suspended' : 'active' } : s
-    ));
-    toast.success(suspend
-      ? (isRTL ? `تم تعليق ${school.name}` : `${school.name} suspended`)
-      : (isRTL ? `تم تفعيل ${school.name}` : `${school.name} activated`)
-    );
-    setShowSuspendDialog(null);
+  const handleSuspendConfirm = async () => {
+    if (!actionReason.trim()) {
+      nassaqError(isRTL ? 'يجب إدخال سبب التعليق' : 'Reason is required');
+      return;
+    }
+    setActionLoading(true);
+    try {
+      await api.post(`/schools/${showSuspendDialog.id}/suspend`, { reason: actionReason });
+      setSchools(prev => prev.map(s =>
+        s.id === showSuspendDialog.id ? { ...s, status: 'suspended' } : s
+      ));
+      toast.success(isRTL ? `تم تعليق ${showSuspendDialog.name}` : `${showSuspendDialog.name} suspended`);
+      setShowSuspendDialog(null);
+      setActionReason('');
+    } catch (err) {
+      nassaqError(err.response?.data?.detail || (isRTL ? 'فشل تعليق المدرسة' : 'Failed to suspend school'));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleActivateConfirm = async () => {
+    if (!actionReason.trim()) {
+      nassaqError(isRTL ? 'يجب إدخال سبب التفعيل' : 'Reason is required');
+      return;
+    }
+    setActionLoading(true);
+    try {
+      await api.post(`/schools/${showActivateDialog.id}/activate`, { reason: actionReason });
+      setSchools(prev => prev.map(s =>
+        s.id === showActivateDialog.id ? { ...s, status: 'active' } : s
+      ));
+      toast.success(isRTL ? `تم تفعيل ${showActivateDialog.name}` : `${showActivateDialog.name} activated`);
+      setShowActivateDialog(null);
+      setActionReason('');
+    } catch (err) {
+      nassaqError(err.response?.data?.detail || (isRTL ? 'فشل تفعيل المدرسة' : 'Failed to activate school'));
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const handleSchoolCreated = () => {
@@ -502,10 +537,16 @@ export default function TenantsManagement() {
                           </Badge>
                         </td>
                         <td className="p-3 text-center">
-                          <Button size="sm" className="bg-brand-navy hover:bg-brand-navy/90 text-white rounded-lg text-xs" onClick={() => handleEnterSchoolDashboard(school)}>
-                            <Eye className="h-3.5 w-3.5 me-1" />
-                            {t.openDashboard}
-                          </Button>
+                          <div className="flex items-center justify-center gap-1.5">
+                            <Button size="sm" variant="outline" className="rounded-lg text-xs border-brand-navy/30 text-brand-navy" onClick={() => navigate(`/platform/schools/${school.id}`)}>
+                              <ExternalLink className="h-3 w-3 me-1" />
+                              {isRTL ? 'تفاصيل' : 'Details'}
+                            </Button>
+                            <Button size="sm" className="bg-brand-navy hover:bg-brand-navy/90 text-white rounded-lg text-xs" onClick={() => handleEnterSchoolDashboard(school)}>
+                              <Eye className="h-3.5 w-3.5 me-1" />
+                              {t.openDashboard}
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -592,18 +633,28 @@ export default function TenantsManagement() {
                       {/* Actions */}
                       <div className="flex items-center gap-2">
                         <Button
-                          className="flex-1 bg-brand-navy hover:bg-brand-navy/90 text-white rounded-xl text-sm"
+                          size="sm"
+                          variant="outline"
+                          className="rounded-xl text-xs border-brand-navy/30 text-brand-navy hover:bg-brand-navy/5"
+                          onClick={() => navigate(`/platform/schools/${school.id}`)}
+                        >
+                          <ExternalLink className="h-3.5 w-3.5 me-1" />
+                          {isRTL ? 'تفاصيل' : 'Details'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="flex-1 bg-brand-navy hover:bg-brand-navy/90 text-white rounded-xl text-xs"
                           onClick={() => handleEnterSchoolDashboard(school)}
                         >
-                          <Eye className="h-4 w-4 me-1.5" />
+                          <Eye className="h-3.5 w-3.5 me-1" />
                           {t.openDashboard}
                         </Button>
                         <div className="flex items-center gap-1.5 px-2 py-1.5 bg-slate-100 dark:bg-slate-800 rounded-xl">
                           <Switch
                             checked={school.status !== 'suspended'}
                             onCheckedChange={(checked) => {
-                              if (!checked) setShowSuspendDialog(school);
-                              else handleToggleSuspend(school, false);
+                              if (!checked) { setShowSuspendDialog(school); setActionReason(''); }
+                              else { setShowActivateDialog(school); setActionReason(''); }
                             }}
                             className="data-[state=checked]:bg-emerald-500"
                           />
@@ -660,10 +711,10 @@ export default function TenantsManagement() {
       </Sheet>
 
       {/* Suspend Confirmation Dialog */}
-      <Dialog open={!!showSuspendDialog} onOpenChange={() => setShowSuspendDialog(null)}>
+      <Dialog open={!!showSuspendDialog} onOpenChange={(o) => { if (!o) { setShowSuspendDialog(null); setActionReason(''); } }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-amber-600">
+            <DialogTitle className="flex items-center gap-2 text-red-600">
               <AlertTriangle className="h-5 w-5" />
               {t.suspendSchool}
             </DialogTitle>
@@ -673,11 +724,63 @@ export default function TenantsManagement() {
               <strong>{showSuspendDialog?.name}</strong>
             </DialogDescription>
           </DialogHeader>
+          <div className="space-y-3 py-2">
+            <label className="text-sm font-medium">
+              {isRTL ? 'سبب التعليق (مطلوب)' : 'Reason for Suspension (required)'}
+            </label>
+            <Textarea
+              placeholder={isRTL ? 'أدخل سبب التعليق...' : 'Enter reason for suspension...'}
+              value={actionReason}
+              onChange={(e) => setActionReason(e.target.value)}
+              rows={3}
+              className="rounded-xl"
+            />
+          </div>
           <DialogFooter className="flex-row-reverse gap-2">
-            <Button variant="outline" onClick={() => setShowSuspendDialog(null)}>{t.cancel}</Button>
-            <Button variant="destructive" onClick={() => handleToggleSuspend(showSuspendDialog, true)}>
-              <Pause className="h-4 w-4 me-2" />
+            <Button variant="outline" onClick={() => { setShowSuspendDialog(null); setActionReason(''); }} disabled={actionLoading}>
+              {t.cancel}
+            </Button>
+            <Button variant="destructive" onClick={handleSuspendConfirm} disabled={actionLoading || !actionReason.trim()}>
+              {actionLoading ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : <Pause className="h-4 w-4 me-2" />}
               {t.suspend}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Activate Confirmation Dialog */}
+      <Dialog open={!!showActivateDialog} onOpenChange={(o) => { if (!o) { setShowActivateDialog(null); setActionReason(''); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-emerald-600">
+              <Play className="h-5 w-5" />
+              {isRTL ? 'تفعيل المدرسة' : 'Activate School'}
+            </DialogTitle>
+            <DialogDescription>
+              {isRTL
+                ? `تأكيد تفعيل مدرسة "${showActivateDialog?.name}" وإعادة جميع الحسابات للعمل.`
+                : `Confirm activating "${showActivateDialog?.name_en || showActivateDialog?.name}".`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <label className="text-sm font-medium">
+              {isRTL ? 'سبب التفعيل (مطلوب)' : 'Reason for Activation (required)'}
+            </label>
+            <Textarea
+              placeholder={isRTL ? 'أدخل سبب التفعيل...' : 'Enter reason for activation...'}
+              value={actionReason}
+              onChange={(e) => setActionReason(e.target.value)}
+              rows={3}
+              className="rounded-xl"
+            />
+          </div>
+          <DialogFooter className="flex-row-reverse gap-2">
+            <Button variant="outline" onClick={() => { setShowActivateDialog(null); setActionReason(''); }} disabled={actionLoading}>
+              {t.cancel}
+            </Button>
+            <Button className="bg-emerald-500 hover:bg-emerald-600" onClick={handleActivateConfirm} disabled={actionLoading || !actionReason.trim()}>
+              {actionLoading ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : <Play className="h-4 w-4 me-2" />}
+              {isRTL ? 'تفعيل' : 'Activate'}
             </Button>
           </DialogFooter>
         </DialogContent>

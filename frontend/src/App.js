@@ -66,6 +66,7 @@ import { ProductHubIssuePage } from "./pages/ProductHubIssuePage";
 
 // Platform Admin Pages
 import { PlatformSchoolsPage } from "./pages/PlatformSchoolsPage";
+import PlatformSchoolDetailPage from "./pages/PlatformSchoolDetailPage";
 import { PlatformUsersPage } from "./pages/PlatformUsersPage";
 import { PlatformReportsPage } from "./pages/PlatformReportsPage";
 import { PlatformNotificationsPage } from "./pages/PlatformNotificationsPage";
@@ -278,6 +279,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={['platform_admin']}>
             <PlatformSchoolsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/platform/schools/:schoolId"
+        element={
+          <ProtectedRoute allowedRoles={['platform_admin']}>
+            <PlatformSchoolDetailPage />
           </ProtectedRoute>
         }
       />
