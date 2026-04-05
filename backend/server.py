@@ -79,6 +79,89 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     return response
 
+
+@app.middleware("http")
+async def audit_log_middleware(request: Request, call_next):
+    """Auto-log all write API events with device and user context"""
+    from middleware.audit_middleware import _should_audit, _derive_action, _derive_severity, parse_device_info, _extract_real_ip
+    import time, uuid as _uuid
+    from datetime import datetime, timezone
+
+    method = request.method
+    path = request.url.path
+
+    if not _should_audit(method, path):
+        return await call_next(request)
+
+    start = time.time()
+    response = await call_next(request)
+    duration_ms = round((time.time() - start) * 1000, 1)
+
+    try:
+        # User identity
+        user_id = user_name = user_role = user_email = tenant_id = None
+        if hasattr(request.state, "user") and request.state.user:
+            u = request.state.user
+            user_id = str(u.get("id") or u.get("user_id") or "")
+            user_name = u.get("full_name") or u.get("name")
+            user_role = u.get("role")
+            user_email = u.get("email")
+            tenant_id = u.get("tenant_id")
+        else:
+            try:
+                auth_hdr = request.headers.get("authorization", "")
+                if auth_hdr.startswith("Bearer "):
+                    from jose import jwt as _jwt
+                    payload = _jwt.decode(auth_hdr[7:], JWT_SECRET, algorithms=[JWT_ALGORITHM])
+                    user_id = payload.get("sub")
+                    user_role = payload.get("role")
+                    user_email = payload.get("email")
+                    tenant_id = payload.get("tenant_id")
+                    if user_id:
+                        u_doc = await db.users.find_one({"id": user_id}, {"full_name": 1, "email": 1, "role": 1, "tenant_id": 1})
+                        if u_doc:
+                            user_name = u_doc.get("full_name")
+                            user_email = u_doc.get("email") or user_email
+                            user_role = u_doc.get("role") or user_role
+                            tenant_id = u_doc.get("tenant_id") or tenant_id
+            except Exception:
+                pass
+
+        raw_ua = request.headers.get("user-agent", "")
+        device_info = parse_device_info(raw_ua)
+        ip_address = _extract_real_ip(request)
+        action = _derive_action(method, path)
+        severity = _derive_severity(method, path, response.status_code)
+
+        await db.audit_logs.insert_one({
+            "id": str(_uuid.uuid4()),
+            "action": action,
+            "severity": severity,
+            "performed_by": user_id or None,
+            "actor_name": user_name,
+            "actor_role": user_role,
+            "actor_email": user_email,
+            "tenant_id": tenant_id,
+            "entity_type": action.split(".")[0] if "." in action else "system",
+            "ip_address": ip_address,
+            "user_agent": raw_ua,
+            "device_info": device_info,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "details": {
+                "method": method,
+                "path": path,
+                "query_params": dict(request.query_params),
+                "status_code": response.status_code,
+                "duration_ms": duration_ms,
+                "success": 200 <= response.status_code < 400,
+            },
+        })
+    except Exception as _e:
+        import logging as _lg
+        _lg.getLogger("nassaq.audit").error(f"Audit middleware error: {_e}")
+
+    return response
+
 from config import config as _cfg
 _cors_origins = _cfg.CORS_ORIGINS
 _allow_creds = _cors_origins != ["*"]
@@ -805,7 +888,6 @@ api_router.include_router(principal_timetable_router)
 from routes.scheduling_routes import create_scheduling_router
 from routes.attendance_routes import create_attendance_router
 from routes.assessment_routes import create_assessment_router
-from routes.audit_routes import create_audit_router
 from routes.teacher_registration_routes import create_teacher_registration_router
 from routes.student_management_routes import create_student_routes
 from routes.teacher_management_routes import create_teacher_management_routes
@@ -816,7 +898,6 @@ from routes.schedule_management_routes import create_schedule_management_routes
 scheduling_router = create_scheduling_router(db, get_current_user, require_roles, UserRole)
 attendance_router = create_attendance_router(db, get_current_user, require_roles, UserRole)
 assessment_router = create_assessment_router(db, get_current_user, require_roles, UserRole)
-audit_router = create_audit_router(db, get_current_user, require_roles, UserRole)
 teacher_registration_router = create_teacher_registration_router(db, get_current_user, require_roles, UserRole)
 student_routes = create_student_routes(db, get_current_user)
 teacher_management_routes = create_teacher_management_routes(db, get_current_user)
@@ -888,7 +969,6 @@ api_router.include_router(bulk_teacher_router)
 api_router.include_router(student_creation_router)
 api_router.include_router(admin_dashboard_router)
 api_router.include_router(security_router)
-api_router.include_router(audit_router)
 api_router.include_router(settings_router)
 api_router.include_router(user_roles_router)
 api_router.include_router(websocket_router)

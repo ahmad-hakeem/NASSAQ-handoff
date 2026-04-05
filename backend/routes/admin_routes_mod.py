@@ -28,6 +28,39 @@ router = APIRouter()
 
 
 # ============== AUDIT LOG ROUTES ==============
+
+# Action translations (Arabic)
+_ACTION_AR = {
+    "auth.login": "تسجيل دخول",
+    "auth.logout": "تسجيل خروج",
+    "auth.login_failed": "فشل تسجيل الدخول",
+    "auth.register": "تسجيل حساب جديد",
+    "auth.password_changed": "تغيير كلمة المرور",
+    "user.created": "إنشاء مستخدم",
+    "user.updated": "تحديث مستخدم",
+    "user.deleted": "حذف مستخدم",
+    "user.suspended": "تعليق مستخدم",
+    "user.activated": "تفعيل مستخدم",
+    "tenant.created": "إنشاء مؤسسة",
+    "tenant.updated": "تحديث مؤسسة",
+    "tenant.suspended": "تعليق مؤسسة",
+    "tenant.activated": "تفعيل مؤسسة",
+    "school.created": "إنشاء مدرسة",
+    "school.updated": "تحديث مدرسة",
+    "student.created": "إضافة طالب",
+    "student.updated": "تحديث طالب",
+    "teacher.created": "إضافة معلم",
+    "teacher.updated": "تحديث معلم",
+    "attendance.created": "تسجيل حضور",
+    "grade.created": "تسجيل درجة",
+    "grade.updated": "تحديث درجة",
+    "schedule.created": "إنشاء جدول",
+    "schedule.published": "نشر جدول",
+    "settings.updated": "تحديث الإعدادات",
+    "data.exported": "تصدير البيانات",
+    "data.imported": "استيراد البيانات",
+}
+
 @router.get("/audit/logs")
 async def get_audit_logs(
     current_user: dict = Depends(require_roles([
@@ -41,28 +74,82 @@ async def get_audit_logs(
     severity: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    search: Optional[str] = None,
+    days: Optional[int] = None,
+    page: int = 1,
+    limit: int = 50,
     skip: int = 0,
-    limit: int = 50
 ):
-    """Get audit logs with filters - Platform Admin or Security Officer only"""
-    logs = await audit_engine.get_audit_logs(
-        tenant_id=tenant_id,
-        action=action,
-        entity_type=entity_type,
-        severity=severity,
-        start_date=start_date,
-        end_date=end_date,
-        limit=limit,
-        skip=skip
-    )
-    
-    total = await db.audit_logs.count_documents({})
-    
+    """Get audit logs with full device & user data"""
+    query: dict = {}
+    if tenant_id:
+        query["tenant_id"] = tenant_id
+    if action and action != "all":
+        query["action"] = {"$regex": action, "$options": "i"}
+    if entity_type and entity_type != "all":
+        query["entity_type"] = entity_type
+    if severity and severity != "all":
+        query["severity"] = severity
+    if days:
+        query["timestamp"] = {"$gte": (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()}
+    else:
+        ts_f = {}
+        if start_date:
+            ts_f["$gte"] = start_date
+        if end_date:
+            ts_f["$lte"] = end_date
+        if ts_f:
+            query["timestamp"] = ts_f
+    if search:
+        query["$or"] = [
+            {"actor_name":  {"$regex": search, "$options": "i"}},
+            {"actor_email": {"$regex": search, "$options": "i"}},
+            {"action":      {"$regex": search, "$options": "i"}},
+            {"ip_address":  {"$regex": search, "$options": "i"}},
+            {"details.path":{"$regex": search, "$options": "i"}},
+        ]
+
+    effective_skip = (page - 1) * limit if page > 1 else skip
+    total = await db.audit_logs.count_documents(query)
+    raw = await db.audit_logs.find(query).sort("timestamp", -1).skip(effective_skip).limit(limit).to_list(limit)
+
+    enriched = []
+    for log in raw:
+        action_key = log.get("action", "")
+        di_raw = log.get("device_info") or {}
+        enriched.append({
+            "id":           str(log.get("id", log.get("_id", ""))),
+            "action":       action_key,
+            "action_ar":    _ACTION_AR.get(action_key, action_key),
+            "severity":     log.get("severity", "low"),
+            "performed_by": log.get("performed_by"),
+            "actor_name":   log.get("actor_name") or log.get("performed_by_name"),
+            "actor_role":   log.get("actor_role") or log.get("performed_by_role"),
+            "actor_email":  log.get("actor_email"),
+            "entity_type":  log.get("entity_type") or log.get("target_type"),
+            "entity_id":    log.get("entity_id") or log.get("target_id"),
+            "target_name":  log.get("target_name"),
+            "ip_address":   log.get("ip_address"),
+            "user_agent":   log.get("user_agent"),
+            "device_info":  {
+                "browser":     di_raw.get("browser", "غير معروف"),
+                "os":          di_raw.get("os", "غير معروف"),
+                "device_type": di_raw.get("device_type", "غير معروف"),
+                "raw":         di_raw.get("raw", log.get("user_agent", ""))[:200],
+            } if (di_raw or log.get("user_agent")) else None,
+            "tenant_id":    log.get("tenant_id"),
+            "timestamp":    log.get("timestamp", ""),
+            "details":      log.get("details"),
+            "status":       log.get("status", "success"),
+        })
+
+    total_pages = max(1, (total + limit - 1) // limit)
     return {
-        "logs": logs,
-        "total": total,
-        "skip": skip,
-        "limit": limit
+        "logs":        enriched,
+        "total":       total,
+        "page":        page,
+        "limit":       limit,
+        "total_pages": total_pages,
     }
 
 
@@ -76,9 +163,39 @@ async def get_audit_stats(
     tenant_id: Optional[str] = None,
     days: int = 30
 ):
-    """Get audit statistics - Platform Admin or Security Officer only"""
-    stats = await audit_engine.get_audit_stats(tenant_id=tenant_id, days=days)
-    return stats
+    """Get audit statistics — returns unified format for the frontend"""
+    try:
+        now = datetime.now(timezone.utc)
+        cutoff = (now - timedelta(days=days)).isoformat()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+
+        base_q: dict = {"timestamp": {"$gte": cutoff}}
+        if tenant_id:
+            base_q["tenant_id"] = tenant_id
+
+        # Fetch all logs in period (max 20k) and compute stats in Python
+        # (avoids pg_adapter count_documents filter issues with GenericDocument)
+        all_logs = await db.audit_logs.find(base_q, {"severity": 1, "action": 1, "performed_by": 1, "timestamp": 1}).to_list(20000)
+
+        total_events   = len(all_logs)
+        today_events   = sum(1 for l in all_logs if (l.get("timestamp") or "") >= today_start)
+        critical_count = sum(1 for l in all_logs if l.get("severity") == "critical")
+        high_count     = sum(1 for l in all_logs if l.get("severity") == "high")
+        failed_logins  = sum(1 for l in all_logs if l.get("action") in ("auth.login_failed", "login_failed"))
+        unique_users   = len(set(l.get("performed_by") for l in all_logs if l.get("performed_by")))
+
+        return {
+            "total_events":  total_events,
+            "today_events":  today_events,
+            "critical_count": critical_count,
+            "high_count":    high_count,
+            "failed_logins": failed_logins,
+            "unique_users":  unique_users,
+            "period_days":   days,
+        }
+    except Exception as e:
+        logger.error(f"Audit stats error: {e}")
+        return {"total_events": 0, "today_events": 0, "critical_count": 0, "high_count": 0, "failed_logins": 0, "unique_users": 0, "period_days": days}
 
 
 @router.get("/audit/critical-events")

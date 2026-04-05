@@ -143,39 +143,51 @@ class AuditLogEngine:
     async def log(
         self,
         action: str,
-        performed_by: str,
+        performed_by: Optional[str] = None,
         tenant_id: Optional[str] = None,
         entity_type: Optional[str] = None,
         entity_id: Optional[str] = None,
         details: Optional[Dict[str, Any]] = None,
         ip_address: Optional[str] = None,
         user_agent: Optional[str] = None,
+        actor_name: Optional[str] = None,
+        actor_role: Optional[str] = None,
+        actor_email: Optional[str] = None,
+        device_info: Optional[Dict[str, str]] = None,
         **kwargs
     ) -> Dict[str, Any]:
-        """Log an audit entry"""
+        """Log an audit entry with full user and device context"""
+        from middleware.audit_middleware import parse_device_info as _parse_ua
+
         audit_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
-        
-        # Get severity from map or default to LOW
+
         severity = self.severity_map.get(action, AuditSeverity.LOW.value)
-        
+
+        # Parse device info if not provided
+        if device_info is None and user_agent:
+            device_info = _parse_ua(user_agent)
+
         audit_doc = {
             "id": audit_id,
             "action": action,
             "severity": severity,
             "performed_by": performed_by,
+            "actor_name": actor_name,
+            "actor_role": actor_role,
+            "actor_email": actor_email,
             "tenant_id": tenant_id,
             "entity_type": entity_type,
             "entity_id": entity_id,
             "details": details or {},
             "ip_address": ip_address,
             "user_agent": user_agent,
+            "device_info": device_info or {},
             "timestamp": now,
-            "metadata": kwargs.get("metadata", {})
+            "metadata": kwargs.get("metadata", {}),
         }
-        
+
         await self.audit_collection.insert_one(audit_doc)
-        
         return audit_doc
     
     async def log_auth_event(
