@@ -159,6 +159,31 @@ async def login(credentials: UserLogin):
     
     return TokenResponse(access_token=token, user=user_response)
 
+@router.post("/auth/logout")
+async def logout(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Logout endpoint — records audit trail for session end.
+    JWT is stateless so no server-side invalidation; client must discard the token.
+    """
+    user_id = current_user.get("id") or str(current_user.get("_id", ""))
+    ip_address = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
+
+    await audit_engine.log_auth_event(
+        action=AuditAction.LOGOUT.value,
+        user_id=user_id,
+        tenant_id=current_user.get("tenant_id"),
+        success=True,
+        email=current_user.get("email"),
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
+
+    return {"message": "تم تسجيل الخروج بنجاح"}
+
 @router.get("/auth/me", response_model=UserResponse)
 async def get_me(current_user: dict = Depends(get_current_user)):
     from engines.name_validation import is_generic_name
