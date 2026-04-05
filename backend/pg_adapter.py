@@ -263,11 +263,24 @@ def _translate_filter(model, filter_dict: dict, is_generic: bool = False):
         elif key == "$and":
             for sub in value:
                 conditions.extend(_translate_filter(model, sub, is_generic))
+        elif key == "$expr":
+            pass
         else:
             c = _build_condition(model, key, value, is_generic)
             if c is not None:
                 conditions.append(c)
     return conditions
+
+
+def _has_expr_filter(filter_dict):
+    return "$expr" in filter_dict if filter_dict else False
+
+
+def _apply_expr_filter(docs, expr):
+    if not expr or not isinstance(expr, dict):
+        return docs
+    agg = AggregationCursor(None, [])
+    return [d for d in docs if agg._eval_condition(expr, d)]
 
 
 def _apply_sort(stmt, model, sort_spec, is_generic=False):
@@ -554,8 +567,15 @@ class AggregationCursor:
                             result_doc[acc_name] = sum(
                                 self._get_nested(d, field, 0) or 0 for d in group_docs
                             )
-                        else:
+                        elif isinstance(val, dict) and "$cond" in val:
+                            total = 0
+                            for d in group_docs:
+                                total += self._eval_expr(val, d)
+                            result_doc[acc_name] = total
+                        elif isinstance(val, (int, float)):
                             result_doc[acc_name] = val * len(group_docs)
+                        else:
+                            result_doc[acc_name] = 0
                     elif "$first" in acc_spec:
                         field = acc_spec["$first"]
                         if isinstance(field, str) and field.startswith("$"):
@@ -598,6 +618,17 @@ class AggregationCursor:
                             result_doc[acc_name] = [self._get_nested(d, field[1:]) for d in group_docs]
                         elif field == "$$ROOT":
                             result_doc[acc_name] = group_docs
+                        elif isinstance(field, dict):
+                            pushed = []
+                            for d in group_docs:
+                                obj = {}
+                                for fk, fv in field.items():
+                                    if isinstance(fv, str) and fv.startswith("$"):
+                                        obj[fk] = self._get_nested(d, fv[1:])
+                                    else:
+                                        obj[fk] = fv
+                                pushed.append(obj)
+                            result_doc[acc_name] = pushed
                         else:
                             result_doc[acc_name] = [field for _ in group_docs]
                     elif "$addToSet" in acc_spec:
@@ -618,28 +649,33 @@ class AggregationCursor:
         return results
 
     def _apply_project(self, docs, project_spec):
+        has_exclusion = any(v == 0 for v in project_spec.values())
+        has_inclusion = any(
+            v == 1 or (isinstance(v, str) and v.startswith("$")) or isinstance(v, dict)
+            for v in project_spec.values() if v != 0
+        )
         result = []
         for doc in docs:
-            projected = {}
-            for k, v in project_spec.items():
-                if v == 0:
-                    continue
-                elif v == 1:
-                    projected[k] = doc.get(k)
-                elif isinstance(v, str) and v.startswith("$"):
-                    projected[k] = self._get_nested(doc, v[1:])
-                elif isinstance(v, dict):
-                    projected[k] = doc.get(k)
-                else:
-                    projected[k] = v
-            if not any(v == 0 for v in project_spec.values()):
-                result.append(projected)
-            else:
+            if has_exclusion and not has_inclusion:
                 r = dict(doc)
                 for k, v in project_spec.items():
                     if v == 0:
                         r.pop(k, None)
                 result.append(r)
+            else:
+                projected = {}
+                for k, v in project_spec.items():
+                    if v == 0:
+                        continue
+                    elif v == 1:
+                        projected[k] = doc.get(k)
+                    elif isinstance(v, str) and v.startswith("$"):
+                        projected[k] = self._get_nested(doc, v[1:])
+                    elif isinstance(v, dict):
+                        projected[k] = self._eval_expr(v, doc)
+                    else:
+                        projected[k] = v
+                result.append(projected)
         return result
 
     @staticmethod
@@ -652,6 +688,99 @@ class AggregationCursor:
             else:
                 return default
         return current
+
+    def _resolve_val(self, val, doc):
+        if isinstance(val, str) and val.startswith("$"):
+            return self._get_nested(doc, val[1:], 0)
+        elif isinstance(val, dict):
+            return self._eval_expr(val, doc)
+        return val
+
+    def _eval_expr(self, expr, doc):
+        if not isinstance(expr, dict):
+            if isinstance(expr, str) and expr.startswith("$"):
+                return self._get_nested(doc, expr[1:])
+            return expr
+
+        if "$cond" in expr:
+            cond_spec = expr["$cond"]
+            if isinstance(cond_spec, list) and len(cond_spec) == 3:
+                condition, true_val, false_val = cond_spec
+                if self._eval_condition(condition, doc):
+                    return self._resolve_val(true_val, doc)
+                return self._resolve_val(false_val, doc)
+            elif isinstance(cond_spec, dict):
+                if self._eval_condition(cond_spec.get("if", {}), doc):
+                    return self._resolve_val(cond_spec.get("then", 0), doc)
+                return self._resolve_val(cond_spec.get("else", 0), doc)
+
+        if "$multiply" in expr:
+            parts = expr["$multiply"]
+            result = 1
+            for p in parts:
+                v = self._resolve_val(p, doc)
+                result *= (v if v is not None else 0)
+            return result
+
+        if "$divide" in expr:
+            parts = expr["$divide"]
+            if len(parts) == 2:
+                numerator = self._resolve_val(parts[0], doc)
+                denominator = self._resolve_val(parts[1], doc)
+                if denominator:
+                    return (numerator or 0) / denominator
+                return 0
+
+        if "$add" in expr:
+            return sum(self._resolve_val(p, doc) or 0 for p in expr["$add"])
+
+        if "$subtract" in expr:
+            parts = expr["$subtract"]
+            if len(parts) == 2:
+                return (self._resolve_val(parts[0], doc) or 0) - (self._resolve_val(parts[1], doc) or 0)
+
+        if "$slice" in expr:
+            parts = expr["$slice"]
+            if len(parts) == 2:
+                arr = self._resolve_val(parts[0], doc)
+                count = parts[1]
+                if isinstance(arr, list):
+                    return arr[:count]
+                return []
+
+        return doc.get(list(expr.keys())[0]) if expr else None
+
+    def _eval_condition(self, condition, doc):
+        if isinstance(condition, dict):
+            if "$ne" in condition:
+                parts = condition["$ne"]
+                if len(parts) == 2:
+                    a = self._resolve_val(parts[0], doc)
+                    b = self._resolve_val(parts[1], doc)
+                    return a != b
+            if "$eq" in condition:
+                parts = condition["$eq"]
+                if len(parts) == 2:
+                    a = self._resolve_val(parts[0], doc)
+                    b = self._resolve_val(parts[1], doc)
+                    return a == b
+            if "$gt" in condition:
+                parts = condition["$gt"]
+                if len(parts) == 2:
+                    a = self._resolve_val(parts[0], doc)
+                    b = self._resolve_val(parts[1], doc)
+                    return (a or 0) > (b or 0)
+            if "$gte" in condition:
+                parts = condition["$gte"]
+                if len(parts) == 2:
+                    a = self._resolve_val(parts[0], doc)
+                    b = self._resolve_val(parts[1], doc)
+                    return (a or 0) >= (b or 0)
+            if "$and" in condition:
+                return all(self._eval_condition(c, doc) for c in condition["$and"])
+            if "$or" in condition:
+                return any(self._eval_condition(c, doc) for c in condition["$or"])
+        return bool(condition)
 
     @staticmethod
     def _doc_matches(doc, match_spec):
@@ -1114,9 +1243,14 @@ class PgCollection:
                 await session.close()
 
     async def count_documents(self, filter_dict=None):
+        filter_dict = filter_dict or {}
+        if _has_expr_filter(filter_dict):
+            docs = await self.find(filter_dict).to_list(100000)
+            expr = filter_dict.get("$expr")
+            docs = _apply_expr_filter(docs, expr)
+            return len(docs)
         session, own = await self._get_session()
         try:
-            filter_dict = filter_dict or {}
             if self._is_generic:
                 from pg_models import GenericDocument
                 stmt = select(func.count()).select_from(GenericDocument).where(
