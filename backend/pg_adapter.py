@@ -324,6 +324,27 @@ def _orm_to_dict(obj) -> dict:
     return d
 
 
+def _get_nested_value(doc, path, default=None):
+    parts = path.split(".")
+    current = doc
+    for p in parts:
+        if isinstance(current, dict):
+            current = current.get(p, default)
+        else:
+            return default
+    return current
+
+
+def _set_nested_value(doc, path, value):
+    parts = path.split(".")
+    current = doc
+    for p in parts[:-1]:
+        if p not in current or not isinstance(current.get(p), dict):
+            current[p] = {}
+        current = current[p]
+    current[parts[-1]] = value
+
+
 def _apply_projection(doc: dict, projection: dict) -> dict:
     if not projection or not doc:
         return doc
@@ -333,7 +354,19 @@ def _apply_projection(doc: dict, projection: dict) -> dict:
     includes = {k for k, v in proj.items() if v}
     excludes = {k for k, v in proj.items() if not v}
     if includes:
-        return {k: v for k, v in doc.items() if k in includes or k == "id"}
+        has_dotted = any("." in k for k in includes)
+        if has_dotted:
+            result = {"id": doc.get("id"), "_id": doc.get("_id", doc.get("id"))}
+            for k in includes:
+                if "." in k:
+                    val = _get_nested_value(doc, k)
+                    if val is not None:
+                        _set_nested_value(result, k, val)
+                else:
+                    if k in doc:
+                        result[k] = doc[k]
+            return result
+        return {k: v for k, v in doc.items() if k in includes or k == "id" or k == "_id"}
     if excludes:
         return {k: v for k, v in doc.items() if k not in excludes}
     return doc

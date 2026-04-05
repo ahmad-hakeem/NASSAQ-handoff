@@ -325,25 +325,24 @@ async def _generate_prompt(issue: dict) -> str:
 
 
 async def _next_issue_number() -> int:
-    result = await db.counters.find_one_and_update(
-        {"_id": "product_issue_number"},
-        {"$inc": {"seq": 1}},
-        upsert=True,
-        return_document=True,
-    )
-    return result["seq"]
+    from db import engine as async_engine
+    from sqlalchemy import text
+    async with async_engine.connect() as conn:
+        result = await conn.execute(text("SELECT nextval('product_issue_number_seq')"))
+        return result.scalar()
 
 
 async def _ensure_issue_counter():
-    max_doc = await db.product_issues.find_one(
-        {}, {"issue_number": 1}, sort=[("issue_number", -1)]
-    )
-    current_max = max_doc.get("issue_number", 0) if max_doc else 0
-    await db.counters.update_one(
-        {"_id": "product_issue_number"},
-        {"$max": {"seq": current_max}},
-        upsert=True,
-    )
+    from db import engine as async_engine
+    from sqlalchemy import text
+    async with async_engine.connect() as conn:
+        result = await conn.execute(text(
+            "SELECT COALESCE(MAX(issue_number), 0) FROM product_issues"
+        ))
+        current_max = result.scalar() or 0
+        if current_max > 0:
+            await conn.execute(text("SELECT setval('product_issue_number_seq', :val)"), {"val": current_max})
+            await conn.commit()
 
 
 async def _ensure_data_integrity():
