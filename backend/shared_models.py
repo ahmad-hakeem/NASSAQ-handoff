@@ -37,7 +37,7 @@ class UserLogin(BaseModel):
     password: str
 
 class UserResponse(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="ignore", from_attributes=True)
     id: str
     email: str
     full_name: str
@@ -100,7 +100,7 @@ class SchoolCreate(BaseModel):
     principal_phone: Optional[str] = None
 
 class SchoolResponse(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="ignore", from_attributes=True)
     id: str
     name: str
     name_en: Optional[str] = None
@@ -187,7 +187,7 @@ class AIOperationResult(BaseModel):
     details: Optional[dict] = None
 
 class StatusCheck(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="ignore", from_attributes=True)
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     client_name: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -225,7 +225,7 @@ class RegistrationRequest(BaseModel):
     years_of_experience: Optional[str] = None
 
 class RegistrationRequestResponse(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="ignore", from_attributes=True)
     id: str
     full_name: str
     phone: str
@@ -299,7 +299,7 @@ class TeacherUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 class TeacherResponse(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="ignore", from_attributes=True)
     id: str
     full_name: str
     email: str
@@ -330,7 +330,7 @@ class StudentCreate(BaseModel):
     character_traits: Optional[List[str]] = []
 
 class StudentResponse(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="ignore", from_attributes=True)
     id: str
     full_name: str
     email: Optional[str] = None
@@ -400,7 +400,7 @@ class ClassUpdate(BaseModel):
     academic_year_id: Optional[str] = None
 
 class ClassResponse(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="ignore", from_attributes=True)
     id: str
     name: str
     grade: Optional[Union[int, str]] = None
@@ -430,7 +430,7 @@ class SubjectCreate(BaseModel):
     grade_level: Optional[str] = None
 
 class SubjectResponse(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="ignore", from_attributes=True)
     id: str
     name: str
     name_en: Optional[str] = None
@@ -474,7 +474,7 @@ class TimeSlotCreate(BaseModel):
     day: Optional[str] = None
 
 class TimeSlotResponse(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="ignore", from_attributes=True)
     id: str
     school_id: Optional[str] = None
     name: Optional[str] = None
@@ -494,7 +494,7 @@ class TimeSlotResponse(BaseModel):
     updated_at: Optional[str] = None
 
 class TeacherAssignmentCreate(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="ignore", from_attributes=True)
     teacher_id: str
     subject_id: str
     class_id: Optional[str] = None
@@ -507,7 +507,7 @@ class TeacherAssignmentCreate(BaseModel):
     is_primary: bool = True
 
 class TeacherAssignmentResponse(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="ignore", from_attributes=True)
     id: str
     school_id: Optional[str] = None
     teacher_id: str
@@ -531,7 +531,7 @@ class SchoolScheduleCreate(BaseModel):
     status: str = "draft"
 
 class SchoolScheduleResponse(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="ignore", from_attributes=True)
     id: str
     school_id: str
     name: str
@@ -555,7 +555,7 @@ class ScheduleSessionCreate(BaseModel):
     room: Optional[str] = None
 
 class ScheduleSessionResponse(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="ignore", from_attributes=True)
     id: str
     school_id: str
     schedule_id: str

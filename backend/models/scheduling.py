@@ -116,7 +116,7 @@ class TimeSlotCreate(BaseModel):
 
 class TimeSlotResponse(BaseModel):
     """استجابة الفترة الزمنية"""
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="ignore", from_attributes=True)
     id: str
     school_id: str
     name: str
@@ -155,7 +155,7 @@ class TeacherAssignmentCreate(BaseModel):
 
 class TeacherAssignmentResponse(BaseModel):
     """استجابة إسناد المعلم"""
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="ignore", from_attributes=True)
     id: str
     school_id: str
     teacher_id: str
@@ -189,7 +189,7 @@ class ScheduleSessionCreate(BaseModel):
 
 class ScheduleSessionResponse(BaseModel):
     """استجابة حصة الجدول"""
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="ignore", from_attributes=True)
     id: str
     school_id: str
     schedule_id: str
@@ -229,7 +229,7 @@ class SchoolScheduleCreate(BaseModel):
 
 class SchoolScheduleResponse(BaseModel):
     """استجابة الجدول المدرسي"""
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="ignore", from_attributes=True)
     id: str
     school_id: str
     name: str

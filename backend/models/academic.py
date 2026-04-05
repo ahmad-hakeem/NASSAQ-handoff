@@ -23,7 +23,7 @@ class TeacherCreate(TeacherBase):
 
 
 class TeacherResponse(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="ignore", from_attributes=True)
     id: str
     full_name: str
     full_name_en: Optional[str] = None
@@ -57,7 +57,7 @@ class StudentCreate(StudentBase):
 
 
 class StudentResponse(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="ignore", from_attributes=True)
     id: str
     full_name: str
     full_name_en: Optional[str] = None
@@ -90,7 +90,7 @@ class ClassCreate(ClassBase):
 
 
 class ClassResponse(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="ignore", from_attributes=True)
     id: str
     name: str
     name_en: Optional[str] = None
@@ -122,7 +122,7 @@ class SubjectCreate(BaseModel):
 
 
 class SubjectResponse(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="ignore", from_attributes=True)
     id: str
     name: str
     name_en: Optional[str] = None

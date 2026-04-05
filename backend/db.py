@@ -33,8 +33,9 @@ def _build_connect_args() -> dict:
     if sslmode and sslmode != "disable":
         import ssl as _ssl
         ctx = _ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = _ssl.CERT_NONE
+        if sslmode == "require":
+            ctx.check_hostname = False
+            ctx.verify_mode = _ssl.CERT_REQUIRED
         return {"ssl": ctx}
     return {}
 
@@ -71,8 +72,17 @@ async def get_pg_session():
 
 async def init_pg_tables():
     import pg_models as _  # noqa: ensure models are imported
+    from sqlalchemy import text
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+        result = await conn.execute(text("SELECT EXISTS(SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='alembic_version')"))
+        has_alembic = result.scalar()
+        if has_alembic:
+            result = await conn.execute(text("SELECT version_num FROM alembic_version LIMIT 1"))
+            version = result.scalar()
+            logger.info(f"PostgreSQL schema at Alembic revision: {version}")
+        else:
+            logger.warning("Alembic version table not found — run 'alembic upgrade head' to initialize schema")
+        await conn.execute(text("CREATE SEQUENCE IF NOT EXISTS issue_number_seq START WITH 1 INCREMENT BY 1"))
     logger.info("PostgreSQL tables created/verified")
 
 

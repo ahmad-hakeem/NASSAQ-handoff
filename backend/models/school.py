@@ -45,7 +45,7 @@ class SchoolCreate(BaseModel):
 
 
 class SchoolResponse(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="ignore", from_attributes=True)
     id: str
     name: str
     name_en: Optional[str] = None

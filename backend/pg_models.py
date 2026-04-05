@@ -1,7 +1,7 @@
 """
 NASSAQ PostgreSQL ORM Models
 All SQLAlchemy table definitions for the NASSAQ platform.
-Maps every MongoDB collection to a PostgreSQL table.
+Maps every MongoDB collection to a PostgreSQL table with proper relationships.
 """
 import uuid
 from datetime import datetime, timezone
@@ -44,7 +44,7 @@ class User(Base):
     preferred_language = Column(String, default="ar")
     preferred_theme = Column(String, default="light")
     avatar_url = Column(String, nullable=True)
-    tenant_id = Column(String, nullable=True, index=True)
+    tenant_id = Column(String, ForeignKey("schools.id", ondelete="SET NULL"), nullable=True, index=True)
     primary_tenant_id = Column(String, nullable=True)
     has_generic_name = Column(Boolean, default=False)
     email_verified = Column(Boolean, default=False)
@@ -63,6 +63,10 @@ class User(Base):
     notification_settings = Column(JSONB, nullable=True)
     created_at = Column(String, default=lambda: _utcnow().isoformat())
     updated_at = Column(String, default=lambda: _utcnow().isoformat())
+
+    tenant = relationship("School", foreign_keys=[tenant_id], lazy="select")
+    audit_logs = relationship("AuditLog", back_populates="user", foreign_keys="AuditLog.performed_by", lazy="select")
+    notifications = relationship("Notification", back_populates="user", foreign_keys="Notification.user_id", lazy="select")
 
     __table_args__ = (
         Index("idx_pg_users_role_tenant", "role", "tenant_id"),
@@ -117,6 +121,12 @@ class School(Base):
     created_at = Column(String, default=lambda: _utcnow().isoformat())
     updated_at = Column(String, default=lambda: _utcnow().isoformat())
 
+    teachers = relationship("Teacher", back_populates="school", lazy="select")
+    students = relationship("Student", back_populates="school", lazy="select")
+    classes = relationship("Class", back_populates="school", lazy="select")
+    subjects = relationship("Subject", back_populates="school", lazy="select")
+    settings = relationship("SchoolSettings", back_populates="school", lazy="select")
+
 
 class Teacher(Base):
     __tablename__ = "teachers"
@@ -126,7 +136,7 @@ class Teacher(Base):
     full_name_en = Column(String, nullable=True)
     email = Column(String, nullable=True, index=True)
     phone = Column(String, nullable=True)
-    school_id = Column(String, nullable=False, index=True)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=False, index=True)
     specialization = Column(String, nullable=True)
     rank = Column(String, nullable=True)
     subject = Column(String, nullable=True)
@@ -139,6 +149,9 @@ class Teacher(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(String, default=lambda: _utcnow().isoformat())
     updated_at = Column(String, default=lambda: _utcnow().isoformat())
+
+    school = relationship("School", back_populates="teachers", lazy="select")
+    assignments = relationship("TeacherAssignment", back_populates="teacher", lazy="select")
 
     __table_args__ = (
         Index("idx_pg_teachers_school_active", "school_id", "is_active"),
@@ -153,8 +166,8 @@ class Student(Base):
     full_name_en = Column(String, nullable=True)
     email = Column(String, nullable=True, index=True)
     phone = Column(String, nullable=True)
-    school_id = Column(String, nullable=False, index=True)
-    class_id = Column(String, nullable=True, index=True)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=False, index=True)
+    class_id = Column(String, ForeignKey("classes.id", ondelete="SET NULL"), nullable=True, index=True)
     student_number = Column(String, nullable=True)
     grade = Column(String, nullable=True)
     date_of_birth = Column(String, nullable=True)
@@ -163,11 +176,16 @@ class Student(Base):
     parent_phone = Column(String, nullable=True)
     parent_email = Column(String, nullable=True)
     parent_name = Column(String, nullable=True)
-    parent_id = Column(String, nullable=True)
+    parent_id = Column(String, ForeignKey("parents.id", ondelete="SET NULL"), nullable=True)
     qr_code = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(String, default=lambda: _utcnow().isoformat())
     updated_at = Column(String, default=lambda: _utcnow().isoformat())
+
+    school = relationship("School", back_populates="students", lazy="select")
+    class_ = relationship("Class", back_populates="students", foreign_keys=[class_id], lazy="select")
+    parent = relationship("Parent", back_populates="students", foreign_keys=[parent_id], lazy="select")
+    attendance_records = relationship("Attendance", back_populates="student", lazy="select")
 
     __table_args__ = (
         Index("idx_pg_students_school_class", "school_id", "class_id"),
@@ -186,10 +204,12 @@ class Parent(Base):
     phone = Column(String, nullable=True)
     national_id = Column(String, nullable=True)
     student_ids = Column(JSONB, default=list)
-    school_id = Column(String, nullable=True)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="SET NULL"), nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(String, default=lambda: _utcnow().isoformat())
     updated_at = Column(String, default=lambda: _utcnow().isoformat())
+
+    students = relationship("Student", back_populates="parent", foreign_keys="Student.parent_id", lazy="select")
 
 
 class Class(Base):
@@ -198,19 +218,23 @@ class Class(Base):
     id = Column(String, primary_key=True, default=_uuid)
     name = Column(String, nullable=False)
     name_en = Column(String, nullable=True)
-    school_id = Column(String, nullable=False, index=True)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=False, index=True)
     grade_id = Column(String, nullable=True)
     grade_level = Column(String, nullable=True)
     section = Column(String, nullable=True)
     capacity = Column(Integer, default=30)
     current_count = Column(Integer, default=0)
     current_students = Column(Integer, default=0)
-    homeroom_teacher_id = Column(String, nullable=True)
+    homeroom_teacher_id = Column(String, ForeignKey("teachers.id", ondelete="SET NULL"), nullable=True)
     homeroom_teacher_name = Column(String, nullable=True)
     classroom_id = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(String, default=lambda: _utcnow().isoformat())
     updated_at = Column(String, default=lambda: _utcnow().isoformat())
+
+    school = relationship("School", back_populates="classes", lazy="select")
+    homeroom_teacher = relationship("Teacher", foreign_keys=[homeroom_teacher_id], lazy="select")
+    students = relationship("Student", back_populates="class_", foreign_keys="Student.class_id", lazy="select")
 
     __table_args__ = (
         Index("idx_pg_classes_school_active", "school_id", "is_active"),
@@ -227,7 +251,7 @@ class Subject(Base):
     name_en = Column(String, nullable=True)
     code = Column(String, nullable=True)
     description = Column(Text, nullable=True)
-    school_id = Column(String, nullable=True, index=True)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=True, index=True)
     tenant_id = Column(String, nullable=True)
     category = Column(String, default="core")
     default_periods_per_week = Column(Integer, default=4)
@@ -236,15 +260,17 @@ class Subject(Base):
     is_global = Column(Boolean, default=False)
     created_at = Column(String, default=lambda: _utcnow().isoformat())
 
+    school = relationship("School", back_populates="subjects", lazy="select")
+
 
 class TeacherAssignment(Base):
     __tablename__ = "teacher_assignments"
 
     id = Column(String, primary_key=True, default=_uuid)
-    school_id = Column(String, nullable=False, index=True)
-    teacher_id = Column(String, nullable=False, index=True)
-    class_id = Column(String, nullable=False)
-    subject_id = Column(String, nullable=False)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=False, index=True)
+    teacher_id = Column(String, ForeignKey("teachers.id", ondelete="CASCADE"), nullable=False, index=True)
+    class_id = Column(String, ForeignKey("classes.id", ondelete="CASCADE"), nullable=False)
+    subject_id = Column(String, ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False)
     weekly_sessions = Column(Integer, default=4)
     periods_per_week = Column(Integer, default=4)
     academic_year = Column(String, default="2026-2027")
@@ -257,6 +283,11 @@ class TeacherAssignment(Base):
     created_at = Column(String, default=lambda: _utcnow().isoformat())
     updated_at = Column(String, default=lambda: _utcnow().isoformat())
 
+    teacher = relationship("Teacher", back_populates="assignments", lazy="select")
+    school_rel = relationship("School", lazy="select")
+    class_rel = relationship("Class", lazy="select")
+    subject_rel = relationship("Subject", lazy="select")
+
     __table_args__ = (
         Index("idx_pg_assigns_school_teacher", "school_id", "teacher_id"),
         Index("idx_pg_assigns_school_class", "school_id", "class_id"),
@@ -267,7 +298,7 @@ class TimeSlot(Base):
     __tablename__ = "time_slots"
 
     id = Column(String, primary_key=True, default=_uuid)
-    school_id = Column(String, nullable=False, index=True)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=False, index=True)
     name = Column(String, nullable=False)
     name_en = Column(String, nullable=True)
     start_time = Column(String, nullable=False)
@@ -283,7 +314,7 @@ class Timetable(Base):
     __tablename__ = "timetables"
 
     id = Column(String, primary_key=True, default=_uuid)
-    school_id = Column(String, nullable=False, index=True)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=False, index=True)
     name = Column(String, nullable=False)
     name_en = Column(String, nullable=True)
     academic_year = Column(String, default="2026-2027")
@@ -302,7 +333,7 @@ class TimetableRun(Base):
     __tablename__ = "timetable_runs"
 
     id = Column(String, primary_key=True, default=_uuid)
-    school_id = Column(String, nullable=False, index=True)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=False, index=True)
     schedule_id = Column(String, nullable=True)
     status = Column(String, default="pending")
     config = Column(JSONB, default=dict)
@@ -319,15 +350,15 @@ class ScheduleSession(Base):
     __tablename__ = "schedule_sessions"
 
     id = Column(String, primary_key=True, default=_uuid)
-    school_id = Column(String, nullable=False, index=True)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=False, index=True)
     schedule_id = Column(String, nullable=False)
-    assignment_id = Column(String, nullable=True)
-    teacher_id = Column(String, nullable=True, index=True)
-    class_id = Column(String, nullable=True, index=True)
-    subject_id = Column(String, nullable=True)
+    assignment_id = Column(String, ForeignKey("teacher_assignments.id", ondelete="SET NULL"), nullable=True)
+    teacher_id = Column(String, ForeignKey("teachers.id", ondelete="SET NULL"), nullable=True, index=True)
+    class_id = Column(String, ForeignKey("classes.id", ondelete="SET NULL"), nullable=True, index=True)
+    subject_id = Column(String, ForeignKey("subjects.id", ondelete="SET NULL"), nullable=True)
     day_of_week = Column(String, nullable=False)
     day = Column(String, nullable=True)
-    time_slot_id = Column(String, nullable=True)
+    time_slot_id = Column(String, ForeignKey("time_slots.id", ondelete="SET NULL"), nullable=True)
     slot_number = Column(Integer, nullable=True)
     room_id = Column(String, nullable=True)
     status = Column(String, default="scheduled")
@@ -350,18 +381,20 @@ class Attendance(Base):
     __tablename__ = "attendance"
 
     id = Column(String, primary_key=True, default=_uuid)
-    school_id = Column(String, nullable=False, index=True)
-    class_id = Column(String, nullable=True, index=True)
-    student_id = Column(String, nullable=False, index=True)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=False, index=True)
+    class_id = Column(String, ForeignKey("classes.id", ondelete="SET NULL"), nullable=True, index=True)
+    student_id = Column(String, ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
     session_id = Column(String, nullable=True)
     date = Column(String, nullable=False)
     status = Column(String, nullable=False)
-    recorded_by = Column(String, nullable=True)
+    recorded_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     notes = Column(Text, nullable=True)
     is_excused = Column(Boolean, default=False)
     excuse_reason = Column(String, nullable=True)
     created_at = Column(String, default=lambda: _utcnow().isoformat())
     updated_at = Column(String, default=lambda: _utcnow().isoformat())
+
+    student = relationship("Student", back_populates="attendance_records", lazy="select")
 
     __table_args__ = (
         Index("idx_pg_attendance_school_date", "school_id", "date"),
@@ -432,19 +465,24 @@ class ProductIssue(Base):
     assigned_at = Column(String, nullable=True)
     hakim_analysis = Column(JSONB, default=dict)
     generated_prompt = Column(Text, nullable=True)
-    duplicate_of = Column(String, nullable=True)
+    duplicate_of = Column(String, ForeignKey("product_issues.id", ondelete="SET NULL"), nullable=True)
     sla_deadline = Column(String, nullable=True)
     sla_status = Column(String, nullable=True)
     sla_warning_emitted = Column(Boolean, default=False)
     feedback_requested = Column(Boolean, default=False)
     feedback_response = Column(Text, nullable=True)
     is_deleted = Column(Boolean, default=False, index=True)
-    created_by = Column(String, nullable=True, index=True)
+    created_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     created_by_name = Column(String, nullable=True)
     created_by_role = Column(String, nullable=True)
     created_at = Column(String, default=lambda: _utcnow().isoformat())
     updated_at = Column(String, default=lambda: _utcnow().isoformat())
     resolved_at = Column(String, nullable=True)
+
+    creator = relationship("User", foreign_keys=[created_by], lazy="select")
+    duplicate_source = relationship("ProductIssue", remote_side="ProductIssue.id", foreign_keys=[duplicate_of], lazy="select")
+    comments = relationship("IssueComment", back_populates="issue", lazy="select")
+    activity_logs = relationship("IssueActivityLog", back_populates="issue", lazy="select")
 
     __table_args__ = (
         Index("idx_pg_issues_active_status_date", "is_deleted", "status", "created_at"),
@@ -459,14 +497,17 @@ class IssueComment(Base):
     __tablename__ = "issue_comments"
 
     id = Column(String, primary_key=True, default=_uuid)
-    issue_id = Column(String, nullable=False, index=True)
+    issue_id = Column(String, ForeignKey("product_issues.id", ondelete="CASCADE"), nullable=False, index=True)
     content = Column(Text, nullable=False)
     comment_type = Column(String, default="general")
     mentions = Column(JSONB, default=list)
-    created_by = Column(String, nullable=True, index=True)
+    created_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     created_by_name = Column(String, nullable=True)
     created_by_role = Column(String, nullable=True)
     timestamp = Column(String, default=lambda: _utcnow().isoformat())
+
+    issue = relationship("ProductIssue", back_populates="comments", lazy="select")
+    author = relationship("User", foreign_keys=[created_by], lazy="select")
 
     __table_args__ = (
         Index("idx_pg_comments_issue_time", "issue_id", "timestamp"),
@@ -477,8 +518,8 @@ class IssueDuplicateMap(Base):
     __tablename__ = "issue_duplicates_map"
 
     id = Column(String, primary_key=True, default=_uuid)
-    issue_id = Column(String, nullable=False, index=True)
-    duplicate_of = Column(String, nullable=False, index=True)
+    issue_id = Column(String, ForeignKey("product_issues.id", ondelete="CASCADE"), nullable=False, index=True)
+    duplicate_of = Column(String, ForeignKey("product_issues.id", ondelete="CASCADE"), nullable=False, index=True)
     confidence = Column(Float, nullable=True)
     detected_by = Column(String, nullable=True)
     created_at = Column(String, default=lambda: _utcnow().isoformat())
@@ -492,15 +533,17 @@ class IssueActivityLog(Base):
     __tablename__ = "issue_activity_log"
 
     id = Column(String, primary_key=True, default=_uuid)
-    issue_id = Column(String, nullable=False, index=True)
+    issue_id = Column(String, ForeignKey("product_issues.id", ondelete="CASCADE"), nullable=False, index=True)
     action = Column(String, nullable=False, index=True)
     field = Column(String, nullable=True)
     old_value = Column(Text, nullable=True)
     new_value = Column(Text, nullable=True)
-    performed_by = Column(String, nullable=True, index=True)
+    performed_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     performed_by_name = Column(String, nullable=True)
     details = Column(JSONB, default=dict)
     timestamp = Column(String, default=lambda: _utcnow().isoformat(), index=True)
+
+    issue = relationship("ProductIssue", back_populates="activity_logs", lazy="select")
 
     __table_args__ = (
         Index("idx_pg_activity_issue_time", "issue_id", "timestamp"),
@@ -516,7 +559,7 @@ class BulkActionHistory(Base):
     field = Column(String, nullable=True)
     old_values = Column(JSONB, default=dict)
     new_value = Column(String, nullable=True)
-    performed_by = Column(String, nullable=True)
+    performed_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     performed_by_name = Column(String, nullable=True)
     performed_at = Column(String, default=lambda: _utcnow().isoformat(), index=True)
     is_undone = Column(Boolean, default=False)
@@ -531,12 +574,12 @@ class AuditLog(Base):
     __tablename__ = "audit_logs"
 
     id = Column(String, primary_key=True, default=_uuid)
-    school_id = Column(String, nullable=True, index=True)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="SET NULL"), nullable=True, index=True)
     tenant_id = Column(String, nullable=True)
     action = Column(String, nullable=False, index=True)
     entity_type = Column(String, nullable=True)
     entity_id = Column(String, nullable=True)
-    performed_by = Column(String, nullable=True, index=True)
+    performed_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     actor_name = Column(String, nullable=True)
     actor_role = Column(String, nullable=True)
     target_id = Column(String, nullable=True)
@@ -546,8 +589,9 @@ class AuditLog(Base):
     details = Column(JSONB, nullable=True)
     ip_address = Column(String, nullable=True)
     user_agent = Column(String, nullable=True)
-    severity = Column(String, default="info")
     timestamp = Column(String, default=lambda: _utcnow().isoformat(), index=True)
+
+    user = relationship("User", back_populates="audit_logs", foreign_keys=[performed_by], lazy="select")
 
     __table_args__ = (
         Index("idx_pg_audit_school_time", "school_id", "timestamp"),
@@ -560,126 +604,23 @@ class Notification(Base):
     __tablename__ = "notifications"
 
     id = Column(String, primary_key=True, default=_uuid)
-    user_id = Column(String, nullable=False, index=True)
-    tenant_id = Column(String, nullable=True, index=True)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    tenant_id = Column(String, ForeignKey("schools.id", ondelete="SET NULL"), nullable=True, index=True)
     title = Column(String, nullable=True)
-    title_en = Column(String, nullable=True)
     message = Column(Text, nullable=True)
-    message_en = Column(Text, nullable=True)
     type = Column(String, nullable=True)
     priority = Column(String, default="normal")
     is_read = Column(Boolean, default=False)
-    is_seen = Column(Boolean, default=False)
-    link = Column(String, nullable=True)
-    extra_data = Column("metadata", JSONB, nullable=True)
-    created_at = Column(String, default=lambda: _utcnow().isoformat(), index=True)
-
-    __table_args__ = (
-        Index("idx_pg_notif_user_read_date", "user_id", "is_read", "created_at"),
-        Index("idx_pg_notif_tenant_date", "tenant_id", "created_at"),
-    )
-
-
-class Message(Base):
-    __tablename__ = "messages"
-
-    id = Column(String, primary_key=True, default=_uuid)
-    school_id = Column(String, nullable=True, index=True)
-    tenant_id = Column(String, nullable=True)
-    sender_id = Column(String, nullable=True)
-    sender_name = Column(String, nullable=True)
-    recipient_ids = Column(JSONB, default=list)
-    recipient_type = Column(String, nullable=True)
-    subject = Column(String, nullable=True)
-    body = Column(Text, nullable=True)
-    channel = Column(String, default="internal")
-    status = Column(String, default="sent")
-    is_read = Column(Boolean, default=False)
-    scheduled_at = Column(String, nullable=True)
-    sent_at = Column(String, nullable=True)
+    read_at = Column(String, nullable=True)
+    action_url = Column(String, nullable=True)
     extra_data = Column("metadata", JSONB, nullable=True)
     created_at = Column(String, default=lambda: _utcnow().isoformat())
-    updated_at = Column(String, default=lambda: _utcnow().isoformat())
 
-
-class RegistrationRequest(Base):
-    __tablename__ = "registration_requests"
-
-    id = Column(String, primary_key=True, default=_uuid)
-    full_name = Column(String, nullable=True)
-    phone = Column(String, nullable=True)
-    account_type = Column(String, nullable=True)
-    email = Column(String, nullable=True)
-    national_id = Column(String, nullable=True)
-    school_name = Column(String, nullable=True)
-    school_name_en = Column(String, nullable=True)
-    school_email = Column(String, nullable=True)
-    school_phone = Column(String, nullable=True)
-    school_city = Column(String, nullable=True)
-    school_address = Column(String, nullable=True)
-    student_capacity = Column(String, nullable=True)
-    school_code = Column(String, nullable=True)
-    school_type = Column(String, nullable=True)
-    education_level = Column(String, nullable=True)
-    region = Column(String, nullable=True)
-    city = Column(String, nullable=True)
-    address = Column(String, nullable=True)
-    postal_code = Column(String, nullable=True)
-    principal_name = Column(String, nullable=True)
-    principal_email = Column(String, nullable=True)
-    principal_phone = Column(String, nullable=True)
-    education_license_number = Column(String, nullable=True)
-    commercial_registration = Column(String, nullable=True)
-    student_count = Column(Integer, default=0)
-    teacher_count = Column(Integer, default=0)
-    specialization = Column(String, nullable=True)
-    subject = Column(String, nullable=True)
-    educational_level = Column(String, nullable=True)
-    school_mentioned = Column(String, nullable=True)
-    country = Column(String, nullable=True)
-    years_of_experience = Column(String, nullable=True)
-    status = Column(String, default="pending", index=True)
-    rejection_reason = Column(Text, nullable=True)
-    additional_info_request = Column(Text, nullable=True)
-    additional_info = Column(Text, nullable=True)
-    assigned_to = Column(String, nullable=True)
-    reviewed_by = Column(String, nullable=True)
-    reviewed_at = Column(String, nullable=True)
-    review_note = Column(Text, nullable=True)
-    notes = Column(Text, nullable=True)
-    created_at = Column(String, default=lambda: _utcnow().isoformat(), index=True)
-    updated_at = Column(String, default=lambda: _utcnow().isoformat())
+    user = relationship("User", back_populates="notifications", foreign_keys=[user_id], lazy="select")
 
     __table_args__ = (
-        Index("idx_pg_requests_status_date", "status", "created_at"),
-    )
-
-
-class BehaviourRecord(Base):
-    __tablename__ = "behaviour_records"
-
-    id = Column(String, primary_key=True, default=_uuid)
-    school_id = Column(String, nullable=False, index=True)
-    tenant_id = Column(String, nullable=True)
-    student_id = Column(String, nullable=False, index=True)
-    class_id = Column(String, nullable=True)
-    behaviour_type_id = Column(String, nullable=True)
-    category = Column(String, nullable=True)
-    severity = Column(String, nullable=True)
-    points = Column(Integer, default=0)
-    description = Column(Text, nullable=True)
-    action_taken = Column(Text, nullable=True)
-    status = Column(String, default="pending")
-    recorded_by = Column(String, nullable=True)
-    recorded_by_name = Column(String, nullable=True)
-    reviewed_by = Column(String, nullable=True)
-    parent_notified = Column(Boolean, default=False)
-    created_at = Column(String, default=lambda: _utcnow().isoformat(), index=True)
-    updated_at = Column(String, default=lambda: _utcnow().isoformat())
-
-    __table_args__ = (
-        Index("idx_pg_behaviour_school_student", "school_id", "student_id"),
-        Index("idx_pg_behaviour_school_date", "school_id", "created_at"),
+        Index("idx_pg_notifications_user_read_date", "user_id", "is_read", "created_at"),
+        Index("idx_pg_notifications_tenant_date", "tenant_id", "created_at"),
     )
 
 
@@ -687,20 +628,19 @@ class Assessment(Base):
     __tablename__ = "assessments"
 
     id = Column(String, primary_key=True, default=_uuid)
-    school_id = Column(String, nullable=False, index=True)
-    tenant_id = Column(String, nullable=True)
-    class_id = Column(String, nullable=True, index=True)
-    subject_id = Column(String, nullable=True)
-    teacher_id = Column(String, nullable=True, index=True)
-    title = Column(String, nullable=True)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=False, index=True)
+    class_id = Column(String, ForeignKey("classes.id", ondelete="SET NULL"), nullable=True, index=True)
+    subject_id = Column(String, ForeignKey("subjects.id", ondelete="SET NULL"), nullable=True)
+    teacher_id = Column(String, ForeignKey("teachers.id", ondelete="SET NULL"), nullable=True, index=True)
+    name = Column(String, nullable=False)
+    name_en = Column(String, nullable=True)
     type = Column(String, nullable=True)
     max_score = Column(Float, default=100)
-    weight = Column(Float, default=1.0)
-    date = Column(String, nullable=True)
-    term = Column(String, nullable=True)
-    academic_year = Column(String, nullable=True)
-    description = Column(Text, nullable=True)
+    weight = Column(Float, nullable=True)
+    due_date = Column(String, nullable=True)
     status = Column(String, default="draft")
+    description = Column(Text, nullable=True)
+    grading_criteria = Column(JSONB, default=dict)
     created_at = Column(String, default=lambda: _utcnow().isoformat())
     updated_at = Column(String, default=lambda: _utcnow().isoformat())
 
@@ -713,89 +653,154 @@ class AssessmentSubmission(Base):
     __tablename__ = "assessment_submissions"
 
     id = Column(String, primary_key=True, default=_uuid)
-    assessment_id = Column(String, nullable=False, index=True)
-    student_id = Column(String, nullable=False, index=True)
+    assessment_id = Column(String, ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False, index=True)
+    student_id = Column(String, ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
     score = Column(Float, nullable=True)
     grade = Column(String, nullable=True)
     feedback = Column(Text, nullable=True)
+    status = Column(String, default="pending")
     submitted_at = Column(String, nullable=True)
-    graded_by = Column(String, nullable=True)
     graded_at = Column(String, nullable=True)
+    graded_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    data = Column(JSONB, default=dict)
     created_at = Column(String, default=lambda: _utcnow().isoformat())
+    updated_at = Column(String, default=lambda: _utcnow().isoformat())
 
     __table_args__ = (
         Index("idx_pg_submissions_assessment_student", "assessment_id", "student_id"),
     )
 
 
-class SchoolSetting(Base):
-    __tablename__ = "school_settings"
+class BehaviourRecord(Base):
+    __tablename__ = "behaviour_records"
 
     id = Column(String, primary_key=True, default=_uuid)
-    school_id = Column(String, unique=True, nullable=False, index=True)
-    settings = Column(JSONB, default=dict)
-    working_days = Column(JSONB, default=list)
-    periods_per_day = Column(Integer, default=7)
-    academic_year = Column(String, nullable=True)
-    semester = Column(Integer, nullable=True)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=False, index=True)
+    student_id = Column(String, ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
+    class_id = Column(String, ForeignKey("classes.id", ondelete="SET NULL"), nullable=True)
+    teacher_id = Column(String, ForeignKey("teachers.id", ondelete="SET NULL"), nullable=True)
+    type = Column(String, nullable=False)
+    category = Column(String, nullable=True)
+    severity = Column(String, nullable=True)
+    points = Column(Integer, default=0)
+    description = Column(Text, nullable=True)
+    date = Column(String, nullable=True)
+    action_taken = Column(Text, nullable=True)
+    parent_notified = Column(Boolean, default=False)
+    created_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(String, default=lambda: _utcnow().isoformat())
     updated_at = Column(String, default=lambda: _utcnow().isoformat())
 
+    __table_args__ = (
+        Index("idx_pg_behaviour_school_student", "school_id", "student_id"),
+        Index("idx_pg_behaviour_school_date", "school_id", "date"),
+    )
 
-class HakimInsight(Base):
-    __tablename__ = "hakim_insights"
+
+class SchoolSettings(Base):
+    __tablename__ = "school_settings"
 
     id = Column(String, primary_key=True, default=_uuid)
-    school_id = Column(String, nullable=True, index=True)
-    tenant_id = Column(String, nullable=True)
-    type = Column(String, nullable=True)
-    category = Column(String, nullable=True)
-    title = Column(String, nullable=True)
-    title_en = Column(String, nullable=True)
-    content = Column(Text, nullable=True)
-    content_en = Column(Text, nullable=True)
-    severity = Column(String, nullable=True)
-    score = Column(Float, nullable=True)
-    recommendations = Column(JSONB, default=list)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    working_days = Column(JSONB, default=list)
+    periods_per_day = Column(Integer, default=7)
+    period_duration = Column(Integer, default=45)
+    break_duration = Column(Integer, default=15)
+    start_time = Column(String, default="07:00")
+    end_time = Column(String, default="14:00")
+    grading_system = Column(String, default="percentage")
+    language = Column(String, default="ar")
+    calendar = Column(String, default="hijri_gregorian")
+    notification_preferences = Column(JSONB, default=dict)
+    features = Column(JSONB, default=dict)
+    custom_settings = Column(JSONB, default=dict)
+    created_at = Column(String, default=lambda: _utcnow().isoformat())
+    updated_at = Column(String, default=lambda: _utcnow().isoformat())
+
+    school = relationship("School", back_populates="settings", lazy="select")
+
+
+class RegistrationRequest(Base):
+    __tablename__ = "registration_requests"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    type = Column(String, nullable=False)
+    name = Column(String, nullable=True)
+    email = Column(String, nullable=True)
+    phone = Column(String, nullable=True)
+    school_name = Column(String, nullable=True)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="SET NULL"), nullable=True)
     data = Column(JSONB, default=dict)
-    status = Column(String, default="active")
-    created_at = Column(String, default=lambda: _utcnow().isoformat(), index=True)
+    status = Column(String, default="pending", index=True)
+    reviewed_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    reviewed_at = Column(String, nullable=True)
+    review_note = Column(Text, nullable=True)
+    source = Column(String, nullable=True)
+    payload_snapshot = Column(JSONB, nullable=True)
+    linked_entity_type = Column(String, nullable=True)
+    linked_entity_id = Column(String, nullable=True)
+    review_notes = Column(JSONB, default=list)
+    priority_field = Column(String, nullable=True)
+    created_at = Column(String, default=lambda: _utcnow().isoformat())
+    updated_at = Column(String, default=lambda: _utcnow().isoformat())
+
+    __table_args__ = (
+        Index("idx_pg_requests_status_date", "status", "created_at"),
+    )
 
 
 class TeacherSession(Base):
     __tablename__ = "teacher_sessions"
 
     id = Column(String, primary_key=True, default=_uuid)
-    school_id = Column(String, nullable=False, index=True)
-    teacher_id = Column(String, nullable=False, index=True)
-    class_id = Column(String, nullable=True, index=True)
-    subject_id = Column(String, nullable=True)
-    session_date = Column(String, nullable=True, index=True)
-    slot_number = Column(Integer, nullable=True)
-    status = Column(String, default="pending")
+    school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=False, index=True)
+    teacher_id = Column(String, ForeignKey("teachers.id", ondelete="CASCADE"), nullable=False, index=True)
+    class_id = Column(String, ForeignKey("classes.id", ondelete="SET NULL"), nullable=True, index=True)
+    subject_id = Column(String, ForeignKey("subjects.id", ondelete="SET NULL"), nullable=True)
+    date = Column(String, nullable=False)
+    start_time = Column(String, nullable=True)
+    end_time = Column(String, nullable=True)
+    status = Column(String, default="scheduled")
     topic = Column(String, nullable=True)
+    objectives = Column(JSONB, default=list)
     notes = Column(Text, nullable=True)
     attendance_taken = Column(Boolean, default=False)
-    objectives = Column(JSONB, default=list)
-    materials = Column(JSONB, default=list)
-    started_at = Column(String, nullable=True)
-    ended_at = Column(String, nullable=True)
     created_at = Column(String, default=lambda: _utcnow().isoformat())
     updated_at = Column(String, default=lambda: _utcnow().isoformat())
 
     __table_args__ = (
-        Index("idx_pg_tsessions_school_date", "school_id", "session_date"),
-        Index("idx_pg_tsessions_teacher_date", "teacher_id", "session_date"),
-        Index("idx_pg_tsessions_class_date", "class_id", "session_date"),
+        Index("idx_pg_tsessions_school_date", "school_id", "date"),
+        Index("idx_pg_tsessions_teacher_date", "teacher_id", "date"),
+        Index("idx_pg_tsessions_class_date", "class_id", "date"),
     )
 
 
-class PlatformSetting(Base):
+class HakimInsight(Base):
+    __tablename__ = "hakim_insights"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=True, index=True)
+    type = Column(String, nullable=False)
+    title = Column(String, nullable=True)
+    content = Column(Text, nullable=True)
+    severity = Column(String, default="info")
+    data = Column(JSONB, default=dict)
+    is_read = Column(Boolean, default=False)
+    is_dismissed = Column(Boolean, default=False)
+    created_at = Column(String, default=lambda: _utcnow().isoformat())
+
+    __table_args__ = (
+        Index("idx_pg_hakim_school_date", "school_id", "created_at"),
+    )
+
+
+class PlatformSettings(Base):
     __tablename__ = "platform_settings"
 
     id = Column(String, primary_key=True, default=_uuid)
-    type = Column(String, unique=True, nullable=False, index=True)
-    value = Column(JSONB, default=dict)
+    type = Column(String, nullable=False, unique=True, index=True)
+    data = Column(JSONB, default=dict)
+    updated_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(String, default=lambda: _utcnow().isoformat())
     updated_at = Column(String, default=lambda: _utcnow().isoformat())
 
@@ -804,33 +809,108 @@ class AcademicYear(Base):
     __tablename__ = "academic_years"
 
     id = Column(String, primary_key=True, default=_uuid)
-    school_id = Column(String, nullable=False, index=True)
-    name = Column(String, nullable=True)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    name_en = Column(String, nullable=True)
     start_date = Column(String, nullable=True)
     end_date = Column(String, nullable=True)
     is_current = Column(Boolean, default=False)
+    status = Column(String, default="active")
     created_at = Column(String, default=lambda: _utcnow().isoformat())
+    updated_at = Column(String, default=lambda: _utcnow().isoformat())
 
 
 class AcademicTerm(Base):
     __tablename__ = "academic_terms"
 
     id = Column(String, primary_key=True, default=_uuid)
-    school_id = Column(String, nullable=False, index=True)
-    academic_year_id = Column(String, nullable=True)
-    name = Column(String, nullable=True)
-    term_number = Column(Integer, nullable=True)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=False, index=True)
+    academic_year_id = Column(String, ForeignKey("academic_years.id", ondelete="CASCADE"), nullable=True)
+    name = Column(String, nullable=False)
+    name_en = Column(String, nullable=True)
     start_date = Column(String, nullable=True)
     end_date = Column(String, nullable=True)
+    term_number = Column(Integer, default=1)
     is_current = Column(Boolean, default=False)
+    status = Column(String, default="active")
     created_at = Column(String, default=lambda: _utcnow().isoformat())
+    updated_at = Column(String, default=lambda: _utcnow().isoformat())
+
+    __table_args__ = (
+        Index("idx_pg_terms_school_year", "school_id", "academic_year_id"),
+    )
+
+
+class Counter(Base):
+    __tablename__ = "counters"
+
+    id = Column(String, primary_key=True)
+    seq = Column(Integer, default=0)
+
+
+class LookupOption(Base):
+    __tablename__ = "lookup_options"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    category = Column(String, nullable=False, index=True)
+    key = Column(String, nullable=False)
+    value_ar = Column(String, nullable=True)
+    value_en = Column(String, nullable=True)
+    parent_key = Column(String, nullable=True)
+    order = Column(Integer, default=0)
+    is_active = Column(Boolean, default=True)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="SET NULL"), nullable=True)
+    is_global = Column(Boolean, default=True)
+    created_at = Column(String, default=lambda: _utcnow().isoformat())
+
+    __table_args__ = (
+        Index("idx_pg_lookup_category_key", "category", "key"),
+    )
+
+
+class Message(Base):
+    __tablename__ = "messages"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    sender_id = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    recipient_id = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="SET NULL"), nullable=True)
+    subject = Column(String, nullable=True)
+    body = Column(Text, nullable=True)
+    is_read = Column(Boolean, default=False)
+    read_at = Column(String, nullable=True)
+    extra_data = Column("metadata", JSONB, nullable=True)
+    created_at = Column(String, default=lambda: _utcnow().isoformat())
+
+    __table_args__ = (
+        Index("idx_pg_messages_sender", "sender_id", "created_at"),
+        Index("idx_pg_messages_recipient", "recipient_id", "is_read"),
+    )
+
+
+class ApprovalEvent(Base):
+    __tablename__ = "approval_events"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    request_id = Column(String, ForeignKey("approval_requests.id", ondelete="CASCADE"), nullable=False, index=True)
+    event_type = Column(String, nullable=False)
+    from_status = Column(String, nullable=True)
+    to_status = Column(String, nullable=True)
+    performed_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    notes = Column(Text, nullable=True)
+    data = Column(JSONB, nullable=True)
+    timestamp = Column(String, default=lambda: _utcnow().isoformat())
+
+    __table_args__ = (
+        Index("idx_pg_approval_events_request", "request_id", "timestamp"),
+    )
 
 
 class SkillType(Base):
     __tablename__ = "skills_types"
 
     id = Column(String, primary_key=True, default=_uuid)
-    name = Column(String, nullable=True)
+    name_ar = Column(String, nullable=True)
     name_en = Column(String, nullable=True)
     category = Column(String, nullable=True, index=True)
     description = Column(Text, nullable=True)
@@ -842,16 +922,17 @@ class StudentSkill(Base):
     __tablename__ = "student_skills"
 
     id = Column(String, primary_key=True, default=_uuid)
-    student_id = Column(String, nullable=False, index=True)
-    skill_type_id = Column(String, nullable=True, index=True)
+    student_id = Column(String, ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
+    skill_type_id = Column(String, ForeignKey("skills_types.id", ondelete="CASCADE"), nullable=True, index=True)
     session_id = Column(String, nullable=True, index=True)
-    class_id = Column(String, nullable=True, index=True)
-    school_id = Column(String, nullable=True)
-    score = Column(Float, nullable=True)
+    class_id = Column(String, ForeignKey("classes.id", ondelete="SET NULL"), nullable=True, index=True)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=True)
     level = Column(String, nullable=True)
+    score = Column(Float, nullable=True)
     notes = Column(Text, nullable=True)
-    assessed_by = Column(String, nullable=True)
-    timestamp = Column(String, default=lambda: _utcnow().isoformat(), index=True)
+    assessed_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    date = Column(String, nullable=True)
+    created_at = Column(String, default=lambda: _utcnow().isoformat())
 
 
 class SessionInteraction(Base):
@@ -859,10 +940,10 @@ class SessionInteraction(Base):
 
     id = Column(String, primary_key=True, default=_uuid)
     session_id = Column(String, nullable=False, index=True)
-    student_id = Column(String, nullable=True, index=True)
-    interaction_type = Column(String, nullable=True, index=True)
-    details = Column(JSONB, default=dict)
-    score = Column(Float, nullable=True)
+    student_id = Column(String, ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
+    type = Column(String, nullable=False, index=True)
+    data = Column(JSONB, default=dict)
+    recorded_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     timestamp = Column(String, default=lambda: _utcnow().isoformat())
 
 
@@ -870,22 +951,21 @@ class AIInsight(Base):
     __tablename__ = "ai_insights"
 
     id = Column(String, primary_key=True, default=_uuid)
-    school_id = Column(String, nullable=True, index=True)
-    entity_id = Column(String, nullable=True, index=True)
-    type = Column(String, nullable=True, index=True)
-    category = Column(String, nullable=True)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=True, index=True)
+    entity_type = Column(String, nullable=True, index=True)
+    entity_id = Column(String, nullable=True)
+    insight_type = Column(String, nullable=False, index=True)
     title = Column(String, nullable=True)
     content = Column(Text, nullable=True)
-    severity = Column(String, nullable=True)
-    score = Column(Float, nullable=True)
     data = Column(JSONB, default=dict)
-    recommendations = Column(JSONB, default=list)
-    status = Column(String, default="active")
+    severity = Column(String, default="info")
+    is_actionable = Column(Boolean, default=False)
+    is_dismissed = Column(Boolean, default=False)
     created_at = Column(String, default=lambda: _utcnow().isoformat(), index=True)
 
     __table_args__ = (
-        Index("idx_pg_ai_insights_school_type", "school_id", "type"),
-        Index("idx_pg_ai_insights_entity_type", "entity_id", "type"),
+        Index("idx_pg_ai_insights_school_type", "school_id", "insight_type"),
+        Index("idx_pg_ai_insights_entity_type", "entity_type", "entity_id"),
     )
 
 
@@ -893,22 +973,22 @@ class AIIntervention(Base):
     __tablename__ = "ai_interventions"
 
     id = Column(String, primary_key=True, default=_uuid)
-    school_id = Column(String, nullable=True, index=True)
-    student_id = Column(String, nullable=True, index=True)
-    type = Column(String, nullable=True)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=True, index=True)
+    student_id = Column(String, ForeignKey("students.id", ondelete="SET NULL"), nullable=True, index=True)
+    type = Column(String, nullable=False)
+    status = Column(String, default="suggested", index=True)
     title = Column(String, nullable=True)
     description = Column(Text, nullable=True)
-    status = Column(String, default="pending", index=True)
-    priority = Column(String, nullable=True)
-    assigned_to = Column(String, nullable=True)
-    outcome = Column(Text, nullable=True)
+    recommendation = Column(Text, nullable=True)
     data = Column(JSONB, default=dict)
+    created_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    approved_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(String, default=lambda: _utcnow().isoformat(), index=True)
     updated_at = Column(String, default=lambda: _utcnow().isoformat())
 
     __table_args__ = (
-        Index("idx_pg_interventions_school_status", "school_id", "status"),
-        Index("idx_pg_interventions_student_status", "student_id", "status"),
+        Index("idx_pg_ai_interventions_school_status", "school_id", "status"),
+        Index("idx_pg_ai_interventions_student_status", "student_id", "status"),
     )
 
 
@@ -917,11 +997,10 @@ class SessionNote(Base):
 
     id = Column(String, primary_key=True, default=_uuid)
     session_id = Column(String, nullable=False, index=True)
-    teacher_id = Column(String, nullable=True, index=True)
-    student_id = Column(String, nullable=True, index=True)
-    content = Column(Text, nullable=True)
-    type = Column(String, nullable=True)
-    is_private = Column(Boolean, default=False)
+    teacher_id = Column(String, ForeignKey("teachers.id", ondelete="SET NULL"), nullable=True, index=True)
+    student_id = Column(String, ForeignKey("students.id", ondelete="SET NULL"), nullable=True, index=True)
+    note = Column(Text, nullable=True)
+    type = Column(String, default="general")
     created_at = Column(String, default=lambda: _utcnow().isoformat())
 
 
@@ -930,10 +1009,10 @@ class SessionEventLog(Base):
 
     id = Column(String, primary_key=True, default=_uuid)
     session_id = Column(String, nullable=False, index=True)
-    event_type = Column(String, nullable=True, index=True)
-    details = Column(JSONB, default=dict)
-    performed_by = Column(String, nullable=True)
-    timestamp = Column(String, default=lambda: _utcnow().isoformat(), index=True)
+    event_type = Column(String, nullable=False, index=True)
+    data = Column(JSONB, default=dict)
+    performed_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    timestamp = Column(String, default=lambda: _utcnow().isoformat())
 
     __table_args__ = (
         Index("idx_pg_session_events_session_time", "session_id", "timestamp"),
@@ -944,10 +1023,10 @@ class TeacherClassAssignment(Base):
     __tablename__ = "teacher_class_assignments"
 
     id = Column(String, primary_key=True, default=_uuid)
-    school_id = Column(String, nullable=False)
-    teacher_id = Column(String, nullable=False)
-    class_id = Column(String, nullable=False)
-    is_homeroom = Column(Boolean, default=False)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=False)
+    teacher_id = Column(String, ForeignKey("teachers.id", ondelete="CASCADE"), nullable=False)
+    class_id = Column(String, ForeignKey("classes.id", ondelete="CASCADE"), nullable=False)
+    role = Column(String, default="teacher")
     is_active = Column(Boolean, default=True)
     created_at = Column(String, default=lambda: _utcnow().isoformat())
 
@@ -956,48 +1035,17 @@ class TeacherClassAssignment(Base):
     )
 
 
-class UserRelationship(Base):
-    __tablename__ = "user_relationships"
+class GradeLevel(Base):
+    __tablename__ = "grade_levels"
 
     id = Column(String, primary_key=True, default=_uuid)
-    relationship_type = Column(String, nullable=False)
-    user_id_1 = Column(String, nullable=False, index=True)
-    user_id_2 = Column(String, nullable=False, index=True)
-    is_active = Column(Boolean, default=True)
-    is_verified = Column(Boolean, default=False)
-    detected_automatically = Column(Boolean, default=False)
-    detection_method = Column(String, nullable=True)
-    detection_confidence = Column(Float, nullable=True)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
-    created_by = Column(String, nullable=True)
-    verified_by = Column(String, nullable=True)
-    verified_at = Column(String, nullable=True)
-
-
-class GuardianLink(Base):
-    __tablename__ = "guardian_links"
-
-    id = Column(String, primary_key=True, default=_uuid)
-    parent_ref = Column(String, nullable=False, index=True)
-    student_id = Column(String, nullable=False, index=True)
-    relationship = Column(String, default="parent")
-    is_active = Column(Boolean, default=True)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
-
-
-class Grade(Base):
-    __tablename__ = "grades"
-
-    id = Column(String, primary_key=True, default=_uuid)
-    tenant_id = Column(String, nullable=True, index=True)
-    school_id = Column(String, nullable=True)
-    stage = Column(String, nullable=True)
-    grade_number = Column(Integer, nullable=True)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=True)
     name_ar = Column(String, nullable=True)
     name_en = Column(String, nullable=True)
-    display_order = Column(Integer, default=0)
+    code = Column(String, nullable=True)
+    stage = Column(String, nullable=True)
+    order = Column(Integer, default=0)
     is_active = Column(Boolean, default=True)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
 
 
 class EducationalStage(Base):
@@ -1015,7 +1063,7 @@ class PhysicalClassroom(Base):
     __tablename__ = "physical_classrooms"
 
     id = Column(String, primary_key=True, default=_uuid)
-    tenant_id = Column(String, nullable=True)
+    tenant_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=True)
     name = Column(String, nullable=True)
     building = Column(String, nullable=True)
     floor = Column(Integer, nullable=True)
@@ -1033,7 +1081,7 @@ class BehaviourType(Base):
     __tablename__ = "behaviour_types"
 
     id = Column(String, primary_key=True, default=_uuid)
-    tenant_id = Column(String, nullable=True)
+    tenant_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=True)
     name_ar = Column(String, nullable=True)
     name_en = Column(String, nullable=True)
     description = Column(Text, nullable=True)
@@ -1051,7 +1099,7 @@ class TimetableConstraint(Base):
     __tablename__ = "timetable_constraints"
 
     id = Column(String, primary_key=True, default=_uuid)
-    school_id = Column(String, nullable=True)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="SET NULL"), nullable=True)
     type = Column(String, nullable=False)
     category = Column(String, default="hard")
     name = Column(String, nullable=True)
@@ -1071,12 +1119,12 @@ class ApprovalRequest(Base):
     entity_id = Column(String, nullable=True)
     entity_type = Column(String, nullable=True)
     status = Column(String, default="pending")
-    requested_by = Column(String, nullable=True)
+    requested_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     requested_by_name = Column(String, nullable=True)
-    school_id = Column(String, nullable=True)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="SET NULL"), nullable=True)
     data = Column(JSONB, default=dict)
     result = Column(JSONB, nullable=True)
-    reviewed_by = Column(String, nullable=True)
+    reviewed_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     reviewed_at = Column(String, nullable=True)
     review_note = Column(Text, nullable=True)
     created_at = Column(String, default=lambda: _utcnow().isoformat())

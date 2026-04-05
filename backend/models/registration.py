@@ -38,7 +38,7 @@ class RegistrationRequestCreate(RegistrationRequestBase):
 
 
 class RegistrationRequestResponse(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="ignore", from_attributes=True)
     id: str
     school_name: str
     school_name_en: Optional[str] = None
