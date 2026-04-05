@@ -1100,7 +1100,7 @@ class TimetableConstraint(Base):
 
     id = Column(String, primary_key=True, default=_uuid)
     school_id = Column(String, ForeignKey("schools.id", ondelete="SET NULL"), nullable=True)
-    type = Column(String, nullable=False)
+    type = Column(String, nullable=True)
     category = Column(String, default="hard")
     name = Column(String, nullable=True)
     name_en = Column(String, nullable=True)
@@ -1129,6 +1129,19 @@ class ApprovalRequest(Base):
     review_note = Column(Text, nullable=True)
     created_at = Column(String, default=lambda: _utcnow().isoformat())
     updated_at = Column(String, default=lambda: _utcnow().isoformat())
+
+
+class GenericDocument(Base):
+    __tablename__ = "generic_documents"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    _collection = Column("collection", String, nullable=False, index=True)
+    data = Column(JSONB, default=dict)
+    created_at = Column(String, default=lambda: _utcnow().isoformat())
+
+    __table_args__ = (
+        Index("idx_generic_docs_collection", "collection"),
+    )
 
 
 issue_number_seq = Sequence("issue_number_seq", start=1, increment=1)

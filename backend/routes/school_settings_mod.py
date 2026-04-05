@@ -9,9 +9,9 @@ from starlette.responses import StreamingResponse
 from pydantic import BaseModel, Field, ConfigDict, EmailStr, model_validator
 from typing import List, Optional, Any, Dict
 from datetime import datetime, timezone, timedelta
-from bson import ObjectId
+from bson_compat import ObjectId
 import uuid, os, logging, json, random, re, io, base64
-from pymongo import UpdateOne
+from bson_compat import UpdateOne
 
 from dependencies import (
     db, get_current_user, require_roles, UserRole, SchoolStatus,

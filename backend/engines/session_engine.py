@@ -995,7 +995,7 @@ class TeacherSessionEngine:
             if not rec.get("student_id") or rec.get("status") not in ("done", "not_done"):
                 raise HTTPException(status_code=400, detail="بيانات غير صالحة: كل سجل يجب أن يحتوي student_id وstatus (done/not_done)")
         now = datetime.now(timezone.utc)
-        from pymongo import UpdateOne
+        from bson_compat import UpdateOne
         ops = []
         for rec in records:
             ops.append(UpdateOne(

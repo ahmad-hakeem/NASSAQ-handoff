@@ -4,7 +4,7 @@ Handles weekly schedule creation and management
 """
 import logging
 from datetime import datetime, timezone, time
-from bson import ObjectId
+from bson_compat import ObjectId
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field
 from enum import Enum

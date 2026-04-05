@@ -41,6 +41,8 @@ from dependencies import (
 )
 
 from engines.session_engine import TeacherSessionEngine, session_router
+from db import async_session_factory
+from pg_adapter import pg_db
 
 app = FastAPI(
     title="NASSAQ - نَسَّق",
@@ -54,6 +56,20 @@ from middleware.nosql_sanitizer import NoSQLSanitizerMiddleware
 app.add_middleware(ErrorHandlerMiddleware)
 app.add_middleware(NoSQLSanitizerMiddleware)
 app.add_middleware(RateLimitMiddleware)
+
+@app.middleware("http")
+async def pg_session_middleware(request: Request, call_next):
+    async with async_session_factory() as session:
+        pg_db.set_session(session)
+        try:
+            response = await call_next(request)
+            await session.commit()
+            return response
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            pg_db.set_session(None)
 
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
@@ -130,7 +146,7 @@ async def startup_tasks():
         for issue in issues:
             logger.warning(f"Config issue: {issue}")
     logger.info(f"NASSAQ v{config.VERSION} starting in {config.ENVIRONMENT} mode")
-    logger.info(f"Database: {config.DB_NAME} | Seed allowed: {config.seed_allowed()} | Destructive ops: {config.destructive_ops_allowed()}")
+    logger.info(f"Database: PostgreSQL | Seed allowed: {config.seed_allowed()} | Destructive ops: {config.destructive_ops_allowed()}")
 
     checklist = config.deployment_checklist()
     if config.is_production() and not checklist["all_passed"]:
@@ -144,43 +160,49 @@ async def startup_tasks():
     except Exception as e:
         logger.warning(f"PostgreSQL init on startup: {e}")
 
-    from db_indexes import create_indexes
-    try:
-        await create_indexes()
-        logger.info("Database indexes verified on startup")
-    except Exception as e:
-        logger.warning(f"Index creation on startup: {e}")
-
-    try:
-        from routes.product_hub_routes import _ensure_issue_counter, _ensure_data_integrity
-        await _ensure_issue_counter()
-        integrity = await _ensure_data_integrity()
-        logger.info(f"Product hub data integrity: {integrity}")
-    except Exception as e:
-        logger.warning(f"Product hub data integrity check: {e}")
-
     from engines.approval_engine import approval_engine
     from engines.approval_handlers import TeacherApprovalHandler, SchoolApprovalHandler
     approval_engine.register(TeacherApprovalHandler())
     approval_engine.register(SchoolApprovalHandler())
     logger.info(f"Approval engine initialized with {len(approval_engine.get_registered_types())} handler(s)")
 
+    async def _product_hub_integrity():
+        try:
+            from routes.product_hub_routes import _ensure_issue_counter, _ensure_data_integrity
+            await _ensure_issue_counter()
+            integrity = await _ensure_data_integrity()
+            logger.info(f"Product hub data integrity: {integrity}")
+        except Exception as e:
+            logger.warning(f"Product hub data integrity check: {e}")
+
+    async def _run_with_session(label, coro_fn):
+        async with async_session_factory() as s:
+            pg_db.set_session(s)
+            try:
+                result = await coro_fn()
+                await s.commit()
+                return result
+            except Exception as e:
+                await s.rollback()
+                logger.warning(f"{label}: {e}")
+                return None
+            finally:
+                pg_db.set_session(None)
+
+    await _run_with_session("Product hub integrity", _product_hub_integrity)
+
     if config.seed_allowed():
-        await _seed_platform_admins()
+        await _run_with_session("Seed admins", _seed_platform_admins)
 
         from seeds.timetable_hard_constraints import seed_hard_constraints
-        try:
-            result = await seed_hard_constraints(db)
+        result = await _run_with_session("Hard constraints", lambda: seed_hard_constraints(db))
+        if result:
             logger.info(f"Timetable hard constraints: {result}")
-        except Exception as e:
-            logger.warning(f"Hard constraints seeding: {e}")
 
         from seeds.timetable_soft_constraints import seed_soft_constraints
-        try:
-            result = await seed_soft_constraints(db)
+        result = await _run_with_session("Soft constraints", lambda: seed_soft_constraints(db))
+        if result:
             logger.info(f"Timetable soft constraints: {result}")
-        except Exception as e:
-            logger.warning(f"Soft constraints seeding: {e}")
     else:
         logger.info(f"DEPLOYMENT SAFETY: Seed scripts SKIPPED (environment={config.ENVIRONMENT})")
 

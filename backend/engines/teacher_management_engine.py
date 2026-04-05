@@ -4,7 +4,7 @@ Handles teacher creation and management for school principals
 """
 import logging
 from datetime import datetime, timezone
-from bson import ObjectId
+from bson_compat import ObjectId
 from typing import Optional, Dict, Any, List
 import secrets
 import string

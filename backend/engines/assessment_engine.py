@@ -755,8 +755,7 @@ class AssessmentEngine:
             grades = await self.grades_collection.find(query, {"_id": 0}).to_list(10000)
             section_ids = []
 
-        from motor.motor_asyncio import AsyncIOMotorDatabase
-        students_coll = self.db if not hasattr(self.db, 'students') else self.db
+        students_coll = self.db
         student_ids = list(set(g.get("student_id") for g in grades))
         students = await students_coll.students.find(
             {"id": {"$in": student_ids}},

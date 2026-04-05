@@ -5,7 +5,6 @@ All route modules should import from here instead of server.py.
 """
 from fastapi import Depends, HTTPException, Header, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from motor.motor_asyncio import AsyncIOMotorClient
 from dotenv import load_dotenv
 from pathlib import Path
 from typing import List, Optional
@@ -30,9 +29,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger("nassaq")
 
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+from pg_adapter import pg_db
+db = pg_db
 
 JWT_SECRET = os.environ.get('JWT_SECRET_KEY', '')
 if not JWT_SECRET:
@@ -138,23 +136,14 @@ async def get_current_user(
         if not user_id:
             raise HTTPException(status_code=401, detail="Invalid token")
 
-        from bson import ObjectId
-        user = None
-        try:
-            user = await db.users.find_one({"_id": ObjectId(user_id)})
-        except Exception:
-            pass
-
-        if not user:
-            user = await db.users.find_one({"id": user_id})
+        user = await db.users.find_one({"id": user_id})
 
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
 
-        if "_id" in user:
-            if "id" not in user or not user.get("id"):
-                user["id"] = str(user["_id"])
-            del user["_id"]
+        user.pop("_id", None)
+        if "id" not in user or not user.get("id"):
+            user["id"] = user_id
 
         if user.get("role") == UserRole.TEACHER.value and not user.get("teacher_id"):
             teacher = await db.teachers.find_one({"email": user.get("email")}, {"_id": 0, "id": 1})

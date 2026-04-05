@@ -9,7 +9,7 @@ from starlette.responses import StreamingResponse
 from pydantic import BaseModel, Field, ConfigDict, EmailStr, model_validator
 from typing import List, Optional, Any, Dict
 from datetime import datetime, timezone, timedelta
-from bson import ObjectId
+from bson_compat import ObjectId
 import uuid, os, logging, json, random, re, io, base64
 
 async def get_school_id_from_context(current_user: dict, x_school_context: str = None) -> str:

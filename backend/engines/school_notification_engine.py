@@ -4,7 +4,7 @@ Handles sending notifications to students, teachers, and parents
 """
 import logging
 from datetime import datetime, timezone
-from bson import ObjectId
+from bson_compat import ObjectId
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field
 from enum import Enum
