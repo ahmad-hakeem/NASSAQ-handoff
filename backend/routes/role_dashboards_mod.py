@@ -1905,8 +1905,8 @@ async def end_class_session(
     try:
         body = await request.json()
         closing_note = body.get("closing_note") if body else None
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"No JSON body provided for end_session (optional): {e}")
     result = await session_engine.end_session(
         session_id=session_id,
         teacher_id=current_user.get("teacher_id") or current_user["id"],

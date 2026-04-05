@@ -1595,8 +1595,8 @@ async def export_student_plans_pdf(
     try:
         pdfmetrics.registerFont(TTFont('DejaVuSans', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'))
         pdfmetrics.registerFont(TTFont('DejaVuSans-Bold', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'))
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"DejaVu font registration failed (PDF will use fallback fonts): {e}")
 
     def ar(text):
         if not text:
@@ -1604,7 +1604,8 @@ async def export_student_plans_pdf(
         try:
             reshaped = arabic_reshaper.reshape(str(text))
             return get_display(reshaped)
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Arabic text reshaping failed for '{str(text)[:30]}': {e}")
             return str(text)
 
     body = await request.json()
@@ -1943,7 +1944,8 @@ async def get_student_longitudinal(
                 if len(date_str) >= 4 and date_str[:4].isdigit():
                     return int(date_str[:4])
             return None
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Date year extraction failed for '{date_str}': {e}")
             return None
 
     years_set = set()
@@ -2384,8 +2386,8 @@ async def export_student_full_profile_pdf(
     try:
         pdfmetrics.registerFont(TTFont('DejaVuSans', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'))
         pdfmetrics.registerFont(TTFont('DejaVuSans-Bold', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'))
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"DejaVu font registration failed (PDF will use fallback fonts): {e}")
 
     def ar(text):
         if not text:
@@ -2393,7 +2395,8 @@ async def export_student_full_profile_pdf(
         try:
             reshaped = arabic_reshaper.reshape(str(text))
             return get_display(reshaped)
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Arabic text reshaping failed for '{str(text)[:30]}': {e}")
             return str(text)
 
     body = await request.json()

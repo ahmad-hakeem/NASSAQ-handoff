@@ -147,7 +147,8 @@ async def get_academic_overview(
             end = datetime.strptime(current_year.get("end_date", ""), "%Y-%m-%d")
             now_date = datetime.now(timezone.utc).replace(tzinfo=None)
             remaining_days = max(0, (end - now_date).days)
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Failed to parse academic year end_date for remaining days calculation: {e}")
             remaining_days = 0
 
     def _normalize_year(y):

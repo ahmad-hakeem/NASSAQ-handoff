@@ -496,7 +496,8 @@ async def get_command_center_stats(
             h = HGregorian(now.year, now.month, now.day).to_hijri()
             HIJRI_MONTHS = ['', 'محرم', 'صفر', 'ربيع الأول', 'ربيع الآخر', 'جمادى الأولى', 'جمادى الآخرة', 'رجب', 'شعبان', 'رمضان', 'شوال', 'ذو القعدة', 'ذو الحجة']
             hijri_date = f"{h.day} {HIJRI_MONTHS[h.month]} {h.year} هـ"
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Hijri date conversion failed: {e}")
             hijri_date = ""
         gregorian_date = now.strftime("%Y-%m-%d")
         

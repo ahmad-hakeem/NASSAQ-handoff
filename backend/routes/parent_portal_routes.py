@@ -708,7 +708,8 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
                     due = datetime.fromisoformat(due_str.replace('Z', '+00:00'))
                 else:
                     due = due_str or (now + timedelta(days=7))
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Failed to parse due_date '{due_str}': {e}")
                 due = now + timedelta(days=7)
 
             if sub:

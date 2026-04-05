@@ -342,8 +342,8 @@ class AuditMiddleware(BaseHTTPMiddleware):
                             user_email = u_doc.get("email") or user_email
                             user_role = u_doc.get("role") or user_role
                             tenant_id = u_doc.get("tenant_id") or tenant_id
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Failed to resolve user details from token: {e}")
 
         # ── Device info ────────────────────────────────────────
         raw_ua = request.headers.get("user-agent", "")

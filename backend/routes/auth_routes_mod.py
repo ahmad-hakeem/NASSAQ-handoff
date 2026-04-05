@@ -712,8 +712,8 @@ async def restore_role(
         from bson_compat import ObjectId
         try:
             user = await db.users.find_one({"_id": ObjectId(user_id)})
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"ObjectId lookup fallback failed for user_id={user_id}: {e}")
     if not user:
         raise HTTPException(404, "المستخدم الأصلي غير موجود")
 

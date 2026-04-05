@@ -230,8 +230,8 @@ def create_websocket_routes(db, decode_token):
             logger.warning(f"WebSocket connection error: {e}")
             try:
                 await websocket.close(code=4000, reason="internal error")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Failed to close WebSocket gracefully: {e}")
     
     @router.get("/ws/stats")
     async def get_websocket_stats():

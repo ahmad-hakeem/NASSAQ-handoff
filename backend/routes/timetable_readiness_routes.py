@@ -111,8 +111,8 @@ async def _extract_school_id(x_school_context, authorization):
                     user = await db.users.find_one({"id": user_id}, {"_id": 0, "school_id": 1, "tenant_id": 1})
                     if user:
                         school_id = user.get("tenant_id") or user.get("school_id")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to extract school_id from authorization token: {e}")
     return school_id
 
 

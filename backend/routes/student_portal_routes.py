@@ -1154,7 +1154,8 @@ def setup_homework_routes(router, db, get_current_user, require_roles, UserRole)
                     due_date = datetime.fromisoformat(due_date_str.replace('Z', '+00:00'))
                 else:
                     due_date = due_date_str
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Failed to parse due_date '{due_date_str}': {e}")
                 due_date = now + timedelta(days=7)
             
             if submission:

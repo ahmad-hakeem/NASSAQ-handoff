@@ -129,8 +129,8 @@ async def audit_log_middleware(request: Request, call_next):
                             user_email = u_doc.get("email") or user_email
                             user_role = u_doc.get("role") or user_role
                             tenant_id = u_doc.get("tenant_id") or tenant_id
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Audit middleware: failed to resolve user details from token: {e}")
 
         raw_ua = request.headers.get("user-agent", "")
         device_info = parse_device_info(raw_ua)

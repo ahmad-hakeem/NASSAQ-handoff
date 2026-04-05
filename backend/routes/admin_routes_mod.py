@@ -542,7 +542,8 @@ async def get_daily_activity(
                     hourly_data[hour]["grades"] += 1
                 elif log_type == "user_activity":
                     hourly_data[hour]["user_activity"] += 1
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Skipping malformed audit log entry: {e}")
                 continue
         
         chart_data = []
