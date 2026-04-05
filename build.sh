@@ -7,7 +7,7 @@ echo "=========================================="
 
 echo "Installing backend dependencies..."
 cd /home/runner/workspace/backend
-pip install -r requirements.txt --no-cache-dir -q 2>&1 | tail -5
+pip install -r requirements.txt --no-cache-dir --break-system-packages -q 2>&1 | tail -5
 
 echo "Cleaning up to reduce image size..."
 cd /home/runner/workspace
@@ -17,7 +17,7 @@ rm -rf frontend/src
 rm -rf attached_assets
 rm -rf test_reports
 rm -rf memory
-rm -rf .cache
+rm -rf .cache/pip .cache/uv .cache/huggingface .cache/typescript
 rm -rf .git/lfs/objects
 rm -rf .local/share .local/state
 find . -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
