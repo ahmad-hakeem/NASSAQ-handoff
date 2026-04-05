@@ -1,0 +1,287 @@
+# 🧠 NASSAQ – School Management Cards System (Enhanced Prompt)
+
+## 🎯 الهدف
+
+تصميم وتنفيذ نظام **إدارة المدارس داخل Platform Admin** بحيث يكون:
+
+* واضح بصريًا (High Clarity UI)
+* سريع في اتخاذ القرار (Decision-Oriented)
+* قابل للتحكم الكامل (Full Control)
+* مدعوم بسجل عمليات كامل (Full Audit Trail)
+
+---
+
+# 🧩 1) School Card Design (UI/UX)
+
+## 🎨 متطلبات التصميم:
+
+كل مدرسة تظهر في شكل **Card احترافي** يحتوي فقط على:
+
+* اسم المدرسة
+* حالة المدرسة (Active / Suspended)
+* عدد المستخدمين (اختياري)
+* تاريخ الإنشاء
+* School ID
+* Status Indicator (لون واضح: أخضر / أحمر)
+
+## ⚙️ Actions داخل كل Card:
+
+### 1. عرض (View School)
+
+### 2. تعليق / تفعيل (Suspend / Activate School)
+
+---
+
+# ⚙️ 2) System Behavior per Action
+
+## 🔍 Action 1: View School
+
+### 🎯 الهدف:
+
+فتح صفحة مستقلة تحتوي على:
+
+* جميع بيانات المدرسة
+* إمكانية التعديل (Edit Mode)
+* أو عرض فقط (View Mode)
+
+### 🧠 System Behavior:
+
+عند الضغط على "عرض":
+
+1. النظام يقوم بـ:
+
+   * Fetch كامل لبيانات المدرسة من DB
+   * Fetch العلاقات المرتبطة (Users / Teachers / Students / Configs)
+
+2. يتم فتح صفحة:
+   `/platform/schools/{schoolId}`
+
+3. الصفحة تحتوي على:
+
+   * Tabs:
+
+     * General Info
+     * Users
+     * Academic Structure
+     * Billing & Subscription
+     * Activity Logs
+
+4. يتم تحديد Mode:
+
+   * View Mode (Default)
+   * Edit Mode (عند الضغط على Edit)
+
+---
+
+### 🗃️ Database Logging (Mandatory):
+
+يجب تسجيل:
+
+* userId (من قام بالفتح)
+* schoolId
+* action = VIEW_SCHOOL
+* timestamp
+* IP / device (إن وجد)
+
+---
+
+## ⛔ Action 2: Suspend / Activate School
+
+### 🎯 الهدف:
+
+التحكم في تشغيل المدرسة بالكامل داخل النظام
+
+---
+
+## 🧠 System Behavior:
+
+### عند الضغط على "Suspend":
+
+1. يظهر Confirmation Modal:
+
+   * "هل أنت متأكد من تعليق المدرسة؟"
+
+2. عند التأكيد:
+
+### ⚙️ Backend Actions:
+
+* تحديث:
+
+```json
+school.status = "SUSPENDED"
+```
+
+* تعطيل:
+
+  * Login لجميع المستخدمين داخل المدرسة
+  * جميع العمليات:
+
+    * Attendance
+    * Scheduling
+    * Exams
+    * Notifications
+
+* عرض رسالة للمستخدمين:
+  "تم تعليق حساب المدرسة، يرجى التواصل مع الإدارة"
+
+---
+
+### عند الضغط على "Activate":
+
+1. Confirmation Modal
+
+2. Backend:
+
+```json
+school.status = "ACTIVE"
+```
+
+* إعادة تفعيل جميع العمليات
+
+---
+
+### 🗃️ Database Logging (Critical):
+
+لكل Action:
+
+* action = SUSPEND_SCHOOL / ACTIVATE_SCHOOL
+* performedBy
+* reason (Required Field)
+* timestamp
+* previousStatus
+* newStatus
+
+---
+
+# 🚨 Critical Rule:
+
+> ❗ لا يتم تنفيذ أي Action بدون تسجيله بالكامل في قاعدة البيانات
+
+---
+
+# 🧩 3) Auto Account Creation Message System
+
+## 🎯 الهدف:
+
+إنشاء رسالة تلقائية بعد إنشاء حساب مدرسة جديدة
+
+---
+
+## ⚙️ Trigger:
+
+* بعد:
+
+```json
+school.status = "APPROVED"
+```
+
+---
+
+## 🧠 System Behavior:
+
+1. النظام يقوم بـ:
+
+* إنشاء Admin User للمدرسة
+* توليد:
+
+  * Email
+  * Temporary Password (Secure Random)
+
+2. إرسال:
+
+* Email
+* In-System Notification
+* Copy-ready Message داخل Dashboard
+
+---
+
+## ✉️ Message Template (Dynamic):
+
+```text
+مرحبًا،
+
+تم إنشاء حسابك بنجاح على منصة نَسَّق | NASSAQ.
+
+يسعدنا انضمامك إلى المنصة، وقد تم منحك الصلاحيات المناسبة لدورك داخل النظام.
+
+يمكنك تسجيل الدخول باستخدام البيانات التالية:
+
+البريد الإلكتروني: {email}
+كلمة المرور المؤقتة: {tempPassword}
+
+رابط تسجيل الدخول:
+{loginUrl}
+
+⚠️ عند تسجيل الدخول لأول مرة سيطلب منك تغيير كلمة المرور.
+
+في حال وجود أي استفسار، يرجى التواصل مع إدارة المنصة.
+
+مع خالص التحية،
+إدارة منصة نَسَّق
+```
+
+---
+
+## 🧩 UI Requirement:
+
+داخل صفحة إنشاء المدرسة:
+
+* يظهر Box يحتوي على:
+
+  * الرسالة كاملة
+  * زر:
+    👉 Copy Message
+
+---
+
+## 🗃️ Database Logging:
+
+يجب تسجيل:
+
+* action = CREATE_SCHOOL_ACCOUNT
+* schoolId
+* adminUserId
+* email
+* tempPassword (hashed or encrypted)
+* messageGenerated = true
+* messageSent = true / false
+* timestamp
+
+---
+
+# 🔐 Security Rules
+
+* كلمة المرور المؤقتة:
+
+  * Generated باستخدام Secure Algorithm
+  * Expiry خلال 24 ساعة
+
+* Forced Password Reset:
+
+  * First Login Required
+
+---
+
+# 🧠 System Architecture Notes
+
+* كل Action مرتبط بـ:
+
+  * Event System
+  * Audit Log System
+  * Notification System
+
+* لا يوجد أي Action:
+  ❌ بدون Logging
+  ❌ بدون Validation
+  ❌ بدون Status Tracking
+
+---
+
+# 🔥 Final Directive
+
+> هذا النظام ليس UI فقط، بل هو **Operational Control Layer**
+> أي تفاعل = حدث (Event)
+> أي حدث = تسجيل كامل (DB Log)
+> أي تسجيل = قابل للتحليل لاحقًا
+
+---
