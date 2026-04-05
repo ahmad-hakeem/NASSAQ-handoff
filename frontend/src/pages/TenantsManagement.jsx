@@ -321,6 +321,8 @@ export default function TenantsManagement() {
 
   const handleSchoolCreated = () => {
     setShowCreateWizard(false);
+    setShowDrafts(true);
+    setActiveStatusFilter(null);
     fetchSchools(true);
   };
 

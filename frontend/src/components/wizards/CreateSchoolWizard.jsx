@@ -228,12 +228,10 @@ export default function CreateSchoolWizard({ open, onOpenChange, onSuccess, api,
     }
   };
   
-  // Handle save as draft - Save to database with status='setup'
   const handleSaveAsDraft = async () => {
     setIsSubmitting(true);
     
     try {
-      // Prepare school data for API with draft status
       const schoolPayload = {
         name: schoolData.name || (isRTL ? 'مسودة مدرسة' : 'Draft School'),
         country: schoolData.country || 'SA',
@@ -246,30 +244,20 @@ export default function CreateSchoolWizard({ open, onOpenChange, onSuccess, api,
         principal_name: principalData.fullName || '',
         principal_email: principalData.email || '',
         principal_phone: principalData.primaryPhone || '',
-        status: 'setup', // Mark as draft/setup
+        status: 'setup',
       };
       
-      // API call to create school as draft
       const response = await api.post('/schools/draft', schoolPayload);
       
-      toast.success(isRTL ? 'تم حفظ المدرسة كمسودة بنجاح' : 'School saved as draft successfully');
+      toast.success(isRTL ? 'تم حفظ المدرسة كمسودة بنجاح — ستجدها في قسم المسودات' : 'School saved as draft — find it in the Drafts section');
       
-      // Close wizard and refresh parent
       if (onSuccess) onSuccess(response.data);
       handleClose();
       
     } catch (error) {
       console.error('Error saving draft:', error);
-      
-      // Fallback to localStorage if API fails
-      const draft = {
-        schoolData,
-        settingsData,
-        principalData,
-        savedAt: new Date().toISOString()
-      };
-      localStorage.setItem('nassaq_school_draft', JSON.stringify(draft));
-      toast.success(isRTL ? 'تم حفظ المسودة محلياً' : 'Draft saved locally');
+      const rawDetail = error.response?.data?.detail || '';
+      nassaqError(rawDetail || (isRTL ? 'فشل حفظ المسودة. يُرجى المحاولة مرة أخرى.' : 'Failed to save draft. Please try again.'));
     } finally {
       setIsSubmitting(false);
     }
