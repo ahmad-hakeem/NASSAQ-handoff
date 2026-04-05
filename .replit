@@ -1,11 +1,11 @@
-modules = ["python-3.12", "postgresql-16"]
+modules = ["python-3.12"]
 [agent]
 expertMode = true
 integrations = ["python_openai_ai_integrations:1.0.0"]
 
 [nix]
 channel = "stable-25_05"
-packages = ["freetype", "glibcLocales", "libiconv", "libjpeg", "libwebp", "libxcrypt", "postgresql", "zlib"]
+packages = ["postgresql", "zlib"]
 
 [workflows]
 runButton = "Project"
