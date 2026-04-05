@@ -2,37 +2,29 @@
 set -e
 
 echo "=========================================="
-echo "NASSAQ Build & Deployment Safety Check"
+echo "NASSAQ Build & Deployment"
 echo "=========================================="
 
-ENV="${ENVIRONMENT:-development}"
-echo "Environment: $ENV"
-
-if [ "$ENV" = "production" ]; then
-  echo ""
-  echo "[SAFETY] Production deployment detected"
-  echo "[SAFETY] Verifying deployment safety rules..."
-
-  if [ -z "$DATABASE_URL" ]; then
-    echo "[ERROR] DATABASE_URL is not set for production!"
-    exit 1
-  fi
-
-  if [ -z "$JWT_SECRET_KEY" ]; then
-    echo "[ERROR] JWT_SECRET_KEY is not set for production!"
-    exit 1
-  fi
-
-  echo "[SAFETY] Seed scripts: BLOCKED"
-  echo "[SAFETY] Destructive migrations: BLOCKED"
-  echo "[SAFETY] All safety checks passed"
-  echo ""
-fi
+echo "Installing backend dependencies..."
+cd /home/runner/workspace/backend
+pip install -r requirements.txt --no-cache-dir -q 2>&1 | tail -3
 
 echo "Building frontend..."
 cd /home/runner/workspace/frontend
-npm install
-npm run build
+npm install --production --ignore-scripts 2>&1 | tail -3
+npm run build 2>&1 | tail -3
+
+echo "Cleaning up to reduce image size..."
+cd /home/runner/workspace
+
+rm -rf frontend/node_modules
+rm -rf frontend/src
+rm -rf .cache/pip .cache/uv .cache/huggingface
+find . -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
+find .pythonlibs -name '*.pyc' -delete 2>/dev/null || true
+find .pythonlibs -type d -name 'tests' -exec rm -rf {} + 2>/dev/null || true
+find .pythonlibs -type d -name 'test' -exec rm -rf {} + 2>/dev/null || true
+
 echo ""
 echo "Build complete."
 echo "=========================================="

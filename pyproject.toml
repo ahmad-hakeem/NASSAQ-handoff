@@ -1,7 +1,7 @@
 [project]
 name = "repl-nix-workspace"
 version = "0.1.0"
-description = "Add your description here"
+description = "NASSAQ School Operating System"
 requires-python = ">=3.12"
 dependencies = [
     "aiohttp>=3.13.3",
@@ -12,10 +12,9 @@ dependencies = [
     "boto3>=1.42.58",
     "email-validator>=2.3.0",
     "fastapi>=0.110.1",
-    "google-generativeai>=0.8.6",
     "greenlet>=3.2.3",
     "httpx>=0.28.1",
-    "litellm>=1.80.0",
+    "numpy>=2.4.2",
     "openai>=1.99.9",
     "pandas>=3.0.1",
     "passlib>=1.7.4",
