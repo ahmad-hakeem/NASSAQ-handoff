@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sidebar } from '../components/layout/Sidebar';
 import { PageHeader } from '../components/layout/PageHeader';
@@ -383,7 +383,9 @@ export const PlatformAnalyticsPage = () => {
   const [schoolsList, setSchoolsList] = useState([]);
   const [selectedAnalysisSchool, setSelectedAnalysisSchool] = useState('');
   
-  const fetchLiveStats = async () => {
+  const fetchLiveStatsRef = useRef(null);
+
+  const fetchLiveStats = useCallback(async () => {
     setIsRefreshing(true);
     try {
       const response = await api.get('/super-admin/dashboard-stats');
@@ -437,7 +439,9 @@ export const PlatformAnalyticsPage = () => {
     } finally {
       setIsRefreshing(false);
     }
-  };
+  }, [api]);
+
+  fetchLiveStatsRef.current = fetchLiveStats;
   
   const fetchChartData = async () => {
     try {
@@ -527,14 +531,15 @@ export const PlatformAnalyticsPage = () => {
     }
   };
 
-  // Initial fetch and real-time polling
   useEffect(() => {
     fetchLiveStats();
     fetchChartData();
     fetchSchoolsList();
+  }, [fetchLiveStats]);
 
+  useEffect(() => {
     const pollInterval = setInterval(() => {
-      fetchLiveStats();
+      fetchLiveStatsRef.current?.();
     }, 30000);
 
     return () => clearInterval(pollInterval);

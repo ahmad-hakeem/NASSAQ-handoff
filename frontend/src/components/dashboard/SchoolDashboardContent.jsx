@@ -738,8 +738,9 @@ export const SchoolDashboardContent = () => {
       setLastUpdated(new Date());
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
-      if (!dashboardData) {
-        setDashboardData({
+      setDashboardData(prev => {
+        if (prev) return prev;
+        return {
           metrics: {
             totalStudents: { value: 0, change: '0', changeType: 'same', status: 'normal' },
             totalTeachers: { value: 0, change: '0', changeType: 'same', status: 'normal' },
@@ -751,8 +752,8 @@ export const SchoolDashboardContent = () => {
           attendance: { students: { present: 0, absent: 0, excused: 0, total: 0 }, teachers: { present: 0, absent: 0, excused: 0, total: 0 } },
           interventions: { classesWithoutTeacher: 0, teachersWithFrequentAbsence: 0, classesLowAttendance: 0 },
           alerts: [],
-        });
-      }
+        };
+      });
     } finally {
       setLoading(false);
       setRefreshing(false);

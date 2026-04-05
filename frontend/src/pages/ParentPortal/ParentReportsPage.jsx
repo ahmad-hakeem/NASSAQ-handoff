@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import PortalLayout from '../../components/portal/PortalLayout';
@@ -15,40 +15,60 @@ import {
 
 
 const ParentReportsPage = () => {
-  const { token, api } = useAuth();
+  const { api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
   const [dashboard, setDashboard] = useState(null);
   const [reports, setReports] = useState({});
   const [expandedChild, setExpandedChild] = useState(null);
+  const abortControllerRef = useRef(null);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const headers = { Authorization: `Bearer ${token}` };
-        const dashRes = await api.get('/parent-portal/dashboard');
-        setDashboard(dashRes.data);
+  const fetchData = useCallback(async () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
-        const children = dashRes.data?.children || [];
-        const reportsMap = {};
-        for (const child of children) {
-          try {
-            const r = await api.get(`/parent-portal/child/${child.id}/progress-report`);
-            reportsMap[child.id] = r.data;
-          } catch (e) {
-            reportsMap[child.id] = null;
-          }
+    setLoading(true);
+    try {
+      const dashRes = await api.get('/parent-portal/dashboard', { signal: controller.signal });
+      if (controller.signal.aborted) return;
+      setDashboard(dashRes.data);
+
+      const children = dashRes.data?.children || [];
+      const reportsMap = {};
+      for (const child of children) {
+        if (controller.signal.aborted) return;
+        try {
+          const r = await api.get(`/parent-portal/child/${child.id}/progress-report`, { signal: controller.signal });
+          reportsMap[child.id] = r.data;
+        } catch (e) {
+          if (controller.signal.aborted) return;
+          reportsMap[child.id] = null;
         }
-        setReports(reportsMap);
-        if (children.length > 0) setExpandedChild(children[0].id);
-      } catch (err) {
-        console.error('Error:', err);
-      } finally {
+      }
+      if (controller.signal.aborted) return;
+      setReports(reportsMap);
+      if (children.length > 0) setExpandedChild(children[0].id);
+    } catch (err) {
+      if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED') return;
+      console.error('Error:', err);
+    } finally {
+      if (!controller.signal.aborted) {
         setLoading(false);
       }
-    };
+    }
+  }, [api]);
+
+  useEffect(() => {
     fetchData();
-  }, [token]);
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, [fetchData]);
 
   if (loading) {
     return (
