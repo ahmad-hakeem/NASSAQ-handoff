@@ -1,0 +1,43 @@
+I do not want a general confirmation that the system is clean.
+I want a strict production go-live validation pass.
+
+Perform a deep audit of the system across the following 4 layers and report findings with evidence, file references, endpoint references, DB behavior, and confirmed pass/fail status for each item:
+
+1) Audit Logging Completeness
+- Verify that every critical action is logged to the database.
+- Cover: login, failed login, logout, create, update, delete, approve, reject, suspend, activate, password reset, engine execution.
+- For each action, confirm:
+  - where it is triggered
+  - where it is stored
+  - which fields are saved
+  - whether old/new values are captured
+  - whether actor, entity, timestamp, school_id, ip/device are stored
+
+2) RBAC and Multi-Tenant Isolation
+- Verify that every endpoint and UI path enforces role-based access correctly.
+- Verify strict tenant isolation by school_id across reads, writes, reports, dashboards, and engine operations.
+- Identify any endpoint, query, or component that could expose data across schools.
+
+3) End-to-End Core Workflow Validation
+- Test and verify these flows completely:
+  - create school
+  - approve school
+  - create school admin
+  - generate credentials message
+  - first login + forced password reset
+  - suspend school
+  - reactivate school
+  - create teacher/student/parent
+- For each workflow, verify full DB persistence, status transitions, logs, and UI behavior.
+
+4) Production Deployment Readiness
+- Verify no mock data, no fallback fake data, no hardcoded secrets, no dev-only behaviors, no unsafe seed logic, no debug exposure, and no broken env dependency.
+- Verify safe failure behavior when DB/API/email actions fail.
+
+Important rules:
+- Do not give me a reassuring summary only.
+- I want a pass/fail checklist.
+- I want every failed or uncertain item clearly marked.
+- If something is not proven, mark it as NOT VERIFIED.
+- If a flow is partially implemented, mark it as PARTIAL, not complete.
+- If logging is missing anywhere, list the missing actions explicitly.
