@@ -32,7 +32,7 @@ Production data must NEVER be lost, overwritten, or replaced during any deployme
 
 ### 4. Build Script Safety (`build.sh`)
 - Validates JWT_SECRET_KEY is set in production
-- Warns if DB_NAME is "test_database" in production
+- Validates DATABASE_URL is set in production
 - Logs all safety check results
 
 ### 5. Startup Safety Logging (`server.py`)
