@@ -406,6 +406,10 @@ def _apply_projection(doc: dict, projection: dict) -> dict:
     return doc
 
 
+class DuplicateKeyError(Exception):
+    pass
+
+
 class InsertOneResult:
     def __init__(self, inserted_id):
         self.inserted_id = inserted_id
@@ -986,9 +990,13 @@ class PgCollection:
             if own:
                 await session.commit()
             return InsertOneResult(doc_id)
-        except Exception:
+        except Exception as e:
             if own:
                 await session.rollback()
+            from sqlalchemy.exc import IntegrityError
+            if isinstance(e, IntegrityError):
+                detail = str(e.orig) if hasattr(e, 'orig') else str(e)
+                raise DuplicateKeyError(f"Duplicate key in {self._name}: {detail}")
             raise
         finally:
             if own:

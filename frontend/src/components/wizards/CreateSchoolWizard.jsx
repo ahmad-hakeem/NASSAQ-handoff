@@ -337,15 +337,18 @@ export default function CreateSchoolWizard({ open, onOpenChange, onSuccess, api,
       
       const rawDetail = error.response?.data?.detail || '';
 
+      const codeConflictEntry = {
+        step: 1,
+        field: 'name',
+        userMsg: isRTL
+          ? 'حدث تعارض في رمز المدرسة. يُرجى المحاولة مرة أخرى.'
+          : 'School code conflict. Please try again.',
+        fieldMsg: isRTL ? 'تعارض في رمز المدرسة — حاول مرة أخرى' : 'School code conflict — please try again',
+      };
+
       const BACKEND_ERROR_MAP = {
-        'رمز المدرسة مستخدم مسبقاً': {
-          step: 1,
-          field: 'name',
-          userMsg: isRTL
-            ? 'حدث تعارض في رمز المدرسة المُولَّد تلقائياً. يُرجى تعديل اسم المدرسة أو المحاولة مرة أخرى.'
-            : 'Auto-generated school code conflict. Please modify the school name or try again.',
-          fieldMsg: isRTL ? 'تعارض في رمز المدرسة — جرّب تعديل الاسم' : 'School code conflict — try changing the name',
-        },
+        'رمز المدرسة مستخدم مسبقاً': codeConflictEntry,
+        'رمز المدرسة مستخدم مسبقاً — يُرجى اختيار رمز آخر': codeConflictEntry,
         'البريد الإلكتروني مستخدم مسبقاً': {
           step: 3,
           field: 'email',

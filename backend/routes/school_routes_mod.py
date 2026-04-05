@@ -123,7 +123,16 @@ async def create_school(
         "created_by": current_user.get("user_id")
     }
     
-    await db.schools.insert_one(school_doc)
+    try:
+        await db.schools.insert_one(school_doc)
+    except Exception as e:
+        if "duplicate" in str(e).lower() or "unique" in str(e).lower():
+            school_code = await _generate_unique_school_code(country=school_data.country)
+            school_doc["code"] = school_code
+            school_doc["email"] = school_data.email or school_data.principal_email or f"school-{school_code.lower()}@nassaq.com"
+            await db.schools.insert_one(school_doc)
+        else:
+            raise
     
     # Create principal account if email provided
     if school_data.principal_email and school_data.principal_name:
@@ -266,7 +275,16 @@ async def create_school_draft(
         "created_by": current_user.get("user_id")
     }
     
-    await db.schools.insert_one(school_doc)
+    try:
+        await db.schools.insert_one(school_doc)
+    except Exception as e:
+        if "duplicate" in str(e).lower() or "unique" in str(e).lower():
+            school_code = await _generate_unique_school_code(country=school_data.country)
+            school_doc["code"] = school_code
+            school_doc["email"] = school_data.email or f"school-{school_code.lower()}@nassaq.com"
+            await db.schools.insert_one(school_doc)
+        else:
+            raise
     
     # Log draft creation
     await audit_engine.log_data_change(
