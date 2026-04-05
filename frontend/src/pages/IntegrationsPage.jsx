@@ -358,7 +358,7 @@ export default function IntegrationsPage() {
       fetchIntegrations();
       fetchApiKeys();
     }
-  }, [token, API_URL]);
+  }, [token, api]);
   
   // Get status info
   const getStatusInfo = (status) => {
