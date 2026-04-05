@@ -69,6 +69,8 @@ async def get_pg_session():
             await session.rollback()
             raise
 
+get_db = get_pg_session
+
 
 async def init_pg_tables():
     import pg_models as _  # noqa: ensure models are imported

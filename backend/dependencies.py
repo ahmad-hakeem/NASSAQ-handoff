@@ -59,6 +59,9 @@ from engines.smart_scheduling_engine import (
     GenerationResult
 )
 
+from db import get_pg_session, get_db, async_session_factory
+from sqlalchemy.ext.asyncio import AsyncSession
+
 audit_engine = AuditLogEngine(db)
 smart_scheduling_engine = SmartSchedulingEngine(db)
 hakim_engine = HakimAIEngine(db)
