@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import SectionErrorBoundary from '../../components/SectionErrorBoundary';
 import { Card, CardContent } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
@@ -564,21 +565,27 @@ export default function SessionTeachPage() {
 
   if (reviewData) {
     return (
-      <SessionReviewPhase
-        reviewData={reviewData}
-        sessionInfo={sessionInfo}
-        closingNote={closingNote}
-        setClosingNote={setClosingNote}
-        onConfirm={confirmEndSession}
-        onBack={returnFromReview}
-        loading={loading}
-        isRTL={isRTL}
-      />
+      <SectionErrorBoundary name="SessionReviewPhase" isRTL={isRTL}>
+        <SessionReviewPhase
+          reviewData={reviewData}
+          sessionInfo={sessionInfo}
+          closingNote={closingNote}
+          setClosingNote={setClosingNote}
+          onConfirm={confirmEndSession}
+          onBack={returnFromReview}
+          loading={loading}
+          isRTL={isRTL}
+        />
+      </SectionErrorBoundary>
     );
   }
 
   if (summary) {
-    return <SessionSummary summary={summary} sessionInfo={sessionInfo} onHome={() => navigate('/teacher')} isRTL={isRTL} />;
+    return (
+      <SectionErrorBoundary name="SessionSummary" isRTL={isRTL}>
+        <SessionSummary summary={summary} sessionInfo={sessionInfo} onHome={() => navigate('/teacher')} isRTL={isRTL} />
+      </SectionErrorBoundary>
+    );
   }
 
   return (

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { formatFullDate } from '../../utils/hijriDate';
+import SectionErrorBoundary from '../SectionErrorBoundary';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
@@ -826,7 +827,9 @@ export const SchoolDashboardContent = () => {
         </div>
       </div>
 
-      <SchoolDayProgress isRTL={isRTL} />
+      <SectionErrorBoundary name="SchoolDayProgress" isRTL={isRTL}>
+        <SchoolDayProgress isRTL={isRTL} />
+      </SectionErrorBoundary>
 
       <section data-testid="key-metrics-section">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -878,14 +881,22 @@ export const SchoolDashboardContent = () => {
       </section>
 
       <section className="grid lg:grid-cols-2 gap-5" data-testid="dashboard-kpi-section">
-        <AttendanceRadial data={dashboardData?.attendance} isRTL={isRTL} />
-        <DailyOpsPanel data={dashboardData?.interventions} isRTL={isRTL} onNavigate={(path) => navigate(path)} />
+        <SectionErrorBoundary name="AttendanceRadial" isRTL={isRTL}>
+          <AttendanceRadial data={dashboardData?.attendance} isRTL={isRTL} />
+        </SectionErrorBoundary>
+        <SectionErrorBoundary name="DailyOpsPanel" isRTL={isRTL}>
+          <DailyOpsPanel data={dashboardData?.interventions} isRTL={isRTL} onNavigate={(path) => navigate(path)} />
+        </SectionErrorBoundary>
       </section>
 
-      <StrategicNav onAction={handleQuickAction} isRTL={isRTL} onNavigate={(path) => navigate(path)} />
+      <SectionErrorBoundary name="StrategicNav" isRTL={isRTL}>
+        <StrategicNav onAction={handleQuickAction} isRTL={isRTL} onNavigate={(path) => navigate(path)} />
+      </SectionErrorBoundary>
 
       <section>
-        <PerformanceSnapshot metrics={dashboardData?.metrics} attendance={dashboardData?.attendance} isRTL={isRTL} />
+        <SectionErrorBoundary name="PerformanceSnapshot" isRTL={isRTL}>
+          <PerformanceSnapshot metrics={dashboardData?.metrics} attendance={dashboardData?.attendance} isRTL={isRTL} />
+        </SectionErrorBoundary>
       </section>
 
       <AddStudentWizard 

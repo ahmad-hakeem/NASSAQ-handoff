@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import SectionErrorBoundary from '../components/SectionErrorBoundary';
 import { Sidebar } from '../components/layout/Sidebar';
 import { HakimAssistant } from '../components/hakim/HakimAssistant';
 import { Button } from '../components/ui/button';
@@ -961,6 +962,7 @@ export const SchedulePage = () => {
               </CardContent>
             </Card>
           ) : (
+            <SectionErrorBoundary name="ScheduleGrid" isRTL={isRTL}>
             <DndContext
               sensors={sensors}
               collisionDetection={closestCenter}
@@ -1096,6 +1098,7 @@ export const SchedulePage = () => {
                 {activeSession && <SessionDragOverlay session={activeSession} isRTL={isRTL} />}
               </DragOverlay>
             </DndContext>
+            </SectionErrorBoundary>
           )}
         </div>
 

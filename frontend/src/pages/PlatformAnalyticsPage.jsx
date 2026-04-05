@@ -93,6 +93,7 @@ import {
   Link as LinkIcon,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import SectionErrorBoundary from '../components/SectionErrorBoundary';
 
 // Translations
 const translations = {
@@ -1009,6 +1010,7 @@ export const PlatformAnalyticsPage = () => {
               </div>
               
               {/* Charts Row */}
+              <SectionErrorBoundary name="AnalyticsCharts" isRTL={isRTL}>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* School Distribution by City */}
                 <Card>
@@ -1202,6 +1204,7 @@ export const PlatformAnalyticsPage = () => {
                   )}
                 </CardContent>
               </Card>
+              </SectionErrorBoundary>
             </TabsContent>
             
             {/* Reports Tab */}

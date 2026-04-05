@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import SectionErrorBoundary from '../SectionErrorBoundary';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { ScrollArea } from '../ui/scroll-area';
@@ -99,7 +100,7 @@ const MarkdownMessage = ({ content, onNavigate }) => {
   );
 };
 
-export const HakimAssistant = () => {
+const HakimAssistantInner = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -508,5 +509,14 @@ export const HakimAssistant = () => {
         .animate-fade-up { animation: fade-up 0.25s ease-out; }
       `}</style>
     </>
+  );
+};
+
+export const HakimAssistant = () => {
+  const { isRTL } = useAuth();
+  return (
+    <SectionErrorBoundary name="HakimAssistant" isRTL={isRTL}>
+      <HakimAssistantInner />
+    </SectionErrorBoundary>
   );
 };
