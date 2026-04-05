@@ -114,6 +114,7 @@ export const HakimAssistant = () => {
   const idleTimerRef = useRef(null);
   const greetingIndexRef = useRef(0);
   const lastInteractionRef = useRef(Date.now());
+  const timeoutRefs = useRef([]);
   const { api, user } = useAuth();
   const { isRTL } = useTheme();
   const location = useLocation();
@@ -157,17 +158,27 @@ export const HakimAssistant = () => {
     }
   }, [welcomeMessage, currentPageInfo]);
 
-  const scrollToBottom = useCallback(() => {
-    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+  useEffect(() => {
+    return () => { timeoutRefs.current.forEach(clearTimeout); };
   }, []);
+
+  const trackTimeout = useCallback((fn, ms) => {
+    const id = setTimeout(fn, ms);
+    timeoutRefs.current.push(id);
+    return id;
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    trackTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+  }, [trackTimeout]);
 
   useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
 
   useEffect(() => {
     if (isOpen && inputRef.current) {
-      setTimeout(() => inputRef.current?.focus(), 300);
+      trackTimeout(() => inputRef.current?.focus(), 300);
     }
-  }, [isOpen]);
+  }, [isOpen, trackTimeout]);
 
   useEffect(() => {
     const handleIdleGreeting = () => {
@@ -184,7 +195,7 @@ export const HakimAssistant = () => {
         setShowGreeting(true);
         setHakimState(HakimState.GREETING);
 
-        setTimeout(() => {
+        trackTimeout(() => {
           setShowGreeting(false);
           setHakimState(HakimState.IDLE);
         }, 3000);
@@ -195,7 +206,7 @@ export const HakimAssistant = () => {
 
     idleTimerRef.current = setInterval(handleIdleGreeting, 10000);
     return () => clearInterval(idleTimerRef.current);
-  }, [isOpen, dismissCount]);
+  }, [isOpen, dismissCount, trackTimeout]);
 
   const handleUserInteraction = useCallback(() => {
     lastInteractionRef.current = Date.now();
@@ -235,7 +246,7 @@ export const HakimAssistant = () => {
       };
       setMessages((prev) => [...prev, assistantMessage]);
 
-      setTimeout(() => setHakimState(HakimState.IDLE), 1000);
+      trackTimeout(() => setHakimState(HakimState.IDLE), 1000);
     } catch (error) {
       console.error('Hakim error:', error);
       setMessages((prev) => [

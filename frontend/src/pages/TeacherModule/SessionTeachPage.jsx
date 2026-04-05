@@ -101,6 +101,7 @@ export default function SessionTeachPage() {
   const [noteType, setNoteType] = useState('session');
   const [liveMetrics, setLiveMetrics] = useState(null);
   const flashRef = useRef(null);
+  useEffect(() => { return () => { if (flashRef.current) clearInterval(flashRef.current); }; }, []);
   const timer = useSessionTimer(startTime);
 
   const teacherId = user?.teacher_id || user?.id;
@@ -1550,8 +1551,9 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
 
   useEffect(() => {
     confetti({ particleCount: 120, spread: 80, origin: { y: 0.5 } });
-    setTimeout(() => confetti({ particleCount: 60, angle: 60, spread: 55, origin: { x: 0, y: 0.6 } }), 300);
-    setTimeout(() => confetti({ particleCount: 60, angle: 120, spread: 55, origin: { x: 1, y: 0.6 } }), 600);
+    const t1 = setTimeout(() => confetti({ particleCount: 60, angle: 60, spread: 55, origin: { x: 0, y: 0.6 } }), 300);
+    const t2 = setTimeout(() => confetti({ particleCount: 60, angle: 120, spread: 55, origin: { x: 1, y: 0.6 } }), 600);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
   }, []);
 
   const sendParentNotifications = async () => {
