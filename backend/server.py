@@ -12,6 +12,7 @@ Architecture (Phase 8 Modularized):
 """
 
 import logging
+import os
 import sys
 
 logging.basicConfig(
@@ -184,17 +185,20 @@ async def _seed_platform_admins():
         {
             "full_name": "Dr. Ahmad Zalat",
             "email": "zalat@nassaqapp.com",
-            "password": "h38xaHBJ",
+            "password": os.environ.get("ADMIN_SEED_PASSWORD_ZALAT", ""),
             "role": "platform_admin",
         },
         {
             "full_name": "Ahmed Hakim",
             "email": "hakim@nassaqapp.com",
-            "password": "Hakimnassaqapp2026$$",
+            "password": os.environ.get("ADMIN_SEED_PASSWORD_HAKIM", ""),
             "role": "platform_admin",
         },
     ]
     for admin in admins:
+        if not admin["password"]:
+            logger.warning(f"Skipping admin seed for {admin['email']}: password env var not set")
+            continue
         existing = await db.users.find_one({"email": admin["email"]})
         if not existing:
             user_doc = {

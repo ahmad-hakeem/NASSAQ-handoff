@@ -251,114 +251,6 @@ const INTEGRATION_CATEGORIES = [
   { id: 'other', icon: PlugZap, color: 'from-slate-500 to-slate-600', label_ar: 'أخرى', label_en: 'Other' },
 ];
 
-// Premium Integration Cards Data
-const PREMIUM_INTEGRATIONS = [
-  {
-    id: 'noor',
-    name: 'نظام نور',
-    name_en: 'Noor System',
-    type: 'government',
-    description: 'الربط مع نظام نور التعليمي لمزامنة بيانات الطلاب والمعلمين والدرجات',
-    description_en: 'Integration with Noor educational system for student, teacher and grades sync',
-    logo: '🏛️',
-    status: 'available',
-    is_active: false,
-    last_sync: null,
-    api_base_url: 'https://noor.moe.gov.sa/api',
-    features: ['مزامنة الطلاب', 'مزامنة المعلمين', 'الدرجات', 'الحضور'],
-    features_en: ['Students Sync', 'Teachers Sync', 'Grades', 'Attendance'],
-  },
-  {
-    id: 'whatsapp',
-    name: 'واتساب',
-    name_en: 'WhatsApp',
-    type: 'messaging',
-    description: 'إرسال الإشعارات والرسائل عبر واتساب للطلاب وأولياء الأمور',
-    description_en: 'Send notifications via WhatsApp to students and parents',
-    logo: '💬',
-    status: 'pending',
-    is_active: false,
-    last_sync: null,
-    api_base_url: 'https://api.whatsapp.com/v1',
-    features: ['إشعارات', 'تقارير', 'تذكيرات', 'دعم'],
-    features_en: ['Notifications', 'Reports', 'Reminders', 'Support'],
-  },
-  {
-    id: 'stripe',
-    name: 'بوابة الدفع',
-    name_en: 'Payment Gateway',
-    type: 'payment',
-    description: 'معالجة المدفوعات والرسوم الدراسية إلكترونياً بأمان',
-    description_en: 'Process payments and tuition fees electronically and securely',
-    logo: '💳',
-    status: 'available',
-    is_active: false,
-    last_sync: null,
-    api_base_url: 'https://api.stripe.com/v1',
-    features: ['الرسوم', 'الفواتير', 'الاشتراكات', 'التقارير المالية'],
-    features_en: ['Fees', 'Invoices', 'Subscriptions', 'Financial Reports'],
-  },
-  {
-    id: 'sms',
-    name: 'بوابة الرسائل',
-    name_en: 'SMS Gateway',
-    type: 'sms',
-    description: 'إرسال الرسائل النصية القصيرة للتواصل مع المستخدمين',
-    description_en: 'Send SMS messages for user communication',
-    logo: '📱',
-    status: 'available',
-    is_active: false,
-    last_sync: null,
-    api_base_url: 'https://api.unifonic.com/rest',
-    features: ['إشعارات', 'تذكيرات', 'OTP', 'حملات'],
-    features_en: ['Notifications', 'Reminders', 'OTP', 'Campaigns'],
-  },
-  {
-    id: 'openai',
-    name: 'الذكاء الاصطناعي',
-    name_en: 'AI Integration',
-    type: 'ai',
-    description: 'تكامل مع OpenAI و Google AI لتحليل البيانات والمساعد الذكي',
-    description_en: 'Integration with OpenAI and Google AI for data analysis and smart assistant',
-    logo: '🤖',
-    status: 'available',
-    is_active: false,
-    last_sync: null,
-    api_base_url: 'https://api.openai.com/v1',
-    features: ['تحليل البيانات', 'التقارير الذكية', 'المساعد الافتراضي', 'التوصيات'],
-    features_en: ['Data Analysis', 'Smart Reports', 'Virtual Assistant', 'Recommendations'],
-  },
-  {
-    id: 'sendgrid',
-    name: 'SendGrid',
-    name_en: 'SendGrid',
-    type: 'email',
-    description: 'إرسال البريد الإلكتروني للإشعارات والتقارير والنشرات',
-    description_en: 'Send email notifications, reports and newsletters',
-    logo: '📧',
-    status: 'error',
-    is_active: false,
-    last_sync: '2026-03-08T22:00:00Z',
-    api_base_url: 'https://api.sendgrid.com/v3',
-    features: ['إشعارات', 'تقارير', 'نشرات', 'قوالب'],
-    features_en: ['Notifications', 'Reports', 'Newsletters', 'Templates'],
-  },
-  {
-    id: 's3',
-    name: 'Amazon S3',
-    name_en: 'Amazon S3',
-    type: 'storage',
-    description: 'تخزين الملفات والمستندات في السحابة بشكل آمن',
-    description_en: 'Secure cloud storage for files and documents',
-    logo: '☁️',
-    status: 'available',
-    is_active: false,
-    last_sync: null,
-    api_base_url: 'https://s3.amazonaws.com',
-    features: ['الملفات', 'الصور', 'المستندات', 'النسخ الاحتياطي'],
-    features_en: ['Files', 'Images', 'Documents', 'Backup'],
-  },
-];
 
 // NASSAQ API Keys - Empty initial state, will be populated from API
 const INITIAL_API_KEYS = [];
@@ -445,10 +337,10 @@ export default function IntegrationsPage() {
         });
         // API returns {integrations: [...]} not direct array
         const data = response.data?.integrations || response.data || [];
-        setIntegrations(Array.isArray(data) && data.length > 0 ? data : PREMIUM_INTEGRATIONS);
+        setIntegrations(Array.isArray(data) ? data : []);
       } catch (error) {
         console.error('Failed to fetch integrations:', error);
-        setIntegrations(PREMIUM_INTEGRATIONS);
+        setIntegrations([]);
       } finally {
         setLoading(false);
       }
