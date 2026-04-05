@@ -21,7 +21,7 @@ import {
   AlertTriangle, CheckCircle2, Bug, TrendingUp, Eye,
   RefreshCw, XCircle, ArrowUpRight, ArrowDownRight, ShieldCheck, CircleDot,
   Activity, Layers, ThumbsUp, ThumbsDown, Copy, MessageSquare, FileText, Paperclip, ExternalLink,
-  ChevronDown, ChevronUp, Minimize2, Send, Loader2, Wand2, ListChecks, Trash2, Pencil, History, Undo2, X,
+  ChevronDown, ChevronUp, Minimize2, Send, Loader2, Wand2, ListChecks, Trash2, Pencil, History, Undo2, X, Hash,
 } from 'lucide-react';
 
 const authHeaders = () => {
@@ -1766,15 +1766,32 @@ function IssuesTableView({ issues, loading, total, page, totalPages, onPageChang
             </div>
             <span className="text-xs text-slate-500 font-medium group-hover:text-brand-navy">تحديد الكل</span>
           </label>
-          {expandedId && (
+          <div className="flex items-center gap-2">
+            {expandedId && (
+              <Button
+                variant="ghost" size="sm"
+                onClick={() => setExpandedId(null)}
+                className="text-xs text-slate-400 hover:text-brand-navy gap-1.5 h-7 rounded-lg"
+              >
+                <Minimize2 className="h-3 w-3" /> طي الكل
+              </Button>
+            )}
             <Button
               variant="ghost" size="sm"
-              onClick={() => setExpandedId(null)}
+              onClick={async () => {
+                try {
+                  await axios.post('/api/product-hub/issues/resequence', {}, { headers: authHeaders() });
+                  toast.success('تم إعادة ترقيم التحديات بنجاح');
+                  onRefresh?.();
+                } catch (e) {
+                  toast.error('فشل في إعادة الترقيم');
+                }
+              }}
               className="text-xs text-slate-400 hover:text-brand-navy gap-1.5 h-7 rounded-lg"
             >
-              <Minimize2 className="h-3 w-3" /> طي الكل
+              <Hash className="h-3 w-3" /> إعادة ترقيم
             </Button>
-          )}
+          </div>
         </div>
       )}
 

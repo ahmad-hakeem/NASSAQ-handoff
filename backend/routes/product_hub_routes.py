@@ -326,7 +326,7 @@ async def _generate_prompt(issue: dict) -> str:
 
 async def _next_issue_number() -> int:
     last = await db.product_issues.find_one(
-        {}, {"issue_number": 1}, sort=[("issue_number", -1)]
+        {"is_deleted": {"$ne": True}}, {"issue_number": 1}, sort=[("issue_number", -1)]
     )
     return (last.get("issue_number", 0) if last else 0) + 1
 
@@ -1318,6 +1318,23 @@ async def get_duplicates(
     return {"duplicates": duplicates, "total": len(duplicates), "issue_id": issue_id}
 
 
+@router.post("/issues/resequence")
+async def resequence_issue_numbers(current_user: dict = Depends(get_current_user)):
+    if not is_main_admin(current_user):
+        raise HTTPException(status_code=403, detail="Main admin only")
+    issues = await db.product_issues.find(
+        {"is_deleted": {"$ne": True}}, {"id": 1, "issue_number": 1, "_id": 0}
+    ).sort("created_at", 1).to_list(10000)
+    updates = []
+    for idx, issue in enumerate(issues, start=1):
+        if issue.get("issue_number") != idx:
+            updates.append({"id": issue["id"], "old": issue.get("issue_number"), "new": idx})
+            await db.product_issues.update_one(
+                {"id": issue["id"]}, {"$set": {"issue_number": idx}}
+            )
+    return {"resequenced": len(updates), "total_active": len(issues), "changes": updates}
+
+
 @router.get("/dashboard")
 async def get_dashboard(current_user: dict = Depends(get_current_user)):
     enforce_permission(current_user, HubAction.VIEW_FULL_ANALYTICS)
@@ -1325,7 +1342,10 @@ async def get_dashboard(current_user: dict = Depends(get_current_user)):
     now = datetime.now(timezone.utc)
     week_ago = (now - timedelta(days=7)).isoformat()
 
+    active_filter = {"$match": {"is_deleted": {"$ne": True}}}
+
     pipeline_status = [
+        active_filter,
         {"$group": {"_id": "$status", "count": {"$sum": 1}}}
     ]
     status_counts_raw = await db.product_issues.aggregate(pipeline_status).to_list(20)
@@ -1334,32 +1354,33 @@ async def get_dashboard(current_user: dict = Depends(get_current_user)):
     total = sum(status_counts.values())
     total_open = sum(status_counts.get(s, 0) for s in OPEN_STATUSES)
 
-    pipeline_type = [{"$group": {"_id": "$issue_type", "count": {"$sum": 1}}}]
+    pipeline_type = [active_filter, {"$group": {"_id": "$issue_type", "count": {"$sum": 1}}}]
     type_counts_raw = await db.product_issues.aggregate(pipeline_type).to_list(20)
     by_type = [{"type": t["_id"], "label": ISSUE_TYPE_LABELS.get(t["_id"], t["_id"]), "count": t["count"]} for t in type_counts_raw]
 
-    pipeline_priority = [{"$group": {"_id": "$priority", "count": {"$sum": 1}}}]
+    pipeline_priority = [active_filter, {"$group": {"_id": "$priority", "count": {"$sum": 1}}}]
     priority_counts_raw = await db.product_issues.aggregate(pipeline_priority).to_list(10)
     by_priority = [{"priority": p["_id"], "label": PRIORITY_LABELS.get(p["_id"], p["_id"] or ""), "count": p["count"]} for p in priority_counts_raw]
 
     pipeline_team = [
-        {"$match": {"assigned_team": {"$ne": None}}},
+        {"$match": {"assigned_team": {"$ne": None}, "is_deleted": {"$ne": True}}},
         {"$group": {"_id": "$assigned_team", "count": {"$sum": 1}}}
     ]
     team_counts_raw = await db.product_issues.aggregate(pipeline_team).to_list(10)
     by_team = [{"team": t["_id"], "count": t["count"]} for t in team_counts_raw]
 
-    new_this_week = await db.product_issues.count_documents({"created_at": {"$gte": week_ago}})
+    new_this_week = await db.product_issues.count_documents({"created_at": {"$gte": week_ago}, "is_deleted": {"$ne": True}})
     critical_open = await db.product_issues.count_documents(
-        {"priority": "critical", "status": {"$in": list(OPEN_STATUSES)}}
+        {"priority": "critical", "status": {"$in": list(OPEN_STATUSES)}, "is_deleted": {"$ne": True}}
     )
     sla_exceeded = await db.product_issues.count_documents({
         "sla_deadline": {"$lte": now.isoformat()},
         "status": {"$in": list(OPEN_STATUSES)},
+        "is_deleted": {"$ne": True},
     })
 
     resolved = await db.product_issues.find(
-        {"resolved_at": {"$ne": None}},
+        {"resolved_at": {"$ne": None}, "is_deleted": {"$ne": True}},
         {"created_at": 1, "resolved_at": 1, "_id": 0}
     ).to_list(500)
     avg_resolution = 0
@@ -1378,6 +1399,7 @@ async def get_dashboard(current_user: dict = Depends(get_current_user)):
             avg_resolution = round(total_hours / count, 1)
 
     pipeline_section = [
+        active_filter,
         {"$group": {"_id": "$section", "count": {"$sum": 1}}},
         {"$sort": {"count": -1}},
         {"$limit": 10}
@@ -1387,6 +1409,7 @@ async def get_dashboard(current_user: dict = Depends(get_current_user)):
     dup_count = await db.issue_duplicates_map.count_documents({})
 
     pipeline_contributors = [
+        active_filter,
         {"$group": {"_id": {"name": "$employee_name", "user_id": "$created_by"}, "count": {"$sum": 1}}},
         {"$sort": {"count": -1}},
         {"$limit": 10}
@@ -1395,7 +1418,7 @@ async def get_dashboard(current_user: dict = Depends(get_current_user)):
     top_contributors = [{"name": c["_id"]["name"], "count": c["count"]} for c in contributors_raw]
 
     pipeline_accuracy = [
-        {"$match": {"status": {"$in": ["done", "user_feedback_confirmed", "rejected"]}}},
+        {"$match": {"status": {"$in": ["done", "user_feedback_confirmed", "rejected"]}, "is_deleted": {"$ne": True}}},
         {"$group": {
             "_id": "$employee_name",
             "total": {"$sum": 1},
@@ -1418,6 +1441,7 @@ async def get_dashboard(current_user: dict = Depends(get_current_user)):
     ]
 
     pipeline_dept = [
+        active_filter,
         {"$group": {"_id": "$account_type", "count": {"$sum": 1}}},
         {"$sort": {"count": -1}},
         {"$limit": 10}
@@ -1425,13 +1449,14 @@ async def get_dashboard(current_user: dict = Depends(get_current_user)):
     dept_raw = await db.product_issues.aggregate(pipeline_dept).to_list(10)
     by_department = [{"department": d["_id"], "count": d["count"]} for d in dept_raw]
 
-    hakim_analyzed = await db.product_issues.count_documents({"hakim_analysis": {"$exists": True, "$ne": {}}})
+    hakim_analyzed = await db.product_issues.count_documents({"hakim_analysis": {"$exists": True, "$ne": {}}, "is_deleted": {"$ne": True}})
     hakim_priority_changed = await db.product_issues.count_documents({
         "hakim_analysis.suggested_priority": {"$exists": True},
-        "$expr": {"$ne": ["$priority", "$hakim_analysis.suggested_priority"]}
+        "$expr": {"$ne": ["$priority", "$hakim_analysis.suggested_priority"]},
+        "is_deleted": {"$ne": True},
     })
     pipeline_hakim_teams = [
-        {"$match": {"hakim_analysis.suggested_team": {"$exists": True, "$ne": None}}},
+        {"$match": {"hakim_analysis.suggested_team": {"$exists": True, "$ne": None}, "is_deleted": {"$ne": True}}},
         {"$group": {"_id": "$hakim_analysis.suggested_team", "count": {"$sum": 1}}},
         {"$sort": {"count": -1}},
         {"$limit": 5}
@@ -1440,7 +1465,7 @@ async def get_dashboard(current_user: dict = Depends(get_current_user)):
     hakim_top_teams = [{"team": t["_id"], "count": t["count"]} for t in hakim_teams_raw]
 
     recent_hakim = await db.product_issues.find(
-        {"hakim_analysis.impact_assessment": {"$exists": True, "$ne": ""}},
+        {"hakim_analysis.impact_assessment": {"$exists": True, "$ne": ""}, "is_deleted": {"$ne": True}},
         {"_id": 0, "id": 1, "title": 1, "issue_number": 1, "priority": 1,
          "hakim_analysis.impact_assessment": 1, "hakim_analysis.suggested_priority": 1,
          "hakim_analysis.suggested_team": 1, "hakim_analysis.priority_reasoning": 1}
