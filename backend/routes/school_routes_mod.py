@@ -32,37 +32,50 @@ router = APIRouter()
 
 
 # ============== SCHOOLS (TENANTS) ROUTES ==============
+async def _generate_unique_school_code(country: str = "SA", custom_code: str = None) -> str:
+    """Generate a unique school code with retry logic."""
+    if custom_code:
+        existing = await db.schools.find_one({"code": custom_code})
+        if existing:
+            raise HTTPException(status_code=400, detail="رمز المدرسة مستخدم مسبقاً — يُرجى اختيار رمز آخر")
+        return custom_code
+
+    year_suffix = datetime.now().strftime("%y")
+    country_code = country[:2].upper() if country else "SA"
+    prefix = f"NSS-{country_code}-{year_suffix}-"
+
+    last_school = await db.schools.find_one(
+        {"code": {"$regex": f"^{prefix}"}},
+        sort=[("code", -1)]
+    )
+    if last_school and last_school.get("code"):
+        try:
+            last_num = int(last_school["code"].split("-")[-1])
+            next_num = last_num + 1
+        except (ValueError, IndexError):
+            next_num = 1
+    else:
+        next_num = 1
+
+    for attempt in range(10):
+        candidate = f"{prefix}{str(next_num + attempt).zfill(4)}"
+        existing = await db.schools.find_one({"code": candidate})
+        if not existing:
+            return candidate
+
+    fallback = f"{prefix}{uuid.uuid4().hex[:6].upper()}"
+    return fallback
+
+
 @router.post("/schools", response_model=SchoolResponse)
 async def create_school(
     school_data: SchoolCreate,
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
-    # Auto-generate code if not provided
-    if not school_data.code:
-        # Generate code: NSS-{COUNTRY}-{YEAR_LAST_2_DIGITS}-{SEQUENTIAL_NUMBER}
-        year_suffix = datetime.now().strftime("%y")
-        country_code = school_data.country[:2].upper() if school_data.country else "SA"
-        # Get next sequential number
-        last_school = await db.schools.find_one(
-            {"code": {"$regex": f"^NSS-{country_code}-{year_suffix}-"}},
-            sort=[("code", -1)]
-        )
-        if last_school and last_school.get("code"):
-            try:
-                last_num = int(last_school["code"].split("-")[-1])
-                next_num = last_num + 1
-            except (ValueError, IndexError):
-                next_num = 1
-        else:
-            next_num = 1
-        school_code = f"NSS-{country_code}-{year_suffix}-{str(next_num).zfill(4)}"
-    else:
-        school_code = school_data.code
-    
-    # Check if code exists
-    existing = await db.schools.find_one({"code": school_code})
-    if existing:
-        raise HTTPException(status_code=400, detail="رمز المدرسة مستخدم مسبقاً")
+    school_code = await _generate_unique_school_code(
+        country=school_data.country,
+        custom_code=school_data.code
+    )
     
     # Validate principal email uniqueness (except if teacher creating parent account)
     if school_data.principal_email:
@@ -219,30 +232,10 @@ async def create_school_draft(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
     """Create a school as draft (setup status) - does not create principal account"""
-    # Auto-generate code if not provided
-    if not school_data.code:
-        year_suffix = datetime.now().strftime("%y")
-        country_code = school_data.country[:2].upper() if school_data.country else "SA"
-        last_school = await db.schools.find_one(
-            {"code": {"$regex": f"^NSS-{country_code}-{year_suffix}-"}},
-            sort=[("code", -1)]
-        )
-        if last_school and last_school.get("code"):
-            try:
-                last_num = int(last_school["code"].split("-")[-1])
-                next_num = last_num + 1
-            except (ValueError, IndexError):
-                next_num = 1
-        else:
-            next_num = 1
-        school_code = f"NSS-{country_code}-{year_suffix}-{str(next_num).zfill(4)}"
-    else:
-        school_code = school_data.code
-    
-    # Check if code exists
-    existing = await db.schools.find_one({"code": school_code})
-    if existing:
-        raise HTTPException(status_code=400, detail="رمز المدرسة مستخدم مسبقاً")
+    school_code = await _generate_unique_school_code(
+        country=school_data.country,
+        custom_code=school_data.code
+    )
     
     school_id = str(uuid.uuid4())
     school_doc = {

@@ -210,10 +210,26 @@ def _build_operator_condition(model, key, ops: dict, col=None):
             conditions.append(col.isnot(None) if val else col.is_(None))
         elif op == "$regex":
             flags = ops.get("$options", "")
-            if "i" in flags:
-                conditions.append(col.ilike(f"%{val}%"))
+            pattern = val
+            starts = pattern.startswith("^")
+            ends = pattern.endswith("$")
+            if starts:
+                pattern = pattern[1:]
+            if ends:
+                pattern = pattern[:-1]
+            pattern = pattern.replace("%", r"\%").replace("_", r"\_")
+            if starts and ends:
+                like_pat = pattern
+            elif starts:
+                like_pat = f"{pattern}%"
+            elif ends:
+                like_pat = f"%{pattern}"
             else:
-                conditions.append(col.like(f"%{val}%"))
+                like_pat = f"%{pattern}%"
+            if "i" in flags:
+                conditions.append(col.ilike(like_pat))
+            else:
+                conditions.append(col.like(like_pat))
         elif op == "$not":
             inner = _build_operator_condition(model, key, val, col)
             if inner is not None:
