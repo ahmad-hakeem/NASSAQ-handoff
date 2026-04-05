@@ -567,6 +567,20 @@ export default function PlatformSchoolDetailPage() {
                               </div>
                             )}
                           </div>
+                          {credResult.password_was_changed && credResult.temp_password && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="w-full gap-2 mt-1 border-brand-navy/20 text-brand-navy hover:bg-brand-navy hover:text-white dark:text-brand-turquoise dark:border-brand-turquoise/30 dark:hover:bg-brand-turquoise dark:hover:text-white font-cairo"
+                              onClick={() => {
+                                const msg = `مرحباً،\n\nاليك بيانات حسابك على منصة نَسَّق | NASSAQ.\n\nالبريد الإلكتروني: ${credResult.email}\nكلمة المرور المؤقتة: ${credResult.temp_password}\n\nيرجى تسجيل الدخول عبر الرابط التالي:\n${window.location.origin}/login\n\nإذا واجهت أي مشكلة أثناء تسجيل الدخول أو احتجت إلى مساعدة، يرجى التواصل مع إدارة المنصة.\n\nنتمنى لك تجربة موفقة داخل منصة نَسَّق، ونسعد بمساهمتك في تطوير وتشغيل النظام.\n\nمع خالص التحية،\nإدارة منصة نَسَّق | NASSAQ`;
+                                copyToClipboard(msg, isRTL ? 'رسالة الترحيب' : 'welcome message');
+                              }}
+                            >
+                              <Copy className="h-4 w-4" />
+                              {isRTL ? 'نسخ رسالة الترحيب مع بيانات الدخول' : 'Copy Welcome Message with Credentials'}
+                            </Button>
+                          )}
                           <p className="text-xs text-slate-500">
                             {isRTL ? 'سيُطلب من المدير تغيير كلمة المرور عند أول تسجيل دخول' : 'Principal will be prompted to change password on first login'}
                           </p>
