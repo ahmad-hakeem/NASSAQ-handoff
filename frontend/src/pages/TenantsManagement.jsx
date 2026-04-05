@@ -407,7 +407,6 @@ export default function TenantsManagement() {
                 { label: t.activeSchools, value: stats.active, icon: CheckCircle2, onClick: () => handleStatusFilter('active'), active: activeStatusFilter === 'active', color: 'text-emerald-400' },
                 { label: t.suspendedSchools, value: stats.suspended, icon: XCircle, onClick: () => handleStatusFilter('suspended'), active: activeStatusFilter === 'suspended', color: 'text-red-400' },
                 { label: t.pendingSchools, value: stats.pending, icon: Clock, onClick: () => handleStatusFilter('pending'), active: activeStatusFilter === 'pending', color: 'text-amber-400' },
-                ...(stats.drafts > 0 ? [{ label: isRTL ? 'مسودات' : 'Drafts', value: stats.drafts, icon: FileEdit, onClick: () => handleStatusFilter('setup'), active: activeStatusFilter === 'setup', color: 'text-orange-400' }] : []),
                 { label: t.totalStudents, value: stats.totalStudents.toLocaleString(), icon: GraduationCap },
                 { label: t.totalTeachers, value: stats.totalTeachers, icon: UserCheck },
                 { label: t.totalClasses, value: stats.totalClasses, icon: Layers },
