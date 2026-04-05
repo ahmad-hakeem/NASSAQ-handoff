@@ -167,11 +167,22 @@ async def create_assessment(
     
     assessment_id = str(uuid.uuid4())
     is_pub = getattr(assessment, 'is_published', False)
+    teacher_id = current_user.get('teacher_id') or current_user['id']
+    teacher_in_db = await db.teachers.find_one({"id": teacher_id}, {"_id": 0, "id": 1})
+    if not teacher_in_db:
+        teacher_in_db = await db.teachers.find_one(
+            {"school_id": current_user.get('tenant_id')},
+            {"_id": 0, "id": 1}
+        )
+        if teacher_in_db:
+            teacher_id = teacher_in_db['id']
+        else:
+            teacher_id = None
     assessment_doc = {
         "id": assessment_id,
         "class_id": assessment.class_id,
         "subject_id": assessment.subject_id,
-        "teacher_id": current_user['id'],
+        "teacher_id": teacher_id,
         "name": assessment.title,
         "name_en": getattr(assessment, 'title_en', None),
         "type": assessment.assessment_type.value,

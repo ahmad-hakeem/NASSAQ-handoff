@@ -603,6 +603,7 @@ async def delete_student(
     )
 
     cleanup = {}
+    await db.attendance.delete_many({"student_id": student_id})
     await db.students.delete_one({"id": student_id})
 
     await db.schools.update_one(
