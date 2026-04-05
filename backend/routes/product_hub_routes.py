@@ -325,10 +325,63 @@ async def _generate_prompt(issue: dict) -> str:
 
 
 async def _next_issue_number() -> int:
-    last = await db.product_issues.find_one(
-        {"is_deleted": {"$ne": True}}, {"issue_number": 1}, sort=[("issue_number", -1)]
+    result = await db.counters.find_one_and_update(
+        {"_id": "product_issue_number"},
+        {"$inc": {"seq": 1}},
+        upsert=True,
+        return_document=True,
     )
-    return (last.get("issue_number", 0) if last else 0) + 1
+    return result["seq"]
+
+
+async def _ensure_issue_counter():
+    max_doc = await db.product_issues.find_one(
+        {}, {"issue_number": 1}, sort=[("issue_number", -1)]
+    )
+    current_max = max_doc.get("issue_number", 0) if max_doc else 0
+    await db.counters.update_one(
+        {"_id": "product_issue_number"},
+        {"$max": {"seq": current_max}},
+        upsert=True,
+    )
+
+
+async def _ensure_data_integrity():
+    results = {"backfilled_is_deleted": 0, "fixed_missing_numbers": 0, "resequenced": 0}
+
+    backfill = await db.product_issues.update_many(
+        {"is_deleted": {"$exists": False}},
+        {"$set": {"is_deleted": False}}
+    )
+    results["backfilled_is_deleted"] = backfill.modified_count
+
+    missing_num = await db.product_issues.find(
+        {"issue_number": {"$exists": False}},
+        {"id": 1, "_id": 0}
+    ).to_list(1000)
+    for doc in missing_num:
+        next_num = await _next_issue_number()
+        await db.product_issues.update_one(
+            {"id": doc["id"]},
+            {"$set": {"issue_number": next_num}}
+        )
+        results["fixed_missing_numbers"] += 1
+
+    pipeline = [
+        {"$group": {"_id": "$issue_number", "count": {"$sum": 1}, "ids": {"$push": "$id"}}},
+        {"$match": {"count": {"$gt": 1}}}
+    ]
+    dupes = await db.product_issues.aggregate(pipeline).to_list(100)
+    for dupe in dupes:
+        for extra_id in dupe["ids"][1:]:
+            next_num = await _next_issue_number()
+            await db.product_issues.update_one(
+                {"id": extra_id},
+                {"$set": {"issue_number": next_num}}
+            )
+            results["resequenced"] += 1
+
+    return results
 
 
 async def _get_issue_or_404(issue_id: str) -> dict:
@@ -1332,6 +1385,11 @@ async def resequence_issue_numbers(current_user: dict = Depends(get_current_user
             await db.product_issues.update_one(
                 {"id": issue["id"]}, {"$set": {"issue_number": idx}}
             )
+    await db.counters.update_one(
+        {"_id": "product_issue_number"},
+        {"$set": {"seq": len(issues)}},
+        upsert=True,
+    )
     return {"resequenced": len(updates), "total_active": len(issues), "changes": updates}
 
 

@@ -144,6 +144,14 @@ async def startup_tasks():
     except Exception as e:
         logger.warning(f"Index creation on startup: {e}")
 
+    try:
+        from routes.product_hub_routes import _ensure_issue_counter, _ensure_data_integrity
+        await _ensure_issue_counter()
+        integrity = await _ensure_data_integrity()
+        logger.info(f"Product hub data integrity: {integrity}")
+    except Exception as e:
+        logger.warning(f"Product hub data integrity check: {e}")
+
     from engines.approval_engine import approval_engine
     from engines.approval_handlers import TeacherApprovalHandler, SchoolApprovalHandler
     approval_engine.register(TeacherApprovalHandler())

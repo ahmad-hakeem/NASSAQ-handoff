@@ -76,3 +76,6 @@ CORS_ORIGINS = "https://nassaq.com,https://www.nassaq.com"
 
 [userenv.development]
 JWT_SECRET_KEY = "mkzodaGeExRnHqMNLu1DwiC6dBT2ic5hRmr-hUCogRaqhuGh0r2ZLEFhLVbG-s43"
+
+[objectStorage]
+defaultBucketID = "replit-objstore-74e91ecd-87d7-4ff2-a2ad-91e1fdc9c773"

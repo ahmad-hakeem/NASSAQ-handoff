@@ -167,6 +167,7 @@ INDEXES = {
     ],
     "product_issues": [
         IndexModel([("id", ASCENDING)], unique=True, name="idx_product_issues_id"),
+        IndexModel([("issue_number", ASCENDING)], unique=True, name="idx_product_issues_number_unique"),
         IndexModel([("status", ASCENDING)], name="idx_product_issues_status"),
         IndexModel([("priority", ASCENDING)], name="idx_product_issues_priority"),
         IndexModel([("issue_type", ASCENDING)], name="idx_product_issues_type"),
@@ -174,6 +175,14 @@ INDEXES = {
         IndexModel([("employee_name", ASCENDING)], name="idx_product_issues_employee"),
         IndexModel([("created_by", ASCENDING)], name="idx_product_issues_created_by"),
         IndexModel([("created_at", DESCENDING)], name="idx_product_issues_created_at"),
+        IndexModel(
+            [("is_deleted", ASCENDING), ("status", ASCENDING), ("created_at", DESCENDING)],
+            name="idx_product_issues_active_status_date",
+        ),
+        IndexModel(
+            [("is_deleted", ASCENDING), ("created_by", ASCENDING), ("created_at", DESCENDING)],
+            name="idx_product_issues_active_creator_date",
+        ),
         IndexModel(
             [("status", ASCENDING), ("priority", ASCENDING), ("created_at", DESCENDING)],
             name="idx_product_issues_status_priority_date",
@@ -187,6 +196,14 @@ INDEXES = {
             [("created_by", ASCENDING), ("created_at", DESCENDING)],
             name="idx_product_issues_created_by_date",
         ),
+    ],
+    "counters": [
+        IndexModel([("_id", ASCENDING)], name="idx_counters_id"),
+    ],
+    "bulk_action_history": [
+        IndexModel([("id", ASCENDING)], unique=True, name="idx_bulk_history_id"),
+        IndexModel([("performed_by", ASCENDING), ("performed_at", DESCENDING)], name="idx_bulk_history_user_date"),
+        IndexModel([("performed_at", DESCENDING)], name="idx_bulk_history_date"),
     ],
     "issue_activity_log": [
         IndexModel([("id", ASCENDING)], unique=True, name="idx_activity_log_id"),
