@@ -298,6 +298,6 @@ async def seed_subject_details_secondary():
         except Exception as e:
             print(f"❌ خطأ: {e}")
             raise
-        finally:
-    if __name__ == "__main__":
-        asyncio.run(seed_subject_details_secondary())
+
+if __name__ == "__main__":
+    asyncio.run(seed_subject_details_secondary())

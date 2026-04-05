@@ -467,6 +467,6 @@ async def seed_official_curriculum():
         except Exception as e:
             print(f"\n❌ خطأ: {e}")
             raise
-        finally:
-    if __name__ == "__main__":
-        asyncio.run(seed_official_curriculum())
+
+if __name__ == "__main__":
+    asyncio.run(seed_official_curriculum())
