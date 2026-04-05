@@ -88,7 +88,7 @@ async def add_security_headers(request: Request, call_next):
 @app.middleware("http")
 async def audit_log_middleware(request: Request, call_next):
     """Auto-log all write API events with device and user context"""
-    from middleware.audit_middleware import _should_audit, _derive_action, _derive_severity, parse_device_info, _extract_real_ip
+    from middleware.audit_middleware import _should_audit, _derive_action, _derive_severity, parse_device_info, _extract_real_ip, _sanitize_query_params as _sanitize_qp
     import time, uuid as _uuid
     from datetime import datetime, timezone
 
@@ -155,7 +155,7 @@ async def audit_log_middleware(request: Request, call_next):
             "details": {
                 "method": method,
                 "path": path,
-                "query_params": dict(request.query_params),
+                "query_params": _sanitize_qp(dict(request.query_params)),
                 "status_code": response.status_code,
                 "duration_ms": duration_ms,
                 "success": 200 <= response.status_code < 400,

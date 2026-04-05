@@ -14,6 +14,23 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+SENSITIVE_QUERY_KEYS = frozenset({
+    "token", "access_token", "refresh_token", "id_token",
+    "password", "passwd", "pwd", "secret",
+    "key", "api_key", "apikey",
+    "authorization", "auth",
+    "session", "session_id",
+    "otp", "code", "verify",
+})
+
+
+def _sanitize_query_params(params: dict) -> dict:
+    return {
+        k: "***REDACTED***" if k.lower() in SENSITIVE_QUERY_KEYS else v
+        for k, v in params.items()
+    }
+
+
 # Paths to skip entirely (no audit value)
 SKIP_PATHS = {
     "/api/auth/me",
@@ -372,7 +389,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
             "details": {
                 "method": method,
                 "path": path,
-                "query_params": dict(request.query_params),
+                "query_params": _sanitize_query_params(dict(request.query_params)),
                 "status_code": response.status_code,
                 "duration_ms": duration_ms,
                 "success": 200 <= response.status_code < 400,

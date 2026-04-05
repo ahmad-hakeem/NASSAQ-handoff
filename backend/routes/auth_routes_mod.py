@@ -244,6 +244,8 @@ class ActiveRoleContextResponse(BaseModel):
     scope_id: Optional[str] = None
     is_active: bool = True
     set_at: str
+    access_token: Optional[str] = None
+    token_type: Optional[str] = None
 
 @router.post("/auth/set-active-role", response_model=ActiveRoleContextResponse)
 async def set_active_role_context(
@@ -310,6 +312,13 @@ async def set_active_role_context(
         }}
     )
     
+    new_token = create_access_token({
+        "sub": user_id,
+        "role": context.role_id,
+        "tenant_id": school_id,
+        "email": current_user.get("email", ""),
+    })
+
     return ActiveRoleContextResponse(
         user_identity_id=user_id,
         role_id=context.role_id,
@@ -318,7 +327,9 @@ async def set_active_role_context(
         school_name=school_name,
         scope_id=context.scope_id,
         is_active=True,
-        set_at=now
+        set_at=now,
+        access_token=new_token,
+        token_type="bearer",
     )
 
 @router.get("/auth/active-role", response_model=ActiveRoleContextResponse)
@@ -531,14 +542,22 @@ async def switch_user_role(
         "timestamp": now
     })
     
-    # Return new token context (in real implementation, would generate new JWT)
+    new_token = create_access_token({
+        "sub": user_id,
+        "role": target_role,
+        "tenant_id": target_tenant_id,
+        "email": user.get("email", ""),
+    })
+
     return {
         "message": "تم تبديل الدور بنجاح",
         "user_id": user_id,
         "active_role": target_role,
         "active_tenant_id": target_tenant_id,
         "full_name": user.get("full_name"),
-        "email": user.get("email")
+        "email": user.get("email"),
+        "access_token": new_token,
+        "token_type": "bearer",
     }
 
 

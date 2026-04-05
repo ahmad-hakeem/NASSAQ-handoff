@@ -34,9 +34,8 @@ db = pg_db
 
 JWT_SECRET = os.environ.get('JWT_SECRET_KEY', '')
 if not JWT_SECRET:
-    import secrets as _secrets
-    JWT_SECRET = _secrets.token_urlsafe(48)
-    logger.warning("JWT_SECRET_KEY not set — generated ephemeral secret (tokens will invalidate on restart)")
+    logger.critical("JWT_SECRET_KEY environment variable is not set — refusing to start with an ephemeral secret")
+    raise SystemExit("FATAL: JWT_SECRET_KEY must be set. Aborting.")
 JWT_ALGORITHM = os.environ.get('JWT_ALGORITHM', 'HS256')
 ACCESS_TOKEN_EXPIRE = int(os.environ.get('ACCESS_TOKEN_EXPIRE_MINUTES', 60))
 
