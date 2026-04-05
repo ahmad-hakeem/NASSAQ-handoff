@@ -445,8 +445,8 @@ async def submit_additional_info(
         await _emit_event(_get_db(), "approval_request_info_submitted", request_id,
                           request.get("account_type", "unknown"),
                           status_before=current_status, status_after="pending_review")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Failed to emit approval event for request {request_id}: {e}")
     
     return {
         "success": True,

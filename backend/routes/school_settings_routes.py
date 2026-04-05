@@ -8,6 +8,9 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 import uuid
+import logging
+
+logger = logging.getLogger("nassaq.school_settings")
 
 
 class SchoolSettingsUpdate(BaseModel):
@@ -71,8 +74,8 @@ def setup_school_settings_routes(db, get_current_user, require_roles, UserRole):
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "ip_address": "",
             })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to write audit log for {action} on {entity}/{entity_id}: {e}")
 
     # ============ SCHOOL SETTINGS ============
 

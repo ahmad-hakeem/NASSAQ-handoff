@@ -276,7 +276,8 @@ def setup_admin_routes(db, get_current_user, require_roles, UserRole):
                     total_tables = tbl_result.scalar() or 0
                 else:
                     db_healthy = False
-            except Exception:
+            except Exception as e:
+                logger.error(f"System health DB check failed: {e}")
                 db_healthy = False
 
             return {
@@ -411,5 +412,6 @@ def get_hijri_date(date: datetime) -> str:
             'رمضان', 'شوال', 'ذو القعدة', 'ذو الحجة'
         ]
         return f"{h.day} {HIJRI_MONTHS[h.month]} {h.year} هـ"
-    except Exception:
+    except Exception as e:
+        logger.debug(f"Hijri date conversion failed: {e}")
         return ""

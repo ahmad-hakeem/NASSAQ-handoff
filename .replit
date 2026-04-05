@@ -1,7 +1,7 @@
 modules = ["python-base-3.12", "nodejs-22"]
 
   [agent]
-  expertMode = true
+expertMode = true
   integrations = ["python_openai_ai_integrations:1.0.0"]
 
   [nix]

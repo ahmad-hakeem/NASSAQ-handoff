@@ -8,7 +8,9 @@ from fastapi import APIRouter, HTTPException, Header, Depends, Query
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
 from datetime import datetime, timezone
-import uuid, os
+import uuid, os, logging
+
+logger = logging.getLogger("nassaq.principal_timetable")
 
 _JWT_SECRET = os.environ.get('JWT_SECRET_KEY', '')
 _JWT_ALGORITHM = os.environ.get('JWT_ALGORITHM', 'HS256')
@@ -179,8 +181,8 @@ async def get_school_id(x_school_context: str = Header(default=None, alias="X-Sc
                 user = await db.users.find_one({"id": user_id}, {"_id": 0, "school_id": 1, "tenant_id": 1})
                 if user:
                     return user.get("tenant_id") or user.get("school_id")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to extract school_id from authorization token: {e}")
     return None
 
 async def _get_school_data(school_id: str) -> Dict[str, Any]:
@@ -742,8 +744,8 @@ async def get_issues(
                     "message_en": c.get("description_en") or c.get("message_en") or c.get("description", "Timetable conflict"),
                     "affected_items": c.get("affected_items"),
                 })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to load timetable conflicts for {tt_id}: {e}")
 
         try:
             unscheduled = []
@@ -758,8 +760,8 @@ async def get_issues(
                     "message_en": f"{len(unscheduled)} sessions could not be scheduled",
                     "affected_items": [u.get("subject_name", "") for u in unscheduled[:5]]
                 })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to load unscheduled demands for {tt_id}: {e}")
 
         try:
             underutilized = tt.get("underutilized_teachers", [])
@@ -829,8 +831,8 @@ async def get_issues(
                     "affected_items": teacher_names,
                     "details": teacher_details
                 })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to analyze teacher distribution for timetable: {e}")
 
     return {
         "success": True,
@@ -1150,8 +1152,8 @@ async def publish_version(
             user_doc = await db.users.find_one({"id": publisher_info})
             if user_doc:
                 publisher_name = user_doc.get("full_name") or user_doc.get("name") or publisher_info
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to resolve publisher info from token: {e}")
 
     school_settings = await db.school_settings.find_one({"school_id": school_id})
     working_days = _resolve_working_days(school_settings.get("working_days") if school_settings else None)
@@ -1240,7 +1242,8 @@ async def publish_version(
                     {"id": version_id},
                     {"$set": publish_update}
                 )
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Smart engine publish_timetable failed for {version_id}, falling back to direct update: {e}")
             await db.timetables.update_one(
                 {"id": version_id},
                 {"$set": publish_update}
@@ -1272,8 +1275,8 @@ async def publish_version(
             "previous_version_ids": previously_published,
             "created_at": now,
         })
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Failed to insert publish history for version {version_id}: {e}")
 
     result_data = {
         "published_at": now,

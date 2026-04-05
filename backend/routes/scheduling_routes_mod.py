@@ -12,10 +12,12 @@ from datetime import datetime, timezone, timedelta
 from bson_compat import ObjectId
 import uuid, os, logging, json, random, re, io, base64
 
+logger = logging.getLogger("nassaq.scheduling")
+
 from dependencies import (
     db, get_current_user, require_roles, UserRole, SchoolStatus,
     hash_password, verify_password, create_access_token,
-    JWT_SECRET, JWT_ALGORITHM, ACCESS_TOKEN_EXPIRE, security, logger,
+    JWT_SECRET, JWT_ALGORITHM, ACCESS_TOKEN_EXPIRE, security,
     audit_engine, AuditAction, AuditSeverity,
     smart_scheduling_engine, TimetableRunStatus, TimetableStatus,
     ConflictType, ConflictSeverity, PreValidationResult, GenerationResult,
@@ -249,8 +251,8 @@ async def get_teacher_assignments(
                 class_name=class_map.get(a.get("class_id")),
                 subject_name=subject_map.get(a.get("subject_id"))
             ))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to serialize teacher assignment {a.get('id', 'unknown')}: {e}")
     
     return result
 

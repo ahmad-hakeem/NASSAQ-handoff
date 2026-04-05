@@ -12,6 +12,8 @@ from datetime import datetime, timezone, timedelta
 from bson_compat import ObjectId
 import uuid, os, logging, json, random, re, io, base64
 
+logger = logging.getLogger("nassaq.academics")
+
 async def get_school_id_from_context(current_user: dict, x_school_context: str = None) -> str:
     if x_school_context:
         return x_school_context
@@ -20,7 +22,7 @@ async def get_school_id_from_context(current_user: dict, x_school_context: str =
 from dependencies import (
     db, get_current_user, require_roles, UserRole, SchoolStatus,
     hash_password, verify_password, create_access_token,
-    JWT_SECRET, JWT_ALGORITHM, ACCESS_TOKEN_EXPIRE, security, logger,
+    JWT_SECRET, JWT_ALGORITHM, ACCESS_TOKEN_EXPIRE, security,
     audit_engine, AuditAction, AuditSeverity,
     smart_scheduling_engine, TimetableRunStatus, TimetableStatus,
     ConflictType, ConflictSeverity, PreValidationResult, GenerationResult,
@@ -1570,8 +1572,8 @@ async def get_subjects(
             s["weekly_periods"] = s["weekly_hours"]
         try:
             result.append(SubjectResponse(**s))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to serialize subject {s.get('id', 'unknown')}: {e}")
     return result
 
 @router.get("/subjects/{subject_id}", response_model=SubjectResponse)
