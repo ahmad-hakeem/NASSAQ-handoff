@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, ConfigDict, EmailStr, model_validator
 from typing import List, Optional, Any, Dict
 from datetime import datetime, timezone, timedelta
 from bson_compat import ObjectId
-import uuid, os, logging, json, random, re, io, base64
+import uuid, os, logging, json, re, io, base64
 
 from dependencies import (
     db, get_current_user, require_roles, UserRole, SchoolStatus,
