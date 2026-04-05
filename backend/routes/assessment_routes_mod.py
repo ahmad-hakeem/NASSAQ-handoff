@@ -241,9 +241,9 @@ async def get_assessments(
     if subject_id:
         query['subject_id'] = subject_id
     if assessment_type:
-        query['assessment_type'] = assessment_type
+        query['type'] = assessment_type
     
-    assessments = await db.assessments.find(query, {"_id": 0}).sort("date", -1).to_list(500)
+    assessments = await db.assessments.find(query, {"_id": 0}).sort("due_date", -1).to_list(500)
     
     # Enrich with related data
     result = []
@@ -275,7 +275,7 @@ async def get_assessments(
             assessment_type=a.get('assessment_type') or a.get('type'),
             max_score=a.get('max_score', 100),
             weight=a.get('weight', 1.0),
-            date=a.get('date'),
+            date=a.get('date') or a.get('due_date'),
             description=a.get('description'),
             term_id=a.get('term_id'),
             status=a.get('status', 'graded'),
@@ -311,12 +311,12 @@ async def get_assessment(
         subject_name=subject.get('name') if subject else None,
         teacher_id=assessment['teacher_id'],
         teacher_name=teacher.get('full_name') if teacher else None,
-        title=assessment['title'],
-        title_en=assessment.get('title_en'),
-        assessment_type=assessment['assessment_type'],
-        max_score=assessment['max_score'],
+        title=assessment.get('title') or assessment.get('name'),
+        title_en=assessment.get('title_en') or assessment.get('name_en'),
+        assessment_type=assessment.get('assessment_type') or assessment.get('type'),
+        max_score=assessment.get('max_score', 100),
         weight=assessment.get('weight', 1.0),
-        date=assessment['date'],
+        date=assessment.get('date') or assessment.get('due_date'),
         description=assessment.get('description'),
         is_published=assessment.get('is_published', False),
         created_at=assessment['created_at'],
@@ -566,7 +566,8 @@ async def get_student_grade_history(
         if not assessment:
             continue
         
-        if assessment_type and assessment['assessment_type'] != assessment_type:
+        a_type = assessment.get('assessment_type') or assessment.get('type')
+        if assessment_type and a_type != assessment_type:
             continue
         
         # Get subject name
@@ -582,16 +583,16 @@ async def get_student_grade_history(
             }
         grades_by_subject[subject_name]['grades'].append({
             "assessment_id": g['assessment_id'],
-            "title": assessment['title'],
-            "type": assessment['assessment_type'],
+            "title": assessment.get('title') or assessment.get('name'),
+            "type": a_type,
             "score": g['score'],
             "max_score": g['max_score'],
             "percentage": g.get('percentage', 0),
-            "date": assessment['date']
+            "date": assessment.get('date') or assessment.get('due_date')
         })
         
         # Aggregate by type
-        assessment_type_key = assessment['assessment_type']
+        assessment_type_key = a_type
         if assessment_type_key not in grades_by_type:
             grades_by_type[assessment_type_key] = {
                 "count": 0,
@@ -622,13 +623,13 @@ async def get_student_grade_history(
         if assessment:
             recent_grades.append({
                 "assessment_id": g['assessment_id'],
-                "title": assessment['title'],
-                "type": assessment['assessment_type'],
+                "title": assessment.get('title') or assessment.get('name'),
+                "type": assessment.get('assessment_type') or assessment.get('type'),
                 "subject_name": subject.get('name') if subject else None,
                 "score": g['score'],
                 "max_score": g['max_score'],
                 "percentage": g.get('percentage', 0),
-                "date": assessment['date'],
+                "date": assessment.get('date') or assessment.get('due_date'),
                 "recorded_at": g['recorded_at']
             })
     
@@ -714,7 +715,7 @@ async def get_class_grade_overview(
     recent_assessment_docs = await db.assessments.find(
         assessments_query, 
         {"_id": 0}
-    ).sort("date", -1).limit(5).to_list(5)
+    ).sort("due_date", -1).limit(5).to_list(5)
     
     for a in recent_assessment_docs:
         # Get grades for this assessment
@@ -723,9 +724,9 @@ async def get_class_grade_overview(
         
         recent_assessments.append({
             "id": a['id'],
-            "title": a['title'],
-            "type": a['assessment_type'],
-            "date": a['date'],
+            "title": a.get('title') or a.get('name'),
+            "type": a.get('assessment_type') or a.get('type'),
+            "date": a.get('date') or a.get('due_date'),
             "max_score": a['max_score'],
             "students_graded": len(assessment_grades),
             "average": round(sum(assessment_percentages) / len(assessment_percentages), 2) if assessment_percentages else 0
@@ -796,10 +797,10 @@ async def get_students_for_grading(
     
     return {
         "assessment_id": assessment_id,
-        "assessment_title": assessment['title'],
-        "assessment_type": assessment['assessment_type'],
-        "max_score": assessment['max_score'],
-        "date": assessment['date'],
+        "assessment_title": assessment.get('title') or assessment.get('name'),
+        "assessment_type": assessment.get('assessment_type') or assessment.get('type'),
+        "max_score": assessment.get('max_score', 100),
+        "date": assessment.get('date') or assessment.get('due_date'),
         "class_id": assessment['class_id'],
         "class_name": class_info.get('name') if class_info else None,
         "subject_id": assessment['subject_id'],

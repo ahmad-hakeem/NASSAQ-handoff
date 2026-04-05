@@ -68,6 +68,7 @@ async def pg_session_middleware(request: Request, call_next):
                 await session.commit()
             except Exception:
                 await session.rollback()
+                raise
             return response
         except Exception:
             await session.rollback()
