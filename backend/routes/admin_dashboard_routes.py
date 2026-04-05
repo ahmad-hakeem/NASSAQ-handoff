@@ -126,11 +126,7 @@ def setup_admin_routes(db, get_current_user, require_roles, UserRole):
             present_students = await db.attendance.count_documents({
                 "user_type": "student", "status": "present", "date": {"$gte": today}
             })
-            student_attendance_rate = (present_students / max(total_student_att, 1)) * 100 if total_student_att > 0 else 0
-
-            session_att = await db.session_attendance.count_documents({})
-            if total_student_att == 0 and session_att > 0:
-                student_attendance_rate = 92.0
+            student_attendance_rate = (present_students / total_student_att) * 100 if total_student_att > 0 else 0
 
             total_teacher_att = await db.attendance.count_documents({
                 "user_type": "teacher", "date": {"$gte": today}
@@ -138,9 +134,7 @@ def setup_admin_routes(db, get_current_user, require_roles, UserRole):
             present_teachers = await db.attendance.count_documents({
                 "user_type": "teacher", "status": "present", "date": {"$gte": today}
             })
-            teacher_attendance_rate = (present_teachers / max(total_teacher_att, 1)) * 100 if total_teacher_att > 0 else 0
-            if total_teacher_att == 0:
-                teacher_attendance_rate = 95.0
+            teacher_attendance_rate = (present_teachers / total_teacher_att) * 100 if total_teacher_att > 0 else 0
 
             ai_enabled_schools = await db.schools.count_documents({
                 "$or": [{"ai_enabled": True}, {"ai_features_enabled": True}, {"hakim_enabled": True}]
@@ -150,8 +144,8 @@ def setup_admin_routes(db, get_current_user, require_roles, UserRole):
 
             hijri_date = get_hijri_date(now)
 
-            absent_students = max(0, total_student_att - present_students) if total_student_att > 0 else max(0, int(registered_students * 0.08))
-            absent_teachers = max(0, total_teacher_att - present_teachers) if total_teacher_att > 0 else max(0, int(teachers_in_schools * 0.05))
+            absent_students = max(0, total_student_att - present_students) if total_student_att > 0 else 0
+            absent_teachers = max(0, total_teacher_att - present_teachers) if total_teacher_att > 0 else 0
 
             return {
                 "registered_schools": registered_schools,
@@ -175,12 +169,12 @@ def setup_admin_routes(db, get_current_user, require_roles, UserRole):
                 "active_sessions_now": active_sessions_now,
                 "notifications_sent_today": notifications_sent_today,
                 "behaviour_records_today": behaviour_records_today,
-                "students_present_today": present_students if total_student_att > 0 else int(registered_students * 0.92),
+                "students_present_today": present_students,
                 "students_absent_today": absent_students,
-                "teachers_present_today": present_teachers if total_teacher_att > 0 else int(teachers_in_schools * 0.95),
+                "teachers_present_today": present_teachers,
                 "teachers_absent_today": absent_teachers,
                 "total_users": total_users,
-                "active_users_today": max(sessions_today * 2, int(total_users * 0.35)),
+                "active_users_today": sessions_today * 2 if sessions_today > 0 else 0,
                 "hijri_date": hijri_date,
                 "gregorian_date": now.strftime("%Y-%m-%d"),
                 "last_updated": now.isoformat()

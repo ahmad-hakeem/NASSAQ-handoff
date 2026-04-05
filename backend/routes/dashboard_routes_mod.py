@@ -286,10 +286,6 @@ async def get_super_admin_dashboard_stats(
         active_users_today = await db.users.count_documents({
             "last_login": {"$gte": today_start.isoformat()}
         })
-        if active_users_today == 0:
-            # Fallback: estimate based on active users
-            total_active_users = await db.users.count_documents({"is_active": True})
-            active_users_today = int(total_active_users * 0.35)  # ~35% daily active
         
         # === Attendance Statistics ===
         # Student Attendance Today
@@ -304,13 +300,8 @@ async def get_super_admin_dashboard_stats(
             "date": {"$gte": today_start.isoformat()[:10]}
         })
         
-        # If no attendance records, use estimated percentages
-        if students_present_today == 0 and students_absent_today == 0:
-            students_present_today = int(total_students * 0.92)  # 92% attendance
-            students_absent_today = int(total_students * 0.08)
-        
         student_total_tracked = students_present_today + students_absent_today
-        student_attendance_percentage = (students_present_today / student_total_tracked * 100) if student_total_tracked > 0 else 92.0
+        student_attendance_percentage = (students_present_today / student_total_tracked * 100) if student_total_tracked > 0 else 0
         
         # Teacher Attendance Today  
         teachers_present_today = await db.attendance.count_documents({
@@ -324,13 +315,8 @@ async def get_super_admin_dashboard_stats(
             "date": {"$gte": today_start.isoformat()[:10]}
         })
         
-        # If no attendance records, use estimated percentages
-        if teachers_present_today == 0 and teachers_absent_today == 0:
-            teachers_present_today = int(total_teachers * 0.95)  # 95% attendance
-            teachers_absent_today = int(total_teachers * 0.05)
-        
         teacher_total_tracked = teachers_present_today + teachers_absent_today
-        teacher_attendance_percentage = (teachers_present_today / teacher_total_tracked * 100) if teacher_total_tracked > 0 else 95.0
+        teacher_attendance_percentage = (teachers_present_today / teacher_total_tracked * 100) if teacher_total_tracked > 0 else 0
         
         # === Waiting Sessions ===
         # Count lessons/periods that need substitute teachers
@@ -480,18 +466,13 @@ async def get_command_center_stats(
                 "date": {"$gte": today_start.isoformat()[:10]}
             })
         
-        # Calculate attendance rates
         student_attendance_rate = 0
         if students_total_today > 0:
             student_attendance_rate = round((students_present_today / students_total_today) * 100, 1)
-        elif registered_students > 0:
-            student_attendance_rate = 92  # Default estimate
         
         teacher_attendance_rate = 0
         if teachers_total_today > 0:
             teacher_attendance_rate = round((teachers_present_today / teachers_total_today) * 100, 1)
-        elif teachers_in_schools > 0:
-            teacher_attendance_rate = 95  # Default estimate
         
         # === Growth Deltas (Last Month) ===
         schools_delta = await db.schools.count_documents({

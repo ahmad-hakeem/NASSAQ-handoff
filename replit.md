@@ -87,7 +87,7 @@ Each fix report must include: root cause, why it wasn't caught before, what chan
 - **Error Boundary**: `ErrorBoundary.jsx` wraps entire app — catches render crashes with Arabic fallback UI
 - **Health Check**: `/system/health` returns DB status, latency, uptime, version
 - **Logging**: All 34+ backend route files use `logging.getLogger("nassaq.*")` — zero `print()` statements in routes/engines
-- **Mock Data Removed**: Student grades from real DB, Hakim chat from real API, AssessmentPage uses `fetchStudentsByClasses()` API call; IntegrationsPage `PREMIUM_INTEGRATIONS` mock array removed — shows empty state when API returns no data
+- **Mock Data Removed**: Student grades from real DB, Hakim chat from real API, AssessmentPage uses `fetchStudentsByClasses()` API call; IntegrationsPage `PREMIUM_INTEGRATIONS` mock array removed — shows empty state when API returns no data; ALL attendance metrics (student/teacher rates, present/absent counts, active users) now DB-only — zero fabricated fallbacks
 - **Console Cleanup**: Zero `console.log` in frontend pages/contexts; WebSocket logs gated on `NODE_ENV === 'development'`
 - **Env Vars**: `JWT_SECRET_KEY` set in dev+prod; `CORS_ORIGINS` set in prod (`https://nassaq.com,https://www.nassaq.com`); admin seed passwords via `ADMIN_SEED_PASSWORD_ZALAT` / `ADMIN_SEED_PASSWORD_HAKIM` env vars (no hardcoded passwords in code)
 - **Secrets Cleaned**: `backend/.env` contains only non-sensitive config (algorithm, expiry); all secrets managed via Replit secrets system

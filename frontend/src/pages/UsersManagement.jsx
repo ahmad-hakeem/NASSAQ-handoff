@@ -205,8 +205,8 @@ export default function UsersManagement() {
     independentTeachers: 0,
     platformAdmins: 0,
     pendingRequests: 0,
-    studentAttendanceRate: 92.5,
-    teacherAttendanceRate: 96.0,
+    studentAttendanceRate: null,
+    teacherAttendanceRate: null,
     aiEnabledSchools: 0,
   });
   
@@ -454,8 +454,8 @@ export default function UsersManagement() {
         teachersInSchools: response.data.teachers_in_schools || prev.teachersInSchools,
         independentTeachers: response.data.independent_teachers || prev.independentTeachers,
         platformAdmins: response.data.platform_accounts || prev.platformAdmins,
-        studentAttendanceRate: response.data.student_attendance_rate || 92.5,
-        teacherAttendanceRate: response.data.teacher_attendance_rate || 96.0,
+        studentAttendanceRate: response.data.student_attendance_rate ?? null,
+        teacherAttendanceRate: response.data.teacher_attendance_rate ?? null,
         aiEnabledSchools: response.data.ai_enabled_schools || prev.aiEnabledSchools,
         pendingRequests: response.data.pending_requests || prev.pendingRequests,
       }));
@@ -804,7 +804,9 @@ export default function UsersManagement() {
                 <div className="flex items-center justify-between flex-row-reverse">
                   <div className="text-right">
                     <p className="text-green-600 text-xs">حضور الطلاب</p>
-                    <p className="text-xl font-bold text-green-700">{stats.studentAttendanceRate}%</p>
+                    <p className="text-xl font-bold text-green-700">
+                      {stats.studentAttendanceRate !== null ? `${stats.studentAttendanceRate}%` : '—'}
+                    </p>
                   </div>
                   <TrendingUp className="h-6 w-6 text-green-200" />
                 </div>
@@ -817,7 +819,9 @@ export default function UsersManagement() {
                 <div className="flex items-center justify-between flex-row-reverse">
                   <div className="text-right">
                     <p className="text-emerald-600 text-xs">حضور المعلمين</p>
-                    <p className="text-xl font-bold text-emerald-700">{stats.teacherAttendanceRate}%</p>
+                    <p className="text-xl font-bold text-emerald-700">
+                      {stats.teacherAttendanceRate !== null ? `${stats.teacherAttendanceRate}%` : '—'}
+                    </p>
                   </div>
                   <Activity className="h-6 w-6 text-emerald-200" />
                 </div>
