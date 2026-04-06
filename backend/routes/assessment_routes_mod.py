@@ -414,7 +414,7 @@ async def create_bulk_grades(
         max_score = assessment.get("max_score", 100)
         assessment_title = assessment.get('title', 'تقييم')
         students_list = await db.students.find(
-            {"id": {"$in": list(created_sids)}}, {"_id": 0, "id": 1, "full_name": 1, "user_id": 1, "parent_phone": 1}
+            {"id": {"$in": list(created_sids)}, "tenant_id": tenant_id}, {"_id": 0, "id": 1, "full_name": 1, "user_id": 1, "parent_phone": 1}
         ).to_list(len(created_sids))
         student_map = {s["id"]: s for s in students_list}
 
@@ -463,8 +463,8 @@ async def create_bulk_grades(
                             action_url="/parent/grades",
                             school_id=tenant_id,
                         )
-            except Exception:
-                pass
+            except Exception as e:
+                logging.getLogger(__name__).warning("Grade notification failed for student %s: %s", g.student_id, e)
 
     return {
         "success": True,

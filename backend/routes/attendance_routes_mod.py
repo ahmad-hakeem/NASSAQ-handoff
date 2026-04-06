@@ -333,8 +333,8 @@ async def create_bulk_attendance(
                             action_url="/parent/attendance",
                             school_id=t_id,
                         )
-            except Exception:
-                pass
+            except Exception as e:
+                logging.getLogger(__name__).warning("Attendance notification failed for student %s: %s", student_id, e)
 
     await audit_engine.log(
         action=AuditAction.ATTENDANCE_BULK_RECORDED.value,

@@ -450,7 +450,7 @@ class AttendanceEngine:
         total = counts["total"]
         present = counts["present"]
 
-        records = await self.attendance_collection.find(query, {"_id": 0}).to_list(1000)
+        records = await self.attendance_collection.find(query, {"_id": 0}).to_list(total if total > 0 else 1)
 
         return {
             "date": attendance_date,
