@@ -347,11 +347,12 @@ class AssessmentEngine:
         assessment_id: str,
         grades: List[Dict[str, Any]],
         graded_by: str,
-        tenant_id: str = None,
+        tenant_id: str = "",
     ) -> Dict[str, Any]:
         """Record grades for multiple students using batch operations.
 
-        If *tenant_id* is supplied, the assessment must belong to that tenant.
+        *tenant_id* is used to verify assessment ownership and scope student
+        lookups. Empty string bypasses tenant checks (platform admin only).
         Student existence and score-range validation are enforced in-engine.
         """
         results = {
@@ -406,8 +407,11 @@ class AssessmentEngine:
 
         student_ids = [g["student_id"] for g in valid_entries]
 
+        student_filter = {"id": {"$in": student_ids}}
+        if tenant_id:
+            student_filter["tenant_id"] = tenant_id
         students_found = await self.db.students.find(
-            {"id": {"$in": student_ids}}, {"_id": 0, "id": 1}
+            student_filter, {"_id": 0, "id": 1}
         ).to_list(len(student_ids))
         valid_student_set = {s["id"] for s in students_found}
         verified_entries = []

@@ -914,11 +914,10 @@ class BaseRepository:
         return UpdateResult(0, 0)
 
     async def batch_update_by_ids(self, updates: List[Dict[str, Any]], id_field: str = "id") -> int:
-        """Batch-update multiple rows in a single SQL statement.
+        """Batch-update multiple rows.
 
         *updates* is a list of dicts, each containing at minimum ``{id_field: <id>}``
-        plus the fields to set.  All dicts must update the **same** set of columns.
-        Uses ``UPDATE … FROM (VALUES …)`` for a single round-trip.
+        plus the fields to set.  Each dict may have a different set of fields.
         """
         if not updates:
             return 0
@@ -932,11 +931,6 @@ class BaseRepository:
             else:
                 return 0
 
-        sample = updates[0]
-        update_keys = [k for k in sample if k != id_field and k in cols]
-        if not update_keys:
-            return 0
-
         id_col = getattr(self.model, id_col_name)
         count = 0
         for upd in updates:
@@ -944,9 +938,15 @@ class BaseRepository:
             if not row_id:
                 continue
             values = {}
-            for k in update_keys:
-                if k in upd:
-                    values[k] = _coerce_dt(self.model, k, upd[k])
+            for k, v in upd.items():
+                if k == id_field:
+                    continue
+                if k in cols:
+                    values[k] = _coerce_dt(self.model, k, v)
+                else:
+                    alias = COLUMN_ALIASES.get(k)
+                    if alias and alias in cols:
+                        values[alias] = _coerce_dt(self.model, alias, v)
             if values:
                 stmt = (
                     sa_update(self.model.__table__)
