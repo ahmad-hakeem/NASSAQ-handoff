@@ -37,25 +37,20 @@ async def get_school_overview_report(
     current_user: dict = Depends(get_current_user)
 ):
     """Get school overview report with statistics"""
+    import asyncio
     school_id = current_user.get("tenant_id")
     if not school_id:
         raise HTTPException(status_code=400, detail="المستخدم غير مرتبط بمدرسة")
     
-    # Get student count
-    total_students = await db.students.count_documents({"school_id": school_id})
-    
-    # Get teacher count
-    total_teachers = await db.teachers.count_documents({"school_id": school_id})
-    
-    # Get class count
-    total_classes = await db.classes.count_documents({"school_id": school_id})
-    
-    # Get attendance stats
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    attendance_records = await db.attendance.find({
-        "school_id": school_id,
-        "date": today
-    }, {"_id": 0}).to_list(10000)
+    
+    total_students, total_teachers, total_classes, attendance_records, grades = await asyncio.gather(
+        db.students.count_documents({"school_id": school_id}),
+        db.teachers.count_documents({"school_id": school_id}),
+        db.classes.count_documents({"school_id": school_id}),
+        db.attendance.find({"school_id": school_id, "date": today}, {"_id": 0}).to_list(10000),
+        db.grades.find({"school_id": school_id}, {"_id": 0, "grade": 1}).to_list(10000),
+    )
     
     present_count = len([a for a in attendance_records if a.get("status") == "present"])
     absent_count = len([a for a in attendance_records if a.get("status") == "absent"])
@@ -64,8 +59,6 @@ async def get_school_overview_report(
     
     attendance_rate = round((present_count / total_attendance) * 100, 1) if total_attendance > 0 else 0
     
-    # Get grade stats
-    grades = await db.grades.find({"school_id": school_id}, {"_id": 0, "grade": 1}).to_list(10000)
     avg_grade = round(sum(g.get("grade", 0) for g in grades) / len(grades), 1) if grades else 0
     
     return {
@@ -95,34 +88,39 @@ async def get_school_attendance_report(
     if not school_id:
         raise HTTPException(status_code=400, detail="المستخدم غير مرتبط بمدرسة")
     
-    # Get all classes
     class_query = {"school_id": school_id}
     if class_id:
         class_query["id"] = class_id
     
     classes = await db.classes.find(class_query, {"_id": 0}).to_list(100)
     
+    att_query = {"school_id": school_id}
+    if class_id:
+        att_query["class_id"] = class_id
+    all_attendance = await db.attendance.find(att_query, {"_id": 0, "class_id": 1, "status": 1}).to_list(100000)
+    
+    att_by_class = {}
+    for a in all_attendance:
+        cid = a.get("class_id")
+        if cid not in att_by_class:
+            att_by_class[cid] = {"present": 0, "absent": 0, "late": 0, "total": 0}
+        att_by_class[cid]["total"] += 1
+        s = a.get("status")
+        if s in ("present", "absent", "late"):
+            att_by_class[cid][s] += 1
+    
     report_data = []
     for cls in classes:
-        # Get attendance for this class
-        attendance = await db.attendance.find({
-            "class_id": cls.get("id"),
-            "school_id": school_id
-        }, {"_id": 0}).to_list(10000)
-        
-        present = len([a for a in attendance if a.get("status") == "present"])
-        absent = len([a for a in attendance if a.get("status") == "absent"])
-        late = len([a for a in attendance if a.get("status") == "late"])
-        total = len(attendance)
-        
-        rate = round((present / total) * 100, 1) if total > 0 else 0
+        cid = cls.get("id")
+        stats = att_by_class.get(cid, {"present": 0, "absent": 0, "late": 0, "total": 0})
+        rate = round((stats["present"] / stats["total"]) * 100, 1) if stats["total"] > 0 else 0
         
         report_data.append({
             "class": cls.get("name_ar") or cls.get("name"),
             "class_en": cls.get("name_en") or cls.get("name_ar") or cls.get("name"),
-            "present": present,
-            "absent": absent,
-            "late": late,
+            "present": stats["present"],
+            "absent": stats["absent"],
+            "late": stats["late"],
             "rate": rate
         })
     
@@ -139,28 +137,35 @@ async def get_school_grades_report(
     if not school_id:
         raise HTTPException(status_code=400, detail="المستخدم غير مرتبط بمدرسة")
     
-    # Get all subjects
     subject_query = {"school_id": school_id}
     if subject_id:
         subject_query["id"] = subject_id
     
     subjects = await db.subjects.find(subject_query, {"_id": 0}).to_list(100)
     
+    grade_query = {"school_id": school_id}
+    if subject_id:
+        grade_query["subject_id"] = subject_id
+    all_grades = await db.grades.find(grade_query, {"_id": 0, "grade": 1, "subject_id": 1}).to_list(100000)
+    
+    grades_by_subject = {}
+    for g in all_grades:
+        sid = g.get("subject_id")
+        if sid not in grades_by_subject:
+            grades_by_subject[sid] = []
+        grades_by_subject[sid].append(g.get("grade", 0))
+    
     report_data = []
     for subject in subjects:
-        # Get grades for this subject
-        grades = await db.grades.find({
-            "subject_id": subject.get("id"),
-            "school_id": school_id
-        }, {"_id": 0, "grade": 1}).to_list(10000)
+        sid = subject.get("id")
+        grade_values = grades_by_subject.get(sid, [])
         
-        if grades:
-            grade_values = [g.get("grade", 0) for g in grades]
+        if grade_values:
             avg = round(sum(grade_values) / len(grade_values), 1)
             highest = max(grade_values)
             lowest = min(grade_values)
             passed = len([g for g in grade_values if g >= 50])
-            pass_rate = round((passed / len(grades)) * 100, 0)
+            pass_rate = round((passed / len(grade_values)) * 100, 0)
         else:
             avg = 0
             highest = 0
@@ -189,28 +194,29 @@ async def get_school_behavior_report(
     if not school_id:
         raise HTTPException(status_code=400, detail="المستخدم غير مرتبط بمدرسة")
     
-    # Get all behavior records for the school
     behavior_records = await db.behavior.find(
         {"school_id": school_id},
         {"_id": 0}
     ).sort("created_at", -1).to_list(1000)
     
-    # Count by type
     positive_count = len([b for b in behavior_records if b.get("type") == "positive" or b.get("behavior_type") == "positive"])
     negative_count = len([b for b in behavior_records if b.get("type") == "negative" or b.get("behavior_type") == "negative"])
     warning_count = len([b for b in behavior_records if b.get("type") == "warning" or b.get("behavior_type") == "warning"])
     appreciation_count = len([b for b in behavior_records if b.get("type") == "appreciation" or b.get("behavior_type") == "appreciation"])
     
-    # Get recent behavior notes (last 10)
+    recent_records = behavior_records[:10]
+    student_ids = list({r.get("student_id") for r in recent_records if r.get("student_id")})
+    student_map = {}
+    if student_ids:
+        students = await db.students.find({"id": {"$in": student_ids}}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1}).to_list(len(student_ids))
+        student_map = {s["id"]: s.get("name_ar") or s.get("name", "طالب") for s in students}
+    
     recent_notes = []
-    for record in behavior_records[:10]:
+    for record in recent_records:
         student_id = record.get("student_id")
-        student = await db.students.find_one({"id": student_id}, {"_id": 0, "name": 1, "name_ar": 1})
-        student_name = student.get("name_ar") or student.get("name") if student else "طالب"
-        
         recent_notes.append({
             "id": record.get("id"),
-            "student_name": student_name,
+            "student_name": student_map.get(student_id, "طالب"),
             "student_id": student_id,
             "note": record.get("note") or record.get("description") or record.get("notes", ""),
             "type": record.get("type") or record.get("behavior_type", "positive"),
@@ -241,32 +247,46 @@ async def get_top_performing_classes(
     if not school_id:
         raise HTTPException(status_code=400, detail="المستخدم غير مرتبط بمدرسة")
     
-    # Get all classes
     classes = await db.classes.find({"school_id": school_id}, {"_id": 0}).to_list(100)
+    
+    all_attendance = await db.attendance.find(
+        {"school_id": school_id}, {"_id": 0, "class_id": 1, "status": 1}
+    ).to_list(100000)
+    
+    att_by_class = {}
+    for a in all_attendance:
+        cid = a.get("class_id")
+        if cid not in att_by_class:
+            att_by_class[cid] = {"present": 0, "total": 0}
+        att_by_class[cid]["total"] += 1
+        if a.get("status") == "present":
+            att_by_class[cid]["present"] += 1
+    
+    all_positive_behavior = await db.behavior.find({
+        "school_id": school_id,
+        "$or": [
+            {"type": "positive"},
+            {"behavior_type": "positive"},
+            {"type": "appreciation"},
+            {"behavior_type": "appreciation"}
+        ]
+    }, {"_id": 0, "class_id": 1}).to_list(100000)
+    
+    behavior_by_class = {}
+    for b in all_positive_behavior:
+        cid = b.get("class_id")
+        behavior_by_class[cid] = behavior_by_class.get(cid, 0) + 1
     
     class_performance = []
     for cls in classes:
         class_id = cls.get("id")
         
-        # Get attendance rate
-        attendance = await db.attendance.find({"class_id": class_id}, {"_id": 0}).to_list(10000)
-        present_count = len([a for a in attendance if a.get("status") == "present"])
-        total_attendance = len(attendance)
-        attendance_rate = round((present_count / total_attendance) * 100, 1) if total_attendance > 0 else 0
+        att = att_by_class.get(class_id, {"present": 0, "total": 0})
+        attendance_rate = round((att["present"] / att["total"]) * 100, 1) if att["total"] > 0 else 0
         
-        # Get positive behavior count
-        positive_behavior = await db.behavior.count_documents({
-            "class_id": class_id,
-            "$or": [
-                {"type": "positive"},
-                {"behavior_type": "positive"},
-                {"type": "appreciation"},
-                {"behavior_type": "appreciation"}
-            ]
-        })
+        positive_behavior = behavior_by_class.get(class_id, 0)
         
-        # Calculate score (70% attendance, 30% behavior)
-        behavior_score = min(30, positive_behavior * 3)  # Cap at 30
+        behavior_score = min(30, positive_behavior * 3)
         total_score = round(attendance_rate * 0.7 + behavior_score, 1)
         
         class_performance.append({

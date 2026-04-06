@@ -1749,6 +1749,43 @@ class PgCollection:
             if own:
                 await session.close()
 
+    async def batched_counts(self, filters: dict):
+        if not filters:
+            return {}
+        session, own = await self._get_session()
+        try:
+            if self._is_generic:
+                from pg_models import GenericDocument
+                cols = []
+                keys = list(filters.keys())
+                for key in keys:
+                    f = filters[key]
+                    conds = _translate_filter(None, f, is_generic=True) if f else []
+                    base_cond = GenericDocument._collection == self._name
+                    if conds:
+                        cols.append(func.count().filter(and_(base_cond, *conds)).label(key))
+                    else:
+                        cols.append(func.count().filter(base_cond).label(key))
+                stmt = select(*cols).select_from(GenericDocument)
+            else:
+                model = self._model
+                cols = []
+                keys = list(filters.keys())
+                for key in keys:
+                    f = filters[key]
+                    conds = _translate_filter(model, f) if f else []
+                    if conds:
+                        cols.append(func.count().filter(and_(*conds)).label(key))
+                    else:
+                        cols.append(func.count().label(key))
+                stmt = select(*cols).select_from(model)
+            result = await session.execute(stmt)
+            row = result.one()
+            return {keys[i]: row[i] or 0 for i in range(len(keys))}
+        finally:
+            if own:
+                await session.close()
+
     async def count_documents(self, filter_dict=None):
         filter_dict = filter_dict or {}
         if _has_expr_filter(filter_dict):

@@ -436,21 +436,37 @@ async def get_class_attendance(
     limit = 10000 if (start_date or end_date) else 1000
     records = await db.attendance.find(query, {"_id": 0}).to_list(limit)
     
-    # Enrich with names
+    student_ids = list({r['student_id'] for r in records if r.get('student_id')})
+    class_ids = list({r['class_id'] for r in records if r.get('class_id')})
+    teacher_ids = list({r['teacher_id'] for r in records if r.get('teacher_id')})
+    subject_ids = list({r['subject_id'] for r in records if r.get('subject_id')})
+    
+    import asyncio
+    
+    async def _empty_list():
+        return []
+    
+    students_coro = db.students.find({"id": {"$in": student_ids}}, {"_id": 0, "id": 1, "full_name": 1}).to_list(len(student_ids)) if student_ids else _empty_list()
+    classes_coro = db.classes.find({"id": {"$in": class_ids}}, {"_id": 0, "id": 1, "name": 1}).to_list(len(class_ids)) if class_ids else _empty_list()
+    teachers_coro = db.users.find({"id": {"$in": teacher_ids}}, {"_id": 0, "id": 1, "full_name": 1}).to_list(len(teacher_ids)) if teacher_ids else _empty_list()
+    subjects_coro = db.subjects.find({"id": {"$in": subject_ids}}, {"_id": 0, "id": 1, "name": 1}).to_list(len(subject_ids)) if subject_ids else _empty_list()
+    
+    students_list, classes_list, teachers_list, subjects_list = await asyncio.gather(
+        students_coro, classes_coro, teachers_coro, subjects_coro
+    )
+    
+    student_map = {s["id"]: s.get("full_name") for s in students_list}
+    class_map = {c["id"]: c.get("name") for c in classes_list}
+    teacher_map = {t["id"]: t.get("full_name") for t in teachers_list}
+    subject_map = {s["id"]: s.get("name") for s in subjects_list}
+    
     result = []
     for record in records:
-        student = await db.students.find_one({"id": record['student_id']}, {"_id": 0})
-        class_info = await db.classes.find_one({"id": record['class_id']}, {"_id": 0})
-        teacher = await db.users.find_one({"id": record['teacher_id']}, {"_id": 0})
-        
-        record['student_name'] = student.get('full_name') if student else None
-        record['class_name'] = class_info.get('name') if class_info else None
-        record['teacher_name'] = teacher.get('full_name') if teacher else None
-        
+        record['student_name'] = student_map.get(record.get('student_id'))
+        record['class_name'] = class_map.get(record.get('class_id'))
+        record['teacher_name'] = teacher_map.get(record.get('teacher_id'))
         if record.get('subject_id'):
-            subject = await db.subjects.find_one({"id": record['subject_id']}, {"_id": 0})
-            record['subject_name'] = subject.get('name') if subject else None
-        
+            record['subject_name'] = subject_map.get(record['subject_id'])
         result.append(AttendanceResponse(**record))
     
     return result
