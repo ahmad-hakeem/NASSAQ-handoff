@@ -162,14 +162,6 @@ async def get_users_management_stats(
     teachers_in_schools = await db.teachers.count_documents({})
     independent_teachers = await db.teachers.count_documents({"school_id": None})
 
-    school_bound_users = await db.users.count_documents(
-        {"role": {"$in": ["school_principal", "school_sub_admin", "school_manager"]}}
-    )
-    school_teachers = await db.users.count_documents(
-        {"role": "teacher", "tenant_id": {"$ne": None}}
-    )
-    platform_accounts = total_users - school_bound_users - school_teachers
-
     pending_requests = await db.registration_requests.count_documents({"status": "pending"})
     ai_enabled_schools = await db.schools.count_documents({"ai_enabled": True})
     if ai_enabled_schools == 0:
@@ -208,7 +200,7 @@ async def get_users_management_stats(
         "total_students": total_students,
         "teachers_in_schools": teachers_in_schools,
         "independent_teachers": independent_teachers,
-        "platform_accounts": platform_accounts,
+        "platform_accounts": total_users,
         "pending_requests": pending_requests,
         "ai_enabled_schools": ai_enabled_schools,
         "student_attendance_rate": student_attendance_rate,
