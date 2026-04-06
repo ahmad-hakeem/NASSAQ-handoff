@@ -80,4 +80,8 @@ ENVIRONMENT = "production"
 
   [objectStorage]
   defaultBucketID = "replit-objstore-74e91ecd-87d7-4ff2-a2ad-91e1fdc9c773"
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 120000
   
