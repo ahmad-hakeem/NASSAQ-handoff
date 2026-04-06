@@ -14,6 +14,11 @@ echo "Installing backend dependencies..."
 cd /home/runner/workspace/backend
 pip install -r requirements.txt --no-cache-dir -q 2>&1 | tail -5
 
+echo "Building frontend..."
+cd /home/runner/workspace/frontend
+npm install --legacy-peer-deps 2>&1 | tail -5
+GENERATE_SOURCEMAP=false npx craco build 2>&1 | tail -20
+
 echo "Cleaning up to reduce image size..."
 cd /home/runner/workspace
 

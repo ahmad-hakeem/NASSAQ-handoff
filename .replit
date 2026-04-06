@@ -45,7 +45,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd frontend && BROWSER=none npx craco start"
+args = "cd frontend && PORT=5000 BROWSER=none npx craco start"
 waitForPort = 5000
 
 [[ports]]
@@ -53,17 +53,13 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 5001
-externalPort = 3000
-
-[[ports]]
 localPort = 8000
 externalPort = 8000
 
   [deployment]
-  deploymentTarget = "autoscale"
-  run = ["bash", "-c", "source /home/runner/workspace/.venv/bin/activate 2>/dev/null; cd /home/runner/workspace/backend && uvicorn server:app --host 0.0.0.0 --port 8000"]
-  build = ["bash", "/home/runner/workspace/build.sh"]
+deploymentTarget = "autoscale"
+run = ["bash", "-c", "source /home/runner/workspace/.venv/bin/activate 2>/dev/null; cd /home/runner/workspace/backend && uvicorn server:app --host 0.0.0.0 --port 5000"]
+build = ["bash", "/home/runner/workspace/build.sh"]
 
   [userenv]
 
