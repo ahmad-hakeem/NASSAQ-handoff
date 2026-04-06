@@ -20,11 +20,26 @@ COLUMNS_TO_DROP = [
 ]
 
 
+def _column_exists(conn, table, column):
+    result = conn.execute(
+        sa.text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_schema='public' AND table_name=:t AND column_name=:c"
+        ),
+        {"t": table, "c": column}
+    )
+    return result.scalar() is not None
+
+
 def upgrade():
+    conn = op.get_bind()
     for table, column in COLUMNS_TO_DROP:
-        op.drop_column(table, column)
+        if _column_exists(conn, table, column):
+            op.drop_column(table, column)
 
 
 def downgrade():
+    conn = op.get_bind()
     for table, column in COLUMNS_TO_DROP:
-        op.add_column(table, sa.Column(column, sa.DateTime(timezone=True), nullable=True))
+        if not _column_exists(conn, table, column):
+            op.add_column(table, sa.Column(column, sa.DateTime(timezone=True), nullable=True))

@@ -43,6 +43,7 @@ BEGIN
     END IF;
     RETURN val::timestamptz;
 EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'Malformed timestamp value "%" in migration, setting to NULL', val;
     RETURN NULL;
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;
@@ -51,25 +52,52 @@ $$ LANGUAGE plpgsql IMMUTABLE;
 _DROP_SAFE_CAST_FN = "DROP FUNCTION IF EXISTS _safe_iso_to_timestamptz(TEXT);"
 
 
+def _column_exists(conn, table, column):
+    result = conn.execute(
+        sa.text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_schema='public' AND table_name=:t AND column_name=:c"
+        ),
+        {"t": table, "c": column}
+    )
+    return result.scalar() is not None
+
+
+def _column_is_varchar(conn, table, column):
+    result = conn.execute(
+        sa.text(
+            "SELECT data_type FROM information_schema.columns "
+            "WHERE table_schema='public' AND table_name=:t AND column_name=:c"
+        ),
+        {"t": table, "c": column}
+    )
+    row = result.fetchone()
+    return row is not None and row[0] == "character varying"
+
+
 def upgrade():
+    conn = op.get_bind()
     op.execute(sa.text(_SAFE_CAST_FN))
     for table, column in COLUMNS_TO_MIGRATE:
-        op.execute(
-            sa.text(
-                f'ALTER TABLE "{table}" ALTER COLUMN "{column}" '
-                f'TYPE TIMESTAMPTZ USING _safe_iso_to_timestamptz("{column}")'
+        if _column_exists(conn, table, column) and _column_is_varchar(conn, table, column):
+            op.execute(
+                sa.text(
+                    f'ALTER TABLE "{table}" ALTER COLUMN "{column}" '
+                    f'TYPE TIMESTAMPTZ USING _safe_iso_to_timestamptz("{column}")'
+                )
             )
-        )
     op.execute(sa.text(_DROP_SAFE_CAST_FN))
 
 
 def downgrade():
+    conn = op.get_bind()
     for table, column in COLUMNS_TO_MIGRATE:
-        op.execute(
-            sa.text(
-                f'ALTER TABLE "{table}" ALTER COLUMN "{column}" '
-                f"TYPE VARCHAR USING "
-                f'CASE WHEN "{column}" IS NOT NULL '
-                f"THEN \"{column}\"::text ELSE NULL END"
+        if _column_exists(conn, table, column):
+            op.execute(
+                sa.text(
+                    f'ALTER TABLE "{table}" ALTER COLUMN "{column}" '
+                    f"TYPE VARCHAR USING "
+                    f'CASE WHEN "{column}" IS NOT NULL '
+                    f"THEN \"{column}\"::text ELSE NULL END"
+                )
             )
-        )
