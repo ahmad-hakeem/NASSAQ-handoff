@@ -85,7 +85,7 @@ async def pg_session_middleware(request: Request, call_next):
 
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
-    if request.url.path.startswith("/api/ws/") or request.url.path == "/ws":
+    if request.url.path == "/api/ws/notifications" or request.url.path == "/ws":
         return await call_next(request)
     response = await call_next(request)
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
