@@ -261,10 +261,14 @@ async def get_users(
     users = await db.users.find(query, {"_id": 0, "password_hash": 0}).to_list(1000)
     return [UserResponse(**u) for u in users]
 
+class UserStatusRequest(BaseModel):
+    is_active: bool
+
 @router.put("/users/{user_id}/status")
+@router.patch("/users/{user_id}/status")
 async def update_user_status(
     user_id: str,
-    is_active: bool,
+    status_data: UserStatusRequest,
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
     user = await db.users.find_one({"id": user_id})
@@ -277,7 +281,7 @@ async def update_user_status(
 
     await db.users.update_one(
         {"id": user_id},
-        {"$set": {"is_active": is_active, "updated_at": datetime.now(timezone.utc).isoformat()}}
+        {"$set": {"is_active": status_data.is_active, "updated_at": datetime.now(timezone.utc).isoformat()}}
     )
     return {"message": "تم تحديث حالة المستخدم"}
 
@@ -315,6 +319,7 @@ class UserUpdateRequest(BaseModel):
     avatar_url: Optional[str] = None
 
 @router.put("/users/{user_id}")
+@router.patch("/users/{user_id}")
 async def update_user(
     user_id: str,
     user_data: UserUpdateRequest,
