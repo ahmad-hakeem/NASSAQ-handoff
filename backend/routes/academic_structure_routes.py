@@ -1,7 +1,7 @@
 """
 NASSAQ Academic Structure Routes
 Holidays, Exam Periods, Promotion Rules, Academic Calendar, Publish/Archive workflows.
-Extends the existing academic year & term CRUD in academics_routes_mod.py.
+Extends the academic year & term CRUD in academics_year_term_routes.py.
 """
 import uuid
 from datetime import datetime, timezone, timedelta

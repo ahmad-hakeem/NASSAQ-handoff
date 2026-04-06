@@ -3,12 +3,8 @@ NASSAQ - Routes Package
 Central export for all API routes
 """
 
-from .user_routes import create_user_routes
-from .school_routes import create_school_routes
-from .dashboard_routes import create_dashboard_routes
 from .public_routes import create_public_routes
 
-# Existing routes (already modular)
 from .scheduling_routes import create_scheduling_router
 from .attendance_routes import create_attendance_router
 from .assessment_routes import create_assessment_router
@@ -25,12 +21,7 @@ from .audit_routes import setup_audit_routes
 from .settings_routes import setup_settings_routes
 
 __all__ = [
-    # New modular routes
-    "create_user_routes",
-    "create_school_routes",
-    "create_dashboard_routes",
     "create_public_routes",
-    # Existing routes
     "create_scheduling_router",
     "create_attendance_router",
     "create_assessment_router",

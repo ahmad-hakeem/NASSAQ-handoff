@@ -119,6 +119,13 @@ Each fix report must include: root cause, why it wasn't caught before, what chan
 
 - **Frontend**: React (Create React App + CRACO), Tailwind CSS, Radix UI — port 5000
 - **Backend**: FastAPI (Python), JWT auth — port 8000
+  - **server.py**: Thin orchestrator (~50 lines) — app creation only
+  - **app/middleware.py**: HTTP middleware stack (PG session, security headers, audit, CORS, rate limit, error handler)
+  - **app/lifecycle.py**: Startup/shutdown hooks (DB init, seed, approval engine, product hub integrity)
+  - **app/routes.py**: Centralized router registration (all _mod and factory routes)
+  - **shared_models.py**: All Pydantic request/response models (single source of truth)
+  - **utils/api_response.py**: `ApiResponse[T]` envelope utility (`ok()`, `fail()` helpers)
+  - **Route files**: Each under ~1000 lines; `academics_routes_mod.py` (3848 lines) split into 7 sub-modules, `scheduling_routes_mod.py` (2875 lines) split into 4 sub-modules
 - **Database**: PostgreSQL (async SQLAlchemy + asyncpg) — MongoDB fully removed
   - **PostgreSQL**: Replit built-in via `DATABASE_URL`, 49 ORM tables (Event, SystemSetting promoted from GenericDocument), Alembic migrations
   - **Repository layer**: `backend/repositories/base.py` — BaseRepository with full API (find_one, find, insert_one, update_one, delete_one, aggregate, bulk_write, batched_counts). `backend/repositories/__init__.py` — Repos container with lazy session resolution via context var, MODEL_REGISTRY mapping collection names to ORM models

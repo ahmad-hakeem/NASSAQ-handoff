@@ -1,0 +1,426 @@
+"""
+NASSAQ Academics Sub-module
+"""
+from fastapi import APIRouter, HTTPException, Depends, status, Header, Query, Body, Request
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.responses import Response
+from starlette.responses import StreamingResponse
+from pydantic import BaseModel, Field, ConfigDict, EmailStr, model_validator
+from typing import List, Optional, Any, Dict
+from datetime import datetime, timezone, timedelta
+import uuid, os, logging, json, random, re, io, base64
+
+logger = logging.getLogger("nassaq.academics")
+
+from dependencies import (
+    db, get_current_user, require_roles, UserRole, SchoolStatus,
+    hash_password, verify_password, create_access_token,
+    JWT_SECRET, JWT_ALGORITHM, ACCESS_TOKEN_EXPIRE, security,
+    audit_engine, AuditAction, AuditSeverity,
+    smart_scheduling_engine, TimetableRunStatus, TimetableStatus,
+    ConflictType, ConflictSeverity, PreValidationResult, GenerationResult,
+    hakim_engine, reporting_engine, export_engine, session_engine,
+    REPORT_TYPES, generate_student_qr_code
+)
+
+from shared_models import (
+    TeacherCreate, TeacherUpdate, TeacherResponse, StudentCreate, StudentUpdate, StudentResponse, ClassCreate, ClassUpdate, ClassResponse, SubjectCreate, SubjectResponse
+)
+
+router = APIRouter()
+
+
+async def get_school_id_from_context(current_user: dict, x_school_context: str = None) -> str:
+    if x_school_context:
+        return x_school_context
+    return current_user.get("tenant_id")
+
+# ============== ACADEMIC YEARS APIs ==============
+class AcademicYearBase(BaseModel):
+    name: str
+    name_en: Optional[str] = None
+    start_date: str
+    end_date: str
+    is_current: bool = False
+    school_id: Optional[str] = None
+
+class AcademicYearResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    name: str = ""
+    name_en: Optional[str] = None
+    start_date: str
+    end_date: str
+    is_current: bool
+    school_id: str
+    status: str = "active"
+    created_at: str
+
+
+def normalize_academic_year(doc: dict) -> dict:
+    d = dict(doc)
+    if "name" not in d and "name_ar" in d:
+        d["name"] = d["name_ar"]
+    if "name_en" not in d and "year" in d:
+        d["name_en"] = d["year"]
+    if "status" not in d:
+        d["status"] = "active" if d.get("is_current") else "draft"
+    if "created_at" not in d:
+        d["created_at"] = d.get("updated_at", "")
+    return d
+
+@router.post("/academic-years", response_model=AcademicYearResponse)
+async def create_academic_year(
+    data: AcademicYearBase,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
+):
+    """Create a new academic year"""
+    academic_year_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    
+    school_id = current_user.get("tenant_id") or data.school_id
+    if not school_id:
+        raise HTTPException(status_code=400, detail="لم يتم تحديد المدرسة")
+    
+    if data.is_current:
+        await db.academic_years.update_many(
+            {"school_id": school_id, "is_current": True},
+            {"$set": {"is_current": False}}
+        )
+    
+    academic_year_doc = {
+        "id": academic_year_id,
+        "name": data.name,
+        "name_ar": data.name,
+        "name_en": data.name_en,
+        "start_date": data.start_date,
+        "end_date": data.end_date,
+        "is_current": data.is_current,
+        "school_id": school_id,
+        "status": "active",
+        "created_at": now,
+        "updated_at": now,
+        "created_by": current_user.get("id")
+    }
+    
+    await db.academic_years.insert_one(academic_year_doc)
+    
+    return AcademicYearResponse(**academic_year_doc)
+
+@router.get("/academic-years", response_model=List[AcademicYearResponse])
+async def get_academic_years(
+    school_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get all academic years for a school"""
+    query = {}
+    if school_id:
+        query["school_id"] = school_id
+    elif current_user.get("tenant_id"):
+        query["school_id"] = current_user["tenant_id"]
+    
+    academic_years = await db.academic_years.find(query, {"_id": 0}).sort("start_date", -1).to_list(100)
+    return [AcademicYearResponse(**normalize_academic_year(ay)) for ay in academic_years]
+
+@router.get("/academic-years/{academic_year_id}", response_model=AcademicYearResponse)
+async def get_academic_year(
+    academic_year_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get a single academic year"""
+    academic_year = await db.academic_years.find_one({"id": academic_year_id}, {"_id": 0})
+    if not academic_year:
+        raise HTTPException(status_code=404, detail="العام الدراسي غير موجود")
+    return AcademicYearResponse(**normalize_academic_year(academic_year))
+
+@router.put("/academic-years/{academic_year_id}", response_model=AcademicYearResponse)
+async def update_academic_year(
+    academic_year_id: str,
+    data: AcademicYearBase,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
+):
+    """Update an academic year"""
+    academic_year = await db.academic_years.find_one({"id": academic_year_id})
+    if not academic_year:
+        raise HTTPException(status_code=404, detail="العام الدراسي غير موجود")
+    
+    school_id = current_user.get("tenant_id") or data.school_id or academic_year.get("school_id")
+    
+    if data.is_current:
+        await db.academic_years.update_many(
+            {"school_id": school_id, "is_current": True, "id": {"$ne": academic_year_id}},
+            {"$set": {"is_current": False}}
+        )
+    
+    update_data = {
+        "name": data.name,
+        "name_ar": data.name,
+        "name_en": data.name_en,
+        "start_date": data.start_date,
+        "end_date": data.end_date,
+        "is_current": data.is_current,
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.academic_years.update_one({"id": academic_year_id}, {"$set": update_data})
+    
+    updated = await db.academic_years.find_one({"id": academic_year_id}, {"_id": 0})
+    return AcademicYearResponse(**normalize_academic_year(updated))
+
+@router.delete("/academic-years/{academic_year_id}")
+async def delete_academic_year(
+    academic_year_id: str,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
+):
+    """Delete an academic year"""
+    result = await db.academic_years.delete_one({"id": academic_year_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="العام الدراسي غير موجود")
+    return {"message": "تم حذف العام الدراسي بنجاح"}
+
+
+
+
+
+# ============== TERMS/SEMESTERS APIs ==============
+class TermBase(BaseModel):
+    name: str
+    name_en: Optional[str] = None
+    academic_year_id: str
+    start_date: str
+    end_date: str
+    is_current: bool = False
+    school_id: str
+
+class TermResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    name: str
+    name_en: Optional[str] = None
+    academic_year_id: str
+    start_date: str
+    end_date: str
+    is_current: bool
+    school_id: str
+    created_at: str
+
+@router.post("/terms", response_model=TermResponse)
+async def create_term(
+    data: TermBase,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
+):
+    """Create a new term/semester"""
+    term_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    
+    # If setting as current, unset other current terms for this school
+    if data.is_current:
+        await db.terms.update_many(
+            {"school_id": data.school_id, "is_current": True},
+            {"$set": {"is_current": False}}
+        )
+    
+    term_doc = {
+        "id": term_id,
+        "name": data.name,
+        "name_en": data.name_en,
+        "academic_year_id": data.academic_year_id,
+        "start_date": data.start_date,
+        "end_date": data.end_date,
+        "is_current": data.is_current,
+        "school_id": data.school_id,
+        "created_at": now,
+        "updated_at": now,
+        "created_by": current_user.get("id")
+    }
+    
+    await db.terms.insert_one(term_doc)
+    
+    return TermResponse(**term_doc)
+
+@router.get("/terms", response_model=List[TermResponse])
+async def get_terms(
+    school_id: Optional[str] = None,
+    academic_year_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get all terms for a school"""
+    query = {}
+    if school_id:
+        query["school_id"] = school_id
+    elif current_user.get("tenant_id"):
+        query["school_id"] = current_user["tenant_id"]
+    
+    if academic_year_id:
+        query["academic_year_id"] = academic_year_id
+    
+    terms = await db.terms.find(query, {"_id": 0}).sort("start_date", -1).to_list(100)
+    return [TermResponse(**t) for t in terms]
+
+@router.get("/terms/{term_id}", response_model=TermResponse)
+async def get_term(
+    term_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get a single term"""
+    term = await db.terms.find_one({"id": term_id}, {"_id": 0})
+    if not term:
+        raise HTTPException(status_code=404, detail="الفصل الدراسي غير موجود")
+    return TermResponse(**term)
+
+@router.put("/terms/{term_id}", response_model=TermResponse)
+async def update_term(
+    term_id: str,
+    data: TermBase,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
+):
+    """Update a term"""
+    term = await db.terms.find_one({"id": term_id})
+    if not term:
+        raise HTTPException(status_code=404, detail="الفصل الدراسي غير موجود")
+    
+    # If setting as current, unset other current terms
+    if data.is_current:
+        await db.terms.update_many(
+            {"school_id": data.school_id, "is_current": True, "id": {"$ne": term_id}},
+            {"$set": {"is_current": False}}
+        )
+    
+    update_data = {
+        "name": data.name,
+        "name_en": data.name_en,
+        "academic_year_id": data.academic_year_id,
+        "start_date": data.start_date,
+        "end_date": data.end_date,
+        "is_current": data.is_current,
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.terms.update_one({"id": term_id}, {"$set": update_data})
+    
+    updated = await db.terms.find_one({"id": term_id}, {"_id": 0})
+    return TermResponse(**updated)
+
+@router.delete("/terms/{term_id}")
+async def delete_term(
+    term_id: str,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
+):
+    """Delete a term"""
+    result = await db.terms.delete_one({"id": term_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="الفصل الدراسي غير موجود")
+    return {"message": "تم حذف الفصل الدراسي بنجاح"}
+
+
+
+
+
+# ============== GRADE LEVELS APIs ==============
+class GradeLevelBase(BaseModel):
+    name: str
+    name_en: Optional[str] = None
+    order: int = 1
+    is_active: bool = True
+    school_id: str
+
+class GradeLevelResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    name: str
+    name_en: Optional[str] = None
+    order: int
+    is_active: bool
+    school_id: str
+    created_at: str
+
+@router.post("/grade-levels", response_model=GradeLevelResponse)
+async def create_grade_level(
+    data: GradeLevelBase,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
+):
+    """Create a new grade level"""
+    grade_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    
+    grade_doc = {
+        "id": grade_id,
+        "name": data.name,
+        "name_en": data.name_en,
+        "order": data.order,
+        "is_active": data.is_active,
+        "school_id": data.school_id,
+        "created_at": now,
+        "updated_at": now,
+        "created_by": current_user.get("id")
+    }
+    
+    await db.grade_levels.insert_one(grade_doc)
+    
+    return GradeLevelResponse(**grade_doc)
+
+@router.get("/grade-levels", response_model=List[GradeLevelResponse])
+async def get_grade_levels(
+    school_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get all grade levels for a school"""
+    query = {}
+    if school_id:
+        query["school_id"] = school_id
+    elif current_user.get("tenant_id"):
+        query["school_id"] = current_user["tenant_id"]
+    
+    grade_levels = await db.grade_levels.find(query, {"_id": 0}).sort("order", 1).to_list(100)
+    return [GradeLevelResponse(**gl) for gl in grade_levels]
+
+@router.get("/grade-levels/{grade_id}", response_model=GradeLevelResponse)
+async def get_grade_level(
+    grade_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get a single grade level"""
+    grade = await db.grade_levels.find_one({"id": grade_id}, {"_id": 0})
+    if not grade:
+        raise HTTPException(status_code=404, detail="المرحلة الدراسية غير موجودة")
+    return GradeLevelResponse(**grade)
+
+@router.put("/grade-levels/{grade_id}", response_model=GradeLevelResponse)
+async def update_grade_level(
+    grade_id: str,
+    data: GradeLevelBase,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
+):
+    """Update a grade level"""
+    grade = await db.grade_levels.find_one({"id": grade_id})
+    if not grade:
+        raise HTTPException(status_code=404, detail="المرحلة الدراسية غير موجودة")
+    
+    update_data = {
+        "name": data.name,
+        "name_en": data.name_en,
+        "order": data.order,
+        "is_active": data.is_active,
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.grade_levels.update_one({"id": grade_id}, {"$set": update_data})
+    
+    updated = await db.grade_levels.find_one({"id": grade_id}, {"_id": 0})
+    return GradeLevelResponse(**updated)
+
+@router.delete("/grade-levels/{grade_id}")
+async def delete_grade_level(
+    grade_id: str,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
+):
+    """Delete a grade level"""
+    result = await db.grade_levels.delete_one({"id": grade_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="المرحلة الدراسية غير موجودة")
+    return {"message": "تم حذف المرحلة الدراسية بنجاح"}
+
+
+
+
+

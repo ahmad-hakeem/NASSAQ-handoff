@@ -1,0 +1,892 @@
+"""
+NASSAQ Academics Sub-module
+"""
+from fastapi import APIRouter, HTTPException, Depends, status, Header, Query, Body, Request
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.responses import Response
+from starlette.responses import StreamingResponse
+from pydantic import BaseModel, Field, ConfigDict, EmailStr, model_validator
+from typing import List, Optional, Any, Dict
+from datetime import datetime, timezone, timedelta
+import uuid, os, logging, json, random, re, io, base64
+
+logger = logging.getLogger("nassaq.academics")
+
+from dependencies import (
+    db, get_current_user, require_roles, UserRole, SchoolStatus,
+    hash_password, verify_password, create_access_token,
+    JWT_SECRET, JWT_ALGORITHM, ACCESS_TOKEN_EXPIRE, security,
+    audit_engine, AuditAction, AuditSeverity,
+    smart_scheduling_engine, TimetableRunStatus, TimetableStatus,
+    ConflictType, ConflictSeverity, PreValidationResult, GenerationResult,
+    hakim_engine, reporting_engine, export_engine, session_engine,
+    REPORT_TYPES, generate_student_qr_code
+)
+
+from shared_models import (
+    TeacherCreate, TeacherUpdate, TeacherResponse, StudentCreate, StudentUpdate, StudentResponse, ClassCreate, ClassUpdate, ClassResponse, SubjectCreate, SubjectResponse
+)
+
+router = APIRouter()
+
+
+async def get_school_id_from_context(current_user: dict, x_school_context: str = None) -> str:
+    if x_school_context:
+        return x_school_context
+    return current_user.get("tenant_id")
+
+# ============== TEACHERS ROUTES ==============
+
+# Teacher Wizard Options
+@router.get("/teachers/options/subjects")
+async def get_teacher_subjects_options(current_user: dict = Depends(get_current_user)):
+    """Get available subjects from reference database - unique subjects only"""
+    
+    # Get subjects from reference_subjects collection first, then fallback to subjects
+    subjects = await db.reference_subjects.find(
+        {"is_active": True},
+        {"_id": 0, "id": 1, "name_ar": 1, "name_en": 1, "code": 1, "color": 1}
+    ).to_list(300)
+    
+    if not subjects:
+        subjects = await db.subjects.find(
+            {"is_active": True},
+            {"_id": 0, "id": 1, "name_ar": 1, "name_en": 1, "code": 1, "color": 1}
+        ).to_list(300)
+    
+    # Remove duplicates by name_ar (keep first occurrence)
+    seen_names = set()
+    unique_subjects = []
+    for s in subjects:
+        name = s.get("name_ar", s.get("name", ""))
+        if name and name not in seen_names:
+            seen_names.add(name)
+            unique_subjects.append({
+                "id": s.get("id"),
+                "name": name,
+                "name_ar": name,
+                "name_en": s.get("name_en", ""),
+                "code": s.get("code", ""),
+                "color": s.get("color", "#3B82F6")
+            })
+    
+    return {"subjects": unique_subjects}
+
+
+# ============== ADMIN CONSTRAINTS CRUD - إدارة القيود الإدارية ==============
+
+class ConstraintCreate(BaseModel):
+    name_ar: str
+    name_en: Optional[str] = None
+    description_ar: Optional[str] = None
+    description_en: Optional[str] = None
+    type: str = "hard"  # 'hard' or 'soft'
+    priority: str = "medium"  # 'critical', 'high', 'medium', 'low'
+    restricted_periods: Optional[List[int]] = None
+    max_consecutive_periods: Optional[int] = None
+
+class ConstraintUpdate(BaseModel):
+    name_ar: Optional[str] = None
+    name_en: Optional[str] = None
+    description_ar: Optional[str] = None
+    description_en: Optional[str] = None
+    type: Optional[str] = None
+    priority: Optional[str] = None
+    restricted_periods: Optional[List[int]] = None
+    max_consecutive_periods: Optional[int] = None
+    is_active: Optional[bool] = None
+
+@router.post("/school/constraints")
+async def create_school_constraint(
+    constraint_data: ConstraintCreate,
+    current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN])),
+    x_school_context: str = Header(default=None, alias="X-School-Context")
+):
+    """Create a new admin constraint for the school - إضافة قيد إداري جديد"""
+    school_id = await get_school_id_from_context(current_user, x_school_context)
+    
+    if not school_id:
+        raise HTTPException(status_code=400, detail="School context required")
+    
+    constraint_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    
+    constraint_doc = {
+        "id": constraint_id,
+        "school_id": school_id,
+        "name_ar": constraint_data.name_ar,
+        "name_en": constraint_data.name_en or constraint_data.name_ar,
+        "description_ar": constraint_data.description_ar,
+        "description_en": constraint_data.description_en,
+        "type": constraint_data.type,
+        "priority": constraint_data.priority,
+        "restricted_periods": constraint_data.restricted_periods or [],
+        "max_consecutive_periods": constraint_data.max_consecutive_periods,
+        "is_active": True,
+        "created_at": now,
+        "updated_at": now,
+        "created_by": current_user.get("id")
+    }
+    
+    # Insert into school_constraints collection (not admin_constraints)
+    await db.school_constraints.insert_one(constraint_doc)
+    
+    # Remove _id from response
+    if "_id" in constraint_doc:
+        del constraint_doc["_id"]
+    
+    return {"id": constraint_id, "message": "تم إضافة القيد بنجاح", "constraint": constraint_doc}
+
+@router.put("/school/constraints/{constraint_id}")
+async def update_school_constraint(
+    constraint_id: str,
+    constraint_data: ConstraintUpdate,
+    current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN])),
+    x_school_context: str = Header(default=None, alias="X-School-Context")
+):
+    """Update an admin constraint - تعديل قيد إداري"""
+    school_id = await get_school_id_from_context(current_user, x_school_context)
+    
+    if not school_id:
+        raise HTTPException(status_code=400, detail="School context required")
+    
+    # Check constraint exists in school_constraints collection
+    constraint = await db.school_constraints.find_one(
+        {"id": constraint_id, "school_id": school_id},
+        {"_id": 0}
+    )
+    
+    if not constraint:
+        raise HTTPException(status_code=404, detail="القيد غير موجود")
+    
+    update_data = {"updated_at": datetime.now(timezone.utc).isoformat()}
+    
+    if constraint_data.name_ar is not None:
+        update_data["name_ar"] = constraint_data.name_ar
+    if constraint_data.name_en is not None:
+        update_data["name_en"] = constraint_data.name_en
+    if constraint_data.description_ar is not None:
+        update_data["description_ar"] = constraint_data.description_ar
+    if constraint_data.description_en is not None:
+        update_data["description_en"] = constraint_data.description_en
+    if constraint_data.type is not None:
+        update_data["type"] = constraint_data.type
+    if constraint_data.priority is not None:
+        update_data["priority"] = constraint_data.priority
+    if constraint_data.restricted_periods is not None:
+        update_data["restricted_periods"] = constraint_data.restricted_periods
+    if constraint_data.max_consecutive_periods is not None:
+        update_data["max_consecutive_periods"] = constraint_data.max_consecutive_periods
+    if constraint_data.is_active is not None:
+        update_data["is_active"] = constraint_data.is_active
+    
+    await db.school_constraints.update_one(
+        {"id": constraint_id, "school_id": school_id}, 
+        {"$set": update_data}
+    )
+    
+    return {"message": "تم تحديث القيد بنجاح"}
+
+@router.delete("/school/constraints/{constraint_id}")
+async def delete_school_constraint(
+    constraint_id: str,
+    current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN])),
+    x_school_context: str = Header(default=None, alias="X-School-Context")
+):
+    """Delete (soft) an admin constraint - حذف قيد إداري"""
+    school_id = await get_school_id_from_context(current_user, x_school_context)
+    
+    if not school_id:
+        raise HTTPException(status_code=400, detail="School context required")
+    
+    # Check constraint exists in school_constraints collection
+    constraint = await db.school_constraints.find_one(
+        {"id": constraint_id, "school_id": school_id}, 
+        {"_id": 0}
+    )
+    
+    if not constraint:
+        raise HTTPException(status_code=404, detail="القيد غير موجود")
+    
+    # Soft delete
+    await db.school_constraints.update_one(
+        {"id": constraint_id, "school_id": school_id},
+        {"$set": {"is_active": False, "deleted_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    
+    return {"message": "تم حذف القيد بنجاح"}
+
+@router.get("/school/constraints")
+async def get_school_constraints(
+    current_user: dict = Depends(get_current_user),
+    x_school_context: str = Header(default=None, alias="X-School-Context")
+):
+    """Get all constraints for the school - جلب جميع القيود للمدرسة"""
+    school_id = await get_school_id_from_context(current_user, x_school_context)
+    
+    # Get school-specific constraints first
+    school_constraints = await db.school_constraints.find(
+        {"school_id": school_id},
+        {"_id": 0}
+    ).to_list(100)
+    
+    # If no school-specific constraints, get reference constraints as starting point
+    if not school_constraints:
+        ref_constraints = await db.admin_constraints.find(
+            {"is_active": True},
+            {"_id": 0}
+        ).to_list(100)
+        
+        # Copy reference constraints to school-specific collection
+        for c in ref_constraints:
+            school_constraint = {
+                "id": str(uuid.uuid4()),
+                "school_id": school_id,
+                "ref_id": c.get("id"),
+                "name_ar": c.get("name_ar", c.get("name", "")),
+                "name_en": c.get("name_en", ""),
+                "description_ar": c.get("description_ar", c.get("description", "")),
+                "description_en": c.get("description_en", ""),
+                "type": c.get("type", "hard"),
+                "priority": c.get("priority", "medium"),
+                "is_active": c.get("is_active", True),
+                "is_system": True,  # Mark as system-generated
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+            await db.school_constraints.insert_one(school_constraint)
+            school_constraint.pop("_id", None)
+            school_constraints.append(school_constraint)
+    
+    return school_constraints
+
+
+@router.get("/teachers/options/grades")
+async def get_teacher_grades_options(current_user: dict = Depends(get_current_user)):
+    """Get available grade levels from reference database or school classes"""
+    
+    grades = await db.academic_grades.find(
+        {"is_active": True},
+        {"_id": 0}
+    ).sort("order", 1).to_list(100)
+    
+    if grades:
+        stages = await db.academic_stages.find({"is_active": True}, {"_id": 0}).sort("order", 1).to_list(10)
+        stages_map = {s["id"]: s for s in stages}
+        
+        formatted_grades = []
+        for g in grades:
+            stage = stages_map.get(g.get("stage_id"), {})
+            formatted_grades.append({
+                "id": g.get("id"),
+                "name": g.get("name_ar", ""),
+                "name_ar": g.get("name_ar", ""),
+                "name_en": g.get("name_en", ""),
+                "grade": g.get("order", g.get("grade_level", 1)),
+                "stage": stage.get("name_ar", ""),
+                "stage_en": stage.get("name_en", ""),
+                "stage_id": g.get("stage_id")
+            })
+        return {"grades": formatted_grades}
+    
+    school_id = current_user.get("school_id") or current_user.get("tenant_id")
+    query = {"school_id": school_id} if school_id else {}
+    classes = await db.classes.find(query, {"_id": 0, "name": 1, "name_ar": 1, "grade": 1, "grade_level": 1}).to_list(500)
+    
+    import re
+    grade_map = {}
+    GRADE_ORDER = {
+        'الأول': 1, 'الثاني': 2, 'الثالث': 3, 'الرابع': 4,
+        'الخامس': 5, 'السادس': 6, 'السابع': 7, 'الثامن': 8,
+        'التاسع': 9, 'العاشر': 10, 'الحادي عشر': 11, 'الثاني عشر': 12,
+    }
+    for cls in classes:
+        cls_name = cls.get("name") or cls.get("name_ar") or ""
+        match = re.match(r'(الصف\s+\S+)', cls_name)
+        if match:
+            grade_name = match.group(1)
+            if grade_name not in grade_map:
+                order_num = 99
+                for ar_name, num in GRADE_ORDER.items():
+                    if ar_name in grade_name:
+                        order_num = num
+                        break
+                grade_id = f"grade-{order_num}"
+                grade_map[grade_name] = {
+                    "id": grade_id,
+                    "name": grade_name,
+                    "name_ar": grade_name,
+                    "name_en": f"Grade {order_num}" if order_num != 99 else grade_name,
+                    "grade": order_num,
+                }
+    
+    sorted_grades = sorted(grade_map.values(), key=lambda g: g["grade"])
+    return {"grades": sorted_grades}
+
+@router.get("/teachers/options/academic-degrees")
+async def get_academic_degrees_options(current_user: dict = Depends(get_current_user)):
+    """Get available academic degrees from DB or defaults"""
+    db_degrees = await db.lookup_options.find(
+        {"type": "academic_degree", "is_active": {"$ne": False}},
+        {"_id": 0}
+    ).to_list(20)
+    if db_degrees:
+        degrees = [{"id": r.get("code", r.get("id")), "name": r.get("name_ar"), "name_en": r.get("name_en")} for r in db_degrees]
+    else:
+        degrees = [
+            {"id": "diploma", "name": "دبلوم", "name_en": "Diploma"},
+            {"id": "bachelor", "name": "بكالوريوس", "name_en": "Bachelor's"},
+            {"id": "master", "name": "ماجستير", "name_en": "Master's"},
+            {"id": "doctorate", "name": "دكتوراه", "name_en": "Doctorate"},
+        ]
+    return {"degrees": degrees}
+
+@router.get("/teachers/options/teacher-ranks")
+async def get_teacher_ranks_options(current_user: dict = Depends(get_current_user)):
+    """Get available teacher ranks from database or defaults"""
+    ranks = await db.lookup_options.find(
+        {"type": "teacher_rank", "is_active": {"$ne": False}},
+        {"_id": 0}
+    ).sort("order", 1).to_list(100)
+    
+    if not ranks:
+        ranks = await db.teacher_ranks.find({"is_active": True}, {"_id": 0}).sort("order", 1).to_list(100)
+    
+    if not ranks:
+        ranks = [
+            {"id": "teacher", "name_ar": "معلم", "name_en": "Teacher", "weekly_periods": 24},
+            {"id": "senior_teacher", "name_ar": "معلم أول", "name_en": "Senior Teacher", "weekly_periods": 22},
+            {"id": "expert", "name_ar": "معلم خبير", "name_en": "Expert Teacher", "weekly_periods": 18},
+            {"id": "department_head", "name_ar": "رئيس قسم", "name_en": "Department Head", "weekly_periods": 16},
+        ]
+    
+    formatted_ranks = []
+    for r in ranks:
+        formatted_ranks.append({
+            "id": r.get("id") or r.get("code"),
+            "name": r.get("name_ar", r.get("name", "")),
+            "name_en": r.get("name_en", ""),
+            "weekly_periods": r.get("weekly_periods", 24),
+            "is_special_education": r.get("is_special_education", False)
+        })
+    
+    return {"ranks": formatted_ranks}
+
+@router.get("/teachers/options/contract-types")
+async def get_contract_types_options(current_user: dict = Depends(get_current_user)):
+    """Get available contract types from DB or defaults"""
+    db_types = await db.lookup_options.find(
+        {"type": "contract_type", "is_active": {"$ne": False}},
+        {"_id": 0}
+    ).to_list(20)
+    if db_types:
+        types = [{"id": r.get("code", r.get("id")), "name": r.get("name_ar"), "name_en": r.get("name_en")} for r in db_types]
+    else:
+        types = [
+            {"id": "permanent", "name": "دائم", "name_en": "Permanent"},
+            {"id": "contract", "name": "عقد", "name_en": "Contract"},
+            {"id": "part_time", "name": "دوام جزئي", "name_en": "Part-time"},
+        ]
+    return {"types": types}
+
+@router.get("/teachers/options/nationalities")
+async def get_nationalities_options(current_user: dict = Depends(get_current_user)):
+    """Get available nationalities from DB or defaults"""
+    db_nations = await db.lookup_options.find(
+        {"type": "nationality", "is_active": {"$ne": False}},
+        {"_id": 0}
+    ).to_list(100)
+    if db_nations:
+        nationalities = [{"id": r.get("code", r.get("id")), "name": r.get("name_ar"), "name_en": r.get("name_en")} for r in db_nations]
+    else:
+        nationalities = [
+            {"id": "SA", "name": "سعودي", "name_en": "Saudi"},
+            {"id": "EG", "name": "مصري", "name_en": "Egyptian"},
+            {"id": "JO", "name": "أردني", "name_en": "Jordanian"},
+            {"id": "SY", "name": "سوري", "name_en": "Syrian"},
+            {"id": "PS", "name": "فلسطيني", "name_en": "Palestinian"},
+            {"id": "SD", "name": "سوداني", "name_en": "Sudanese"},
+            {"id": "YE", "name": "يمني", "name_en": "Yemeni"},
+            {"id": "TN", "name": "تونسي", "name_en": "Tunisian"},
+            {"id": "MA", "name": "مغربي", "name_en": "Moroccan"},
+            {"id": "PK", "name": "باكستاني", "name_en": "Pakistani"},
+            {"id": "IN", "name": "هندي", "name_en": "Indian"},
+            {"id": "OTHER", "name": "أخرى", "name_en": "Other"},
+        ]
+    return {"nationalities": nationalities}
+
+class TeacherWizardCreate(BaseModel):
+    """Teacher creation via wizard - supports both flat and nested structures"""
+    # Flat structure fields
+    full_name: Optional[str] = None
+    full_name_en: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    national_id: Optional[str] = None
+    gender: Optional[str] = "male"
+    nationality: Optional[str] = "sa"
+    date_of_birth: Optional[str] = None
+    subject_ids: Optional[List[str]] = []
+    grade_ids: Optional[List[str]] = []
+    primary_subject_id: Optional[str] = None
+    academic_degree: Optional[str] = None
+    specialization: Optional[str] = None
+    teacher_rank: Optional[str] = None
+    contract_type: Optional[str] = "permanent"
+    years_of_experience: Optional[int] = 0
+    hire_date: Optional[str] = None
+    max_periods_per_week: Optional[int] = 24
+    available_days: Optional[List[str]] = []
+    
+    # Nested structure fields (from frontend wizard)
+    basic_info: Optional[dict] = None
+    qualifications: Optional[dict] = None
+    subjects: Optional[dict] = None
+    schedule: Optional[dict] = None
+
+@router.post("/teachers/create")
+async def create_teacher_wizard(
+    data: TeacherWizardCreate,
+    current_user: dict = Depends(get_current_user)
+):
+    """Create a new teacher via wizard"""
+    school_id = current_user.get("tenant_id")
+    
+    if not school_id:
+        raise HTTPException(status_code=400, detail="المستخدم غير مرتبط بمدرسة")
+    
+    # Handle nested structure from frontend wizard
+    if data.basic_info:
+        full_name = data.basic_info.get("full_name_ar") or data.basic_info.get("full_name") or data.full_name
+        full_name_en = data.basic_info.get("full_name_en") or data.full_name_en
+        email = data.basic_info.get("email") or data.email
+        phone = data.basic_info.get("phone") or data.phone
+        national_id = data.basic_info.get("national_id") or data.national_id
+        gender = data.basic_info.get("gender") or data.gender
+        nationality = data.basic_info.get("nationality") or data.nationality
+        date_of_birth = data.basic_info.get("date_of_birth") or data.date_of_birth
+    else:
+        full_name = data.full_name
+        full_name_en = data.full_name_en
+        email = data.email
+        phone = data.phone
+        national_id = data.national_id
+        gender = data.gender
+        nationality = data.nationality
+        date_of_birth = data.date_of_birth
+    
+    if data.qualifications:
+        academic_degree = data.qualifications.get("academic_degree") or data.academic_degree
+        specialization = data.qualifications.get("specialization") or data.specialization
+        teacher_rank = data.qualifications.get("teacher_rank") or data.teacher_rank
+        years_of_experience = data.qualifications.get("years_of_experience") or data.years_of_experience or 0
+    else:
+        academic_degree = data.academic_degree
+        specialization = data.specialization
+        teacher_rank = data.teacher_rank
+        years_of_experience = data.years_of_experience or 0
+    
+    if data.subjects:
+        subject_ids = data.subjects.get("subject_ids") or data.subject_ids or []
+        grade_ids = data.subjects.get("grade_ids") or data.grade_ids or []
+        primary_subject_id = data.subjects.get("primary_subject_id") or data.primary_subject_id
+        max_periods_per_week = data.subjects.get("max_periods_per_week") or data.max_periods_per_week or 24
+    else:
+        subject_ids = data.subject_ids or []
+        grade_ids = data.grade_ids or []
+        primary_subject_id = data.primary_subject_id
+        max_periods_per_week = data.max_periods_per_week or 24
+    
+    if data.schedule:
+        contract_type = data.schedule.get("contract_type") or data.contract_type or "permanent"
+        available_days = data.schedule.get("available_days") or data.available_days or []
+        hire_date = data.schedule.get("hire_date") or data.hire_date
+    else:
+        contract_type = data.contract_type or "permanent"
+        available_days = data.available_days or []
+        hire_date = data.hire_date
+    
+    # Validate required fields
+    if not full_name:
+        raise HTTPException(status_code=400, detail="الاسم مطلوب")
+    if not email:
+        raise HTTPException(status_code=400, detail="البريد الإلكتروني مطلوب")
+    if not phone:
+        raise HTTPException(status_code=400, detail="رقم الهاتف مطلوب")
+    
+    # Check if email exists
+    existing = await db.users.find_one({"email": email})
+    if existing:
+        raise HTTPException(status_code=400, detail="البريد الإلكتروني مسجل مسبقاً")
+    
+    # Get school info
+    school = await db.schools.find_one({"id": school_id}, {"_id": 0, "code": 1})
+    school_code = school.get("code", "NSS") if school else "NSS"
+    
+    # Generate IDs and password
+    teacher_id = str(uuid.uuid4())
+    user_id = str(uuid.uuid4())
+    temp_password = f"T{random.randint(100000, 999999)}"
+    
+    # Create teacher document
+    teacher_doc = {
+        "id": teacher_id,
+        "school_id": school_id,
+        "user_id": user_id,
+        "full_name": full_name,
+        "full_name_en": full_name_en or full_name,
+        "email": email,
+        "phone": phone,
+        "national_id": national_id,
+        "gender": gender,
+        "nationality": nationality,
+        "date_of_birth": date_of_birth,
+        "specialization": specialization or primary_subject_id or (subject_ids[0] if subject_ids else None),
+        "primary_subject_id": primary_subject_id,
+        "subject_ids": subject_ids,
+        "grade_ids": grade_ids,
+        "qualification": academic_degree,
+        "rank": teacher_rank,
+        "contract_type": contract_type,
+        "years_of_experience": years_of_experience,
+        "max_periods_per_week": max_periods_per_week,
+        "available_days": available_days,
+        "hire_date": hire_date or datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "is_active": True,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    
+    # Create user document
+    user_doc = {
+        "id": user_id,
+        "email": email,
+        "password_hash": hash_password(temp_password),
+        "full_name": full_name,
+        "full_name_en": full_name_en or full_name,
+        "role": "teacher",
+        "is_active": True,
+        "is_suspended": False,
+        "tenant_id": school_id,
+        "school_id": school_id,
+        "teacher_id": teacher_id,
+        "phone": phone,
+        "permissions": [
+            "view_students", "manage_attendance", "manage_grades",
+            "view_schedule", "manage_behavior", "view_reports"
+        ],
+        "preferred_language": "ar",
+        "preferred_theme": "light",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    
+    await db.teachers.insert_one(teacher_doc)
+    await db.users.insert_one(user_doc)
+    
+    # Update school teacher count
+    await db.schools.update_one(
+        {"id": school_id},
+        {"$inc": {"current_teachers": 1}}
+    )
+    
+    return {
+        "success": True,
+        "teacher": {
+            "id": teacher_id,
+            "full_name": full_name,
+            "email": email,
+            "temp_password": temp_password,
+            "specialization": specialization,
+            "rank": teacher_rank,
+        },
+        "teacher_id": teacher_id,
+        "user_account": {
+            "created": True,
+            "email": email,
+            "temp_password": temp_password,
+        },
+        "message": "تم إنشاء حساب المعلم بنجاح"
+    }
+
+@router.post("/teachers", response_model=TeacherResponse)
+async def create_teacher(
+    teacher_data: TeacherCreate,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN]))
+):
+    """Create a new teacher"""
+    # Check if email already exists
+    existing = await db.users.find_one({"email": teacher_data.email})
+    if existing:
+        raise HTTPException(status_code=400, detail="البريد الإلكتروني مسجل مسبقاً")
+    
+    # Create user account for teacher
+    user_id = str(uuid.uuid4())
+    teacher_id = str(uuid.uuid4())
+    
+    user_doc = {
+        "id": user_id,
+        "email": teacher_data.email,
+        "password_hash": hash_password("Teacher@123"),  # Default password
+        "full_name": teacher_data.full_name,
+        "full_name_en": teacher_data.full_name_en,
+        "role": UserRole.TEACHER.value,
+        "tenant_id": teacher_data.school_id,
+        "phone": teacher_data.phone,
+        "avatar_url": None,
+        "is_active": True,
+        "preferred_language": "ar",
+        "preferred_theme": "light",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    teacher_doc = {
+        "id": teacher_id,
+        "user_id": user_id,
+        "full_name": teacher_data.full_name,
+        "full_name_en": teacher_data.full_name_en,
+        "email": teacher_data.email,
+        "phone": teacher_data.phone,
+        "school_id": teacher_data.school_id,
+        "specialization": teacher_data.specialization,
+        "years_of_experience": teacher_data.years_of_experience or 0,
+        "qualification": teacher_data.qualification,
+        "gender": teacher_data.gender,
+        "is_active": True,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.users.insert_one(user_doc)
+    await db.teachers.insert_one(teacher_doc)
+    
+    # Update school teacher count
+    await db.schools.update_one(
+        {"id": teacher_data.school_id},
+        {"$inc": {"current_teachers": 1}}
+    )
+
+    try:
+        from routes.school_settings_mod import _ensure_teacher_linked_to_all_classes
+        await _ensure_teacher_linked_to_all_classes(teacher_data.school_id, teacher_id)
+    except Exception as e:
+        logger.warning(f"Auto-assign teacher {teacher_id} to classes failed: {e}")
+    
+    return TeacherResponse(**teacher_doc)
+
+@router.get("/teachers", response_model=List[TeacherResponse])
+async def get_teachers(
+    school_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get all teachers or filter by school"""
+    query = {"status": {"$ne": "closed"}}
+    if school_id:
+        query["school_id"] = school_id
+    elif current_user.get("role") != UserRole.PLATFORM_ADMIN.value:
+        query["school_id"] = current_user.get("tenant_id")
+    
+    teachers = await db.teachers.find(query, {"_id": 0}).to_list(1000)
+    
+    # Normalize field names for consistency
+    result = []
+    for t in teachers:
+        # Map full_name_ar to full_name if needed
+        if not t.get("full_name") and t.get("full_name_ar"):
+            t["full_name"] = t["full_name_ar"]
+        # Map subject_name to specialization if needed
+        if not t.get("specialization") and t.get("subject_name"):
+            t["specialization"] = t["subject_name"]
+        result.append(TeacherResponse(**t))
+    return result
+
+@router.get("/teachers/{teacher_id}", response_model=TeacherResponse)
+async def get_teacher(teacher_id: str, current_user: dict = Depends(get_current_user)):
+    """Get teacher by ID"""
+    teacher = await db.teachers.find_one({"id": teacher_id}, {"_id": 0})
+    if not teacher:
+        raise HTTPException(status_code=404, detail="المعلم غير موجود")
+    # Normalize field names
+    if not teacher.get("full_name") and teacher.get("full_name_ar"):
+        teacher["full_name"] = teacher["full_name_ar"]
+    if not teacher.get("specialization") and teacher.get("subject_name"):
+        teacher["specialization"] = teacher["subject_name"]
+    return TeacherResponse(**teacher)
+
+@router.put("/teachers/{teacher_id}")
+async def update_teacher(
+    teacher_id: str,
+    teacher_data: TeacherUpdate,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN]))
+):
+    """Update teacher"""
+    # Build update dict with only provided fields
+    update_fields = {"updated_at": datetime.now(timezone.utc).isoformat()}
+    
+    if teacher_data.full_name is not None:
+        update_fields["full_name"] = teacher_data.full_name
+    if teacher_data.full_name_en is not None:
+        update_fields["full_name_en"] = teacher_data.full_name_en
+    if teacher_data.email is not None:
+        update_fields["email"] = teacher_data.email
+    if teacher_data.phone is not None:
+        update_fields["phone"] = teacher_data.phone
+    if teacher_data.specialization is not None:
+        update_fields["specialization"] = teacher_data.specialization
+    if teacher_data.years_of_experience is not None:
+        update_fields["years_of_experience"] = teacher_data.years_of_experience
+    if teacher_data.qualification is not None:
+        update_fields["qualification"] = teacher_data.qualification
+    if teacher_data.gender is not None:
+        update_fields["gender"] = teacher_data.gender
+    if teacher_data.is_active is not None:
+        update_fields["is_active"] = teacher_data.is_active
+    
+    result = await db.teachers.update_one(
+        {"id": teacher_id},
+        {"$set": update_fields}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="المعلم غير موجود")
+
+    if "full_name" in update_fields:
+        new_name = update_fields["full_name"]
+        await db.teacher_assignments.update_many(
+            {"teacher_id": teacher_id},
+            {"$set": {"teacher_name": new_name}}
+        )
+        await db.schedule_sessions.update_many(
+            {"teacher_id": teacher_id},
+            {"$set": {"teacher_name": new_name}}
+        )
+
+    return {"message": "تم تحديث بيانات المعلم", "success": True}
+
+@router.delete("/teachers/{teacher_id}")
+async def delete_teacher(
+    teacher_id: str,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
+):
+    """Delete teacher — full removal from system"""
+    teacher = await db.teachers.find_one({"id": teacher_id}, {"_id": 0})
+    if not teacher:
+        raise HTTPException(status_code=404, detail="المعلم غير موجود")
+    
+    school_id = teacher.get("school_id")
+    user_id = teacher.get("user_id")
+
+    cleanup = {}
+    await db.teachers.delete_one({"id": teacher_id})
+
+    await db.schools.update_one(
+        {"id": school_id},
+        {"$inc": {"current_teachers": -1}}
+    )
+
+    r = await db.teacher_assignments.delete_many({"teacher_id": teacher_id})
+    cleanup["teacher_assignments"] = r.deleted_count
+    r = await db.teacher_class_assignments.delete_many({"teacher_id": teacher_id})
+    cleanup["teacher_class_assignments"] = r.deleted_count
+    r = await db.teacher_subjects.delete_many({"teacher_id": teacher_id})
+    cleanup["teacher_subjects"] = r.deleted_count
+    r = await db.teacher_attendance.delete_many({"teacher_id": teacher_id})
+    cleanup["teacher_attendance"] = r.deleted_count
+    r = await db.timetable_sessions.delete_many({"teacher_id": teacher_id})
+    cleanup["timetable_sessions"] = r.deleted_count
+    r = await db.class_sessions.delete_many({"teacher_id": teacher_id})
+    cleanup["class_sessions"] = r.deleted_count
+    r = await db.session_event_log.delete_many({"teacher_id": teacher_id})
+    cleanup["session_event_log"] = r.deleted_count
+    r = await db.user_relationships.delete_many({"$or": [{"source_id": teacher_id}, {"target_id": teacher_id}]})
+    cleanup["user_relationships"] = r.deleted_count
+
+    if user_id:
+        await db.users.delete_one({"id": user_id})
+        await db.user_roles.delete_many({"user_id": user_id})
+        await db.user_identities.delete_many({"user_id": user_id})
+        cleanup["user_account"] = 1
+
+    return {"message": "تم حذف المعلم وجميع بياناته من النظام بالكامل", "success": True, "cleanup": cleanup}
+
+
+@router.delete("/parents/{parent_id}")
+async def delete_parent(
+    parent_id: str,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
+):
+    """Delete parent — full removal from system"""
+    tenant_id = current_user.get("tenant_id")
+    parent = await db.parents.find_one({"id": parent_id, "tenant_id": tenant_id}, {"_id": 0})
+    if not parent:
+        raise HTTPException(status_code=404, detail="ولي الأمر غير موجود")
+
+    user_id = parent.get("user_id")
+
+    cleanup = {}
+    await db.parents.delete_one({"id": parent_id})
+
+    r = await db.guardian_links.delete_many({"parent_id": parent_id})
+    cleanup["guardian_links"] = r.deleted_count
+    r = await db.user_relationships.delete_many({"$or": [{"source_id": parent_id}, {"target_id": parent_id}]})
+    cleanup["user_relationships"] = r.deleted_count
+
+    await db.students.update_many(
+        {"parent_ids": parent_id},
+        {"$pull": {"parent_ids": parent_id}}
+    )
+
+    if user_id:
+        await db.users.delete_one({"id": user_id})
+        await db.user_roles.delete_many({"user_id": user_id})
+        await db.user_identities.delete_many({"user_id": user_id})
+        cleanup["user_account"] = 1
+
+    return {"message": "تم حذف ولي الأمر وجميع بياناته من النظام بالكامل", "success": True, "cleanup": cleanup}
+
+
+# ============== GLOBAL TALENTS ==============
+
+@router.get("/talents")
+async def get_global_talents(
+    current_user: dict = Depends(get_current_user)
+):
+    tenant_id = current_user.get("tenant_id")
+    query = {"$or": [{"is_global": True}]}
+    if tenant_id:
+        query["$or"].append({"tenant_id": tenant_id})
+    talents = await db.global_talents.find(query, {"_id": 0}).sort("name_ar", 1).to_list(500)
+    return {"talents": talents}
+
+
+@router.post("/talents")
+async def create_custom_talent(
+    data: dict = Body(...),
+    current_user: dict = Depends(require_roles([UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.TEACHER]))
+):
+    name_ar = data.get("name_ar", "").strip()
+    name_en = data.get("name_en", "").strip()
+    if not name_ar:
+        raise HTTPException(400, "اسم الموهبة بالعربية مطلوب")
+    tenant_id = current_user.get("tenant_id")
+    value_key = re.sub(r'\s+', '_', name_ar).lower()
+    existing = await db.global_talents.find_one({
+        "$or": [
+            {"name_ar": name_ar, "$or": [{"is_global": True}, {"tenant_id": tenant_id}]},
+            {"value": value_key, "$or": [{"is_global": True}, {"tenant_id": tenant_id}]}
+        ]
+    })
+    if existing:
+        raise HTTPException(400, "هذه الموهبة موجودة بالفعل")
+    talent_doc = {
+        "id": str(uuid.uuid4()),
+        "value": value_key,
+        "name_ar": name_ar,
+        "name_en": name_en or name_ar,
+        "tenant_id": tenant_id,
+        "is_global": False,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_by": current_user["id"]
+    }
+    await db.global_talents.insert_one(talent_doc)
+    talent_doc.pop("_id", None)
+    return talent_doc

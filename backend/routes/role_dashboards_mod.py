@@ -470,16 +470,33 @@ async def get_parent_dashboard(
         late_days = len([a for a in attendance_records if a.get("status") == "late"])
         attendance_rate = round((present_days / total_days * 100) if total_days > 0 else 100, 1)
         
-        # Mock grades
+        grade_records = await db.grades.find({
+            "student_id": student_id
+        }, {"_id": 0, "subject_name": 1, "score": 1, "recorded_at": 1}).sort("recorded_at", -1).limit(10).to_list(10)
         recent_grades = [
-            {"subject": "الرياضيات", "grade": 92, "date": datetime.now().strftime("%Y-%m-%d")},
-            {"subject": "اللغة العربية", "grade": 88, "date": datetime.now().strftime("%Y-%m-%d")},
+            {
+                "subject": g.get("subject_name", "غير محدد"),
+                "grade": g.get("score", 0),
+                "date": g.get("recorded_at", ""),
+            }
+            for g in grade_records
         ]
-        average_grade = sum(g.get("grade", 0) for g in recent_grades) / len(recent_grades) if recent_grades else 0
-        
-        # Mock behaviour notes
+        average_grade = (
+            sum(g.get("grade", 0) for g in recent_grades) / len(recent_grades)
+            if recent_grades
+            else 0
+        )
+
+        behaviour_records = await db.behaviour_records.find({
+            "student_id": student_id
+        }, {"_id": 0, "type": 1, "note": 1, "created_at": 1}).sort("created_at", -1).limit(5).to_list(5)
         behaviour_notes = [
-            {"type": "positive", "note": "مشاركة فعالة في الصف", "date": datetime.now().strftime("%Y-%m-%d")},
+            {
+                "type": b.get("type", "info"),
+                "note": b.get("note", ""),
+                "date": b.get("created_at", ""),
+            }
+            for b in behaviour_records
         ]
         
         # Get today's schedule

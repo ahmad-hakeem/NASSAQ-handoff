@@ -1,10 +1,18 @@
 """
 NASSAQ Rate Limiter Middleware
-Token-bucket style rate limiting for critical endpoints.
+
+In-memory sliding-window rate limiting for critical endpoints.
+
+PRODUCTION NOTE:
+  This store is **process-local**. When running behind multiple workers
+  (e.g. ``gunicorn -w 4``) each worker keeps its own counter, so
+  effective limits are multiplied by the worker count. For strict
+  distributed rate limiting, swap ``RateLimitStore`` for a Redis-backed
+  implementation (e.g. redis INCR + EXPIRE).  The current design is
+  intentional for single-worker Replit deployments.
 """
 import time
 import asyncio
-from collections import defaultdict
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
@@ -20,7 +28,7 @@ class RateLimitStore:
         self._store: dict[str, list[float]] = {}
         self._lock = asyncio.Lock()
 
-    async def is_rate_limited(self, key: str, max_requests: int, window_seconds: int) -> bool:
+    async def is_rate_limited(self, key: str, max_requests: int, window_seconds: int) -> tuple[bool, int, int]:
         async with self._lock:
             now = time.time()
             cutoff = now - window_seconds
@@ -31,13 +39,20 @@ class RateLimitStore:
                 if len(self._store) >= self.MAX_KEYS:
                     await self._evict_expired(now)
                     if len(self._store) >= self.MAX_KEYS:
-                        return False
+                        return False, max_requests, window_seconds
                 self._store[key] = []
 
-            if len(self._store[key]) >= max_requests:
-                return True
+            current = len(self._store[key])
+            remaining = max(0, max_requests - current)
+
+            if current >= max_requests:
+                oldest = min(self._store[key]) if self._store[key] else now
+                retry_after = int(oldest + window_seconds - now) + 1
+                return True, remaining, retry_after
+
             self._store[key].append(now)
-            return False
+            remaining = max(0, max_requests - current - 1)
+            return False, remaining, window_seconds
 
     async def _evict_expired(self, now: float):
         expired = [k for k, v in self._store.items() if not v or max(v) < now - 3600]
@@ -71,16 +86,31 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         else:
             client_ip = request.client.host if request.client else "unknown"
 
+        matched_limits = None
         for pattern, limits in RATE_LIMITS.items():
             if path.startswith(pattern):
+                matched_limits = limits
                 key = f"{client_ip}:{pattern}"
-                if await rate_store.is_rate_limited(key, limits["max"], limits["window"]):
+                limited, remaining, retry_after = await rate_store.is_rate_limited(
+                    key, limits["max"], limits["window"]
+                )
+                if limited:
                     logger.warning(f"Rate limited: {client_ip} on {pattern}")
                     return JSONResponse(
                         status_code=429,
-                        content={"detail": "عدد الطلبات تجاوز الحد المسموح. يرجى المحاولة لاحقاً"}
+                        content={"detail": "عدد الطلبات تجاوز الحد المسموح. يرجى المحاولة لاحقاً"},
+                        headers={
+                            "X-RateLimit-Limit": str(limits["max"]),
+                            "X-RateLimit-Remaining": "0",
+                            "Retry-After": str(retry_after),
+                        },
                     )
                 break
 
         response = await call_next(request)
+
+        if matched_limits is not None:
+            response.headers["X-RateLimit-Limit"] = str(matched_limits["max"])
+            response.headers["X-RateLimit-Remaining"] = str(remaining)
+
         return response
