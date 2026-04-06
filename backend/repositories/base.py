@@ -1014,16 +1014,24 @@ class BaseRepository:
             d = _apply_projection(d, projection)
         return d
 
-    async def bulk_write(self, operations: list):
-        from repositories.base import InsertOneResult as _IR
-        results = []
+    async def bulk_write(self, operations: list, ordered=True):
+        upserted = 0
+        modified = 0
+        matched = 0
         for op in operations:
             if hasattr(op, 'filter') and hasattr(op, 'update'):
-                r = await self.update_one(op.filter, op.update, upsert=getattr(op, 'upsert', False))
-                results.append(r)
+                upsert = getattr(op, 'upsert', False)
+                r = await self.update_one(op.filter, op.update, upsert=upsert)
+                mc = getattr(r, 'matched_count', 0)
+                modc = getattr(r, 'modified_count', 0)
+                matched += mc
+                modified += modc
+                if upsert and mc == 0:
+                    upserted += 1
         return type("BulkWriteResult", (), {
-            "modified_count": sum(r.modified_count for r in results),
-            "matched_count": sum(r.matched_count for r in results),
+            "modified_count": modified,
+            "matched_count": matched,
+            "upserted_count": upserted,
         })()
 
     async def batched_counts(self, specs: dict) -> dict:
