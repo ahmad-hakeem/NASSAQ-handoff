@@ -25,16 +25,16 @@ task = "workflow.run"
 args = "Frontend Dev"
 
   [[workflows.workflow]]
-  name = "Backend API"
-  author = "agent"
+name = "Backend API"
+author = "agent"
 
   [workflows.workflow.metadata]
-  outputType = "console"
+outputType = "console"
 
-  [[workflows.workflow.tasks]]
-  task = "shell.exec"
-  args = "cd backend && uvicorn server:app --host 0.0.0.0 --port 8000"
-  waitForPort = 8000
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd backend && uvicorn server:app --host 0.0.0.0 --port 8000"
+waitForPort = 8000
 
 [[workflows.workflow]]
 name = "Frontend Dev"
@@ -58,7 +58,7 @@ externalPort = 3000
 
 [[ports]]
 localPort = 8000
-externalPort = 80
+externalPort = 8000
 
   [deployment]
   deploymentTarget = "autoscale"
