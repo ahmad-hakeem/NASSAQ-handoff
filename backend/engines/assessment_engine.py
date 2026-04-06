@@ -358,7 +358,8 @@ class AssessmentEngine:
             "processed": 0,
             "created": 0,
             "updated": 0,
-            "errors": []
+            "errors": [],
+            "created_student_ids": [],
         }
 
         assessment = await self.get_assessment_by_id(assessment_id)
@@ -427,6 +428,7 @@ class AssessmentEngine:
         existing_map = {r["student_id"]: r for r in existing_rows}
 
         to_insert = []
+        to_update = []
         for gd in valid_entries:
             try:
                 sid = gd["student_id"]
@@ -436,7 +438,8 @@ class AssessmentEngine:
                 existing = existing_map.get(sid)
 
                 if existing:
-                    updates = {
+                    to_update.append({
+                        "id": existing["id"],
                         "score": score,
                         "percentage": percentage,
                         "is_passing": is_passing,
@@ -445,10 +448,7 @@ class AssessmentEngine:
                         "recorded_at": now,
                         "feedback": gd.get("feedback"),
                         "notes": gd.get("notes"),
-                    }
-                    await self.grades_collection.update_one(
-                        {"id": existing["id"]}, {"$set": updates}
-                    )
+                    })
                     results["updated"] += 1
                 else:
                     doc = {
@@ -471,10 +471,13 @@ class AssessmentEngine:
                     }
                     to_insert.append(doc)
                     results["created"] += 1
+                    results["created_student_ids"].append(sid)
                 results["processed"] += 1
             except Exception as e:
                 results["errors"].append({"student_id": gd.get("student_id"), "error": str(e)})
 
+        if to_update:
+            await self.grades_collection.batch_update_by_ids(to_update)
         if to_insert:
             await self.grades_collection.insert_many(to_insert)
 

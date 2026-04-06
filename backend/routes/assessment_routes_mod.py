@@ -409,16 +409,18 @@ async def create_bulk_grades(
         tenant_id=tenant_id,
     )
 
-    if result["created"] > 0:
+    created_sids = set(result.get("created_student_ids", []))
+    if created_sids:
         max_score = assessment.get("max_score", 100)
         assessment_title = assessment.get('title', 'تقييم')
-        student_ids = [g.student_id for g in data.grades]
         students_list = await db.students.find(
-            {"id": {"$in": student_ids}}, {"_id": 0, "id": 1, "full_name": 1, "user_id": 1, "parent_phone": 1}
-        ).to_list(len(student_ids))
+            {"id": {"$in": list(created_sids)}}, {"_id": 0, "id": 1, "full_name": 1, "user_id": 1, "parent_phone": 1}
+        ).to_list(len(created_sids))
         student_map = {s["id"]: s for s in students_list}
 
         for g in data.grades:
+            if g.student_id not in created_sids:
+                continue
             try:
                 si = student_map.get(g.student_id)
                 if not si:

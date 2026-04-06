@@ -157,6 +157,7 @@ class AttendanceEngine:
         existing_map = {row["student_id"]: row for row in existing_rows}
 
         to_insert = []
+        to_update = []
         for record in valid_records:
             try:
                 student_id = record["student_id"]
@@ -165,21 +166,20 @@ class AttendanceEngine:
 
                 if existing:
                     old_status = existing.get("status")
-                    updates = {
+                    upd_dict = {
+                        "id": existing["id"],
                         "status": status,
                         "updated_at": now,
                         "updated_by": recorded_by,
                     }
                     if record.get("arrival_time"):
-                        updates["arrival_time"] = record["arrival_time"]
+                        upd_dict["arrival_time"] = record["arrival_time"]
                     if record.get("departure_time"):
-                        updates["departure_time"] = record["departure_time"]
+                        upd_dict["departure_time"] = record["departure_time"]
                     if record.get("notes"):
-                        updates["notes"] = record["notes"]
+                        upd_dict["notes"] = record["notes"]
 
-                    await self.attendance_collection.update_one(
-                        {"id": existing["id"]}, {"$set": updates}
-                    )
+                    to_update.append(upd_dict)
                     results["updated"] += 1
                     results["transitions"].append({
                         "student_id": student_id,
@@ -215,6 +215,8 @@ class AttendanceEngine:
                     "error": str(e),
                 })
 
+        if to_update:
+            await self.attendance_collection.batch_update_by_ids(to_update)
         if to_insert:
             await self.attendance_collection.insert_many(to_insert)
             results["created"] = len(to_insert)
@@ -264,6 +266,7 @@ class AttendanceEngine:
         errors: List[Dict] = []
         transitions: List[Dict] = []
         to_insert: List[Dict] = []
+        to_update: List[Dict] = []
         to_insert_events: List[Dict] = []
         absent_late: List[tuple] = []
 
@@ -276,15 +279,13 @@ class AttendanceEngine:
                 existing = existing_map.get(student_id)
                 if existing:
                     old_status = existing.get("status")
-                    await self.attendance_collection.update_one(
-                        {"id": existing["id"]},
-                        {"$set": {
-                            "status": att_status,
-                            "notes": notes,
-                            "recorded_by": recorded_by,
-                            "recorded_at": now,
-                        }},
-                    )
+                    to_update.append({
+                        "id": existing["id"],
+                        "status": att_status,
+                        "notes": notes,
+                        "recorded_by": recorded_by,
+                        "recorded_at": now,
+                    })
                     updated += 1
                     transitions.append({"student_id": student_id, "old_status": old_status, "new_status": att_status})
                 else:
@@ -321,6 +322,8 @@ class AttendanceEngine:
             except Exception as e:
                 errors.append({"student_id": record.get("student_id"), "error": str(e)})
 
+        if to_update:
+            await self.attendance_collection.batch_update_by_ids(to_update)
         if to_insert:
             await self.attendance_collection.insert_many(to_insert)
         if to_insert_events:

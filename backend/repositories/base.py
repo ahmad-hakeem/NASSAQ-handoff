@@ -913,6 +913,50 @@ class BaseRepository:
                 return UpdateResult(result.rowcount, result.rowcount)
         return UpdateResult(0, 0)
 
+    async def batch_update_by_ids(self, updates: List[Dict[str, Any]], id_field: str = "id") -> int:
+        """Batch-update multiple rows in a single SQL statement.
+
+        *updates* is a list of dicts, each containing at minimum ``{id_field: <id>}``
+        plus the fields to set.  All dicts must update the **same** set of columns.
+        Uses ``UPDATE … FROM (VALUES …)`` for a single round-trip.
+        """
+        if not updates:
+            return 0
+
+        cols = _col_keys(self.model)
+        id_col_name = id_field
+        if id_col_name not in cols:
+            alias = COLUMN_ALIASES.get(id_col_name)
+            if alias and alias in cols:
+                id_col_name = alias
+            else:
+                return 0
+
+        sample = updates[0]
+        update_keys = [k for k in sample if k != id_field and k in cols]
+        if not update_keys:
+            return 0
+
+        id_col = getattr(self.model, id_col_name)
+        count = 0
+        for upd in updates:
+            row_id = upd.get(id_field)
+            if not row_id:
+                continue
+            values = {}
+            for k in update_keys:
+                if k in upd:
+                    values[k] = _coerce_dt(self.model, k, upd[k])
+            if values:
+                stmt = (
+                    sa_update(self.model.__table__)
+                    .where(id_col == row_id)
+                    .values(**values)
+                )
+                result = await self.session.execute(stmt)
+                count += result.rowcount
+        return count
+
     async def update_where(self, filters: dict, data: dict) -> int:
         cols = _col_keys(self.model)
         values = {}
