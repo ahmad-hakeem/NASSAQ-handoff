@@ -111,7 +111,8 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
       const res = await api.post('/principal/generate-password');
       setCredForm(p => ({ ...p, new_password: res.data.password }));
       toast.success(isRTL ? 'تم توليد كلمة مرور قوية' : 'Strong password generated');
-    } catch {
+    } catch (e) {
+      console.error('Error generating password:', e);
       nassaqError(isRTL ? 'فشل توليد كلمة المرور' : 'Failed to generate password');
     }
   };

@@ -147,7 +147,7 @@ export default function SessionTeachPage() {
           });
         }
       }
-    } catch {}
+    } catch (e) { console.error('Error loading session data:', e); }
   };
 
   const loadSkillTypes = async () => {
@@ -179,7 +179,7 @@ export default function SessionTeachPage() {
     try {
       const res = await api.get(`/session/${sessionId}/notes`);
       setNotes(res.data?.notes || []);
-    } catch {}
+    } catch (e) { console.error('Error loading notes:', e); }
   }, [api, sessionId]);
 
   const loadActivityLog = async () => {
@@ -199,7 +199,7 @@ export default function SessionTeachPage() {
           };
         });
       }
-    } catch {}
+    } catch (e) { console.error('Error loading activity log:', e); }
   };
 
   const loadLiveMetrics = useCallback(async () => {
@@ -214,7 +214,7 @@ export default function SessionTeachPage() {
           participation: res.data.interaction.total_participations || prev.participation
         }));
       }
-    } catch {}
+    } catch (e) { console.error('Error loading live metrics:', e); }
   }, [api, sessionId]);
 
   useEffect(() => {
@@ -257,7 +257,8 @@ export default function SessionTeachPage() {
       toast.success('تم إضافة الملاحظة');
       loadNotes();
       addLog('📝', `ملاحظة: ${newNote.slice(0, 30)}...`, 'text-amber-600');
-    } catch {
+    } catch (e) {
+      console.error('Error adding note:', e);
       nassaqError('خطأ في إضافة الملاحظة');
     }
   };
@@ -267,7 +268,8 @@ export default function SessionTeachPage() {
       await api.delete(`/session/${sessionId}/note/${noteId}`);
       toast.success('تم حذف الملاحظة');
       loadNotes();
-    } catch {
+    } catch (e) {
+      console.error('Error deleting note:', e);
       nassaqError('خطأ في حذف الملاحظة');
     }
   };
@@ -286,7 +288,8 @@ export default function SessionTeachPage() {
     try {
       const res = await api.get(`/session/${sessionId}/homework`);
       setHomeworkStatuses(res.data?.statuses || {});
-    } catch {
+    } catch (e) {
+      console.error('Error loading homework statuses:', e);
       nassaqError('خطأ في تحميل حالات الواجب');
     } finally {
       setHomeworkLoading(false);
@@ -308,7 +311,8 @@ export default function SessionTeachPage() {
       } else {
         toast.success(`❌ ما حل — ${studentName}`);
       }
-    } catch {
+    } catch (e) {
+      console.error('Error toggling homework:', e);
       setHomeworkStatuses(prev => ({ ...prev, [studentId]: current || 'not_done' }));
       nassaqError('خطأ في تحديث حالة الواجب');
     }
@@ -322,7 +326,8 @@ export default function SessionTeachPage() {
       setActionTab(getTabForMode(m.id));
       if (m.id === 'homework') loadHomeworkStatuses();
       toast.success(`تم تفعيل نمط: ${m.label}`, { id: 'session-mode' });
-    } catch {
+    } catch (e) {
+      console.error('Error setting session mode:', e);
       nassaqError('خطأ في تحديد النمط');
     }
   };
@@ -426,7 +431,8 @@ export default function SessionTeachPage() {
         correct_answers: result === 'correct' ? (prev.correct_answers || 0) + 1 : (prev.correct_answers || 0),
         participation_count: (prev.participation_count || 0) + 1,
       } : null);
-    } catch {
+    } catch (e) {
+      console.error('Error recording answer:', e);
       nassaqError('خطأ في تسجيل الإجابة');
     }
   };
@@ -452,7 +458,8 @@ export default function SessionTeachPage() {
         interaction_count: (prev.interaction_count || 0) + 1,
         participation_count: (prev.participation_count || 0) + 1,
       } : null);
-    } catch {
+    } catch (e) {
+      console.error('Error recording participation:', e);
       nassaqError('خطأ في تسجيل المشاركة');
     }
   };
@@ -471,7 +478,8 @@ export default function SessionTeachPage() {
       toast.success(`${emoji} سلوك: ${bType.label} — ${selectedStudent.full_name?.split(' ')[0]}`);
       addLog(emoji, `${selectedStudent.full_name?.split(' ')[0]} — ${bType.label} (${change > 0 ? '+' : ''}${change})`, behaviourCategory === 'negative' ? 'text-red-600' : 'text-purple-700');
       setBehaviourNote('');
-    } catch {
+    } catch (e) {
+      console.error('Error recording behaviour:', e);
       nassaqError('خطأ في تسجيل السلوك');
     }
   };
@@ -497,7 +505,8 @@ export default function SessionTeachPage() {
         interactionCount: (prev.interactionCount || 0) + 1,
         interaction_count: (prev.interaction_count || 0) + 1,
       } : null);
-    } catch {
+    } catch (e) {
+      console.error('Error recording skill:', e);
       nassaqError('خطأ في تسجيل المهارة');
     }
   };
@@ -1592,7 +1601,8 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
       } else {
         nassaqError('فشل إرسال الإشعارات');
       }
-    } catch {
+    } catch (e) {
+      console.error('Error sending notifications:', e);
       nassaqError('فشل إرسال الإشعارات');
     } finally {
       setSendingNotif(false);
@@ -1627,7 +1637,8 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
       a.click();
       URL.revokeObjectURL(url);
       toast.success(isRTL ? 'تم تصدير التقرير بنجاح' : 'Report exported successfully');
-    } catch {
+    } catch (e) {
+      console.error('Error exporting report:', e);
       toast.error(isRTL ? 'فشل تصدير التقرير' : 'Failed to export report');
     } finally {
       setExporting(false);

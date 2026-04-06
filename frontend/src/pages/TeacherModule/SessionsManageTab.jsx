@@ -95,7 +95,8 @@ export default function SessionsManageTab() {
         setSessions(sorted);
         const completed = sorted.filter(s => s.status === 'completed' || s.status === 'ended').length;
         setStats({ total: sorted.length, completed, cancelled: sorted.filter(s => s.status === 'cancelled').length, avg_attendance: 0 });
-      } catch {
+      } catch (e) {
+        console.error('Error fetching sessions:', e);
         setSessions([]);
       }
     } finally {
@@ -138,7 +139,7 @@ export default function SessionsManageTab() {
       return new Date(dateStr).toLocaleDateString(isRTL ? 'ar-SA' : 'en-US', {
         weekday: 'short', year: 'numeric', month: 'short', day: 'numeric'
       });
-    } catch { return dateStr; }
+    } catch (e) { console.error('Date format error:', e); return dateStr; }
   };
 
   const openSessionDetail = async (session) => {
@@ -150,7 +151,8 @@ export default function SessionsManageTab() {
       try {
         const res = await api.get(`/session/${session.id || session._id}/report`);
         setSessionReport(res.data);
-      } catch {
+      } catch (e) {
+        console.error('Error fetching session report:', e);
         setSessionReport(null);
       } finally {
         setReportLoading(false);

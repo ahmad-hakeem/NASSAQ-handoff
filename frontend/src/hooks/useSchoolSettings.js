@@ -467,7 +467,8 @@ export function useSchoolSettings() {
     try {
       await api.put(`/school/settings/soft-constraints/${code}`, { is_active: newActive });
       toast.success('تم تحديث القيد بنجاح');
-    } catch {
+    } catch (e) {
+      console.error('Error toggling soft constraint:', e);
       setSoftConstraints(prev => prev.map(x => x.code === code ? { ...x, is_active: !newActive } : x));
       nassaqError('حدث خطأ في تحديث القيد');
     }
@@ -478,7 +479,8 @@ export function useSchoolSettings() {
     setSoftConstraints(p => p.map(x => x.code === code ? { ...x, weight } : x));
     try {
       await api.put(`/school/settings/soft-constraints/${code}`, { weight });
-    } catch {
+    } catch (e) {
+      console.error('Error updating constraint weight:', e);
       setSoftConstraints(p => p.map(x => x.code === code ? { ...x, weight: prev } : x));
       nassaqError('حدث خطأ في تحديث الأولوية');
     }
@@ -491,7 +493,8 @@ export function useSchoolSettings() {
         api.put(`/school/settings/soft-constraints/${c.code}`, { is_active: enable })
       ));
       toast.success(enable ? 'تم تفعيل جميع القيود' : 'تم تعطيل جميع القيود');
-    } catch {
+    } catch (e) {
+      console.error('Error toggling all constraints:', e);
       nassaqError('حدث خطأ في تحديث القيود');
       fetchData();
     }

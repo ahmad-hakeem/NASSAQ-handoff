@@ -1,6 +1,7 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { createApiService } from '../services/apiClient';
 
 const AuthContext = createContext(null);
 
@@ -319,6 +320,7 @@ export const AuthProvider = ({ children }) => {
     getEffectiveTenantId,
     preferredLanguage,
     isRTL,
+    apiServices: createApiService(api),
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

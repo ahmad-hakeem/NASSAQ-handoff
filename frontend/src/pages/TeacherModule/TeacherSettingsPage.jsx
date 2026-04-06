@@ -138,7 +138,7 @@ export default function TeacherSettingsPage() {
         stats.studentsCount = dashRes.data.stats?.my_students || 0;
       }
       if (Object.keys(stats).length > 0) setTeachingStats(stats);
-    } catch {}
+    } catch (e) { console.error('Error fetching teaching stats:', e); }
   }, [teacherId, api]);
 
   const fetchActivities = useCallback(async () => {
@@ -147,7 +147,8 @@ export default function TeacherSettingsPage() {
     try {
       const res = await api.get(`/teacher/profile/${teacherId}/activity?limit=50`);
       setActivities(res?.data?.activities || []);
-    } catch {
+    } catch (e) {
+      console.error('Error fetching activities:', e);
       setActivities([]);
     } finally {
       setActivitiesLoading(false);
@@ -182,7 +183,8 @@ export default function TeacherSettingsPage() {
     try {
       await api.put(`/users/${user?.id}/notifications/settings`, notifications);
       toast.success(isRTL ? 'تم حفظ إعدادات الإشعارات' : 'Notification settings saved');
-    } catch {
+    } catch (e) {
+      console.error('Error saving notification settings:', e);
       nassaqError(isRTL ? 'خطأ في حفظ الإعدادات' : 'Error saving settings');
     } finally {
       setSaving(false);
@@ -235,7 +237,8 @@ export default function TeacherSettingsPage() {
         setProfile(p => ({ ...p, avatar_url: base64 }));
         await refreshUser?.();
         toast.success(isRTL ? 'تم تحديث الصورة الشخصية' : 'Profile picture updated');
-      } catch {
+      } catch (e) {
+        console.error('Error uploading avatar:', e);
         nassaqError(isRTL ? 'خطأ في رفع الصورة' : 'Error uploading image');
       }
     };
@@ -248,7 +251,8 @@ export default function TeacherSettingsPage() {
       setProfile(p => ({ ...p, avatar_url: '' }));
       await refreshUser?.();
       toast.success(isRTL ? 'تم حذف الصورة الشخصية' : 'Profile picture removed');
-    } catch {
+    } catch (e) {
+      console.error('Error removing avatar:', e);
       nassaqError(isRTL ? 'خطأ في حذف الصورة' : 'Error removing image');
     }
   };
@@ -269,7 +273,8 @@ export default function TeacherSettingsPage() {
       setLanguage?.(lang);
       await refreshUser?.();
       toast.success(lang === 'ar' ? 'تم تغيير اللغة إلى العربية' : 'Language changed to English');
-    } catch {
+    } catch (e) {
+      console.error('Error changing language:', e);
       nassaqError(isRTL ? 'خطأ في تغيير اللغة' : 'Error changing language');
     }
   };
@@ -289,7 +294,7 @@ export default function TeacherSettingsPage() {
     try {
       const d = new Date(ts);
       return d.toLocaleString(isRTL ? 'ar-SA' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' });
-    } catch { return ts; }
+    } catch (e) { console.error('Timestamp format error:', e); return ts; }
   };
 
   const groupActivitiesByDate = (acts) => {
@@ -300,7 +305,7 @@ export default function TeacherSettingsPage() {
       if (ts) {
         try {
           dateKey = new Date(ts).toLocaleDateString(isRTL ? 'ar-SA' : 'en-US', { dateStyle: 'long' });
-        } catch {}
+        } catch (e) { console.error('Date parse error:', e); }
       }
       if (!groups[dateKey]) groups[dateKey] = [];
       groups[dateKey].push(act);

@@ -41,7 +41,7 @@ export default function TeacherTasksPage() {
         }
         setAttendanceStatus(statusMap);
       }
-    } catch {}
+    } catch (e) { console.error('Error loading teacher tasks:', e); }
     setLoading(false);
   }, [api, teacherId]);
 

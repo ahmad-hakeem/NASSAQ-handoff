@@ -70,7 +70,7 @@ export default function SessionStartPage() {
     }
     const stored = sessionStorage.getItem('current_lesson');
     if (stored) {
-      try { setLessonData(JSON.parse(stored)?.lesson); return; } catch {}
+      try { setLessonData(JSON.parse(stored)?.lesson); return; } catch (e) { console.error('Error parsing stored lesson:', e); }
     }
     const t = setTimeout(() => { nassaqError('لم يتم تحديد الحصة'); navigate('/teacher/home'); }, 600);
     return () => clearTimeout(t);
@@ -107,8 +107,8 @@ export default function SessionStartPage() {
     });
     try {
       await fetchStudents(sid);
-    } catch {
-      // fetchStudents failure should not block session
+    } catch (e) {
+      console.error('Error fetching students for session:', e);
     }
     setStep('attendance');
     if (res.data?.resumed) {
@@ -167,7 +167,8 @@ export default function SessionStartPage() {
     setStudents(prev => prev.map(s => s.id === studentId ? { ...s, attendance_status: status } : s));
     try {
       await api.put(`/session/${sessionId}/attendance/${studentId}`, { status });
-    } catch {
+    } catch (e) {
+      console.error('Error updating attendance:', e);
       nassaqError('فشل حفظ الحضور');
     }
   };
@@ -180,7 +181,8 @@ export default function SessionStartPage() {
         students.map(s => api.put(`/session/${sessionId}/attendance/${s.id}`, { status }))
       );
       toast.success(`تم تحديد الكل: ${STATUS_CONFIG[status].label}`);
-    } catch {
+    } catch (e) {
+      console.error('Error bulk updating attendance:', e);
       nassaqError('خطأ في التحديث الجماعي');
     }
   };
@@ -212,7 +214,8 @@ export default function SessionStartPage() {
         }
       };
       requestAnimationFrame(animate);
-    } catch {
+    } catch (e) {
+      console.error('Error approving attendance:', e);
       nassaqError('خطأ في اعتماد الحضور');
     } finally {
       setSaving(false);

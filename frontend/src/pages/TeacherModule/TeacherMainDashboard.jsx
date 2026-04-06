@@ -63,7 +63,7 @@ const TeacherDayProgress = ({ isRTL }) => {
   const dateInfo = useMemo(() => {
     try {
       return formatFullDate(now, isRTL ? 'ar' : 'en');
-    } catch { return null; }
+    } catch (e) { console.error('Date format error:', e); return null; }
   }, [now, isRTL]);
 
   const periodLabel = isBreak
@@ -229,7 +229,7 @@ export default function TeacherMainDashboard() {
           setTeachingMetrics({ avgAttendance, avgParticipation, avgPerformance, totalSessions, classCount: cls.length });
         }
       }
-    } catch {}
+    } catch (e) { console.error('Error fetching teacher metrics:', e); }
   }, [teacherId, api]);
 
   useEffect(() => { fetchTeacherData(); }, [fetchTeacherData]);
@@ -258,7 +258,7 @@ export default function TeacherMainDashboard() {
         const riskResults = await Promise.all(riskChecks);
         const alerts = riskResults.filter(r => r?.data && (r.data.risk_category === 'critical' || r.data.risk_category === 'high')).map(r => r.data);
         setRiskAlerts(alerts);
-      } catch {} finally { setHakimLoading(false); }
+      } catch (e) { console.error('Error fetching Hakim data:', e); } finally { setHakimLoading(false); }
     };
     fetchHakimData();
   }, [classes, user, api]);

@@ -125,7 +125,7 @@ export default function TeacherHomePage() {
             setClassMetrics({ avgAttendance, avgParticipation, avgPerformance, totalSessions });
           }
         }
-      } catch {}
+      } catch (e) { console.error('Error fetching class metrics:', e); }
     };
     fetchMetrics();
   }, [teacherId, api]);

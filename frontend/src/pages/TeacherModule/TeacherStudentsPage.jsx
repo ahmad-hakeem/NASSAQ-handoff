@@ -108,7 +108,8 @@ export default function TeacherStudentsPage() {
     try {
       const res = await api.get(`/hakim/student/${studentId}/improvement-plan?days=30`);
       setAiInsights(res.data);
-    } catch {
+    } catch (e) {
+      console.error('Error fetching AI insights:', e);
       setAiInsights(null);
     } finally {
       setLoadingAI(false);

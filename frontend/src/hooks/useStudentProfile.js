@@ -114,7 +114,8 @@ export function useStudentProfile() {
       setStudent(s);
       setFormData({ ...s });
       setClasses(Array.isArray(classesRes.data) ? classesRes.data : []);
-    } catch {
+    } catch (e) {
+      console.error('Error loading student data:', e);
       nassaqError(isRTL ? 'خطأ في تحميل بيانات الطالب' : 'Error loading student data');
     } finally {
       setLoading(false);

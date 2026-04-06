@@ -112,7 +112,8 @@ export const TeachersPage = () => {
         ]);
         setGrades(gradesRes.data || []);
         setClasses(classesRes.data || []);
-      } catch {
+      } catch (e) {
+        console.error('Error fetching grades/classes:', e);
         setGrades([]);
         setClasses([]);
       }
@@ -122,8 +123,8 @@ export const TeachersPage = () => {
         try {
           const schoolsRes = await api.get('/schools');
           setSchools(schoolsRes.data);
-        } catch {
-          // Platform admin might have permission, but handle gracefully
+        } catch (e) {
+          console.error('Error fetching schools list:', e);
           setSchools([]);
         }
       }

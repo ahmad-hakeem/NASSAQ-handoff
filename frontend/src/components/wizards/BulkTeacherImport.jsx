@@ -411,7 +411,8 @@ export const BulkTeacherImport = ({ open, onClose }) => {
       try {
         await api.post('/teachers/bulk/create-single', validData[i]);
         created++;
-      } catch {
+      } catch (e) {
+        console.error(`Error creating teacher ${i + 1}:`, e);
         failed++;
       }
       setProgress(i + 1);
