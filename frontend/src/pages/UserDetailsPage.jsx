@@ -980,7 +980,11 @@ ${API_URL}/login
                                   {activity.changes && !activity.details && (
                                     <div className="mt-1 text-xs text-muted-foreground">
                                       {Object.entries(activity.changes).filter(([k]) => k !== 'updated_at').slice(0, 3).map(([key, val]) => (
-                                        <span key={key} className="me-2">{key}: {String(val)}</span>
+                                        <span key={key} className="me-2 block">
+                                          {key}: {val && typeof val === 'object' && 'old' in val
+                                            ? <><span className="line-through text-red-500">{String(val.old ?? '-')}</span> → <span className="text-green-600">{String(val.new ?? '-')}</span></>
+                                            : String(val)}
+                                        </span>
                                       ))}
                                     </div>
                                   )}
