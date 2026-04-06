@@ -90,11 +90,11 @@ logger.info(f"Database source: {_db_source}")
 
 _engine_kwargs = dict(
     echo=False,
-    pool_pre_ping=False,
+    pool_pre_ping=True,
     connect_args=_build_connect_args(),
-    pool_size=8,
-    max_overflow=12,
-    pool_recycle=600,
+    pool_size=15,
+    max_overflow=25,
+    pool_recycle=300,
     pool_use_lifo=True,
 )
 

@@ -512,6 +512,12 @@ async def get_grades_for_assessment(
     assessment = await db.assessments.find_one({"id": assessment_id}, {"_id": 0})
     if not assessment:
         raise HTTPException(status_code=404, detail="Assessment not found")
+    user_role = current_user.get("role", "")
+    is_platform = user_role.startswith("platform_")
+    tenant_id = current_user.get("tenant_id")
+    if not is_platform:
+        if not tenant_id or assessment.get("school_id") != tenant_id:
+            raise HTTPException(status_code=403, detail="Access denied")
     
     grades = await db.grades.find({"assessment_id": assessment_id}, {"_id": 0}).to_list(500)
     
@@ -545,6 +551,12 @@ async def get_student_grade_history(
     student = await db.students.find_one({"id": student_id}, {"_id": 0})
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
+    user_role = current_user.get("role", "")
+    is_platform = user_role.startswith("platform_")
+    tenant_id = current_user.get("tenant_id")
+    if not is_platform:
+        if not tenant_id or student.get("school_id") != tenant_id:
+            raise HTTPException(status_code=403, detail="Access denied")
     
     # Get class info
     class_info = await db.classes.find_one({"id": student.get('class_id')}, {"_id": 0, "name": 1})

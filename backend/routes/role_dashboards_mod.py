@@ -754,7 +754,7 @@ async def get_teacher_classes(
                 try:
                     parts = start_str.replace(":", " ").split()
                     s_min = int(parts[0]) * 60 + int(parts[1])
-                except:
+                except (ValueError, IndexError, TypeError):
                     s_min = 0
                 if s_idx > today_idx or (s_idx == today_idx and s_min > now_minutes):
                     dist = (s_idx - today_idx) * 1440 + (s_min - now_minutes)

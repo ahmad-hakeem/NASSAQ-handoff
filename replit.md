@@ -73,7 +73,7 @@ Each fix report must include: root cause, why it wasn't caught before, what chan
   - `SUPABASE_DATABASE_URL` takes priority over `DATABASE_URL` (Replit helium fallback)
   - Password auto-encoded in `db.py` and `alembic/env.py` (handles `@`/`!` in passwords)
   - Supabase pooler requires `statement_cache_size=0`, `prepared_statement_cache_size=0`, and `prepared_statement_name_func` with UUID-based unique names
-  - Pool: `pool_size=8, max_overflow=12, pool_recycle=600, pool_use_lifo=True` — NO NullPool (causes ~500ms per query), NO pool_pre_ping (extra round-trip)
+  - Pool: `pool_size=15, max_overflow=25, pool_recycle=300, pool_use_lifo=True, pool_pre_ping=True` — NO NullPool (causes ~500ms per query)
   - Each Supabase query ≈ 300-500ms round-trip (EU region); use in-memory TTL caching for heavy endpoints
   - **In-memory caching**: `/public/stats` (60s TTL in `school_routes_mod.py`), `/admin/command-center/stats` (30s TTL in `dashboard_routes_mod.py`)
   - `asyncio.gather` on same session serializes (single connection) — NOT parallel; fresh sessions per-query for true parallelism is counterproductive (SSL handshake overhead)
@@ -97,7 +97,8 @@ Each fix report must include: root cause, why it wasn't caught before, what chan
 - **JWT Security**: No hardcoded fallback — generates ephemeral secret if env var missing, logs warning
 - **CORS**: Uses `CORS_ORIGINS` from config (env-based), not hardcoded `*`
 - **Error Messages**: All API errors return safe Arabic messages — no `str(e)` exposure to users
-- **Silent Failures**: All bare `except:` replaced with specific exception types (`ValueError`, `KeyError`, etc.)
+- **Silent Failures**: All bare `except:` replaced with specific exception types (`ValueError`, `KeyError`, `TypeError`, etc.)
+- **Tenant Isolation (BOLA)**: All cross-tenant data access paths fixed — assessment grades, student grade history, student portal assignments, and student messaging all enforce `tenant_id` checks. No user can access another school's data through any API endpoint.
 - **Error Boundary**: `ErrorBoundary.jsx` wraps entire app — catches render crashes with Arabic fallback UI
 - **Health Check**: `/system/health` returns DB status, latency, uptime, version
 - **Logging**: All 34+ backend route files use `logging.getLogger("nassaq.*")` — zero `print()` statements in routes/engines

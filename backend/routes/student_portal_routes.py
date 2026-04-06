@@ -368,13 +368,15 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
         current_user: dict = Depends(require_roles([UserRole.STUDENT]))
     ):
         """إرسال رسالة من الطالب"""
-        # Get receiver info
+        tenant_id = current_user.get("tenant_id")
         receiver = await db.users.find_one({"id": receiver_id})
         if not receiver:
             receiver = await db.teachers.find_one({"id": receiver_id})
         
         if not receiver:
             raise HTTPException(status_code=404, detail="المستلم غير موجود")
+        if not tenant_id or (receiver.get("tenant_id") != tenant_id and receiver.get("school_id") != tenant_id):
+            raise HTTPException(status_code=403, detail="لا يمكنك مراسلة مستخدم من مدرسة أخرى")
         
         message = {
             "id": str(uuid.uuid4()),
@@ -721,7 +723,9 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
             {"subject": k, "average": round(sum(v) / len(v), 1)} for k, v in subjects_data.items()
         ]
         
-        total_assignments = await db.student_assignments.count_documents({})
+        tenant_id = current_user.get("tenant_id")
+        assignment_filter = {"school_id": tenant_id} if tenant_id else {"school_id": "__none__"}
+        total_assignments = await db.student_assignments.count_documents(assignment_filter)
         submissions = await db.assignment_submissions.find(
             {"student_id": student_id}, {"_id": 0}
         ).to_list(500)
