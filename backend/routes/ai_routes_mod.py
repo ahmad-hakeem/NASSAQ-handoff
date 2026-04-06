@@ -4,7 +4,7 @@ Auto-consolidated during Phase 8 modularization.
 """
 from fastapi import APIRouter, HTTPException, Depends, status, Header, Query, Body, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from starlette.responses import StreamingResponse
 from pydantic import BaseModel, Field, ConfigDict, EmailStr, model_validator
 from typing import List, Optional, Any, Dict
@@ -33,15 +33,28 @@ router = APIRouter()
 AI_INTEGRATIONS_OPENAI_API_KEY = os.environ.get("AI_INTEGRATIONS_OPENAI_API_KEY")
 AI_INTEGRATIONS_OPENAI_BASE_URL = os.environ.get("AI_INTEGRATIONS_OPENAI_BASE_URL")
 
+def _ai_is_configured() -> bool:
+    return bool(AI_INTEGRATIONS_OPENAI_API_KEY and AI_INTEGRATIONS_OPENAI_BASE_URL)
+
 _openai_client = None
 def get_openai_client():
     global _openai_client
+    if not _ai_is_configured():
+        return None
     if _openai_client is None:
         _openai_client = OpenAI(
             api_key=AI_INTEGRATIONS_OPENAI_API_KEY,
             base_url=AI_INTEGRATIONS_OPENAI_BASE_URL,
         )
     return _openai_client
+
+AI_NOT_CONFIGURED_RESPONSE = {
+    "success": False,
+    "error": "AI not configured",
+    "error_ar": "خدمة الذكاء الاصطناعي غير مُهيّأة",
+    "message": "AI features are unavailable. Please configure the OpenAI integration.",
+    "message_ar": "ميزات الذكاء الاصطناعي غير متوفرة. يرجى إعداد تكامل OpenAI."
+}
 
 _hakim_sessions: Dict[str, list] = {}
 
@@ -251,8 +264,8 @@ class HakimContextualRequest(BaseModel):
 async def hakim_contextual_message(req: HakimContextualRequest, current_user: dict = Depends(get_current_user)):
     try:
         client = get_openai_client()
-        if not AI_INTEGRATIONS_OPENAI_BASE_URL:
-            raise ValueError("AI service not configured")
+        if client is None:
+            return JSONResponse(status_code=503, content=AI_NOT_CONFIGURED_RESPONSE)
 
         school_id = current_user.get("tenant_id") or req.tenant_id
         school_context = ""
@@ -352,8 +365,8 @@ class HakimChatRequest(BaseModel):
 async def chat_with_hakim(message: HakimChatRequest, current_user: dict = Depends(get_current_user)):
     try:
         client = get_openai_client()
-        if not AI_INTEGRATIONS_OPENAI_BASE_URL:
-            raise ValueError("AI service not configured")
+        if client is None:
+            return JSONResponse(status_code=503, content=AI_NOT_CONFIGURED_RESPONSE)
 
         school_id = current_user.get("tenant_id") or message.tenant_id
         school_context = ""
@@ -1213,6 +1226,9 @@ async def hakim_student_ai_plans(
 
     try:
         client = get_openai_client()
+        if client is None:
+            plan_source = "fallback"
+            raise ValueError("AI not configured")
         response = client.chat.completions.create(
             model="openai/gpt-4o-mini",
             messages=[
