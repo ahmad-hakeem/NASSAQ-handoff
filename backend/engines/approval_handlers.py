@@ -62,7 +62,7 @@ class TeacherApprovalHandler(ApprovalHandler):
     display_name = "Independent Teacher"
     display_name_ar = "معلم مستقل"
 
-    def get_display_fields(self):
+    def get_display_fields(self) -> list:
         """Return human-readable display fields for a teacher/school approval."""
         return [
             {"key": "full_name", "label": "الاسم", "label_en": "Name"},
@@ -231,7 +231,7 @@ class SchoolApprovalHandler(ApprovalHandler):
     display_name = "School"
     display_name_ar = "مدرسة"
 
-    def get_display_fields(self):
+    def get_display_fields(self) -> list:
         """Return human-readable display fields for a teacher/school approval."""
         return [
             {"key": "school_name", "label": "اسم المدرسة", "label_en": "School Name"},

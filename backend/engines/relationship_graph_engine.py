@@ -286,7 +286,7 @@ class RelationshipGraphEngine:
 
         return classes
 
-    async def sync_relationships_for_student(self, student_id: str, tenant_id: str, student_data: Dict, created_by: str = None):
+    async def sync_relationships_for_student(self, student_id: str, tenant_id: str, student_data: Dict, created_by: Optional[str] = None) -> None:
         """Rebuild relationship edges for a student from source records."""
         if student_data.get("parent_id"):
             await self.create_relationship(
@@ -313,7 +313,7 @@ class RelationshipGraphEngine:
             created_by=created_by
         )
 
-    async def sync_relationships_for_teacher(self, teacher_id: str, tenant_id: str, teacher_data: Dict, created_by: str = None):
+    async def sync_relationships_for_teacher(self, teacher_id: str, tenant_id: str, teacher_data: Dict, created_by: Optional[str] = None) -> None:
         """Rebuild relationship edges for a teacher from source records."""
         await self.create_relationship(
             "teacher", teacher_id,
@@ -331,7 +331,7 @@ class RelationshipGraphEngine:
                 created_by=created_by
             )
 
-    async def transfer_student_class(self, student_id: str, old_class_id: str, new_class_id: str, tenant_id: str, transferred_by: str = None):
+    async def transfer_student_class(self, student_id: str, old_class_id: str, new_class_id: str, tenant_id: str, transferred_by: Optional[str] = None) -> None:
         """Move a student to a new class and update relationships."""
         if old_class_id:
             old_rels = await self.relationships.find({

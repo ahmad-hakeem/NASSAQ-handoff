@@ -262,7 +262,7 @@ DEFAULT_STUDENT_LEVELS = {
 STUDENT_LEVELS = DEFAULT_STUDENT_LEVELS
 
 
-async def load_tenant_score_rules(db, tenant_id: str) -> dict:
+async def load_tenant_score_rules(db: Any, tenant_id: str) -> dict:
     """Load tenant-specific score rules, falling back to defaults"""
     try:
         settings = await db.tenant_settings.find_one(
@@ -278,7 +278,7 @@ async def load_tenant_score_rules(db, tenant_id: str) -> dict:
     return DEFAULT_SCORE_RULES
 
 
-async def load_tenant_student_levels(db, tenant_id: str) -> dict:
+async def load_tenant_student_levels(db: Any, tenant_id: str) -> dict:
     """Load tenant-specific student level thresholds, falling back to defaults."""
     try:
         settings = await db.tenant_settings.find_one(

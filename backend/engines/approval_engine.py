@@ -145,7 +145,7 @@ class ApprovalEngine:
     def __init__(self):
         self._handlers: Dict[str, ApprovalHandler] = {}
 
-    def register(self, handler: ApprovalHandler):
+    def register(self, handler: ApprovalHandler) -> None:
         """Register an approval handler for a given request type."""
         self._handlers[handler.request_type] = handler
         logger.info(f"Registered approval handler: {handler.request_type} ({handler.display_name_ar})")
