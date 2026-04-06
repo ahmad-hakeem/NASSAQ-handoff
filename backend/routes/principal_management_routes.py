@@ -837,29 +837,34 @@ async def get_parent_full_profile(
     ).to_list(20)
 
     children = []
-    for link in children_links:
-        child = await db.students.find_one(
-            {"id": link["student_id"], **_entity_tenant_filter(tenant_id)},
-            {"_id": 0, "id": 1, "full_name": 1, "class_name": 1, "grade_level": 1,
-             "gender": 1, "status": 1, "education_level": 1, "student_number": 1}
-        )
-        if child:
-            children.append({
-                **child,
-                "relationship": link.get("relationship"),
-                "is_primary": link.get("is_primary", False),
-                "link_id": link.get("id"),
-                "permissions": link.get("permissions", {})
-            })
+    if children_links:
+        link_student_ids = [link["student_id"] for link in children_links if link.get("student_id")]
+        if link_student_ids:
+            children_docs = await db.students.find(
+                {"id": {"$in": link_student_ids}, **_entity_tenant_filter(tenant_id)},
+                {"_id": 0, "id": 1, "full_name": 1, "class_name": 1, "grade_level": 1,
+                 "gender": 1, "status": 1, "education_level": 1, "student_number": 1}
+            ).to_list(100)
+            child_map = {c["id"]: c for c in children_docs}
+            for link in children_links:
+                child = child_map.get(link["student_id"])
+                if child:
+                    children.append({
+                        **child,
+                        "relationship": link.get("relationship"),
+                        "is_primary": link.get("is_primary", False),
+                        "link_id": link.get("id"),
+                        "permissions": link.get("permissions", {})
+                    })
 
     if not children and parent.get("children"):
-        for sid in parent.get("children", []):
-            child = await db.students.find_one(
-                {"id": sid, **_entity_tenant_filter(tenant_id)},
+        child_ids = parent.get("children", [])
+        if child_ids:
+            fallback_docs = await db.students.find(
+                {"id": {"$in": child_ids}, **_entity_tenant_filter(tenant_id)},
                 {"_id": 0, "id": 1, "full_name": 1, "class_name": 1, "grade_level": 1, "gender": 1, "status": 1}
-            )
-            if child:
-                children.append(child)
+            ).to_list(100)
+            children = fallback_docs
 
     if not children:
         linked_students = await db.students.find(

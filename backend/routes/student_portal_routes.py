@@ -633,21 +633,42 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
                 {"_id": 0, "id": 1}
             ).to_list(100)
             class_size = len(classmates)
-            
+            cm_ids = [cm.get("id") for cm in classmates]
+
+            from collections import defaultdict
+            part_map = defaultdict(int)
+            async for doc in db.participation_records.aggregate([
+                {"$match": {"student_id": {"$in": cm_ids}}},
+                {"$group": {"_id": "$student_id", "total": {"$sum": "$points"}}}
+            ]):
+                part_map[doc["_id"]] = doc["total"]
+
+            grade_map = defaultdict(int)
+            async for doc in db.grades.aggregate([
+                {"$match": {"student_id": {"$in": cm_ids}, "percentage": {"$gte": 80}}},
+                {"$group": {"_id": "$student_id", "count": {"$sum": 1}}}
+            ]):
+                grade_map[doc["_id"]] = doc["count"] * 5
+
+            attend_map = defaultdict(int)
+            async for doc in db.attendance.aggregate([
+                {"$match": {"student_id": {"$in": cm_ids}, "status": "present"}},
+                {"$group": {"_id": "$student_id", "count": {"$sum": 1}}}
+            ]):
+                attend_map[doc["_id"]] = doc["count"]
+
+            beh_map = defaultdict(int)
+            async for doc in db.behaviour_records.aggregate([
+                {"$match": {"student_id": {"$in": cm_ids}, "type": "positive"}},
+                {"$group": {"_id": "$student_id", "count": {"$sum": 1}}}
+            ]):
+                beh_map[doc["_id"]] = doc["count"]
+
             classmate_scores = []
-            for cm in classmates:
-                cm_id = cm.get("id")
-                cm_part = await db.participation_records.find(
-                    {"student_id": cm_id}, {"_id": 0, "points": 1}
-                ).to_list(500)
-                cm_part_pts = sum(p.get("points", 0) for p in cm_part)
-                cm_grades = await db.grades.find({"student_id": cm_id}).to_list(1000)
-                cm_grade_pts = len([g for g in cm_grades if g.get("percentage", 0) >= 80]) * 5
-                cm_present = await db.attendance.count_documents({"student_id": cm_id, "status": "present"})
-                cm_beh = await db.behaviour_records.count_documents({"student_id": cm_id, "type": "positive"})
-                cm_total = cm_part_pts + cm_grade_pts + (cm_present * 2) + (cm_beh * 10)
+            for cm_id in cm_ids:
+                cm_total = part_map[cm_id] + grade_map[cm_id] + (attend_map[cm_id] * 2) + (beh_map[cm_id] * 10)
                 classmate_scores.append({"id": cm_id, "score": cm_total})
-            
+
             classmate_scores.sort(key=lambda x: x["score"], reverse=True)
             for i, cs in enumerate(classmate_scores):
                 if cs["id"] == student_id:

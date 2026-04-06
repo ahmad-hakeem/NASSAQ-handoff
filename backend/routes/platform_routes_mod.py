@@ -270,10 +270,11 @@ async def platform_analytics(
         })
 
     role_dist = {}
-    users = await db.users.find({}, {"_id": 0, "role": 1}).to_list(100000)
-    for u in users:
-        r = u.get("role", "unknown")
-        role_dist[r] = role_dist.get(r, 0) + 1
+    pipeline = [
+        {"$group": {"_id": "$role", "count": {"$sum": 1}}}
+    ]
+    async for doc in db.users.aggregate(pipeline):
+        role_dist[doc["_id"] or "unknown"] = doc["count"]
 
     return {
         "total_schools": total_schools,

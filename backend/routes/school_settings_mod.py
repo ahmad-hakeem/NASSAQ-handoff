@@ -1375,11 +1375,11 @@ async def _auto_populate_teacher_class_assignments(school_id: str):
     teachers = await db.teachers.find(
         {"school_id": school_id, "is_active": {"$ne": False}},
         {"id": 1, "_id": 0}
-    ).to_list(None)
+    ).to_list(2000)
     classes = await db.classes.find(
         {"school_id": school_id, "is_active": {"$ne": False}},
         {"id": 1, "_id": 0}
-    ).to_list(None)
+    ).to_list(500)
 
     if not teachers or not classes:
         return 0
@@ -1426,7 +1426,7 @@ async def _ensure_teacher_linked_to_all_classes(school_id: str, teacher_id: str)
     classes = await db.classes.find(
         {"school_id": school_id, "is_active": {"$ne": False}},
         {"id": 1, "_id": 0}
-    ).to_list(None)
+    ).to_list(500)
     if not classes:
         return
 
@@ -1463,7 +1463,7 @@ async def _ensure_class_linked_to_all_teachers(school_id: str, class_id: str):
     teachers = await db.teachers.find(
         {"school_id": school_id, "is_active": {"$ne": False}},
         {"id": 1, "_id": 0}
-    ).to_list(None)
+    ).to_list(2000)
     if not teachers:
         return
 
@@ -1515,13 +1515,13 @@ async def get_teacher_class_assignments(
 
     assignments = await db.teacher_class_assignments.find(
         {"school_id": school_id}
-    ).to_list(None)
+    ).to_list(50000)
 
     teacher_ids = list({a.get("teacher_id") for a in assignments if a.get("teacher_id")})
     class_ids = list({a.get("class_id") for a in assignments if a.get("class_id")})
 
-    teachers_list = await db.teachers.find({"id": {"$in": teacher_ids}}).to_list(None) if teacher_ids else []
-    classes_list = await db.classes.find({"id": {"$in": class_ids}}).to_list(None) if class_ids else []
+    teachers_list = await db.teachers.find({"id": {"$in": teacher_ids}}).to_list(2000) if teacher_ids else []
+    classes_list = await db.classes.find({"id": {"$in": class_ids}}).to_list(500) if class_ids else []
 
     teacher_map = {t["id"]: t for t in teachers_list}
     class_map = {c["id"]: c for c in classes_list}
@@ -1649,14 +1649,9 @@ async def get_classes_without_teachers(
         raise HTTPException(status_code=400, detail="Missing school context")
     
     # Get all classes
-    all_classes = await db.classes.find({"school_id": school_id}).to_list(None)
+    all_classes = await db.classes.find({"school_id": school_id}).to_list(500)
     
-    # Get all assigned class IDs
-    assignments = await db.teacher_class_assignments.find(
-        {"school_id": school_id},
-        {"class_id": 1}
-    ).to_list(None)
-    assigned_class_ids = {a.get("class_id") for a in assignments}
+    assigned_class_ids = set(await db.teacher_class_assignments.distinct("class_id", {"school_id": school_id}))
     
     # Filter unassigned classes
     unassigned = []
@@ -1691,12 +1686,18 @@ async def get_teacher_assignments(
     assignments = await db.teacher_class_assignments.find({
         "school_id": school_id,
         "teacher_id": teacher_id
-    }).to_list(None)
+    }).to_list(500)
     
-    # Enrich with class details
+    class_ids = list({a.get("class_id") for a in assignments if a.get("class_id")})
+    classes_docs = await db.classes.find(
+        {"id": {"$in": class_ids}},
+        {"_id": 0, "id": 1, "name": 1, "section": 1, "grade_id": 1}
+    ).to_list(500) if class_ids else []
+    class_map = {c["id"]: c for c in classes_docs}
+
     result = []
     for assignment in assignments:
-        class_doc = await db.classes.find_one({"id": assignment.get("class_id")})
+        class_doc = class_map.get(assignment.get("class_id"))
         if class_doc:
             result.append({
                 "id": assignment.get("id"),
@@ -1705,6 +1706,6 @@ async def get_teacher_assignments(
                 "section": class_doc.get("section"),
                 "grade_id": class_doc.get("grade_id")
             })
-    
+
     return result
 

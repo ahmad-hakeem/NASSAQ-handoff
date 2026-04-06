@@ -1167,21 +1167,21 @@ async def publish_version(
 
     all_sessions = await db.timetable_sessions.find(
         {"timetable_id": version_id}, {"_id": 0}
-    ).to_list(None)
+    ).to_list(50000)
 
-    classes_list = await db.classes.find({"school_id": school_id}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "grade": 1, "section": 1}).to_list(None)
+    classes_list = await db.classes.find({"school_id": school_id}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "grade": 1, "section": 1}).to_list(500)
 
     teacher_ids_in_tt = list(set(s.get("teacher_id") for s in all_sessions if s.get("teacher_id")))
     teachers_list = await db.teachers.find(
         {"id": {"$in": teacher_ids_in_tt}},
         {"_id": 0, "id": 1, "full_name": 1, "name": 1, "email": 1}
-    ).to_list(None)
+    ).to_list(2000)
 
     subject_ids_in_tt = list(set(s.get("subject_id") for s in all_sessions if s.get("subject_id")))
     subjects_list = await db.subjects.find(
         {"id": {"$in": subject_ids_in_tt}},
         {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "code": 1}
-    ).to_list(None)
+    ).to_list(500)
 
     academic_year_doc = await db.academic_years.find_one({"school_id": school_id, "is_current": True}, {"_id": 0})
     academic_term_doc = await db.academic_terms.find_one({"school_id": school_id, "is_current": True}, {"_id": 0})
@@ -1419,7 +1419,7 @@ async def view_previous_timetable(
 
     sessions = await db.timetable_sessions.find(
         {"timetable_id": timetable_id}, {"_id": 0}
-    ).to_list(None)
+    ).to_list(50000)
 
     school_settings_doc = await db.school_settings.find_one({"school_id": school_id})
     w_days = _resolve_working_days(school_settings_doc.get("working_days") if school_settings_doc else None)
@@ -1432,9 +1432,9 @@ async def view_previous_timetable(
     subject_ids = list(set(s.get("subject_id") for s in sessions if s.get("subject_id")))
     class_ids = list(set(s.get("class_id") for s in sessions if s.get("class_id")))
 
-    teachers_data = await db.teachers.find({"id": {"$in": teacher_ids}}, {"_id": 0, "id": 1, "full_name": 1, "name": 1}).to_list(None)
-    subjects_data = await db.subjects.find({"id": {"$in": subject_ids}}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "code": 1}).to_list(None)
-    classes_data = await db.classes.find({"id": {"$in": class_ids}}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "grade": 1}).to_list(None)
+    teachers_data = await db.teachers.find({"id": {"$in": teacher_ids}}, {"_id": 0, "id": 1, "full_name": 1, "name": 1}).to_list(2000)
+    subjects_data = await db.subjects.find({"id": {"$in": subject_ids}}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "code": 1}).to_list(500)
+    classes_data = await db.classes.find({"id": {"$in": class_ids}}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "grade": 1}).to_list(500)
 
     return {
         "success": True,
