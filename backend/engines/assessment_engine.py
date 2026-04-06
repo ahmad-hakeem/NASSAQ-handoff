@@ -346,9 +346,14 @@ class AssessmentEngine:
         self,
         assessment_id: str,
         grades: List[Dict[str, Any]],
-        graded_by: str
+        graded_by: str,
+        tenant_id: str = None,
     ) -> Dict[str, Any]:
-        """Record grades for multiple students using batch operations"""
+        """Record grades for multiple students using batch operations.
+
+        If *tenant_id* is supplied, the assessment must belong to that tenant.
+        Student existence and score-range validation are enforced in-engine.
+        """
         results = {
             "processed": 0,
             "created": 0,
@@ -360,6 +365,12 @@ class AssessmentEngine:
         if not assessment:
             results["errors"].append({"error": "التقييم غير موجود"})
             return results
+
+        if tenant_id:
+            assess_tenant = assessment.get("tenant_id") or assessment.get("school_id")
+            if assess_tenant and assess_tenant != tenant_id:
+                results["errors"].append({"error": "التقييم لا ينتمي لهذه المدرسة"})
+                return results
 
         max_score = assessment.get("max_score", 100)
         passing_score = assessment.get("passing_score", max_score * 0.5)
@@ -376,6 +387,14 @@ class AssessmentEngine:
             if score is None:
                 results["errors"].append({"student_id": sid, "error": "الدرجة مفقودة"})
                 continue
+            try:
+                score_f = float(score)
+            except (ValueError, TypeError):
+                results["errors"].append({"student_id": sid, "error": "الدرجة غير صالحة"})
+                continue
+            if score_f < 0 or score_f > max_score:
+                results["errors"].append({"student_id": sid, "error": f"الدرجة خارج النطاق (0-{max_score})"})
+                continue
             if sid in seen_ids:
                 continue
             seen_ids.add(sid)
@@ -385,6 +404,22 @@ class AssessmentEngine:
             return results
 
         student_ids = [g["student_id"] for g in valid_entries]
+
+        students_found = await self.db.students.find(
+            {"id": {"$in": student_ids}}, {"_id": 0, "id": 1}
+        ).to_list(len(student_ids))
+        valid_student_set = {s["id"] for s in students_found}
+        verified_entries = []
+        for gd in valid_entries:
+            if gd["student_id"] not in valid_student_set:
+                results["errors"].append({"student_id": gd["student_id"], "error": "الطالب غير موجود"})
+            else:
+                verified_entries.append(gd)
+        valid_entries = verified_entries
+        if not valid_entries:
+            return results
+        student_ids = [g["student_id"] for g in valid_entries]
+
         existing_rows = await self.grades_collection.find(
             {"assessment_id": assessment_id, "student_id": {"$in": student_ids}},
             {"_id": 0}

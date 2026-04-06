@@ -406,6 +406,7 @@ async def create_bulk_grades(
         assessment_id=data.assessment_id,
         grades=grades_dicts,
         graded_by=current_user['id'],
+        tenant_id=tenant_id,
     )
 
     if result["created"] > 0:
