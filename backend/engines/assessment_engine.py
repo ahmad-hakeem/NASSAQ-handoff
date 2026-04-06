@@ -441,7 +441,8 @@ class AssessmentEngine:
                         "percentage": percentage,
                         "is_passing": is_passing,
                         "updated_at": now,
-                        "graded_by": graded_by,
+                        "recorded_by": graded_by,
+                        "recorded_at": now,
                         "feedback": gd.get("feedback"),
                         "notes": gd.get("notes"),
                     }
@@ -453,8 +454,9 @@ class AssessmentEngine:
                     doc = {
                         "id": str(uuid.uuid4()),
                         "assessment_id": assessment_id,
-                        "tenant_id": assessment.get("tenant_id"),
+                        "tenant_id": assessment.get("tenant_id") or assessment.get("school_id"),
                         "subject_id": assessment.get("subject_id"),
+                        "class_id": assessment.get("class_id"),
                         "student_id": sid,
                         "score": score,
                         "max_score": max_score,
@@ -462,8 +464,8 @@ class AssessmentEngine:
                         "is_passing": is_passing,
                         "feedback": gd.get("feedback"),
                         "notes": gd.get("notes"),
-                        "graded_at": now,
-                        "graded_by": graded_by,
+                        "recorded_at": now,
+                        "recorded_by": graded_by,
                         "academic_year": assessment.get("academic_year"),
                         "semester": assessment.get("semester"),
                     }
