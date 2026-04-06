@@ -5,6 +5,7 @@ import {
 
 export const USER_ROLES = [
   { id: 'platform_admin', name: 'مدير المنصة', name_en: 'Platform Admin', color: 'bg-purple-600', icon: Shield },
+  { id: 'platform_sub_admin', name: 'نائب مدير المنصة', name_en: 'Platform Sub Admin', color: 'bg-purple-500', icon: Shield },
   { id: 'platform_operations_manager', name: 'مدير العمليات', name_en: 'Operations Manager', color: 'bg-blue-600', icon: Briefcase },
   { id: 'platform_technical_admin', name: 'مسؤول تقني', name_en: 'Technical Admin', color: 'bg-indigo-600', icon: Settings },
   { id: 'platform_support_specialist', name: 'دعم فني', name_en: 'Support Specialist', color: 'bg-green-600', icon: HeadphonesIcon },
@@ -13,9 +14,16 @@ export const USER_ROLES = [
   { id: 'platform_sales', name: 'المبيعات', name_en: 'Sales', color: 'bg-emerald-600', icon: Megaphone },
   { id: 'platform_marketing', name: 'التسويق', name_en: 'Marketing', color: 'bg-pink-600', icon: Megaphone },
   { id: 'platform_quality', name: 'الجودة والاختبار', name_en: 'Quality & Testing', color: 'bg-amber-600', icon: TestTube },
+  { id: 'ministry_rep', name: 'ممثل الوزارة', name_en: 'Ministry Representative', color: 'bg-sky-600', icon: Briefcase },
   { id: 'school_principal', name: 'مدير مدرسة', name_en: 'School Principal', color: 'bg-teal-600', icon: School },
+  { id: 'school_admin', name: 'مشرف المدرسة', name_en: 'School Admin', color: 'bg-teal-500', icon: School },
+  { id: 'school_sub_admin', name: 'نائب مشرف المدرسة', name_en: 'School Sub Admin', color: 'bg-teal-400', icon: School },
   { id: 'teacher', name: 'معلم', name_en: 'Teacher', color: 'bg-cyan-600', icon: GraduationCap },
   { id: 'independent_teacher', name: 'معلم مستقل', name_en: 'Independent Teacher', color: 'bg-violet-600', icon: GraduationCap },
+  { id: 'student', name: 'طالب', name_en: 'Student', color: 'bg-blue-400', icon: GraduationCap },
+  { id: 'parent', name: 'ولي أمر', name_en: 'Parent', color: 'bg-amber-500', icon: Users },
+  { id: 'driver', name: 'سائق', name_en: 'Driver', color: 'bg-gray-600', icon: Briefcase },
+  { id: 'gatekeeper', name: 'حارس البوابة', name_en: 'Gatekeeper', color: 'bg-stone-600', icon: Shield },
   { id: 'testing_account', name: 'حساب اختبار', name_en: 'Testing Account', color: 'bg-gray-500', icon: TestTube },
 ];
 

@@ -71,20 +71,7 @@ async def create_platform_user(
     """
     Create a new platform user (admin or teacher) - Platform Admin only
     """
-    # Validate allowed roles
-    allowed_roles = [
-        'platform_admin',
-        'platform_sub_admin',
-        'platform_operations_manager',
-        'platform_technical_admin', 
-        'platform_support_specialist',
-        'platform_data_analyst',
-        'platform_security_officer',
-        'testing_account',
-        'teacher',
-        'independent_teacher',
-    ]
-    
+    allowed_roles = [r.value for r in UserRole]
     if user_data.role not in allowed_roles:
         raise HTTPException(status_code=400, detail="نوع الحساب غير مسموح به")
     
