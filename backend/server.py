@@ -23,7 +23,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("nassaq")
 
-from fastapi import FastAPI, APIRouter, Depends, Request
+from fastapi import FastAPI, APIRouter, Depends, Request, WebSocket
 from starlette.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
 from typing import List, Optional, Any, Union
@@ -64,6 +64,8 @@ app.add_middleware(RateLimitMiddleware)
 
 @app.middleware("http")
 async def pg_session_middleware(request: Request, call_next):
+    if request.url.path == "/api/ws/notifications" or request.url.path == "/ws":
+        return await call_next(request)
     async with async_session_factory() as session:
         pg_db.set_session(session)
         try:
@@ -82,6 +84,8 @@ async def pg_session_middleware(request: Request, call_next):
 
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
+    if request.url.path == "/api/ws/notifications" or request.url.path == "/ws":
+        return await call_next(request)
     response = await call_next(request)
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     response.headers["X-Content-Type-Options"] = "nosniff"
@@ -98,6 +102,9 @@ async def audit_log_middleware(request: Request, call_next):
 
     method = request.method
     path = request.url.path
+
+    if path == "/api/ws/notifications" or path == "/ws":
+        return await call_next(request)
 
     if not _should_audit(method, path):
         return await call_next(request)
@@ -314,6 +321,33 @@ async def startup_tasks():
         logger.info("DEPLOYMENT SAFETY: Seed scripts SKIPPED (database already has data)")
     else:
         logger.info(f"DEPLOYMENT SAFETY: Seed scripts SKIPPED (environment={config.ENVIRONMENT})")
+
+
+@app.on_event("shutdown")
+async def shutdown_tasks():
+    from db import close_pg_engine
+    try:
+        from routes.websocket_routes import get_connection_manager
+        mgr = get_connection_manager()
+        for user_id in list(mgr.active_connections.keys()):
+            for conn in mgr.active_connections[user_id]:
+                try:
+                    await conn.close(code=1001, reason="Server shutting down")
+                except Exception:
+                    pass
+        mgr.active_connections.clear()
+        mgr.role_connections.clear()
+        mgr.tenant_connections.clear()
+    except Exception as e:
+        logger.debug(f"WS cleanup on shutdown: {e}")
+    await close_pg_engine()
+    logger.info("NASSAQ shutdown complete")
+
+
+@app.websocket("/ws")
+async def reject_bare_ws(websocket: WebSocket):
+    await websocket.accept()
+    await websocket.close(code=4000, reason="Use /api/ws/notifications")
 
 
 # ============== SHARED PYDANTIC MODELS ==============

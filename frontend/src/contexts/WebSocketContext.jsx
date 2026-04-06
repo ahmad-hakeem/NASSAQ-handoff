@@ -48,6 +48,7 @@ export const WebSocketProvider = ({ children }) => {
   const { token, user } = useAuth();
   const wsRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
+  const reconnectDelayRef = useRef(1000);
   const audioRef = useRef(null);
   
   const [isConnected, setIsConnected] = useState(false);
@@ -182,8 +183,8 @@ export const WebSocketProvider = ({ children }) => {
       ws.onopen = () => {
         if (process.env.NODE_ENV === 'development') console.info('WebSocket connected');
         setIsConnected(true);
+        reconnectDelayRef.current = 1000;
         
-        // Start ping interval
         const pingInterval = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: 'ping' }));
@@ -218,12 +219,13 @@ export const WebSocketProvider = ({ children }) => {
           clearInterval(ws.pingInterval);
         }
         
-        // Reconnect after 5 seconds if not intentional close
         if (event.code !== 1000 && token) {
+          const delay = reconnectDelayRef.current;
+          reconnectDelayRef.current = Math.min(delay * 2, 30000);
           reconnectTimeoutRef.current = setTimeout(() => {
-            if (process.env.NODE_ENV === 'development') console.info('WebSocket reconnecting...');
+            if (process.env.NODE_ENV === 'development') console.info(`WebSocket reconnecting (delay=${delay}ms)...`);
             connect();
-          }, 5000);
+          }, delay);
         }
       };
       
