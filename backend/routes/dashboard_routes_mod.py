@@ -422,8 +422,15 @@ async def get_command_center_stats(
         # Independent teachers (not linked to a school)
         independent_teachers = await db.teachers.count_documents({"school_id": None})
         
-        # Platform accounts (admins)
-        platform_accounts = await db.users.count_documents({"role": "platform_admin"})
+        total_users = await db.users.count_documents({})
+        school_bound_users = await db.users.count_documents({
+            "role": {"$in": ["school_principal", "school_sub_admin", "school_manager"]}
+        })
+        school_teachers = await db.users.count_documents({
+            "role": "teacher",
+            "tenant_id": {"$ne": None}
+        })
+        platform_accounts = total_users - school_bound_users - school_teachers
         
         # Pending requests
         pending_requests = await db.registration_requests.count_documents({"status": "pending"})

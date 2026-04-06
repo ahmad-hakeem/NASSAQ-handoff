@@ -2125,13 +2125,8 @@ export default function UsersManagement() {
                         fetchUsers();
                         setShowEditUser(null);
                       } catch (error) {
-                        toast.success('تم تحديث بيانات المستخدم بنجاح');
-                        setUsers(prev => prev.map(u => 
-                          u.id === showEditUser.id 
-                            ? { ...u, full_name: name, email, phone } 
-                            : u
-                        ));
-                        setShowEditUser(null);
+                        console.error('Error updating user:', error);
+                        toast.error(error?.response?.data?.detail || 'فشل في تحديث بيانات المستخدم');
                       }
                     }}
                   >
