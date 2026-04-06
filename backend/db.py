@@ -1,9 +1,15 @@
 """
 NASSAQ PostgreSQL Database Layer
 Async SQLAlchemy engine, session factory, and FastAPI dependency.
+
+Database selection:
+- SUPABASE_DATABASE_URL → external Supabase (production + dev when set)
+- DATABASE_URL → Replit managed PostgreSQL (fallback)
+Supabase pooler requires statement_cache_size=0 and SSL.
 """
 import os
 import logging
+import ssl as _ssl
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase
@@ -11,10 +17,19 @@ from sqlalchemy.orm import DeclarativeBase
 logger = logging.getLogger("nassaq.db")
 
 
-def _get_async_url() -> str:
-    url = os.environ.get("DATABASE_URL", "")
+def _is_supabase() -> bool:
+    return bool(os.environ.get("SUPABASE_DATABASE_URL", ""))
+
+
+def _get_raw_url() -> str:
+    url = os.environ.get("SUPABASE_DATABASE_URL", "") or os.environ.get("DATABASE_URL", "")
     if not url:
-        raise RuntimeError("DATABASE_URL environment variable is not set")
+        raise RuntimeError("No database URL configured (SUPABASE_DATABASE_URL or DATABASE_URL)")
+    return url
+
+
+def _get_async_url() -> str:
+    url = _get_raw_url()
     if url.startswith("postgresql://"):
         url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
     parsed = urlparse(url)
@@ -26,12 +41,16 @@ def _get_async_url() -> str:
 
 
 def _build_connect_args() -> dict:
-    raw_url = os.environ.get("DATABASE_URL", "")
+    raw_url = _get_raw_url()
+    if _is_supabase() or "supabase" in raw_url:
+        ctx = _ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = _ssl.CERT_NONE
+        return {"ssl": ctx, "statement_cache_size": 0}
     parsed = urlparse(raw_url)
     params = parse_qs(parsed.query)
     sslmode = params.get("sslmode", [None])[0]
     if sslmode and sslmode != "disable":
-        import ssl as _ssl
         ctx = _ssl.create_default_context()
         if sslmode == "require":
             ctx.check_hostname = False
@@ -44,11 +63,14 @@ class Base(DeclarativeBase):
     pass
 
 
+_db_source = "Supabase" if _is_supabase() else "Replit"
+logger.info(f"Database source: {_db_source}")
+
 engine = create_async_engine(
     _get_async_url(),
     echo=False,
-    pool_size=10,
-    max_overflow=20,
+    pool_size=5 if _is_supabase() else 10,
+    max_overflow=10 if _is_supabase() else 20,
     pool_pre_ping=True,
     connect_args=_build_connect_args(),
 )

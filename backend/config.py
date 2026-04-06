@@ -19,7 +19,7 @@ DESTRUCTIVE_MIGRATION_OPS = {"drop", "delete", "rename", "remove", "truncate", "
 
 
 class NassaqConfig:
-    DATABASE_URL: str = os.environ.get("DATABASE_URL", "")
+    DATABASE_URL: str = os.environ.get("SUPABASE_DATABASE_URL", "") or os.environ.get("DATABASE_URL", "")
     JWT_SECRET: str = os.environ.get("JWT_SECRET_KEY", "")
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRY_HOURS: int = int(os.environ.get("JWT_EXPIRY_HOURS", "24"))

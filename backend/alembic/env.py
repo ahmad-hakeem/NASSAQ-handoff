@@ -22,7 +22,7 @@ target_metadata = Base.metadata
 
 
 def _get_url():
-    url = os.environ.get("DATABASE_URL", "")
+    url = os.environ.get("SUPABASE_DATABASE_URL", "") or os.environ.get("DATABASE_URL", "")
     if url.startswith("postgresql://"):
         url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
     parsed = urlparse(url)
