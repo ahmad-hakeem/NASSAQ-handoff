@@ -12,6 +12,7 @@ To add a new request type:
 4. Register in server.py via approval_engine.register()
 """
 
+import os
 from datetime import datetime, timezone
 from typing import Optional
 import uuid
@@ -160,7 +161,7 @@ class TeacherApprovalHandler(ApprovalHandler):
         }
         await database.teacher_qr_codes.insert_one(qr_record)
 
-        login_url = "https://nassaqapp.com/login"
+        login_url = f"{os.environ.get('FRONTEND_URL', 'https://nassaq.com')}/login"
         message_template = f"""مرحبًا،
 
 تم قبول طلب إنشاء حسابك على منصة نَسَّق | NASSAQ.
@@ -367,7 +368,7 @@ class SchoolApprovalHandler(ApprovalHandler):
             }
             await database.school_settings.insert_one(school_settings)
 
-        login_url = "https://nassaqapp.com/login"
+        login_url = f"{os.environ.get('FRONTEND_URL', 'https://nassaq.com')}/login"
         message_template = f"""مرحبًا {principal_name}،
 
 تم قبول طلب تسجيل مدرستكم "{school_name}" على منصة نَسَّق | NASSAQ.

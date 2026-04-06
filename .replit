@@ -66,10 +66,12 @@ build = ["bash", "/home/runner/workspace/build.sh"]
   [userenv.production]
   JWT_SECRET_KEY = "mkzodaGeExRnHqMNLu1DwiC6dBT2ic5hRmr-hUCogRaqhuGh0r2ZLEFhLVbG-s43"
   CORS_ORIGINS = "https://nassaq.com,https://www.nassaq.com"
+FRONTEND_URL = "https://nassaq.com"
 
   [userenv.development]
   JWT_SECRET_KEY = "mkzodaGeExRnHqMNLu1DwiC6dBT2ic5hRmr-hUCogRaqhuGh0r2ZLEFhLVbG-s43"
 CORS_ORIGINS = "https://76d3d322-060b-41e8-b1b6-757b9374d907-00-uqpmfo0lufwh.worf.replit.dev,https://nassaq.com,https://www.nassaq.com"
+FRONTEND_URL = "https://76d3d322-060b-41e8-b1b6-757b9374d907-00-uqpmfo0lufwh.worf.replit.dev"
 
   [userenv.shared]
   ADMIN_SEED_PASSWORD_ZALAT = "h38xaHBJ"

@@ -15,6 +15,7 @@ Handles:
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone, timedelta
 from enum import Enum
+import os
 import uuid
 import secrets
 import hashlib
@@ -569,7 +570,7 @@ class TeacherRegistrationEngine:
         return {
             "invite_id": invite_id,
             "invite_code": invite_code,
-            "invite_url": f"/register?invite={invite_code}",
+            "invite_url": f"{os.environ.get('FRONTEND_URL', 'https://nassaq.com')}/register?invite={invite_code}",
             "message": "تم إرسال الدعوة بنجاح"
         }
     
