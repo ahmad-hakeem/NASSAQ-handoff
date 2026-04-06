@@ -1008,7 +1008,11 @@ async def get_public_stats():
     try:
         _now = _time.monotonic()
         if _public_stats_cache["data"] and _now < _public_stats_cache["expires"]:
+            from middleware.cache_metrics import record_hit
+            record_hit()
             return _public_stats_cache["data"]
+        from middleware.cache_metrics import record_miss
+        record_miss()
 
         cached_stats = await db.platform_stats.find_one({"id": "platform_stats"})
         

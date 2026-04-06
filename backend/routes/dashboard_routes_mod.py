@@ -380,7 +380,11 @@ async def get_command_center_stats(
     try:
         _now_mono = _time.monotonic()
         if _cc_stats_cache["data"] and _now_mono < _cc_stats_cache["expires"]:
+            from middleware.cache_metrics import record_hit
+            record_hit()
             return _cc_stats_cache["data"]
+        from middleware.cache_metrics import record_miss
+        record_miss()
 
         now = datetime.now(timezone.utc)
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)

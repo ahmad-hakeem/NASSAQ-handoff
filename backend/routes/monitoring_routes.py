@@ -74,6 +74,20 @@ async def health_check():
     except Exception as e:
         logger.debug(f"Process stats unavailable: {e}")
 
+    response_metrics = {}
+    try:
+        from middleware.request_tracing import get_response_metrics
+        response_metrics = get_response_metrics()
+    except Exception as e:
+        logger.debug(f"Response metrics unavailable: {e}")
+
+    cache_metrics = {}
+    try:
+        from middleware.cache_metrics import get_cache_metrics
+        cache_metrics = get_cache_metrics()
+    except Exception as e:
+        logger.debug(f"Cache metrics unavailable: {e}")
+
     active_connections = pool_stats.get("checked_out", 0)
 
     uptime_seconds = round(time.time() - _start_time)
@@ -90,6 +104,8 @@ async def health_check():
             "pool": pool_stats,
         },
         "process": process_stats,
+        "response_time": response_metrics,
+        "cache": cache_metrics,
         "version": "3.0.0",
     }
 

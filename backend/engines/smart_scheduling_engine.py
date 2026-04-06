@@ -1864,7 +1864,10 @@ class SmartSchedulingEngine:
 
         sc = sc_map.get("minimize_teacher_travel")
         if sc:
-            logger.debug("minimize_teacher_travel: not yet implemented — requires room assignment data")
+            raise NotImplementedError(
+                "minimize_teacher_travel scoring requires room assignment data — "
+                "not yet available in the scheduling model"
+            )
 
         return score
 

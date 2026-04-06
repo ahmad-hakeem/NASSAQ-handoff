@@ -79,6 +79,8 @@ async def test_health_endpoint(client: httpx.AsyncClient):
     assert "database" in body
     assert "pool" in body["database"]
     assert "active_connections" in body["database"]
+    assert "response_time" in body
+    assert "cache" in body
     assert "version" in body
 
 
@@ -99,6 +101,24 @@ async def test_health_has_process_stats(client: httpx.AsyncClient):
     if proc:
         assert "memory_rss_mb" in proc
         assert "threads" in proc
+
+
+async def test_health_has_response_time_metrics(client: httpx.AsyncClient):
+    resp = await client.get("/system/health")
+    body = resp.json()
+    rt = body["response_time"]
+    assert "avg_response_ms" in rt
+    assert "p95_response_ms" in rt
+    assert "total_requests" in rt
+
+
+async def test_health_has_cache_metrics(client: httpx.AsyncClient):
+    resp = await client.get("/system/health")
+    body = resp.json()
+    cache = body["cache"]
+    assert "hits" in cache
+    assert "misses" in cache
+    assert "hit_rate_percent" in cache
 
 
 async def test_request_id_header(client: httpx.AsyncClient):
@@ -308,30 +328,48 @@ async def test_create_class(client: httpx.AsyncClient, admin_headers: dict):
         assert resp.status_code in (200, 201), f"Create class: {resp.text}"
 
 
-async def test_bulk_attendance(client: httpx.AsyncClient, admin_headers: dict):
-    if not _school_id:
-        pytest.skip("No school created")
+async def test_bulk_attendance_requires_valid_session(client: httpx.AsyncClient, admin_headers: dict):
     payload = {
-        "session_id": "test-session-" + _unique,
+        "session_id": "nonexistent-session-" + _unique,
         "records": [
-            {"student_id": _student_id or "test-student", "status": "present"},
+            {"student_id": "test-student", "status": "present"},
         ],
     }
     resp = await client.post("/attendance/bulk", json=payload, headers=admin_headers)
-    assert resp.status_code in (200, 201, 404, 422, 500)
+    assert resp.status_code in (200, 404, 422), (
+        f"Bulk attendance with invalid session should return 200/404/422, got {resp.status_code}"
+    )
 
 
-async def test_bulk_grades(client: httpx.AsyncClient, admin_headers: dict):
-    if not _school_id:
-        pytest.skip("No school created")
+async def test_bulk_attendance_unauthenticated(client: httpx.AsyncClient):
     payload = {
-        "assessment_id": "test-assessment-" + _unique,
+        "session_id": "any-session",
+        "records": [{"student_id": "s1", "status": "present"}],
+    }
+    resp = await client.post("/attendance/bulk", json=payload)
+    assert resp.status_code in (401, 403)
+
+
+async def test_bulk_grades_requires_valid_assessment(client: httpx.AsyncClient, admin_headers: dict):
+    payload = {
+        "assessment_id": "nonexistent-assessment-" + _unique,
         "grades": [
-            {"student_id": _student_id or "test-student", "score": 85},
+            {"student_id": "test-student", "score": 85},
         ],
     }
     resp = await client.post("/grades/bulk", json=payload, headers=admin_headers)
-    assert resp.status_code in (200, 201, 403, 404, 422, 500)
+    assert resp.status_code in (200, 403, 404, 422), (
+        f"Bulk grades with invalid assessment should return 200/403/404/422, got {resp.status_code}"
+    )
+
+
+async def test_bulk_grades_unauthenticated(client: httpx.AsyncClient):
+    payload = {
+        "assessment_id": "any",
+        "grades": [{"student_id": "s1", "score": 50}],
+    }
+    resp = await client.post("/grades/bulk", json=payload)
+    assert resp.status_code in (401, 403)
 
 
 async def test_dashboard_stats(client: httpx.AsyncClient, admin_headers: dict):
