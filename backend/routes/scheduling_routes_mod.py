@@ -493,7 +493,6 @@ async def get_schedule_sessions(
     
     sessions = await db.schedule_sessions.find(query, {"_id": 0}).to_list(1000)
     
-    # Check if sessions use the new format (with assignment_id) or old format (direct fields)
     if sessions and sessions[0].get("assignment_id"):
         # New format - get related data from assignments
         assignment_ids = list(set(s.get("assignment_id") for s in sessions if s.get("assignment_id")))
@@ -556,18 +555,20 @@ async def get_schedule_sessions(
         return result
     else:
         # Old format (demo data) - data is directly in session
+        ts_ids = list(set(s.get("time_slot_id") for s in sessions if s.get("time_slot_id")))
+        ts_map = {}
+        if ts_ids:
+            ts_docs = await db.time_slots.find({"id": {"$in": ts_ids}}, {"_id": 0}).to_list(len(ts_ids) + 5)
+            ts_map = {t["id"]: t for t in ts_docs}
+        
         result = []
         for s in sessions:
-            # Filter by teacher_id or class_id if specified
             if teacher_id and s.get("teacher_id") != teacher_id:
                 continue
             if class_id and s.get("class_id") != class_id:
                 continue
             
-            # Get time slot info if available
-            time_slot = None
-            if s.get("time_slot_id"):
-                time_slot = await db.time_slots.find_one({"id": s.get("time_slot_id")}, {"_id": 0})
+            time_slot = ts_map.get(s.get("time_slot_id"))
             
             result.append(ScheduleSessionResponse(
                 id=s.get("id"),

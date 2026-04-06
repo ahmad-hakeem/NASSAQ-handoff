@@ -472,13 +472,55 @@ async def bulk_import_students_with_parents(
     created_students = []
     parent_student_map = {}  # Track parents to detect siblings
     
+    school = await db.schools.find_one({"id": school_id}, {"_id": 0, "code": 1, "city_code": 1})
+    school_code = school.get("code", "SCH") if school else "SCH"
+    city_code = school.get("city_code", "CIT") if school else "CIT"
+    base_student_count = await db.students.count_documents({"school_id": school_id})
+    students_created_so_far = 0
+    
+    all_national_ids = [s.get("national_id") for s in request.students if s.get("national_id")]
+    all_emails = [s.get("email") for s in request.students if s.get("email")]
+    existing_by_nid = {}
+    existing_by_email = {}
+    if all_national_ids:
+        nid_docs = await db.students.find(
+            {"national_id": {"$in": all_national_ids}, "school_id": school_id},
+            {"_id": 0, "id": 1, "national_id": 1}
+        ).to_list(len(all_national_ids) + 10)
+        existing_by_nid = {d["national_id"]: d for d in nid_docs if d.get("national_id")}
+    if all_emails:
+        email_docs = await db.students.find(
+            {"email": {"$in": all_emails}, "school_id": school_id},
+            {"_id": 0, "id": 1, "email": 1}
+        ).to_list(len(all_emails) + 10)
+        existing_by_email = {d["email"]: d for d in email_docs if d.get("email")}
+    
     for idx, student_data in enumerate(request.students):
         try:
-            # Validate required fields
             if not student_data.get("full_name"):
                 results["errors"].append({
                     "row": idx + 1,
                     "error": "اسم الطالب مطلوب"
+                })
+                results["failed"] += 1
+                continue
+            
+            nid = student_data.get("national_id")
+            if nid and nid in existing_by_nid:
+                results["errors"].append({
+                    "row": idx + 1,
+                    "student_name": student_data.get("full_name"),
+                    "error": "الطالب موجود مسبقاً برقم الهوية هذا"
+                })
+                results["failed"] += 1
+                continue
+            
+            s_email = student_data.get("email")
+            if s_email and s_email in existing_by_email:
+                results["errors"].append({
+                    "row": idx + 1,
+                    "student_name": student_data.get("full_name"),
+                    "error": "البريد الإلكتروني مستخدم مسبقاً"
                 })
                 results["failed"] += 1
                 continue
@@ -521,12 +563,9 @@ async def bulk_import_students_with_parents(
                 else:
                     results["linked_to_existing_parents"] += 1
             
-            # Generate student ID
-            school = await db.schools.find_one({"id": school_id}, {"_id": 0, "code": 1, "city_code": 1})
-            school_code = school.get("code", "SCH") if school else "SCH"
-            city_code = school.get("city_code", "CIT") if school else "CIT"
+            students_created_so_far += 1
             year = datetime.now().strftime("%Y")
-            student_count = await db.students.count_documents({"school_id": school_id}) + 1
+            student_count = base_student_count + students_created_so_far
             student_id_code = generate_student_id(school_code, city_code, year, student_count)
             
             # Create student
@@ -575,7 +614,11 @@ async def bulk_import_students_with_parents(
             
             await db.students.insert_one(student_doc)
             
-            # Link to parent
+            if nid:
+                existing_by_nid[nid] = {"id": student_id, "national_id": nid}
+            if s_email:
+                existing_by_email[s_email] = {"id": student_id, "email": s_email}
+            
             await db.parents.update_one(
                 {"id": parent_result["parent"].get("id")},
                 {"$addToSet": {"student_ids": student_id}}

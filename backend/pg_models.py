@@ -64,7 +64,7 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
-    tenant = relationship("School", foreign_keys=[tenant_id], lazy="select")
+    tenant = relationship("School", foreign_keys=[tenant_id], lazy="selectin")
     audit_logs = relationship("AuditLog", back_populates="user", foreign_keys="AuditLog.performed_by", lazy="select")
     notifications = relationship("Notification", back_populates="user", foreign_keys="Notification.user_id", lazy="select")
 
@@ -148,8 +148,8 @@ class Teacher(Base):
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
-    school = relationship("School", back_populates="teachers", lazy="select")
-    assignments = relationship("TeacherAssignment", back_populates="teacher", lazy="select")
+    school = relationship("School", back_populates="teachers", lazy="selectin")
+    assignments = relationship("TeacherAssignment", back_populates="teacher", lazy="selectin")
 
     __table_args__ = (
         Index("idx_pg_teachers_school_active", "school_id", "is_active"),
@@ -168,7 +168,7 @@ class Student(Base):
     school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=False, index=True)
     class_id = Column(String, ForeignKey("classes.id", ondelete="SET NULL"), nullable=True, index=True)
     student_number = Column(String, nullable=True)
-    grade = Column(String, nullable=True)
+    grade = Column(String, nullable=True, index=True)
     date_of_birth = Column(String, nullable=True)
     gender = Column(String, nullable=True)
     national_id = Column(String, nullable=True, index=True)
@@ -181,8 +181,8 @@ class Student(Base):
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
-    school = relationship("School", back_populates="students", lazy="select")
-    class_ = relationship("Class", back_populates="students", foreign_keys=[class_id], lazy="select")
+    school = relationship("School", back_populates="students", lazy="selectin")
+    class_ = relationship("Class", back_populates="students", foreign_keys=[class_id], lazy="selectin")
     parent = relationship("Parent", back_populates="students", foreign_keys=[parent_id], lazy="select")
     attendance_records = relationship("Attendance", back_populates="student", lazy="select")
 
@@ -205,7 +205,7 @@ class Parent(Base):
     phone = Column(String, nullable=True)
     national_id = Column(String, nullable=True)
     student_ids = Column(JSONB, default=list)
-    school_id = Column(String, ForeignKey("schools.id", ondelete="SET NULL"), nullable=True)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="SET NULL"), nullable=True, index=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
@@ -284,9 +284,9 @@ class TeacherAssignment(Base):
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
     teacher = relationship("Teacher", back_populates="assignments", lazy="select")
-    school_rel = relationship("School", lazy="select")
-    class_rel = relationship("Class", lazy="select")
-    subject_rel = relationship("Subject", lazy="select")
+    school_rel = relationship("School", lazy="selectin")
+    class_rel = relationship("Class", lazy="selectin")
+    subject_rel = relationship("Subject", lazy="selectin")
 
     __table_args__ = (
         Index("idx_pg_assigns_school_teacher", "school_id", "teacher_id"),
@@ -356,7 +356,7 @@ class ScheduleSession(Base):
     teacher_id = Column(String, ForeignKey("teachers.id", ondelete="SET NULL"), nullable=True, index=True)
     class_id = Column(String, ForeignKey("classes.id", ondelete="SET NULL"), nullable=True, index=True)
     subject_id = Column(String, ForeignKey("subjects.id", ondelete="SET NULL"), nullable=True)
-    day_of_week = Column(String, nullable=False)
+    day_of_week = Column(String, nullable=False, index=True)
     day = Column(String, nullable=True)
     time_slot_id = Column(String, ForeignKey("time_slots.id", ondelete="SET NULL"), nullable=True)
     slot_number = Column(Integer, nullable=True)
@@ -369,6 +369,11 @@ class ScheduleSession(Base):
     start_time = Column(String, nullable=True)
     end_time = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), default=_utcnow)
+
+    teacher = relationship("Teacher", foreign_keys=[teacher_id], lazy="selectin")
+    class_ = relationship("Class", foreign_keys=[class_id], lazy="selectin")
+    subject = relationship("Subject", foreign_keys=[subject_id], lazy="selectin")
+    time_slot = relationship("TimeSlot", foreign_keys=[time_slot_id], lazy="selectin")
 
     __table_args__ = (
         Index("idx_pg_sessions_school_sched_day", "school_id", "schedule_id", "day_of_week"),
@@ -732,7 +737,7 @@ class RegistrationRequest(Base):
     email = Column(String, nullable=True)
     phone = Column(String, nullable=True)
     school_name = Column(String, nullable=True)
-    school_id = Column(String, ForeignKey("schools.id", ondelete="SET NULL"), nullable=True)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="SET NULL"), nullable=True, index=True)
     data = Column(JSONB, default=dict)
     status = Column(String, default="pending", index=True)
     reviewed_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
@@ -749,6 +754,7 @@ class RegistrationRequest(Base):
 
     __table_args__ = (
         Index("idx_pg_requests_status_date", "status", "created_at"),
+        Index("idx_pg_requests_school_status", "school_id", "status"),
     )
 
 
@@ -862,12 +868,13 @@ class LookupOption(Base):
     parent_key = Column(String, nullable=True)
     order = Column(Integer, default=0)
     is_active = Column(Boolean, default=True)
-    school_id = Column(String, ForeignKey("schools.id", ondelete="SET NULL"), nullable=True)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="SET NULL"), nullable=True, index=True)
     is_global = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), default=_utcnow)
 
     __table_args__ = (
         Index("idx_pg_lookup_category_key", "category", "key"),
+        Index("idx_pg_lookup_school", "school_id", "category"),
     )
 
 
@@ -877,7 +884,7 @@ class Message(Base):
     id = Column(String, primary_key=True, default=_uuid)
     sender_id = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     recipient_id = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
-    school_id = Column(String, ForeignKey("schools.id", ondelete="SET NULL"), nullable=True)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="SET NULL"), nullable=True, index=True)
     subject = Column(String, nullable=True)
     body = Column(Text, nullable=True)
     is_read = Column(Boolean, default=False)
@@ -929,7 +936,7 @@ class StudentSkill(Base):
     skill_type_id = Column(String, ForeignKey("skills_types.id", ondelete="CASCADE"), nullable=True, index=True)
     session_id = Column(String, nullable=True, index=True)
     class_id = Column(String, ForeignKey("classes.id", ondelete="SET NULL"), nullable=True, index=True)
-    school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=True)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=True, index=True)
     level = Column(String, nullable=True)
     score = Column(Float, nullable=True)
     notes = Column(Text, nullable=True)
@@ -1027,9 +1034,9 @@ class TeacherClassAssignment(Base):
     __tablename__ = "teacher_class_assignments"
 
     id = Column(String, primary_key=True, default=_uuid)
-    school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=False)
-    teacher_id = Column(String, ForeignKey("teachers.id", ondelete="CASCADE"), nullable=False)
-    class_id = Column(String, ForeignKey("classes.id", ondelete="CASCADE"), nullable=False)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=False, index=True)
+    teacher_id = Column(String, ForeignKey("teachers.id", ondelete="CASCADE"), nullable=False, index=True)
+    class_id = Column(String, ForeignKey("classes.id", ondelete="CASCADE"), nullable=False, index=True)
     role = Column(String, default="teacher")
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), default=_utcnow)
@@ -1043,7 +1050,7 @@ class GradeLevel(Base):
     __tablename__ = "grade_levels"
 
     id = Column(String, primary_key=True, default=_uuid)
-    school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=True)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=True, index=True)
     name_ar = Column(String, nullable=True)
     name_en = Column(String, nullable=True)
     code = Column(String, nullable=True)
@@ -1103,7 +1110,7 @@ class TimetableConstraint(Base):
     __tablename__ = "timetable_constraints"
 
     id = Column(String, primary_key=True, default=_uuid)
-    school_id = Column(String, ForeignKey("schools.id", ondelete="SET NULL"), nullable=True)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="SET NULL"), nullable=True, index=True)
     type = Column(String, nullable=True)
     category = Column(String, default="hard")
     name = Column(String, nullable=True)
@@ -1125,7 +1132,7 @@ class ApprovalRequest(Base):
     status = Column(String, default="pending")
     requested_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     requested_by_name = Column(String, nullable=True)
-    school_id = Column(String, ForeignKey("schools.id", ondelete="SET NULL"), nullable=True)
+    school_id = Column(String, ForeignKey("schools.id", ondelete="SET NULL"), nullable=True, index=True)
     data = Column(JSONB, default=dict)
     result = Column(JSONB, nullable=True)
     reviewed_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)

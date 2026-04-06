@@ -76,6 +76,22 @@ class ReportingEngine:
         self.db = db
         self.hakim_engine = hakim_engine
 
+    async def _paginated_find(self, collection, query: dict, projection: dict, page_size: int = 5000, sort_key: str = None, sort_dir: int = 1):
+        all_docs = []
+        skip = 0
+        while True:
+            cursor = collection.find(query, projection)
+            if sort_key:
+                cursor = cursor.sort(sort_key, sort_dir)
+            batch = await cursor.skip(skip).limit(page_size).to_list(page_size)
+            if not batch:
+                break
+            all_docs.extend(batch)
+            if len(batch) < page_size:
+                break
+            skip += page_size
+        return all_docs
+
     def _wrap(self, report_type: str, school_id: str, period: dict, data: dict) -> dict:
         return {
             "report_type": report_type,
@@ -143,7 +159,7 @@ class ReportingEngine:
             }},
             {"$sort": {"_id.date": 1}},
         ]
-        raw = await self.db.attendance.aggregate(pipeline_daily).to_list(100000)
+        raw = await self.db.attendance.aggregate(pipeline_daily).to_list(10000)
 
         daily: Dict[str, dict] = {}
         for r in raw:
@@ -183,7 +199,7 @@ class ReportingEngine:
                 "count": {"$sum": 1},
             }},
         ]
-        raw_class = await self.db.attendance.aggregate(pipeline_class).to_list(10000)
+        raw_class = await self.db.attendance.aggregate(pipeline_class).to_list(2000)
         by_class: Dict[str, dict] = {}
         for r in raw_class:
             cid = r["_id"].get("class_id", "unknown")
@@ -232,7 +248,7 @@ class ReportingEngine:
 
         sessions = await self.db.class_sessions.find(
             session_query, {"_id": 0, "id": 1, "class_id": 1, "date": 1}
-        ).to_list(5000)
+        ).to_list(2000)
         session_ids = [s["id"] for s in sessions]
         session_class = {s["id"]: s.get("class_id") for s in sessions}
 
@@ -291,7 +307,7 @@ class ReportingEngine:
                 "count": {"$sum": 1},
             }},
         ]
-        sess_counts = await self.db.session_interactions.aggregate(pipeline_by_session).to_list(5000)
+        sess_counts = await self.db.session_interactions.aggregate(pipeline_by_session).to_list(2000)
 
         by_class_counts: Dict[str, int] = {}
         weekly_counts: Dict[str, int] = {}
@@ -624,9 +640,8 @@ class ReportingEngine:
         if start_date:
             session_match["date"] = {"$gte": start_date, "$lte": end_date}
 
-        sessions = await self.db.class_sessions.find(
-            session_match, {"_id": 0, "id": 1, "class_id": 1, "date": 1, "duration": 1}
-        ).to_list(5000)
+        sessions = await self._paginated_find(self.db.class_sessions,
+            session_match, {"_id": 0, "id": 1, "class_id": 1, "date": 1, "duration": 1})
         session_ids = [s["id"] for s in sessions]
 
         total_interactions = 0
@@ -690,9 +705,8 @@ class ReportingEngine:
         if start_date:
             session_match["date"] = {"$gte": start_date, "$lte": end_date}
 
-        sessions = await self.db.class_sessions.find(
-            session_match, {"_id": 0, "id": 1, "class_id": 1, "date": 1, "duration": 1}
-        ).to_list(5000)
+        sessions = await self._paginated_find(self.db.class_sessions,
+            session_match, {"_id": 0, "id": 1, "class_id": 1, "date": 1, "duration": 1})
         session_ids = [s["id"] for s in sessions]
 
         if not session_ids:
@@ -788,10 +802,10 @@ class ReportingEngine:
                                {"start_date": start_date, "end_date": end_date},
                                {"error": "الطالب غير موجود"})
 
-        att_records = await self.db.attendance.find({
+        att_records = await self._paginated_find(self.db.attendance, {
             "student_id": student_id, "school_id": school_id,
             "date": {"$gte": start_date, "$lte": end_date},
-        }, {"_id": 0, "date": 1, "status": 1}).to_list(10000)
+        }, {"_id": 0, "date": 1, "status": 1})
 
         att_weekly: Dict[str, dict] = {}
         for r in att_records:
@@ -811,17 +825,15 @@ class ReportingEngine:
         }, {"_id": 0, "date": 1, "score": 1}).sort("date", 1).to_list(5000)
         grade_trend = [{"date": s.get("date"), "score": s.get("score", 0)} for s in scores]
 
-        session_ids_raw = await self.db.class_sessions.find(
+        session_ids_raw = await self._paginated_find(self.db.class_sessions,
             {"school_id": school_id, "date": {"$gte": start_date, "$lte": end_date}},
-            {"_id": 0, "id": 1, "date": 1}
-        ).to_list(10000)
+            {"_id": 0, "id": 1, "date": 1})
         sid_date = {s["id"]: s.get("date", "") for s in session_ids_raw}
         all_sids = list(sid_date.keys())
 
-        interactions = await self.db.session_interactions.find(
+        interactions = await self._paginated_find(self.db.session_interactions,
             {"session_id": {"$in": all_sids}, "student_id": student_id},
-            {"_id": 0, "session_id": 1, "interaction_type": 1}
-        ).to_list(10000) if all_sids else []
+            {"_id": 0, "session_id": 1, "interaction_type": 1}) if all_sids else []
 
         part_weekly: Dict[str, int] = {}
         for i in interactions:
@@ -854,10 +866,10 @@ class ReportingEngine:
                                {"start_date": start_date, "end_date": end_date},
                                {"error": "student_id مطلوب"})
 
-        records = await self.db.attendance.find({
+        records = await self._paginated_find(self.db.attendance, {
             "student_id": student_id, "school_id": school_id,
             "date": {"$gte": start_date, "$lte": end_date},
-        }, {"_id": 0, "date": 1, "status": 1}).sort("date", 1).to_list(10000)
+        }, {"_id": 0, "date": 1, "status": 1}, sort_key="date")
 
         total = len(records)
         present = sum(1 for r in records if r.get("status") in ("present", "late"))
@@ -947,10 +959,9 @@ class ReportingEngine:
         score_agg = await self.db.student_daily_scores.aggregate(score_pipeline).to_list(1)
         score_stats = score_agg[0] if score_agg else {}
 
-        session_ids_raw = await self.db.class_sessions.find(
+        session_ids_raw = await self._paginated_find(self.db.class_sessions,
             {"school_id": school_id, "date": {"$gte": start_date, "$lte": end_date}},
-            {"_id": 0, "id": 1}
-        ).to_list(10000)
+            {"_id": 0, "id": 1})
         all_sids = [s["id"] for s in session_ids_raw]
 
         inter_pipeline = [
@@ -1065,19 +1076,35 @@ class ReportingEngine:
         }, {"_id": 0, "score": 1}).to_list(5000)
         total_score = sum(s.get("score", 0) for s in scores)
 
-        session_ids = [s["id"] for s in await self.db.class_sessions.find(
-            {"school_id": school_id}, {"_id": 0, "id": 1}
-        ).to_list(50000)]
+        session_ids = [s["id"] for s in await self._paginated_find(self.db.class_sessions,
+            {"school_id": school_id}, {"_id": 0, "id": 1})]
         inter_query: dict = {"student_id": student_id}
         if session_ids:
             inter_query["session_id"] = {"$in": session_ids}
-        interactions = await self.db.session_interactions.find(
-            inter_query, {"_id": 0, "interaction_type": 1, "answer_result": 1}
-        ).to_list(5000)
 
-        questions = [i for i in interactions if i.get("interaction_type") == "question"]
-        correct = sum(1 for q in questions if q.get("answer_result") == "correct")
-        participations = sum(1 for i in interactions if i.get("interaction_type") == "participation")
+        inter_agg_raw = await self.db.session_interactions.aggregate([
+            {"$match": inter_query},
+            {"$group": {
+                "_id": {"type": "$interaction_type", "result": "$answer_result"},
+                "count": {"$sum": 1}
+            }}
+        ]).to_list(100)
+
+        total_interactions = 0
+        questions_total = 0
+        correct = 0
+        participations = 0
+        for r in inter_agg_raw:
+            itype = r["_id"].get("type")
+            result = r["_id"].get("result")
+            cnt = r["count"]
+            total_interactions += cnt
+            if itype == "question":
+                questions_total += cnt
+                if result == "correct":
+                    correct += cnt
+            elif itype == "participation":
+                participations += cnt
 
         risk_doc = await self.db.ai_insights.find_one(
             {"type": "student_risk", "entity_id": student_id, "school_id": school_id},
@@ -1097,11 +1124,11 @@ class ReportingEngine:
                 "attendance_rate": att_rate,
             },
             "participation": {
-                "total_interactions": len(interactions),
-                "questions_asked": len(questions),
+                "total_interactions": total_interactions,
+                "questions_asked": questions_total,
                 "correct_answers": correct,
                 "active_participations": participations,
-                "accuracy_rate": round((correct / len(questions) * 100) if questions else 0, 1),
+                "accuracy_rate": round((correct / questions_total * 100) if questions_total else 0, 1),
             },
             "academic": {
                 "total_score_points": total_score,
@@ -1165,11 +1192,10 @@ class ReportingEngine:
         )
         sessions = []
         if tt:
-            raw = await self.db.timetable_sessions.find(
+            raw = await self._paginated_find(self.db.timetable_sessions,
                 {"timetable_id": tt["id"], "school_id": school_id},
                 {"_id": 0, "day": 1, "period": 1, "class_id": 1, "teacher_id": 1,
-                 "subject_id": 1, "room": 1}
-            ).to_list(5000)
+                 "subject_id": 1, "room": 1})
             class_ids = list(set(s.get("class_id", "") for s in raw))
             teacher_ids = list(set(s.get("teacher_id", "") for s in raw))
             subject_ids = list(set(s.get("subject_id", "") for s in raw))
@@ -1230,12 +1256,14 @@ class ReportingEngine:
         }, {"_id": 0, "id": 1}).to_list(500)
         session_ids = [s["id"] for s in sessions]
 
-        interactions = await self.db.session_interactions.find({
-            "session_id": {"$in": session_ids},
-            "student_id": {"$in": student_ids},
-        }, {"_id": 0, "student_id": 1}).to_list(50000) if session_ids else []
-
-        participating_students = set(i["student_id"] for i in interactions)
+        if session_ids:
+            part_agg_raw = await self.db.session_interactions.aggregate([
+                {"$match": {"session_id": {"$in": session_ids}, "student_id": {"$in": student_ids}}},
+                {"$group": {"_id": "$student_id"}}
+            ]).to_list(5000)
+            participating_students = set(r["_id"] for r in part_agg_raw)
+        else:
+            participating_students = set()
         participation_rate = round((len(participating_students) / len(students) * 100) if students else 0, 1)
 
         health_doc = await self.db.ai_insights.find_one(
@@ -1286,28 +1314,50 @@ class ReportingEngine:
         if class_id:
             query["class_id"] = class_id
 
-        records = await self.db.attendance.find(query, {"_id": 0}).to_list(100000)
+        overall_pipeline = [
+            {"$match": query},
+            {"$group": {"_id": "$status", "count": {"$sum": 1}}}
+        ]
+        overall_raw = await self.db.attendance.aggregate(overall_pipeline).to_list(20)
+        total = sum(r["count"] for r in overall_raw)
+        status_totals = {r["_id"]: r["count"] for r in overall_raw}
+        present = status_totals.get("present", 0)
+        late = status_totals.get("late", 0)
+        absent = status_totals.get("absent", 0)
 
-        total = len(records)
-        present = sum(1 for r in records if r.get("status") == "present")
-        late = sum(1 for r in records if r.get("status") == "late")
-        absent = sum(1 for r in records if r.get("status") == "absent")
-
+        daily_pipeline = [
+            {"$match": query},
+            {"$group": {
+                "_id": {"date": "$date", "status": "$status"},
+                "count": {"$sum": 1}
+            }}
+        ]
+        daily_raw = await self.db.attendance.aggregate(daily_pipeline).to_list(5000)
         by_date: Dict[str, Dict] = {}
-        by_class: Dict[str, Dict] = {}
-
-        for r in records:
-            d = r.get("date", "")
+        for r in daily_raw:
+            d = r["_id"]["date"]
+            st = r["_id"]["status"]
             if d not in by_date:
                 by_date[d] = {"date": d, "total": 0, "present": 0, "absent": 0, "late": 0}
-            by_date[d]["total"] += 1
-            by_date[d][r.get("status", "absent")] = by_date[d].get(r.get("status", "absent"), 0) + 1
+            by_date[d]["total"] += r["count"]
+            by_date[d][st] = by_date[d].get(st, 0) + r["count"]
 
-            cid = r.get("class_id", "unknown")
+        class_pipeline = [
+            {"$match": query},
+            {"$group": {
+                "_id": {"class_id": "$class_id", "status": "$status"},
+                "count": {"$sum": 1}
+            }}
+        ]
+        class_raw = await self.db.attendance.aggregate(class_pipeline).to_list(5000)
+        by_class: Dict[str, Dict] = {}
+        for r in class_raw:
+            cid = r["_id"].get("class_id") or "unknown"
+            st = r["_id"]["status"]
             if cid not in by_class:
                 by_class[cid] = {"class_id": cid, "total": 0, "present": 0, "absent": 0, "late": 0}
-            by_class[cid]["total"] += 1
-            by_class[cid][r.get("status", "absent")] = by_class[cid].get(r.get("status", "absent"), 0) + 1
+            by_class[cid]["total"] += r["count"]
+            by_class[cid][st] = by_class[cid].get(st, 0) + r["count"]
 
         daily = sorted(by_date.values(), key=lambda x: x["date"])
         class_summary = sorted(by_class.values(), key=lambda x: x["class_id"])
@@ -1349,19 +1399,27 @@ class ReportingEngine:
         ).to_list(1000)
         session_ids = [s["id"] for s in sessions]
 
-        interactions = await self.db.session_interactions.find(
-            {"session_id": {"$in": session_ids}},
-            {"_id": 0, "session_id": 1}
-        ).to_list(50000) if session_ids else []
+        if session_ids:
+            inter_count_raw = await self.db.session_interactions.aggregate([
+                {"$match": {"session_id": {"$in": session_ids}}},
+                {"$group": {"_id": None, "count": {"$sum": 1}}}
+            ]).to_list(1)
+            inter_count = inter_count_raw[0]["count"] if inter_count_raw else 0
+        else:
+            inter_count = 0
+        avg_interactions = round(inter_count / len(sessions), 1) if sessions else 0
 
-        avg_interactions = round(len(interactions) / len(sessions), 1) if sessions else 0
-
-        sa_records = await self.db.session_attendance.find(
-            {"session_id": {"$in": session_ids}},
-            {"_id": 0, "status": 1}
-        ).to_list(50000) if session_ids else []
-        att_total = len(sa_records)
-        att_present = sum(1 for r in sa_records if r.get("status") == "present")
+        if session_ids:
+            sa_agg_raw = await self.db.session_attendance.aggregate([
+                {"$match": {"session_id": {"$in": session_ids}}},
+                {"$group": {"_id": "$status", "count": {"$sum": 1}}}
+            ]).to_list(20)
+            sa_totals = {r["_id"]: r["count"] for r in sa_agg_raw}
+            att_total = sum(r["count"] for r in sa_agg_raw)
+            att_present = sa_totals.get("present", 0)
+        else:
+            att_total = 0
+            att_present = 0
         att_rate = round((att_present / att_total * 100) if att_total else 0, 1)
 
         return {

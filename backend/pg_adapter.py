@@ -16,6 +16,7 @@ from sqlalchemy import select, func, and_, or_, desc, asc, inspect, text, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.types import DateTime
+from sqlalchemy.orm import joinedload, selectinload
 
 from db import Base, async_session_factory
 
@@ -456,10 +457,11 @@ class DeleteResult:
 
 
 class PgCursor:
-    def __init__(self, collection, filter_dict, projection=None):
+    def __init__(self, collection, filter_dict, projection=None, options=None):
         self._collection = collection
         self._filter = filter_dict or {}
         self._projection = projection
+        self._options = options
         self._sort_spec = None
         self._limit_val = None
         self._skip_val = 0
@@ -503,6 +505,9 @@ class PgCursor:
                 stmt = _apply_sort(stmt, model, self._sort_spec, is_generic=True)
             else:
                 stmt = select(model)
+                if self._options:
+                    for opt in self._options:
+                        stmt = stmt.options(opt)
                 conds = _translate_filter(model, self._filter)
                 if conds:
                     stmt = stmt.where(and_(*conds))
@@ -595,7 +600,7 @@ class AggregationCursor:
                     unwind_field = unwind_field[1:]
 
         cursor = self._collection.find(match_filter)
-        all_docs = await cursor.to_list(100000)
+        all_docs = await cursor.to_list(50000)
 
         if group_stage:
             all_docs = self._apply_group(all_docs, group_stage)
@@ -939,7 +944,7 @@ class PgCollection:
             return session, True
         return session, False
 
-    async def find_one(self, filter_dict=None, projection=None, sort=None, **kwargs):
+    async def find_one(self, filter_dict=None, projection=None, sort=None, options=None, **kwargs):
         session, own = await self._get_session()
         try:
             filter_dict = filter_dict or {}
@@ -967,6 +972,9 @@ class PgCollection:
                 return _apply_projection(d, projection) if projection else d
             else:
                 stmt = select(model)
+                if options:
+                    for opt in options:
+                        stmt = stmt.options(opt)
                 conds = _translate_filter(model, filter_dict)
                 if conds:
                     stmt = stmt.where(and_(*conds))
@@ -983,8 +991,8 @@ class PgCollection:
             if own:
                 await session.close()
 
-    def find(self, filter_dict=None, projection=None, **kwargs):
-        return PgCursor(self, filter_dict, projection)
+    def find(self, filter_dict=None, projection=None, options=None, **kwargs):
+        return PgCursor(self, filter_dict, projection, options=options)
 
     async def insert_one(self, document: dict):
         session, own = await self._get_session()

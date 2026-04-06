@@ -142,8 +142,10 @@ async def ai_data_quality_scan(current_user: dict = Depends(require_roles([UserR
     if classes_no_teacher > 0:
         issues.append({"type": "incomplete", "entity": "classes", "count": classes_no_teacher, "issue": "no_teacher"})
     
-    # Calculate quality score
-    total_records = await db.students.count_documents({}) + await db.teachers.count_documents({}) + await db.classes.count_documents({})
+    total_students_count = await db.students.count_documents({})
+    total_teachers_count = await db.teachers.count_documents({})
+    total_classes_count = await db.classes.count_documents({})
+    total_records = total_students_count + total_teachers_count + total_classes_count
     total_issues = sum(i.get("count", 0) for i in issues)
     quality_score = max(0, 100 - (total_issues / max(1, total_records) * 100))
     
@@ -165,19 +167,41 @@ async def ai_data_quality_scan(current_user: dict = Depends(require_roles([UserR
 @router.post("/ai/tenant-health")
 async def ai_tenant_health_check(current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))):
     """فحص صحة المدارس"""
-    schools = await db.schools.find({}, {"_id": 0}).to_list(1000)
+    schools = await db.schools.find({}, {"_id": 0, "id": 1, "name": 1, "status": 1}).to_list(1000)
     
     healthy = []
     warning = []
     critical = []
     
+    school_ids = [s.get("id") for s in schools if s.get("id")]
+    
+    student_pipeline = [
+        {"$match": {"school_id": {"$in": school_ids}}},
+        {"$group": {"_id": "$school_id", "count": {"$sum": 1}}}
+    ]
+    teacher_pipeline = [
+        {"$match": {"school_id": {"$in": school_ids}}},
+        {"$group": {"_id": "$school_id", "count": {"$sum": 1}}}
+    ]
+    class_pipeline = [
+        {"$match": {"school_id": {"$in": school_ids}}},
+        {"$group": {"_id": "$school_id", "count": {"$sum": 1}}}
+    ]
+    
+    student_counts_raw = await db.students.aggregate(student_pipeline).to_list(1000)
+    teacher_counts_raw = await db.teachers.aggregate(teacher_pipeline).to_list(1000)
+    class_counts_raw = await db.classes.aggregate(class_pipeline).to_list(1000)
+    
+    student_counts = {r["_id"]: r["count"] for r in student_counts_raw}
+    teacher_counts = {r["_id"]: r["count"] for r in teacher_counts_raw}
+    class_counts = {r["_id"]: r["count"] for r in class_counts_raw}
+    
     for school in schools:
         school_id = school.get("id")
-        student_count = await db.students.count_documents({"school_id": school_id})
-        teacher_count = await db.teachers.count_documents({"school_id": school_id})
-        class_count = await db.classes.count_documents({"school_id": school_id})
+        student_count = student_counts.get(school_id, 0)
+        teacher_count = teacher_counts.get(school_id, 0)
+        class_count = class_counts.get(school_id, 0)
         
-        # Determine health
         if school.get("status") == "suspended":
             critical.append({"id": school_id, "name": school.get("name"), "reason": "موقوفة"})
         elif student_count == 0 or teacher_count == 0:
@@ -743,14 +767,33 @@ async def get_ai_recommendations(
 
     classes_cursor = db.classes.find(q, {"_id": 0, "id": 1, "name": 1})
     classes_list = await classes_cursor.to_list(100)
+    class_ids_all = [c["id"] for c in classes_list]
+    cls_name_map = {c["id"]: c.get("name", c["id"]) for c in classes_list}
+
+    cls_att_pipeline = [
+        {"$match": {"class_id": {"$in": class_ids_all}, "date": {"$gte": month_ago_str}}},
+        {"$group": {
+            "_id": {"class_id": "$class_id", "status": "$status"},
+            "count": {"$sum": 1}
+        }}
+    ]
+    cls_att_raw = await db.attendance.aggregate(cls_att_pipeline).to_list(2000)
+    cls_att_data = {}
+    for r in cls_att_raw:
+        cid = r["_id"]["class_id"]
+        status = r["_id"]["status"]
+        if cid not in cls_att_data:
+            cls_att_data[cid] = {"total": 0, "present": 0}
+        cls_att_data[cid]["total"] += r["count"]
+        if status == "present":
+            cls_att_data[cid]["present"] += r["count"]
+
     low_att_classes = []
-    for cls in classes_list:
-        cls_total = await db.attendance.count_documents({"class_id": cls["id"], "date": {"$gte": month_ago_str}})
-        cls_present = await db.attendance.count_documents({"class_id": cls["id"], "date": {"$gte": month_ago_str}, "status": "present"})
-        if cls_total > 10:
-            cls_rate = round((cls_present / cls_total) * 100, 1)
+    for cid, data in cls_att_data.items():
+        if data["total"] > 10:
+            cls_rate = round((data["present"] / data["total"]) * 100, 1)
             if cls_rate < 80:
-                low_att_classes.append({"name": cls.get("name", cls["id"]), "rate": cls_rate})
+                low_att_classes.append({"name": cls_name_map.get(cid, cid), "rate": cls_rate})
     if low_att_classes:
         rec_id += 1
         class_names = ", ".join([c["name"] for c in low_att_classes[:3]])
@@ -895,16 +938,54 @@ async def get_at_risk_students(
 
     students = await db.students.find(q, {"_id": 0, "id": 1, "full_name": 1, "class_id": 1}).to_list(500)
     month_ago_str = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%d")
+    month_ago_iso = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+
+    student_ids = [s["id"] for s in students]
+
+    att_pipeline = [
+        {"$match": {"student_id": {"$in": student_ids}, "date": {"$gte": month_ago_str}}},
+        {"$group": {
+            "_id": {"student_id": "$student_id", "status": "$status"},
+            "count": {"$sum": 1}
+        }}
+    ]
+    att_raw = await db.attendance.aggregate(att_pipeline).to_list(5000)
+    att_data = {}
+    for r in att_raw:
+        sid = r["_id"]["student_id"]
+        status = r["_id"]["status"]
+        if sid not in att_data:
+            att_data[sid] = {"total": 0, "absent": 0}
+        att_data[sid]["total"] += r["count"]
+        if status == "absent":
+            att_data[sid]["absent"] += r["count"]
+
+    behaviour_pipeline = [
+        {"$match": {"student_id": {"$in": student_ids}, "type": "negative", "created_at": {"$gte": month_ago_iso}}},
+        {"$group": {"_id": "$student_id", "count": {"$sum": 1}}}
+    ]
+    behaviour_raw = await db.behaviour_records.aggregate(behaviour_pipeline).to_list(5000)
+    behaviour_counts = {r["_id"]: r["count"] for r in behaviour_raw}
+
+    grades_pipeline = [
+        {"$match": {"student_id": {"$in": student_ids}}},
+        {"$group": {
+            "_id": "$student_id",
+            "avg_percentage": {"$avg": "$percentage"},
+            "count": {"$sum": 1}
+        }}
+    ]
+    grades_raw = await db.grades.aggregate(grades_pipeline).to_list(5000)
+    grades_data = {r["_id"]: r for r in grades_raw}
 
     for student in students:
         sid = student["id"]
         factors = []
         risk_score = 100
 
-        total_att = await db.attendance.count_documents({"student_id": sid, "date": {"$gte": month_ago_str}})
-        absent_att = await db.attendance.count_documents({"student_id": sid, "date": {"$gte": month_ago_str}, "status": "absent"})
-        if total_att > 0:
-            absence_rate = (absent_att / total_att) * 100
+        s_att = att_data.get(sid, {"total": 0, "absent": 0})
+        if s_att["total"] > 0:
+            absence_rate = (s_att["absent"] / s_att["total"]) * 100
             if absence_rate > 30:
                 risk_score -= 35
                 factors.append(f"غياب مرتفع ({absence_rate:.0f}%)")
@@ -912,9 +993,9 @@ async def get_at_risk_students(
                 risk_score -= 20
                 factors.append(f"غياب متوسط ({absence_rate:.0f}%)")
 
-        recent_grades = await db.grades.find({"student_id": sid}).sort("created_at", -1).to_list(10)
-        if recent_grades:
-            avg_grade = sum(g.get("percentage", 0) for g in recent_grades) / len(recent_grades)
+        grade_info = grades_data.get(sid)
+        if grade_info and grade_info.get("avg_percentage") is not None:
+            avg_grade = grade_info["avg_percentage"]
             if avg_grade < 50:
                 risk_score -= 30
                 factors.append(f"أداء أكاديمي ضعيف ({avg_grade:.0f}%)")
@@ -922,11 +1003,7 @@ async def get_at_risk_students(
                 risk_score -= 15
                 factors.append(f"أداء أكاديمي متوسط ({avg_grade:.0f}%)")
 
-        neg_behaviour = await db.behaviour_records.count_documents({
-            "student_id": sid,
-            "type": "negative",
-            "created_at": {"$gte": (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()}
-        })
+        neg_behaviour = behaviour_counts.get(sid, 0)
         if neg_behaviour >= 3:
             risk_score -= 20
             factors.append(f"سلوك سلبي متكرر ({neg_behaviour} مرات)")
@@ -935,7 +1012,6 @@ async def get_at_risk_students(
             factors.append(f"ملاحظات سلوكية ({neg_behaviour})")
 
         if risk_score < 70 and factors:
-            class_info = await db.classes.find_one({"id": student.get("class_id")}, {"_id": 0, "name": 1})
             risk_type = "academic"
             if any("غياب" in f for f in factors):
                 risk_type = "attendance"
@@ -945,14 +1021,29 @@ async def get_at_risk_students(
             at_risk.append({
                 "id": sid,
                 "name": student.get("full_name", "غير معروف"),
-                "grade": class_info.get("name", "") if class_info else "",
+                "class_id": student.get("class_id"),
                 "risk_level": max(0, risk_score),
                 "risk_type": risk_type,
                 "factors": factors
             })
 
     at_risk.sort(key=lambda x: x["risk_level"])
-    return at_risk[:20]
+    at_risk = at_risk[:20]
+
+    class_ids_needed = list(set(r.get("class_id") for r in at_risk if r.get("class_id")))
+    if class_ids_needed:
+        classes_docs = await db.classes.find(
+            {"id": {"$in": class_ids_needed}}, {"_id": 0, "id": 1, "name": 1}
+        ).to_list(200)
+        class_name_map = {c["id"]: c.get("name", "") for c in classes_docs}
+    else:
+        class_name_map = {}
+
+    for r in at_risk:
+        r["grade"] = class_name_map.get(r.get("class_id"), "")
+        r.pop("class_id", None)
+
+    return at_risk
 
 
 

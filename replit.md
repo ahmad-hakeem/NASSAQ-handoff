@@ -115,7 +115,8 @@ Each fix report must include: root cause, why it wasn't caught before, what chan
   - **PostgreSQL**: Replit built-in via `DATABASE_URL`, 47+ ORM tables + GenericDocument fallback, Alembic migrations
   - **Adapter layer**: `backend/pg_adapter.py` — MongoDB-compatible API (find_one, find, update_one, aggregate, etc.) over SQLAlchemy; all routes/engines use adapter transparently
   - **Compatibility stubs**: `backend/bson_compat.py` — ObjectId + UpdateOne stubs for code that imported from bson/pymongo
-  - **Core files**: `backend/db.py` (async engine), `backend/pg_models.py` (47+ ORM models + GenericDocument), `backend/pg_helpers.py` (utilities), `backend/alembic/` (migrations, head: f3a1b2c4d5e6)
+  - **Core files**: `backend/db.py` (async engine), `backend/pg_models.py` (47+ ORM models + GenericDocument), `backend/pg_helpers.py` (utilities), `backend/alembic/` (migrations, head: g1h2i3j4k5l6)
+  - **Eager loading**: Key relationships use `lazy="selectin"` (Student.school, Student.class_, Teacher.school, Teacher.assignments, User.tenant, TeacherAssignment.school_rel/class_rel/subject_rel). PgAdapter `find()`/`find_one()` accept `options=` parameter for explicit `joinedload`/`selectinload`
   - **asyncpg SSL fix**: `sslmode` param stripped from DATABASE_URL (asyncpg uses `ssl=True` instead)
   - **No MongoDB**: motor/pymongo removed from dependencies, mongod removed from workflow/deployment commands, .mongodb data directory deleted, seed scripts updated to use pg_adapter
 
