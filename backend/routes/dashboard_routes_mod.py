@@ -492,25 +492,9 @@ async def get_command_center_stats(
         
     except Exception as e:
         logger.error(f"Error fetching command center stats: {e}")
-        # Return zeros on error - no mock data
-        return {
-            "registered_schools": 0,
-            "registered_students": 0,
-            "teachers_in_schools": 0,
-            "independent_teachers": 0,
-            "platform_accounts": 0,
-            "pending_requests": 0,
-            "ai_enabled_schools": 0,
-            "student_attendance_rate": 0,
-            "teacher_attendance_rate": 0,
-            "schools_delta": 0,
-            "students_delta": 0,
-            "teachers_delta": 0,
-            "student_attendance_delta": 0,
-            "teacher_attendance_delta": 0,
-            "hijri_date": "",
-            "gregorian_date": "",
-            "last_updated": datetime.now(timezone.utc).isoformat()
-        }
+        raise HTTPException(
+            status_code=500,
+            detail="حدث خطأ أثناء جلب إحصائيات مركز التحكم"
+        )
 
 
