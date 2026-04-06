@@ -98,7 +98,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     logger.warning(f"Rate limited: {client_ip} on {pattern}")
                     return JSONResponse(
                         status_code=429,
-                        content={"detail": "عدد الطلبات تجاوز الحد المسموح. يرجى المحاولة لاحقاً"},
+                        content={
+                            "success": False,
+                            "error": {
+                                "code": "RATE_LIMITED",
+                                "message": "Too many requests",
+                                "message_ar": "عدد الطلبات تجاوز الحد المسموح. يرجى المحاولة لاحقاً",
+                            },
+                        },
                         headers={
                             "X-RateLimit-Limit": str(limits["max"]),
                             "X-RateLimit-Remaining": "0",

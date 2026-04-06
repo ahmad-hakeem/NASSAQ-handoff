@@ -12,7 +12,7 @@ Architecture (Phase 9 – Clean Layers):
 - /app/middleware.py   — HTTP middleware stack
 - /app/lifecycle.py    — Startup / shutdown hooks
 - /app/routes.py       — Centralized router registration
-- server.py            — Thin orchestrator (app creation only)
+- server.py            — App factory (create_app)
 """
 
 import logging
@@ -32,58 +32,63 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-_is_production = os.environ.get("ENVIRONMENT", "development") == "production"
-app = FastAPI(
-    title="NASSAQ - نَسَّق",
-    description="نظام إدارة المدارس الذكي المتعدد المستأجرين",
-    version="3.0.0",
-    docs_url=None if _is_production else "/docs",
-    redoc_url=None if _is_production else "/redoc",
-    openapi_url=None if _is_production else "/openapi.json",
-)
 
-@app.exception_handler(StarletteHTTPException)
-async def http_exception_handler(request: Request, exc: StarletteHTTPException):
-    detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={
-            "success": False,
-            "error": {
-                "code": f"HTTP_{exc.status_code}",
-                "message": detail,
-            },
-        },
+def create_app() -> FastAPI:
+    _is_production = os.environ.get("ENVIRONMENT", "development") == "production"
+    application = FastAPI(
+        title="NASSAQ - نَسَّق",
+        description="نظام إدارة المدارس الذكي المتعدد المستأجرين",
+        version="3.0.0",
+        docs_url=None if _is_production else "/docs",
+        redoc_url=None if _is_production else "/redoc",
+        openapi_url=None if _is_production else "/openapi.json",
     )
 
-
-@app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    errors = [
-        {"field": ".".join(str(loc) for loc in e["loc"]), "message": e["msg"]}
-        for e in exc.errors()
-    ]
-    return JSONResponse(
-        status_code=422,
-        content={
-            "success": False,
-            "error": {
-                "code": "VALIDATION_ERROR",
-                "message": "Request validation failed",
+    @application.exception_handler(StarletteHTTPException)
+    async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+        detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "success": False,
+                "error": {
+                    "code": f"HTTP_{exc.status_code}",
+                    "message": detail,
+                },
             },
-            "meta": {"validation_errors": errors},
-        },
-    )
+        )
+
+    @application.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        errors = [
+            {"field": ".".join(str(loc) for loc in e["loc"]), "message": e["msg"]}
+            for e in exc.errors()
+        ]
+        return JSONResponse(
+            status_code=422,
+            content={
+                "success": False,
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "Request validation failed",
+                },
+                "meta": {"validation_errors": errors},
+            },
+        )
+
+    from app.middleware import register_middleware
+    register_middleware(application)
+
+    api_router = APIRouter(prefix="/api")
+
+    from app.routes import register_routes
+    register_routes(application, api_router)
+
+    from app.lifecycle import startup_tasks, shutdown_tasks
+    application.add_event_handler("startup", startup_tasks)
+    application.add_event_handler("shutdown", shutdown_tasks)
+
+    return application
 
 
-from app.middleware import register_middleware
-register_middleware(app)
-
-api_router = APIRouter(prefix="/api")
-
-from app.routes import register_routes
-register_routes(app, api_router)
-
-from app.lifecycle import startup_tasks, shutdown_tasks
-app.add_event_handler("startup", startup_tasks)
-app.add_event_handler("shutdown", shutdown_tasks)
+app = create_app()
