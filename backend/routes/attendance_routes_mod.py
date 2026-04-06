@@ -280,7 +280,7 @@ async def create_bulk_attendance(
     if absent_late:
         al_ids = [s[0] for s in absent_late]
         students_list = await db.students.find(
-            {"id": {"$in": al_ids}}, {"_id": 0, "id": 1, "full_name": 1, "parent_phone": 1}
+            {"id": {"$in": al_ids}, "tenant_id": t_id}, {"_id": 0, "id": 1, "full_name": 1, "parent_phone": 1}
         ).to_list(len(al_ids))
         student_map = {s["id"]: s for s in students_list}
 

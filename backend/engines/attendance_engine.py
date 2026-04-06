@@ -240,6 +240,10 @@ class AttendanceEngine:
         """
         now = datetime.now(timezone.utc).isoformat()
 
+        class_doc = await self.db.classes.find_one({"id": class_id, "tenant_id": tenant_id})
+        if not class_doc:
+            raise ValueError(f"Class {class_id} not found or does not belong to tenant")
+
         seen: set = set()
         deduped = []
         for r in records:
@@ -249,6 +253,15 @@ class AttendanceEngine:
                 deduped.append(r)
 
         student_ids = list(seen)
+
+        valid_students = await self.db.students.find(
+            {"id": {"$in": student_ids}, "tenant_id": tenant_id},
+            {"_id": 0, "id": 1},
+        ).to_list(len(student_ids))
+        valid_student_set = {s["id"] for s in valid_students}
+        deduped = [r for r in deduped if r.get("student_id") in valid_student_set]
+        student_ids = [r["student_id"] for r in deduped]
+
         existing_rows = await self.attendance_collection.find(
             {
                 "class_id": class_id,
@@ -739,7 +752,7 @@ class AttendanceEngine:
             {"$match": query},
             {"$group": {
                 "_id": "$student_id",
-                "section_id": {"$first": "$section_id"},
+                "section_id": {"$min": "$section_id"},
                 "total": {"$sum": 1},
                 "present": {"$sum": {"$cond": [{"$eq": ["$status", AttendanceStatus.PRESENT.value]}, 1, 0]}},
             }},
