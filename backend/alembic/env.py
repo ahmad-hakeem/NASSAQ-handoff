@@ -22,7 +22,21 @@ target_metadata = Base.metadata
 
 
 def _get_url():
+    from urllib.parse import quote
     url = os.environ.get("SUPABASE_DATABASE_URL", "") or os.environ.get("DATABASE_URL", "")
+    if os.environ.get("SUPABASE_DATABASE_URL") and "@" in url:
+        prefix_end = url.index("://") + 3
+        prefix = url[:prefix_end]
+        rest = url[prefix_end:]
+        at_positions = [i for i, c in enumerate(rest) if c == "@"]
+        if len(at_positions) > 1:
+            last_at = at_positions[-1]
+            cred_part = rest[:last_at]
+            host_part = rest[last_at + 1:]
+            colon_idx = cred_part.index(":")
+            user = cred_part[:colon_idx]
+            raw_pass = cred_part[colon_idx + 1:]
+            url = f"{prefix}{user}:{quote(raw_pass, safe='')}@{host_part}"
     if url.startswith("postgresql://"):
         url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
     parsed = urlparse(url)
@@ -55,6 +69,16 @@ def do_run_migrations(connection):
         context.run_migrations()
 
 
+def _build_connect_args():
+    if os.environ.get("SUPABASE_DATABASE_URL"):
+        import ssl as _ssl
+        ctx = _ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = _ssl.CERT_NONE
+        return {"ssl": ctx, "statement_cache_size": 0}
+    return {}
+
+
 async def run_async_migrations() -> None:
     configuration = config.get_section(config.config_ini_section, {})
     configuration["sqlalchemy.url"] = _get_url()
@@ -62,6 +86,7 @@ async def run_async_migrations() -> None:
         configuration,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args=_build_connect_args(),
     )
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)

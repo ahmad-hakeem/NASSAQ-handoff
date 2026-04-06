@@ -69,7 +69,11 @@ Each fix report must include: root cause, why it wasn't caught before, what chan
 
 ### Deployment Safety Policy (PERMANENT & NON-NEGOTIABLE)
 - **Core Rule**: Production data must NEVER be lost, overwritten, or replaced during deployment
-- **Database**: Replit managed PostgreSQL (helium) — persistent, external, survives restarts/deploys
+- **Database**: Supabase external PostgreSQL (session pooler, port 6543) — primary database for dev and production
+  - `SUPABASE_DATABASE_URL` takes priority over `DATABASE_URL` (Replit helium fallback)
+  - Password auto-encoded in `db.py` and `alembic/env.py` (handles `@`/`!` in passwords)
+  - Supabase pooler requires `statement_cache_size=0` and SSL (auto-configured)
+  - Pool size: 5 connections + 10 overflow (smaller than Replit due to pooler limits)
 - **Seed Scripts**: BLOCKED in production and staging (`config.seed_allowed()` returns `False`)
 - **Double Guard**: Even if seeds allowed, they are SKIPPED when database already has data (user count > 0)
 - **Replit DB Guard**: If DATABASE_URL points to Replit's managed DB (helium), seeds blocked unless ENVIRONMENT is explicitly "development"
@@ -339,7 +343,8 @@ The scheduling engine uses contiguous-fill scoring to distribute sessions evenly
 - `DANGEROUSLY_DISABLE_HOST_CHECK=true` — Required for Replit proxy
 
 ### Backend (`backend/.env`)
-- `DATABASE_URL` — PostgreSQL connection string
+- `SUPABASE_DATABASE_URL` — Supabase PostgreSQL connection string (primary, takes priority)
+- `DATABASE_URL` — Replit PostgreSQL connection string (fallback)
 - `JWT_SECRET_KEY` — JWT signing key
 - `CORS_ORIGINS=*` — CORS allowed origins
 

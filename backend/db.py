@@ -22,9 +22,25 @@ def _is_supabase() -> bool:
 
 
 def _get_raw_url() -> str:
+    from urllib.parse import quote
     url = os.environ.get("SUPABASE_DATABASE_URL", "") or os.environ.get("DATABASE_URL", "")
     if not url:
         raise RuntimeError("No database URL configured (SUPABASE_DATABASE_URL or DATABASE_URL)")
+    if _is_supabase() and "@" in url:
+        prefix_end = url.index("://") + 3
+        prefix = url[:prefix_end]
+        rest = url[prefix_end:]
+        at_positions = [i for i, c in enumerate(rest) if c == "@"]
+        if len(at_positions) > 1:
+            last_at = at_positions[-1]
+            cred_part = rest[:last_at]
+            host_part = rest[last_at + 1:]
+            colon_idx = cred_part.index(":")
+            user = cred_part[:colon_idx]
+            raw_pass = cred_part[colon_idx + 1:]
+            encoded_pass = quote(raw_pass, safe="")
+            url = f"{prefix}{user}:{encoded_pass}@{host_part}"
+            logger.info("Auto-encoded special characters in database password")
     return url
 
 

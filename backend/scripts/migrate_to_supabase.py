@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 SOURCE_URL = os.environ.get("DATABASE_URL", "")
-TARGET_URL = "postgresql://postgres.jqxdkplwkxfhmpdxmkju:Nassaq%402026SecureDB%21@aws-0-eu-west-1.pooler.supabase.com:6543/postgres"
+TARGET_URL = os.environ.get("SUPABASE_DATABASE_URL", "")
 
 
 def to_asyncpg_url(url):
