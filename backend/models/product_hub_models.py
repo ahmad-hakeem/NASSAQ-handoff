@@ -490,7 +490,6 @@ class IssueCreate(BaseModel):
         return {
             "id": issue_id,
             "title": None,
-            "type": self.issue_type,
             "issue_type": self.issue_type,
 
             "context": {

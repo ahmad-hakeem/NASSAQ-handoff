@@ -222,6 +222,10 @@ async def update_teacher_basic_info(
             {**_entity_tenant_filter(tenant_id), "teacher_id": teacher_id},
             {"$set": {"teacher_name": updates["full_name"]}}
         )
+        await db.schedule_sessions.update_many(
+            {**_entity_tenant_filter(tenant_id), "teacher_id": teacher_id},
+            {"$set": {"teacher_name": updates["full_name"]}}
+        )
 
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
     await db.teachers.update_one({"id": teacher_id, **_entity_tenant_filter(tenant_id)}, {"$set": updates})

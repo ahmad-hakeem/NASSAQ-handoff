@@ -96,7 +96,7 @@ async def audit_issue_created(issue_id: str, user: dict, issue_data: dict):
         issue_id, AuditAction.CREATED, user,
         notes=f"تم إنشاء المشكلة: {issue_data.get('title', '')}",
         metadata={
-            "issue_type": issue_data.get("issue_type") or issue_data.get("type", ""),
+            "issue_type": issue_data.get("issue_type", ""),
             "section": issue_data.get("section", ""),
             "page": issue_data.get("page", ""),
             "employee_name": issue_data.get("employee_name", ""),

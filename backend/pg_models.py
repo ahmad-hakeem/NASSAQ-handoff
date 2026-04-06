@@ -410,7 +410,6 @@ class ProductIssue(Base):
     id = Column(String, primary_key=True, default=_uuid)
     issue_number = Column(Integer, unique=True, nullable=True)
     title = Column(String, nullable=True)
-    type = Column(String, nullable=True)
     issue_type = Column(String, nullable=False, index=True)
     status = Column(String, default="new", index=True)
     priority = Column(String, nullable=True, index=True)

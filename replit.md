@@ -247,10 +247,11 @@ import { getPose, getPoseForPath, getRandomPoseFromCategory, HERO_POSES } from '
   alembic/        Alembic async migration framework (env.py, versions/)
   alembic.ini     Alembic configuration
   # Alembic Migration Chain (latest → oldest):
+  # a1b2c3d4e5f6 - Consolidate ProductIssue type/issue_type into single issue_type column
   # f3a4b5c6d7e8 - Drop extraneous columns added by earlier migration (issue_comments.created_at/updated_at, counters.updated_at, approval_events.created_at)
   # e2f3a4b5c6d7 - Migrate remaining string timestamps to TIMESTAMPTZ (approval_events, approval_requests, etc.)
   # d1e2f3a4b5c6 - Cleanup redundant schema fields (drop current_student_count/current_teacher_count, current_count, tenant_id on Subject/AuditLog)
-  # c8d9e0f1a2b3 - Migrate string timestamps to DateTime(timezone=True) across all models
+  # c8d9e0f1a2b3 - Migrate string timestamps to DateTime(timezone=True) across all models + add subjects.updated_at, session_notes.updated_at
   # b7e52689a1ad - Add indexes and unique constraints
   # b9e08d69a15a - Add device_info, severity to audit_logs
   # 6ba4c4afaf24 - Initial schema with FK relationships

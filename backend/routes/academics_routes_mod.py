@@ -1231,6 +1231,18 @@ async def update_class(
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="الفصل غير موجود")
+
+    if "name" in update_fields:
+        new_name = update_fields["name"]
+        await db.teacher_assignments.update_many(
+            {"class_id": class_id},
+            {"$set": {"class_name": new_name}}
+        )
+        await db.schedule_sessions.update_many(
+            {"class_id": class_id},
+            {"$set": {"class_name": new_name}}
+        )
+
     return {"message": "تم تحديث بيانات الفصل", "success": True}
 
 @router.delete("/classes/{class_id}")
@@ -1591,6 +1603,7 @@ async def update_subject(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN]))
 ):
     """Update subject"""
+    old_subject = await db.subjects.find_one({"id": subject_id}, {"_id": 0, "name": 1})
     result = await db.subjects.update_one(
         {"id": subject_id},
         {"$set": {
@@ -1605,6 +1618,17 @@ async def update_subject(
     )
     if result.modified_count == 0:
         raise HTTPException(status_code=404, detail="المادة غير موجودة")
+
+    if old_subject and subject_data.name != old_subject.get("name"):
+        await db.teacher_assignments.update_many(
+            {"subject_id": subject_id},
+            {"$set": {"subject_name": subject_data.name}}
+        )
+        await db.schedule_sessions.update_many(
+            {"subject_id": subject_id},
+            {"$set": {"subject_name": subject_data.name}}
+        )
+
     return {"message": "تم تحديث بيانات المادة"}
 
 @router.delete("/subjects/{subject_id}")
@@ -3680,6 +3704,18 @@ async def update_teacher(
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="المعلم غير موجود")
+
+    if "full_name" in update_fields:
+        new_name = update_fields["full_name"]
+        await db.teacher_assignments.update_many(
+            {"teacher_id": teacher_id},
+            {"$set": {"teacher_name": new_name}}
+        )
+        await db.schedule_sessions.update_many(
+            {"teacher_id": teacher_id},
+            {"$set": {"teacher_name": new_name}}
+        )
+
     return {"message": "تم تحديث بيانات المعلم", "success": True}
 
 @router.delete("/teachers/{teacher_id}")
