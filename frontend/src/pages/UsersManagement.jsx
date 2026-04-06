@@ -67,10 +67,10 @@ export default function UsersManagement() {
   const [requestFilters, setRequestFilters] = useState({});
 
   const [stats, setStats] = useState({
-    totalUsers: 0, totalSchools: 0, totalStudents: 0,
-    teachersInSchools: 0, independentTeachers: 0, platformAdmins: 0,
-    pendingRequests: 0, studentAttendanceRate: null, teacherAttendanceRate: null,
-    aiEnabledSchools: 0,
+    totalUsers: 0, activeUsers: 0, suspendedUsers: 0,
+    platformAdmins: 0, schoolAdmins: 0,
+    teachers: 0, students: 0, parents: 0,
+    pendingRequests: 0,
   });
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -201,17 +201,14 @@ export default function UsersManagement() {
       const d = response.data;
       setStats({
         totalUsers: d.total_users || 0,
-        totalSchools: d.total_schools || 0,
-        totalStudents: d.total_students || 0,
-        teachersInSchools: d.teachers_in_schools || 0,
-        independentTeachers: d.independent_teachers || 0,
-        platformAdmins: d.platform_accounts || 0,
-        pendingRequests: d.pending_requests || 0,
-        studentAttendanceRate: d.student_attendance_rate ?? null,
-        teacherAttendanceRate: d.teacher_attendance_rate ?? null,
-        aiEnabledSchools: d.ai_enabled_schools || 0,
         activeUsers: d.active_users || 0,
         suspendedUsers: d.suspended_users || 0,
+        platformAdmins: d.platform_admins || 0,
+        schoolAdmins: d.school_admins || 0,
+        teachers: d.teachers || 0,
+        students: d.students || 0,
+        parents: d.parents || 0,
+        pendingRequests: d.pending_requests || 0,
       });
     } catch (error) {
       console.error('Error fetching management stats:', error);
@@ -427,7 +424,7 @@ export default function UsersManagement() {
         </header>
 
         <div className="p-4 lg:p-6 space-y-4 lg:space-y-6">
-          <UsersStatsCards stats={stats} totalPendingRequests={totalPendingRequests} />
+          <UsersStatsCards stats={stats} />
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="grid w-full max-w-3xl grid-cols-4 mb-4">
