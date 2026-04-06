@@ -124,7 +124,8 @@ Each fix report must include: root cause, why it wasn't caught before, what chan
   - **app/lifecycle.py**: Startup/shutdown hooks (DB init, seed, approval engine, product hub integrity)
   - **app/routes.py**: Centralized router registration (all _mod and factory routes)
   - **shared_models.py**: All Pydantic request/response models (single source of truth)
-  - **utils/api_response.py**: `ApiResponse[T]` envelope utility (`ok()`, `fail()` helpers)
+  - **utils/api_response.py**: `ApiResponse[T]` envelope — `{success, data, error: {code, message, message_ar}, meta}` with `ok()`/`fail()` helpers
+  - **Global error envelope**: All HTTPExceptions → `{success: false, error: {code: "HTTP_<status>", message}}`, validation errors → `{success: false, error: {code: "VALIDATION_ERROR", message}, meta: {validation_errors: [...]}}`
   - **Route files**: Each under ~1000 lines; `academics_routes_mod.py` (3848 lines) split into 7 sub-modules, `scheduling_routes_mod.py` (2875 lines) split into 4 sub-modules
 - **Database**: PostgreSQL (async SQLAlchemy + asyncpg) — MongoDB fully removed
   - **PostgreSQL**: Replit built-in via `DATABASE_URL`, 49 ORM tables (Event, SystemSetting promoted from GenericDocument), Alembic migrations

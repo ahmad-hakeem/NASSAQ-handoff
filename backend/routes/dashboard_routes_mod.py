@@ -360,28 +360,9 @@ async def get_super_admin_dashboard_stats(
         
     except Exception as e:
         logger.error(f"Error fetching super admin stats: {e}")
-        # Return default values on error
-        return SuperAdminDashboardStats(
-            total_schools=5,
-            total_students=650,
-            total_teachers=95,
-            total_classes=45,
-            total_lessons_today=180,
-            active_users_today=520,
-            student_attendance_percentage=92.5,
-            teacher_attendance_percentage=96.0,
-            waiting_sessions=3,
-            active_schools=5,
-            suspended_schools=0,
-            pending_schools=0,
-            students_present_today=600,
-            students_absent_today=50,
-            teachers_present_today=91,
-            teachers_absent_today=4,
-            schools_growth_rate=10.0,
-            students_growth_rate=2.5,
-            teachers_growth_rate=3.2,
-            last_updated=datetime.now(timezone.utc).isoformat()
+        raise HTTPException(
+            status_code=500,
+            detail="حدث خطأ أثناء جلب إحصائيات لوحة التحكم"
         )
 
 

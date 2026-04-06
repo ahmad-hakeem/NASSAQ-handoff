@@ -113,6 +113,17 @@ def register_routes(app, api_router: APIRouter):
     set_principal_tt_engine(smart_scheduling_engine)
     api_router.include_router(principal_timetable_router)
 
+    # --- Factory-pattern routes (legacy) ---
+    # These use a factory function and serve additional unique endpoints
+    # that don't exist in the _mod sub-modules above.
+    # Overlap analysis:
+    #   scheduling_routes: serves /api/scheduling/* (different base path from _mod's /api/schedules/*)
+    #   attendance_routes: serves unique endpoints (mark-all-present, daily reports, teacher-attendance)
+    #                      plus a few paths also in attendance_routes_mod (bulk, excuses) — _mod wins (registered first)
+    #   assessment_routes: serves unique endpoints (statistics, report-cards/generate, publish)
+    #                      plus a few paths also in assessment_routes_mod — _mod wins (registered first)
+    #   student/teacher/class_management: serve /options, /validate, /drafts (unique to factory)
+    # TODO: Migrate unique factory endpoints into _mod sub-modules, then remove factory registrations.
     from routes.scheduling_routes import create_scheduling_router
     from routes.attendance_routes import create_attendance_router
     from routes.assessment_routes import create_assessment_router

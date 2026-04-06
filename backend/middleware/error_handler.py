@@ -1,6 +1,6 @@
 """
 NASSAQ Global Error Handler Middleware
-Catches unhandled exceptions, logs them, returns safe error responses.
+Catches unhandled exceptions, logs them, returns ApiResponse envelope.
 """
 import traceback
 import time
@@ -40,8 +40,15 @@ class ErrorHandlerMiddleware(BaseHTTPMiddleware):
             return JSONResponse(
                 status_code=500,
                 content={
-                    "detail": "حدث خطأ داخلي في الخادم",
-                    "error_id": request_id,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "success": False,
+                    "error": {
+                        "code": "INTERNAL_ERROR",
+                        "message": "An unexpected error occurred",
+                        "message_ar": "حدث خطأ داخلي في الخادم",
+                    },
+                    "meta": {
+                        "error_id": request_id,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    },
                 },
             )
