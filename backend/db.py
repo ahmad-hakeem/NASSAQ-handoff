@@ -59,10 +59,16 @@ def _get_async_url() -> str:
 def _build_connect_args() -> dict:
     raw_url = _get_raw_url()
     if _is_supabase() or "supabase" in raw_url:
+        import uuid as _uuid
         ctx = _ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = _ssl.CERT_NONE
-        return {"ssl": ctx, "statement_cache_size": 0}
+        return {
+            "ssl": ctx,
+            "statement_cache_size": 0,
+            "prepared_statement_cache_size": 0,
+            "prepared_statement_name_func": lambda: f"__asyncpg_{_uuid.uuid4().hex[:12]}__",
+        }
     parsed = urlparse(raw_url)
     params = parse_qs(parsed.query)
     sslmode = params.get("sslmode", [None])[0]
@@ -82,13 +88,24 @@ class Base(DeclarativeBase):
 _db_source = "Supabase" if _is_supabase() else "Replit"
 logger.info(f"Database source: {_db_source}")
 
-engine = create_async_engine(
-    _get_async_url(),
+_engine_kwargs = dict(
     echo=False,
-    pool_size=5 if _is_supabase() else 10,
-    max_overflow=10 if _is_supabase() else 20,
     pool_pre_ping=True,
     connect_args=_build_connect_args(),
+)
+if _is_supabase():
+    from sqlalchemy.pool import NullPool
+    _engine_kwargs["poolclass"] = NullPool
+    _engine_kwargs.pop("pool_pre_ping", None)
+else:
+    _engine_kwargs["pool_size"] = 10
+    _engine_kwargs["max_overflow"] = 20
+
+_async_url = _get_async_url()
+
+engine = create_async_engine(
+    _async_url,
+    **_engine_kwargs,
 )
 
 async_session_factory = async_sessionmaker(
