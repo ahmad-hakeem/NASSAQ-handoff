@@ -13,8 +13,8 @@ const BASE_DELAY_MS = 500;
 async function retryRequest(axiosInstance, config, retryCount) {
   const delay = BASE_DELAY_MS * Math.pow(2, retryCount);
   await new Promise((r) => setTimeout(r, delay));
-  const retryCfg = { ...config, _retryCount: retryCount + 1 };
-  delete retryCfg.headers;
+  const { Authorization, 'X-School-Context': _sc, ...customHeaders } = config.headers || {};
+  const retryCfg = { ...config, _retryCount: retryCount + 1, headers: customHeaders };
   return axiosInstance.request(retryCfg);
 }
 
