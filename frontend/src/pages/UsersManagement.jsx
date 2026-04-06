@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
 import {
   Users, Filter, RefreshCw, UserPlus, Building2, ChevronLeft,
+  ChevronRight, ChevronsLeft, ChevronsRight,
 } from 'lucide-react';
 import CreateUserWizard from '../components/wizards/CreateUserWizard';
 import { useAuth } from '../contexts/AuthContext';
@@ -80,6 +81,8 @@ export default function UsersManagement() {
 
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [showCreateWizard, setShowCreateWizard] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const USERS_PER_PAGE = 12;
 
   const [showUserDetails, setShowUserDetails] = useState(null);
   const [showSuspendConfirm, setShowSuspendConfirm] = useState(null);
@@ -249,6 +252,7 @@ export default function UsersManagement() {
   const isFirstRender = useRef(true);
   useEffect(() => {
     if (isFirstRender.current) { isFirstRender.current = false; return; }
+    setCurrentPage(1);
     fetchUsers();
   }, [searchQuery, selectedRole, selectedStatus, selectedAIStatus, selectedAccountType]);
 
@@ -495,19 +499,88 @@ export default function UsersManagement() {
                   )}
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
-                  {users.map((user) => (
-                    <UserCard
-                      key={user.id}
-                      user={user}
-                      onView={handleViewUser}
-                      onSuspend={setShowSuspendConfirm}
-                      onEdit={setShowEditUser}
-                      onDelete={setShowDeleteConfirm}
-                      onNotify={setShowSendNotification}
-                    />
-                  ))}
-                </div>
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
+                    {users.slice((currentPage - 1) * USERS_PER_PAGE, currentPage * USERS_PER_PAGE).map((user) => (
+                      <UserCard
+                        key={user.id}
+                        user={user}
+                        onView={handleViewUser}
+                        onSuspend={setShowSuspendConfirm}
+                      />
+                    ))}
+                  </div>
+
+                  {users.length > USERS_PER_PAGE && (() => {
+                    const totalPages = Math.ceil(users.length / USERS_PER_PAGE);
+                    return (
+                      <div className="flex items-center justify-center gap-2 pt-6">
+                        <Button
+                          variant="outline" size="icon"
+                          className="h-9 w-9 rounded-lg"
+                          disabled={currentPage === 1}
+                          onClick={() => setCurrentPage(1)}
+                        >
+                          <ChevronsRight className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline" size="icon"
+                          className="h-9 w-9 rounded-lg"
+                          disabled={currentPage === 1}
+                          onClick={() => setCurrentPage(p => p - 1)}
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </Button>
+
+                        <div className="flex items-center gap-1 mx-2">
+                          {Array.from({ length: totalPages }, (_, i) => i + 1)
+                            .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
+                            .reduce((acc, p, idx, arr) => {
+                              if (idx > 0 && p - arr[idx - 1] > 1) acc.push('...');
+                              acc.push(p);
+                              return acc;
+                            }, [])
+                            .map((item, idx) =>
+                              item === '...' ? (
+                                <span key={`dots-${idx}`} className="px-1 text-muted-foreground">...</span>
+                              ) : (
+                                <Button
+                                  key={item}
+                                  variant={currentPage === item ? "default" : "outline"}
+                                  size="icon"
+                                  className={`h-9 w-9 rounded-lg text-sm ${currentPage === item ? 'bg-brand-navy' : ''}`}
+                                  onClick={() => setCurrentPage(item)}
+                                >
+                                  {item}
+                                </Button>
+                              )
+                            )}
+                        </div>
+
+                        <Button
+                          variant="outline" size="icon"
+                          className="h-9 w-9 rounded-lg"
+                          disabled={currentPage === totalPages}
+                          onClick={() => setCurrentPage(p => p + 1)}
+                        >
+                          <ChevronLeft className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline" size="icon"
+                          className="h-9 w-9 rounded-lg"
+                          disabled={currentPage === totalPages}
+                          onClick={() => setCurrentPage(totalPages)}
+                        >
+                          <ChevronsLeft className="h-4 w-4" />
+                        </Button>
+
+                        <span className="text-sm text-muted-foreground ms-3">
+                          {(currentPage - 1) * USERS_PER_PAGE + 1}-{Math.min(currentPage * USERS_PER_PAGE, users.length)} من {users.length}
+                        </span>
+                      </div>
+                    );
+                  })()}
+                </>
               )}
             </TabsContent>
 

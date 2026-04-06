@@ -171,8 +171,31 @@ const PERMISSION_CATEGORIES = {
   ai: { name_ar: 'الذكاء الاصطناعي', name_en: 'AI', icon: Brain },
 };
 
-// Empty initial state - activities will be fetched from API
-const INITIAL_ACTIVITIES = [];
+const ACTION_TRANSLATIONS = {
+  'auth.login': 'تسجيل دخول',
+  'auth.logout': 'تسجيل خروج',
+  'auth.login_failed': 'فشل تسجيل الدخول',
+  'auth.password_changed': 'تغيير كلمة المرور',
+  'auth.password_reset': 'إعادة تعيين كلمة المرور',
+  'user.created': 'إنشاء مستخدم',
+  'user.updated': 'تحديث مستخدم',
+  'user.deleted': 'حذف مستخدم',
+  'user.suspended': 'تعليق مستخدم',
+  'user.activated': 'تفعيل مستخدم',
+  'login': 'تسجيل دخول',
+  'logout': 'تسجيل خروج',
+  'login_failed': 'فشل تسجيل الدخول',
+  'user_created': 'إنشاء مستخدم',
+  'user_updated': 'تحديث مستخدم',
+  'user_deleted': 'حذف مستخدم',
+  'user_suspended': 'تعليق مستخدم',
+  'user_activated': 'تفعيل مستخدم',
+  'user_role_changed': 'تغيير الدور',
+  'permissions_updated': 'تحديث الصلاحيات',
+  'password_reset': 'إعادة تعيين كلمة المرور',
+  'settings_updated': 'تحديث الإعدادات',
+  'data_exported': 'تصدير البيانات',
+};
 
 // Generate random password
 const generatePassword = () => {
@@ -194,6 +217,8 @@ export default function UserDetailsPage() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
+  const [activities, setActivities] = useState([]);
+  const [activitiesLoading, setActivitiesLoading] = useState(false);
   
   // Dialogs
   const [showSuspendDialog, setShowSuspendDialog] = useState(false);
@@ -250,6 +275,25 @@ export default function UserDetailsPage() {
     
     fetchUser();
   }, [userId]);
+
+  const fetchActivities = async () => {
+    setActivitiesLoading(true);
+    try {
+      const response = await api.get(`/audit/user/${userId}`);
+      setActivities(response.data?.logs || []);
+    } catch (error) {
+      console.error('Error fetching audit logs:', error);
+      setActivities([]);
+    } finally {
+      setActivitiesLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'activity' && activities.length === 0 && !activitiesLoading) {
+      fetchActivities();
+    }
+  }, [activeTab]);
   
   // Format date
   const formatDate = (dateStr) => {
@@ -837,53 +881,97 @@ ${API_URL}/login
                         <History className="h-5 w-5 text-brand-navy" />
                         سجل النشاط
                       </h3>
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => {
-                          // تصدير سجل النشاط كملف CSV
-                          const csvContent = [
-                            'النشاط,الجهاز,العنوان IP,التاريخ',
-                            ...INITIAL_ACTIVITIES.map(a => 
-                              `"${a.action}","${a.device}","${a.ip}","${a.timestamp}"`
-                            )
-                          ].join('\n');
-                          
-                          const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
-                          const link = document.createElement('a');
-                          link.href = URL.createObjectURL(blob);
-                          link.download = `activity_log_${user?.full_name || 'user'}_${new Date().toISOString().split('T')[0]}.csv`;
-                          link.click();
-                          toast.success('تم تصدير سجل النشاط بنجاح');
-                        }}
-                      >
-                        <Download className="h-4 w-4 ms-2" />
-                        تصدير
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={fetchActivities}
+                          disabled={activitiesLoading}
+                        >
+                          <RefreshCw className={`h-4 w-4 ms-2 ${activitiesLoading ? 'animate-spin' : ''}`} />
+                          تحديث
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          disabled={activities.length === 0}
+                          onClick={() => {
+                            const csvContent = [
+                              'النشاط,المنفذ,العنوان IP,التاريخ',
+                              ...activities.map(a => 
+                                `"${a.action_ar || a.action}","${a.actor_name || a.action_by_name || '-'}","${a.ip_address || '-'}","${a.timestamp}"`
+                              )
+                            ].join('\n');
+                            
+                            const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+                            const link = document.createElement('a');
+                            link.href = URL.createObjectURL(blob);
+                            link.download = `activity_log_${user?.full_name || 'user'}_${new Date().toISOString().split('T')[0]}.csv`;
+                            link.click();
+                            toast.success('تم تصدير سجل النشاط بنجاح');
+                          }}
+                        >
+                          <Download className="h-4 w-4 ms-2" />
+                          تصدير
+                        </Button>
+                      </div>
                     </div>
                     
-                    <div className="space-y-3">
-                      {INITIAL_ACTIVITIES.map((activity) => (
-                        <div 
-                          key={activity.id}
-                          className="flex items-center justify-between p-3 bg-muted/30 rounded-lg hover:bg-muted/50 transition-colors"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="p-2 bg-brand-navy/10 rounded-lg">
-                              <Activity className="h-4 w-4 text-brand-navy" />
+                    {activitiesLoading ? (
+                      <div className="flex items-center justify-center py-12">
+                        <RefreshCw className="h-8 w-8 animate-spin text-brand-turquoise" />
+                      </div>
+                    ) : activities.length === 0 ? (
+                      <div className="text-center py-12 text-muted-foreground">
+                        <Activity className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                        <p>لا توجد أنشطة مسجلة</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {activities.map((activity, idx) => {
+                          const actionLabel = activity.action_ar || ACTION_TRANSLATIONS[activity.action] || activity.action;
+                          const deviceBrowser = activity.device_info?.browser;
+                          const deviceOs = activity.device_info?.os;
+                          const deviceLabel = (deviceBrowser && deviceBrowser !== 'غير معروف')
+                            ? `${deviceBrowser}${deviceOs && deviceOs !== 'غير معروف' ? ' / ' + deviceOs : ''}`
+                            : null;
+
+                          return (
+                            <div 
+                              key={activity.id || idx}
+                              className="flex items-center justify-between p-3 bg-muted/30 rounded-lg hover:bg-muted/50 transition-colors"
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className={`p-2 rounded-lg ${
+                                  activity.severity === 'critical' ? 'bg-red-100' :
+                                  activity.severity === 'high' ? 'bg-orange-100' :
+                                  'bg-brand-navy/10'
+                                }`}>
+                                  <Activity className={`h-4 w-4 ${
+                                    activity.severity === 'critical' ? 'text-red-600' :
+                                    activity.severity === 'high' ? 'text-orange-600' :
+                                    'text-brand-navy'
+                                  }`} />
+                                </div>
+                                <div>
+                                  <p className="font-medium text-sm">{actionLabel}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {activity.actor_name || activity.action_by_name || '-'}
+                                    {deviceLabel && ` · ${deviceLabel}`}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="text-left flex-shrink-0">
+                                <p className="text-sm">{formatDateTime(activity.timestamp)}</p>
+                                {activity.ip_address && (
+                                  <p className="text-xs text-muted-foreground" dir="ltr">{activity.ip_address}</p>
+                                )}
+                              </div>
                             </div>
-                            <div>
-                              <p className="font-medium text-sm">{isRTL ? activity.action : activity.action_en}</p>
-                              <p className="text-xs text-muted-foreground">{activity.device}</p>
-                            </div>
-                          </div>
-                          <div className="text-left">
-                            <p className="text-sm">{formatDateTime(activity.timestamp)}</p>
-                            <p className="text-xs text-muted-foreground" dir="ltr">{activity.ip}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </TabsContent>
                 </Tabs>
               </CardContent>
