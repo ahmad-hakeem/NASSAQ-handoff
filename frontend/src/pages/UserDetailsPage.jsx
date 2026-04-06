@@ -213,6 +213,7 @@ export default function UserDetailsPage() {
   const location = useLocation();
   const { isRTL = true, api } = useAuth();
   const fileInputRef = useRef(null);
+  const copyTimeoutRef = useRef(null);
   
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -299,6 +300,12 @@ export default function UserDetailsPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, userId]);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+    };
+  }, []);
   
   // Format date
   const formatDate = (dateStr) => {
@@ -327,7 +334,8 @@ export default function UserDetailsPage() {
     try {
       await navigator.clipboard.writeText(text);
       setCopiedField(field);
-      setTimeout(() => setCopiedField(null), 2000);
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+      copyTimeoutRef.current = setTimeout(() => setCopiedField(null), 2000);
       toast.success(isRTL ? 'تم النسخ بنجاح' : 'Copied successfully');
     } catch (err) {
       nassaqError(isRTL ? 'فشل النسخ' : 'Copy failed');

@@ -1,9 +1,22 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
+import { toast } from 'sonner';
 
 const AuthContext = createContext(null);
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
+
+const RETRY_STATUS_CODES = new Set([502, 503]);
+const MAX_RETRIES = 2;
+const BASE_DELAY_MS = 500;
+
+async function retryRequest(axiosInstance, config, retryCount) {
+  const delay = BASE_DELAY_MS * Math.pow(2, retryCount);
+  await new Promise((r) => setTimeout(r, delay));
+  const retryCfg = { ...config, _retryCount: retryCount + 1 };
+  delete retryCfg.headers;
+  return axiosInstance.request(retryCfg);
+}
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -26,14 +39,12 @@ export const AuthProvider = ({ children }) => {
     },
   });
 
-  // Add token to requests - with school context support
   api.interceptors.request.use((config) => {
     const storedToken = localStorage.getItem('nassaq_token');
     if (storedToken) {
       config.headers.Authorization = `Bearer ${storedToken}`;
     }
     
-    // Add school context header when impersonating
     const savedContext = sessionStorage.getItem('nassaq_school_context');
     if (savedContext) {
       const ctx = JSON.parse(savedContext);
@@ -43,6 +54,30 @@ export const AuthProvider = ({ children }) => {
     }
     return config;
   });
+
+  api.interceptors.response.use(
+    (response) => response,
+    async (error) => {
+      const config = error.config || {};
+      const retryCount = config._retryCount || 0;
+      const status = error.response?.status;
+      const isGet = (config.method || '').toUpperCase() === 'GET';
+      const isTransient = !error.response || RETRY_STATUS_CODES.has(status);
+
+      if (isGet && isTransient && retryCount < MAX_RETRIES) {
+        return retryRequest(api, config, retryCount);
+      }
+
+      if (status >= 500 || !error.response) {
+        const msg = !error.response
+          ? 'تعذر الاتصال بالخادم — تحقق من الاتصال بالإنترنت'
+          : `خطأ في الخادم (${status}) — يرجى المحاولة لاحقاً`;
+        toast.error(msg);
+      }
+
+      return Promise.reject(error);
+    }
+  );
 
   const fetchUser = useCallback(async () => {
     if (!token) {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Sidebar } from '../components/layout/Sidebar';
 import { PageHeader } from '../components/layout/PageHeader';
 import { useTheme } from '../contexts/ThemeContext';
@@ -229,6 +229,7 @@ export const SystemMonitoringPage = () => {
   const { isRTL = true, isDark } = useTheme();
   const { api } = useAuth();
   const t = translations[isRTL ? 'ar' : 'en'];
+  const diagnosisTimeoutRef = useRef(null);
   
   // States
   const [activeTab, setActiveTab] = useState('overview');
@@ -398,10 +399,16 @@ export const SystemMonitoringPage = () => {
     return date.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   };
   
-  // Run AI diagnosis
+  useEffect(() => {
+    return () => {
+      if (diagnosisTimeoutRef.current) clearTimeout(diagnosisTimeoutRef.current);
+    };
+  }, []);
+
   const runDiagnosis = () => {
     setIsDiagnosing(true);
-    setTimeout(() => {
+    if (diagnosisTimeoutRef.current) clearTimeout(diagnosisTimeoutRef.current);
+    diagnosisTimeoutRef.current = setTimeout(() => {
       setIsDiagnosing(false);
       setShowDiagnosticDialog(false);
       toast.success(isRTL ? 'تم إكمال التشخيص - النظام سليم' : 'Diagnosis complete - System healthy');

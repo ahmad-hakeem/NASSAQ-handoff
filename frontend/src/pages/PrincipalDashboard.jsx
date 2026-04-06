@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -23,10 +23,18 @@ export default function PrincipalDashboard() {
   const navigate = useNavigate();
   const { user, schoolContext, isImpersonating, exitSchoolContext } = useAuth();
   const { isRTL, toggleTheme, toggleLanguage, isDark } = useTheme();
+  const exitTimeoutRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (exitTimeoutRef.current) clearTimeout(exitTimeoutRef.current);
+    };
+  }, []);
   
   const handleExitImpersonation = () => {
     exitSchoolContext();
-    setTimeout(() => {
+    if (exitTimeoutRef.current) clearTimeout(exitTimeoutRef.current);
+    exitTimeoutRef.current = setTimeout(() => {
       window.location.href = '/admin/tenants';
     }, 100);
   };
