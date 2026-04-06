@@ -85,15 +85,26 @@ export const AuthProvider = ({ children }) => {
       return;
     }
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
     try {
-      const response = await api.get('/auth/me');
+      const response = await api.get('/auth/me', { signal: controller.signal });
       setUser(response.data);
     } catch (error) {
-      console.error('Failed to fetch user:', error);
-      localStorage.removeItem('nassaq_token');
-      setToken(null);
-      setUser(null);
+      if (error.name === 'CanceledError' || error.code === 'ERR_CANCELED') {
+        console.error('fetchUser timed out after 10s');
+        toast.error('انتهت مهلة الاتصال — يرجى تحديث الصفحة');
+      } else if (error.response?.status === 401) {
+        localStorage.removeItem('nassaq_token');
+        setToken(null);
+        setUser(null);
+      } else {
+        console.error('Failed to fetch user:', error);
+        toast.error('تعذر تحميل بيانات المستخدم');
+      }
     } finally {
+      clearTimeout(timeoutId);
       setLoading(false);
     }
   }, [token]);

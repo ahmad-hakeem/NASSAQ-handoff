@@ -7,7 +7,6 @@ import { Badge } from '../components/ui/badge';
 import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { useAuth } from '../contexts/AuthContext';
-import axios from 'axios';
 import { toast } from 'sonner';
 import {
   StatusChip, PriorityBadge, SLAIndicator, StatCard, EmptyState,
@@ -24,10 +23,6 @@ import {
   ChevronDown, ChevronUp, Minimize2, Send, Loader2, Wand2, ListChecks, Trash2, Pencil, History, Undo2, X, Hash,
 } from 'lucide-react';
 
-const authHeaders = () => {
-  const t = localStorage.getItem('nassaq_token');
-  return t ? { Authorization: `Bearer ${t}` } : {};
-};
 
 const SLA_HOURS = { critical: 24, high: 72, medium: 120, low: 240 };
 
@@ -147,7 +142,7 @@ const PROGRESS_STATUS_COLOR = {
 };
 
 export function ProductHubPage() {
-  const { user } = useAuth();
+  const { user, api } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'issues');
@@ -181,17 +176,17 @@ export function ProductHubPage() {
 
   const fetchConfig = useCallback(async () => {
     try {
-      const res = await axios.get('/api/product-hub/config', { headers: authHeaders() });
+      const res = await api.get('/product-hub/config');
       setConfig(res.data);
     } catch (e) { console.error(e); }
-  }, []);
+  }, [api]);
 
   const fetchIssues = useCallback(async () => {
     setLoading(true);
     try {
       const params = { page, limit };
       Object.entries(filters).forEach(([k, v]) => { if (v) params[k] = v; });
-      const res = await axios.get('/api/product-hub/issues', { params, headers: authHeaders() });
+      const res = await api.get('/product-hub/issues', { params });
       setIssues(res.data.issues || []);
       setTotal(res.data.total || 0);
     } catch (e) {
@@ -204,16 +199,16 @@ export function ProductHubPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, filters]);
+  }, [api, page, filters]);
 
   const fetchDashboard = useCallback(async () => {
     setDashLoading(true);
     try {
-      const res = await axios.get('/api/product-hub/dashboard', { headers: authHeaders() });
+      const res = await api.get('/product-hub/dashboard');
       setDashboard(res.data);
     } catch (e) { console.error(e); }
     finally { setDashLoading(false); }
-  }, []);
+  }, [api]);
 
   useEffect(() => { fetchConfig(); }, [fetchConfig]);
   useEffect(() => { fetchIssues(); }, [fetchIssues]);
@@ -416,6 +411,7 @@ export function ProductHubPage() {
           open={showHistory}
           onClose={() => setShowHistory(false)}
           onRefresh={fetchIssues}
+          api={api}
         />
       )}
     </Sidebar>
@@ -633,6 +629,7 @@ function IssuesStatusFlow({ issues, onStatusFilter, activeStatus }) {
 }
 
 function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, userId, onRefresh, isExpanded, onToggleExpand, isSelected, onToggleSelect }) {
+  const { api } = useAuth();
   const typeCfg = TYPE_CONFIG[issue.issue_type] || TYPE_CONFIG.other;
   const TypeIcon = typeCfg.icon;
   const progress = STATUS_PROGRESS[issue.status] || 0;
@@ -661,7 +658,7 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
   useEffect(() => {
     if (isExpanded && !detailData && !detailLoading && !detailError) {
       setDetailLoading(true);
-      axios.get(`/api/product-hub/issues/${issue.id}`, { headers: authHeaders() })
+      api.get(`/product-hub/issues/${issue.id}`)
         .then(res => { setDetailData(res.data); setDetailError(false); })
         .catch(() => { toast.error('فشل في تحميل التفاصيل'); setDetailError(true); })
         .finally(() => setDetailLoading(false));
@@ -670,7 +667,7 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
 
   const refetchDetail = useCallback(async () => {
     try {
-      const res = await axios.get(`/api/product-hub/issues/${issue.id}`, { headers: authHeaders() });
+      const res = await api.get(`/product-hub/issues/${issue.id}`);
       setDetailData(res.data);
     } catch {}
     if (onRefresh) onRefresh();
@@ -680,7 +677,7 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
     if (e) e.stopPropagation();
     setGenerating(true);
     try {
-      await axios.post(`/api/product-hub/issues/${issue.id}/generate-prompt`, {}, { headers: authHeaders() });
+      await api.post(`/product-hub/issues/${issue.id}/generate-prompt`);
       toast.success('تم إنشاء البرومبت');
       await refetchDetail();
     } catch {
@@ -709,9 +706,9 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
     if (!content.trim()) return;
     setSubmittingComment(true);
     try {
-      await axios.post(`/api/product-hub/issues/${issue.id}/comments`, {
+      await api.post(`/product-hub/issues/${issue.id}/comments`, {
         content, comment_type: isMainAdmin ? commentType : 'general', mentions
-      }, { headers: authHeaders() });
+      });
       toast.success('تم إضافة التعليق');
       setCommentType('general');
       await refetchDetail();
@@ -725,7 +722,7 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
 
   const handleEditComment = async (commentId, content, mentions = []) => {
     try {
-      await axios.put(`/api/product-hub/issues/${issue.id}/comments/${commentId}`, { content, mentions }, { headers: authHeaders() });
+      await api.put(`/product-hub/issues/${issue.id}/comments/${commentId}`, { content, mentions });
       toast.success('تم تعديل التعليق');
       await refetchDetail();
     } catch (err) {
@@ -736,7 +733,7 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
 
   const handleDeleteComment = async (commentId) => {
     try {
-      await axios.delete(`/api/product-hub/issues/${issue.id}/comments/${commentId}`, { headers: authHeaders() });
+      await api.delete(`/product-hub/issues/${issue.id}/comments/${commentId}`);
       toast.success('تم حذف التعليق');
       await refetchDetail();
     } catch {
@@ -748,7 +745,7 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
     if (e) e.stopPropagation();
     setReanalyzing(true);
     try {
-      const res = await axios.post(`/api/product-hub/issues/${issue.id}/reanalyze`, {}, { headers: authHeaders() });
+      const res = await api.post(`/product-hub/issues/${issue.id}/reanalyze`);
       if (res.data?.hakim_analysis) {
         setDetailData(prev => prev ? { ...prev, hakim_analysis: res.data.hakim_analysis } : prev);
       }
@@ -1290,7 +1287,7 @@ const ACTION_STATUS_LABELS = {
   undone: { label: 'تم التراجع', color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-200' },
 };
 
-function ActionHistoryPanel({ open, onClose, onRefresh }) {
+function ActionHistoryPanel({ open, onClose, onRefresh, api }) {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(false);
   const [undoing, setUndoing] = useState(null);
@@ -1298,7 +1295,7 @@ function ActionHistoryPanel({ open, onClose, onRefresh }) {
   const fetchHistory = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await axios.get('/api/product-hub/action-history', { headers: authHeaders() });
+      const res = await api.get('/product-hub/action-history');
       setRecords(res.data.records || []);
     } catch {
       toast.error('فشل في تحميل سجل العمليات');
@@ -1314,7 +1311,7 @@ function ActionHistoryPanel({ open, onClose, onRefresh }) {
   const handleUndo = async (actionId) => {
     setUndoing(actionId);
     try {
-      const res = await axios.post(`/api/product-hub/action-history/${actionId}/undo`, {}, { headers: authHeaders() });
+      const res = await api.post(`/product-hub/action-history/${actionId}/undo`);
       toast.success(`تم التراجع — استعادة ${res.data.restored_count} تحدي`);
       fetchHistory();
       if (onRefresh) onRefresh();
@@ -1642,7 +1639,7 @@ function BulkDeleteModal({ open, onClose, selectedCount, onConfirm }) {
 }
 
 function IssuesTableView({ issues, loading, total, page, totalPages, onPageChange, navigate, highlightId, isMainAdmin, onRefresh }) {
-  const { user } = useAuth();
+  const { user, api } = useAuth();
   const isAdmin = user?.role === 'platform_admin';
   const [expandedId, setExpandedId] = useState(null);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -1669,21 +1666,21 @@ function IssuesTableView({ issues, loading, total, page, totalPages, onPageChang
 
   const handleUndoAction = useCallback(async (actionId) => {
     try {
-      const res = await axios.post(`/api/product-hub/action-history/${actionId}/undo`, {}, { headers: authHeaders() });
+      const res = await api.post(`/product-hub/action-history/${actionId}/undo`);
       toast.success(`تم التراجع — استعادة ${res.data.restored_count} تحدي`);
       if (onRefresh) onRefresh();
     } catch (err) {
       const detail = err.response?.data?.detail;
       toast.error(typeof detail === 'object' ? detail.message : (detail || 'فشل في التراجع'));
     }
-  }, [onRefresh]);
+  }, [api, onRefresh]);
 
   const handleBulkEdit = useCallback(async (fields) => {
     try {
-      const res = await axios.post('/api/product-hub/issues/bulk-update', {
+      const res = await api.post('/product-hub/issues/bulk-update', {
         issue_ids: selectedIds,
         ...fields,
-      }, { headers: authHeaders() });
+      });
       const actionId = res.data.action_id;
       toast.success(`تم تحديث ${res.data.modified_count} تحدي`, {
         action: actionId ? { label: 'تراجع', onClick: () => handleUndoAction(actionId) } : undefined,
@@ -1700,9 +1697,9 @@ function IssuesTableView({ issues, loading, total, page, totalPages, onPageChang
 
   const handleBulkDelete = useCallback(async () => {
     try {
-      const res = await axios.post('/api/product-hub/issues/bulk-delete', {
+      const res = await api.post('/product-hub/issues/bulk-delete', {
         issue_ids: selectedIds,
-      }, { headers: authHeaders() });
+      });
       const actionId = res.data.action_id;
       toast.success(`تم حذف ${res.data.deleted_count} تحدي`, {
         action: actionId ? { label: 'تراجع', onClick: () => handleUndoAction(actionId) } : undefined,
@@ -1780,7 +1777,7 @@ function IssuesTableView({ issues, loading, total, page, totalPages, onPageChang
               variant="ghost" size="sm"
               onClick={async () => {
                 try {
-                  await axios.post('/api/product-hub/issues/resequence', {}, { headers: authHeaders() });
+                  await api.post('/product-hub/issues/resequence');
                   toast.success('تم إعادة ترقيم التحديات بنجاح');
                   onRefresh?.();
                 } catch (e) {

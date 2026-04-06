@@ -118,6 +118,13 @@ Each fix report must include: root cause, why it wasn't caught before, what chan
 ## Architecture
 
 - **Frontend**: React (Create React App + CRACO), Tailwind CSS, Radix UI — port 5000
+  - **App.js**: Thin composition file (~30 lines) — providers + BrowserRouter + AppRoutes
+  - **routes/appRoutes.js**: All route definitions with role constants (SCHOOL_ROLES, SCHOOL_TEACHING_ROLES, ALL_AUTHENTICATED_ROLES, PRODUCT_HUB_ROLES)
+  - **components/guards/RouteGuards.js**: ProtectedRoute + PublicRoute with ROLE_DASHBOARDS map
+  - **services/apiClient.js**: API service layer factory `createApiService(api)` with 13 domain modules (auth, schools, students, teachers, classes, subjects, attendance, assessments, notifications, settings, platform, productHub, hakim)
+  - **components/school-settings/DndComponents.jsx**: Extracted DnD components (DraggableClassItem, DroppableTeacherBox, DraggableSubjectItem, DroppableTeacherSubjectBox)
+  - **components/student-profile/ProfileComponents.jsx**: Extracted profile helpers (TALENT_OPTIONS, PLAN_CONFIG, HakimPlanCard, StatCard, EmptyState, DataField)
+  - **AuthContext.js**: fetchUser uses AbortController with 10s timeout; 401 clears token + Arabic error toasts
 - **Backend**: FastAPI (Python), JWT auth — port 8000
   - **server.py**: Thin orchestrator (~50 lines) — app creation only
   - **app/middleware.py**: HTTP middleware stack (PG session, security headers, audit, CORS, rate limit, error handler)
