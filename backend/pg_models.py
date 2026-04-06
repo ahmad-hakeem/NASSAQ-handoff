@@ -2,6 +2,15 @@
 NASSAQ PostgreSQL ORM Models
 All SQLAlchemy table definitions for the NASSAQ platform.
 Maps every MongoDB collection to a PostgreSQL table with proper relationships.
+
+Lazy Loading Strategy:
+  - "selectin": Used for parent/single-object FK references (e.g., Student.school,
+    Class.homeroom_teacher). Batched IN-clause loading avoids N+1 queries.
+  - "noload": Used for large one-to-many collections (e.g., School.teachers,
+    User.audit_logs, ProductIssue.comments). These are never accessed via ORM
+    relationship traversal — all data access goes through pg_adapter.py which
+    queries tables directly. Prevents accidental fan-out of thousands of rows.
+    If a future consumer needs these, use explicit selectinload() at query time.
 """
 import uuid
 from datetime import datetime, timezone
@@ -123,7 +132,7 @@ class School(Base):
     students = relationship("Student", back_populates="school", lazy="noload")
     classes = relationship("Class", back_populates="school", lazy="noload")
     subjects = relationship("Subject", back_populates="school", lazy="noload")
-    settings = relationship("SchoolSettings", back_populates="school", lazy="noload")
+    settings = relationship("SchoolSettings", back_populates="school", lazy="selectin")
 
 
 class Teacher(Base):
