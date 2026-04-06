@@ -186,6 +186,7 @@ api_router = APIRouter(prefix="/api")
 
 from routes.monitoring_routes import router as monitoring_router
 app.include_router(monitoring_router)
+api_router.include_router(monitoring_router)
 
 
 async def _seed_platform_admins():

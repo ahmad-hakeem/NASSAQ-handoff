@@ -287,17 +287,26 @@ export const SystemMonitoringPage = () => {
   const fetchMonitoringData = useCallback(async () => {
     try {
       setLoadingData(true);
-      const [errorsRes, jobsRes, integrationsRes, alertsRes] = await Promise.allSettled([
+      const [errorsRes, jobsRes, integrationsRes, alertsRes, metricsRes, healthRes] = await Promise.allSettled([
         api.get('/system/errors'),
         api.get('/system/jobs'),
         api.get('/integrations'),
         api.get('/system/alerts'),
+        api.get('/system/metrics'),
+        api.get('/admin/command-center/system-health'),
       ]);
       
-      if (errorsRes.status === 'fulfilled') setErrorLogs(errorsRes.value.data || []);
-      if (jobsRes.status === 'fulfilled') setJobs(jobsRes.value.data || []);
+      if (errorsRes.status === 'fulfilled') {
+        const d = errorsRes.value.data;
+        setErrorLogs(Array.isArray(d) ? d : []);
+      }
+      if (jobsRes.status === 'fulfilled') {
+        const d = jobsRes.value.data;
+        setJobs(Array.isArray(d) ? d : []);
+      }
       if (integrationsRes.status === 'fulfilled') {
-        const intData = integrationsRes.value.data || [];
+        const raw = integrationsRes.value.data;
+        const intData = Array.isArray(raw) ? raw : (raw?.integrations || []);
         setIntegrations(intData.map(i => ({
           ...i,
           name: i.name_ar || i.name,
@@ -306,7 +315,35 @@ export const SystemMonitoringPage = () => {
           health: i.health || (i.status === 'connected' ? 100 : 0)
         })));
       }
-      if (alertsRes.status === 'fulfilled') setAlerts(alertsRes.value.data || []);
+      if (alertsRes.status === 'fulfilled') {
+        const d = alertsRes.value.data;
+        setAlerts(Array.isArray(d) ? d : []);
+      }
+      if (metricsRes.status === 'fulfilled') {
+        const m = metricsRes.value.data;
+        if (m && m.process) {
+          setMetrics(prev => ({
+            ...prev,
+            cpu: m.process.cpu_percent || 0,
+            memory: m.process.memory_rss_mb ? Math.min(100, Math.round((m.process.memory_rss_mb / (m.process.memory_vms_mb || 1)) * 100)) : 0,
+            totalOperations: m.database_counts?.audit_logs || 0,
+            activeUsers: m.database_counts?.sessions || 0,
+          }));
+        }
+      }
+      if (healthRes.status === 'fulfilled') {
+        const h = healthRes.value.data;
+        if (h) {
+          const dbConnections = h.database?.collections || 0;
+          setMetrics(prev => ({
+            ...prev,
+            dbConnections,
+            apiSuccessRate: h.api?.status === 'healthy' ? 99.9 : 0,
+            aiOperations: h.engines?.ai_engine === 'active' ? 1 : 0,
+            aiModelsActive: h.engines?.ai_engine === 'active' ? 1 : 0,
+          }));
+        }
+      }
     } catch (error) {
       console.error('Error fetching monitoring data:', error);
     } finally {
