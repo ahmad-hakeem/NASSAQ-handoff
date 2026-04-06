@@ -153,23 +153,57 @@ async def get_platform_users(
     skip: int = 0,
     limit: int = 100,
     role: Optional[str] = None,
-    search: Optional[str] = None
+    search: Optional[str] = None,
+    status: Optional[str] = None,
+    ai_status: Optional[str] = None,
+    account_type: Optional[str] = None,
 ):
     """
-    Get list of all platform users for admin management
+    Get list of all platform users for admin management.
+    Supports server-side filtering by role, status, AI, account_type and search.
     """
     query = {}
     
     if role and role != 'all':
         query["role"] = role
     
+    if status and status != 'all':
+        if status == 'active':
+            query["is_active"] = {"$ne": False}
+        elif status == 'suspended':
+            query["is_active"] = False
+
+    if ai_status and ai_status != 'all':
+        if ai_status == 'enabled':
+            query["ai_enabled"] = True
+        elif ai_status == 'disabled':
+            query["ai_enabled"] = {"$ne": True}
+
+    if account_type and account_type != 'all':
+        if account_type == 'platform':
+            query["role"] = {"$regex": "^platform_", "$options": "i"}
+        elif account_type == 'school':
+            query["role"] = {"$in": ["school_principal", "school_admin", "school_sub_admin", "teacher", "student", "parent", "driver", "gatekeeper"]}
+        elif account_type == 'independent':
+            query["role"] = "independent_teacher"
+        elif account_type == 'testing':
+            query["role"] = {"$regex": "test", "$options": "i"}
+
+    excluded_school_roles = ["school_principal", "school_sub_admin", "school_manager"]
+    if "role" not in query:
+        query["role"] = {"$nin": excluded_school_roles}
+    
     if search:
-        query["$or"] = [
+        search_conditions = [
             {"full_name": {"$regex": search, "$options": "i"}},
             {"email": {"$regex": search, "$options": "i"}},
             {"phone": {"$regex": search, "$options": "i"}},
         ]
-    
+        if "$or" in query:
+            query["$and"] = [{"$or": query.pop("$or")}, {"$or": search_conditions}]
+        else:
+            query["$or"] = search_conditions
+
     users = await db.users.find(
         query,
         {"_id": 0, "password_hash": 0}

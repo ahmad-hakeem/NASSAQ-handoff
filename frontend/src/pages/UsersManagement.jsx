@@ -109,45 +109,18 @@ export default function UsersManagement() {
         params: {
           search: searchQuery || undefined,
           role: selectedRole !== 'all' ? selectedRole : undefined,
+          status: selectedStatus !== 'all' ? selectedStatus : undefined,
+          ai_status: selectedAIStatus !== 'all' ? selectedAIStatus : undefined,
+          account_type: selectedAccountType !== 'all' ? selectedAccountType : undefined,
           skip: (currentPage - 1) * USERS_PER_PAGE,
           limit: USERS_PER_PAGE,
         }
       });
 
-      let fetchedUsers = response.data.users || [];
-      const serverTotal = response.data.total || fetchedUsers.length;
+      const fetchedUsers = response.data.users || [];
+      const serverTotal = response.data.total || 0;
 
-      let filtered = fetchedUsers.filter(u =>
-        u.role !== 'school_principal' &&
-        u.role !== 'school_sub_admin' &&
-        u.role !== 'school_manager' &&
-        !(u.role === 'teacher' && u.tenant_id)
-      );
-
-      if (selectedStatus !== 'all') {
-        filtered = filtered.filter(u => {
-          if (selectedStatus === 'active') return u.is_active !== false;
-          if (selectedStatus === 'suspended') return u.is_active === false;
-          return true;
-        });
-      }
-
-      if (selectedAIStatus !== 'all') {
-        filtered = filtered.filter(u => selectedAIStatus === 'enabled' ? u.ai_enabled : !u.ai_enabled);
-      }
-
-      if (selectedAccountType !== 'all') {
-        filtered = filtered.filter(u => {
-          const role = (u.role || '').toLowerCase();
-          if (selectedAccountType === 'platform') return role.includes('platform') || role === 'platform_admin';
-          if (selectedAccountType === 'school') return role.includes('school') || role === 'teacher' || role === 'student' || role === 'parent' || (u.school_name && !role.includes('platform'));
-          if (selectedAccountType === 'independent') return role === 'independent_teacher';
-          if (selectedAccountType === 'testing') return role === 'testing_account' || role.includes('test');
-          return true;
-        });
-      }
-
-      setUsers(filtered);
+      setUsers(fetchedUsers);
       setTotalUsers(serverTotal);
       setStats(prev => ({ ...prev, totalUsers: serverTotal }));
     } catch (error) {
@@ -159,7 +132,8 @@ export default function UsersManagement() {
     } finally {
       setLoading(false);
     }
-  }, [api, searchQuery, selectedRole, selectedStatus, selectedAIStatus, selectedAccountType, currentPage, isRTL]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api, searchQuery, selectedRole, selectedStatus, selectedAIStatus, selectedAccountType, currentPage]);
 
   const fetchRequestsByType = useCallback(async (requestType) => {
     try {
