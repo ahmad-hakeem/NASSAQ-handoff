@@ -7,6 +7,7 @@ from enum import Enum
 
 class UserRole(str, Enum):
     PLATFORM_ADMIN = "platform_admin"
+    PLATFORM_SUB_ADMIN = "platform_sub_admin"
     PLATFORM_OPERATIONS_MANAGER = "platform_operations_manager"
     PLATFORM_TECHNICAL_ADMIN = "platform_technical_admin"
     PLATFORM_SUPPORT_SPECIALIST = "platform_support_specialist"
@@ -17,6 +18,7 @@ class UserRole(str, Enum):
     SCHOOL_ADMIN = "school_admin"
     SCHOOL_SUB_ADMIN = "school_sub_admin"
     TEACHER = "teacher"
+    INDEPENDENT_TEACHER = "independent_teacher"
     STUDENT = "student"
     PARENT = "parent"
     DRIVER = "driver"

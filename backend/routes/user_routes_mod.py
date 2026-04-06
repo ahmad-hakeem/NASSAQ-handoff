@@ -74,13 +74,15 @@ async def create_platform_user(
     # Validate allowed roles
     allowed_roles = [
         'platform_admin',
+        'platform_sub_admin',
         'platform_operations_manager',
         'platform_technical_admin', 
         'platform_support_specialist',
         'platform_data_analyst',
         'platform_security_officer',
         'testing_account',
-        'teacher'
+        'teacher',
+        'independent_teacher',
     ]
     
     if user_data.role not in allowed_roles:
