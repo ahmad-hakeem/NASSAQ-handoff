@@ -64,7 +64,8 @@ app.add_middleware(RateLimitMiddleware)
 
 @app.middleware("http")
 async def pg_session_middleware(request: Request, call_next):
-    if request.url.path == "/api/ws/notifications" or request.url.path == "/ws":
+    _p = request.url.path
+    if _p.startswith("/api/ws/") or _p == "/ws":
         return await call_next(request)
     async with async_session_factory() as session:
         pg_db.set_session(session)
@@ -84,7 +85,7 @@ async def pg_session_middleware(request: Request, call_next):
 
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
-    if request.url.path == "/api/ws/notifications" or request.url.path == "/ws":
+    if request.url.path.startswith("/api/ws/") or request.url.path == "/ws":
         return await call_next(request)
     response = await call_next(request)
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
@@ -103,7 +104,7 @@ async def audit_log_middleware(request: Request, call_next):
     method = request.method
     path = request.url.path
 
-    if path == "/api/ws/notifications" or path == "/ws":
+    if path.startswith("/api/ws/") or path == "/ws":
         return await call_next(request)
 
     if not _should_audit(method, path):
