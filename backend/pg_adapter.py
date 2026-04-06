@@ -360,20 +360,23 @@ def _orm_to_dict(obj) -> dict:
         return obj
     d = {}
     mapper = inspect(type(obj))
+    has_data_col = False
     data_val = None
     for col in mapper.columns:
         val = getattr(obj, col.key, None)
         if isinstance(val, datetime):
             val = val.isoformat()
-        if col.key == "data" and isinstance(val, dict):
-            data_val = val
+        if col.key == "data":
+            has_data_col = True
+            if isinstance(val, dict):
+                data_val = val
+            d[col.key] = val
         else:
             d[col.key] = val
-    if data_val:
+    if has_data_col and data_val:
         for k, v in data_val.items():
             if k not in d:
                 d[k] = v
-    d["data"] = data_val or {}
     if "id" in d:
         d["_id"] = d["id"]
     return d
