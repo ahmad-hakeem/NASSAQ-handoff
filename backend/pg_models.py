@@ -34,9 +34,9 @@ class User(Base):
     title = Column(String, nullable=True)
     password_hash = Column(String, nullable=False)
     must_change_password = Column(Boolean, default=True)
-    last_password_change = Column(String, nullable=True)
+    last_password_change = Column(DateTime(timezone=True), nullable=True)
     failed_login_attempts = Column(Integer, default=0)
-    locked_until = Column(String, nullable=True)
+    locked_until = Column(DateTime(timezone=True), nullable=True)
     status = Column(String, default="active")
     is_active = Column(Boolean, default=True)
     role = Column(String, nullable=False, index=True)
@@ -53,7 +53,7 @@ class User(Base):
     student_id = Column(String, nullable=True)
     parent_id = Column(String, nullable=True)
     created_by = Column(String, nullable=True)
-    last_login = Column(String, nullable=True)
+    last_login = Column(DateTime(timezone=True), nullable=True)
     region = Column(String, nullable=True)
     city = Column(String, nullable=True)
     educational_department = Column(String, nullable=True)
@@ -61,8 +61,8 @@ class User(Base):
     school_name_en = Column(String, nullable=True)
     permissions = Column(JSONB, default=list)
     notification_settings = Column(JSONB, nullable=True)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
-    updated_at = Column(String, default=lambda: _utcnow().isoformat())
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
     tenant = relationship("School", foreign_keys=[tenant_id], lazy="select")
     audit_logs = relationship("AuditLog", back_populates="user", foreign_keys="AuditLog.performed_by", lazy="select")
@@ -98,8 +98,6 @@ class School(Base):
     student_capacity = Column(Integer, default=0)
     current_students = Column(Integer, default=0)
     current_teachers = Column(Integer, default=0)
-    current_student_count = Column(Integer, default=0)
-    current_teacher_count = Column(Integer, default=0)
     principal_id = Column(String, nullable=True)
     principal_name = Column(String, nullable=True)
     principal_email = Column(String, nullable=True)
@@ -112,14 +110,14 @@ class School(Base):
     setup_completed = Column(Boolean, default=False)
     setup_steps_completed = Column(JSONB, default=list)
     health_score = Column(Float, nullable=True)
-    last_health_check = Column(String, nullable=True)
-    subscription_start = Column(String, nullable=True)
-    subscription_end = Column(String, nullable=True)
-    trial_end = Column(String, nullable=True)
+    last_health_check = Column(DateTime(timezone=True), nullable=True)
+    subscription_start = Column(DateTime(timezone=True), nullable=True)
+    subscription_end = Column(DateTime(timezone=True), nullable=True)
+    trial_end = Column(DateTime(timezone=True), nullable=True)
     website = Column(String, nullable=True)
     created_by = Column(String, nullable=True)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
-    updated_at = Column(String, default=lambda: _utcnow().isoformat())
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
     teachers = relationship("Teacher", back_populates="school", lazy="select")
     students = relationship("Student", back_populates="school", lazy="select")
@@ -147,8 +145,8 @@ class Teacher(Base):
     weekly_periods = Column(Integer, nullable=True)
     max_daily_periods = Column(Integer, nullable=True)
     is_active = Column(Boolean, default=True)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
-    updated_at = Column(String, default=lambda: _utcnow().isoformat())
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
     school = relationship("School", back_populates="teachers", lazy="select")
     assignments = relationship("TeacherAssignment", back_populates="teacher", lazy="select")
@@ -180,8 +178,8 @@ class Student(Base):
     parent_id = Column(String, ForeignKey("parents.id", ondelete="SET NULL"), nullable=True, index=True)
     qr_code = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
-    updated_at = Column(String, default=lambda: _utcnow().isoformat())
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
     school = relationship("School", back_populates="students", lazy="select")
     class_ = relationship("Class", back_populates="students", foreign_keys=[class_id], lazy="select")
@@ -209,8 +207,8 @@ class Parent(Base):
     student_ids = Column(JSONB, default=list)
     school_id = Column(String, ForeignKey("schools.id", ondelete="SET NULL"), nullable=True)
     is_active = Column(Boolean, default=True)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
-    updated_at = Column(String, default=lambda: _utcnow().isoformat())
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
     students = relationship("Student", back_populates="parent", foreign_keys="Student.parent_id", lazy="select")
 
@@ -226,14 +224,13 @@ class Class(Base):
     grade_level = Column(String, nullable=True)
     section = Column(String, nullable=True)
     capacity = Column(Integer, default=30)
-    current_count = Column(Integer, default=0)
     current_students = Column(Integer, default=0)
     homeroom_teacher_id = Column(String, ForeignKey("teachers.id", ondelete="SET NULL"), nullable=True)
     homeroom_teacher_name = Column(String, nullable=True)
     classroom_id = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
-    updated_at = Column(String, default=lambda: _utcnow().isoformat())
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
     school = relationship("School", back_populates="classes", lazy="select")
     homeroom_teacher = relationship("Teacher", foreign_keys=[homeroom_teacher_id], lazy="select")
@@ -255,13 +252,12 @@ class Subject(Base):
     code = Column(String, nullable=True)
     description = Column(Text, nullable=True)
     school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=False, index=True)
-    tenant_id = Column(String, nullable=True)
     category = Column(String, default="core")
     default_periods_per_week = Column(Integer, default=4)
     applicable_stages = Column(JSONB, default=list)
     is_active = Column(Boolean, default=True)
     is_global = Column(Boolean, default=False)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
 
     school = relationship("School", back_populates="subjects", lazy="select")
 
@@ -283,8 +279,8 @@ class TeacherAssignment(Base):
     class_name = Column(String, nullable=True)
     subject_name = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
-    updated_at = Column(String, default=lambda: _utcnow().isoformat())
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
     teacher = relationship("Teacher", back_populates="assignments", lazy="select")
     school_rel = relationship("School", lazy="select")
@@ -310,7 +306,7 @@ class TimeSlot(Base):
     duration_minutes = Column(Integer, default=45)
     is_break = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
 
 
 class Timetable(Base):
@@ -328,8 +324,8 @@ class Timetable(Base):
     status = Column(String, default="draft")
     total_sessions = Column(Integer, default=0)
     version = Column(Integer, default=1)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
-    updated_at = Column(String, default=lambda: _utcnow().isoformat())
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
 
 class TimetableRun(Base):
@@ -345,8 +341,8 @@ class TimetableRun(Base):
     conflicts = Column(JSONB, default=list)
     warnings = Column(JSONB, default=list)
     error_message = Column(Text, nullable=True)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
-    completed_at = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class ScheduleSession(Base):
@@ -371,7 +367,7 @@ class ScheduleSession(Base):
     time_slot_name = Column(String, nullable=True)
     start_time = Column(String, nullable=True)
     end_time = Column(String, nullable=True)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
 
     __table_args__ = (
         Index("idx_pg_sessions_school_sched_day", "school_id", "schedule_id", "day_of_week"),
@@ -388,14 +384,14 @@ class Attendance(Base):
     class_id = Column(String, ForeignKey("classes.id", ondelete="SET NULL"), nullable=True, index=True)
     student_id = Column(String, ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
     session_id = Column(String, nullable=True, index=True)
-    date = Column(String, nullable=False)
+    date = Column(DateTime(timezone=True), nullable=False)
     status = Column(String, nullable=False)
     recorded_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     notes = Column(Text, nullable=True)
     is_excused = Column(Boolean, default=False)
     excuse_reason = Column(String, nullable=True)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
-    updated_at = Column(String, default=lambda: _utcnow().isoformat())
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
     student = relationship("Student", back_populates="attendance_records", lazy="select")
 
@@ -465,11 +461,11 @@ class ProductIssue(Base):
     assigned_team = Column(String, nullable=True, index=True)
     assigned_to = Column(String, nullable=True)
     assigned_to_name = Column(String, nullable=True)
-    assigned_at = Column(String, nullable=True)
+    assigned_at = Column(DateTime(timezone=True), nullable=True)
     hakim_analysis = Column(JSONB, default=dict)
     generated_prompt = Column(Text, nullable=True)
     duplicate_of = Column(String, ForeignKey("product_issues.id", ondelete="SET NULL"), nullable=True)
-    sla_deadline = Column(String, nullable=True)
+    sla_deadline = Column(DateTime(timezone=True), nullable=True)
     sla_status = Column(String, nullable=True)
     sla_warning_emitted = Column(Boolean, default=False)
     feedback_requested = Column(Boolean, default=False)
@@ -478,9 +474,9 @@ class ProductIssue(Base):
     created_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     created_by_name = Column(String, nullable=True)
     created_by_role = Column(String, nullable=True)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
-    updated_at = Column(String, default=lambda: _utcnow().isoformat())
-    resolved_at = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
 
     creator = relationship("User", foreign_keys=[created_by], lazy="select")
     duplicate_source = relationship("ProductIssue", remote_side="ProductIssue.id", foreign_keys=[duplicate_of], lazy="select")
@@ -507,7 +503,7 @@ class IssueComment(Base):
     created_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     created_by_name = Column(String, nullable=True)
     created_by_role = Column(String, nullable=True)
-    timestamp = Column(String, default=lambda: _utcnow().isoformat())
+    timestamp = Column(DateTime(timezone=True), default=_utcnow)
 
     issue = relationship("ProductIssue", back_populates="comments", lazy="select")
     author = relationship("User", foreign_keys=[created_by], lazy="select")
@@ -525,7 +521,7 @@ class IssueDuplicateMap(Base):
     duplicate_of = Column(String, ForeignKey("product_issues.id", ondelete="CASCADE"), nullable=False, index=True)
     confidence = Column(Float, nullable=True)
     detected_by = Column(String, nullable=True)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
 
     __table_args__ = (
         Index("idx_pg_duplicates_pair", "issue_id", "duplicate_of"),
@@ -544,7 +540,7 @@ class IssueActivityLog(Base):
     performed_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     performed_by_name = Column(String, nullable=True)
     details = Column(JSONB, default=dict)
-    timestamp = Column(String, default=lambda: _utcnow().isoformat(), index=True)
+    timestamp = Column(DateTime(timezone=True), default=_utcnow, index=True)
 
     issue = relationship("ProductIssue", back_populates="activity_logs", lazy="select")
 
@@ -564,9 +560,9 @@ class BulkActionHistory(Base):
     new_value = Column(String, nullable=True)
     performed_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     performed_by_name = Column(String, nullable=True)
-    performed_at = Column(String, default=lambda: _utcnow().isoformat(), index=True)
+    performed_at = Column(DateTime(timezone=True), default=_utcnow, index=True)
     is_undone = Column(Boolean, default=False)
-    undone_at = Column(String, nullable=True)
+    undone_at = Column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         Index("idx_pg_bulk_history_user_date", "performed_by", "performed_at"),
@@ -578,7 +574,6 @@ class AuditLog(Base):
 
     id = Column(String, primary_key=True, default=_uuid)
     school_id = Column(String, ForeignKey("schools.id", ondelete="SET NULL"), nullable=True, index=True)
-    tenant_id = Column(String, nullable=True)
     action = Column(String, nullable=False, index=True)
     severity = Column(String, nullable=True, default="low", index=True)
     entity_type = Column(String, nullable=True, index=True)
@@ -597,7 +592,7 @@ class AuditLog(Base):
     ip_address = Column(String, nullable=True)
     user_agent = Column(String, nullable=True)
     status = Column(String, nullable=True, default="success")
-    timestamp = Column(String, default=lambda: _utcnow().isoformat(), index=True)
+    timestamp = Column(DateTime(timezone=True), default=_utcnow, index=True)
 
     user = relationship("User", back_populates="audit_logs", foreign_keys=[performed_by], lazy="select")
 
@@ -619,10 +614,10 @@ class Notification(Base):
     type = Column(String, nullable=True)
     priority = Column(String, default="normal")
     is_read = Column(Boolean, default=False)
-    read_at = Column(String, nullable=True)
+    read_at = Column(DateTime(timezone=True), nullable=True)
     action_url = Column(String, nullable=True)
     extra_data = Column("metadata", JSONB, nullable=True)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
 
     user = relationship("User", back_populates="notifications", foreign_keys=[user_id], lazy="select")
 
@@ -645,12 +640,12 @@ class Assessment(Base):
     type = Column(String, nullable=True)
     max_score = Column(Float, default=100)
     weight = Column(Float, nullable=True)
-    due_date = Column(String, nullable=True)
+    due_date = Column(DateTime(timezone=True), nullable=True)
     status = Column(String, default="draft")
     description = Column(Text, nullable=True)
     grading_criteria = Column(JSONB, default=dict)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
-    updated_at = Column(String, default=lambda: _utcnow().isoformat())
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
     __table_args__ = (
         Index("idx_pg_assessments_school_class", "school_id", "class_id"),
@@ -667,12 +662,12 @@ class AssessmentSubmission(Base):
     grade = Column(String, nullable=True)
     feedback = Column(Text, nullable=True)
     status = Column(String, default="pending")
-    submitted_at = Column(String, nullable=True)
-    graded_at = Column(String, nullable=True)
+    submitted_at = Column(DateTime(timezone=True), nullable=True)
+    graded_at = Column(DateTime(timezone=True), nullable=True)
     graded_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     data = Column(JSONB, default=dict)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
-    updated_at = Column(String, default=lambda: _utcnow().isoformat())
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
     __table_args__ = (
         Index("idx_pg_submissions_assessment_student", "assessment_id", "student_id"),
@@ -692,12 +687,12 @@ class BehaviourRecord(Base):
     severity = Column(String, nullable=True)
     points = Column(Integer, default=0)
     description = Column(Text, nullable=True)
-    date = Column(String, nullable=True)
+    date = Column(DateTime(timezone=True), nullable=True)
     action_taken = Column(Text, nullable=True)
     parent_notified = Column(Boolean, default=False)
     created_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
-    updated_at = Column(String, default=lambda: _utcnow().isoformat())
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
     __table_args__ = (
         Index("idx_pg_behaviour_school_student", "school_id", "student_id"),
@@ -722,8 +717,8 @@ class SchoolSettings(Base):
     notification_preferences = Column(JSONB, default=dict)
     features = Column(JSONB, default=dict)
     custom_settings = Column(JSONB, default=dict)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
-    updated_at = Column(String, default=lambda: _utcnow().isoformat())
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
     school = relationship("School", back_populates="settings", lazy="select")
 
@@ -741,7 +736,7 @@ class RegistrationRequest(Base):
     data = Column(JSONB, default=dict)
     status = Column(String, default="pending", index=True)
     reviewed_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    reviewed_at = Column(String, nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
     review_note = Column(Text, nullable=True)
     source = Column(String, nullable=True)
     payload_snapshot = Column(JSONB, nullable=True)
@@ -749,8 +744,8 @@ class RegistrationRequest(Base):
     linked_entity_id = Column(String, nullable=True)
     review_notes = Column(JSONB, default=list)
     priority_field = Column(String, nullable=True)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
-    updated_at = Column(String, default=lambda: _utcnow().isoformat())
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
     __table_args__ = (
         Index("idx_pg_requests_status_date", "status", "created_at"),
@@ -765,7 +760,7 @@ class TeacherSession(Base):
     teacher_id = Column(String, ForeignKey("teachers.id", ondelete="CASCADE"), nullable=False, index=True)
     class_id = Column(String, ForeignKey("classes.id", ondelete="SET NULL"), nullable=True, index=True)
     subject_id = Column(String, ForeignKey("subjects.id", ondelete="SET NULL"), nullable=True)
-    date = Column(String, nullable=False)
+    date = Column(DateTime(timezone=True), nullable=False)
     start_time = Column(String, nullable=True)
     end_time = Column(String, nullable=True)
     status = Column(String, default="scheduled")
@@ -773,8 +768,8 @@ class TeacherSession(Base):
     objectives = Column(JSONB, default=list)
     notes = Column(Text, nullable=True)
     attendance_taken = Column(Boolean, default=False)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
-    updated_at = Column(String, default=lambda: _utcnow().isoformat())
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
     __table_args__ = (
         Index("idx_pg_tsessions_school_date", "school_id", "date"),
@@ -795,7 +790,7 @@ class HakimInsight(Base):
     data = Column(JSONB, default=dict)
     is_read = Column(Boolean, default=False)
     is_dismissed = Column(Boolean, default=False)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
 
     __table_args__ = (
         Index("idx_pg_hakim_school_date", "school_id", "created_at"),
@@ -809,8 +804,8 @@ class PlatformSettings(Base):
     type = Column(String, nullable=False, unique=True, index=True)
     data = Column(JSONB, default=dict)
     updated_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
-    updated_at = Column(String, default=lambda: _utcnow().isoformat())
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
 
 class AcademicYear(Base):
@@ -820,12 +815,12 @@ class AcademicYear(Base):
     school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=False, index=True)
     name = Column(String, nullable=False)
     name_en = Column(String, nullable=True)
-    start_date = Column(String, nullable=True)
-    end_date = Column(String, nullable=True)
+    start_date = Column(DateTime(timezone=True), nullable=True)
+    end_date = Column(DateTime(timezone=True), nullable=True)
     is_current = Column(Boolean, default=False)
     status = Column(String, default="active")
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
-    updated_at = Column(String, default=lambda: _utcnow().isoformat())
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
 
 class AcademicTerm(Base):
@@ -836,13 +831,13 @@ class AcademicTerm(Base):
     academic_year_id = Column(String, ForeignKey("academic_years.id", ondelete="CASCADE"), nullable=True)
     name = Column(String, nullable=False)
     name_en = Column(String, nullable=True)
-    start_date = Column(String, nullable=True)
-    end_date = Column(String, nullable=True)
+    start_date = Column(DateTime(timezone=True), nullable=True)
+    end_date = Column(DateTime(timezone=True), nullable=True)
     term_number = Column(Integer, default=1)
     is_current = Column(Boolean, default=False)
     status = Column(String, default="active")
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
-    updated_at = Column(String, default=lambda: _utcnow().isoformat())
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
     __table_args__ = (
         Index("idx_pg_terms_school_year", "school_id", "academic_year_id"),
@@ -869,7 +864,7 @@ class LookupOption(Base):
     is_active = Column(Boolean, default=True)
     school_id = Column(String, ForeignKey("schools.id", ondelete="SET NULL"), nullable=True)
     is_global = Column(Boolean, default=True)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
 
     __table_args__ = (
         Index("idx_pg_lookup_category_key", "category", "key"),
@@ -886,9 +881,9 @@ class Message(Base):
     subject = Column(String, nullable=True)
     body = Column(Text, nullable=True)
     is_read = Column(Boolean, default=False)
-    read_at = Column(String, nullable=True)
+    read_at = Column(DateTime(timezone=True), nullable=True)
     extra_data = Column("metadata", JSONB, nullable=True)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
 
     __table_args__ = (
         Index("idx_pg_messages_sender", "sender_id", "created_at"),
@@ -907,7 +902,7 @@ class ApprovalEvent(Base):
     performed_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     notes = Column(Text, nullable=True)
     data = Column(JSONB, nullable=True)
-    timestamp = Column(String, default=lambda: _utcnow().isoformat())
+    timestamp = Column(DateTime(timezone=True), default=_utcnow)
 
     __table_args__ = (
         Index("idx_pg_approval_events_request", "request_id", "timestamp"),
@@ -923,7 +918,7 @@ class SkillType(Base):
     category = Column(String, nullable=True, index=True)
     description = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
 
 
 class StudentSkill(Base):
@@ -939,8 +934,8 @@ class StudentSkill(Base):
     score = Column(Float, nullable=True)
     notes = Column(Text, nullable=True)
     assessed_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    date = Column(String, nullable=True)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
+    date = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
 
 
 class SessionInteraction(Base):
@@ -952,7 +947,7 @@ class SessionInteraction(Base):
     type = Column(String, nullable=False, index=True)
     data = Column(JSONB, default=dict)
     recorded_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    timestamp = Column(String, default=lambda: _utcnow().isoformat())
+    timestamp = Column(DateTime(timezone=True), default=_utcnow)
 
 
 class AIInsight(Base):
@@ -969,7 +964,7 @@ class AIInsight(Base):
     severity = Column(String, default="info")
     is_actionable = Column(Boolean, default=False)
     is_dismissed = Column(Boolean, default=False)
-    created_at = Column(String, default=lambda: _utcnow().isoformat(), index=True)
+    created_at = Column(DateTime(timezone=True), default=_utcnow, index=True)
 
     __table_args__ = (
         Index("idx_pg_ai_insights_school_type", "school_id", "insight_type"),
@@ -991,8 +986,8 @@ class AIIntervention(Base):
     data = Column(JSONB, default=dict)
     created_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     approved_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    created_at = Column(String, default=lambda: _utcnow().isoformat(), index=True)
-    updated_at = Column(String, default=lambda: _utcnow().isoformat())
+    created_at = Column(DateTime(timezone=True), default=_utcnow, index=True)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
     __table_args__ = (
         Index("idx_pg_ai_interventions_school_status", "school_id", "status"),
@@ -1009,7 +1004,7 @@ class SessionNote(Base):
     student_id = Column(String, ForeignKey("students.id", ondelete="SET NULL"), nullable=True, index=True)
     note = Column(Text, nullable=True)
     type = Column(String, default="general")
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
 
 
 class SessionEventLog(Base):
@@ -1020,7 +1015,7 @@ class SessionEventLog(Base):
     event_type = Column(String, nullable=False, index=True)
     data = Column(JSONB, default=dict)
     performed_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    timestamp = Column(String, default=lambda: _utcnow().isoformat())
+    timestamp = Column(DateTime(timezone=True), default=_utcnow)
 
     __table_args__ = (
         Index("idx_pg_session_events_session_time", "session_id", "timestamp"),
@@ -1036,7 +1031,7 @@ class TeacherClassAssignment(Base):
     class_id = Column(String, ForeignKey("classes.id", ondelete="CASCADE"), nullable=False)
     role = Column(String, default="teacher")
     is_active = Column(Boolean, default=True)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
 
     __table_args__ = (
         UniqueConstraint("school_id", "teacher_id", "class_id", name="uq_tca_school_teacher_class"),
@@ -1082,7 +1077,7 @@ class PhysicalClassroom(Base):
     has_ac = Column(Boolean, default=True)
     is_available = Column(Boolean, default=True)
     notes = Column(Text, nullable=True)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
 
 
 class BehaviourType(Base):
@@ -1100,7 +1095,7 @@ class BehaviourType(Base):
     escalation_threshold = Column(Integer, nullable=True)
     is_active = Column(Boolean, default=True)
     is_global = Column(Boolean, default=False)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
 
 
 class TimetableConstraint(Base):
@@ -1116,7 +1111,7 @@ class TimetableConstraint(Base):
     config = Column(JSONB, default=dict)
     is_active = Column(Boolean, default=True)
     is_global = Column(Boolean, default=True)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
 
 
 class ApprovalRequest(Base):
@@ -1133,10 +1128,10 @@ class ApprovalRequest(Base):
     data = Column(JSONB, default=dict)
     result = Column(JSONB, nullable=True)
     reviewed_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    reviewed_at = Column(String, nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
     review_note = Column(Text, nullable=True)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
-    updated_at = Column(String, default=lambda: _utcnow().isoformat())
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
 
 class GenericDocument(Base):
@@ -1145,7 +1140,7 @@ class GenericDocument(Base):
     id = Column(String, primary_key=True, default=_uuid)
     _collection = Column("collection", String, nullable=False, index=True)
     data = Column(JSONB, default=dict)
-    created_at = Column(String, default=lambda: _utcnow().isoformat())
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
 
     __table_args__ = (
         Index("idx_generic_docs_collection", "collection"),

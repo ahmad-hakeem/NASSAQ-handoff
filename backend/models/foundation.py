@@ -306,8 +306,8 @@ class Tenant(BaseModel):
     
     # Capacity
     student_capacity: Optional[int] = None
-    current_student_count: int = 0
-    current_teacher_count: int = 0
+    current_students: int = 0
+    current_teachers: int = 0
     
     # Configuration
     configuration: TenantConfiguration = TenantConfiguration()
@@ -371,7 +371,7 @@ class Section(BaseModel):
     
     name: str                              # أ، ب، ج or A, B, C
     capacity: int = 30
-    current_count: int = 0
+    current_students: int = 0
     
     # Assigned homeroom teacher
     homeroom_teacher_id: Optional[str] = None

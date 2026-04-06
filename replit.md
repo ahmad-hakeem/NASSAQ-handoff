@@ -246,6 +246,13 @@ import { getPose, getPoseForPath, getRandomPoseFromCategory, HERO_POSES } from '
   pg_helpers.py   PostgreSQL helper utilities (generate_id, serialize, issue sequence)
   alembic/        Alembic async migration framework (env.py, versions/)
   alembic.ini     Alembic configuration
+  # Alembic Migration Chain (latest → oldest):
+  # e2f3a4b5c6d7 - Migrate remaining string timestamps to TIMESTAMPTZ (approval_events, approval_requests, etc.)
+  # d1e2f3a4b5c6 - Cleanup redundant schema fields (drop current_student_count/current_teacher_count, current_count, tenant_id on Subject/AuditLog)
+  # c8d9e0f1a2b3 - Migrate string timestamps to DateTime(timezone=True) across all models
+  # b7e52689a1ad - Add indexes and unique constraints
+  # b9e08d69a15a - Add device_info, severity to audit_logs
+  # 6ba4c4afaf24 - Initial schema with FK relationships
   dependencies.py Shared deps: db, auth, engines, helpers, enums
   shared_models.py Shared Pydantic models (UserResponse, TokenResponse, etc.)
   db_indexes.py   Database index management (auto-runs on startup)

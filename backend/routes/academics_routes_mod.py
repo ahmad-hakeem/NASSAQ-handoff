@@ -2291,7 +2291,7 @@ async def create_section(
         "name": data.name,
         "full_name_ar": f"{grade.get('full_name_ar')} ({data.name})",
         "capacity": data.capacity,
-        "current_count": 0,
+        "current_students": 0,
         "homeroom_teacher_id": data.homeroom_teacher_id,
         "classroom_id": data.classroom_id,
         "is_active": True,

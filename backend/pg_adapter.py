@@ -9,11 +9,13 @@ import re
 import logging
 import contextvars
 from datetime import datetime, timezone
+from dateutil import parser as dateutil_parser
 from typing import Any, Dict, List, Optional, Type
 
 from sqlalchemy import select, func, and_, or_, desc, asc, inspect, text, delete as sa_delete, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.types import DateTime
 
 from db import Base, async_session_factory
 
@@ -30,6 +32,23 @@ def _utcnow_iso():
 
 def _gen_id():
     return str(uuid.uuid4())
+
+
+def _coerce_value_for_column(model, key, value):
+    if value is None or model is None:
+        return value
+    mapper = inspect(model)
+    col_obj = mapper.columns.get(key)
+    if col_obj is None:
+        alias = COLUMN_ALIASES.get(key)
+        if alias:
+            col_obj = mapper.columns.get(alias)
+    if col_obj is not None and isinstance(col_obj.type, DateTime) and isinstance(value, str):
+        try:
+            return dateutil_parser.isoparse(value)
+        except (ValueError, TypeError):
+            return value
+    return value
 
 
 COLUMN_ALIASES = {
@@ -182,7 +201,8 @@ def _build_condition(model, key: str, value, is_generic: bool = False):
 
     if isinstance(value, dict):
         return _build_operator_condition(model, key, value, col)
-    return col == value
+    resolved_key = key if key != "_id" else "id"
+    return col == _coerce_value_for_column(model, resolved_key, value)
 
 
 def _build_operator_condition(model, key, ops: dict, col=None):
@@ -190,22 +210,26 @@ def _build_operator_condition(model, key, ops: dict, col=None):
         col = _resolve_column(model, key)
     if col is None:
         return None
+
+    def _cv(v):
+        return _coerce_value_for_column(model, key, v) if model is not None else v
+
     conditions = []
     for op, val in ops.items():
         if op == "$in":
-            conditions.append(col.in_(val))
+            conditions.append(col.in_([_cv(v) for v in val]))
         elif op == "$nin":
-            conditions.append(~col.in_(val))
+            conditions.append(~col.in_([_cv(v) for v in val]))
         elif op == "$ne":
-            conditions.append(col != val)
+            conditions.append(col != _cv(val))
         elif op == "$gte":
-            conditions.append(col >= val)
+            conditions.append(col >= _cv(val))
         elif op == "$gt":
-            conditions.append(col > val)
+            conditions.append(col > _cv(val))
         elif op == "$lt":
-            conditions.append(col < val)
+            conditions.append(col < _cv(val))
         elif op == "$lte":
-            conditions.append(col <= val)
+            conditions.append(col <= _cv(val))
         elif op == "$exists":
             conditions.append(col.isnot(None) if val else col.is_(None))
         elif op == "$regex":
@@ -334,7 +358,10 @@ def _orm_to_dict(obj) -> dict:
     d = {}
     mapper = inspect(type(obj))
     for col in mapper.columns:
-        d[col.key] = getattr(obj, col.key, None)
+        val = getattr(obj, col.key, None)
+        if isinstance(val, datetime):
+            val = val.isoformat()
+        d[col.key] = val
     if "id" in d:
         d["_id"] = d["id"]
     return d
@@ -983,9 +1010,10 @@ class PgCollection:
                 col_keys = {c.key for c in mapper.columns}
                 for k, v in doc.items():
                     if k in col_keys:
-                        setattr(obj, k, v)
+                        setattr(obj, k, _coerce_value_for_column(model, k, v))
                     elif COLUMN_ALIASES.get(k) in col_keys:
-                        setattr(obj, COLUMN_ALIASES[k], v)
+                        alias = COLUMN_ALIASES[k]
+                        setattr(obj, alias, _coerce_value_for_column(model, alias, v))
                 session.add(obj)
 
             await session.flush()
@@ -1120,9 +1148,10 @@ class PgCollection:
                                 setattr(row, parent_key, {parts[1]: v})
                         continue
                     if k in col_keys:
-                        setattr(row, k, v)
+                        setattr(row, k, _coerce_value_for_column(model, k, v))
                     elif COLUMN_ALIASES.get(k) in col_keys:
-                        setattr(row, COLUMN_ALIASES[k], v)
+                        alias = COLUMN_ALIASES[k]
+                        setattr(row, alias, _coerce_value_for_column(model, alias, v))
                 for k in unset_fields:
                     if k == "_id":
                         continue
@@ -1216,9 +1245,10 @@ class PgCollection:
                         if k == "_id":
                             continue
                         if k in col_keys:
-                            setattr(row, k, v)
+                            setattr(row, k, _coerce_value_for_column(model, k, v))
                         elif COLUMN_ALIASES.get(k) in col_keys:
-                            setattr(row, COLUMN_ALIASES[k], v)
+                            alias = COLUMN_ALIASES[k]
+                            setattr(row, alias, _coerce_value_for_column(model, alias, v))
                     for k in unset_fields:
                         if k == "_id":
                             continue

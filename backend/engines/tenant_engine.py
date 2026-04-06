@@ -78,8 +78,8 @@ class TenantEngine:
             "ministry_id": kwargs.get("ministry_id"),
             "license_number": kwargs.get("license_number"),
             "student_capacity": kwargs.get("student_capacity"),
-            "current_student_count": 0,
-            "current_teacher_count": 0,
+            "current_students": 0,
+            "current_teachers": 0,
             "configuration": config.model_dump(),
             "setup_completed": False,
             "setup_steps_completed": [],
@@ -367,9 +367,9 @@ class TenantEngine:
         updates = {}
         
         if student_count is not None:
-            updates["current_student_count"] = student_count
+            updates["current_students"] = student_count
         if teacher_count is not None:
-            updates["current_teacher_count"] = teacher_count
+            updates["current_teachers"] = teacher_count
         
         if updates:
             await self.tenants_collection.update_one(
