@@ -45,7 +45,8 @@ const TimetableStatusBanner = ({
         hour: '2-digit',
         minute: '2-digit'
       });
-    } catch {
+    } catch (e) {
+      console.error('Error formatting date:', e);
       return dateStr;
     }
   };

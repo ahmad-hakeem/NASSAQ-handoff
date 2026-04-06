@@ -141,7 +141,7 @@ export function AcademicStructureContent() {
     try {
       const u = JSON.parse(localStorage.getItem('nassaq_user') || '{}');
       return u.tenant_id || u.school_id || '';
-    } catch { return ''; }
+    } catch (e) { console.error('Error parsing user from localStorage:', e); return ''; }
   };
 
   const handleSaveYear = async () => {
@@ -338,7 +338,7 @@ export function AcademicStructureContent() {
       const s = new Date(start);
       const e = new Date(end);
       return Math.ceil((e - s) / (1000 * 60 * 60 * 24)) + 1;
-    } catch { return 0; }
+    } catch (e) { console.error('Error calculating days between dates:', e); return 0; }
   };
 
   const getWeeksBetween = (start, end) => {

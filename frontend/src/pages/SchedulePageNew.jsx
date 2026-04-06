@@ -396,7 +396,7 @@ export default function SchedulePageNew() {
     let dragData;
     try {
       dragData = JSON.parse(e.dataTransfer.getData('application/nassaq-session'));
-    } catch { return; }
+    } catch (e) { console.error('Error parsing drag data:', e); return; }
 
     const { id: draggedId, day: srcDay, period: srcPeriod } = dragData;
     if (draggedId === targetSession?.id) return;

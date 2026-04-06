@@ -1253,7 +1253,7 @@ export default function UsersClassesManagement() {
           const plainMatch = disposition.match(/filename[^;=\n]*=(['"]?)([^'"\n]*)\1/);
           if (starMatch?.[1]) filename = decodeURIComponent(starMatch[1]);
           else if (plainMatch?.[2]) filename = decodeURIComponent(plainMatch[2]);
-        } catch { }
+        } catch (e) { console.error('Error parsing filename from disposition:', e); }
       }
       link.setAttribute('download', filename);
       document.body.appendChild(link);

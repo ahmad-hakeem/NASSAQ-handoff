@@ -209,7 +209,7 @@ export function useSchoolSettings() {
       const schoolId = user?.tenant_id || user?.school_id || 'SCH-001';
       const res = await api.get(`/time-slots?school_id=${schoolId}`);
       setTimeSlotsCount(Array.isArray(res.data) ? res.data.length : 0);
-    } catch { setTimeSlotsCount(0); }
+    } catch (e) { console.error('Error fetching time slots:', e); setTimeSlotsCount(0); }
   }, [api, user]);
 
   useEffect(() => {
@@ -345,7 +345,7 @@ export function useSchoolSettings() {
       const schoolId = user?.tenant_id || user?.school_id || 'SCH-001';
       const res = await api.get(`/time-slots?school_id=${schoolId}`);
       setTimeSlotsCount(Array.isArray(res.data) ? res.data.length : 0);
-    } catch { setTimeSlotsCount(0); }
+    } catch (e) { console.error('Error fetching time slots:', e); setTimeSlotsCount(0); }
   };
 
   const handleDragStart = (e, subject) => {

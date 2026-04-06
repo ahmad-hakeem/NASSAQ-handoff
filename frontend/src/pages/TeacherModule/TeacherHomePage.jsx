@@ -140,7 +140,8 @@ export default function TeacherHomePage() {
       await api.post(`/session/${activeSessionId}/end`);
       toast.success(isRTL ? 'تم إنهاء الحصة السابقة' : 'Previous session ended');
       await fetchTeacherData();
-    } catch {
+    } catch (e) {
+      console.error('Error ending session:', e);
       nassaqError(isRTL ? 'خطأ في إنهاء الحصة' : 'Error ending session');
     }
   };

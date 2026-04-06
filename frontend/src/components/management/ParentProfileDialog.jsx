@@ -93,7 +93,8 @@ export default function ParentProfileDialog({ open, onClose, parent, onRefresh }
       const res = await api.post('/principal/generate-password');
       setCredForm(p => ({ ...p, new_password: res.data.password }));
       toast.success(isRTL ? 'تم توليد كلمة مرور قوية' : 'Strong password generated');
-    } catch {
+    } catch (e) {
+      console.error('Error generating password:', e);
       nassaqError(isRTL ? 'فشل التوليد' : 'Generation failed');
     }
   };

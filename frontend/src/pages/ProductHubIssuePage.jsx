@@ -135,7 +135,8 @@ export function ProductHubIssuePage() {
       await axios.delete(`/api/product-hub/issues/${issueId}/comments/${commentId}`, { headers: authHeaders() });
       toast.success('تم حذف التعليق');
       fetchIssue();
-    } catch {
+    } catch (e) {
+      console.error('Error deleting comment:', e);
       toast.error('فشل في حذف التعليق');
     }
   };

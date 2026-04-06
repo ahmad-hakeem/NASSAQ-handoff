@@ -104,7 +104,8 @@ const StudentHomeworkPage = () => {
     try {
       const date = new Date(dateStr);
       return date.toLocaleDateString('ar-SA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-    } catch {
+    } catch (e) {
+      console.error('Error formatting date:', e);
       return dateStr;
     }
   };

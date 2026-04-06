@@ -58,7 +58,8 @@ async function fetchStudentsByClasses(api, assignedClasses, maxCount) {
     result.sort((a, b) => a.name.localeCompare(b.name, 'ar'));
     result.forEach((s, i) => { s.seatNumber = i + 1; });
     return result;
-  } catch {
+  } catch (e) {
+    console.error('Error building seat plan:', e);
     return [];
   }
 }
@@ -70,7 +71,7 @@ function formatArabicDate(dateStr) {
     const months = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
     const days = ['الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
     return `${days[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]}`;
-  } catch { return dateStr; }
+  } catch (e) { console.error('Error formatting date:', e); return dateStr; }
 }
 
 const uid = () => `id-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;

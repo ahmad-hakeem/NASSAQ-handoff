@@ -519,7 +519,8 @@ export const PublishTimetableVersionModal = ({
       const res = await apiCall(`/api/principal/timetable/version/${version.id}/empty-slots`);
       setEmptyDetails(res.data);
       setShowEmptyDetails(true);
-    } catch {
+    } catch (e) {
+      console.error('Error fetching empty slot details:', e);
       setEmptyDetails(null);
     } finally {
       setLoadingDetails(false);
@@ -911,7 +912,8 @@ export const TimetableDiagnosticsModal = ({
     if (!dateStr) return '-';
     try {
       return new Date(dateStr).toLocaleString('ar-SA');
-    } catch {
+    } catch (e) {
+      console.error('Error formatting date:', e);
       return dateStr;
     }
   };

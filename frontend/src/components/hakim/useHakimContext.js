@@ -90,7 +90,7 @@ function useHakimContext(options = {}) {
       const msg = res.data?.message;
       if (msg) hakimEngine.fireEvent('ai_analysis_ready', msg);
       return msg;
-    } catch { return null; }
+    } catch (e) { console.error('Error analyzing with Hakim:', e); return null; }
   }, [api, location.pathname, user]);
 
   return {

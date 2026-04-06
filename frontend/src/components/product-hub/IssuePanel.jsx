@@ -174,7 +174,8 @@ export default function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin
       await api.post(`/product-hub/issues/${issue.id}/generate-prompt`);
       toast.success('تم إنشاء البرومبت');
       await refetchDetail();
-    } catch {
+    } catch (e) {
+      console.error('Error generating prompt:', e);
       toast.error('فشل في إنشاء البرومبت');
     } finally {
       setGenerating(false);
@@ -190,7 +191,8 @@ export default function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin
         setCopied(true);
         toast.success('تم نسخ البرومبت');
         setTimeout(() => setCopied(false), 2000);
-      } catch {
+      } catch (e) {
+        console.error('Error copying to clipboard:', e);
         toast.error('فشل في النسخ');
       }
     }
@@ -230,7 +232,8 @@ export default function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin
       await api.delete(`/product-hub/issues/${issue.id}/comments/${commentId}`);
       toast.success('تم حذف التعليق');
       await refetchDetail();
-    } catch {
+    } catch (e) {
+      console.error('Error deleting comment:', e);
       toast.error('فشل في حذف التعليق');
     }
   };
@@ -245,7 +248,8 @@ export default function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin
       }
       toast.success('تم إعادة تحليل حكيم بنجاح');
       if (onRefresh) onRefresh();
-    } catch {
+    } catch (e) {
+      console.error('Error reanalyzing issue:', e);
       toast.error('فشل في إعادة التحليل');
     } finally {
       setReanalyzing(false);

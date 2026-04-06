@@ -161,8 +161,8 @@ export const StudentAssignments = () => {
       let response;
       try {
         response = await api.get('/student-portal/assignments');
-      } catch {
-        // Fallback: get assignments for student
+      } catch (e) {
+        console.error('Student portal API fallback:', e);
         response = await api.get(`/assignments/student/${user?.id}`);
       }
       

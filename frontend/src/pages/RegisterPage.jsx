@@ -81,7 +81,8 @@ export const RegisterPage = () => {
     try {
       const res = await api.get(`/registration-requests/check-school-name?name=${encodeURIComponent(name.trim())}`);
       setSimilarSchools(res.data?.similar_schools || []);
-    } catch {
+    } catch (e) {
+      console.error('Error checking school name:', e);
       setSimilarSchools([]);
     } finally {
       setCheckingSchoolName(false);

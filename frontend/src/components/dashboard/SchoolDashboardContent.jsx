@@ -98,7 +98,7 @@ const SchoolDayProgress = ({ isRTL }) => {
   const dateInfo = useMemo(() => {
     try {
       return formatFullDate(now, isRTL ? 'ar' : 'en');
-    } catch { return null; }
+    } catch (e) { console.error('Error formatting date:', e); return null; }
   }, [now, isRTL]);
 
   const periodLabel = isBreak

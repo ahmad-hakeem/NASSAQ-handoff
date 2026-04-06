@@ -94,7 +94,7 @@ const ParentMeetingRequestPage = () => {
       return new Date(dateStr).toLocaleDateString(isRTL ? 'ar-SA' : 'en-US', {
         year: 'numeric', month: 'short', day: 'numeric'
       });
-    } catch { return dateStr; }
+    } catch (e) { console.error('Error formatting date:', e); return dateStr; }
   };
 
   const getContactLabel = (pref) => {

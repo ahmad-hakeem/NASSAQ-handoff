@@ -270,7 +270,8 @@ export function ProductHubSubmitPage() {
         toast.success('النص واضح ولا يحتاج تحسين');
         triggerHakimReaction('already_good');
       }
-    } catch {
+    } catch (e) {
+      console.error('Error improving text:', e);
       toast.error('فشل تحسين النص');
     } finally {
       setImprovingField(null);

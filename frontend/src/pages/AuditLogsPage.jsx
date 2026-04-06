@@ -85,7 +85,7 @@ const formatTs = (ts, isRTL) => {
       year: 'numeric', month: 'short', day: 'numeric',
       hour: '2-digit', minute: '2-digit', second: '2-digit',
     });
-  } catch { return ts; }
+  } catch (e) { console.error('Error formatting timestamp:', e); return ts; }
 };
 
 /* ─── component ───────────────────────────────────────── */
@@ -137,7 +137,7 @@ const AuditLogsPage = () => {
       setStatsLoading(true);
       const res = await api.get(`/audit/stats?days=${daysFilter}`);
       setStats(res.data);
-    } catch { /* silent */ } finally {
+    } catch (e) { console.error('Error fetching audit stats:', e); } finally {
       setStatsLoading(false);
     }
   }, [api, daysFilter]);
@@ -162,7 +162,7 @@ const AuditLogsPage = () => {
       a.click();
       URL.revokeObjectURL(url);
       toast.success('تم تصدير السجلات بنجاح');
-    } catch { nassaqError('خطأ في التصدير'); }
+    } catch (e) { console.error('Error exporting audit logs:', e); nassaqError('خطأ في التصدير'); }
   };
 
   /* ── stat cards ─────────────────────────────────────── */

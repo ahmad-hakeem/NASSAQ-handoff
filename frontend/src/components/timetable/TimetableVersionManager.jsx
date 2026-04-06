@@ -42,7 +42,8 @@ const VersionItem = ({
         month: 'short',
         day: 'numeric'
       });
-    } catch {
+    } catch (e) {
+      console.error('Error formatting date:', e);
       return dateStr;
     }
   };

@@ -32,7 +32,8 @@ export default function ActionHistoryPanel({ open, onClose, onRefresh, api }) {
     try {
       const res = await api.get('/product-hub/action-history');
       setRecords(res.data.records || []);
-    } catch {
+    } catch (e) {
+      console.error('Error fetching action history:', e);
       toast.error('فشل في تحميل سجل العمليات');
     } finally {
       setLoading(false);

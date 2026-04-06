@@ -31,7 +31,7 @@ const ParentChildrenPage = () => {
         try {
           const res2 = await api.get('/parent-portal/dashboard');
           setChildren(res2.data.children || []);
-        } catch { setChildren([]); }
+        } catch (e2) { console.error('Error fetching children fallback:', e2); setChildren([]); }
       } finally {
         setLoading(false);
       }

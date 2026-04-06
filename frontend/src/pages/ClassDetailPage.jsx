@@ -369,7 +369,8 @@ export default function ClassDetailPage() {
       window.URL.revokeObjectURL(url);
       a.remove();
       toast.success(isRTL ? 'تم تصدير قائمة الفصل' : 'Class list exported');
-    } catch {
+    } catch (e) {
+      console.error('Error exporting class list:', e);
       nassaqError(isRTL ? 'فشل التصدير' : 'Export failed');
     }
   };

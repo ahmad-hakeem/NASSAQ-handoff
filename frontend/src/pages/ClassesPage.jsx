@@ -108,7 +108,8 @@ export const ClassesPage = () => {
         try {
           const schoolsRes = await api.get('/schools');
           setSchools(schoolsRes.data);
-        } catch {
+        } catch (e) {
+          console.error('Error fetching schools list:', e);
           setSchools([]);
         }
       }
