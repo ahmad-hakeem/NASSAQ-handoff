@@ -574,8 +574,9 @@ class AggregationCursor:
         unwind_field = None
         post_match = None
         has_bucket = False
+        count_stage_field = None
 
-        _KNOWN_STAGES = {"$match", "$group", "$sort", "$limit", "$project", "$unwind", "$bucket"}
+        _KNOWN_STAGES = {"$match", "$group", "$sort", "$limit", "$project", "$unwind", "$bucket", "$count"}
         has_unknown_stage = False
 
         seen_group = False
@@ -601,12 +602,14 @@ class AggregationCursor:
                     unwind_field = unwind_field[1:]
             elif "$bucket" in stage:
                 has_bucket = True
+            elif "$count" in stage:
+                count_stage_field = stage["$count"]
             else:
                 stage_keys = set(stage.keys())
                 if not stage_keys.issubset(_KNOWN_STAGES):
                     has_unknown_stage = True
 
-        return match_filter, group_stage, sort_spec, limit_val, project_stage, unwind_field, post_match, has_bucket, has_unknown_stage
+        return match_filter, group_stage, sort_spec, limit_val, project_stage, unwind_field, post_match, has_bucket, has_unknown_stage, count_stage_field
 
     def _can_translate_to_sql(self, group_stage, sort_spec, project_stage, unwind_field, post_match, has_bucket, has_unknown_stage):
         if self._collection is None or self._collection._is_generic:
@@ -742,7 +745,7 @@ class AggregationCursor:
             elif op == "$avg":
                 field = val[1:]
                 col = _resolve_column(model, field)
-                sql_expr = func.avg(col).label(acc_name)
+                sql_expr = func.coalesce(func.avg(col), 0).label(acc_name)
             elif op == "$min":
                 field = val[1:]
                 col = _resolve_column(model, field)
@@ -758,7 +761,7 @@ class AggregationCursor:
 
             select_cols.append(sql_expr)
             acc_info.append(acc_name)
-            if op in ("$sum", "$count"):
+            if op in ("$sum", "$count", "$avg"):
                 acc_zero_default.add(acc_name)
 
         stmt = select(*select_cols).select_from(model)
@@ -845,11 +848,37 @@ class AggregationCursor:
 
         return results
 
+    async def _execute_count_stage(self, match_filter, count_field):
+        if self._collection is None or self._collection._is_generic or self._collection._model is None:
+            return None
+        model = self._collection._model
+        stmt = select(func.count().label("cnt")).select_from(model)
+        conds = _translate_filter(model, match_filter)
+        if conds:
+            stmt = stmt.where(and_(*conds))
+        session, own = await self._collection._get_session()
+        try:
+            result = await session.execute(stmt)
+            row = result.one()
+            return [{count_field: row.cnt}]
+        finally:
+            if own:
+                await session.close()
+
     async def _execute(self):
         if self._results is not None:
             return self._results
 
-        match_filter, group_stage, sort_spec, limit_val, project_stage, unwind_field, post_match, has_bucket, has_unknown_stage = self._parse_pipeline()
+        match_filter, group_stage, sort_spec, limit_val, project_stage, unwind_field, post_match, has_bucket, has_unknown_stage, count_stage_field = self._parse_pipeline()
+
+        if count_stage_field and not group_stage and not unwind_field and not has_bucket and not has_unknown_stage:
+            try:
+                result = await self._execute_count_stage(match_filter, count_stage_field)
+                if result is not None:
+                    self._results = result
+                    return self._results
+            except Exception as e:
+                logger.warning(f"SQL $count stage failed for {self._collection._name}, falling back to in-memory: {e}")
 
         if group_stage and self._can_translate_to_sql(group_stage, sort_spec, project_stage, unwind_field, post_match, has_bucket, has_unknown_stage):
             try:
@@ -866,6 +895,9 @@ class AggregationCursor:
 
         if post_match:
             all_docs = [d for d in all_docs if self._doc_matches(d, post_match)]
+
+        if count_stage_field:
+            all_docs = [{count_stage_field: len(all_docs)}]
 
         if sort_spec:
             for field, direction in reversed(list(sort_spec.items())):
