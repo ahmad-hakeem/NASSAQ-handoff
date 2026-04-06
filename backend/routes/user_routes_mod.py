@@ -190,9 +190,8 @@ async def get_platform_users(
         elif account_type == 'testing':
             role_conditions.append({"role": {"$regex": "test", "$options": "i"}})
 
-    excluded_school_roles = ["school_principal", "school_sub_admin", "school_manager"]
     if not role_conditions:
-        query["role"] = {"$nin": excluded_school_roles}
+        pass
     elif len(role_conditions) == 1:
         query.update(role_conditions[0])
     else:
@@ -415,7 +414,14 @@ async def update_user(
     
     await db.users.update_one({"id": user_id}, {"$set": updates})
     
-    # Audit log
+    field_changes = {}
+    for field, new_val in updates.items():
+        if field == "updated_at":
+            continue
+        old_val = user.get(field)
+        if old_val != new_val:
+            field_changes[field] = {"old": old_val, "new": new_val}
+
     audit_log = {
         "id": str(uuid.uuid4()),
         "action": "user_updated",
@@ -424,13 +430,13 @@ async def update_user(
         "target_type": "user",
         "target_id": user_id,
         "target_name": user.get("full_name", ""),
-        "changes": updates,
+        "changes": field_changes,
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
-    if user_data.role and user_data.role != old_role:
+    if "role" in field_changes:
         audit_log["action"] = "user_role_changed"
-        audit_log["old_role"] = old_role
-        audit_log["new_role"] = user_data.role
+        audit_log["old_role"] = field_changes["role"]["old"]
+        audit_log["new_role"] = field_changes["role"]["new"]
     await db.audit_logs.insert_one(audit_log)
     
     return {"message": "تم تحديث البيانات بنجاح"}
