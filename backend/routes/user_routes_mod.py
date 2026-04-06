@@ -164,9 +164,6 @@ async def get_platform_users(
     """
     query = {}
     
-    if role and role != 'all':
-        query["role"] = role
-    
     if status and status != 'all':
         if status == 'active':
             query["is_active"] = {"$ne": False}
@@ -179,19 +176,27 @@ async def get_platform_users(
         elif ai_status == 'disabled':
             query["ai_enabled"] = {"$ne": True}
 
+    role_conditions = []
+    if role and role != 'all':
+        role_conditions.append({"role": role})
+
     if account_type and account_type != 'all':
         if account_type == 'platform':
-            query["role"] = {"$regex": "^platform_", "$options": "i"}
+            role_conditions.append({"role": {"$regex": "^platform_", "$options": "i"}})
         elif account_type == 'school':
-            query["role"] = {"$in": ["school_principal", "school_admin", "school_sub_admin", "teacher", "student", "parent", "driver", "gatekeeper"]}
+            role_conditions.append({"role": {"$in": ["school_principal", "school_admin", "school_sub_admin", "teacher", "student", "parent", "driver", "gatekeeper"]}})
         elif account_type == 'independent':
-            query["role"] = "independent_teacher"
+            role_conditions.append({"role": "independent_teacher"})
         elif account_type == 'testing':
-            query["role"] = {"$regex": "test", "$options": "i"}
+            role_conditions.append({"role": {"$regex": "test", "$options": "i"}})
 
     excluded_school_roles = ["school_principal", "school_sub_admin", "school_manager"]
-    if "role" not in query:
+    if not role_conditions:
         query["role"] = {"$nin": excluded_school_roles}
+    elif len(role_conditions) == 1:
+        query.update(role_conditions[0])
+    else:
+        query.setdefault("$and", []).extend(role_conditions)
     
     if search:
         search_conditions = [
@@ -300,10 +305,28 @@ async def update_user_status(
         if user.get("tenant_id") != current_user.get("tenant_id"):
             raise HTTPException(status_code=403, detail="غير مصرح لك بتعديل بيانات هذا المستخدم")
 
+    old_status = user.get("is_active", True)
     await db.users.update_one(
         {"id": user_id},
         {"$set": {"is_active": status_data.is_active, "updated_at": datetime.now(timezone.utc).isoformat()}}
     )
+
+    audit_log = {
+        "id": str(uuid.uuid4()),
+        "action": "user_activated" if status_data.is_active else "user_suspended",
+        "action_by": current_user["id"],
+        "action_by_name": current_user.get("full_name", ""),
+        "target_type": "user",
+        "target_id": user_id,
+        "target_name": user.get("full_name", ""),
+        "details": {
+            "old_status": "active" if old_status else "suspended",
+            "new_status": "active" if status_data.is_active else "suspended",
+        },
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+    await db.audit_logs.insert_one(audit_log)
+
     return {"message": "تم تحديث حالة المستخدم"}
 
 
@@ -339,6 +362,8 @@ class UserUpdateRequest(BaseModel):
     educational_department: Optional[str] = None
     avatar_url: Optional[str] = None
     role: Optional[str] = None
+    tenant_id: Optional[str] = None
+    school_name: Optional[str] = None
 
 @router.put("/users/{user_id}")
 @router.patch("/users/{user_id}")
@@ -377,6 +402,10 @@ async def update_user(
         updates["educational_department"] = user_data.educational_department
     if user_data.avatar_url:
         updates["avatar_url"] = user_data.avatar_url
+    if user_data.tenant_id is not None:
+        updates["tenant_id"] = user_data.tenant_id if user_data.tenant_id else None
+    if user_data.school_name is not None:
+        updates["school_name"] = user_data.school_name if user_data.school_name else None
     if user_data.role:
         valid_roles = [r.value for r in UserRole]
         if user_data.role not in valid_roles:

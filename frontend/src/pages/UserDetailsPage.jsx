@@ -1136,6 +1136,27 @@ ${API_URL}/login
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* School/Tenant Assignment */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>معرّف المدرسة (tenant_id)</Label>
+                  <Input 
+                    value={editForm.tenant_id || ''}
+                    onChange={(e) => setEditForm({ ...editForm, tenant_id: e.target.value })}
+                    placeholder="أدخل معرّف المدرسة"
+                    dir="ltr"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>اسم المدرسة</Label>
+                  <Input 
+                    value={editForm.school_name || ''}
+                    onChange={(e) => setEditForm({ ...editForm, school_name: e.target.value })}
+                    placeholder="أدخل اسم المدرسة"
+                  />
+                </div>
+              </div>
               
               {/* Submit */}
               <div className="flex gap-3 pt-4">
