@@ -39,11 +39,10 @@ def install_query_timing(sync_engine: Engine) -> None:
         start = stack.pop()
         elapsed_ms = (time.perf_counter() - start) * 1000
         if elapsed_ms >= SLOW_QUERY_THRESHOLD_MS:
-            stmt_preview = (statement[:500] + "…") if len(statement) > 500 else statement
             logger.warning(
                 "Slow query detected (%.1f ms): %s | params=%s",
                 elapsed_ms,
-                stmt_preview,
+                statement,
                 _safe_params(parameters),
             )
 

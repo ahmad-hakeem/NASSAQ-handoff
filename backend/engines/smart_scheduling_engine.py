@@ -1852,12 +1852,9 @@ class SmartSchedulingEngine:
             w = sc.get("weight", 3) / 10.0
             prev_period = period - 1
             if prev_period > 0 and prev_period in grid.get(day, {}):
-                if class_id not in grid[day].get(prev_period, {}):
-                    pass
-                else:
-                    prev_session = grid[day][prev_period].get(class_id)
-                    if prev_session and prev_session.subject_id != subject_id:
-                        score += 2 * w
+                prev_session = grid[day].get(prev_period, {}).get(class_id)
+                if prev_session and prev_session.subject_id != subject_id:
+                    score += 2 * w
 
         sc = sc_map.get("pe_appropriate_times")
         if sc:
@@ -1867,7 +1864,7 @@ class SmartSchedulingEngine:
 
         sc = sc_map.get("minimize_teacher_travel")
         if sc:
-            pass
+            logger.debug("minimize_teacher_travel: not yet implemented — requires room assignment data")
 
         return score
 

@@ -60,6 +60,22 @@ async def health_check():
     except Exception as e:
         logger.debug(f"Pool stats unavailable: {e}")
 
+    process_stats = {}
+    try:
+        import psutil
+        proc = psutil.Process()
+        mem = proc.memory_info()
+        process_stats = {
+            "cpu_percent": proc.cpu_percent(interval=None),
+            "memory_rss_mb": round(mem.rss / 1024 / 1024, 1),
+            "threads": proc.num_threads(),
+            "open_fds": proc.num_fds() if hasattr(proc, "num_fds") else None,
+        }
+    except Exception as e:
+        logger.debug(f"Process stats unavailable: {e}")
+
+    active_connections = pool_stats.get("checked_out", 0)
+
     uptime_seconds = round(time.time() - _start_time)
     status = "healthy" if db_ok else "degraded"
 
@@ -70,8 +86,10 @@ async def health_check():
         "database": {
             "connected": db_ok,
             "latency_ms": db_latency_ms,
+            "active_connections": active_connections,
             "pool": pool_stats,
         },
+        "process": process_stats,
         "version": "3.0.0",
     }
 
