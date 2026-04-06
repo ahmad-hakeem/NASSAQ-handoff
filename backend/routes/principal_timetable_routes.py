@@ -1373,7 +1373,9 @@ async def get_previous_timetables(
 async def view_previous_timetable(
     timetable_id: str,
     x_school_context: str = Header(default=None, alias="X-School-Context"),
-    authorization: str = Header(default=None)
+    authorization: str = Header(default=None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(1000, ge=1, le=1000),
 ):
     school_id = await get_school_id(x_school_context, authorization)
     if not school_id:
@@ -1386,6 +1388,10 @@ async def view_previous_timetable(
     )
 
     if snapshot:
+        all_sessions = snapshot.get("sessions", [])
+        total_sessions = len(all_sessions)
+        skip = (page - 1) * page_size
+        paged_sessions = all_sessions[skip:skip + page_size]
         return {
             "success": True,
             "source": "snapshot",
@@ -1404,12 +1410,15 @@ async def view_previous_timetable(
                 "classes": snapshot.get("classes", []),
                 "teachers": snapshot.get("teachers", []),
                 "subjects": snapshot.get("subjects", []),
-                "sessions": snapshot.get("sessions", []),
-                "sessions_count": snapshot.get("sessions_count", 0),
+                "sessions": paged_sessions,
+                "sessions_count": total_sessions,
                 "classes_count": snapshot.get("classes_count", 0),
                 "teachers_count": snapshot.get("teachers_count", 0),
                 "subjects_count": snapshot.get("subjects_count", 0),
                 "coverage_percent": snapshot.get("coverage_percent", 0),
+                "page": page,
+                "page_size": page_size,
+                "total_pages": (total_sessions + page_size - 1) // page_size,
             }
         }
 
@@ -1417,9 +1426,11 @@ async def view_previous_timetable(
     if not tt:
         raise HTTPException(status_code=404, detail="الجدول غير موجود")
 
+    total_sessions = await db.timetable_sessions.count_documents({"timetable_id": timetable_id})
+    skip = (page - 1) * page_size
     sessions = await db.timetable_sessions.find(
         {"timetable_id": timetable_id}, {"_id": 0}
-    ).to_list(50000)
+    ).skip(skip).limit(page_size).to_list(page_size)
 
     school_settings_doc = await db.school_settings.find_one({"school_id": school_id})
     w_days = _resolve_working_days(school_settings_doc.get("working_days") if school_settings_doc else None)
@@ -1450,10 +1461,13 @@ async def view_previous_timetable(
             "teachers": teachers_data,
             "subjects": subjects_data,
             "sessions": sessions,
-            "sessions_count": len(sessions),
+            "sessions_count": total_sessions,
             "classes_count": len(classes_data),
             "teachers_count": len(teachers_data),
             "subjects_count": len(subjects_data),
+            "page": page,
+            "page_size": page_size,
+            "total_pages": (total_sessions + page_size - 1) // page_size,
         }
     }
 
