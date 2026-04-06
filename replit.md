@@ -69,14 +69,10 @@ Each fix report must include: root cause, why it wasn't caught before, what chan
 
 ### Deployment Safety Policy (PERMANENT & NON-NEGOTIABLE)
 - **Core Rule**: Production data must NEVER be lost, overwritten, or replaced during deployment
-- **Database**: Supabase external PostgreSQL (session pooler, port 6543) — primary database for dev and production
-  - `SUPABASE_DATABASE_URL` takes priority over `DATABASE_URL` (Replit helium fallback)
-  - Password auto-encoded in `db.py` and `alembic/env.py` (handles `@`/`!` in passwords)
-  - Supabase pooler requires `statement_cache_size=0`, `prepared_statement_cache_size=0`, and `prepared_statement_name_func` with UUID-based unique names
-  - Pool: `pool_size=15, max_overflow=25, pool_recycle=300, pool_use_lifo=True, pool_pre_ping=True` — NO NullPool (causes ~500ms per query)
-  - Each Supabase query ≈ 300-500ms round-trip (EU region); use in-memory TTL caching for heavy endpoints
+- **Database**: Replit co-located PostgreSQL via `DATABASE_URL` — <1ms latency (migrated from Supabase EU ~291ms)
+  - Pool: `pool_size=15, max_overflow=25, pool_recycle=300, pool_use_lifo=True, pool_pre_ping=True`
+  - 94 FK constraints, 5 unique constraints, 222 indexes enforced at DB level
   - **In-memory caching**: `/public/stats` (60s TTL in `school_routes_mod.py`), `/admin/command-center/stats` (30s TTL in `dashboard_routes_mod.py`)
-  - `asyncio.gather` on same session serializes (single connection) — NOT parallel; fresh sessions per-query for true parallelism is counterproductive (SSL handshake overhead)
 - **Seed Scripts**: BLOCKED in production and staging (`config.seed_allowed()` returns `False`)
 - **Double Guard**: Even if seeds allowed, they are SKIPPED when database already has data (user count > 0)
 - **Replit DB Guard**: If DATABASE_URL points to Replit's managed DB (helium), seeds blocked unless ENVIRONMENT is explicitly "development"
@@ -353,8 +349,7 @@ The scheduling engine uses contiguous-fill scoring to distribute sessions evenly
 - `DANGEROUSLY_DISABLE_HOST_CHECK=true` — Required for Replit proxy
 
 ### Backend (`backend/.env`)
-- `SUPABASE_DATABASE_URL` — Supabase PostgreSQL connection string (primary, takes priority)
-- `DATABASE_URL` — Replit PostgreSQL connection string (fallback)
+- `DATABASE_URL` — Replit co-located PostgreSQL connection string (managed by Replit)
 - `JWT_SECRET_KEY` — JWT signing key
 - `CORS_ORIGINS=*` — CORS allowed origins
 

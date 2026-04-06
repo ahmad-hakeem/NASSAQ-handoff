@@ -19,7 +19,7 @@ DESTRUCTIVE_MIGRATION_OPS = {"drop", "delete", "rename", "remove", "truncate", "
 
 
 class NassaqConfig:
-    DATABASE_URL: str = os.environ.get("SUPABASE_DATABASE_URL", "") or os.environ.get("DATABASE_URL", "")
+    DATABASE_URL: str = os.environ.get("DATABASE_URL", "")
     JWT_SECRET: str = os.environ.get("JWT_SECRET_KEY", "")
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRY_HOURS: int = int(os.environ.get("JWT_EXPIRY_HOURS", "24"))
@@ -52,12 +52,13 @@ class NassaqConfig:
 
     @classmethod
     def seed_allowed(cls) -> bool:
-        if os.environ.get("DATABASE_URL", ""):
-            db_url = os.environ["DATABASE_URL"]
-            if "helium" in db_url or "replit" in db_url.lower():
-                if cls.ENVIRONMENT not in ("development", "dev"):
-                    return False
-        return cls.ENVIRONMENT not in SEED_BLOCKED_ENVIRONMENTS
+        if cls.ENVIRONMENT in SEED_BLOCKED_ENVIRONMENTS:
+            return False
+        db_url = os.environ.get("DATABASE_URL", "")
+        if db_url and ("helium" in db_url or "replit" in db_url.lower()):
+            if cls.ENVIRONMENT not in ("development", "dev"):
+                return False
+        return True
 
     @classmethod
     def destructive_ops_allowed(cls) -> bool:

@@ -65,8 +65,8 @@ class User(Base):
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
     tenant = relationship("School", foreign_keys=[tenant_id], lazy="selectin")
-    audit_logs = relationship("AuditLog", back_populates="user", foreign_keys="AuditLog.performed_by", lazy="select")
-    notifications = relationship("Notification", back_populates="user", foreign_keys="Notification.user_id", lazy="select")
+    audit_logs = relationship("AuditLog", back_populates="user", foreign_keys="AuditLog.performed_by", lazy="noload")
+    notifications = relationship("Notification", back_populates="user", foreign_keys="Notification.user_id", lazy="noload")
 
     __table_args__ = (
         Index("idx_pg_users_role_tenant", "role", "tenant_id"),
@@ -119,11 +119,11 @@ class School(Base):
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
-    teachers = relationship("Teacher", back_populates="school", lazy="select")
-    students = relationship("Student", back_populates="school", lazy="select")
-    classes = relationship("Class", back_populates="school", lazy="select")
-    subjects = relationship("Subject", back_populates="school", lazy="select")
-    settings = relationship("SchoolSettings", back_populates="school", lazy="select")
+    teachers = relationship("Teacher", back_populates="school", lazy="noload")
+    students = relationship("Student", back_populates="school", lazy="noload")
+    classes = relationship("Class", back_populates="school", lazy="noload")
+    subjects = relationship("Subject", back_populates="school", lazy="noload")
+    settings = relationship("SchoolSettings", back_populates="school", lazy="noload")
 
 
 class Teacher(Base):
@@ -183,8 +183,8 @@ class Student(Base):
 
     school = relationship("School", back_populates="students", lazy="selectin")
     class_ = relationship("Class", back_populates="students", foreign_keys=[class_id], lazy="selectin")
-    parent = relationship("Parent", back_populates="students", foreign_keys=[parent_id], lazy="select")
-    attendance_records = relationship("Attendance", back_populates="student", lazy="select")
+    parent = relationship("Parent", back_populates="students", foreign_keys=[parent_id], lazy="selectin")
+    attendance_records = relationship("Attendance", back_populates="student", lazy="noload")
 
     __table_args__ = (
         Index("idx_pg_students_school_class", "school_id", "class_id"),
@@ -210,7 +210,7 @@ class Parent(Base):
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
-    students = relationship("Student", back_populates="parent", foreign_keys="Student.parent_id", lazy="select")
+    students = relationship("Student", back_populates="parent", foreign_keys="Student.parent_id", lazy="noload")
 
 
 class Class(Base):
@@ -232,9 +232,9 @@ class Class(Base):
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
-    school = relationship("School", back_populates="classes", lazy="select")
-    homeroom_teacher = relationship("Teacher", foreign_keys=[homeroom_teacher_id], lazy="select")
-    students = relationship("Student", back_populates="class_", foreign_keys="Student.class_id", lazy="select")
+    school = relationship("School", back_populates="classes", lazy="selectin")
+    homeroom_teacher = relationship("Teacher", foreign_keys=[homeroom_teacher_id], lazy="selectin")
+    students = relationship("Student", back_populates="class_", foreign_keys="Student.class_id", lazy="noload")
 
     __table_args__ = (
         Index("idx_pg_classes_school_active", "school_id", "is_active"),
@@ -260,7 +260,7 @@ class Subject(Base):
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
-    school = relationship("School", back_populates="subjects", lazy="select")
+    school = relationship("School", back_populates="subjects", lazy="selectin")
 
 
 class TeacherAssignment(Base):
@@ -283,7 +283,7 @@ class TeacherAssignment(Base):
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
-    teacher = relationship("Teacher", back_populates="assignments", lazy="select")
+    teacher = relationship("Teacher", back_populates="assignments", lazy="selectin")
     school_rel = relationship("School", lazy="selectin")
     class_rel = relationship("Class", lazy="selectin")
     subject_rel = relationship("Subject", lazy="selectin")
@@ -399,7 +399,7 @@ class Attendance(Base):
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
-    student = relationship("Student", back_populates="attendance_records", lazy="select")
+    student = relationship("Student", back_populates="attendance_records", lazy="selectin")
 
     __table_args__ = (
         Index("idx_pg_attendance_school_date", "school_id", "date"),
@@ -483,10 +483,10 @@ class ProductIssue(Base):
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
     resolved_at = Column(DateTime(timezone=True), nullable=True)
 
-    creator = relationship("User", foreign_keys=[created_by], lazy="select")
-    duplicate_source = relationship("ProductIssue", remote_side="ProductIssue.id", foreign_keys=[duplicate_of], lazy="select")
-    comments = relationship("IssueComment", back_populates="issue", lazy="select")
-    activity_logs = relationship("IssueActivityLog", back_populates="issue", lazy="select")
+    creator = relationship("User", foreign_keys=[created_by], lazy="selectin")
+    duplicate_source = relationship("ProductIssue", remote_side="ProductIssue.id", foreign_keys=[duplicate_of], lazy="noload")
+    comments = relationship("IssueComment", back_populates="issue", lazy="noload")
+    activity_logs = relationship("IssueActivityLog", back_populates="issue", lazy="noload")
 
     __table_args__ = (
         Index("idx_pg_issues_active_status_date", "is_deleted", "status", "created_at"),
@@ -510,8 +510,8 @@ class IssueComment(Base):
     created_by_role = Column(String, nullable=True)
     timestamp = Column(DateTime(timezone=True), default=_utcnow)
 
-    issue = relationship("ProductIssue", back_populates="comments", lazy="select")
-    author = relationship("User", foreign_keys=[created_by], lazy="select")
+    issue = relationship("ProductIssue", back_populates="comments", lazy="selectin")
+    author = relationship("User", foreign_keys=[created_by], lazy="selectin")
 
     __table_args__ = (
         Index("idx_pg_comments_issue_time", "issue_id", "timestamp"),
@@ -547,7 +547,7 @@ class IssueActivityLog(Base):
     details = Column(JSONB, default=dict)
     timestamp = Column(DateTime(timezone=True), default=_utcnow, index=True)
 
-    issue = relationship("ProductIssue", back_populates="activity_logs", lazy="select")
+    issue = relationship("ProductIssue", back_populates="activity_logs", lazy="selectin")
 
     __table_args__ = (
         Index("idx_pg_activity_issue_time", "issue_id", "timestamp"),
@@ -599,7 +599,7 @@ class AuditLog(Base):
     status = Column(String, nullable=True, default="success")
     timestamp = Column(DateTime(timezone=True), default=_utcnow, index=True)
 
-    user = relationship("User", back_populates="audit_logs", foreign_keys=[performed_by], lazy="select")
+    user = relationship("User", back_populates="audit_logs", foreign_keys=[performed_by], lazy="selectin")
 
     __table_args__ = (
         Index("idx_pg_audit_school_time", "school_id", "timestamp"),
@@ -624,7 +624,7 @@ class Notification(Base):
     extra_data = Column("metadata", JSONB, nullable=True)
     created_at = Column(DateTime(timezone=True), default=_utcnow)
 
-    user = relationship("User", back_populates="notifications", foreign_keys=[user_id], lazy="select")
+    user = relationship("User", back_populates="notifications", foreign_keys=[user_id], lazy="selectin")
 
     __table_args__ = (
         Index("idx_pg_notifications_user_read_date", "user_id", "is_read", "created_at"),
@@ -725,7 +725,7 @@ class SchoolSettings(Base):
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
-    school = relationship("School", back_populates="settings", lazy="select")
+    school = relationship("School", back_populates="settings", lazy="selectin")
 
 
 class RegistrationRequest(Base):
