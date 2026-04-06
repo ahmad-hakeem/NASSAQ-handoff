@@ -45,10 +45,14 @@ from engines.session_engine import TeacherSessionEngine, session_router
 from db import async_session_factory
 from pg_adapter import pg_db
 
+_is_production = os.environ.get("ENVIRONMENT", "development") == "production"
 app = FastAPI(
     title="NASSAQ - نَسَّق",
     description="نظام إدارة المدارس الذكي المتعدد المستأجرين",
-    version="3.0.0"
+    version="3.0.0",
+    docs_url=None if _is_production else "/docs",
+    redoc_url=None if _is_production else "/redoc",
+    openapi_url=None if _is_production else "/openapi.json",
 )
 
 from middleware.rate_limiter import RateLimitMiddleware
