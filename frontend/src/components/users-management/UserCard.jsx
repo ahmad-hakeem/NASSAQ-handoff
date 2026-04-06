@@ -1,7 +1,7 @@
 import React from 'react';
 import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
-import { Avatar, AvatarFallback } from '../ui/avatar';
+import { Avatar, AvatarImage, AvatarFallback } from '../ui/avatar';
 import { Button } from '../ui/button';
 import { ExternalLink, Lock, Unlock, Clock } from 'lucide-react';
 import { getRoleInfo, formatTimeAgo } from './constants';
@@ -15,6 +15,9 @@ export default function UserCard({ user, onView, onSuspend }) {
       <CardContent className="p-4">
         <div className="flex items-center gap-3 flex-row-reverse mb-3">
           <Avatar className="h-12 w-12 border-2 flex-shrink-0">
+            {user.avatar_url && (
+              <AvatarImage src={user.avatar_url} alt={user.full_name} className="object-cover" />
+            )}
             <AvatarFallback className={`${roleInfo.color} text-white text-lg`}>
               {user.full_name?.charAt(0)}
             </AvatarFallback>
