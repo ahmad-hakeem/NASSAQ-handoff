@@ -31,6 +31,13 @@ import {
   SheetDescription,
 } from '../components/ui/sheet';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select';
+import {
   ArrowLeft,
   User,
   Mail,
@@ -295,8 +302,8 @@ export default function UserDetailsPage() {
       setUser(prev => ({ ...prev, is_active: !prev.is_active }));
       toast.success(user.is_active ? 'تم تعليق الحساب بنجاح' : 'تم تفعيل الحساب بنجاح');
     } catch (error) {
-      setUser(prev => ({ ...prev, is_active: !prev.is_active }));
-      toast.success(user.is_active ? 'تم تعليق الحساب بنجاح' : 'تم تفعيل الحساب بنجاح');
+      console.error('Error toggling user status:', error);
+      toast.error(error?.response?.data?.detail || 'فشل في تغيير حالة الحساب. الرجاء المحاولة مرة أخرى.');
     }
     setShowSuspendDialog(false);
   };
@@ -308,8 +315,8 @@ export default function UserDetailsPage() {
       toast.success('تم أرشفة الحساب بنجاح');
       navigate('/admin/users');
     } catch (error) {
-      toast.success('تم أرشفة الحساب بنجاح');
-      navigate('/admin/users');
+      console.error('Error deleting user:', error);
+      toast.error(error?.response?.data?.detail || 'فشل في أرشفة الحساب. الرجاء المحاولة مرة أخرى.');
     }
   };
   
@@ -365,11 +372,11 @@ ${API_URL}/login
       await api.put(`/users/${userId}`, editForm);
       setUser(prev => ({ ...prev, ...editForm }));
       toast.success('تم تحديث البيانات بنجاح');
+      setShowEditSheet(false);
     } catch (error) {
-      setUser(prev => ({ ...prev, ...editForm }));
-      toast.success('تم تحديث البيانات بنجاح');
+      console.error('Error updating user:', error);
+      toast.error(error?.response?.data?.detail || 'فشل في تحديث البيانات. الرجاء المحاولة مرة أخرى.');
     }
-    setShowEditSheet(false);
   };
   
   // Handle permissions update
@@ -378,11 +385,11 @@ ${API_URL}/login
       await api.put(`/users/${userId}/permissions`, { permissions: userPermissions });
       setUser(prev => ({ ...prev, permissions: userPermissions }));
       toast.success('تم تحديث الصلاحيات بنجاح');
+      setShowPermissionsSheet(false);
     } catch (error) {
-      setUser(prev => ({ ...prev, permissions: userPermissions }));
-      toast.success('تم تحديث الصلاحيات بنجاح');
+      console.error('Error updating permissions:', error);
+      toast.error(error?.response?.data?.detail || 'فشل في تحديث الصلاحيات. الرجاء المحاولة مرة أخرى.');
     }
-    setShowPermissionsSheet(false);
   };
   
   // Toggle permission
@@ -992,6 +999,29 @@ ${API_URL}/login
                   value={editForm.educational_department || ''}
                   onChange={(e) => setEditForm({ ...editForm, educational_department: e.target.value })}
                 />
+              </div>
+
+              {/* Role */}
+              <div className="space-y-2">
+                <Label>الدور</Label>
+                <Select
+                  value={editForm.role || user?.role || ''}
+                  onValueChange={(value) => setEditForm({ ...editForm, role: value })}
+                >
+                  <SelectTrigger className="rounded-xl">
+                    <SelectValue placeholder="اختر الدور" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(USER_ROLES).map(([roleId, roleConfig]) => (
+                      <SelectItem key={roleId} value={roleId}>
+                        <span className="flex items-center gap-2">
+                          <span className={`w-2 h-2 rounded-full ${roleConfig.color}`} />
+                          {roleConfig.label}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               
               {/* Submit */}

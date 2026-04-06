@@ -317,6 +317,7 @@ class UserUpdateRequest(BaseModel):
     city: Optional[str] = None
     educational_department: Optional[str] = None
     avatar_url: Optional[str] = None
+    role: Optional[str] = None
 
 @router.put("/users/{user_id}")
 @router.patch("/users/{user_id}")
@@ -355,6 +356,12 @@ async def update_user(
         updates["educational_department"] = user_data.educational_department
     if user_data.avatar_url:
         updates["avatar_url"] = user_data.avatar_url
+    if user_data.role:
+        valid_roles = [r.value for r in UserRole]
+        if user_data.role not in valid_roles:
+            raise HTTPException(status_code=400, detail=f"الدور غير صالح. الأدوار المسموحة: {', '.join(valid_roles)}")
+        old_role = user.get("role", "")
+        updates["role"] = user_data.role
     
     await db.users.update_one({"id": user_id}, {"$set": updates})
     
@@ -370,6 +377,10 @@ async def update_user(
         "changes": updates,
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
+    if user_data.role and user_data.role != old_role:
+        audit_log["action"] = "user_role_changed"
+        audit_log["old_role"] = old_role
+        audit_log["new_role"] = user_data.role
     await db.audit_logs.insert_one(audit_log)
     
     return {"message": "تم تحديث البيانات بنجاح"}
