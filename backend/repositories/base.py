@@ -1022,12 +1022,12 @@ class BaseRepository:
             if hasattr(op, 'filter') and hasattr(op, 'update'):
                 upsert = getattr(op, 'upsert', False)
                 r = await self.update_one(op.filter, op.update, upsert=upsert)
+                uc = getattr(r, 'upserted_count', 0)
                 mc = getattr(r, 'matched_count', 0)
                 modc = getattr(r, 'modified_count', 0)
                 matched += mc
                 modified += modc
-                if upsert and mc == 0:
-                    upserted += 1
+                upserted += uc
         return type("BulkWriteResult", (), {
             "modified_count": modified,
             "matched_count": matched,
