@@ -23,6 +23,7 @@ dependencies = [
     "pydantic>=2.12",
     "pyjwt>=2.11",
     "python-bidi>=0.6",
+    "python-dateutil>=2.9",
     "python-docx>=1.2",
     "python-dotenv>=1.2",
     "python-jose>=3.5",
