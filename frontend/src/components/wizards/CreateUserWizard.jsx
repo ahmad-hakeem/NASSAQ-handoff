@@ -627,7 +627,7 @@ export default function CreateUserWizard({ open, onOpenChange, onSuccess, api, i
         permissions: selectedPermissions,
       };
       
-      const response = await api.post('/api/users/create', userData);
+      const response = await api.post('/users/create', userData);
       
       if (response.data) {
         setCreatedUser(response.data);

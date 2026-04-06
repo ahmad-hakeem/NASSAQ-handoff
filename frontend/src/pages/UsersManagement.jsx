@@ -500,7 +500,7 @@ export default function UsersManagement() {
   
   const handleSuspendUser = async (user) => {
     try {
-      await api.patch(`/api/users/${user.id}/status`, { is_active: !user.is_active });
+      await api.patch(`/users/${user.id}/status`, { is_active: !user.is_active });
       toast.success(user.is_active ? 'تم تعليق الحساب بنجاح' : 'تم تفعيل الحساب بنجاح');
       fetchUsers();
     } catch (error) {
@@ -512,7 +512,7 @@ export default function UsersManagement() {
   
   const handleDeleteUser = async (user) => {
     try {
-      await api.delete(`/api/users/${user.id}`);
+      await api.delete(`/users/${user.id}`);
       toast.success('تم أرشفة الحساب بنجاح');
       fetchUsers();
     } catch (error) {
@@ -530,7 +530,7 @@ export default function UsersManagement() {
   
   const handleUnifiedApprove = async (request, requestType) => {
     try {
-      const response = await api.post(`/api/registration-requests/${request.id}/approve`);
+      const response = await api.post(`/registration-requests/${request.id}/approve`);
       if (response.data?.success) {
         setApprovalSuccess({
           request,
@@ -553,7 +553,7 @@ export default function UsersManagement() {
       return;
     }
     try {
-      const response = await api.post(`/api/registration-requests/${request.id}/reject`, {
+      const response = await api.post(`/registration-requests/${request.id}/reject`, {
         reason: rejectionReason,
       });
       if (response.data?.success) {
@@ -574,7 +574,7 @@ export default function UsersManagement() {
       return;
     }
     try {
-      const response = await api.post(`/api/registration-requests/${request.id}/request-info`, {
+      const response = await api.post(`/registration-requests/${request.id}/request-info`, {
         message: moreInfoMessage,
       });
       if (response.data?.success) {
@@ -591,7 +591,7 @@ export default function UsersManagement() {
 
   const handleMarkUnderReview = async (request, requestType) => {
     try {
-      const response = await api.post(`/api/registration-requests/${request.id}/under-review`, {
+      const response = await api.post(`/registration-requests/${request.id}/under-review`, {
         notes: '',
       });
       if (response.data?.success) {
@@ -606,7 +606,7 @@ export default function UsersManagement() {
 
   const handleArchiveRequest = async (request, requestType) => {
     try {
-      const response = await api.post(`/api/registration-requests/${request.id}/archive`);
+      const response = await api.post(`/registration-requests/${request.id}/archive`);
       if (response.data?.success) {
         toast.success('تم أرشفة الطلب');
         fetchRequestsByType(requestType);
@@ -621,7 +621,7 @@ export default function UsersManagement() {
 
   const handleViewRequestDetails = async (request) => {
     try {
-      const response = await api.get(`/api/registration-requests/${request.id}`);
+      const response = await api.get(`/registration-requests/${request.id}`);
       setRequestDetailsDialog(response.data);
     } catch (error) {
       console.error('Error fetching request details:', error);
@@ -2116,7 +2116,7 @@ export default function UsersManagement() {
                       const phone = document.getElementById('edit-user-phone')?.value;
                       
                       try {
-                        await api.patch(`/api/users/${showEditUser.id}`, {
+                        await api.patch(`/users/${showEditUser.id}`, {
                           full_name: name,
                           email: email,
                           phone: phone
