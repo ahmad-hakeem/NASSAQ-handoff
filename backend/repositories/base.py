@@ -60,15 +60,22 @@ def _col_keys(model_cls):
 def _resolve_cond(model_cls, cond_expr):
     """Translate a MongoDB $cond expression into a SQLAlchemy CASE clause.
 
-    Supports the object form: {"$cond": {"if": <cond>, "then": <val>, "else": <val>}}
-    The ``if`` clause supports {"$eq": ["$field", "value"]}.
+    Supports both forms:
+    - Object: {"$cond": {"if": <cond>, "then": <val>, "else": <val>}}
+    - Array:  {"$cond": [<cond>, <then_val>, <else_val>]}
+    The condition supports {"$eq": ["$field", "value"]}, {"$ne": ...}, {"$in": ...}.
     """
     if not isinstance(cond_expr, dict) or "$cond" not in cond_expr:
         return None
     cond = cond_expr["$cond"]
-    if_clause = cond.get("if")
-    then_val = cond.get("then", 1)
-    else_val = cond.get("else", 0)
+    if isinstance(cond, list) and len(cond) == 3:
+        if_clause, then_val, else_val = cond
+    elif isinstance(cond, dict):
+        if_clause = cond.get("if")
+        then_val = cond.get("then", 1)
+        else_val = cond.get("else", 0)
+    else:
+        return None
     sql_cond = _resolve_cond_if(model_cls, if_clause)
     if sql_cond is None:
         return None

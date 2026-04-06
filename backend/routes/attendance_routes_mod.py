@@ -22,6 +22,9 @@ from dependencies import (
     hakim_engine, reporting_engine, export_engine, session_engine,
     REPORT_TYPES, generate_student_qr_code
 )
+from engines.attendance_engine import AttendanceEngine
+
+_attendance_engine = AttendanceEngine(db)
 
 router = APIRouter()
 
@@ -261,99 +264,21 @@ async def create_bulk_attendance(
     if current_user['role'] not in ['teacher', 'school_principal', 'school_sub_admin', 'platform_admin']:
         raise HTTPException(status_code=403, detail="Not authorized to record attendance")
 
-    created_count = 0
-    updated_count = 0
-    errors = []
-    transitions = []
-    now = datetime.now(timezone.utc).isoformat()
     t_id = current_user.get('tenant_id')
 
-    seen_students = set()
-    deduped_records = []
-    for r in bulk_data.records:
-        sid = r.get('student_id')
-        if sid and sid not in seen_students:
-            seen_students.add(sid)
-            deduped_records.append(r)
-    student_ids = list(seen_students)
+    result = await _attendance_engine.create_bulk_class_attendance(
+        tenant_id=t_id,
+        class_id=bulk_data.class_id,
+        date_str=bulk_data.date,
+        time_slot_id=bulk_data.time_slot_id,
+        subject_id=bulk_data.subject_id,
+        records=bulk_data.records,
+        recorded_by=current_user['id'],
+    )
 
-    existing_rows = await db.attendance.find(
-        {
-            "class_id": bulk_data.class_id,
-            "date": bulk_data.date,
-            "time_slot_id": bulk_data.time_slot_id,
-            "student_id": {"$in": student_ids},
-            "tenant_id": t_id,
-        },
-        {"_id": 0},
-    ).to_list(len(student_ids))
-    existing_map = {row["student_id"]: row for row in existing_rows}
-
-    to_insert = []
-    to_insert_events = []
-    absent_late_student_ids = []
-
-    for record in deduped_records:
-        try:
-            student_id = record.get('student_id')
-            att_status = record.get('status', 'present')
-            notes = record.get('notes')
-
-            existing = existing_map.get(student_id)
-            if existing:
-                old_status = existing.get('status')
-                await db.attendance.update_one(
-                    {"id": existing['id']},
-                    {"$set": {
-                        "status": att_status,
-                        "notes": notes,
-                        "recorded_by": current_user['id'],
-                        "recorded_at": now
-                    }}
-                )
-                updated_count += 1
-                transitions.append({"student_id": student_id, "old_status": old_status, "new_status": att_status})
-            else:
-                doc = {
-                    "id": str(uuid.uuid4()),
-                    "student_id": student_id,
-                    "class_id": bulk_data.class_id,
-                    "subject_id": bulk_data.subject_id,
-                    "teacher_id": current_user['id'],
-                    "date": bulk_data.date,
-                    "time_slot_id": bulk_data.time_slot_id,
-                    "status": att_status,
-                    "notes": notes,
-                    "recorded_by": current_user['id'],
-                    "recorded_at": now,
-                    "tenant_id": t_id,
-                }
-                to_insert.append(doc)
-                transitions.append({"student_id": student_id, "old_status": None, "new_status": att_status})
-                created_count += 1
-
-                if att_status in ['absent', 'late']:
-                    to_insert_events.append({
-                        "id": str(uuid.uuid4()),
-                        "type": f"student_{att_status}",
-                        "student_id": student_id,
-                        "class_id": bulk_data.class_id,
-                        "date": bulk_data.date,
-                        "recorded_by": current_user['id'],
-                        "created_at": now,
-                        "tenant_id": t_id,
-                    })
-                    absent_late_student_ids.append((student_id, att_status))
-        except Exception as e:
-            errors.append({"student_id": record.get('student_id'), "error": str(e)})
-
-    if to_insert:
-        await db.attendance.insert_many(to_insert)
-    if to_insert_events:
-        await db.events.insert_many(to_insert_events)
-
-    if absent_late_student_ids:
-        al_ids = [s[0] for s in absent_late_student_ids]
+    absent_late = result.get("absent_late", [])
+    if absent_late:
+        al_ids = [s[0] for s in absent_late]
         students_list = await db.students.find(
             {"id": {"$in": al_ids}}, {"_id": 0, "id": 1, "full_name": 1, "parent_phone": 1}
         ).to_list(len(al_ids))
@@ -364,7 +289,7 @@ async def create_bulk_attendance(
             "tenant_id": t_id,
         }, {"_id": 0, "id": 1})
 
-        for student_id, att_status in absent_late_student_ids:
+        for student_id, att_status in absent_late:
             try:
                 si = student_map.get(student_id)
                 if not si:
@@ -420,11 +345,11 @@ async def create_bulk_attendance(
         details={
             "class_id": bulk_data.class_id,
             "date": bulk_data.date,
-            "total_records": len(bulk_data.records),
-            "created": created_count,
-            "updated": updated_count,
-            "errors_count": len(errors),
-            "transitions": transitions,
+            "total_records": result["total_records"],
+            "created": result["created"],
+            "updated": result["updated"],
+            "errors_count": len(result["errors"]),
+            "transitions": result["transitions"],
         },
         actor_name=current_user.get("full_name"),
         actor_role=current_user.get("role"),
@@ -434,9 +359,9 @@ async def create_bulk_attendance(
     return {
         "message": "تم تسجيل الحضور بنجاح",
         "message_en": "Attendance recorded successfully",
-        "created": created_count,
-        "updated": updated_count,
-        "errors": errors,
+        "created": result["created"],
+        "updated": result["updated"],
+        "errors": result["errors"],
         "date": bulk_data.date,
         "class_id": bulk_data.class_id
     }

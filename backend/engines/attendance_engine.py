@@ -221,6 +221,120 @@ class AttendanceEngine:
 
         return results
     
+    async def create_bulk_class_attendance(
+        self,
+        tenant_id: str,
+        class_id: str,
+        date_str: str,
+        time_slot_id: str,
+        subject_id: Optional[str],
+        records: List[Dict[str, Any]],
+        recorded_by: str,
+    ) -> Dict[str, Any]:
+        """Process bulk attendance for a class (route-delegated).
+
+        Returns dict with created, updated, errors, transitions, and
+        absent_late list for the route to send notifications.
+        """
+        now = datetime.now(timezone.utc).isoformat()
+
+        seen: set = set()
+        deduped = []
+        for r in records:
+            sid = r.get("student_id")
+            if sid and sid not in seen:
+                seen.add(sid)
+                deduped.append(r)
+
+        student_ids = list(seen)
+        existing_rows = await self.attendance_collection.find(
+            {
+                "class_id": class_id,
+                "date": date_str,
+                "time_slot_id": time_slot_id,
+                "student_id": {"$in": student_ids},
+                "tenant_id": tenant_id,
+            },
+            {"_id": 0},
+        ).to_list(len(student_ids))
+        existing_map = {row["student_id"]: row for row in existing_rows}
+
+        created = 0
+        updated = 0
+        errors: List[Dict] = []
+        transitions: List[Dict] = []
+        to_insert: List[Dict] = []
+        to_insert_events: List[Dict] = []
+        absent_late: List[tuple] = []
+
+        for record in deduped:
+            try:
+                student_id = record.get("student_id")
+                att_status = record.get("status", "present")
+                notes = record.get("notes")
+
+                existing = existing_map.get(student_id)
+                if existing:
+                    old_status = existing.get("status")
+                    await self.attendance_collection.update_one(
+                        {"id": existing["id"]},
+                        {"$set": {
+                            "status": att_status,
+                            "notes": notes,
+                            "recorded_by": recorded_by,
+                            "recorded_at": now,
+                        }},
+                    )
+                    updated += 1
+                    transitions.append({"student_id": student_id, "old_status": old_status, "new_status": att_status})
+                else:
+                    doc = {
+                        "id": str(uuid.uuid4()),
+                        "student_id": student_id,
+                        "class_id": class_id,
+                        "subject_id": subject_id,
+                        "teacher_id": recorded_by,
+                        "date": date_str,
+                        "time_slot_id": time_slot_id,
+                        "status": att_status,
+                        "notes": notes,
+                        "recorded_by": recorded_by,
+                        "recorded_at": now,
+                        "tenant_id": tenant_id,
+                    }
+                    to_insert.append(doc)
+                    transitions.append({"student_id": student_id, "old_status": None, "new_status": att_status})
+                    created += 1
+
+                    if att_status in ("absent", "late"):
+                        to_insert_events.append({
+                            "id": str(uuid.uuid4()),
+                            "type": f"student_{att_status}",
+                            "student_id": student_id,
+                            "class_id": class_id,
+                            "date": date_str,
+                            "recorded_by": recorded_by,
+                            "created_at": now,
+                            "tenant_id": tenant_id,
+                        })
+                        absent_late.append((student_id, att_status))
+            except Exception as e:
+                errors.append({"student_id": record.get("student_id"), "error": str(e)})
+
+        if to_insert:
+            await self.attendance_collection.insert_many(to_insert)
+        if to_insert_events:
+            await self.db.events.insert_many(to_insert_events)
+
+        return {
+            "created": created,
+            "updated": updated,
+            "errors": errors,
+            "transitions": transitions,
+            "absent_late": absent_late,
+            "total_records": len(records),
+        }
+
     async def mark_class_present(
         self,
         tenant_id: str,
@@ -652,26 +766,47 @@ class AttendanceEngine:
         tenant_id: str,
         min_days: int = 3
     ) -> List[Dict[str, Any]]:
-        """Get students with consecutive absences (last 30 days)"""
+        """Get students with consecutive absences (last 30 days).
+
+        Two-step approach to minimise memory:
+        1. Aggregate to find students with >= min_days total absences.
+        2. Fetch only those students' absence dates for streak calculation.
+        """
         end_dt = datetime.now(timezone.utc).date()
         start_dt = end_dt - timedelta(days=30)
 
+        base_filter = {
+            "tenant_id": tenant_id,
+            "attendance_date": {"$gte": start_dt.isoformat(), "$lte": end_dt.isoformat()},
+            "status": AttendanceStatus.ABSENT.value,
+        }
+
+        candidates = await self.attendance_collection.aggregate([
+            {"$match": base_filter},
+            {"$group": {"_id": "$student_id", "cnt": {"$sum": 1}}},
+        ]).to_list(5000)
+
+        candidate_ids = [c["_id"] for c in candidates if c.get("cnt", 0) >= min_days]
+        if not candidate_ids:
+            return []
+
         records = await self.attendance_collection.find(
-            {
-                "tenant_id": tenant_id,
-                "attendance_date": {
-                    "$gte": start_dt.isoformat(),
-                    "$lte": end_dt.isoformat()
-                },
-                "status": AttendanceStatus.ABSENT.value
-            },
+            {**base_filter, "student_id": {"$in": candidate_ids}},
             {"_id": 0, "student_id": 1, "attendance_date": 1}
-        ).sort([("student_id", 1), ("attendance_date", 1)]).to_list(50000)
+        ).sort([("student_id", 1), ("attendance_date", 1)]).to_list(len(candidate_ids) * 30)
 
         alerts = []
         current_student = None
         consecutive = 0
         last_date = None
+
+        def _flush():
+            if consecutive >= min_days:
+                alerts.append({
+                    "student_id": current_student,
+                    "consecutive_days": consecutive,
+                    "last_absence_date": last_date.isoformat() if last_date else None,
+                })
 
         for record in records:
             sid = record.get("student_id")
@@ -681,12 +816,7 @@ class AttendanceEngine:
                 continue
 
             if sid != current_student:
-                if consecutive >= min_days:
-                    alerts.append({
-                        "student_id": current_student,
-                        "consecutive_days": consecutive,
-                        "last_absence_date": last_date.isoformat() if last_date else None
-                    })
+                _flush()
                 current_student = sid
                 consecutive = 1
                 last_date = record_date
@@ -694,16 +824,11 @@ class AttendanceEngine:
                 if last_date and (record_date - last_date).days <= 2:
                     consecutive += 1
                 else:
+                    _flush()
                     consecutive = 1
                 last_date = record_date
 
-        if consecutive >= min_days:
-            alerts.append({
-                "student_id": current_student,
-                "consecutive_days": consecutive,
-                "last_absence_date": last_date.isoformat() if last_date else None
-            })
-
+        _flush()
         return alerts
 
 
