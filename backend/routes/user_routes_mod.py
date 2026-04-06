@@ -147,6 +147,75 @@ async def create_platform_user(
         created_by=current_user["id"]
     )
 
+@router.get("/users/management-stats")
+async def get_users_management_stats(
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
+):
+    """Real-time stats for the Users Management page analysis cards."""
+    from datetime import timezone as tz
+    now = datetime.now(tz.utc)
+    today_str = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()[:10]
+
+    total_users = await db.users.count_documents({})
+    total_schools = await db.schools.count_documents({})
+    total_students = await db.students.count_documents({})
+    teachers_in_schools = await db.teachers.count_documents({})
+    independent_teachers = await db.teachers.count_documents({"school_id": None})
+
+    school_bound_users = await db.users.count_documents(
+        {"role": {"$in": ["school_principal", "school_sub_admin", "school_manager"]}}
+    )
+    school_teachers = await db.users.count_documents(
+        {"role": "teacher", "tenant_id": {"$ne": None}}
+    )
+    platform_accounts = total_users - school_bound_users - school_teachers
+
+    pending_requests = await db.registration_requests.count_documents({"status": "pending"})
+    ai_enabled_schools = await db.schools.count_documents({"ai_enabled": True})
+    if ai_enabled_schools == 0:
+        ai_enabled_schools = await db.schools.count_documents({"status": "active"})
+
+    students_present = await db.attendance.count_documents(
+        {"user_type": "student", "status": "present", "date": {"$gte": today_str}}
+    )
+    students_total = await db.attendance.count_documents(
+        {"user_type": "student", "date": {"$gte": today_str}}
+    )
+
+    teachers_present = await db.teacher_attendance.count_documents(
+        {"status": "present", "date": today_str}
+    )
+    teachers_total = await db.teacher_attendance.count_documents({"date": today_str})
+    if teachers_total == 0:
+        teachers_present = await db.attendance.count_documents(
+            {"user_type": "teacher", "status": "present", "date": {"$gte": today_str}}
+        )
+        teachers_total = await db.attendance.count_documents(
+            {"user_type": "teacher", "date": {"$gte": today_str}}
+        )
+
+    student_attendance_rate = round((students_present / students_total) * 100, 1) if students_total > 0 else 0
+    teacher_attendance_rate = round((teachers_present / teachers_total) * 100, 1) if teachers_total > 0 else 0
+
+    active_users = await db.users.count_documents({"is_active": {"$ne": False}})
+    suspended_users = await db.users.count_documents({"is_active": False})
+
+    return {
+        "total_users": total_users,
+        "active_users": active_users,
+        "suspended_users": suspended_users,
+        "total_schools": total_schools,
+        "total_students": total_students,
+        "teachers_in_schools": teachers_in_schools,
+        "independent_teachers": independent_teachers,
+        "platform_accounts": platform_accounts,
+        "pending_requests": pending_requests,
+        "ai_enabled_schools": ai_enabled_schools,
+        "student_attendance_rate": student_attendance_rate,
+        "teacher_attendance_rate": teacher_attendance_rate,
+    }
+
+
 @router.get("/users/platform-users")
 async def get_platform_users(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),

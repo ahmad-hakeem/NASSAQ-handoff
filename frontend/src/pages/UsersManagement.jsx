@@ -122,13 +122,11 @@ export default function UsersManagement() {
 
       setUsers(fetchedUsers);
       setTotalUsers(serverTotal);
-      setStats(prev => ({ ...prev, totalUsers: serverTotal }));
     } catch (error) {
       console.error('Error fetching users:', error);
       nassaqError(isRTL ? 'فشل في تحميل المستخدمين' : 'Failed to load users');
       setUsers([]);
       setTotalUsers(0);
-      setStats(prev => ({ ...prev, totalUsers: 0 }));
     } finally {
       setLoading(false);
     }
@@ -172,11 +170,6 @@ export default function UsersManagement() {
       const schoolsResponse = await api.get('/schools');
       const schoolsList = schoolsResponse.data || [];
       setSchools(schoolsList);
-      setStats(prev => ({
-        ...prev,
-        totalSchools: schoolsList.length,
-        aiEnabledSchools: schoolsList.filter(s => s.ai_enabled).length,
-      }));
 
       const schoolUsersMap = {};
       for (const school of schoolsList) {
@@ -202,23 +195,26 @@ export default function UsersManagement() {
     }
   }, [api]);
 
-  const fetchCommandCenterStats = useCallback(async () => {
+  const fetchManagementStats = useCallback(async () => {
     try {
-      const response = await api.get('/admin/command-center/stats');
-      setStats(prev => ({
-        ...prev,
-        totalSchools: response.data.registered_schools || prev.totalSchools,
-        totalStudents: response.data.registered_students || 0,
-        teachersInSchools: response.data.teachers_in_schools || prev.teachersInSchools,
-        independentTeachers: response.data.independent_teachers || prev.independentTeachers,
-        platformAdmins: response.data.platform_accounts || prev.platformAdmins,
-        studentAttendanceRate: response.data.student_attendance_rate ?? null,
-        teacherAttendanceRate: response.data.teacher_attendance_rate ?? null,
-        aiEnabledSchools: response.data.ai_enabled_schools || prev.aiEnabledSchools,
-        pendingRequests: response.data.pending_requests || prev.pendingRequests,
-      }));
+      const response = await api.get('/users/management-stats');
+      const d = response.data;
+      setStats({
+        totalUsers: d.total_users || 0,
+        totalSchools: d.total_schools || 0,
+        totalStudents: d.total_students || 0,
+        teachersInSchools: d.teachers_in_schools || 0,
+        independentTeachers: d.independent_teachers || 0,
+        platformAdmins: d.platform_accounts || 0,
+        pendingRequests: d.pending_requests || 0,
+        studentAttendanceRate: d.student_attendance_rate ?? null,
+        teacherAttendanceRate: d.teacher_attendance_rate ?? null,
+        aiEnabledSchools: d.ai_enabled_schools || 0,
+        activeUsers: d.active_users || 0,
+        suspendedUsers: d.suspended_users || 0,
+      });
     } catch (error) {
-      console.error('Error fetching command center stats:', error);
+      console.error('Error fetching management stats:', error);
     }
   }, [api]);
 
@@ -226,7 +222,7 @@ export default function UsersManagement() {
     fetchUsers();
     fetchAllRequests();
     fetchSchoolUsers();
-    fetchCommandCenterStats();
+    fetchManagementStats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -248,6 +244,7 @@ export default function UsersManagement() {
       await api.patch(`/users/${user.id}/status`, { is_active: !user.is_active });
       toast.success(user.is_active ? 'تم تعليق الحساب بنجاح' : 'تم تفعيل الحساب بنجاح');
       fetchUsers();
+      fetchManagementStats();
     } catch (error) {
       console.error('Error suspending user:', error);
       toast.error(error?.response?.data?.detail || 'فشل في تغيير حالة الحساب');
@@ -260,6 +257,7 @@ export default function UsersManagement() {
       await api.delete(`/users/${user.id}`);
       toast.success('تم أرشفة الحساب بنجاح');
       fetchUsers();
+      fetchManagementStats();
     } catch (error) {
       console.error('Error deleting user:', error);
       toast.error(error?.response?.data?.detail || 'فشل في أرشفة الحساب');
@@ -722,7 +720,7 @@ export default function UsersManagement() {
         <CreateUserWizard
           open={showCreateWizard}
           onOpenChange={setShowCreateWizard}
-          onSuccess={() => { toast.success('تم إنشاء الحساب بنجاح!'); fetchUsers(); }}
+          onSuccess={() => { toast.success('تم إنشاء الحساب بنجاح!'); fetchUsers(); fetchManagementStats(); }}
           api={api}
           isRTL={isRTL}
         />
