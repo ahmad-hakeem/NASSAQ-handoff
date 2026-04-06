@@ -1151,6 +1151,36 @@ class ApprovalRequest(Base):
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
 
+class Event(Base):
+    __tablename__ = "events"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    tenant_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=True, index=True)
+    type = Column(String, nullable=False, index=True)
+    status = Column(String, nullable=True)
+    student_id = Column(String, ForeignKey("students.id", ondelete="SET NULL"), nullable=True, index=True)
+    class_id = Column(String, ForeignKey("classes.id", ondelete="SET NULL"), nullable=True, index=True)
+    recorded_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    date = Column(String, nullable=True)
+    data = Column(JSONB, default=dict)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+
+    __table_args__ = (
+        Index("idx_events_tenant_type", "tenant_id", "type"),
+        Index("idx_events_tenant_date", "tenant_id", "created_at"),
+    )
+
+
+class SystemSetting(Base):
+    __tablename__ = "system_settings"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    type = Column(String, nullable=False, unique=True, index=True)
+    data = Column(JSONB, default=dict)
+    updated_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+
 class GenericDocument(Base):
     __tablename__ = "generic_documents"
 

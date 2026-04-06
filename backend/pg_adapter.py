@@ -70,7 +70,7 @@ def _build_collection_map():
         SessionInteraction, AIInsight, AIIntervention, SessionNote,
         SessionEventLog, TeacherClassAssignment, GradeLevel, EducationalStage,
         PhysicalClassroom, BehaviourType, TimetableConstraint, ApprovalRequest,
-        GenericDocument,
+        Event, SystemSetting, GenericDocument,
     )
     return {
         "users": User,
@@ -127,6 +127,8 @@ def _build_collection_map():
         "timetable_hard_constraints": TimetableConstraint,
         "timetable_soft_constraints": TimetableConstraint,
         "approval_requests": ApprovalRequest,
+        "events": Event,
+        "system_settings": SystemSetting,
     }
 
 
