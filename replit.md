@@ -99,6 +99,7 @@ Each fix report must include: root cause, why it wasn't caught before, what chan
 - **Error Messages**: All API errors return safe Arabic messages — no `str(e)` exposure to users
 - **Silent Failures**: All bare `except:` replaced with specific exception types (`ValueError`, `KeyError`, `TypeError`, etc.)
 - **Tenant Isolation (BOLA)**: All cross-tenant data access paths fixed — assessment grades, student grade history, student portal assignments, and student messaging all enforce `tenant_id` checks. No user can access another school's data through any API endpoint.
+- **Atomic DB Updates (pg_adapter.py)**: `update_one` with `$set`/`$inc`/`$unset`/`$max` (no `$push/$pull/$addToSet`) uses single `UPDATE ... WHERE` statement instead of fetch-then-modify. `$inc` uses `SET col = col + val` (race-condition free). `$max` uses `CASE WHEN col IS NULL THEN val ELSE GREATEST(col, val)`. `update_many` with same operators uses single `UPDATE ... WHERE` (no per-row loop). `find_one_and_update` with `return_document=True` uses `UPDATE ... RETURNING *` (single atomic statement). All fall back to ORM fetch-then-modify for JSONB array operators (`$push/$pull/$addToSet`) or dotted-path `$set` keys.
 - **Error Boundary**: `ErrorBoundary.jsx` wraps entire app — catches render crashes with Arabic fallback UI
 - **Health Check**: `/system/health` returns DB status, latency, uptime, version
 - **Logging**: All 34+ backend route files use `logging.getLogger("nassaq.*")` — zero `print()` statements in routes/engines

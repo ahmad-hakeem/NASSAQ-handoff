@@ -1345,6 +1345,66 @@ class PgCollection:
             results.append(r.inserted_id)
         return type("InsertManyResult", (), {"inserted_ids": results})()
 
+    def _can_use_statement_update(self, update_dict):
+        push_fields = update_dict.get("$push", {})
+        pull_fields = update_dict.get("$pull", {})
+        add_to_set_fields = update_dict.get("$addToSet", {})
+        return not any([push_fields, pull_fields, add_to_set_fields])
+
+    def _build_update_values(self, model, update_dict):
+        set_fields = update_dict.get("$set", {})
+        unset_fields = update_dict.get("$unset", {})
+        inc_fields = update_dict.get("$inc", {})
+        max_fields = update_dict.get("$max", {})
+
+        if not any([set_fields, unset_fields, inc_fields]):
+            if not any(k.startswith("$") for k in update_dict):
+                set_fields = update_dict
+
+        mapper = inspect(model)
+        col_keys = {c.key for c in mapper.columns}
+        values = {}
+        for k, v in set_fields.items():
+            if k == "_id":
+                continue
+            resolved_key = k
+            if k not in col_keys and COLUMN_ALIASES.get(k) in col_keys:
+                resolved_key = COLUMN_ALIASES[k]
+            if resolved_key in col_keys:
+                if "." in k:
+                    continue
+                values[resolved_key] = _coerce_value_for_column(model, resolved_key, v)
+        for k in unset_fields:
+            if k == "_id":
+                continue
+            resolved_key = k
+            if k not in col_keys and COLUMN_ALIASES.get(k) in col_keys:
+                resolved_key = COLUMN_ALIASES[k]
+            if resolved_key in col_keys:
+                values[resolved_key] = None
+        for k, v in inc_fields.items():
+            resolved_key = k
+            if k not in col_keys and COLUMN_ALIASES.get(k) in col_keys:
+                resolved_key = COLUMN_ALIASES[k]
+            if resolved_key in col_keys:
+                col_obj = getattr(model, resolved_key)
+                values[resolved_key] = func.coalesce(col_obj, 0) + v
+        from sqlalchemy import case as sa_case, literal
+        for k, v in max_fields.items():
+            resolved_key = k
+            if k not in col_keys and COLUMN_ALIASES.get(k) in col_keys:
+                resolved_key = COLUMN_ALIASES[k]
+            if resolved_key in col_keys:
+                col_obj = getattr(model, resolved_key)
+                values[resolved_key] = sa_case(
+                    (col_obj.is_(None), literal(v)),
+                    else_=func.greatest(col_obj, v)
+                )
+        return values, set_fields
+
+    def _has_dotted_set(self, set_fields):
+        return any("." in k for k in set_fields)
+
     async def update_one(self, filter_dict: dict, update_dict: dict, upsert=False):
         session, own = await self._get_session()
         try:
@@ -1411,6 +1471,23 @@ class PgCollection:
                 return UpdateResult(1, 1)
             else:
                 model = self._model
+                can_statement = self._can_use_statement_update(update_dict) and not self._has_dotted_set(set_fields)
+
+                if can_statement and not upsert:
+                    values, _ = self._build_update_values(model, update_dict)
+                    if values:
+                        conds = _translate_filter(model, filter_dict)
+                        id_subq = select(model.id)
+                        if conds:
+                            id_subq = id_subq.where(and_(*conds))
+                        id_subq = id_subq.limit(1).scalar_subquery()
+                        stmt = sa_update(model.__table__).where(model.id == id_subq).values(**values)
+                        result = await session.execute(stmt)
+                        if own:
+                            await session.commit()
+                        count = result.rowcount
+                        return UpdateResult(count, count)
+
                 stmt = select(model)
                 conds = _translate_filter(model, filter_dict)
                 if conds:
@@ -1531,6 +1608,23 @@ class PgCollection:
                 return UpdateResult(len(rows), len(rows))
             else:
                 model = self._model
+                has_unsupported = any(update_dict.get(op) for op in ("$push", "$pull", "$addToSet"))
+                can_statement = not has_unsupported and not self._has_dotted_set(set_fields)
+
+                if can_statement:
+                    values, _ = self._build_update_values(model, update_dict)
+                    if values:
+                        conds = _translate_filter(model, filter_dict)
+                        stmt = sa_update(model.__table__)
+                        if conds:
+                            stmt = stmt.where(and_(*conds))
+                        stmt = stmt.values(**values)
+                        result = await session.execute(stmt)
+                        if own:
+                            await session.commit()
+                        count = result.rowcount
+                        return UpdateResult(count, count)
+
                 stmt = select(model)
                 conds = _translate_filter(model, filter_dict)
                 if conds:
@@ -1715,6 +1809,50 @@ class PgCollection:
 
     async def find_one_and_update(self, filter_dict: dict, update_dict: dict,
                                   return_document=None, upsert=False, projection=None):
+        if not self._is_generic and self._can_use_statement_update(update_dict):
+            set_fields = update_dict.get("$set", {})
+            if not self._has_dotted_set(set_fields):
+                if return_document:
+                    session, own = await self._get_session()
+                    try:
+                        model = self._model
+                        values, _ = self._build_update_values(model, update_dict)
+                        conds = _translate_filter(model, filter_dict)
+                        if values:
+                            id_subq = select(model.id)
+                            if conds:
+                                id_subq = id_subq.where(and_(*conds))
+                            id_subq = id_subq.limit(1).scalar_subquery()
+                            stmt = sa_update(model.__table__).where(model.id == id_subq).values(**values).returning(*model.__table__.columns)
+                            result = await session.execute(stmt)
+                            row = result.fetchone()
+                            if row is None:
+                                if upsert:
+                                    doc = {}
+                                    for k, v in filter_dict.items():
+                                        if not k.startswith("$") and not isinstance(v, dict):
+                                            doc[k] = v
+                                    soi = update_dict.get("$setOnInsert", {})
+                                    doc.update(soi)
+                                    doc.update(set_fields)
+                                    await self.insert_one(doc)
+                                    return await self.find_one(filter_dict, projection)
+                                return None
+                            if own:
+                                await session.commit()
+                            d = dict(row._mapping)
+                            d.pop("_id", None)
+                            return _apply_projection(d, projection) if projection else d
+                        else:
+                            return await self.find_one(filter_dict, projection)
+                    except Exception:
+                        if own:
+                            await session.rollback()
+                        raise
+                    finally:
+                        if own:
+                            await session.close()
+
         old_doc = await self.find_one(filter_dict, projection)
         await self.update_one(filter_dict, update_dict, upsert=upsert)
         if return_document:
