@@ -90,33 +90,36 @@ COLUMNS_TO_MIGRATE = [
     ("session_notes", "created_at"),
 ]
 
-COLUMNS_TO_ADD = [
-    ("subjects", "updated_at"),
-    ("issue_comments", "created_at"),
-    ("issue_comments", "updated_at"),
-    ("counters", "updated_at"),
-    ("approval_events", "created_at"),
-    ("session_notes", "updated_at"),
-]
+_SAFE_CAST_FN = """
+CREATE OR REPLACE FUNCTION _safe_iso_to_timestamptz(val TEXT)
+RETURNS TIMESTAMPTZ AS $$
+BEGIN
+    IF val IS NULL OR val = '' THEN
+        RETURN NULL;
+    END IF;
+    RETURN val::timestamptz;
+EXCEPTION WHEN OTHERS THEN
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+"""
+
+_DROP_SAFE_CAST_FN = "DROP FUNCTION IF EXISTS _safe_iso_to_timestamptz(TEXT);"
 
 
 def upgrade():
+    op.execute(sa.text(_SAFE_CAST_FN))
     for table, column in COLUMNS_TO_MIGRATE:
         op.execute(
             sa.text(
                 f'ALTER TABLE "{table}" ALTER COLUMN "{column}" '
-                f"TYPE TIMESTAMPTZ USING "
-                f'CASE WHEN "{column}" IS NOT NULL AND "{column}" != \'\' '
-                f"THEN \"{column}\"::timestamptz ELSE NULL END"
+                f'TYPE TIMESTAMPTZ USING _safe_iso_to_timestamptz("{column}")'
             )
         )
-    for table, column in COLUMNS_TO_ADD:
-        op.add_column(table, sa.Column(column, sa.DateTime(timezone=True), nullable=True))
+    op.execute(sa.text(_DROP_SAFE_CAST_FN))
 
 
 def downgrade():
-    for table, column in COLUMNS_TO_ADD:
-        op.drop_column(table, column)
     for table, column in COLUMNS_TO_MIGRATE:
         op.execute(
             sa.text(

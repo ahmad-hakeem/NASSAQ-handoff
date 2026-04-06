@@ -34,17 +34,33 @@ COLUMNS_TO_MIGRATE = [
     ("timetable_constraints", "created_at"),
 ]
 
+_SAFE_CAST_FN = """
+CREATE OR REPLACE FUNCTION _safe_iso_to_timestamptz(val TEXT)
+RETURNS TIMESTAMPTZ AS $$
+BEGIN
+    IF val IS NULL OR val = '' THEN
+        RETURN NULL;
+    END IF;
+    RETURN val::timestamptz;
+EXCEPTION WHEN OTHERS THEN
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+"""
+
+_DROP_SAFE_CAST_FN = "DROP FUNCTION IF EXISTS _safe_iso_to_timestamptz(TEXT);"
+
 
 def upgrade():
+    op.execute(sa.text(_SAFE_CAST_FN))
     for table, column in COLUMNS_TO_MIGRATE:
         op.execute(
             sa.text(
                 f'ALTER TABLE "{table}" ALTER COLUMN "{column}" '
-                f"TYPE TIMESTAMPTZ USING "
-                f'CASE WHEN "{column}" IS NOT NULL AND "{column}" != \'\' '
-                f"THEN \"{column}\"::timestamptz ELSE NULL END"
+                f'TYPE TIMESTAMPTZ USING _safe_iso_to_timestamptz("{column}")'
             )
         )
+    op.execute(sa.text(_DROP_SAFE_CAST_FN))
 
 
 def downgrade():

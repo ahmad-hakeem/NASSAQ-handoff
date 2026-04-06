@@ -258,6 +258,7 @@ class Subject(Base):
     is_active = Column(Boolean, default=True)
     is_global = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
     school = relationship("School", back_populates="subjects", lazy="select")
 
@@ -1005,6 +1006,7 @@ class SessionNote(Base):
     note = Column(Text, nullable=True)
     type = Column(String, default="general")
     created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
 
 class SessionEventLog(Base):
