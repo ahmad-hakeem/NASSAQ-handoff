@@ -93,7 +93,12 @@ Each fix report must include: root cause, why it wasn't caught before, what chan
 - **JWT Security**: No hardcoded fallback — generates ephemeral secret if env var missing, logs warning
 - **CORS**: Uses `CORS_ORIGINS` from config (env-based), not hardcoded `*`
 - **Error Messages**: All API errors return safe Arabic messages — no `str(e)` exposure to users
-- **Silent Failures**: All bare `except:` replaced with specific exception types (`ValueError`, `KeyError`, `TypeError`, etc.)
+- **Silent Failures**: All bare `except:` replaced with specific exception types (`ValueError`, `KeyError`, `TypeError`, etc.). All `except Exception: pass` in engines replaced with logged warnings/debug messages.
+- **Structured Logging**: JSON-formatted logs via `StructuredJsonFormatter` with fields: ts, level, logger, msg, request_id, user_id, tenant_id, method, path, status_code, duration_ms
+- **Request Tracing**: `RequestTracingMiddleware` generates UUID per request, propagated via ContextVar, emitted as `X-Request-Id` response header
+- **Slow Query Detection**: SQLAlchemy event listeners log queries >500ms with SQL (truncated 500 chars) + params (truncated 300 chars)
+- **Pool Monitoring**: Background asyncio task logs pool stats every 60s; `/system/health` returns pool_size, checked_out, overflow, checked_in
+- **Integration Tests**: `backend/tests/test_integration_phase5.py` — 17 tests covering health, auth, school CRUD, tenant isolation, monitoring
 - **Tenant Isolation (BOLA)**: All cross-tenant data access paths fixed — assessment grades, student grade history, student portal assignments, and student messaging all enforce `tenant_id` checks. No user can access another school's data through any API endpoint.
 - **Atomic DB Updates (repositories/base.py)**: `update_one` with `$set`/`$inc`/`$unset`/`$max` uses single `UPDATE ... WHERE` statement instead of fetch-then-modify. `$inc` uses `SET col = col + val` (race-condition free). `$max` uses `CASE WHEN col IS NULL THEN val ELSE GREATEST(col, val)`. `find_one_and_update` with `return_document=True` uses `UPDATE ... RETURNING *`.
 - **Batched Counts (repositories/base.py)**: `batched_counts({"label": filter_dict, ...})` computes multiple filtered counts from the same table in a single SQL query using PostgreSQL `COUNT(*) FILTER (WHERE ...)`. Used by all dashboard endpoints.

@@ -873,8 +873,8 @@ class AssessmentEngine:
                 raw = settings["value"]
                 if isinstance(raw, list) and raw:
                     return [(entry.get("min", 0), entry.get("grade", "F")) for entry in raw]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to load tenant grade scale for %s: %s", tenant_id, e)
         return self.DEFAULT_LETTER_GRADE_SCALE
 
     async def _get_letter_grade(self, tenant_id: str, percentage: float) -> str:

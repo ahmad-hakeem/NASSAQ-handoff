@@ -52,6 +52,14 @@ async def health_check():
     except Exception as e:
         logger.error(f"Health check unexpected error: {e}")
 
+    pool_stats = {}
+    try:
+        from db import get_sync_engine
+        from middleware.query_monitor import get_pool_stats
+        pool_stats = get_pool_stats(get_sync_engine())
+    except Exception as e:
+        logger.debug(f"Pool stats unavailable: {e}")
+
     uptime_seconds = round(time.time() - _start_time)
     status = "healthy" if db_ok else "degraded"
 
@@ -62,6 +70,7 @@ async def health_check():
         "database": {
             "connected": db_ok,
             "latency_ms": db_latency_ms,
+            "pool": pool_stats,
         },
         "version": "3.0.0",
     }

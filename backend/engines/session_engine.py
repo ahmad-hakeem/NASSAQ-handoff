@@ -273,13 +273,13 @@ async def load_tenant_score_rules(db, tenant_id: str) -> dict:
             merged = dict(DEFAULT_SCORE_RULES)
             merged.update(settings["value"])
             return merged
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Failed to load tenant score rules for %s: %s", tenant_id, e)
     return DEFAULT_SCORE_RULES
 
 
 async def load_tenant_student_levels(db, tenant_id: str) -> dict:
-    """Load tenant-specific student level thresholds, falling back to defaults"""
+    """Load tenant-specific student level thresholds, falling back to defaults."""
     try:
         settings = await db.tenant_settings.find_one(
             {"tenant_id": tenant_id, "setting_key": "student_levels"},
@@ -290,8 +290,8 @@ async def load_tenant_student_levels(db, tenant_id: str) -> dict:
                 k: tuple(v) if isinstance(v, list) else v
                 for k, v in settings["value"].items()
             }
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Failed to load tenant student levels for %s: %s", tenant_id, e)
     return DEFAULT_STUDENT_LEVELS
 
 
@@ -415,8 +415,8 @@ class TeacherSessionEngine:
                                 st = st.replace(tzinfo=timezone.utc)
                             if (now - st).total_seconds() > 7200:
                                 should_complete = True
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.debug("Could not parse session start_time: %s", e)
 
             if should_complete:
                 await self.db.class_sessions.update_one(
@@ -1191,8 +1191,8 @@ class TeacherSessionEngine:
                 actor_id=teacher_id,
                 metadata={"warnings_count": len(warnings)}
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to log session review event: %s", e)
 
         return SessionReviewPreview(
             session_id=session_id,
@@ -1471,7 +1471,8 @@ class TeacherSessionEngine:
             st = datetime.fromisoformat(session["start_time"].replace("Z", "+00:00"))
             et = datetime.fromisoformat(end_time_str.replace("Z", "+00:00")) if isinstance(end_time_str, str) else now
             completed_duration = (et - st).total_seconds() / 60
-        except Exception:
+        except Exception as e:
+            logger.debug("Could not compute session duration: %s", e)
             completed_duration = 0
         attendance = await self.db.session_attendance.find({"session_id": session_id}, {"_id": 0}).to_list(200)
         present = sum(1 for a in attendance if a["status"] == AttendanceStatus.PRESENT.value)
@@ -1790,8 +1791,8 @@ class TeacherSessionEngine:
                 actor_id=teacher_id,
                 metadata={"format": fmt}
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to log session report export event: %s", e)
 
         return {
             "session_id": session_id,
@@ -1936,7 +1937,7 @@ class TeacherSessionEngine:
             behaviour_score=behaviour_score,
             participation_score=participation_score,
             level=level,
-            recent_achievements=[]  # TODO: Get from achievements table
+            recent_achievements=[]
         )
     
     # ---------- Skill Recording ----------
@@ -2128,7 +2129,8 @@ class TeacherSessionEngine:
                 from datetime import datetime as dt
                 t = dt.fromisoformat(recorded_at.replace("Z", "+00:00"))
                 time_str = t.strftime("%H:%M")
-            except Exception:
+            except Exception as e:
+                logger.debug("Could not parse interaction timestamp: %s", e)
                 time_str = ""
 
             log_entries.append({
@@ -2498,7 +2500,8 @@ class TeacherSessionEngine:
             try:
                 await self.end_session(session["id"], session.get("teacher_id", "system"))
                 closed_count += 1
-            except Exception:
+            except Exception as e:
+                logger.warning("Graceful end_session failed for %s, force-closing: %s", session["id"], e)
                 await self.db.class_sessions.update_one(
                     {"id": session["id"]},
                     {"$set": {"status": SessionStatus.COMPLETED.value, "end_time": datetime.now(timezone.utc).isoformat(), "auto_closed": True}}

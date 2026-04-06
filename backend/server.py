@@ -15,16 +15,39 @@ Architecture (Phase 9 – Clean Layers):
 - server.py            — App factory (create_app)
 """
 
+import json
 import logging
 import os
 import sys
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-    stream=sys.stdout,
-)
+
+class StructuredJsonFormatter(logging.Formatter):
+    """Emit each log record as a single JSON line for structured log ingestion."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        entry = {
+            "ts": self.formatTime(record, self.datefmt),
+            "level": record.levelname,
+            "logger": record.name,
+            "msg": record.getMessage(),
+            "request_id": getattr(record, "request_id", "-"),
+        }
+        for key in ("user_id", "tenant_id", "method", "path", "status_code", "duration_ms"):
+            val = getattr(record, key, None)
+            if val is not None:
+                entry[key] = val
+        if record.exc_info and record.exc_info[1]:
+            entry["exception"] = self.formatException(record.exc_info)
+        return json.dumps(entry, ensure_ascii=False, default=str)
+
+
+_handler = logging.StreamHandler(sys.stdout)
+_handler.setFormatter(StructuredJsonFormatter(datefmt="%Y-%m-%dT%H:%M:%S"))
+
+from middleware.request_tracing import RequestIdFilter
+_handler.addFilter(RequestIdFilter())
+
+logging.basicConfig(level=logging.INFO, handlers=[_handler])
 logger = logging.getLogger("nassaq")
 
 from fastapi import FastAPI, APIRouter, Request

@@ -101,8 +101,8 @@ class TeacherManagementEngine:
             school = None
             try:
                 school = await self.schools_collection.find_one({"_id": str(tenant_id)})
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("School lookup by _id failed: %s", e)
             if not school:
                 school = await self.schools_collection.find_one({"tenant_id": tenant_id})
             if not school:

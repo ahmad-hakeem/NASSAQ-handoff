@@ -2,7 +2,7 @@
 Reporting Engine — محرك التقارير المركزي
 نَسَّق | NASSAQ
 
-Centralized report generation with MongoDB aggregation pipelines.
+Centralized report generation with aggregation pipelines.
 
 Report types:
   School-level:
@@ -26,7 +26,10 @@ All reports return:
 
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone, timedelta
+import logging
 import math
+
+logger = logging.getLogger("nassaq.reporting_engine")
 
 
 REPORT_TYPES = [
@@ -60,14 +63,16 @@ def _week_key(date_str: str) -> str:
         dt = datetime.strptime(date_str[:10], "%Y-%m-%d")
         iso = dt.isocalendar()
         return f"{iso[0]}-W{iso[1]:02d}"
-    except Exception:
+    except Exception as e:
+        logger.debug("Could not parse week key from '%s': %s", date_str, e)
         return "unknown"
 
 
 def _month_key(date_str: str) -> str:
     try:
         return date_str[:7]
-    except Exception:
+    except Exception as e:
+        logger.debug("Could not parse month key from '%s': %s", date_str, e)
         return "unknown"
 
 
@@ -487,7 +492,8 @@ class ReportingEngine:
         ]
         try:
             dist_raw = await self.db.student_daily_scores.aggregate(pipeline_dist).to_list(20)
-        except Exception:
+        except Exception as e:
+            logger.debug("Score distribution aggregation failed: %s", e)
             dist_raw = []
 
         labels = {0: "0-49", 50: "50-59", 60: "60-69", 70: "70-79", 80: "80-89", 90: "90-100"}
@@ -990,8 +996,8 @@ class ReportingEngine:
                 live_risk = await self.hakim_engine.analyze_student_risk(student_id, school_id)
                 if live_risk and not live_risk.get("error"):
                     risk_data = live_risk
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Live risk analysis unavailable for student %s: %s", student_id, e)
 
         strengths = []
         improvements = []

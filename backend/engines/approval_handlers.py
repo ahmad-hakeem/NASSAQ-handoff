@@ -263,8 +263,8 @@ class SchoolApprovalHandler(ApprovalHandler):
             try:
                 last_num = int(last_school["code"].split("-")[-1])
                 next_num = last_num + 1
-            except (ValueError, IndexError):
-                pass
+            except (ValueError, IndexError) as e:
+                logging.getLogger("nassaq.approval").debug("School code parse fallback: %s", e)
 
         school_code = f"{prefix}{str(next_num).zfill(4)}"
         existing = await database.schools.find_one({"code": school_code})

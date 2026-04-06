@@ -74,6 +74,13 @@ async def init_pg_tables():
     logger.info("PostgreSQL schema verified (Alembic-managed)")
 
 
+def get_sync_engine():
+    """Return the underlying synchronous engine for event listeners and pool stats."""
+    return engine.sync_engine
+
+
 async def close_pg_engine():
+    from middleware.query_monitor import stop_pool_monitor
+    stop_pool_monitor()
     await engine.dispose()
     logger.info("PostgreSQL engine disposed")

@@ -147,8 +147,8 @@ def enrich_sla_state(issue: dict) -> dict:
             now = datetime.now(timezone.utc)
             issue["sla_remaining_hours"] = max(0, round((deadline - now).total_seconds() / 3600, 2))
             issue["sla_status"] = "within" if deadline > now else "exceeded"
-        except (ValueError, TypeError):
-            pass
+        except (ValueError, TypeError) as e:
+            logging.getLogger("nassaq.product_hub").debug("SLA parse error: %s", e)
     issue["progress_percent"] = STATUS_PROGRESS.get(issue.get("status", "new"), 0)
     return issue
 
@@ -281,6 +281,6 @@ async def check_sla_warning(issue_id: str, issue: dict, user: dict):
                     {"$set": {"sla_warning_emitted": True}}
                 )
                 return True
-        except (ValueError, TypeError):
-            pass
+        except (ValueError, TypeError) as e:
+            logging.getLogger("nassaq.product_hub").debug("SLA warning check error: %s", e)
     return False

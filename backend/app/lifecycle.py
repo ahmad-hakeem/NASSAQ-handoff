@@ -93,6 +93,16 @@ async def startup_tasks():
     except Exception as e:
         logger.warning(f"PostgreSQL init on startup: {e}")
 
+    try:
+        from db import get_sync_engine
+        from middleware.query_monitor import install_query_timing, start_pool_monitor
+        sync_eng = get_sync_engine()
+        install_query_timing(sync_eng)
+        start_pool_monitor(sync_eng)
+        logger.info("Query timing and pool monitor installed")
+    except Exception as e:
+        logger.warning(f"Query monitor setup: {e}")
+
     from engines.approval_engine import approval_engine
     from engines.approval_handlers import TeacherApprovalHandler, SchoolApprovalHandler
     approval_engine.register(TeacherApprovalHandler())

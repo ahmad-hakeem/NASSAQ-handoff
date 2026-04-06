@@ -11,6 +11,7 @@ Also preserves legacy export helpers (export_students, export_attendance, etc.)
 import csv
 import io
 import json
+import logging
 import os
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timezone
@@ -38,7 +39,8 @@ def _reshape_ar(text: str) -> str:
     try:
         reshaped = arabic_reshaper.reshape(str(text))
         return get_display(reshaped)
-    except Exception:
+    except Exception as e:
+        logging.getLogger("nassaq.export").debug("Arabic reshape failed: %s", e)
         return str(text)
 
 FONTS_DIR = os.path.join(os.path.dirname(__file__), "..", "fonts")

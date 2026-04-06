@@ -1867,7 +1867,6 @@ class SmartSchedulingEngine:
 
         sc = sc_map.get("minimize_teacher_travel")
         if sc:
-            w = sc.get("weight", 2) / 10.0
             pass
 
         return score
