@@ -124,6 +124,9 @@ Each fix report must include: root cause, why it wasn't caught before, what chan
   - **services/apiClient.js**: API service layer factory `createApiService(api)` with 13 domain modules (auth, schools, students, teachers, classes, subjects, attendance, assessments, notifications, settings, platform, productHub, hakim)
   - **components/school-settings/DndComponents.jsx**: Extracted DnD components (DraggableClassItem, DroppableTeacherBox, DraggableSubjectItem, DroppableTeacherSubjectBox)
   - **components/student-profile/ProfileComponents.jsx**: Extracted profile helpers (TALENT_OPTIONS, PLAN_CONFIG, HakimPlanCard, StatCard, EmptyState, DataField)
+  - **components/student-profile/StudentTabsContent.jsx**: Extracted 7 tab components (OverviewTab, AcademicTab, TalentsTab, BehaviourTab, ActivitiesTab, PlansTab, LongitudinalTab) — receive full hook object as single `hook` prop
+  - **components/student-profile/StudentModals.jsx**: Extracted 6 modal components (EditProfileModal, BehaviourModal, ExportPlanModal, ActivityModal, CertificateModal, FullProfileExportModal)
+  - **hooks/useStudentProfile.js**: Custom hook (685L) encapsulating all student profile state, API calls, handlers, and computed values
   - **AuthContext.js**: fetchUser uses AbortController with 10s timeout; 401 clears token + Arabic error toasts
 - **Backend**: FastAPI (Python), JWT auth — port 8000
   - **server.py**: Thin orchestrator (~50 lines) — app creation only
