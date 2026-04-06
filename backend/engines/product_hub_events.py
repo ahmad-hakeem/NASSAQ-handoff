@@ -101,6 +101,7 @@ async def emit_event(
     user: dict,
     details: Optional[Dict[str, Any]] = None,
 ):
+    """Publish a product-hub event to the event log."""
     entry = {
         "id": str(uuid.uuid4()),
         "event_type": event.value,
@@ -117,11 +118,13 @@ async def emit_event(
 
 
 def validate_status_transition(current_status: str, new_status: str) -> bool:
+    """Check whether an issue status transition is valid."""
     allowed = VALID_STATUS_TRANSITIONS.get(current_status, set())
     return new_status in allowed
 
 
 def get_transition_error(current_status: str, new_status: str) -> str:
+    """Return the error message for an invalid status transition."""
     return (
         f"لا يمكن الانتقال من '{STATUS_LABELS.get(current_status, current_status)}' "
         f"إلى '{STATUS_LABELS.get(new_status, new_status)}'"
@@ -129,6 +132,7 @@ def get_transition_error(current_status: str, new_status: str) -> str:
 
 
 def calculate_sla(priority: str, created_at: datetime) -> dict:
+    """Calculate SLA deadline based on priority and creation time."""
     sla_h = SLA_HOURS.get(priority)
     if not sla_h:
         return {"sla_deadline": None, "sla_status": None}
@@ -141,6 +145,7 @@ def calculate_sla(priority: str, created_at: datetime) -> dict:
 
 
 def enrich_sla_state(issue: dict) -> dict:
+    """Attach SLA metadata to an issue payload."""
     if issue.get("sla_deadline") and issue.get("status") not in FINAL_STATUSES:
         try:
             deadline = datetime.fromisoformat(issue["sla_deadline"].replace("Z", "+00:00"))
@@ -154,6 +159,7 @@ def enrich_sla_state(issue: dict) -> dict:
 
 
 async def handle_issue_created(issue_id: str, issue: dict, user: dict):
+    """Process a newly created product-hub issue."""
     await emit_event(HubEvent.ISSUE_CREATED, issue_id, user, {
         "issue_type": issue.get("issue_type"),
         "priority": issue.get("priority"),
@@ -163,6 +169,7 @@ async def handle_issue_created(issue_id: str, issue: dict, user: dict):
 
 
 async def handle_hakim_analysis(issue_id: str, user: dict, analysis: dict, source: str = "auto"):
+    """Process a Hakim AI analysis event."""
     await emit_event(HubEvent.HAKIM_ANALYSIS_STARTED, issue_id, user, {"source": source})
 
     await emit_event(HubEvent.HAKIM_ANALYSIS_COMPLETED, issue_id, user, {
@@ -181,6 +188,7 @@ async def handle_hakim_analysis(issue_id: str, user: dict, analysis: dict, sourc
 
 
 async def handle_prompt_generated(issue_id: str, user: dict):
+    """Process a prompt-generation event."""
     await emit_event(HubEvent.PROMPT_GENERATED, issue_id, user)
 
 
@@ -191,6 +199,7 @@ async def handle_status_changed(
     to_status: str,
     note: str = "",
 ):
+    """Process an issue status change event."""
     event = HubEvent.STATUS_CHANGED
     details = {"from": from_status, "to": to_status, "note": note}
 
@@ -216,6 +225,7 @@ async def handle_feedback_response(
     resolved: bool,
     comment: str = "",
 ):
+    """Process user feedback on an issue."""
     if resolved:
         await emit_event(HubEvent.USER_CONFIRMED_RESOLVED, issue_id, user, {
             "comment": comment,
@@ -236,6 +246,7 @@ async def handle_issue_assigned(
     assigned_to: Optional[str] = None,
     note: str = "",
 ):
+    """Process an issue assignment event."""
     await emit_event(HubEvent.ISSUE_ASSIGNED, issue_id, user, {
         "team": team,
         "assigned_to": assigned_to,
@@ -244,18 +255,21 @@ async def handle_issue_assigned(
 
 
 async def handle_comment_added(issue_id: str, user: dict, comment_id: str):
+    """Process a new comment on an issue."""
     await emit_event(HubEvent.COMMENT_ADDED, issue_id, user, {
         "comment_id": comment_id,
     })
 
 
 async def handle_attachment_added(issue_id: str, user: dict, filename: str):
+    """Process a new attachment on an issue."""
     await emit_event(HubEvent.ATTACHMENT_ADDED, issue_id, user, {
         "filename": filename,
     })
 
 
 async def handle_issue_updated(issue_id: str, user: dict, changes: dict):
+    """Process a general issue update event."""
     await emit_event(HubEvent.ISSUE_UPDATED, issue_id, user, {
         "fields_changed": list(changes.keys()),
         "changes": changes,
@@ -263,6 +277,7 @@ async def handle_issue_updated(issue_id: str, user: dict, changes: dict):
 
 
 async def check_sla_warning(issue_id: str, issue: dict, user: dict):
+    """Check whether an issue is approaching its SLA deadline."""
     if issue.get("sla_warning_emitted"):
         return False
     if issue.get("sla_deadline") and issue.get("status") in OPEN_STATUSES:

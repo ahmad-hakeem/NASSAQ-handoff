@@ -76,7 +76,14 @@ async def test_health_endpoint(client: httpx.AsyncClient):
     assert resp.status_code == 200
     body = resp.json()
     assert body["status"] in ("healthy", "degraded")
+    assert "timestamp" in body
+    assert "uptime_seconds" in body
+    assert isinstance(body["uptime_seconds"], (int, float))
+    assert body["uptime_seconds"] > 0
     assert "database" in body
+    assert body["database"]["connected"] is True
+    assert "latency_ms" in body["database"]
+    assert isinstance(body["database"]["latency_ms"], (int, float))
     assert "pool" in body["database"]
     assert "active_connections" in body["database"]
     assert "response_time" in body
@@ -88,9 +95,14 @@ async def test_health_has_pool_stats(client: httpx.AsyncClient):
     resp = await client.get("/system/health")
     pool = resp.json()["database"]["pool"]
     assert "pool_size" in pool
+    assert isinstance(pool["pool_size"], int)
+    assert pool["pool_size"] >= 1
     assert "checked_out" in pool
+    assert isinstance(pool["checked_out"], int)
     assert "overflow" in pool
+    assert isinstance(pool["overflow"], int)
     assert "checked_in" in pool
+    assert isinstance(pool["checked_in"], int)
 
 
 async def test_health_has_process_stats(client: httpx.AsyncClient):
@@ -98,9 +110,14 @@ async def test_health_has_process_stats(client: httpx.AsyncClient):
     body = resp.json()
     assert "process" in body
     proc = body["process"]
-    if proc:
-        assert "memory_rss_mb" in proc
-        assert "threads" in proc
+    assert proc, "process stats should not be empty"
+    assert "memory_rss_mb" in proc
+    assert isinstance(proc["memory_rss_mb"], (int, float))
+    assert proc["memory_rss_mb"] > 0
+    assert "threads" in proc
+    assert isinstance(proc["threads"], int)
+    assert proc["threads"] >= 1
+    assert "cpu_percent" in proc
 
 
 async def test_health_has_response_time_metrics(client: httpx.AsyncClient):
@@ -108,8 +125,14 @@ async def test_health_has_response_time_metrics(client: httpx.AsyncClient):
     body = resp.json()
     rt = body["response_time"]
     assert "avg_response_ms" in rt
+    assert isinstance(rt["avg_response_ms"], (int, float))
     assert "p95_response_ms" in rt
+    assert isinstance(rt["p95_response_ms"], (int, float))
+    assert "p99_response_ms" in rt
     assert "total_requests" in rt
+    assert isinstance(rt["total_requests"], int)
+    assert rt["total_requests"] >= 1
+    assert "total_errors" in rt
 
 
 async def test_health_has_cache_metrics(client: httpx.AsyncClient):
@@ -117,8 +140,14 @@ async def test_health_has_cache_metrics(client: httpx.AsyncClient):
     body = resp.json()
     cache = body["cache"]
     assert "hits" in cache
+    assert isinstance(cache["hits"], int)
     assert "misses" in cache
+    assert isinstance(cache["misses"], int)
+    assert "total" in cache
+    assert cache["total"] == cache["hits"] + cache["misses"]
     assert "hit_rate_percent" in cache
+    assert isinstance(cache["hit_rate_percent"], (int, float))
+    assert 0 <= cache["hit_rate_percent"] <= 100
 
 
 async def test_request_id_header(client: httpx.AsyncClient):
@@ -409,5 +438,6 @@ async def test_cross_tenant_school_access(client: httpx.AsyncClient, admin_heade
     if resp.status_code == 200:
         body = resp.json()
         school = body.get("data") or body
-        if school:
-            assert school.get("id") != fake_id or school is None
+        assert not school or school.get("id") != fake_id, (
+            "Cross-tenant access returned a school that should not exist"
+        )

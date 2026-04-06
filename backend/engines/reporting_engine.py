@@ -116,6 +116,7 @@ class ReportingEngine:
         teacher_id: Optional[str] = None,
         student_id: Optional[str] = None,
     ) -> dict:
+        """Dispatch report generation by type and return structured report data."""
         sd, ed = _date_range(start_date, end_date)
         kwargs = dict(
             school_id=school_id,
@@ -1061,6 +1062,7 @@ class ReportingEngine:
     # ------------------------------------------------------------------
 
     async def generate_student_report(self, student_id: str, school_id: str) -> dict:
+        """Generate a comprehensive report for a single student."""
         student = await self.db.students.find_one(
             {"id": student_id, "school_id": school_id}, {"_id": 0}
         )
@@ -1237,6 +1239,7 @@ class ReportingEngine:
         }
 
     async def generate_class_report(self, class_id: str, school_id: str) -> dict:
+        """Generate an aggregate report for a class including attendance and grades."""
         cls = await self.db.classes.find_one(
             {"id": class_id, "school_id": school_id}, {"_id": 0, "name": 1, "id": 1}
         )
@@ -1313,6 +1316,7 @@ class ReportingEngine:
         self, school_id: str, start_date: str, end_date: str,
         class_id: Optional[str] = None,
     ) -> dict:
+        """Generate an attendance summary report over a date range."""
         query: dict = {
             "school_id": school_id,
             "date": {"$gte": start_date, "$lte": end_date},
@@ -1385,6 +1389,7 @@ class ReportingEngine:
         }
 
     async def generate_teacher_report(self, teacher_id: str, school_id: str) -> dict:
+        """Generate a performance and workload report for a teacher."""
         teacher = await self.db.teachers.find_one(
             {"id": teacher_id, "school_id": school_id}, {"_id": 0}
         )
@@ -1442,6 +1447,7 @@ class ReportingEngine:
         }
 
     async def generate_school_report(self, school_id: str) -> dict:
+        """Generate a whole-school overview report with key statistics."""
         school = await self.db.schools.find_one({"id": school_id}, {"_id": 0})
         if not school:
             return {"error": "المدرسة غير موجودة"}

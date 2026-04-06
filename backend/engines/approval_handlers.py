@@ -63,6 +63,7 @@ class TeacherApprovalHandler(ApprovalHandler):
     display_name_ar = "معلم مستقل"
 
     def get_display_fields(self):
+        """Return human-readable display fields for a teacher/school approval."""
         return [
             {"key": "full_name", "label": "الاسم", "label_en": "Name"},
             {"key": "email", "label": "البريد", "label_en": "Email"},
@@ -75,6 +76,7 @@ class TeacherApprovalHandler(ApprovalHandler):
         ]
 
     async def validate_before_approve(self, request: dict) -> Optional[str]:
+        """Validate business rules before approving teacher/school registration."""
         database = _get_db()
         email = request.get("email")
         phone = request.get("phone")
@@ -98,6 +100,7 @@ class TeacherApprovalHandler(ApprovalHandler):
         return None
 
     async def create_entities(self, request: dict, approved_by: dict) -> ApprovalResult:
+        """Create the teacher or school entities upon approval."""
         database = _get_db()
         now = datetime.now(timezone.utc).isoformat()
         email = request.get("email")
@@ -203,6 +206,7 @@ class TeacherApprovalHandler(ApprovalHandler):
         )
 
     async def verify_after_approve(self, request: dict, result: ApprovalResult) -> Optional[str]:
+        """Verify that entities were created successfully after approval."""
         database = _get_db()
         user_id = result.created_entities.get("user_id")
         teacher_id = result.created_entities.get("teacher_id")
@@ -228,6 +232,7 @@ class SchoolApprovalHandler(ApprovalHandler):
     display_name_ar = "مدرسة"
 
     def get_display_fields(self):
+        """Return human-readable display fields for a teacher/school approval."""
         return [
             {"key": "school_name", "label": "اسم المدرسة", "label_en": "School Name"},
             {"key": "full_name", "label": "اسم المدير", "label_en": "Principal"},
@@ -240,6 +245,7 @@ class SchoolApprovalHandler(ApprovalHandler):
         ]
 
     async def validate_before_approve(self, request: dict) -> Optional[str]:
+        """Validate business rules before approving teacher/school registration."""
         database = _get_db()
         school_email = request.get("school_email") or request.get("email")
         if school_email:
@@ -274,6 +280,7 @@ class SchoolApprovalHandler(ApprovalHandler):
         return school_code
 
     async def create_entities(self, request: dict, approved_by: dict) -> ApprovalResult:
+        """Create the teacher or school entities upon approval."""
         database = _get_db()
         now = datetime.now(timezone.utc).isoformat()
         approver_id = approved_by.get("id", approved_by.get("user_id"))
@@ -412,6 +419,7 @@ class SchoolApprovalHandler(ApprovalHandler):
         )
 
     async def verify_after_approve(self, request: dict, result: ApprovalResult) -> Optional[str]:
+        """Verify that entities were created successfully after approval."""
         database = _get_db()
         school_id = result.created_entities.get("school_id")
         principal_id = result.created_entities.get("principal_id")

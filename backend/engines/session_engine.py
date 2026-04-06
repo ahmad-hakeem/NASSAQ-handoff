@@ -996,6 +996,7 @@ class TeacherSessionEngine:
         status: str,
         teacher_id: str
     ) -> Dict[str, Any]:
+        """Record homework status for a single student in a session."""
         if not student_id:
             raise HTTPException(status_code=400, detail="student_id مطلوب")
         if status not in ("done", "not_done"):
@@ -1027,6 +1028,7 @@ class TeacherSessionEngine:
         return {"message": "تم تسجيل حالة الواجب", "student_id": student_id, "status": status}
 
     async def get_homework_statuses(self, session_id: str) -> Dict[str, str]:
+        """Retrieve homework completion statuses for a session."""
         records = await self.db.session_homework.find(
             {"session_id": session_id}, {"_id": 0, "student_id": 1, "status": 1}
         ).to_list(200)
@@ -1038,6 +1040,7 @@ class TeacherSessionEngine:
         records: list,
         teacher_id: str
     ) -> Dict[str, Any]:
+        """Record homework completion status for multiple students in bulk."""
         if not records:
             return {"message": "لا توجد سجلات", "done": 0, "not_done": 0}
         for rec in records:
@@ -2217,6 +2220,7 @@ class TeacherSessionEngine:
         student_id: str = None,
         student_ids: List[str] = None
     ) -> Dict[str, Any]:
+        """Add a teacher note to a session."""
         now = datetime.now(timezone.utc)
         note = {
             "id": str(uuid.uuid4()),
@@ -2241,6 +2245,7 @@ class TeacherSessionEngine:
         return {"message": "تم إضافة الملاحظة", "note_id": note["id"], "note": {k: v for k, v in note.items() if k != "_id"}}
 
     async def get_session_notes(self, session_id: str) -> List[Dict[str, Any]]:
+        """Retrieve all notes attached to a session."""
         notes = await self.db.session_notes.find(
             {"session_id": session_id},
             {"_id": 0}
@@ -2253,6 +2258,7 @@ class TeacherSessionEngine:
         return notes
 
     async def delete_note(self, note_id: str, teacher_id: str) -> Dict[str, Any]:
+        """Remove a note from a session by note ID."""
         result = await self.db.session_notes.delete_one({"id": note_id, "teacher_id": teacher_id})
         if result.deleted_count == 0:
             raise HTTPException(status_code=404, detail="الملاحظة غير موجودة")
@@ -2261,6 +2267,7 @@ class TeacherSessionEngine:
     # ---------- Live Metrics ----------
 
     async def get_live_metrics(self, session_id: str) -> Dict[str, Any]:
+        """Return real-time participation and behaviour metrics for a session."""
         session = await self.db.class_sessions.find_one({"id": session_id}, {"_id": 0})
         if not session:
             raise HTTPException(status_code=404, detail="الجلسة غير موجودة")
@@ -2336,6 +2343,7 @@ class TeacherSessionEngine:
         limit: int = 20,
         status_filter: str = None
     ) -> Dict[str, Any]:
+        """List sessions for a teacher with optional date filters."""
         query = {"teacher_id": teacher_id}
         if status_filter:
             query["status"] = status_filter
@@ -2374,6 +2382,7 @@ class TeacherSessionEngine:
         }
 
     async def get_session_report(self, session_id: str) -> Dict[str, Any]:
+        """Generate a detailed post-session report."""
         session = await self.db.class_sessions.find_one({"id": session_id}, {"_id": 0})
         if not session:
             raise HTTPException(status_code=404, detail="الجلسة غير موجودة")
@@ -2481,6 +2490,7 @@ class TeacherSessionEngine:
     # ---------- Event Log ----------
 
     async def get_session_events(self, session_id: str, limit: int = 100) -> List[Dict[str, Any]]:
+        """Return the chronological event log for a session."""
         events = await self.db.session_event_log.find(
             {"session_id": session_id}, {"_id": 0}
         ).sort("timestamp", -1).to_list(limit)
@@ -2489,6 +2499,7 @@ class TeacherSessionEngine:
     # ---------- Auto-Close Stale Sessions ----------
 
     async def auto_close_stale_sessions(self, max_duration_hours: int = 4) -> Dict[str, Any]:
+        """Close sessions that have been idle beyond the configured timeout."""
         cutoff = (datetime.now(timezone.utc) - timedelta(hours=max_duration_hours)).isoformat()
         stale = await self.db.class_sessions.find({
             "status": {"$in": self.ACTIVE_STATUSES},

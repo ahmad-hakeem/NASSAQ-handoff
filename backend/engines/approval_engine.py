@@ -78,6 +78,7 @@ VALID_TRANSITIONS: Dict[str, set] = {
 
 
 def validate_transition(current_status: str, target_status: str) -> Tuple[bool, str]:
+    """Check whether a status transition is allowed."""
     allowed = VALID_TRANSITIONS.get(current_status, set())
     if target_status not in allowed:
         return False, f"لا يمكن الانتقال من '{current_status}' إلى '{target_status}'"
@@ -100,15 +101,19 @@ class ApprovalHandler:
     display_name_ar: str
 
     async def validate_before_approve(self, request: dict) -> Optional[str]:
+        """Hook: validate business rules before approving a request."""
         return None
 
     async def create_entities(self, request: dict, approved_by: dict) -> ApprovalResult:
+        """Hook: create domain entities after approval is granted."""
         raise NotImplementedError
 
     async def verify_after_approve(self, request: dict, result: ApprovalResult) -> Optional[str]:
+        """Hook: verify entity creation succeeded after approval."""
         return None
 
     def get_display_fields(self) -> list:
+        """Hook: return human-readable display fields for the request."""
         return ["full_name", "email", "phone", "created_at"]
 
 
@@ -141,13 +146,16 @@ class ApprovalEngine:
         self._handlers: Dict[str, ApprovalHandler] = {}
 
     def register(self, handler: ApprovalHandler):
+        """Register an approval handler for a given request type."""
         self._handlers[handler.request_type] = handler
         logger.info(f"Registered approval handler: {handler.request_type} ({handler.display_name_ar})")
 
     def get_handler(self, request_type: str) -> Optional[ApprovalHandler]:
+        """Look up the registered handler for a request type."""
         return self._handlers.get(request_type)
 
     def get_registered_types(self) -> list:
+        """Return a list of all registered approval types."""
         return [
             {
                 "type": h.request_type,
@@ -187,6 +195,7 @@ class ApprovalEngine:
         await database.audit_logs.insert_one(audit_log)
 
     async def approve(self, request_id: str, current_user: dict, notes: str = "") -> ApprovalResult:
+        """Approve a pending request and trigger entity creation."""
         database, request = await self._get_request(request_id)
         if not request:
             return ApprovalResult(success=False, message="طلب التسجيل غير موجود", request_type="unknown")
@@ -299,6 +308,7 @@ class ApprovalEngine:
         return result
 
     async def reject(self, request_id: str, reason: str, current_user: dict) -> dict:
+        """Reject a pending request with a reason."""
         database, request = await self._get_request(request_id)
         if not request:
             return {"success": False, "detail": "طلب التسجيل غير موجود"}
@@ -341,6 +351,7 @@ class ApprovalEngine:
         return {"success": True, "message": "تم رفض الطلب بنجاح", "rejection_reason": reason}
 
     async def request_info(self, request_id: str, message: str, current_user: dict) -> dict:
+        """Request additional information on a pending request."""
         database, request = await self._get_request(request_id)
         if not request:
             return {"success": False, "detail": "طلب التسجيل غير موجود"}
@@ -378,6 +389,7 @@ class ApprovalEngine:
         return {"success": True, "message": "تم إرسال طلب المعلومات الإضافية"}
 
     async def mark_under_review(self, request_id: str, notes: str, current_user: dict) -> dict:
+        """Transition a request to under-review status."""
         database, request = await self._get_request(request_id)
         if not request:
             return {"success": False, "detail": "طلب التسجيل غير موجود"}
@@ -417,6 +429,7 @@ class ApprovalEngine:
         return {"success": True, "message": "تم وضع الطلب تحت المراجعة"}
 
     async def archive(self, request_id: str, current_user: dict) -> dict:
+        """Archive a completed or rejected request."""
         database, request = await self._get_request(request_id)
         if not request:
             return {"success": False, "detail": "طلب التسجيل غير موجود"}
@@ -454,6 +467,7 @@ class ApprovalEngine:
         return {"success": True, "message": "تم أرشفة الطلب"}
 
     async def cancel(self, request_id: str, reason: str, current_user: dict) -> dict:
+        """Cancel a pending request."""
         database, request = await self._get_request(request_id)
         if not request:
             return {"success": False, "detail": "طلب التسجيل غير موجود"}
@@ -493,6 +507,7 @@ class ApprovalEngine:
         return {"success": True, "message": "تم إلغاء الطلب"}
 
     async def get_queue(self, filters: dict = None) -> dict:
+        """Return the filtered approval queue for a reviewer."""
         database = _get_db()
         query = {}
         filters = filters or {}
@@ -510,6 +525,7 @@ class ApprovalEngine:
         return {"requests": requests, "total": len(requests)}
 
     async def get_request_details(self, request_id: str) -> Optional[dict]:
+        """Fetch full details of a single approval request."""
         database = _get_db()
         request = await database.registration_requests.find_one({"id": request_id}, {"_id": 0})
         if not request:

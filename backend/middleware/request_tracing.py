@@ -76,19 +76,21 @@ class RequestTracingMiddleware(BaseHTTPMiddleware):
 
         start = time.perf_counter()
         status_code = 500
+        raised = False
         try:
             response = await call_next(request)
             status_code = response.status_code
             response.headers["X-Request-Id"] = rid
             return response
         except Exception:
+            raised = True
             _error_count += 1
             raise
         finally:
             duration_ms = round((time.perf_counter() - start) * 1000, 1)
             _recent_durations.append(duration_ms)
             _request_count += 1
-            if status_code >= 500:
+            if not raised and status_code >= 500:
                 _error_count += 1
 
             user_id = tenant_id = None

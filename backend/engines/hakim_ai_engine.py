@@ -53,6 +53,7 @@ class HakimAIEngine:
     async def analyze_student_risk(
         self, student_id: str, school_id: str, days_back: int = 30
     ) -> Dict[str, Any]:
+        """Assess risk factors for a student based on attendance, grades, and behaviour."""
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime("%Y-%m-%d")
 
         attendance_score = await self._calc_attendance_score(student_id, school_id, cutoff)
@@ -198,6 +199,7 @@ class HakimAIEngine:
     async def analyze_class_participation(
         self, class_id: str, school_id: str, days_back: int = 30
     ) -> Dict[str, Any]:
+        """Evaluate participation patterns across a class."""
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime("%Y-%m-%d")
 
         students = await self.db.students.find(
@@ -278,6 +280,7 @@ class HakimAIEngine:
     async def analyze_student_behaviour_patterns(
         self, student_id: str, school_id: str, days_back: int = 60
     ) -> Dict[str, Any]:
+        """Detect recurring behaviour trends for a student."""
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime("%Y-%m-%d")
         session_ids = await self._get_school_session_ids(school_id, cutoff)
 
@@ -350,6 +353,7 @@ class HakimAIEngine:
     async def analyze_teacher_sessions(
         self, teacher_id: str, school_id: str, days_back: int = 30
     ) -> Dict[str, Any]:
+        """Analyze session metrics and teaching patterns for a teacher."""
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime("%Y-%m-%d")
 
         sessions = await self.db.class_sessions.find({
@@ -456,6 +460,7 @@ class HakimAIEngine:
     async def analyze_class_health(
         self, class_id: str, school_id: str, days_back: int = 30
     ) -> Dict[str, Any]:
+        """Compute a composite health score for a class."""
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime("%Y-%m-%d")
 
         students = await self.db.students.find(
@@ -559,6 +564,7 @@ class HakimAIEngine:
     # ------------------------------------------------------------------
 
     async def run_full_analysis(self, school_id: str, days_back: int = 30) -> Dict[str, Any]:
+        """Execute all analysis pipelines for a school and store insights."""
         now = datetime.now(timezone.utc)
 
         students = await self.db.students.find(
@@ -724,6 +730,7 @@ class HakimAIEngine:
     # ------------------------------------------------------------------
 
     async def get_stored_insight(self, insight_type: str, entity_id: str, school_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieve a previously stored AI insight by ID."""
         doc = await self.db.ai_insights.find_one(
             {"type": insight_type, "entity_id": entity_id, "school_id": school_id},
             {"_id": 0}
@@ -731,6 +738,7 @@ class HakimAIEngine:
         return doc
 
     async def get_school_insights(self, school_id: str, limit: int = 20) -> List[Dict[str, Any]]:
+        """List stored AI insights for a school, with optional filters."""
         docs = await self.db.ai_insights.find(
             {"school_id": school_id},
             {"_id": 0}
@@ -744,6 +752,7 @@ class HakimAIEngine:
     async def execute_auto_interventions(
         self, school_id: str, days_back: int = 30
     ) -> Dict[str, Any]:
+        """Trigger automatic interventions based on risk thresholds."""
         now = datetime.now(timezone.utc)
         cutoff = (now - timedelta(days=days_back)).strftime("%Y-%m-%d")
 
@@ -900,6 +909,7 @@ class HakimAIEngine:
     async def generate_improvement_plan(
         self, student_id: str, school_id: str, days_back: int = 30
     ) -> Dict[str, Any]:
+        """Create a structured improvement plan for a student."""
         risk = await self.analyze_student_risk(student_id, school_id, days_back)
         behaviour = await self.analyze_student_behaviour_patterns(student_id, school_id, days_back)
         grade_trend = await self.detect_student_grade_trend(student_id, school_id)
@@ -976,6 +986,7 @@ class HakimAIEngine:
     async def detect_student_grade_trend(
         self, student_id: str, school_id: str
     ) -> Dict[str, Any]:
+        """Compute the grade trend direction for a student."""
         grades = await self.db.student_grades.find(
             {"student_id": student_id, "tenant_id": school_id},
             {"_id": 0, "percentage": 1, "graded_at": 1, "subject_id": 1}
@@ -1037,6 +1048,7 @@ class HakimAIEngine:
     async def detect_grade_decline_alerts(
         self, school_id: str, threshold: float = -10.0
     ) -> Dict[str, Any]:
+        """Identify students with significant grade declines."""
         students = await self.db.students.find(
             {"school_id": school_id, "is_active": True},
             {"_id": 0, "id": 1, "full_name": 1, "class_id": 1}
@@ -1075,6 +1087,7 @@ class HakimAIEngine:
     async def suggest_schedule_adjustments(
         self, school_id: str
     ) -> Dict[str, Any]:
+        """Recommend timetable changes based on performance data."""
         now = datetime.now(timezone.utc)
         week_ago = (now - timedelta(days=7)).strftime("%Y-%m-%d")
 
@@ -1186,6 +1199,7 @@ class HakimAIEngine:
     async def run_periodic_scan(
         self, school_id: str, days_back: int = 30
     ) -> Dict[str, Any]:
+        """Run the scheduled background analysis scan for a school."""
         now = datetime.now(timezone.utc)
 
         analysis = await self.run_full_analysis(school_id, days_back)

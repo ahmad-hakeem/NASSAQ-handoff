@@ -54,16 +54,20 @@ _SENSITIVE_KEYS = frozenset({
 
 
 def _safe_params(params) -> str:
-    """Redact sensitive keys and truncate param repr."""
+    """Redact sensitive keys from dicts and mask non-dict params to avoid leaking credentials."""
     try:
+        if params is None:
+            return "None"
         if isinstance(params, dict):
             redacted = {
                 k: "***" if any(s in k.lower() for s in _SENSITIVE_KEYS) else v
                 for k, v in params.items()
             }
             s = repr(redacted)
+        elif isinstance(params, (list, tuple)):
+            s = f"<{type(params).__name__}[{len(params)} items]>"
         else:
-            s = repr(params)
+            s = f"<{type(params).__name__}>"
         return (s[:300] + "…") if len(s) > 300 else s
     except Exception:
         return "<unprintable>"

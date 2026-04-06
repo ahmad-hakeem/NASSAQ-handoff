@@ -172,6 +172,7 @@ class ExportEngine:
         teacher_id: Optional[str] = None,
         student_id: Optional[str] = None,
     ) -> tuple:
+        """Dispatch an export request by type and return the file content."""
         if not self.reporting_engine:
             raise ValueError("ReportingEngine not configured")
 
@@ -654,6 +655,7 @@ class ExportEngine:
         return frames
 
     def export_to_csv(self, data: List[Dict[str, Any]], filename_prefix: str = "export") -> Dict[str, Any]:
+        """Serialize rows into CSV format."""
         if not data:
             return {"content": b"", "filename": f"{filename_prefix}.csv", "content_type": "text/csv; charset=utf-8-sig"}
 
@@ -681,6 +683,7 @@ class ExportEngine:
         }
 
     def export_to_json(self, data: Any, filename_prefix: str = "export") -> Dict[str, Any]:
+        """Serialize rows into JSON format."""
         content = json.dumps(data, ensure_ascii=False, indent=2, default=str).encode("utf-8")
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         return {
@@ -690,6 +693,7 @@ class ExportEngine:
         }
 
     async def export_students(self, school_id: str, class_id: Optional[str] = None, fmt: str = "csv") -> Dict[str, Any]:
+        """Export student records for a school."""
         query = {"school_id": school_id, "is_active": True}
         if class_id:
             query["class_id"] = class_id
@@ -709,6 +713,7 @@ class ExportEngine:
         self, school_id: str, start_date: str, end_date: str,
         class_id: Optional[str] = None, fmt: str = "csv"
     ) -> Dict[str, Any]:
+        """Export attendance records for a date range."""
         query = {
             "school_id": school_id,
             "date": {"$gte": start_date, "$lte": end_date},
@@ -740,6 +745,7 @@ class ExportEngine:
     async def export_grades(
         self, school_id: str, class_id: Optional[str] = None, fmt: str = "csv"
     ) -> Dict[str, Any]:
+        """Export grade records with optional subject filter."""
         query = {"tenant_id": school_id}
         grades = await self.db.student_grades.find(query, {
             "_id": 0, "student_id": 1, "assessment_id": 1, "subject_id": 1,
@@ -767,6 +773,7 @@ class ExportEngine:
         return self.export_to_csv(grades, "grades")
 
     async def export_report(self, report_data: Dict[str, Any], fmt: str = "csv") -> Dict[str, Any]:
+        """Export a generated report as a downloadable file."""
         report_type = report_data.get("report_type", "report")
 
         if fmt == "json":

@@ -920,6 +920,7 @@ class AssessmentEngine:
         academic_year: Optional[str] = None,
         semester: Optional[int] = None
     ) -> Dict[str, Any]:
+        """Compare average scores and grade distributions across class sections."""
         if assessment_id:
             assessment = await self.get_assessment_by_id(assessment_id)
             if not assessment:
@@ -1006,6 +1007,7 @@ class AssessmentEngine:
         academic_year: Optional[str] = None,
         semester: Optional[int] = None,
     ) -> Dict[str, Any]:
+        """Rank students in a class by average score across assessments."""
         students = await self.db.students.find(
             {"school_id": tenant_id, "class_id": class_id, "is_active": True},
             {"_id": 0, "id": 1, "full_name": 1}
@@ -1083,6 +1085,7 @@ class AssessmentEngine:
         subject_id: Optional[str] = None,
         periods: int = 6,
     ) -> Dict[str, Any]:
+        """Return a student's score trend over recent assessment periods."""
         query: Dict[str, Any] = {
             "tenant_id": tenant_id,
             "student_id": student_id,
@@ -1179,6 +1182,7 @@ class AssessmentEngine:
         class_id: Optional[str] = None,
         threshold: float = -10.0,
     ) -> Dict[str, Any]:
+        """Identify students whose scores dropped below the given threshold percentage."""
         query: Dict[str, Any] = {"school_id": tenant_id, "is_active": True}
         if class_id:
             query["class_id"] = class_id
@@ -1226,6 +1230,7 @@ class AssessmentEngine:
         academic_year: Optional[str] = None,
         semester: Optional[int] = None,
     ) -> Dict[str, Any]:
+        """Return aggregate statistics for a subject: average, distribution, trends."""
         query: Dict[str, Any] = {
             "tenant_id": tenant_id,
             "subject_id": subject_id,

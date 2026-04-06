@@ -62,6 +62,7 @@ class RelationshipGraphEngine:
         term_id: Optional[str] = None,
         created_by: Optional[str] = None
     ) -> Dict:
+        """Create a new relationship link between two entities."""
         existing = await self.relationships.find_one({
             "from_entity_type": from_entity_type,
             "from_entity_id": from_entity_id,
@@ -99,6 +100,7 @@ class RelationshipGraphEngine:
         return {"exists": False, "id": rel_id}
 
     async def deactivate_relationship(self, relationship_id: str, tenant_id: str, deactivated_by: Optional[str] = None) -> bool:
+        """Soft-delete a relationship by marking it inactive."""
         result = await self.relationships.update_one(
             {"id": relationship_id, "tenant_id": tenant_id, "status": "active"},
             {"$set": {
@@ -111,6 +113,7 @@ class RelationshipGraphEngine:
         return result.modified_count > 0
 
     async def update_relationship(self, relationship_id: str, tenant_id: str, updates: Dict) -> bool:
+        """Update metadata on an existing relationship."""
         updates["updated_at"] = datetime.now(timezone.utc).isoformat()
         result = await self.relationships.update_one(
             {"id": relationship_id, "tenant_id": tenant_id},
@@ -127,6 +130,7 @@ class RelationshipGraphEngine:
         direction: str = "both",
         include_inactive: bool = False
     ) -> List[Dict]:
+        """Query relationships with optional entity and type filters."""
         conditions = []
         if direction in ("outgoing", "both"):
             q = {"from_entity_id": entity_id, "tenant_id": tenant_id}
@@ -158,6 +162,7 @@ class RelationshipGraphEngine:
         return results
 
     async def get_parents_of_student(self, student_id: str, tenant_id: str) -> List[Dict]:
+        """Return all parent/guardian relationships for a student."""
         rels = await self.relationships.find({
             "to_entity_id": student_id,
             "to_entity_type": "student",
@@ -186,6 +191,7 @@ class RelationshipGraphEngine:
         return parents
 
     async def get_children_of_parent(self, parent_id: str, tenant_id: str) -> List[Dict]:
+        """Return all student relationships for a parent."""
         rels = await self.relationships.find({
             "from_entity_id": parent_id,
             "from_entity_type": "parent",
@@ -209,6 +215,7 @@ class RelationshipGraphEngine:
         return children
 
     async def get_students_of_teacher(self, teacher_id: str, tenant_id: str) -> List[Dict]:
+        """Return all students taught by a teacher."""
         class_rels = await self.relationships.find({
             "from_entity_id": teacher_id,
             "from_entity_type": "teacher",
@@ -237,6 +244,7 @@ class RelationshipGraphEngine:
         return students
 
     async def get_classes_of_teacher(self, teacher_id: str, tenant_id: str) -> List[Dict]:
+        """Return all classes assigned to a teacher."""
         rels = await self.relationships.find({
             "from_entity_id": teacher_id,
             "from_entity_type": "teacher",
@@ -279,6 +287,7 @@ class RelationshipGraphEngine:
         return classes
 
     async def sync_relationships_for_student(self, student_id: str, tenant_id: str, student_data: Dict, created_by: str = None):
+        """Rebuild relationship edges for a student from source records."""
         if student_data.get("parent_id"):
             await self.create_relationship(
                 "parent", student_data["parent_id"],
@@ -305,6 +314,7 @@ class RelationshipGraphEngine:
         )
 
     async def sync_relationships_for_teacher(self, teacher_id: str, tenant_id: str, teacher_data: Dict, created_by: str = None):
+        """Rebuild relationship edges for a teacher from source records."""
         await self.create_relationship(
             "teacher", teacher_id,
             "school", tenant_id,
@@ -322,6 +332,7 @@ class RelationshipGraphEngine:
             )
 
     async def transfer_student_class(self, student_id: str, old_class_id: str, new_class_id: str, tenant_id: str, transferred_by: str = None):
+        """Move a student to a new class and update relationships."""
         if old_class_id:
             old_rels = await self.relationships.find({
                 "from_entity_id": student_id,
@@ -347,6 +358,7 @@ class RelationshipGraphEngine:
         )
 
     async def get_full_graph(self, entity_id: str, entity_type: str, tenant_id: str) -> Dict:
+        """Build the complete relationship graph for a school."""
         outgoing = await self.relationships.find({
             "from_entity_id": entity_id,
             "tenant_id": tenant_id,
@@ -417,6 +429,7 @@ class RelationshipGraphEngine:
         }
 
     async def get_relationship_stats(self, tenant_id: str) -> Dict:
+        """Return aggregate statistics on relationships within a school."""
         total = await self.relationships.count_documents({"tenant_id": tenant_id, "status": "active"})
 
         pipeline = [
