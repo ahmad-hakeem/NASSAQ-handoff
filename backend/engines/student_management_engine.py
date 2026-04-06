@@ -4,7 +4,7 @@ Handles student creation, parent linking, and related operations
 """
 import logging
 from datetime import datetime, timezone
-from bson_compat import ObjectId
+
 from typing import Optional, Dict, Any, List
 import re
 import secrets
@@ -120,7 +120,7 @@ class StudentManagementEngine:
         """
         try:
             # Get school info
-            school = await self.schools_collection.find_one({"_id": ObjectId(tenant_id)})
+            school = await self.schools_collection.find_one({"_id": str(tenant_id)})
             if not school:
                 school = await self.schools_collection.find_one({"tenant_id": tenant_id})
             
@@ -165,7 +165,7 @@ class StudentManagementEngine:
         """
         try:
             # Get school info
-            school = await self.schools_collection.find_one({"_id": ObjectId(tenant_id)})
+            school = await self.schools_collection.find_one({"_id": str(tenant_id)})
             if not school:
                 school = await self.schools_collection.find_one({"tenant_id": tenant_id})
             
@@ -533,7 +533,7 @@ class StudentManagementEngine:
         if draft_id:
             # Update existing draft
             result = await self.drafts_collection.update_one(
-                {"_id": ObjectId(draft_id), "tenant_id": tenant_id},
+                {"_id": str(draft_id), "tenant_id": tenant_id},
                 {"$set": draft_doc}
             )
             return {"draft_id": draft_id, "updated": True}
@@ -547,7 +547,7 @@ class StudentManagementEngine:
     async def get_draft(self, draft_id: str, tenant_id: str) -> Optional[Dict[str, Any]]:
         """Get a specific draft"""
         draft = await self.drafts_collection.find_one({
-            "_id": ObjectId(draft_id),
+            "_id": str(draft_id),
             "tenant_id": tenant_id
         })
         
@@ -573,7 +573,7 @@ class StudentManagementEngine:
     async def delete_draft(self, draft_id: str, tenant_id: str) -> bool:
         """Delete a draft"""
         result = await self.drafts_collection.delete_one({
-            "_id": ObjectId(draft_id),
+            "_id": str(draft_id),
             "tenant_id": tenant_id
         })
         return result.deleted_count > 0

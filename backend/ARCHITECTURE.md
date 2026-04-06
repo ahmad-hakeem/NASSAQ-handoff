@@ -47,10 +47,11 @@ The NASSAQ backend has been refactored into a modular architecture following bes
 │
 ├── scripts/            # Seed and migration scripts
 │
+├── repositories/       # Repository pattern layer (BaseRepository, Repos container)
+│   ├── base.py         # BaseRepository with find_one, find, insert_one, update_one, etc.
+│   └── __init__.py     # Repos container, MODEL_REGISTRY, get_repos dependency
 ├── db.py               # Async SQLAlchemy engine, session factory
-├── pg_adapter.py       # MongoDB-compatible API adapter over SQLAlchemy
-├── pg_models.py        # 47+ ORM table models
-├── bson_compat.py      # ObjectId + UpdateOne compatibility stubs
+├── pg_models.py        # 49 ORM table models
 ├── alembic/            # Database migrations
 └── server.py           # Main FastAPI application
 ```
@@ -69,8 +70,9 @@ The NASSAQ backend has been refactored into a modular architecture following bes
 
 ### 3. Database Layer
 - PostgreSQL via async SQLAlchemy + asyncpg
-- `pg_adapter.py` provides MongoDB-compatible API (find_one, find, update_one, aggregate)
-- All routes/engines use adapter transparently
+- Repository pattern: `Repos` container with `BaseRepository` per model
+- Repos resolves sessions lazily via context var (thread/task-safe)
+- Engines/routes access collections via `db.collection_name.method()`
 - Alembic manages schema migrations
 
 ### 4. Services Layer

@@ -2,11 +2,13 @@
 NASSAQ - Database Service
 Database connection and utilities (PostgreSQL via SQLAlchemy)
 """
-from pg_adapter import pg_db
+from repositories import Repos
+
+_db = Repos()
 
 
 def get_database():
-    return pg_db
+    return _db
 
 
 async def close_database():

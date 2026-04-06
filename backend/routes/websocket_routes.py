@@ -200,14 +200,18 @@ def create_websocket_routes(db, decode_token):
                         if message.get("type") == "ping":
                             await websocket.send_json({"type": "pong"})
                         
-                        # Handle read notification
                         elif message.get("type") == "mark_read":
                             notification_id = message.get("notification_id")
                             if notification_id:
-                                await db.notifications.update_one(
-                                    {"id": notification_id, "recipient_id": user_id},
-                                    {"$set": {"read_status": True, "read_at": datetime.now(timezone.utc).isoformat()}}
-                                )
+                                from db import async_session_factory
+                                from repositories import Repos
+                                async with async_session_factory() as ws_session:
+                                    ws_repos = Repos(ws_session)
+                                    await ws_repos.notifications.update_one(
+                                        {"id": notification_id, "recipient_id": user_id},
+                                        {"$set": {"read_status": True, "read_at": datetime.now(timezone.utc).isoformat()}}
+                                    )
+                                    await ws_session.commit()
                     except json.JSONDecodeError:
                         pass
                         

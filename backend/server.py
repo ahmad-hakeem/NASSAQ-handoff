@@ -43,7 +43,6 @@ from dependencies import (
 
 from engines.session_engine import TeacherSessionEngine, session_router
 from db import async_session_factory
-from pg_adapter import pg_db
 
 _is_production = os.environ.get("ENVIRONMENT", "development") == "production"
 app = FastAPI(
@@ -57,9 +56,7 @@ app = FastAPI(
 
 from middleware.rate_limiter import RateLimitMiddleware
 from middleware.error_handler import ErrorHandlerMiddleware
-from middleware.nosql_sanitizer import NoSQLSanitizerMiddleware
 app.add_middleware(ErrorHandlerMiddleware)
-app.add_middleware(NoSQLSanitizerMiddleware)
 app.add_middleware(RateLimitMiddleware)
 
 @app.middleware("http")
@@ -68,7 +65,7 @@ async def pg_session_middleware(request: Request, call_next):
     if _p.startswith("/api/ws/") or _p == "/ws":
         return await call_next(request)
     async with async_session_factory() as session:
-        pg_db.set_session(session)
+        db.set_session(session)
         try:
             response = await call_next(request)
             try:
@@ -81,7 +78,7 @@ async def pg_session_middleware(request: Request, call_next):
             await session.rollback()
             raise
         finally:
-            pg_db.set_session(None)
+            db.set_session(None)
 
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
@@ -115,7 +112,6 @@ async def audit_log_middleware(request: Request, call_next):
     duration_ms = round((time.time() - start) * 1000, 1)
 
     try:
-        # User identity
         user_id = user_name = user_role = user_email = tenant_id = None
         if hasattr(request.state, "user") and request.state.user:
             u = request.state.user
@@ -134,13 +130,6 @@ async def audit_log_middleware(request: Request, call_next):
                     user_role = payload.get("role")
                     user_email = payload.get("email")
                     tenant_id = payload.get("tenant_id")
-                    if user_id:
-                        u_doc = await db.users.find_one({"id": user_id}, {"full_name": 1, "email": 1, "role": 1, "tenant_id": 1})
-                        if u_doc:
-                            user_name = u_doc.get("full_name")
-                            user_email = u_doc.get("email") or user_email
-                            user_role = u_doc.get("role") or user_role
-                            tenant_id = u_doc.get("tenant_id") or tenant_id
             except Exception as e:
                 logger.debug(f"Audit middleware: failed to resolve user details from token: {e}")
 
@@ -150,7 +139,7 @@ async def audit_log_middleware(request: Request, call_next):
         action = _derive_action(method, path)
         severity = _derive_severity(method, path, response.status_code)
 
-        await db.audit_logs.insert_one({
+        audit_doc = {
             "id": str(_uuid.uuid4()),
             "action": action,
             "severity": severity,
@@ -172,10 +161,15 @@ async def audit_log_middleware(request: Request, call_next):
                 "duration_ms": duration_ms,
                 "success": 200 <= response.status_code < 400,
             },
-        })
+        }
+        from repositories import Repos
+        async with async_session_factory() as audit_session:
+            audit_repos = Repos(audit_session)
+            await audit_repos.audit_logs.insert_one(audit_doc)
+            await audit_session.commit()
     except Exception as _e:
         import logging as _lg
-        _lg.getLogger("nassaq.audit").error(f"Audit middleware error: {_e}")
+        _lg.getLogger("nassaq.audit").debug(f"Audit middleware: {_e}")
 
     return response
 
@@ -281,7 +275,7 @@ async def startup_tasks():
 
     async def _run_with_session(label, coro_fn):
         async with async_session_factory() as s:
-            pg_db.set_session(s)
+            db.set_session(s)
             try:
                 result = await coro_fn()
                 await s.commit()
@@ -291,20 +285,21 @@ async def startup_tasks():
                 logger.warning(f"{label}: {e}")
                 return None
             finally:
-                pg_db.set_session(None)
+                db.set_session(None)
 
     await _run_with_session("Product hub integrity", _product_hub_integrity)
 
     db_has_data = False
-    try:
+    async def _data_snapshot():
+        nonlocal db_has_data
         user_count_result = await db.users.count_documents({})
         db_has_data = user_count_result > 0
         school_count = await db.schools.count_documents({})
         student_count = await db.students.count_documents({})
         teacher_count = await db.teachers.count_documents({})
         logger.info(f"DEPLOYMENT SAFETY: Data snapshot on startup — users={user_count_result}, schools={school_count}, students={student_count}, teachers={teacher_count}")
-    except Exception as e:
-        logger.warning(f"Data snapshot check failed: {e}")
+
+    await _run_with_session("Data snapshot", _data_snapshot)
 
     if config.seed_allowed() and not db_has_data:
         await _run_with_session("Seed admins", _seed_platform_admins)

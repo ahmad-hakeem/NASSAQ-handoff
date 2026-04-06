@@ -57,10 +57,10 @@ def create_get_current_user(db):
             if not user_id:
                 raise HTTPException(status_code=401, detail="Invalid token")
             
-            from bson_compat import ObjectId
+            
             user = None
             try:
-                user = await db.users.find_one({"_id": ObjectId(user_id)})
+                user = await db.users.find_one({"_id": str(user_id)})
             except Exception:
                 pass
             

@@ -119,7 +119,7 @@ async def migrate():
                 "updated_at": now
             }
 
-            from bson_compat import UpdateOne
+            from repositories.base import UpdateOne
             batch_ops.append(UpdateOne(
                 {"id": doc["id"]},
                 {"$set": update_fields}

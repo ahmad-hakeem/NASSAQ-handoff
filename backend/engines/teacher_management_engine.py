@@ -4,7 +4,7 @@ Handles teacher creation and management for school principals
 """
 import logging
 from datetime import datetime, timezone
-from bson_compat import ObjectId
+
 from typing import Optional, Dict, Any, List
 import secrets
 import string
@@ -100,7 +100,7 @@ class TeacherManagementEngine:
         try:
             school = None
             try:
-                school = await self.schools_collection.find_one({"_id": ObjectId(tenant_id)})
+                school = await self.schools_collection.find_one({"_id": str(tenant_id)})
             except Exception:
                 pass
             if not school:

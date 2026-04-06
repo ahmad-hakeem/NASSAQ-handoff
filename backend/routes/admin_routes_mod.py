@@ -9,7 +9,6 @@ from starlette.responses import StreamingResponse
 from pydantic import BaseModel, Field, ConfigDict, EmailStr, model_validator
 from typing import List, Optional, Any, Dict
 from datetime import datetime, timezone, timedelta
-from bson_compat import ObjectId
 import uuid, os, logging, json, random, re, io, base64
 
 from dependencies import (
@@ -174,7 +173,7 @@ async def get_audit_stats(
             base_q["tenant_id"] = tenant_id
 
         # Fetch all logs in period (max 20k) and compute stats in Python
-        # (avoids pg_adapter count_documents filter issues with GenericDocument)
+        
         all_logs = await db.audit_logs.find(base_q, {"severity": 1, "action": 1, "performed_by": 1, "timestamp": 1}).to_list(20000)
 
         total_events   = len(all_logs)

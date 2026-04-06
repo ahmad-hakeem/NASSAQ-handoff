@@ -95,8 +95,8 @@ Each fix report must include: root cause, why it wasn't caught before, what chan
 - **Error Messages**: All API errors return safe Arabic messages — no `str(e)` exposure to users
 - **Silent Failures**: All bare `except:` replaced with specific exception types (`ValueError`, `KeyError`, `TypeError`, etc.)
 - **Tenant Isolation (BOLA)**: All cross-tenant data access paths fixed — assessment grades, student grade history, student portal assignments, and student messaging all enforce `tenant_id` checks. No user can access another school's data through any API endpoint.
-- **Atomic DB Updates (pg_adapter.py)**: `update_one` with `$set`/`$inc`/`$unset`/`$max` (no `$push/$pull/$addToSet`) uses single `UPDATE ... WHERE` statement instead of fetch-then-modify. `$inc` uses `SET col = col + val` (race-condition free). `$max` uses `CASE WHEN col IS NULL THEN val ELSE GREATEST(col, val)`. `update_many` with same operators uses single `UPDATE ... WHERE` (no per-row loop). `find_one_and_update` with `return_document=True` uses `UPDATE ... RETURNING *` (single atomic statement). All fall back to ORM fetch-then-modify for JSONB array operators (`$push/$pull/$addToSet`) or dotted-path `$set` keys.
-- **Batched Counts (pg_adapter.py)**: `batched_counts({"label": filter_dict, ...})` computes multiple filtered counts from the same table in a single SQL query using PostgreSQL `COUNT(*) FILTER (WHERE ...)`. Used by all dashboard endpoints.
+- **Atomic DB Updates (repositories/base.py)**: `update_one` with `$set`/`$inc`/`$unset`/`$max` uses single `UPDATE ... WHERE` statement instead of fetch-then-modify. `$inc` uses `SET col = col + val` (race-condition free). `$max` uses `CASE WHEN col IS NULL THEN val ELSE GREATEST(col, val)`. `find_one_and_update` with `return_document=True` uses `UPDATE ... RETURNING *`.
+- **Batched Counts (repositories/base.py)**: `batched_counts({"label": filter_dict, ...})` computes multiple filtered counts from the same table in a single SQL query using PostgreSQL `COUNT(*) FILTER (WHERE ...)`. Used by all dashboard endpoints.
 - **Dashboard Query Consolidation**: `GET /dashboard/stats` reduced from ~18 sequential count queries to 3-4 batched queries + asyncio.gather. `GET /super-admin/dashboard-stats` reduced from ~20 to 7 parallel queries. `GET /admin/command-center/stats` reduced from ~18 to 8 parallel queries.
 - **Reporting N+1 Elimination**: `GET /reports/school/attendance` fetches all attendance in 1 query then groups by class (was N queries). `GET /reports/school/grades` fetches all grades in 1 query then groups by subject. `GET /reports/school/top-classes` fetches all attendance + behavior in 2 queries instead of 2N. `GET /reports/school/behavior` batch-fetches student names in 1 query instead of per-record.
 - **Attendance Enrichment Batch**: `GET /attendance/class/{class_id}` collects all student/teacher/class/subject IDs, batch-fetches names in 4 parallel queries, then maps back (was 3-4 queries per record × N records).
@@ -115,12 +115,12 @@ Each fix report must include: root cause, why it wasn't caught before, what chan
 - **Backend**: FastAPI (Python), JWT auth — port 8000
 - **Database**: PostgreSQL (async SQLAlchemy + asyncpg) — MongoDB fully removed
   - **PostgreSQL**: Replit built-in via `DATABASE_URL`, 49 ORM tables (Event, SystemSetting promoted from GenericDocument), Alembic migrations
-  - **Adapter layer**: `backend/pg_adapter.py` — MongoDB-compatible API (find_one, find, update_one, aggregate, etc.) over SQLAlchemy; all routes/engines use adapter transparently
-  - **Compatibility stubs**: `backend/bson_compat.py` — ObjectId + UpdateOne stubs for code that imported from bson/pymongo
+  - **Repository layer**: `backend/repositories/base.py` — BaseRepository with full API (find_one, find, insert_one, update_one, delete_one, aggregate, bulk_write, batched_counts). `backend/repositories/__init__.py` — Repos container with lazy session resolution via context var, MODEL_REGISTRY mapping collection names to ORM models
+  - **Session management**: Repos uses `contextvars.ContextVar` for per-request session isolation. BaseRepository accepts either direct session or Repos holder — engines that cache `self.collection = db.X` at init time work correctly because session is resolved lazily at query time
   - **Core files**: `backend/db.py` (async engine), `backend/pg_models.py` (49 ORM models), `backend/pg_helpers.py` (utilities), `backend/alembic/` (migrations, head: h1i2j3k4l5m6)
-  - **Eager loading**: Key relationships use `lazy="selectin"` (Student.school, Student.class_, Teacher.school, Teacher.assignments, User.tenant, TeacherAssignment.school_rel/class_rel/subject_rel). PgAdapter `find()`/`find_one()` accept `options=` parameter for explicit `joinedload`/`selectinload`
+  - **Eager loading**: Key relationships use `lazy="selectin"` (Student.school, Student.class_, Teacher.school, Teacher.assignments, User.tenant, TeacherAssignment.school_rel/class_rel/subject_rel). BaseRepository `find()`/`find_one()` accept `options=` parameter for explicit `joinedload`/`selectinload`
   - **asyncpg SSL fix**: `sslmode` param stripped from DATABASE_URL (asyncpg uses `ssl=True` instead)
-  - **No MongoDB**: motor/pymongo removed from dependencies, mongod removed from workflow/deployment commands, .mongodb data directory deleted, seed scripts updated to use pg_adapter
+  - **No MongoDB**: pg_adapter.py, bson_compat.py, nosql_sanitizer.py permanently removed. motor/pymongo removed from dependencies
 
 ### Product Intelligence Hub (مركز ذكاء المنتج)
 - **Database Models**: `backend/models/product_hub_models.py` — Production-ready Pydantic schemas: 12 enums (IssueType, IssueStatus, IssuePriority, Reproducible, TeamEnum, ImpactType, RelatedTo, AccountType, Platform, CommentType, AuditAction, AuditRole), structured sub-models (IssueContext, IssueDescription, IssueTechnical, IssueBusiness, IssueAssignment, IssueAI, SubmissionMetadata, IssueVisibility, IssueSystem), `IssueCreate.to_issue_document()` builder, backward-compatible `ISSUE_TYPE_COMPAT` map (performance→performance_issue, etc.), attachment validation (max 10 files, allowed extensions), field length limits
@@ -649,7 +649,7 @@ Real data-driven academic intelligence engine. No mock data — queries attendan
 ### Reporting Engine (`backend/engines/reporting_engine.py`)
 Centralized report generation with 9 report types using PostgreSQL aggregation queries.
 
-### Native SQL Aggregation (`backend/pg_adapter.py` — `AggregationCursor`)
+### Native SQL Aggregation (`backend/repositories/base.py` — `AggregationCursor`)
 - MongoDB-style `.aggregate()` pipelines are automatically translated to native SQL `GROUP BY` queries when the pipeline is simple enough
 - **Translatable patterns**: `$match → $group($sum, $avg, $min, $max, $count) → $sort → $limit` with simple group keys (single field, dict of fields, or null)
 - **Falls back to in-memory** for: `$unwind`, `$bucket`, `$project`, post-group `$match`, `$cond` accumulators, `$push/$addToSet`, dotted field paths in group keys, or generic (schemaless) collections

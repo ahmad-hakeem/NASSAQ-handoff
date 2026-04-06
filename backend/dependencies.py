@@ -29,8 +29,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger("nassaq")
 
-from pg_adapter import pg_db
-db = pg_db
+from repositories import Repos
+db = Repos()
 
 JWT_SECRET = os.environ.get('JWT_SECRET_KEY', '')
 if not JWT_SECRET:
