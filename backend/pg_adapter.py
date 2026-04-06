@@ -360,11 +360,20 @@ def _orm_to_dict(obj) -> dict:
         return obj
     d = {}
     mapper = inspect(type(obj))
+    data_val = None
     for col in mapper.columns:
         val = getattr(obj, col.key, None)
         if isinstance(val, datetime):
             val = val.isoformat()
-        d[col.key] = val
+        if col.key == "data" and isinstance(val, dict):
+            data_val = val
+        else:
+            d[col.key] = val
+    if data_val:
+        for k, v in data_val.items():
+            if k not in d:
+                d[k] = v
+    d["data"] = data_val or {}
     if "id" in d:
         d["_id"] = d["id"]
     return d
@@ -1309,12 +1318,22 @@ class PgCollection:
                 obj = model()
                 mapper = inspect(model)
                 col_keys = {c.key for c in mapper.columns}
+                extra_fields = {}
                 for k, v in doc.items():
                     if k in col_keys:
                         setattr(obj, k, _coerce_value_for_column(model, k, v))
                     elif COLUMN_ALIASES.get(k) in col_keys:
                         alias = COLUMN_ALIASES[k]
                         setattr(obj, alias, _coerce_value_for_column(model, alias, v))
+                    else:
+                        extra_fields[k] = v
+                if extra_fields and "data" in col_keys:
+                    existing_data = getattr(obj, "data", None) or {}
+                    if isinstance(existing_data, dict):
+                        merged = {**existing_data, **extra_fields}
+                    else:
+                        merged = extra_fields
+                    setattr(obj, "data", merged)
                 session.add(obj)
 
             await session.flush()
@@ -1366,6 +1385,7 @@ class PgCollection:
         mapper = inspect(model)
         col_keys = {c.key for c in mapper.columns}
         values = {}
+        has_extra = False
         for k, v in set_fields.items():
             if k == "_id":
                 continue
@@ -1376,6 +1396,8 @@ class PgCollection:
                 if "." in k:
                     continue
                 values[resolved_key] = _coerce_value_for_column(model, resolved_key, v)
+            elif "." not in k:
+                has_extra = True
         for k in unset_fields:
             if k == "_id":
                 continue
@@ -1402,7 +1424,7 @@ class PgCollection:
                     (col_obj.is_(None), literal(v)),
                     else_=func.greatest(col_obj, v)
                 )
-        return values, set_fields
+        return values, set_fields, has_extra
 
     def _has_dotted_set(self, set_fields):
         return any("." in k for k in set_fields)
@@ -1476,8 +1498,8 @@ class PgCollection:
                 can_statement = self._can_use_statement_update(update_dict) and not self._has_dotted_set(set_fields)
 
                 if can_statement and not upsert:
-                    values, _ = self._build_update_values(model, update_dict)
-                    if values:
+                    values, _, has_extra = self._build_update_values(model, update_dict)
+                    if values and not has_extra:
                         conds = _translate_filter(model, filter_dict)
                         id_subq = select(model.id)
                         if conds:
@@ -1510,6 +1532,7 @@ class PgCollection:
                     return UpdateResult(0, 0)
                 mapper = inspect(model)
                 col_keys = {c.key for c in mapper.columns}
+                extra_set = {}
                 for k, v in set_fields.items():
                     if k == "_id":
                         continue
@@ -1530,6 +1553,13 @@ class PgCollection:
                     elif COLUMN_ALIASES.get(k) in col_keys:
                         alias = COLUMN_ALIASES[k]
                         setattr(row, alias, _coerce_value_for_column(model, alias, v))
+                    else:
+                        extra_set[k] = v
+                if extra_set and "data" in col_keys:
+                    current_data = getattr(row, "data", None)
+                    current_data = dict(current_data) if isinstance(current_data, dict) else {}
+                    current_data.update(extra_set)
+                    setattr(row, "data", current_data)
                 for k in unset_fields:
                     if k == "_id":
                         continue
@@ -1614,8 +1644,8 @@ class PgCollection:
                 can_statement = not has_unsupported and not self._has_dotted_set(set_fields)
 
                 if can_statement:
-                    values, _ = self._build_update_values(model, update_dict)
-                    if values:
+                    values, _, has_extra = self._build_update_values(model, update_dict)
+                    if values and not has_extra:
                         conds = _translate_filter(model, filter_dict)
                         stmt = sa_update(model.__table__)
                         if conds:
@@ -1855,9 +1885,9 @@ class PgCollection:
                     session, own = await self._get_session()
                     try:
                         model = self._model
-                        values, _ = self._build_update_values(model, update_dict)
+                        values, _, has_extra = self._build_update_values(model, update_dict)
                         conds = _translate_filter(model, filter_dict)
-                        if values:
+                        if values and not has_extra:
                             id_subq = select(model.id)
                             if conds:
                                 id_subq = id_subq.where(and_(*conds))
