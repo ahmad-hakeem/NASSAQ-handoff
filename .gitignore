@@ -11,3 +11,4 @@ test_reports/
 .pythonlibs/
 memory/
 .git/lfs/
+backups/
