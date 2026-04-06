@@ -1498,11 +1498,15 @@ async def _ensure_class_linked_to_all_teachers(school_id: str, class_id: str):
 @router.get("/teacher-class-assignments")
 async def get_teacher_class_assignments(
     request: Request,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(200, ge=1, le=1000),
+    teacher_id: str = Query(None),
+    class_id: str = Query(None),
 ):
     """
-    جلب جميع إسنادات المعلمين للفصول
-    Get all teacher-class assignments for the school.
+    جلب إسنادات المعلمين للفصول مع ترقيم الصفحات
+    Get teacher-class assignments for the school (paginated).
     Auto-populates all teacher×class pairs on first access.
     """
     school_id = request.headers.get("X-School-Context") or current_user.get("tenant_id")
@@ -1513,15 +1517,24 @@ async def get_teacher_class_assignments(
     if created > 0:
         logger.info(f"Auto-populated {created} teacher-class assignments for school {school_id}")
 
+    query_filter = {"school_id": school_id}
+    if teacher_id:
+        query_filter["teacher_id"] = teacher_id
+    if class_id:
+        query_filter["class_id"] = class_id
+
+    total = await db.teacher_class_assignments.count_documents(query_filter)
+    skip = (page - 1) * page_size
+
     assignments = await db.teacher_class_assignments.find(
-        {"school_id": school_id}
-    ).to_list(50000)
+        query_filter
+    ).skip(skip).limit(page_size).to_list(page_size)
 
-    teacher_ids = list({a.get("teacher_id") for a in assignments if a.get("teacher_id")})
-    class_ids = list({a.get("class_id") for a in assignments if a.get("class_id")})
+    t_ids = list({a.get("teacher_id") for a in assignments if a.get("teacher_id")})
+    c_ids = list({a.get("class_id") for a in assignments if a.get("class_id")})
 
-    teachers_list = await db.teachers.find({"id": {"$in": teacher_ids}}).to_list(2000) if teacher_ids else []
-    classes_list = await db.classes.find({"id": {"$in": class_ids}}).to_list(500) if class_ids else []
+    teachers_list = await db.teachers.find({"id": {"$in": t_ids}}).to_list(len(t_ids) + 1) if t_ids else []
+    classes_list = await db.classes.find({"id": {"$in": c_ids}}).to_list(len(c_ids) + 1) if c_ids else []
 
     teacher_map = {t["id"]: t for t in teachers_list}
     class_map = {c["id"]: c for c in classes_list}
@@ -1545,7 +1558,13 @@ async def get_teacher_class_assignments(
             "created_at": assignment.get("created_at")
         })
 
-    return result
+    return {
+        "data": result,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": (total + page_size - 1) // page_size
+    }
 
 @router.post("/teacher-class-assignments")
 async def create_teacher_class_assignment(

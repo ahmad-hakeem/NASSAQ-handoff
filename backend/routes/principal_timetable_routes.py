@@ -1167,7 +1167,7 @@ async def publish_version(
 
     all_sessions = await db.timetable_sessions.find(
         {"timetable_id": version_id}, {"_id": 0}
-    ).to_list(50000)
+    ).to_list(50000)  # full fetch required: snapshot captures complete timetable state
 
     classes_list = await db.classes.find({"school_id": school_id}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "grade": 1, "section": 1}).to_list(500)
 

@@ -860,8 +860,8 @@ function SchoolSettingsPagePro() {
   const loadClassAssignments = async () => {
     setClassAssignmentsLoading(true);
     try {
-      const res = await api.get('/teacher-class-assignments');
-      setClassAssignments(res.data || []);
+      const res = await api.get('/teacher-class-assignments?page_size=1000');
+      setClassAssignments(res.data?.data || res.data || []);
     } catch (error) {
       console.error('Error loading class assignments:', error);
     } finally {

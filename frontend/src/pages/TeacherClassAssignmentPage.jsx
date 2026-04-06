@@ -173,18 +173,18 @@ const TeacherClassAssignmentPage = () => {
       const [teachersRes, classesRes, assignmentsRes] = await Promise.all([
         api.get('/teachers'),
         api.get('/classes'),
-        api.get('/teacher-class-assignments')
+        api.get('/teacher-class-assignments?page_size=1000')
       ]);
 
-      // Count assignments per teacher
+      const assignmentsList = assignmentsRes.data?.data || assignmentsRes.data || [];
       const teachersWithCounts = (teachersRes.data || []).map(t => ({
         ...t,
-        assignments_count: (assignmentsRes.data || []).filter(a => a.teacher_id === t.id).length
+        assignments_count: assignmentsList.filter(a => a.teacher_id === t.id).length
       }));
 
       setTeachers(teachersWithCounts);
       setClasses(classesRes.data || []);
-      setAssignments(assignmentsRes.data || []);
+      setAssignments(assignmentsList);
     } catch (error) {
       console.error('Error loading data:', error);
       nassaqError('فشل في تحميل البيانات');
