@@ -82,7 +82,8 @@ export default function UsersManagement() {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [showCreateWizard, setShowCreateWizard] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const USERS_PER_PAGE = 12;
+  const [totalUsers, setTotalUsers] = useState(0);
+  const USERS_PER_PAGE = 24;
 
   const [showUserDetails, setShowUserDetails] = useState(null);
   const [showSuspendConfirm, setShowSuspendConfirm] = useState(null);
@@ -108,10 +109,14 @@ export default function UsersManagement() {
         params: {
           search: searchQuery || undefined,
           role: selectedRole !== 'all' ? selectedRole : undefined,
+          skip: (currentPage - 1) * USERS_PER_PAGE,
+          limit: USERS_PER_PAGE,
         }
       });
 
       let fetchedUsers = response.data.users || [];
+      const serverTotal = response.data.total || fetchedUsers.length;
+
       let filtered = fetchedUsers.filter(u =>
         u.role !== 'school_principal' &&
         u.role !== 'school_sub_admin' &&
@@ -143,16 +148,18 @@ export default function UsersManagement() {
       }
 
       setUsers(filtered);
-      setStats(prev => ({ ...prev, totalUsers: fetchedUsers.length }));
+      setTotalUsers(serverTotal);
+      setStats(prev => ({ ...prev, totalUsers: serverTotal }));
     } catch (error) {
       console.error('Error fetching users:', error);
       nassaqError(isRTL ? 'فشل في تحميل المستخدمين' : 'Failed to load users');
       setUsers([]);
+      setTotalUsers(0);
       setStats(prev => ({ ...prev, totalUsers: 0 }));
     } finally {
       setLoading(false);
     }
-  }, [api, searchQuery, selectedRole, selectedStatus, selectedAIStatus, selectedAccountType, isRTL]);
+  }, [api, searchQuery, selectedRole, selectedStatus, selectedAIStatus, selectedAccountType, currentPage, isRTL]);
 
   const fetchRequestsByType = useCallback(async (requestType) => {
     try {
@@ -253,8 +260,12 @@ export default function UsersManagement() {
   useEffect(() => {
     if (isFirstRender.current) { isFirstRender.current = false; return; }
     setCurrentPage(1);
-    fetchUsers();
   }, [searchQuery, selectedRole, selectedStatus, selectedAIStatus, selectedAccountType]);
+
+  useEffect(() => {
+    if (isFirstRender.current) return;
+    fetchUsers();
+  }, [currentPage, searchQuery, selectedRole, selectedStatus, selectedAIStatus, selectedAccountType]);
 
   const handleViewUser = (user) => navigate(`/admin/users/${user.id}`);
 
@@ -501,7 +512,7 @@ export default function UsersManagement() {
               ) : (
                 <>
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
-                    {users.slice((currentPage - 1) * USERS_PER_PAGE, currentPage * USERS_PER_PAGE).map((user) => (
+                    {users.map((user) => (
                       <UserCard
                         key={user.id}
                         user={user}
@@ -511,8 +522,8 @@ export default function UsersManagement() {
                     ))}
                   </div>
 
-                  {users.length > USERS_PER_PAGE && (() => {
-                    const totalPages = Math.ceil(users.length / USERS_PER_PAGE);
+                  {totalUsers > USERS_PER_PAGE && (() => {
+                    const totalPages = Math.ceil(totalUsers / USERS_PER_PAGE);
                     return (
                       <div className="flex items-center justify-center gap-2 pt-6">
                         <Button
@@ -575,7 +586,7 @@ export default function UsersManagement() {
                         </Button>
 
                         <span className="text-sm text-muted-foreground ms-3">
-                          {(currentPage - 1) * USERS_PER_PAGE + 1}-{Math.min(currentPage * USERS_PER_PAGE, users.length)} من {users.length}
+                          {(currentPage - 1) * USERS_PER_PAGE + 1}-{Math.min(currentPage * USERS_PER_PAGE, totalUsers)} من {totalUsers}
                         </span>
                       </div>
                     );

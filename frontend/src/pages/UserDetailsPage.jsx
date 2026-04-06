@@ -290,10 +290,15 @@ export default function UserDetailsPage() {
   };
 
   useEffect(() => {
+    setActivities([]);
+  }, [userId]);
+
+  useEffect(() => {
     if (activeTab === 'activity' && activities.length === 0 && !activitiesLoading) {
       fetchActivities();
     }
-  }, [activeTab]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, userId]);
   
   // Format date
   const formatDate = (dateStr) => {
@@ -959,6 +964,26 @@ ${API_URL}/login
                                     {activity.actor_name || activity.action_by_name || '-'}
                                     {deviceLabel && ` · ${deviceLabel}`}
                                   </p>
+                                  {activity.details && (activity.details.added || activity.details.removed || activity.details.old_permissions || activity.changes) && (
+                                    <div className="mt-1 text-xs text-muted-foreground space-y-0.5">
+                                      {activity.old_role && activity.new_role && (
+                                        <p>الدور: <span className="line-through text-red-500">{activity.old_role}</span> → <span className="text-green-600">{activity.new_role}</span></p>
+                                      )}
+                                      {activity.details?.added?.length > 0 && (
+                                        <p>أضيف: {activity.details.added.join('، ')}</p>
+                                      )}
+                                      {activity.details?.removed?.length > 0 && (
+                                        <p>أزيل: {activity.details.removed.join('، ')}</p>
+                                      )}
+                                    </div>
+                                  )}
+                                  {activity.changes && !activity.details && (
+                                    <div className="mt-1 text-xs text-muted-foreground">
+                                      {Object.entries(activity.changes).filter(([k]) => k !== 'updated_at').slice(0, 3).map(([key, val]) => (
+                                        <span key={key} className="me-2">{key}: {String(val)}</span>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                               <div className="text-left flex-shrink-0">
