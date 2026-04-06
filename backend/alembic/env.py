@@ -45,6 +45,11 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection):
+    env = os.environ.get("ENVIRONMENT", "development")
+    if env in ("production", "staging"):
+        import logging
+        logger = logging.getLogger("alembic.env")
+        logger.info(f"DEPLOYMENT SAFETY: Running migrations in {env} mode — destructive ops are monitored")
     context.configure(connection=connection, target_metadata=target_metadata)
     with context.begin_transaction():
         context.run_migrations()

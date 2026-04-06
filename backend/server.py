@@ -287,7 +287,18 @@ async def startup_tasks():
 
     await _run_with_session("Product hub integrity", _product_hub_integrity)
 
-    if config.seed_allowed():
+    db_has_data = False
+    try:
+        user_count_result = await db.users.count_documents({})
+        db_has_data = user_count_result > 0
+        school_count = await db.schools.count_documents({})
+        student_count = await db.students.count_documents({})
+        teacher_count = await db.teachers.count_documents({})
+        logger.info(f"DEPLOYMENT SAFETY: Data snapshot on startup — users={user_count_result}, schools={school_count}, students={student_count}, teachers={teacher_count}")
+    except Exception as e:
+        logger.warning(f"Data snapshot check failed: {e}")
+
+    if config.seed_allowed() and not db_has_data:
         await _run_with_session("Seed admins", _seed_platform_admins)
 
         from seeds.timetable_hard_constraints import seed_hard_constraints
@@ -299,6 +310,8 @@ async def startup_tasks():
         result = await _run_with_session("Soft constraints", lambda: seed_soft_constraints(db))
         if result:
             logger.info(f"Timetable soft constraints: {result}")
+    elif config.seed_allowed() and db_has_data:
+        logger.info("DEPLOYMENT SAFETY: Seed scripts SKIPPED (database already has data)")
     else:
         logger.info(f"DEPLOYMENT SAFETY: Seed scripts SKIPPED (environment={config.ENVIRONMENT})")
 

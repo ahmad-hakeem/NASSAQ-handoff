@@ -12,3 +12,5 @@ test_reports/
 memory/
 .git/lfs/
 backups/
+
+backend/backups/

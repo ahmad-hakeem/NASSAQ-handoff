@@ -69,9 +69,16 @@ Each fix report must include: root cause, why it wasn't caught before, what chan
 
 ### Deployment Safety Policy (PERMANENT & NON-NEGOTIABLE)
 - **Core Rule**: Production data must NEVER be lost, overwritten, or replaced during deployment
+- **Database**: Replit managed PostgreSQL (helium) — persistent, external, survives restarts/deploys
 - **Seed Scripts**: BLOCKED in production and staging (`config.seed_allowed()` returns `False`)
+- **Double Guard**: Even if seeds allowed, they are SKIPPED when database already has data (user count > 0)
+- **Replit DB Guard**: If DATABASE_URL points to Replit's managed DB (helium), seeds blocked unless ENVIRONMENT is explicitly "development"
 - **Destructive Ops**: BLOCKED in non-development environments (`config.destructive_ops_allowed()`)
 - **Safe Migrations Only**: Add fields, collections, indexes — NEVER drop, delete, rename, or truncate
+- **No create_all**: Schema managed exclusively via Alembic — no `Base.metadata.create_all()` anywhere in codebase
+- **No DROP TABLE**: No `drop_all()` or table drops in any startup path
+- **Startup Data Snapshot**: Every startup logs `DEPLOYMENT SAFETY: Data snapshot — users=N, schools=N, students=N, teachers=N` for audit trail
+- **Backup Script**: `python backend/scripts/backup_db.py` creates JSON snapshot; `python backend/scripts/backup_db.py verify <snapshot>` compares post-deploy
 - **Build Script** (`build.sh`): Validates JWT_SECRET_KEY and DB_NAME before production builds
 - **Startup Safety**: `server.py` logs environment, DB name, seed status; runs deployment checklist in production
 - **Safety Endpoint**: `GET /system/deployment-safety` — full pre-flight checklist (admin only)

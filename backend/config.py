@@ -52,6 +52,11 @@ class NassaqConfig:
 
     @classmethod
     def seed_allowed(cls) -> bool:
+        if os.environ.get("DATABASE_URL", ""):
+            db_url = os.environ["DATABASE_URL"]
+            if "helium" in db_url or "replit" in db_url.lower():
+                if cls.ENVIRONMENT not in ("development", "dev"):
+                    return False
         return cls.ENVIRONMENT not in SEED_BLOCKED_ENVIRONMENTS
 
     @classmethod
