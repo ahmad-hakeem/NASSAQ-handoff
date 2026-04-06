@@ -11,6 +11,10 @@ from typing import List, Optional, Any, Dict
 from datetime import datetime, timezone, timedelta
 from bson_compat import ObjectId
 import uuid, os, logging, json, random, re, io, base64
+import time as _time
+
+_public_stats_cache = {"data": None, "expires": 0}
+_PUBLIC_STATS_TTL = 60
 
 from dependencies import (
     db, get_current_user, require_roles, UserRole, SchoolStatus,
@@ -1003,11 +1007,14 @@ async def get_public_stats():
     No authentication required.
     """
     try:
-        # Try to get cached stats first
+        _now = _time.monotonic()
+        if _public_stats_cache["data"] and _now < _public_stats_cache["expires"]:
+            return _public_stats_cache["data"]
+
         cached_stats = await db.platform_stats.find_one({"id": "platform_stats"})
         
         if cached_stats:
-            return {
+            result = {
                 "schools": cached_stats.get("total_schools", 0),
                 "students": cached_stats.get("total_students", 0),
                 "teachers": cached_stats.get("total_teachers", 0),
@@ -1015,6 +1022,9 @@ async def get_public_stats():
                 "active_schools": cached_stats.get("active_schools", 0),
                 "last_updated": cached_stats.get("last_updated", "")
             }
+            _public_stats_cache["data"] = result
+            _public_stats_cache["expires"] = _now + _PUBLIC_STATS_TTL
+            return result
         
         total_schools = await db.schools.count_documents({})
         active_schools = await db.schools.count_documents({"status": "active"})
@@ -1031,7 +1041,7 @@ async def get_public_stats():
         parents_from_col = await db.parents.count_documents({})
         total_parents = max(parents_from_users, parents_from_col)
 
-        return {
+        result = {
             "schools": total_schools,
             "students": total_students,
             "teachers": total_teachers,
@@ -1039,6 +1049,9 @@ async def get_public_stats():
             "active_schools": active_schools,
             "last_updated": datetime.now(timezone.utc).isoformat()
         }
+        _public_stats_cache["data"] = result
+        _public_stats_cache["expires"] = _now + _PUBLIC_STATS_TTL
+        return result
     except Exception as e:
         logging.error(f"Error fetching public stats: {e}")
         return {

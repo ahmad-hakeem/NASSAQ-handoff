@@ -214,7 +214,7 @@ async def get_platform_users(
     ).skip(skip).limit(limit).to_list(length=limit)
     
     total = await db.users.count_documents(query)
-    
+
     return {
         "users": users,
         "total": total,

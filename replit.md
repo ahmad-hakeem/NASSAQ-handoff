@@ -72,8 +72,11 @@ Each fix report must include: root cause, why it wasn't caught before, what chan
 - **Database**: Supabase external PostgreSQL (session pooler, port 6543) — primary database for dev and production
   - `SUPABASE_DATABASE_URL` takes priority over `DATABASE_URL` (Replit helium fallback)
   - Password auto-encoded in `db.py` and `alembic/env.py` (handles `@`/`!` in passwords)
-  - Supabase pooler requires `statement_cache_size=0` and SSL (auto-configured)
-  - Pool size: 5 connections + 10 overflow (smaller than Replit due to pooler limits)
+  - Supabase pooler requires `statement_cache_size=0`, `prepared_statement_cache_size=0`, and `prepared_statement_name_func` with UUID-based unique names
+  - Pool: `pool_size=8, max_overflow=12, pool_recycle=600, pool_use_lifo=True` — NO NullPool (causes ~500ms per query), NO pool_pre_ping (extra round-trip)
+  - Each Supabase query ≈ 300-500ms round-trip (EU region); use in-memory TTL caching for heavy endpoints
+  - **In-memory caching**: `/public/stats` (60s TTL in `school_routes_mod.py`), `/admin/command-center/stats` (30s TTL in `dashboard_routes_mod.py`)
+  - `asyncio.gather` on same session serializes (single connection) — NOT parallel; fresh sessions per-query for true parallelism is counterproductive (SSL handshake overhead)
 - **Seed Scripts**: BLOCKED in production and staging (`config.seed_allowed()` returns `False`)
 - **Double Guard**: Even if seeds allowed, they are SKIPPED when database already has data (user count > 0)
 - **Replit DB Guard**: If DATABASE_URL points to Replit's managed DB (helium), seeds blocked unless ENVIRONMENT is explicitly "development"

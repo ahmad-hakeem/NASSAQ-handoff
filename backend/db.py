@@ -90,16 +90,13 @@ logger.info(f"Database source: {_db_source}")
 
 _engine_kwargs = dict(
     echo=False,
-    pool_pre_ping=True,
+    pool_pre_ping=False,
     connect_args=_build_connect_args(),
+    pool_size=8,
+    max_overflow=12,
+    pool_recycle=600,
+    pool_use_lifo=True,
 )
-if _is_supabase():
-    from sqlalchemy.pool import NullPool
-    _engine_kwargs["poolclass"] = NullPool
-    _engine_kwargs.pop("pool_pre_ping", None)
-else:
-    _engine_kwargs["pool_size"] = 10
-    _engine_kwargs["max_overflow"] = 20
 
 _async_url = _get_async_url()
 

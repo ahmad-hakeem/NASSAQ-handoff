@@ -12,6 +12,11 @@ from datetime import datetime, timezone, timedelta
 from bson_compat import ObjectId
 import uuid, os, logging, json, random, re, io, base64
 
+import time as _time
+
+_cc_stats_cache = {"data": None, "expires": 0}
+_CC_STATS_TTL = 30
+
 from dependencies import (
     db, get_current_user, require_roles, UserRole, SchoolStatus,
     hash_password, verify_password, create_access_token,
@@ -410,87 +415,45 @@ async def get_command_center_stats(
     All values are calculated dynamically from the database.
     """
     try:
+        _now_mono = _time.monotonic()
+        if _cc_stats_cache["data"] and _now_mono < _cc_stats_cache["expires"]:
+            return _cc_stats_cache["data"]
+
         now = datetime.now(timezone.utc)
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         last_month_start = (now - timedelta(days=30)).replace(hour=0, minute=0, second=0, microsecond=0)
         
-        # === Core Counts from Database ===
+        today_str = today_start.isoformat()[:10]
+        last_month_str = last_month_start.isoformat()
+
         registered_schools = await db.schools.count_documents({})
         registered_students = await db.students.count_documents({})
         teachers_in_schools = await db.teachers.count_documents({})
-        
-        # Independent teachers (not linked to a school)
         independent_teachers = await db.teachers.count_documents({"school_id": None})
-        
         total_users = await db.users.count_documents({})
-        school_bound_users = await db.users.count_documents({
-            "role": {"$in": ["school_principal", "school_sub_admin", "school_manager"]}
-        })
-        school_teachers = await db.users.count_documents({
-            "role": "teacher",
-            "tenant_id": {"$ne": None}
-        })
-        platform_accounts = total_users - school_bound_users - school_teachers
-        
-        # Pending requests
+        school_bound_users = await db.users.count_documents({"role": {"$in": ["school_principal", "school_sub_admin", "school_manager"]}})
+        school_teachers = await db.users.count_documents({"role": "teacher", "tenant_id": {"$ne": None}})
         pending_requests = await db.registration_requests.count_documents({"status": "pending"})
-        
-        # AI-enabled schools
         ai_enabled_schools = await db.schools.count_documents({"ai_enabled": True})
+        students_present_today = await db.attendance.count_documents({"user_type": "student", "status": "present", "date": {"$gte": today_str}})
+        students_total_today = await db.attendance.count_documents({"user_type": "student", "date": {"$gte": today_str}})
+        teachers_present_today = await db.teacher_attendance.count_documents({"status": "present", "date": today_str})
+        teachers_total_today = await db.teacher_attendance.count_documents({"date": today_str})
+        schools_delta = await db.schools.count_documents({"created_at": {"$gte": last_month_str}})
+        students_delta = await db.students.count_documents({"created_at": {"$gte": last_month_str}})
+        teachers_delta = await db.teachers.count_documents({"created_at": {"$gte": last_month_str}})
+
+        platform_accounts = total_users - school_bound_users - school_teachers
+
         if ai_enabled_schools == 0:
-            # If no explicit ai_enabled field, count active schools as AI-enabled
             ai_enabled_schools = await db.schools.count_documents({"status": "active"})
-        
-        # === Attendance Statistics ===
-        students_present_today = await db.attendance.count_documents({
-            "user_type": "student",
-            "status": "present",
-            "date": {"$gte": today_start.isoformat()[:10]}
-        })
-        students_total_today = await db.attendance.count_documents({
-            "user_type": "student",
-            "date": {"$gte": today_start.isoformat()[:10]}
-        })
-        
-        # Get teacher attendance from teacher_attendance collection (where it's actually stored)
-        teachers_present_today = await db.teacher_attendance.count_documents({
-            "status": "present",
-            "date": today_start.isoformat()[:10]
-        })
-        teachers_total_today = await db.teacher_attendance.count_documents({
-            "date": today_start.isoformat()[:10]
-        })
-        
-        # If no records in teacher_attendance, try attendance collection
+
         if teachers_total_today == 0:
-            teachers_present_today = await db.attendance.count_documents({
-                "user_type": "teacher",
-                "status": "present",
-                "date": {"$gte": today_start.isoformat()[:10]}
-            })
-            teachers_total_today = await db.attendance.count_documents({
-                "user_type": "teacher",
-                "date": {"$gte": today_start.isoformat()[:10]}
-            })
-        
-        student_attendance_rate = 0
-        if students_total_today > 0:
-            student_attendance_rate = round((students_present_today / students_total_today) * 100, 1)
-        
-        teacher_attendance_rate = 0
-        if teachers_total_today > 0:
-            teacher_attendance_rate = round((teachers_present_today / teachers_total_today) * 100, 1)
-        
-        # === Growth Deltas (Last Month) ===
-        schools_delta = await db.schools.count_documents({
-            "created_at": {"$gte": last_month_start.isoformat()}
-        })
-        students_delta = await db.students.count_documents({
-            "created_at": {"$gte": last_month_start.isoformat()}
-        })
-        teachers_delta = await db.teachers.count_documents({
-            "created_at": {"$gte": last_month_start.isoformat()}
-        })
+            teachers_present_today = await db.attendance.count_documents({"user_type": "teacher", "status": "present", "date": {"$gte": today_str}})
+            teachers_total_today = await db.attendance.count_documents({"user_type": "teacher", "date": {"$gte": today_str}})
+
+        student_attendance_rate = round((students_present_today / students_total_today) * 100, 1) if students_total_today > 0 else 0
+        teacher_attendance_rate = round((teachers_present_today / teachers_total_today) * 100, 1) if teachers_total_today > 0 else 0
         
         # Calculate delta percentages
         schools_delta_pct = round((schools_delta / max(registered_schools - schools_delta, 1)) * 100, 1) if registered_schools > 0 else 0
@@ -508,7 +471,7 @@ async def get_command_center_stats(
             hijri_date = ""
         gregorian_date = now.strftime("%Y-%m-%d")
         
-        return {
+        _result = {
             "registered_schools": registered_schools,
             "registered_students": registered_students,
             "teachers_in_schools": teachers_in_schools,
@@ -527,6 +490,9 @@ async def get_command_center_stats(
             "gregorian_date": gregorian_date,
             "last_updated": now.isoformat()
         }
+        _cc_stats_cache["data"] = _result
+        _cc_stats_cache["expires"] = _now_mono + _CC_STATS_TTL
+        return _result
         
     except Exception as e:
         logger.error(f"Error fetching command center stats: {e}")
