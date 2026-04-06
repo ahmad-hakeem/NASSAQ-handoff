@@ -1008,3 +1008,12 @@ if FRONTEND_BUILD.exists() and (FRONTEND_BUILD / "index.html").exists():
         if file_path.exists() and file_path.is_file():
             return FileResponse(str(file_path))
         return FileResponse(str(FRONTEND_BUILD / "index.html"))
+else:
+    from fastapi.responses import RedirectResponse
+
+    @app.get("/")
+    async def root_redirect():
+        frontend_url = os.environ.get("FRONTEND_URL", "")
+        if frontend_url:
+            return RedirectResponse(url=frontend_url)
+        return {"status": "NASSAQ API is running", "docs": "/docs", "health": "/system/health"}
