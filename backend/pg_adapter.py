@@ -565,10 +565,7 @@ class AggregationCursor:
         self._pipeline = pipeline
         self._results = None
 
-    async def _execute(self):
-        if self._results is not None:
-            return self._results
-
+    def _parse_pipeline(self):
         match_filter = {}
         group_stage = None
         sort_spec = None
@@ -576,6 +573,10 @@ class AggregationCursor:
         project_stage = None
         unwind_field = None
         post_match = None
+        has_bucket = False
+
+        _KNOWN_STAGES = {"$match", "$group", "$sort", "$limit", "$project", "$unwind", "$bucket"}
+        has_unknown_stage = False
 
         seen_group = False
         for stage in self._pipeline:
@@ -598,6 +599,264 @@ class AggregationCursor:
                 unwind_field = val if isinstance(val, str) else val.get("path", "")
                 if unwind_field.startswith("$"):
                     unwind_field = unwind_field[1:]
+            elif "$bucket" in stage:
+                has_bucket = True
+            else:
+                stage_keys = set(stage.keys())
+                if not stage_keys.issubset(_KNOWN_STAGES):
+                    has_unknown_stage = True
+
+        return match_filter, group_stage, sort_spec, limit_val, project_stage, unwind_field, post_match, has_bucket, has_unknown_stage
+
+    def _can_translate_to_sql(self, group_stage, sort_spec, project_stage, unwind_field, post_match, has_bucket, has_unknown_stage):
+        if self._collection is None or self._collection._is_generic:
+            return False
+        if self._collection._model is None:
+            return False
+        if has_bucket or unwind_field or post_match or has_unknown_stage:
+            return False
+        if project_stage:
+            return False
+        if group_stage is None:
+            return False
+
+        model = self._collection._model
+        group_key = group_stage.get("_id")
+        if not self._is_simple_group_key(group_key):
+            return False
+
+        if isinstance(group_key, str):
+            field = group_key.lstrip("$")
+            if _resolve_column(model, field) is None:
+                return False
+        elif isinstance(group_key, dict):
+            for alias, ref in group_key.items():
+                field = ref.lstrip("$")
+                if _resolve_column(model, field) is None:
+                    return False
+
+        accumulators = {k: v for k, v in group_stage.items() if k != "_id"}
+        acc_names = set()
+        for acc_name, acc_spec in accumulators.items():
+            if not isinstance(acc_spec, dict):
+                return False
+            op = list(acc_spec.keys())[0] if acc_spec else None
+            if op not in ("$sum", "$avg", "$min", "$max", "$count"):
+                return False
+            acc_names.add(acc_name)
+            val = acc_spec[op]
+            if op == "$sum":
+                if isinstance(val, dict):
+                    return False
+                if isinstance(val, str) and val.startswith("$"):
+                    field = val[1:]
+                    if "." in field:
+                        return False
+                    if _resolve_column(model, field) is None:
+                        return False
+            elif op in ("$avg", "$min", "$max"):
+                if not isinstance(val, str) or not val.startswith("$"):
+                    return False
+                field = val[1:]
+                if "." in field:
+                    return False
+                if _resolve_column(model, field) is None:
+                    return False
+
+        if sort_spec:
+            for field in sort_spec.keys():
+                if field in acc_names:
+                    continue
+                if field == "_id":
+                    continue
+                if field.startswith("_id.") and isinstance(group_key, dict):
+                    sub = field[4:]
+                    if sub in group_key:
+                        continue
+                return False
+
+        return True
+
+    @staticmethod
+    def _is_simple_group_key(group_key):
+        if group_key is None:
+            return True
+        if isinstance(group_key, str) and group_key.startswith("$"):
+            return "." not in group_key
+        if isinstance(group_key, dict):
+            for alias, ref in group_key.items():
+                if not isinstance(ref, str) or not ref.startswith("$"):
+                    return False
+                if "." in ref:
+                    return False
+            return True
+        return False
+
+    async def _execute_sql(self, match_filter, group_stage, sort_spec, limit_val):
+        model = self._collection._model
+        group_key = group_stage.get("_id")
+        accumulators = {k: v for k, v in group_stage.items() if k != "_id"}
+
+        group_columns = []
+        group_labels = []
+
+        if group_key is None:
+            pass
+        elif isinstance(group_key, str):
+            field = group_key.lstrip("$")
+            col = _resolve_column(model, field)
+            if col is not None:
+                group_columns.append(col)
+                group_labels.append(("_id_single", field))
+        elif isinstance(group_key, dict):
+            for alias, ref in group_key.items():
+                field = ref.lstrip("$")
+                col = _resolve_column(model, field)
+                if col is not None:
+                    group_columns.append(col.label(f"_gk_{alias}"))
+                    group_labels.append(("_id_dict", alias, field))
+
+        select_cols = list(group_columns)
+        acc_info = []
+        acc_zero_default = set()
+
+        for acc_name, acc_spec in accumulators.items():
+            op = list(acc_spec.keys())[0]
+            val = acc_spec[op]
+
+            if op == "$sum":
+                if isinstance(val, (int, float)):
+                    if val == 0:
+                        from sqlalchemy import literal
+                        sql_expr = literal(0).label(acc_name)
+                    elif val == 1:
+                        sql_expr = func.count().label(acc_name)
+                    else:
+                        sql_expr = (func.count() * val).label(acc_name)
+                elif isinstance(val, str) and val.startswith("$"):
+                    field = val[1:]
+                    col = _resolve_column(model, field)
+                    sql_expr = func.coalesce(func.sum(col), 0).label(acc_name)
+                else:
+                    sql_expr = func.count().label(acc_name)
+            elif op == "$avg":
+                field = val[1:]
+                col = _resolve_column(model, field)
+                sql_expr = func.avg(col).label(acc_name)
+            elif op == "$min":
+                field = val[1:]
+                col = _resolve_column(model, field)
+                sql_expr = func.min(col).label(acc_name)
+            elif op == "$max":
+                field = val[1:]
+                col = _resolve_column(model, field)
+                sql_expr = func.max(col).label(acc_name)
+            elif op == "$count":
+                sql_expr = func.count().label(acc_name)
+            else:
+                continue
+
+            select_cols.append(sql_expr)
+            acc_info.append(acc_name)
+            if op in ("$sum", "$count"):
+                acc_zero_default.add(acc_name)
+
+        stmt = select(*select_cols).select_from(model)
+
+        conds = _translate_filter(model, match_filter)
+        if conds:
+            stmt = stmt.where(and_(*conds))
+
+        for gc in group_columns:
+            base_col = gc.element if hasattr(gc, 'element') else gc
+            stmt = stmt.group_by(base_col)
+
+        if sort_spec:
+            for field, direction in sort_spec.items():
+                sort_col = None
+                if field in acc_info:
+                    for sc in select_cols:
+                        label_name = getattr(sc, 'key', None) or getattr(sc, 'name', None)
+                        if label_name == field:
+                            sort_col = sc.element if hasattr(sc, 'element') else sc
+                            break
+                elif field == "_id" and group_columns:
+                    sort_col = group_columns[0].element if hasattr(group_columns[0], 'element') else group_columns[0]
+                elif field.startswith("_id.") and isinstance(group_key, dict):
+                    sub_field = field[4:]
+                    for gc in group_columns:
+                        label_name = getattr(gc, 'key', None) or getattr(gc, 'name', None)
+                        if label_name == f"_gk_{sub_field}":
+                            sort_col = gc.element if hasattr(gc, 'element') else gc
+                            break
+
+                if sort_col is not None:
+                    stmt = stmt.order_by(desc(sort_col) if direction == -1 else asc(sort_col))
+
+        if limit_val:
+            stmt = stmt.limit(limit_val)
+
+        session, own = await self._collection._get_session()
+        try:
+            result = await session.execute(stmt)
+            rows = result.all()
+        finally:
+            if own:
+                await session.close()
+
+        results = []
+        for row in rows:
+            doc = {}
+
+            if group_key is None:
+                doc["_id"] = None
+            elif isinstance(group_key, str):
+                doc["_id"] = row[0]
+                row_offset = 1
+            elif isinstance(group_key, dict):
+                id_dict = {}
+                for i, (_, alias, _field) in enumerate(group_labels):
+                    val = row[i]
+                    if hasattr(val, 'value'):
+                        val = val.value
+                    id_dict[alias] = val
+                doc["_id"] = id_dict
+                row_offset = len(group_labels)
+            else:
+                row_offset = 0
+
+            if group_key is None:
+                row_offset = 0
+
+            for j, acc_name in enumerate(acc_info):
+                val = row[row_offset + j]
+                if val is not None:
+                    if isinstance(val, float):
+                        doc[acc_name] = val
+                    else:
+                        try:
+                            doc[acc_name] = int(val) if float(val) == int(float(val)) else float(val)
+                        except (ValueError, TypeError):
+                            doc[acc_name] = val
+                else:
+                    doc[acc_name] = 0 if acc_name in acc_zero_default else None
+
+            results.append(doc)
+
+        return results
+
+    async def _execute(self):
+        if self._results is not None:
+            return self._results
+
+        match_filter, group_stage, sort_spec, limit_val, project_stage, unwind_field, post_match, has_bucket, has_unknown_stage = self._parse_pipeline()
+
+        if group_stage and self._can_translate_to_sql(group_stage, sort_spec, project_stage, unwind_field, post_match, has_bucket, has_unknown_stage):
+            try:
+                self._results = await self._execute_sql(match_filter, group_stage, sort_spec, limit_val)
+                return self._results
+            except Exception as e:
+                logger.warning(f"SQL aggregation failed for {self._collection._name}, falling back to in-memory: {e}")
 
         cursor = self._collection.find(match_filter)
         all_docs = await cursor.to_list(50000)

@@ -648,6 +648,12 @@ Real data-driven academic intelligence engine. No mock data — queries attendan
 ### Reporting Engine (`backend/engines/reporting_engine.py`)
 Centralized report generation with 9 report types using PostgreSQL aggregation queries.
 
+### Native SQL Aggregation (`backend/pg_adapter.py` — `AggregationCursor`)
+- MongoDB-style `.aggregate()` pipelines are automatically translated to native SQL `GROUP BY` queries when the pipeline is simple enough
+- **Translatable patterns**: `$match → $group($sum, $avg, $min, $max, $count) → $sort → $limit` with simple group keys (single field, dict of fields, or null)
+- **Falls back to in-memory** for: `$unwind`, `$bucket`, `$project`, post-group `$match`, `$cond` accumulators, `$push/$addToSet`, dotted field paths in group keys, or generic (schemaless) collections
+- Graceful degradation: if SQL translation throws, logs a warning and falls back to the original in-memory path
+
 **Unified endpoint**: `GET /api/reports/generate/{report_type}` with query params:
 - `start_date`, `end_date` (YYYY-MM-DD, defaults to last 30 days)
 - `class_id`, `teacher_id`, `student_id` (filters)
