@@ -295,8 +295,13 @@ async def get_assessment(
     assessment = await db.assessments.find_one({"id": assessment_id}, {"_id": 0})
     if not assessment:
         raise HTTPException(status_code=404, detail="Assessment not found")
-    
-    # Get related data
+
+    tenant_id = current_user.get("tenant_id")
+    if tenant_id and current_user["role"] != UserRole.PLATFORM_ADMIN.value:
+        assess_tenant = assessment.get("tenant_id") or assessment.get("school_id")
+        if assess_tenant and assess_tenant != tenant_id:
+            raise HTTPException(status_code=404, detail="Assessment not found")
+
     class_info = await db.classes.find_one({"id": assessment['class_id']}, {"_id": 0, "name": 1})
     subject = await db.subjects.find_one({"id": assessment['subject_id']}, {"_id": 0, "name": 1})
     teacher = await db.users.find_one({"id": assessment['teacher_id']}, {"_id": 0, "full_name": 1})
@@ -332,8 +337,13 @@ async def update_assessment(
     assessment = await db.assessments.find_one({"id": assessment_id}, {"_id": 0})
     if not assessment:
         raise HTTPException(status_code=404, detail="Assessment not found")
-    
-    # Only owner or admin can update
+
+    tenant_id = current_user.get("tenant_id")
+    if tenant_id and current_user["role"] != UserRole.PLATFORM_ADMIN.value:
+        assess_tenant = assessment.get("tenant_id") or assessment.get("school_id")
+        if assess_tenant and assess_tenant != tenant_id:
+            raise HTTPException(status_code=404, detail="Assessment not found")
+
     if current_user['role'] not in ['school_principal', 'school_sub_admin'] and assessment['teacher_id'] != current_user['id']:
         raise HTTPException(status_code=403, detail="Not authorized to update this assessment")
     
@@ -353,8 +363,13 @@ async def delete_assessment(
     assessment = await db.assessments.find_one({"id": assessment_id}, {"_id": 0})
     if not assessment:
         raise HTTPException(status_code=404, detail="Assessment not found")
-    
-    # Only owner or admin can delete
+
+    tenant_id = current_user.get("tenant_id")
+    if tenant_id and current_user["role"] != UserRole.PLATFORM_ADMIN.value:
+        assess_tenant = assessment.get("tenant_id") or assessment.get("school_id")
+        if assess_tenant and assess_tenant != tenant_id:
+            raise HTTPException(status_code=404, detail="Assessment not found")
+
     if current_user['role'] not in ['school_principal', 'school_sub_admin'] and assessment['teacher_id'] != current_user['id']:
         raise HTTPException(status_code=403, detail="Not authorized to delete this assessment")
     
@@ -379,121 +394,142 @@ async def create_bulk_grades(
     assessment = await db.assessments.find_one({"id": data.assessment_id}, {"_id": 0})
     if not assessment:
         raise HTTPException(status_code=404, detail="Assessment not found")
+
+    tenant_id = current_user.get("tenant_id")
+    if tenant_id and current_user["role"] != UserRole.PLATFORM_ADMIN.value:
+        assess_tenant = assessment.get("tenant_id") or assessment.get("school_id")
+        if assess_tenant and assess_tenant != tenant_id:
+            raise HTTPException(status_code=404, detail="Assessment not found")
     
     created = 0
     updated = 0
     errors = []
-    
+    max_score = assessment['max_score']
+    now = datetime.now(timezone.utc).isoformat()
+
+    student_ids = [g.student_id for g in data.grades]
+    students_list = await db.students.find(
+        {"id": {"$in": student_ids}}, {"_id": 0, "id": 1, "full_name": 1, "user_id": 1, "parent_phone": 1}
+    ).to_list(len(student_ids))
+    student_map = {s["id"]: s for s in students_list}
+
+    existing_grades = await db.grades.find(
+        {"assessment_id": data.assessment_id, "student_id": {"$in": student_ids}}, {"_id": 0}
+    ).to_list(len(student_ids))
+    existing_map = {g["student_id"]: g for g in existing_grades}
+
+    to_insert_grades = []
+    to_insert_events = []
+    new_grade_students = []
+
     for grade in data.grades:
         try:
-            # Check if student exists
-            student = await db.students.find_one({"id": grade.student_id}, {"_id": 0})
-            if not student:
+            if grade.student_id not in student_map:
                 errors.append(f"Student {grade.student_id} not found")
                 continue
-            
-            # Validate score
-            if grade.score < 0 or grade.score > assessment['max_score']:
+            if grade.score < 0 or grade.score > max_score:
                 errors.append(f"Invalid score {grade.score} for student {grade.student_id}")
                 continue
-            
-            # Check if grade already exists
-            existing = await db.grades.find_one({
-                "assessment_id": data.assessment_id,
-                "student_id": grade.student_id
-            })
-            
+
+            existing = existing_map.get(grade.student_id)
             if existing:
-                # Update existing grade
                 await db.grades.update_one(
                     {"id": existing['id']},
                     {"$set": {
                         "score": grade.score,
                         "notes": grade.notes,
                         "recorded_by": current_user['id'],
-                        "recorded_at": datetime.now(timezone.utc).isoformat()
+                        "recorded_at": now
                     }}
                 )
                 updated += 1
             else:
-                # Create new grade
                 grade_id = str(uuid.uuid4())
+                percentage = round((grade.score / max_score) * 100, 2)
                 grade_doc = {
                     "id": grade_id,
                     "assessment_id": data.assessment_id,
                     "student_id": grade.student_id,
-                    "class_id": assessment['class_id'],
-                    "subject_id": assessment['subject_id'],
+                    "class_id": assessment.get('class_id'),
+                    "subject_id": assessment.get('subject_id'),
                     "score": grade.score,
-                    "max_score": assessment['max_score'],
-                    "percentage": round((grade.score / assessment['max_score']) * 100, 2),
+                    "max_score": max_score,
+                    "percentage": percentage,
                     "notes": grade.notes,
                     "recorded_by": current_user['id'],
-                    "recorded_at": datetime.now(timezone.utc).isoformat()
+                    "recorded_at": now,
+                    "tenant_id": assessment.get('tenant_id') or assessment.get('school_id'),
                 }
-                await db.grades.insert_one(grade_doc)
-                created += 1
-                
-                # Create assessment event for notifications/analytics
-                await db.events.insert_one({
+                to_insert_grades.append(grade_doc)
+                to_insert_events.append({
                     "id": str(uuid.uuid4()),
                     "type": "grade_recorded",
                     "student_id": grade.student_id,
                     "assessment_id": data.assessment_id,
                     "score": grade.score,
-                    "max_score": assessment['max_score'],
+                    "max_score": max_score,
                     "recorded_by": current_user['id'],
-                    "timestamp": datetime.now(timezone.utc).isoformat()
+                    "timestamp": now,
+                    "tenant_id": assessment.get('tenant_id') or assessment.get('school_id'),
                 })
-                
-                # Create notification for new grade
-                student_info = await db.students.find_one({"id": grade.student_id}, {"_id": 0})
-                if student_info:
-                    student_name = student_info.get('full_name', 'طالب')
-                    percentage = round((grade.score / assessment['max_score']) * 100, 1)
-                    assessment_title = assessment.get('title', 'تقييم')
-                    
-                    # Notify the student if they have a user account
-                    if student_info.get('user_id'):
-                        await create_notification_internal(
-                            title=f"درجة جديدة: {assessment_title}",
-                            title_en=f"New Grade: {assessment_title}",
-                            message=f"حصلت على درجة {grade.score}/{assessment['max_score']} ({percentage}%) في {assessment_title}",
-                            message_en=f"You scored {grade.score}/{assessment['max_score']} ({percentage}%) in {assessment_title}",
-                            recipient_id=student_info['user_id'],
-                            notification_type="assessment",
-                            priority="medium",
-                            sender_id=current_user['id'],
-                            related_entity="assessment",
-                            related_entity_id=data.assessment_id,
-                            action_url="/student/grades",
-                            school_id=current_user.get('tenant_id')
-                        )
-                    
-                    # Notify parent if exists
-                    if student_info.get('parent_phone'):
-                        parent_user = await db.users.find_one({
-                            "phone": student_info.get('parent_phone'),
-                            "role": "parent"
-                        }, {"_id": 0})
-                        if parent_user:
-                            await create_notification_internal(
-                                title=f"درجة جديدة لـ {student_name}",
-                                title_en=f"New Grade for {student_name}",
-                                message=f"حصل {student_name} على درجة {grade.score}/{assessment['max_score']} ({percentage}%) في {assessment_title}",
-                                message_en=f"{student_name} scored {grade.score}/{assessment['max_score']} ({percentage}%) in {assessment_title}",
-                                recipient_id=parent_user['id'],
-                                notification_type="assessment",
-                                priority="medium",
-                                sender_id=current_user['id'],
-                                related_entity="assessment",
-                                related_entity_id=data.assessment_id,
-                                action_url="/parent/grades",
-                                school_id=current_user.get('tenant_id')
-                            )
+                new_grade_students.append((grade.student_id, grade.score))
+                created += 1
         except Exception as e:
             errors.append(f"Error processing grade for student {grade.student_id}: {str(e)}")
-    
+
+    if to_insert_grades:
+        await db.grades.insert_many(to_insert_grades)
+    if to_insert_events:
+        await db.events.insert_many(to_insert_events)
+
+    assessment_title = assessment.get('title', 'تقييم')
+    for student_id, score in new_grade_students:
+        try:
+            student_info = student_map.get(student_id)
+            if not student_info:
+                continue
+            student_name = student_info.get('full_name', 'طالب')
+            percentage = round((score / max_score) * 100, 1)
+
+            if student_info.get('user_id'):
+                await create_notification_internal(
+                    title=f"درجة جديدة: {assessment_title}",
+                    title_en=f"New Grade: {assessment_title}",
+                    message=f"حصلت على درجة {score}/{max_score} ({percentage}%) في {assessment_title}",
+                    message_en=f"You scored {score}/{max_score} ({percentage}%) in {assessment_title}",
+                    recipient_id=student_info['user_id'],
+                    notification_type="assessment",
+                    priority="medium",
+                    sender_id=current_user['id'],
+                    related_entity="assessment",
+                    related_entity_id=data.assessment_id,
+                    action_url="/student/grades",
+                    school_id=current_user.get('tenant_id')
+                )
+
+            if student_info.get('parent_phone'):
+                parent_user = await db.users.find_one({
+                    "phone": student_info['parent_phone'],
+                    "role": "parent"
+                }, {"_id": 0})
+                if parent_user:
+                    await create_notification_internal(
+                        title=f"درجة جديدة لـ {student_name}",
+                        title_en=f"New Grade for {student_name}",
+                        message=f"حصل {student_name} على درجة {score}/{max_score} ({percentage}%) في {assessment_title}",
+                        message_en=f"{student_name} scored {score}/{max_score} ({percentage}%) in {assessment_title}",
+                        recipient_id=parent_user['id'],
+                        notification_type="assessment",
+                        priority="medium",
+                        sender_id=current_user['id'],
+                        related_entity="assessment",
+                        related_entity_id=data.assessment_id,
+                        action_url="/parent/grades",
+                        school_id=current_user.get('tenant_id')
+                    )
+        except Exception:
+            pass
+
     return {
         "success": True,
         "created": created,

@@ -260,41 +260,61 @@ async def create_bulk_attendance(
     """Create multiple attendance records at once (for a whole class)"""
     if current_user['role'] not in ['teacher', 'school_principal', 'school_sub_admin', 'platform_admin']:
         raise HTTPException(status_code=403, detail="Not authorized to record attendance")
-    
+
     created_count = 0
     updated_count = 0
     errors = []
     transitions = []
-    
-    for record in bulk_data.records:
+    now = datetime.now(timezone.utc).isoformat()
+    t_id = current_user.get('tenant_id')
+
+    seen_students = set()
+    deduped_records = []
+    for r in bulk_data.records:
+        sid = r.get('student_id')
+        if sid and sid not in seen_students:
+            seen_students.add(sid)
+            deduped_records.append(r)
+    student_ids = list(seen_students)
+
+    existing_rows = await db.attendance.find(
+        {
+            "class_id": bulk_data.class_id,
+            "date": bulk_data.date,
+            "time_slot_id": bulk_data.time_slot_id,
+            "student_id": {"$in": student_ids},
+            "tenant_id": t_id,
+        },
+        {"_id": 0},
+    ).to_list(len(student_ids))
+    existing_map = {row["student_id"]: row for row in existing_rows}
+
+    to_insert = []
+    to_insert_events = []
+    absent_late_student_ids = []
+
+    for record in deduped_records:
         try:
             student_id = record.get('student_id')
-            status = record.get('status', 'present')
+            att_status = record.get('status', 'present')
             notes = record.get('notes')
-            
-            existing = await db.attendance.find_one({
-                "student_id": student_id,
-                "class_id": bulk_data.class_id,
-                "date": bulk_data.date,
-                "time_slot_id": bulk_data.time_slot_id
-            })
-            
+
+            existing = existing_map.get(student_id)
             if existing:
                 old_status = existing.get('status')
                 await db.attendance.update_one(
                     {"id": existing['id']},
                     {"$set": {
-                        "status": status,
+                        "status": att_status,
                         "notes": notes,
                         "recorded_by": current_user['id'],
-                        "recorded_at": datetime.now(timezone.utc).isoformat()
+                        "recorded_at": now
                     }}
                 )
                 updated_count += 1
-                transitions.append({"student_id": student_id, "old_status": old_status, "new_status": status})
+                transitions.append({"student_id": student_id, "old_status": old_status, "new_status": att_status})
             else:
-                # Create new
-                attendance_doc = {
+                doc = {
                     "id": str(uuid.uuid4()),
                     "student_id": student_id,
                     "class_id": bulk_data.class_id,
@@ -302,86 +322,99 @@ async def create_bulk_attendance(
                     "teacher_id": current_user['id'],
                     "date": bulk_data.date,
                     "time_slot_id": bulk_data.time_slot_id,
-                    "status": status,
+                    "status": att_status,
                     "notes": notes,
                     "recorded_by": current_user['id'],
-                    "recorded_at": datetime.now(timezone.utc).isoformat(),
-                    "tenant_id": current_user.get('tenant_id')
+                    "recorded_at": now,
+                    "tenant_id": t_id,
                 }
-                await db.attendance.insert_one(attendance_doc)
+                to_insert.append(doc)
+                transitions.append({"student_id": student_id, "old_status": None, "new_status": att_status})
                 created_count += 1
-                transitions.append({"student_id": student_id, "old_status": None, "new_status": status})
-                
-                if status in ['absent', 'late']:
-                    event_doc = {
+
+                if att_status in ['absent', 'late']:
+                    to_insert_events.append({
                         "id": str(uuid.uuid4()),
-                        "type": f"student_{status}",
+                        "type": f"student_{att_status}",
                         "student_id": student_id,
                         "class_id": bulk_data.class_id,
                         "date": bulk_data.date,
                         "recorded_by": current_user['id'],
-                        "created_at": datetime.now(timezone.utc).isoformat(),
-                        "tenant_id": current_user.get('tenant_id')
-                    }
-                    await db.events.insert_one(event_doc)
-                    
-                    # Create notification for attendance (absent/late)
-                    student_info = await db.students.find_one({"id": student_id}, {"_id": 0})
-                    if student_info:
-                        student_name = student_info.get('full_name', 'طالب')
-                        status_ar = 'غائب' if status == 'absent' else 'متأخر'
-                        status_en = 'absent' if status == 'absent' else 'late'
-                        
-                        # Notify school principal
-                        principal = await db.users.find_one({
-                            "role": "school_principal", 
-                            "tenant_id": current_user.get('tenant_id')
-                        }, {"_id": 0})
-                        if principal:
-                            await create_notification_internal(
-                                title=f"تنبيه حضور: {student_name}",
-                                title_en=f"Attendance Alert: {student_name}",
-                                message=f"الطالب {student_name} تم تسجيله {status_ar} في تاريخ {bulk_data.date}",
-                                message_en=f"Student {student_name} was marked {status_en} on {bulk_data.date}",
-                                recipient_id=principal['id'],
-                                notification_type="attendance",
-                                priority="high" if status == 'absent' else "medium",
-                                sender_id=current_user['id'],
-                                related_entity="student",
-                                related_entity_id=student_id,
-                                action_url="/admin/attendance",
-                                school_id=current_user.get('tenant_id')
-                            )
-                        
-                        # Notify parent if exists
-                        if student_info.get('parent_phone'):
-                            parent_user = await db.users.find_one({
-                                "phone": student_info.get('parent_phone'),
-                                "role": "parent"
-                            }, {"_id": 0})
-                            if parent_user:
-                                await create_notification_internal(
-                                    title=f"تنبيه حضور ابنك/ابنتك",
-                                    title_en=f"Attendance Alert for Your Child",
-                                    message=f"تم تسجيل {student_name} {status_ar} في المدرسة اليوم {bulk_data.date}",
-                                    message_en=f"{student_name} was marked {status_en} at school on {bulk_data.date}",
-                                    recipient_id=parent_user['id'],
-                                    notification_type="attendance",
-                                    priority="high" if status == 'absent' else "medium",
-                                    sender_id=current_user['id'],
-                                    related_entity="student",
-                                    related_entity_id=student_id,
-                                    action_url="/parent/attendance",
-                                    school_id=current_user.get('tenant_id')
-                                )
-                    
+                        "created_at": now,
+                        "tenant_id": t_id,
+                    })
+                    absent_late_student_ids.append((student_id, att_status))
         except Exception as e:
             errors.append({"student_id": record.get('student_id'), "error": str(e)})
-    
+
+    if to_insert:
+        await db.attendance.insert_many(to_insert)
+    if to_insert_events:
+        await db.events.insert_many(to_insert_events)
+
+    if absent_late_student_ids:
+        al_ids = [s[0] for s in absent_late_student_ids]
+        students_list = await db.students.find(
+            {"id": {"$in": al_ids}}, {"_id": 0, "id": 1, "full_name": 1, "parent_phone": 1}
+        ).to_list(len(al_ids))
+        student_map = {s["id"]: s for s in students_list}
+
+        principal = await db.users.find_one({
+            "role": "school_principal",
+            "tenant_id": t_id,
+        }, {"_id": 0, "id": 1})
+
+        for student_id, att_status in absent_late_student_ids:
+            try:
+                si = student_map.get(student_id)
+                if not si:
+                    continue
+                student_name = si.get('full_name', 'طالب')
+                status_ar = 'غائب' if att_status == 'absent' else 'متأخر'
+                status_en = att_status
+
+                if principal:
+                    await create_notification_internal(
+                        title=f"تنبيه حضور: {student_name}",
+                        title_en=f"Attendance Alert: {student_name}",
+                        message=f"الطالب {student_name} تم تسجيله {status_ar} في تاريخ {bulk_data.date}",
+                        message_en=f"Student {student_name} was marked {status_en} on {bulk_data.date}",
+                        recipient_id=principal['id'],
+                        notification_type="attendance",
+                        priority="high" if att_status == 'absent' else "medium",
+                        sender_id=current_user['id'],
+                        related_entity="student",
+                        related_entity_id=student_id,
+                        action_url="/admin/attendance",
+                        school_id=t_id,
+                    )
+
+                if si.get('parent_phone'):
+                    parent_user = await db.users.find_one({
+                        "phone": si['parent_phone'], "role": "parent"
+                    }, {"_id": 0, "id": 1})
+                    if parent_user:
+                        await create_notification_internal(
+                            title=f"تنبيه حضور ابنك/ابنتك",
+                            title_en=f"Attendance Alert for Your Child",
+                            message=f"تم تسجيل {student_name} {status_ar} في المدرسة اليوم {bulk_data.date}",
+                            message_en=f"{student_name} was marked {status_en} at school on {bulk_data.date}",
+                            recipient_id=parent_user['id'],
+                            notification_type="attendance",
+                            priority="high" if att_status == 'absent' else "medium",
+                            sender_id=current_user['id'],
+                            related_entity="student",
+                            related_entity_id=student_id,
+                            action_url="/parent/attendance",
+                            school_id=t_id,
+                        )
+            except Exception:
+                pass
+
     await audit_engine.log(
         action=AuditAction.ATTENDANCE_BULK_RECORDED.value,
         performed_by=current_user['id'],
-        tenant_id=current_user.get('tenant_id'),
+        tenant_id=t_id,
         entity_type="attendance",
         entity_id=bulk_data.class_id,
         details={
@@ -397,7 +430,7 @@ async def create_bulk_attendance(
         actor_role=current_user.get("role"),
         actor_email=current_user.get("email"),
     )
-    
+
     return {
         "message": "تم تسجيل الحضور بنجاح",
         "message_en": "Attendance recorded successfully",

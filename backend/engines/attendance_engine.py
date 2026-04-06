@@ -123,7 +123,7 @@ class AttendanceEngine:
         attendance_records: List[Dict[str, Any]],
         recorded_by: str
     ) -> Dict[str, Any]:
-        """Record attendance for multiple students at once"""
+        """Record attendance for multiple students using batch operations"""
         results = {
             "processed": 0,
             "created": 0,
@@ -131,48 +131,94 @@ class AttendanceEngine:
             "errors": [],
             "transitions": []
         }
-        
+        now = datetime.now(timezone.utc).isoformat()
+
+        valid_records = []
         for record in attendance_records:
+            sid = record.get("student_id")
+            if not sid:
+                results["errors"].append({"error": "معرف الطالب مفقود"})
+                continue
+            valid_records.append(record)
+
+        if not valid_records:
+            return results
+
+        student_ids = [r["student_id"] for r in valid_records]
+        existing_rows = await self.attendance_collection.find(
+            {
+                "tenant_id": tenant_id,
+                "section_id": section_id,
+                "attendance_date": attendance_date,
+                "student_id": {"$in": student_ids},
+            },
+            {"_id": 0},
+        ).to_list(len(student_ids))
+        existing_map = {row["student_id"]: row for row in existing_rows}
+
+        to_insert = []
+        for record in valid_records:
             try:
-                student_id = record.get("student_id")
+                student_id = record["student_id"]
                 status = record.get("status", AttendanceStatus.PRESENT.value)
-                
-                if not student_id:
-                    results["errors"].append({"error": "معرف الطالب مفقود"})
-                    continue
-                
-                result_doc = await self.record_attendance(
-                    tenant_id=tenant_id,
-                    student_id=student_id,
-                    section_id=section_id,
-                    attendance_date=attendance_date,
-                    status=status,
-                    recorded_by=recorded_by,
-                    arrival_time=record.get("arrival_time"),
-                    departure_time=record.get("departure_time"),
-                    notes=record.get("notes"),
-                    session_id=record.get("session_id"),
-                    period=record.get("period")
-                )
-                
-                results["processed"] += 1
-                old = result_doc.get("old_status")
-                if old is not None:
+                existing = existing_map.get(student_id)
+
+                if existing:
+                    old_status = existing.get("status")
+                    updates = {
+                        "status": status,
+                        "updated_at": now,
+                        "updated_by": recorded_by,
+                    }
+                    if record.get("arrival_time"):
+                        updates["arrival_time"] = record["arrival_time"]
+                    if record.get("departure_time"):
+                        updates["departure_time"] = record["departure_time"]
+                    if record.get("notes"):
+                        updates["notes"] = record["notes"]
+
+                    await self.attendance_collection.update_one(
+                        {"id": existing["id"]}, {"$set": updates}
+                    )
                     results["updated"] += 1
+                    results["transitions"].append({
+                        "student_id": student_id,
+                        "old_status": old_status,
+                        "new_status": status,
+                    })
                 else:
-                    results["created"] += 1
-                results["transitions"].append({
-                    "student_id": student_id,
-                    "old_status": old,
-                    "new_status": status,
-                })
-                
+                    doc = {
+                        "id": str(uuid.uuid4()),
+                        "tenant_id": tenant_id,
+                        "student_id": student_id,
+                        "section_id": section_id,
+                        "attendance_date": attendance_date,
+                        "status": status,
+                        "arrival_time": record.get("arrival_time"),
+                        "departure_time": record.get("departure_time"),
+                        "notes": record.get("notes"),
+                        "recorded_at": now,
+                        "recorded_by": recorded_by,
+                        "session_id": record.get("session_id"),
+                        "period": record.get("period"),
+                    }
+                    to_insert.append(doc)
+                    results["transitions"].append({
+                        "student_id": student_id,
+                        "old_status": None,
+                        "new_status": status,
+                    })
+                results["processed"] += 1
             except Exception as e:
                 results["errors"].append({
                     "student_id": record.get("student_id"),
-                    "error": str(e)
+                    "error": str(e),
                 })
-        
+
+        if to_insert:
+            await self.attendance_collection.insert_many(to_insert)
+            results["created"] = len(to_insert)
+
         return results
     
     async def mark_class_present(
@@ -254,38 +300,38 @@ class AttendanceEngine:
         attendance_date: str,
         section_id: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Get daily attendance report"""
+        """Get daily attendance report using SQL aggregation for counts"""
         query = {
             "tenant_id": tenant_id,
             "attendance_date": attendance_date
         }
-        
         if section_id:
             query["section_id"] = section_id
-        
-        records = await self.attendance_collection.find(
-            query,
-            {"_id": 0}
-        ).to_list(10000)
-        
-        # Calculate statistics
-        total = len(records)
-        present = len([r for r in records if r.get("status") == AttendanceStatus.PRESENT.value])
-        absent = len([r for r in records if r.get("status") == AttendanceStatus.ABSENT.value])
-        late = len([r for r in records if r.get("status") == AttendanceStatus.LATE.value])
-        excused = len([r for r in records if r.get("status") == AttendanceStatus.EXCUSED.value])
-        left_early = len([r for r in records if r.get("status") == AttendanceStatus.LEFT_EARLY.value])
-        
+
+        counts = await self.attendance_collection.batched_counts({
+            "total": query,
+            "present": {**query, "status": AttendanceStatus.PRESENT.value},
+            "absent": {**query, "status": AttendanceStatus.ABSENT.value},
+            "late": {**query, "status": AttendanceStatus.LATE.value},
+            "excused": {**query, "status": AttendanceStatus.EXCUSED.value},
+            "left_early": {**query, "status": AttendanceStatus.LEFT_EARLY.value},
+        })
+
+        total = counts["total"]
+        present = counts["present"]
+
+        records = await self.attendance_collection.find(query, {"_id": 0}).to_list(1000)
+
         return {
             "date": attendance_date,
             "tenant_id": tenant_id,
             "section_id": section_id,
             "total_students": total,
             "present": present,
-            "absent": absent,
-            "late": late,
-            "excused": excused,
-            "left_early": left_early,
+            "absent": counts["absent"],
+            "late": counts["late"],
+            "excused": counts["excused"],
+            "left_early": counts["left_early"],
             "attendance_rate": round((present / total * 100) if total > 0 else 0, 2),
             "records": records
         }
@@ -300,12 +346,11 @@ class AttendanceEngine:
         start_date: Optional[str] = None,
         end_date: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Get attendance summary for a student"""
+        """Get attendance summary for a student using SQL counts"""
         query = {
             "tenant_id": tenant_id,
             "student_id": student_id
         }
-        
         if start_date:
             query["attendance_date"] = {"$gte": start_date}
         if end_date:
@@ -313,27 +358,28 @@ class AttendanceEngine:
                 query["attendance_date"]["$lte"] = end_date
             else:
                 query["attendance_date"] = {"$lte": end_date}
-        
-        records = await self.attendance_collection.find(
-            query,
-            {"_id": 0}
-        ).to_list(10000)
-        
-        total = len(records)
-        present = len([r for r in records if r.get("status") == AttendanceStatus.PRESENT.value])
-        absent = len([r for r in records if r.get("status") == AttendanceStatus.ABSENT.value])
-        late = len([r for r in records if r.get("status") == AttendanceStatus.LATE.value])
-        excused = len([r for r in records if r.get("status") == AttendanceStatus.EXCUSED.value])
-        left_early = len([r for r in records if r.get("status") == AttendanceStatus.LEFT_EARLY.value])
-        
+
+        counts = await self.attendance_collection.batched_counts({
+            "total": query,
+            "present": {**query, "status": AttendanceStatus.PRESENT.value},
+            "absent": {**query, "status": AttendanceStatus.ABSENT.value},
+            "late": {**query, "status": AttendanceStatus.LATE.value},
+            "excused": {**query, "status": AttendanceStatus.EXCUSED.value},
+            "left_early": {**query, "status": AttendanceStatus.LEFT_EARLY.value},
+        })
+        total = counts["total"]
+        present = counts["present"]
+        absent = counts["absent"]
+        late = counts["late"]
+
         return {
             "student_id": student_id,
             "total_days": total,
             "present_days": present,
             "absent_days": absent,
             "late_days": late,
-            "excused_days": excused,
-            "left_early_days": left_early,
+            "excused_days": counts["excused"],
+            "left_early_days": counts["left_early"],
             "attendance_rate": round((present / total * 100) if total > 0 else 100, 2),
             "absence_rate": round((absent / total * 100) if total > 0 else 0, 2),
             "late_rate": round((late / total * 100) if total > 0 else 0, 2)
@@ -346,60 +392,51 @@ class AttendanceEngine:
         start_date: str,
         end_date: str
     ) -> Dict[str, Any]:
-        """Get attendance summary for a section over a period"""
+        """Get attendance summary for a section over a period using aggregation"""
         query = {
             "tenant_id": tenant_id,
             "section_id": section_id,
             "attendance_date": {"$gte": start_date, "$lte": end_date}
         }
-        
-        records = await self.attendance_collection.find(
-            query,
-            {"_id": 0}
-        ).to_list(100000)
-        
-        # Group by student
-        student_stats = {}
-        for record in records:
-            sid = record.get("student_id")
-            if sid not in student_stats:
-                student_stats[sid] = {
-                    "student_id": sid,
-                    "total": 0,
-                    "present": 0,
-                    "absent": 0,
-                    "late": 0,
-                    "excused": 0
-                }
-            
-            student_stats[sid]["total"] += 1
-            status = record.get("status")
-            if status == AttendanceStatus.PRESENT.value:
-                student_stats[sid]["present"] += 1
-            elif status == AttendanceStatus.ABSENT.value:
-                student_stats[sid]["absent"] += 1
-            elif status == AttendanceStatus.LATE.value:
-                student_stats[sid]["late"] += 1
-            elif status == AttendanceStatus.EXCUSED.value:
-                student_stats[sid]["excused"] += 1
-        
-        # Calculate rates
-        for sid in student_stats:
-            total = student_stats[sid]["total"]
-            present = student_stats[sid]["present"]
-            student_stats[sid]["attendance_rate"] = round((present / total * 100) if total > 0 else 100, 2)
-        
-        # Overall section stats
-        total_records = len(records)
-        total_present = len([r for r in records if r.get("status") == AttendanceStatus.PRESENT.value])
-        
+
+        pipeline = [
+            {"$match": query},
+            {"$group": {
+                "_id": "$student_id",
+                "total": {"$sum": 1},
+                "present": {"$sum": {"$cond": [{"$eq": ["$status", AttendanceStatus.PRESENT.value]}, 1, 0]}},
+                "absent": {"$sum": {"$cond": [{"$eq": ["$status", AttendanceStatus.ABSENT.value]}, 1, 0]}},
+                "late": {"$sum": {"$cond": [{"$eq": ["$status", AttendanceStatus.LATE.value]}, 1, 0]}},
+                "excused": {"$sum": {"$cond": [{"$eq": ["$status", AttendanceStatus.EXCUSED.value]}, 1, 0]}},
+            }},
+        ]
+        rows = await self.attendance_collection.aggregate(pipeline).to_list(5000)
+
+        student_stats = []
+        total_records = 0
+        total_present = 0
+        for row in rows:
+            t = row["total"]
+            p = row["present"]
+            total_records += t
+            total_present += p
+            student_stats.append({
+                "student_id": row["_id"],
+                "total": t,
+                "present": p,
+                "absent": row["absent"],
+                "late": row["late"],
+                "excused": row["excused"],
+                "attendance_rate": round((p / t * 100) if t > 0 else 100, 2),
+            })
+
         return {
             "section_id": section_id,
             "start_date": start_date,
             "end_date": end_date,
             "total_records": total_records,
             "overall_attendance_rate": round((total_present / total_records * 100) if total_records > 0 else 0, 2),
-            "students": list(student_stats.values())
+            "students": student_stats
         }
     
     async def get_tenant_attendance_overview(
@@ -407,42 +444,45 @@ class AttendanceEngine:
         tenant_id: str,
         attendance_date: str
     ) -> Dict[str, Any]:
-        """Get attendance overview for entire tenant"""
-        records = await self.attendance_collection.find(
-            {
-                "tenant_id": tenant_id,
-                "attendance_date": attendance_date
-            },
-            {"_id": 0}
-        ).to_list(100000)
-        
-        total = len(records)
-        present = len([r for r in records if r.get("status") == AttendanceStatus.PRESENT.value])
-        absent = len([r for r in records if r.get("status") == AttendanceStatus.ABSENT.value])
-        late = len([r for r in records if r.get("status") == AttendanceStatus.LATE.value])
-        
-        # Group by section
-        sections = {}
-        for record in records:
-            sid = record.get("section_id")
-            if sid not in sections:
-                sections[sid] = {"section_id": sid, "total": 0, "present": 0, "absent": 0}
-            sections[sid]["total"] += 1
-            if record.get("status") == AttendanceStatus.PRESENT.value:
-                sections[sid]["present"] += 1
-            elif record.get("status") == AttendanceStatus.ABSENT.value:
-                sections[sid]["absent"] += 1
-        
+        """Get attendance overview for entire tenant using aggregation"""
+        base_query = {"tenant_id": tenant_id, "attendance_date": attendance_date}
+
+        import asyncio
+        counts_coro = self.attendance_collection.batched_counts({
+            "total": base_query,
+            "present": {**base_query, "status": AttendanceStatus.PRESENT.value},
+            "absent": {**base_query, "status": AttendanceStatus.ABSENT.value},
+            "late": {**base_query, "status": AttendanceStatus.LATE.value},
+        })
+        sections_coro = self.attendance_collection.aggregate([
+            {"$match": base_query},
+            {"$group": {
+                "_id": "$section_id",
+                "total": {"$sum": 1},
+                "present": {"$sum": {"$cond": [{"$eq": ["$status", AttendanceStatus.PRESENT.value]}, 1, 0]}},
+                "absent": {"$sum": {"$cond": [{"$eq": ["$status", AttendanceStatus.ABSENT.value]}, 1, 0]}},
+            }},
+        ]).to_list(5000)
+
+        counts, section_rows = await asyncio.gather(counts_coro, sections_coro)
+        total = counts["total"]
+        present = counts["present"]
+
+        sections = [
+            {"section_id": r["_id"], "total": r["total"], "present": r["present"], "absent": r["absent"]}
+            for r in section_rows
+        ]
+
         return {
             "tenant_id": tenant_id,
             "date": attendance_date,
             "total_students": total,
             "present": present,
-            "absent": absent,
-            "late": late,
+            "absent": counts["absent"],
+            "late": counts["late"],
             "attendance_rate": round((present / total * 100) if total > 0 else 0, 2),
             "sections_count": len(sections),
-            "sections": list(sections.values())
+            "sections": sections
         }
     
     # ============== EXCUSE MANAGEMENT ==============
@@ -568,10 +608,8 @@ class AttendanceEngine:
         start_date: str = None,
         end_date: str = None
     ) -> List[Dict[str, Any]]:
-        """Get students with attendance rate below threshold"""
-        # Get all records for the period
+        """Get students with attendance rate below threshold using aggregation"""
         query = {"tenant_id": tenant_id}
-        
         if start_date:
             query["attendance_date"] = {"$gte": start_date}
         if end_date:
@@ -579,40 +617,34 @@ class AttendanceEngine:
                 query["attendance_date"]["$lte"] = end_date
             else:
                 query["attendance_date"] = {"$lte": end_date}
-        
-        records = await self.attendance_collection.find(
-            query,
-            {"_id": 0}
-        ).to_list(100000)
-        
-        # Group by student
-        student_stats = {}
-        for record in records:
-            sid = record.get("student_id")
-            if sid not in student_stats:
-                student_stats[sid] = {
-                    "student_id": sid,
-                    "section_id": record.get("section_id"),
-                    "total": 0,
-                    "present": 0
-                }
-            
-            student_stats[sid]["total"] += 1
-            if record.get("status") == AttendanceStatus.PRESENT.value:
-                student_stats[sid]["present"] += 1
-        
-        # Find students below threshold
+
+        pipeline = [
+            {"$match": query},
+            {"$group": {
+                "_id": "$student_id",
+                "section_id": {"$first": "$section_id"},
+                "total": {"$sum": 1},
+                "present": {"$sum": {"$cond": [{"$eq": ["$status", AttendanceStatus.PRESENT.value]}, 1, 0]}},
+            }},
+        ]
+        rows = await self.attendance_collection.aggregate(pipeline).to_list(10000)
+
         low_attendance = []
-        for sid, stats in student_stats.items():
-            rate = (stats["present"] / stats["total"] * 100) if stats["total"] > 0 else 100
+        for row in rows:
+            t = row["total"]
+            p = row["present"]
+            rate = (p / t * 100) if t > 0 else 100
             if rate < threshold:
-                stats["attendance_rate"] = round(rate, 2)
-                stats["absent_days"] = stats["total"] - stats["present"]
-                low_attendance.append(stats)
-        
-        # Sort by attendance rate
+                low_attendance.append({
+                    "student_id": row["_id"],
+                    "section_id": row["section_id"],
+                    "total": t,
+                    "present": p,
+                    "attendance_rate": round(rate, 2),
+                    "absent_days": t - p,
+                })
+
         low_attendance.sort(key=lambda x: x["attendance_rate"])
-        
         return low_attendance
     
     async def get_consecutive_absences(
@@ -620,61 +652,58 @@ class AttendanceEngine:
         tenant_id: str,
         min_days: int = 3
     ) -> List[Dict[str, Any]]:
-        """Get students with consecutive absences"""
-        # Get recent attendance (last 30 days)
-        end_date = datetime.now(timezone.utc).date()
-        start_date = end_date - timedelta(days=30)
-        
+        """Get students with consecutive absences (last 30 days)"""
+        end_dt = datetime.now(timezone.utc).date()
+        start_dt = end_dt - timedelta(days=30)
+
         records = await self.attendance_collection.find(
             {
                 "tenant_id": tenant_id,
                 "attendance_date": {
-                    "$gte": start_date.isoformat(),
-                    "$lte": end_date.isoformat()
+                    "$gte": start_dt.isoformat(),
+                    "$lte": end_dt.isoformat()
                 },
                 "status": AttendanceStatus.ABSENT.value
             },
-            {"_id": 0}
-        ).sort([("student_id", 1), ("attendance_date", 1)]).to_list(100000)
-        
-        # Find consecutive absences
+            {"_id": 0, "student_id": 1, "attendance_date": 1}
+        ).sort([("student_id", 1), ("attendance_date", 1)]).to_list(50000)
+
         alerts = []
         current_student = None
         consecutive = 0
         last_date = None
-        
+
         for record in records:
             sid = record.get("student_id")
-            record_date = datetime.fromisoformat(record.get("attendance_date")).date()
-            
+            try:
+                record_date = datetime.fromisoformat(record.get("attendance_date")).date()
+            except (ValueError, TypeError):
+                continue
+
             if sid != current_student:
-                # Check if previous student had enough consecutive days
                 if consecutive >= min_days:
                     alerts.append({
                         "student_id": current_student,
                         "consecutive_days": consecutive,
                         "last_absence_date": last_date.isoformat() if last_date else None
                     })
-                
                 current_student = sid
                 consecutive = 1
                 last_date = record_date
             else:
-                # Check if this is consecutive
-                if last_date and (record_date - last_date).days <= 2:  # Allow weekends
+                if last_date and (record_date - last_date).days <= 2:
                     consecutive += 1
                 else:
                     consecutive = 1
                 last_date = record_date
-        
-        # Check last student
+
         if consecutive >= min_days:
             alerts.append({
                 "student_id": current_student,
                 "consecutive_days": consecutive,
                 "last_absence_date": last_date.isoformat() if last_date else None
             })
-        
+
         return alerts
 
 

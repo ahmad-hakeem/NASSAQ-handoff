@@ -219,54 +219,80 @@ class SessionSummaryResponse(BaseModel):
     needs_attention: List[Dict[str, Any]]
 
 
-# ============== SCORE RULES ==============
+# ============== SCORE RULES (defaults) ==============
 
-SCORE_RULES = {
-    # Answer scores
+DEFAULT_SCORE_RULES = {
     "correct_answer": 5,
     "no_answer_after_selection": -1,
-    
-    # Participation scores
     "active_participation": 2,
     "initiative": 2,
     "inactive": 0,
     "refused": -1,
-    
-    # Positive behaviour scores
     "respect": 2,
     "commitment": 2,
     "helping_others": 2,
     "special_skill": 3,
     "leadership": 3,
-    
-    # Negative behaviour scores
     "disruption": -2,
     "non_compliance": -2,
     "interruption": -1,
     "late_to_class": -2,
     "medium_violation": -4,
     "high_violation": -8,
-    
-    # Attendance scores
     "present": 1,
     "absent_no_excuse": -3,
     "excused": 0,
     "late": -1,
-    
-    # Bonus scores
     "three_correct_streak": 5,
     "no_negative_week": 10,
     "full_attendance_month": 15,
     "top_3_weekly": 10,
 }
 
-STUDENT_LEVELS = {
+SCORE_RULES = DEFAULT_SCORE_RULES
+
+DEFAULT_STUDENT_LEVELS = {
     "needs_attention": (0, 19),
     "acceptable": (20, 39),
     "good": (40, 59),
     "excellent": (60, 79),
     "star": (80, float('inf'))
 }
+
+STUDENT_LEVELS = DEFAULT_STUDENT_LEVELS
+
+
+async def load_tenant_score_rules(db, tenant_id: str) -> dict:
+    """Load tenant-specific score rules, falling back to defaults"""
+    try:
+        settings = await db.tenant_settings.find_one(
+            {"tenant_id": tenant_id, "setting_key": "score_rules"},
+            {"_id": 0}
+        )
+        if settings and isinstance(settings.get("value"), dict):
+            merged = dict(DEFAULT_SCORE_RULES)
+            merged.update(settings["value"])
+            return merged
+    except Exception:
+        pass
+    return DEFAULT_SCORE_RULES
+
+
+async def load_tenant_student_levels(db, tenant_id: str) -> dict:
+    """Load tenant-specific student level thresholds, falling back to defaults"""
+    try:
+        settings = await db.tenant_settings.find_one(
+            {"tenant_id": tenant_id, "setting_key": "student_levels"},
+            {"_id": 0}
+        )
+        if settings and isinstance(settings.get("value"), dict):
+            return {
+                k: tuple(v) if isinstance(v, list) else v
+                for k, v in settings["value"].items()
+            }
+    except Exception:
+        pass
+    return DEFAULT_STUDENT_LEVELS
 
 
 # ============== SESSION ENGINE CLASS ==============
@@ -279,7 +305,31 @@ class TeacherSessionEngine:
     
     def __init__(self, db):
         self.db = db
-        
+        self._tenant_rules_cache: Dict[str, dict] = {}
+        self._tenant_levels_cache: Dict[str, dict] = {}
+
+    async def _get_score_rules(self, tenant_id: str) -> dict:
+        if not tenant_id:
+            return DEFAULT_SCORE_RULES
+        if tenant_id not in self._tenant_rules_cache:
+            self._tenant_rules_cache[tenant_id] = await load_tenant_score_rules(self.db, tenant_id)
+        return self._tenant_rules_cache[tenant_id]
+
+    async def _get_student_levels(self, tenant_id: str) -> dict:
+        if not tenant_id:
+            return DEFAULT_STUDENT_LEVELS
+        if tenant_id not in self._tenant_levels_cache:
+            self._tenant_levels_cache[tenant_id] = await load_tenant_student_levels(self.db, tenant_id)
+        return self._tenant_levels_cache[tenant_id]
+
+    async def _get_session_score_rules(self, session_id: str) -> dict:
+        """Resolve tenant-aware score rules for a session, cached by tenant_id."""
+        session_doc = await self.db.class_sessions.find_one(
+            {"id": session_id}, {"_id": 0, "tenant_id": 1, "school_id": 1}
+        )
+        tid = (session_doc or {}).get("tenant_id") or (session_doc or {}).get("school_id") or ""
+        return await self._get_score_rules(tid)
+
     # ---------- Session Management ----------
     
     ACTIVE_STATUSES = [
@@ -619,17 +669,18 @@ class TeacherSessionEngine:
             }}
         )
 
-        # Calculate attendance scores
+        rules = await self._get_session_score_rules(session_id)
+
         for record in records:
             score_change = 0
             if record["status"] == AttendanceStatus.PRESENT.value:
-                score_change = SCORE_RULES["present"]
+                score_change = rules["present"]
             elif record["status"] == AttendanceStatus.ABSENT.value:
-                score_change = SCORE_RULES["absent_no_excuse"]
+                score_change = rules["absent_no_excuse"]
             elif record["status"] == AttendanceStatus.LATE.value:
-                score_change = SCORE_RULES["late"]
+                score_change = rules["late"]
             elif record["status"] == AttendanceStatus.EXCUSED.value:
-                score_change = SCORE_RULES["excused"]
+                score_change = rules["excused"]
             
             if score_change != 0:
                 await self._update_student_score(
@@ -783,19 +834,17 @@ class TeacherSessionEngine:
         
         await self.db.session_interactions.insert_one(interaction)
         
-        # Calculate score
+        rules = await self._get_session_score_rules(session_id)
         score_change = 0
         if result == AnswerResult.CORRECT:
-            score_change = SCORE_RULES["correct_answer"]
-            
-            # Check for streak bonus
+            score_change = rules["correct_answer"]
+
             streak = await self._check_answer_streak(session_id, student_id)
             if streak >= 3:
-                score_change += SCORE_RULES["three_correct_streak"]
-                # TODO: Send notification to parent
-                
+                score_change += rules["three_correct_streak"]
+
         elif result == AnswerResult.NO_ANSWER:
-            score_change = SCORE_RULES["no_answer_after_selection"]
+            score_change = rules["no_answer_after_selection"]
         
         if score_change != 0:
             await self._update_student_score(
@@ -843,14 +892,14 @@ class TeacherSessionEngine:
         
         await self.db.session_interactions.insert_one(interaction)
         
-        # Calculate score
+        rules = await self._get_session_score_rules(session_id)
         score_change = 0
         if participation_type == ParticipationType.ACTIVE:
-            score_change = SCORE_RULES["active_participation"]
+            score_change = rules["active_participation"]
         elif participation_type == ParticipationType.INITIATIVE:
-            score_change = SCORE_RULES["initiative"]
+            score_change = rules["initiative"]
         elif participation_type == ParticipationType.REFUSED:
-            score_change = SCORE_RULES.get("refused", -1)
+            score_change = rules.get("refused", -1)
         
         # Update student score
         if score_change != 0:
@@ -904,14 +953,14 @@ class TeacherSessionEngine:
         
         await self.db.session_interactions.insert_one(interaction)
         
-        # Calculate score based on behaviour type
+        rules = await self._get_session_score_rules(session_id)
         score_change = 0
         if category == BehaviourCategory.POSITIVE:
-            score_change = SCORE_RULES.get(behaviour_type, 2)
+            score_change = rules.get(behaviour_type, 2)
         elif category == BehaviourCategory.NEGATIVE:
-            score_change = SCORE_RULES.get(behaviour_type, -2)
+            score_change = rules.get(behaviour_type, -2)
         elif category == BehaviourCategory.SKILL:
-            score_change = SCORE_RULES.get("special_skill", 3)
+            score_change = rules.get("special_skill", 3)
         
         # Update student score
         if score_change != 0:
@@ -1870,9 +1919,10 @@ class TeacherSessionEngine:
             if s.get("category") in ["participation", "answer"]
         )
         
-        # Determine level
+        student_tenant = student.get("tenant_id") or student.get("school_id") or ""
+        levels = await self._get_student_levels(student_tenant)
         level = StudentLevel.NEEDS_ATTENTION
-        for level_name, (min_score, max_score) in STUDENT_LEVELS.items():
+        for level_name, (min_score, max_score) in levels.items():
             if min_score <= weekly_score <= max_score:
                 level = StudentLevel(level_name)
                 break
@@ -1945,7 +1995,8 @@ class TeacherSessionEngine:
         }
         await self.db.session_interactions.insert_one(interaction)
 
-        score_change = SCORE_RULES.get("special_skill", 3)
+        rules = await self._get_session_score_rules(session_id)
+        score_change = rules.get("special_skill", 3)
         await self._update_student_score(
             student_id,
             score_change,

@@ -57,6 +57,55 @@ def _col_keys(model_cls):
     return {c.key for c in mapper.columns}
 
 
+def _resolve_cond(model_cls, cond_expr):
+    """Translate a MongoDB $cond expression into a SQLAlchemy CASE clause.
+
+    Supports the object form: {"$cond": {"if": <cond>, "then": <val>, "else": <val>}}
+    The ``if`` clause supports {"$eq": ["$field", "value"]}.
+    """
+    if not isinstance(cond_expr, dict) or "$cond" not in cond_expr:
+        return None
+    cond = cond_expr["$cond"]
+    if_clause = cond.get("if")
+    then_val = cond.get("then", 1)
+    else_val = cond.get("else", 0)
+    sql_cond = _resolve_cond_if(model_cls, if_clause)
+    if sql_cond is None:
+        return None
+    return sa_case((sql_cond, then_val), else_=else_val)
+
+
+def _resolve_cond_if(model_cls, if_clause):
+    """Resolve the ``if`` part of a $cond into a SQLAlchemy condition."""
+    if not isinstance(if_clause, dict):
+        return None
+    if "$eq" in if_clause:
+        parts = if_clause["$eq"]
+        if isinstance(parts, list) and len(parts) == 2:
+            left, right = parts
+            if isinstance(left, str) and left.startswith("$"):
+                col = _resolve_col(model_cls, left[1:])
+                if col is not None:
+                    return col == right
+    if "$ne" in if_clause:
+        parts = if_clause["$ne"]
+        if isinstance(parts, list) and len(parts) == 2:
+            left, right = parts
+            if isinstance(left, str) and left.startswith("$"):
+                col = _resolve_col(model_cls, left[1:])
+                if col is not None:
+                    return col != right
+    if "$in" in if_clause:
+        parts = if_clause["$in"]
+        if isinstance(parts, list) and len(parts) == 2:
+            left, right = parts
+            if isinstance(left, str) and left.startswith("$") and isinstance(right, list):
+                col = _resolve_col(model_cls, left[1:])
+                if col is not None:
+                    return col.in_(right)
+    return None
+
+
 def _to_dict(obj) -> Optional[dict]:
     if obj is None:
         return None
@@ -432,6 +481,10 @@ class AggregationCursor:
                         col = _resolve_col(model, field)
                         if col is not None:
                             cols.append(func.sum(func.coalesce(col, 0)).label(key))
+                    elif isinstance(val, dict) and "$cond" in val:
+                        case_expr = _resolve_cond(model, val)
+                        if case_expr is not None:
+                            cols.append(func.sum(case_expr).label(key))
                 elif "$avg" in expr:
                     val = expr["$avg"]
                     if isinstance(val, str) and val.startswith("$"):

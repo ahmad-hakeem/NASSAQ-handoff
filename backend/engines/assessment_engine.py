@@ -348,60 +348,108 @@ class AssessmentEngine:
         grades: List[Dict[str, Any]],
         graded_by: str
     ) -> Dict[str, Any]:
-        """Record grades for multiple students"""
+        """Record grades for multiple students using batch operations"""
         results = {
             "processed": 0,
             "created": 0,
             "updated": 0,
             "errors": []
         }
-        
-        for grade_data in grades:
+
+        assessment = await self.get_assessment_by_id(assessment_id)
+        if not assessment:
+            results["errors"].append({"error": "التقييم غير موجود"})
+            return results
+
+        max_score = assessment.get("max_score", 100)
+        passing_score = assessment.get("passing_score", max_score * 0.5)
+        now = datetime.now(timezone.utc).isoformat()
+
+        valid_entries = []
+        seen_ids = set()
+        for gd in grades:
+            sid = gd.get("student_id")
+            score = gd.get("score")
+            if not sid:
+                results["errors"].append({"error": "معرف الطالب مفقود"})
+                continue
+            if score is None:
+                results["errors"].append({"student_id": sid, "error": "الدرجة مفقودة"})
+                continue
+            if sid in seen_ids:
+                continue
+            seen_ids.add(sid)
+            valid_entries.append(gd)
+
+        if not valid_entries:
+            return results
+
+        student_ids = [g["student_id"] for g in valid_entries]
+        existing_rows = await self.grades_collection.find(
+            {"assessment_id": assessment_id, "student_id": {"$in": student_ids}},
+            {"_id": 0}
+        ).to_list(len(student_ids))
+        existing_map = {r["student_id"]: r for r in existing_rows}
+
+        to_insert = []
+        for gd in valid_entries:
             try:
-                student_id = grade_data.get("student_id")
-                score = grade_data.get("score")
-                
-                if not student_id:
-                    results["errors"].append({"error": "معرف الطالب مفقود"})
-                    continue
-                
-                if score is None:
-                    results["errors"].append({
-                        "student_id": student_id,
-                        "error": "الدرجة مفقودة"
-                    })
-                    continue
-                
-                grade_doc = await self.record_grade(
-                    assessment_id=assessment_id,
-                    student_id=student_id,
-                    score=float(score),
-                    graded_by=graded_by,
-                    feedback=grade_data.get("feedback"),
-                    notes=grade_data.get("notes")
-                )
-                
-                results["processed"] += 1
-                if grade_doc and grade_doc.get("_was_update"):
+                sid = gd["student_id"]
+                score = float(gd["score"])
+                percentage = round((score / max_score * 100) if max_score > 0 else 0, 2)
+                is_passing = score >= passing_score
+                existing = existing_map.get(sid)
+
+                if existing:
+                    updates = {
+                        "score": score,
+                        "percentage": percentage,
+                        "is_passing": is_passing,
+                        "updated_at": now,
+                        "graded_by": graded_by,
+                        "feedback": gd.get("feedback"),
+                        "notes": gd.get("notes"),
+                    }
+                    await self.grades_collection.update_one(
+                        {"id": existing["id"]}, {"$set": updates}
+                    )
                     results["updated"] += 1
                 else:
+                    doc = {
+                        "id": str(uuid.uuid4()),
+                        "assessment_id": assessment_id,
+                        "tenant_id": assessment.get("tenant_id"),
+                        "subject_id": assessment.get("subject_id"),
+                        "student_id": sid,
+                        "score": score,
+                        "max_score": max_score,
+                        "percentage": percentage,
+                        "is_passing": is_passing,
+                        "feedback": gd.get("feedback"),
+                        "notes": gd.get("notes"),
+                        "graded_at": now,
+                        "graded_by": graded_by,
+                        "academic_year": assessment.get("academic_year"),
+                        "semester": assessment.get("semester"),
+                    }
+                    to_insert.append(doc)
                     results["created"] += 1
-                
+                results["processed"] += 1
             except Exception as e:
-                results["errors"].append({
-                    "student_id": grade_data.get("student_id"),
-                    "error": str(e)
-                })
-        
+                results["errors"].append({"student_id": gd.get("student_id"), "error": str(e)})
+
+        if to_insert:
+            await self.grades_collection.insert_many(to_insert)
+
+        await self._update_assessment_metadata(assessment_id)
+
         if self._audit_engine:
             try:
                 from engines.audit_engine import AuditAction
-                assessment = await self.assessments_collection.find_one({"id": assessment_id})
-                bulk_tenant_id = assessment.get("tenant_id", "") if assessment else ""
                 await self._audit_engine.log(
                     action=AuditAction.GRADES_BULK_RECORDED.value,
                     performed_by=graded_by,
-                    tenant_id=bulk_tenant_id,
+                    tenant_id=assessment.get("tenant_id", ""),
                     entity_type="assessment",
                     entity_id=assessment_id,
                     details={
@@ -414,7 +462,7 @@ class AssessmentEngine:
                 )
             except Exception as e:
                 logger.warning(f"Audit log failed for bulk grade recording: {e}")
-        
+
         return results
     
     async def get_student_grades(
@@ -556,75 +604,67 @@ class AssessmentEngine:
         academic_year: Optional[str] = None,
         semester: Optional[int] = None
     ) -> Dict[str, Any]:
-        """Calculate weighted average for a student in a subject"""
-        # Get weights
+        """Calculate weighted average for a student in a subject (batch-fetched assessments)"""
         weights = await self.get_grade_weights(
             tenant_id,
             subject_id,
             academic_year=academic_year,
             semester=semester
         )
-        
-        # Get grades
+
         query = {
             "tenant_id": tenant_id,
             "student_id": student_id,
             "subject_id": subject_id
         }
-        
         if academic_year:
             query["academic_year"] = academic_year
         if semester:
             query["semester"] = semester
-        
-        grades = await self.grades_collection.find(
-            query,
-            {"_id": 0}
-        ).to_list(1000)
-        
-        # Get assessment types for each grade
+
+        grades = await self.grades_collection.find(query, {"_id": 0}).to_list(1000)
+
+        assessment_ids = list({g.get("assessment_id") for g in grades if g.get("assessment_id")})
+        assessments_list = await self.assessments_collection.find(
+            {"id": {"$in": assessment_ids}}, {"_id": 0, "id": 1, "assessment_type": 1}
+        ).to_list(len(assessment_ids)) if assessment_ids else []
+        assessment_type_map = {a["id"]: a.get("assessment_type", "other") for a in assessments_list}
+
         weighted_sum = 0
         weight_total = 0
         grade_breakdown = {}
-        
+
         for grade in grades:
-            assessment = await self.get_assessment_by_id(grade.get("assessment_id"))
-            if not assessment:
-                continue
-            
-            assessment_type = assessment.get("assessment_type", "other")
+            assessment_type = assessment_type_map.get(grade.get("assessment_id"), "other")
             weight = weights.get(assessment_type, 0)
-            
+
             if weight > 0:
                 percentage = grade.get("percentage", 0)
-                
                 if assessment_type not in grade_breakdown:
                     grade_breakdown[assessment_type] = {
                         "grades": [],
                         "weight": weight,
                         "average": 0
                     }
-                
                 grade_breakdown[assessment_type]["grades"].append(percentage)
-        
-        # Calculate averages by type
+
         for atype, data in grade_breakdown.items():
             if data["grades"]:
                 avg = sum(data["grades"]) / len(data["grades"])
                 data["average"] = round(avg, 2)
                 weighted_sum += avg * (data["weight"] / 100)
                 weight_total += data["weight"]
-        
-        # Final weighted average
+
         final_average = round(weighted_sum * (100 / weight_total) if weight_total > 0 else 0, 2)
-        
+        letter_grade = await self._get_letter_grade(tenant_id, final_average)
+
         return {
             "student_id": student_id,
             "subject_id": subject_id,
             "academic_year": academic_year,
             "semester": semester,
             "final_average": final_average,
-            "letter_grade": self._percentage_to_letter(final_average),
+            "letter_grade": letter_grade,
             "grade_breakdown": grade_breakdown,
             "total_assessments": len(grades)
         }
@@ -735,7 +775,7 @@ class AssessmentEngine:
             "semester": semester,
             "subjects": subjects,
             "gpa": gpa,
-            "overall_letter_grade": self._percentage_to_letter(gpa),
+            "overall_letter_grade": await self._get_letter_grade(tenant_id, gpa),
             "generated_at": now,
             "generated_by": generated_by,
             "status": "draft"
@@ -764,27 +804,39 @@ class AssessmentEngine:
         )
     
     # ============== HELPER METHODS ==============
-    
-    def _percentage_to_letter(self, percentage: float) -> str:
-        """Convert percentage to letter grade"""
-        if percentage >= 95:
-            return "A+"
-        elif percentage >= 90:
-            return "A"
-        elif percentage >= 85:
-            return "B+"
-        elif percentage >= 80:
-            return "B"
-        elif percentage >= 75:
-            return "C+"
-        elif percentage >= 70:
-            return "C"
-        elif percentage >= 65:
-            return "D+"
-        elif percentage >= 60:
-            return "D"
-        else:
-            return "F"
+
+    DEFAULT_LETTER_GRADE_SCALE = [
+        (95, "A+"), (90, "A"), (85, "B+"), (80, "B"),
+        (75, "C+"), (70, "C"), (65, "D+"), (60, "D"),
+    ]
+
+    def _percentage_to_letter(self, percentage: float, scale=None) -> str:
+        """Convert percentage to letter grade using given or default scale"""
+        used_scale = scale or self.DEFAULT_LETTER_GRADE_SCALE
+        for threshold, letter in used_scale:
+            if percentage >= threshold:
+                return letter
+        return "F"
+
+    async def _load_tenant_grade_scale(self, tenant_id: str) -> list:
+        """Load tenant-specific letter grade scale, or return default"""
+        try:
+            settings = await self.db.tenant_settings.find_one(
+                {"tenant_id": tenant_id, "setting_key": "letter_grade_scale"},
+                {"_id": 0}
+            )
+            if settings and settings.get("value"):
+                raw = settings["value"]
+                if isinstance(raw, list) and raw:
+                    return [(entry.get("min", 0), entry.get("grade", "F")) for entry in raw]
+        except Exception:
+            pass
+        return self.DEFAULT_LETTER_GRADE_SCALE
+
+    async def _get_letter_grade(self, tenant_id: str, percentage: float) -> str:
+        """Get letter grade using tenant-specific scale if configured"""
+        scale = await self._load_tenant_grade_scale(tenant_id)
+        return self._percentage_to_letter(percentage, scale)
     
     async def _update_assessment_metadata(self, assessment_id: str):
         """Update assessment metadata after grading"""
@@ -938,6 +990,7 @@ class AssessmentEngine:
             student_avgs[sid]["total"] += g.get("percentage", 0)
             student_avgs[sid]["count"] += 1
 
+        scale = await self._load_tenant_grade_scale(tenant_id)
         rankings = []
         for sid, data in student_avgs.items():
             avg = round(data["total"] / data["count"], 2) if data["count"] else 0
@@ -945,7 +998,7 @@ class AssessmentEngine:
                 "student_id": sid,
                 "student_name": name_map.get(sid, ""),
                 "average": avg,
-                "letter_grade": self._percentage_to_letter(avg),
+                "letter_grade": self._percentage_to_letter(avg, scale),
                 "assessments_count": data["count"],
             })
 
@@ -1154,9 +1207,10 @@ class AssessmentEngine:
 
         passing = len([p for p in percentages if p >= 50])
 
+        scale = await self._load_tenant_grade_scale(tenant_id)
         grade_dist = {"A+": 0, "A": 0, "B+": 0, "B": 0, "C+": 0, "C": 0, "D+": 0, "D": 0, "F": 0}
         for p in percentages:
-            letter = self._percentage_to_letter(p)
+            letter = self._percentage_to_letter(p, scale)
             if letter in grade_dist:
                 grade_dist[letter] += 1
 
