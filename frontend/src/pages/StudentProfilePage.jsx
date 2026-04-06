@@ -296,7 +296,9 @@ export default function StudentProfilePage() {
       ]);
       setActivities(actRes.data || []);
       setCertificates(certRes.data || []);
-    } catch { }
+    } catch (e) {
+      console.error('[StudentProfile] fetchActivities failed:', e?.message);
+    }
     setLoadingActivities(false);
   }, [studentId, tenantId]);
 
@@ -306,7 +308,8 @@ export default function StudentProfilePage() {
     try {
       const res = await api.get(`/hakim/student/${studentId}/longitudinal`, { headers });
       setLongitudinalData(res.data);
-    } catch {
+    } catch (e) {
+      console.error('[StudentProfile] fetchLongitudinal failed:', e?.message);
       setLongitudinalData(null);
     }
     setLoadingLongitudinal(false);
@@ -318,7 +321,9 @@ export default function StudentProfilePage() {
     try {
       const res = await api.get(`/hakim/student/${studentId}/plan-history`, { headers });
       setPlanHistory(res.data || []);
-    } catch { }
+    } catch (e) {
+      console.error('[StudentProfile] fetchPlanHistory failed:', e?.message);
+    }
     setLoadingPlanHistory(false);
   }, [studentId]);
 

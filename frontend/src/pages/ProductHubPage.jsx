@@ -669,7 +669,9 @@ function IssuePanel({ issue, navigate, isHighlighted, isMainAdmin, isAdmin, user
     try {
       const res = await api.get(`/product-hub/issues/${issue.id}`);
       setDetailData(res.data);
-    } catch {}
+    } catch (e) {
+      console.error('[ProductHub] refetchDetail failed:', e?.message);
+    }
     if (onRefresh) onRefresh();
   }, [issue.id, onRefresh]);
 
