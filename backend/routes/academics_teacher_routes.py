@@ -22,7 +22,7 @@ from dependencies import (
     hakim_engine, reporting_engine, export_engine, session_engine,
     REPORT_TYPES, generate_student_qr_code
 )
-from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_inc
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_inc, _gd_pull
 
 
 from shared_models import (
@@ -783,7 +783,9 @@ async def delete_parent(
     r = await gd_delete_many(db.session, "user_relationships", {"$or": [{"source_id": parent_id}, {"target_id": parent_id}]})
     cleanup["user_relationships"] = r
 
-    await gd_update_many(db.session, "students", {"parent_ids": parent_id}, {"$pull": {"parent_ids": parent_id}})
+    matching_students = await gd_find(db.session, "students", {"parent_ids": parent_id})
+    for stu in matching_students:
+        await _gd_pull(db.session, "students", {"id": stu["id"]}, "parent_ids", parent_id)
 
     if user_id:
         await gd_delete_one(db.session, "users", {"id": user_id})

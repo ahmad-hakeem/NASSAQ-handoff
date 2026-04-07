@@ -976,7 +976,7 @@ async def validate_before_publish(
     periods_per_day = school_settings.get("periods_per_day", 7) if school_settings else 7
 
     time_slots = []
-    __slot_list = await gd_find(db.session, "time_slots", {"school_id": school_id}).sort("period_number")
+    __slot_list = await gd_find(db.session, "time_slots", {"school_id": school_id}, order_by="period_number", desc_order=False)
     for slot in __slot_list:
         time_slots.append(slot)
     teaching_slots = [s for s in time_slots if not s.get("is_break") and not s.get("is_prayer")]
@@ -1466,7 +1466,7 @@ async def get_empty_slots_details(
     working_days = _resolve_working_days(school_settings.get("working_days") if school_settings else None)
 
     time_slots = []
-    __slot_list = await gd_find(db.session, "time_slots", {"school_id": school_id}).sort("period_number")
+    __slot_list = await gd_find(db.session, "time_slots", {"school_id": school_id}, order_by="period_number", desc_order=False)
     for slot in __slot_list:
         time_slots.append(slot)
     teaching_slots = [s for s in time_slots if not s.get("is_break") and not s.get("is_prayer")]
@@ -1541,7 +1541,7 @@ async def fill_timetable_gaps(
     working_days = _resolve_working_days(school_settings.get("working_days") if school_settings else None)
 
     time_slots_raw = []
-    __slot_list = await gd_find(db.session, "time_slots", {"school_id": school_id}).sort("period_number")
+    __slot_list = await gd_find(db.session, "time_slots", {"school_id": school_id}, order_by="period_number", desc_order=False)
     for slot in __slot_list:
         time_slots_raw.append(slot)
     teaching_slots = [s for s in time_slots_raw if not s.get("is_break") and not s.get("is_prayer")]

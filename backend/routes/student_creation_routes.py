@@ -315,7 +315,8 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
         if siblings:
             sibling_ids = [s.get("id") for s in siblings]
             # Update siblings to include new student
-            await gd_update_many(db.session, "students", {"id": {"$in": sibling_ids}}, {"$addToSet": {"sibling_ids": student_id}})
+            for sib_id in sibling_ids:
+                await _gd_addtoset(db.session, "students", {"id": sib_id}, "sibling_ids", student_id)
         
         # Update class student count
         if request.class_id:
