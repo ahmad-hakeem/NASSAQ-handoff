@@ -37,6 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select';
+import { ImageCropModal } from '../components/ui/ImageCropModal';
 import {
   ArrowLeft,
   User,
@@ -212,7 +213,6 @@ export default function UserDetailsPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { isRTL = true, api } = useAuth();
-  const fileInputRef = useRef(null);
   const copyTimeoutRef = useRef(null);
   
   const [user, setUser] = useState(null);
@@ -229,6 +229,7 @@ export default function UserDetailsPage() {
   const [showNotificationDialog, setShowNotificationDialog] = useState(false);
   const [showEditSheet, setShowEditSheet] = useState(false);
   const [showPermissionsSheet, setShowPermissionsSheet] = useState(false);
+  const [cropModalOpen, setCropModalOpen] = useState(false);
   
   // Form states
   const [notificationForm, setNotificationForm] = useState({ title: '', message: '', type: 'system' });
@@ -458,21 +459,9 @@ ${API_URL}/login
     );
   };
   
-  // Handle image upload
-  const handleImageUpload = (event) => {
-    const file = event.target.files[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        nassaqError(isRTL ? 'حجم الصورة كبير جداً (الحد الأقصى 5MB)' : 'Image too large (max 5MB)');
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setSelectedImage(e.target.result);
-        setEditForm(prev => ({ ...prev, avatar_url: e.target.result }));
-      };
-      reader.readAsDataURL(file);
-    }
+  const handleImageCropSave = async (base64Data) => {
+    setSelectedImage(base64Data);
+    setEditForm(prev => ({ ...prev, avatar_url: base64Data }));
   };
   
   // Get role info
@@ -1037,24 +1026,17 @@ ${API_URL}/login
                       {editForm.full_name?.charAt(0)}
                     </AvatarFallback>
                   </Avatar>
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    className="hidden"
-                    accept="image/jpeg,image/png"
-                    onChange={handleImageUpload}
-                  />
                 </div>
                 <Button 
                   variant="outline" 
                   size="sm" 
                   className="mt-3"
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() => setCropModalOpen(true)}
                 >
                   <Upload className="h-4 w-4 ms-2" />
                   رفع صورة
                 </Button>
-                <p className="text-xs text-muted-foreground mt-1">JPG أو PNG (الحد الأقصى 5MB)</p>
+                <p className="text-xs text-muted-foreground mt-1">JPG, PNG أو WebP (الحد الأقصى 5MB)</p>
               </div>
               
               {/* Name Fields */}
@@ -1450,6 +1432,12 @@ ${API_URL}/login
           </DialogContent>
         </Dialog>
       </div>
+      <ImageCropModal
+        open={cropModalOpen}
+        onOpenChange={setCropModalOpen}
+        onSave={handleImageCropSave}
+        isRTL={isRTL}
+      />
     </Sidebar>
   );
 }

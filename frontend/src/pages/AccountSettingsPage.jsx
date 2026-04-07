@@ -74,6 +74,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '../components/ui/alert-dialog';
+import { ImageCropModal } from '../components/ui/ImageCropModal';
 
 const PasswordStrength = ({ password, isRTL }) => {
   const { nassaqError, nassaqWarning } = useNassaqAlert();
@@ -175,6 +176,7 @@ export const AccountSettingsPage = () => {
   const [saving, setSaving] = useState(false);
   const [activeSection, setActiveSection] = useState('profile');
   const [saveSuccess, setSaveSuccess] = useState(null);
+  const [cropModalOpen, setCropModalOpen] = useState(false);
 
   const [profile, setProfile] = useState({
     title: 'none', full_name: '', full_name_en: '', email: '', phone: '', avatar_url: '',
@@ -293,38 +295,22 @@ export const AccountSettingsPage = () => {
     }
   };
 
-  const handleAvatarUpload = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-    if (!allowedTypes.includes(file.type)) {
-      nassaqError(isRTL ? 'صيغة الصورة غير مدعومة' : 'Unsupported image format');
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      nassaqError(isRTL ? 'حجم الصورة كبير جداً (الحد 5 ميجا)' : 'Image too large (max 5MB)');
-      return;
-    }
+  const handleAvatarCropSave = async (base64Data) => {
     setSaving(true);
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      try {
-        const base64Data = e.target?.result;
-        const response = await api.post('/users/me/avatar', { image_data: base64Data });
-        if (response.data?.success) {
-          setProfile(prev => ({ ...prev, avatar_url: base64Data }));
-          window.dispatchEvent(new CustomEvent('user-updated', { detail: { avatar_url: base64Data } }));
-          await refreshUser();
-          toast.success(isRTL ? 'تم تحديث الصورة الشخصية' : 'Avatar updated');
-        }
-      } catch (err) {
-        nassaqError(err.response?.data?.detail || (isRTL ? 'فشل رفع الصورة' : 'Failed to upload avatar'));
-      } finally {
-        setSaving(false);
+    try {
+      const response = await api.post('/users/me/avatar', { image_data: base64Data });
+      if (response.data?.success) {
+        setProfile(prev => ({ ...prev, avatar_url: base64Data }));
+        window.dispatchEvent(new CustomEvent('user-updated', { detail: { avatar_url: base64Data } }));
+        await refreshUser();
+        toast.success(isRTL ? 'تم تحديث الصورة الشخصية' : 'Avatar updated');
       }
-    };
-    reader.onerror = () => { nassaqError(isRTL ? 'فشل قراءة الصورة' : 'Failed to read image'); setSaving(false); };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      nassaqError(err.response?.data?.detail || (isRTL ? 'فشل رفع الصورة' : 'Failed to upload avatar'));
+      throw err;
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleChangePassword = async () => {
@@ -479,12 +465,11 @@ export const AccountSettingsPage = () => {
                       {getInitials(profile.full_name)}
                     </AvatarFallback>
                   </Avatar>
-                  <label htmlFor="avatar-upload" className="cursor-pointer">
-                    <input id="avatar-upload" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/jpg,image/png,image/webp" className="hidden" onChange={handleAvatarUpload} disabled={saving} data-testid="avatar-upload-input" />
+                  <div className="cursor-pointer" onClick={() => setCropModalOpen(true)}>
                     <div className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
                       {saving ? <Loader2 className="h-5 w-5 text-white animate-spin" /> : <Camera className="h-5 w-5 text-white" />}
                     </div>
-                  </label>
+                  </div>
                   <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-emerald-500 border-2 border-brand-navy flex items-center justify-center">
                     <Check className="h-3 w-3 text-white" />
                   </div>
@@ -932,6 +917,12 @@ export const AccountSettingsPage = () => {
         </Dialog>
       </div>
       <HakimAssistant />
+      <ImageCropModal
+        open={cropModalOpen}
+        onOpenChange={setCropModalOpen}
+        onSave={handleAvatarCropSave}
+        isRTL={isRTL}
+      />
     </Sidebar>
   );
 };

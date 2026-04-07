@@ -264,6 +264,7 @@ Hakim is the AI intelligence layer of NASSAQ — a living, context-aware assista
 - **Guidance**: explaining-concept, giving-instructions, inviting-to-begin
 
 ### Key Components
+- `frontend/src/components/ui/ImageCropModal.jsx` — Reusable profile image crop modal (react-easy-crop + browser-image-compression). 1:1 aspect ratio, round crop, zoom slider, drag-to-reposition, client-side compression (0.5MB max, 512px), bilingual RTL/LTR support. Used in AccountSettingsPage and UserDetailsPage.
 - `frontend/src/components/hakim/hakimPoses.js` — Pose registry with non-repeat selection, HERO_POSES export, context-to-category mapping
 - `frontend/src/components/hakim/HakimReaction.jsx` — Reusable component with 3 animation levels (idle breathing, interaction bounce, celebration)
 - `frontend/src/components/hakim/HakimAssistant.jsx` — Global floating chat widget (contextual pose per page, state-driven avatar: idle/listening/thinking/responding)

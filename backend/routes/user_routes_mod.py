@@ -635,13 +635,19 @@ async def upload_user_image(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
     """Upload user profile image (base64)"""
-    MAX_B64_LENGTH = 3 * 1024 * 1024
+    MAX_B64_LENGTH = 2 * 1024 * 1024
     if len(data.image_data) > MAX_B64_LENGTH:
-        raise HTTPException(status_code=413, detail="حجم الصورة كبير جداً (الحد الأقصى 2MB)")
+        raise HTTPException(status_code=413, detail="حجم الصورة كبير جداً (الحد الأقصى 2MB) | Image too large (max 2MB)")
 
     allowed_prefixes = ("data:image/jpeg;base64,", "data:image/png;base64,", "data:image/webp;base64,")
     if not data.image_data.startswith(allowed_prefixes):
-        raise HTTPException(status_code=400, detail="صيغة الصورة غير مدعومة (فقط JPEG, PNG, WEBP)")
+        raise HTTPException(status_code=400, detail="صيغة الصورة غير مدعومة (فقط JPEG, PNG, WEBP) | Unsupported image format (only JPEG, PNG, WEBP)")
+
+    try:
+        b64_content = data.image_data.split(",", 1)[1]
+        base64.b64decode(b64_content, validate=True)
+    except Exception:
+        raise HTTPException(status_code=400, detail="بيانات الصورة غير صالحة | Invalid image data")
 
     user = await gd_find_one(db.session, "users", {"id": user_id})
     if not user:
@@ -837,14 +843,20 @@ async def upload_user_avatar(
         if not image_data:
             raise HTTPException(status_code=400, detail="لم يتم إرسال صورة")
 
-        MAX_B64_LENGTH = 3 * 1024 * 1024
+        MAX_B64_LENGTH = 2 * 1024 * 1024
         if len(image_data) > MAX_B64_LENGTH:
-            raise HTTPException(status_code=413, detail="حجم الصورة كبير جداً (الحد الأقصى 2MB)")
+            raise HTTPException(status_code=413, detail="حجم الصورة كبير جداً (الحد الأقصى 2MB) | Image too large (max 2MB)")
 
         allowed_prefixes = ("data:image/jpeg;base64,", "data:image/png;base64,", "data:image/webp;base64,", "data:image/jpg;base64,")
         if not image_data.startswith(allowed_prefixes):
-            raise HTTPException(status_code=400, detail="صيغة الصورة غير مدعومة. الصيغ المدعومة: jpg, jpeg, png, webp")
+            raise HTTPException(status_code=400, detail="صيغة الصورة غير مدعومة. الصيغ المدعومة: jpg, jpeg, png, webp | Unsupported format. Allowed: jpg, jpeg, png, webp")
         
+        try:
+            b64_content = image_data.split(",", 1)[1]
+            base64.b64decode(b64_content, validate=True)
+        except Exception:
+            raise HTTPException(status_code=400, detail="بيانات الصورة غير صالحة | Invalid image data")
+
         # Save avatar URL (base64 data URL)
         update_data = {
             "avatar_url": image_data,
