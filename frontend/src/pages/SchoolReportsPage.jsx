@@ -197,8 +197,8 @@ export const SchoolReportsPage = () => {
           })));
         }
         if (partRes?.data?.data?.trend) {
-          setParticipationTrend(partRes.data.data.trend.map(t => ({
-            week: t.week, interactions: t.interactions,
+          setParticipationTrend(partRes.data.data.trend.map(item => ({
+            week: item.week, interactions: item.interactions,
           })));
         }
       } catch (err) {

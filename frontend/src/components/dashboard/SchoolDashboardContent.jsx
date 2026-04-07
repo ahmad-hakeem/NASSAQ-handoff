@@ -260,7 +260,7 @@ const AttendanceRadial = ({ data, isRTL }) => {
   };
 
   const StatBar = ({ label, value, total, color, icon: Icon }) => {
-    const { t } = useTranslation();
+
     const pct = total > 0 ? Math.round((value / total) * 100) : 0;
     return (
       <div className="flex items-center gap-2.5">

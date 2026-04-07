@@ -93,151 +93,6 @@ import {
 
 
 // Translations
-const translations = {
-  ar: {
-    pageTitle: 'مركز الأمان',
-    pageSubtitle: 'إدارة ومراقبة الوضع الأمني للمنصة',
-    overview: 'نظرة عامة',
-    indicators: 'المؤشرات',
-    alerts: 'التنبيهات',
-    logs: 'السجلات',
-    tools: 'الأدوات',
-    securityScore: 'درجة الأمان',
-    excellent: 'ممتاز',
-    good: 'جيد',
-    warning: 'تحذير',
-    critical: 'حرج',
-    protectedAccounts: 'الحسابات المحمية',
-    applicationSecurity: 'تأمين التطبيق',
-    failedLogins: 'محاولات الدخول الفاشلة',
-    lockedAccounts: 'الحسابات المقفلة',
-    encryptedData: 'البيانات المشفرة',
-    passwordPolicy: 'سياسة كلمات المرور',
-    backupStatus: 'حالة النسخ الاحتياطي',
-    loggingCoverage: 'تغطية السجلات',
-    strong: 'قوية',
-    medium: 'متوسطة',
-    weak: 'ضعيفة',
-    lastBackup: 'آخر نسخة احتياطية',
-    totalBackups: 'إجمالي النسخ',
-    securityAlerts: 'التنبيهات الأمنية',
-    highPriority: 'أولوية عالية',
-    mediumPriority: 'أولوية متوسطة',
-    lowPriority: 'أولوية منخفضة',
-    viewDetails: 'عرض التفاصيل',
-    dismiss: 'تجاهل',
-    escalate: 'تصعيد',
-    securityEvents: 'الأحداث الأمنية',
-    loginAttempt: 'محاولة دخول',
-    loginFailed: 'دخول فاشل',
-    passwordChange: 'تغيير كلمة مرور',
-    accountLocked: 'قفل حساب',
-    accountUnlocked: 'فتح حساب',
-    permissionChange: 'تغيير صلاحيات',
-    sessionEnded: 'إنهاء جلسة',
-    quickActions: 'إجراءات سريعة',
-    lockAccount: 'قفل حساب',
-    unlockAccount: 'فتح حساب',
-    endAllSessions: 'إنهاء جميع الجلسات',
-    forcePasswordChange: 'فرض تغيير كلمة المرور',
-    runSecurityScan: 'تشغيل فحص أمني',
-    downloadReport: 'تحميل تقرير الأمان',
-    reviewIncidents: 'مراجعة الحوادث',
-    aiAnalysis: 'تحليل AI للأمان',
-    aiRecommendations: 'توصيات الذكاء الاصطناعي',
-    generateReport: 'إنشاء تقرير',
-    filterByType: 'تصفية حسب النوع',
-    filterByPriority: 'تصفية حسب الأولوية',
-    search: 'بحث...',
-    all: 'الكل',
-    today: 'اليوم',
-    thisWeek: 'هذا الأسبوع',
-    thisMonth: 'هذا الشهر',
-    refresh: 'تحديث',
-    export: 'تصدير',
-    close: 'إغلاق',
-    confirm: 'تأكيد',
-    cancel: 'إلغاء',
-    hoursAgo: 'ساعة',
-    minutesAgo: 'دقيقة',
-    accounts: 'حساب',
-    improveScore: 'تحسين الدرجة',
-    scoreFactors: 'عوامل الدرجة',
-    recommendations: 'التوصيات',
-  },
-  en: {
-    pageTitle: 'Security Center',
-    pageSubtitle: 'Manage and monitor platform security',
-    overview: 'Overview',
-    indicators: 'Indicators',
-    alerts: 'Alerts',
-    logs: 'Logs',
-    tools: 'Tools',
-    securityScore: 'Security Score',
-    excellent: 'Excellent',
-    good: 'Good',
-    warning: 'Warning',
-    critical: 'Critical',
-    protectedAccounts: 'Protected Accounts',
-    applicationSecurity: 'Application Security',
-    failedLogins: 'Failed Login Attempts',
-    lockedAccounts: 'Locked Accounts',
-    encryptedData: 'Encrypted Data',
-    passwordPolicy: 'Password Policy',
-    backupStatus: 'Backup Status',
-    loggingCoverage: 'Logging Coverage',
-    strong: 'Strong',
-    medium: 'Medium',
-    weak: 'Weak',
-    lastBackup: 'Last Backup',
-    totalBackups: 'Total Backups',
-    securityAlerts: 'Security Alerts',
-    highPriority: 'High Priority',
-    mediumPriority: 'Medium Priority',
-    lowPriority: 'Low Priority',
-    viewDetails: 'View Details',
-    dismiss: 'Dismiss',
-    escalate: 'Escalate',
-    securityEvents: 'Security Events',
-    loginAttempt: 'Login Attempt',
-    loginFailed: 'Login Failed',
-    passwordChange: 'Password Change',
-    accountLocked: 'Account Locked',
-    accountUnlocked: 'Account Unlocked',
-    permissionChange: 'Permission Change',
-    sessionEnded: 'Session Ended',
-    quickActions: 'Quick Actions',
-    lockAccount: 'Lock Account',
-    unlockAccount: 'Unlock Account',
-    endAllSessions: 'End All Sessions',
-    forcePasswordChange: 'Force Password Change',
-    runSecurityScan: 'Run Security Scan',
-    downloadReport: 'Download Security Report',
-    reviewIncidents: 'Review Incidents',
-    aiAnalysis: 'AI Security Analysis',
-    aiRecommendations: 'AI Recommendations',
-    generateReport: 'Generate Report',
-    filterByType: 'Filter by Type',
-    filterByPriority: 'Filter by Priority',
-    search: 'Search...',
-    all: 'All',
-    today: 'Today',
-    thisWeek: 'This Week',
-    thisMonth: 'This Month',
-    refresh: 'Refresh',
-    export: 'Export',
-    close: 'Close',
-    confirm: 'Confirm',
-    cancel: 'Cancel',
-    hoursAgo: 'hours ago',
-    minutesAgo: 'minutes ago',
-    accounts: 'accounts',
-    improveScore: 'Improve Score',
-    scoreFactors: 'Score Factors',
-    recommendations: 'Recommendations',
-  }
-};
-
 // Security score factors
 // Empty initial states - data will be fetched from API
 const INITIAL_SCORE_FACTORS = [];
@@ -314,8 +169,8 @@ export default function SecurityCenterPage() {
     const diffMs = now - date;
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMs / 3600000);
-    if (diffMins < 60) return `${diffMins} ${t.minutesAgo}`;
-    if (diffHours < 24) return `${diffHours} ${t.hoursAgo}`;
+    if (diffMins < 60) return `${diffMins} ${t('minutesAgo')}`;
+    if (diffHours < 24) return `${diffHours} ${t('hoursAgo')}`;
     return date.toLocaleDateString(isRTL ? 'ar-SA' : 'en-US');
   };
   
@@ -327,20 +182,20 @@ export default function SecurityCenterPage() {
   
   const getEventTypeInfo = (type) => {
     const types = {
-      login: { icon: LogIn, color: 'text-green-600 bg-green-100', label: t.loginAttempt },
-      login_failed: { icon: LogIn, color: 'text-red-600 bg-red-100', label: t.loginFailed },
-      password_change: { icon: KeyRound, color: 'text-blue-600 bg-blue-100', label: t.passwordChange },
-      account_locked: { icon: Lock, color: 'text-orange-600 bg-orange-100', label: t.accountLocked },
-      permission_change: { icon: Settings, color: 'text-purple-600 bg-purple-100', label: t.permissionChange },
+      login: { icon: LogIn, color: 'text-green-600 bg-green-100', label: t('loginAttempt') },
+      login_failed: { icon: LogIn, color: 'text-red-600 bg-red-100', label: t('loginFailed') },
+      password_change: { icon: KeyRound, color: 'text-blue-600 bg-blue-100', label: t('passwordChange') },
+      account_locked: { icon: Lock, color: 'text-orange-600 bg-orange-100', label: t('accountLocked') },
+      permission_change: { icon: Settings, color: 'text-purple-600 bg-purple-100', label: t('permissionChange') },
     };
     return types[type] || types.login;
   };
   
   const getAlertPriorityInfo = (type) => {
     const types = {
-      high: { icon: AlertTriangle, color: 'text-red-600 bg-red-100 border-red-200', label: t.highPriority },
-      medium: { icon: AlertCircle, color: 'text-yellow-600 bg-yellow-100 border-yellow-200', label: t.mediumPriority },
-      low: { icon: Info, color: 'text-blue-600 bg-blue-100 border-blue-200', label: t.lowPriority },
+      high: { icon: AlertTriangle, color: 'text-red-600 bg-red-100 border-red-200', label: t('highPriority') },
+      medium: { icon: AlertCircle, color: 'text-yellow-600 bg-yellow-100 border-yellow-200', label: t('mediumPriority') },
+      low: { icon: Info, color: 'text-blue-600 bg-blue-100 border-blue-200', label: t('lowPriority') },
     };
     return types[type] || types.low;
   };
@@ -565,15 +420,15 @@ export default function SecurityCenterPage() {
         <header className="sticky top-0 z-40 bg-background/95 backdrop-blur border-b">
           <div className="container mx-auto px-4 lg:px-6 py-4">
             <div className="flex items-center justify-between mb-4">
-              <PageHeader title={t.pageTitle} subtitle={t.pageSubtitle} icon={Shield} className="mb-0" />
+              <PageHeader title={t('pageTitle')} subtitle={t('pageSubtitle')} icon={Shield} className="mb-0" />
               <div className="flex items-center gap-2">
                 <Button variant="outline" className="rounded-xl" onClick={handleRefresh} disabled={refreshing}>
                   {refreshing ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : <RefreshCw className="h-4 w-4 me-2" />}
-                  {t.refresh}
+                  {t('refresh')}
                 </Button>
                 <Button className="rounded-xl bg-brand-navy hover:bg-brand-navy/90" onClick={handleDownloadReport} disabled={loading}>
                   {loading ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : <Download className="h-4 w-4 me-2" />}
-                  {t.downloadReport}
+                  {t('downloadReport')}
                 </Button>
               </div>
             </div>
@@ -583,11 +438,11 @@ export default function SecurityCenterPage() {
         <main className="container mx-auto px-4 lg:px-6 py-6">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
             <TabsList className="grid w-full max-w-2xl grid-cols-5">
-              <TabsTrigger value="overview"><Shield className="h-4 w-4 me-2" />{t.overview}</TabsTrigger>
-              <TabsTrigger value="indicators"><Gauge className="h-4 w-4 me-2" />{t.indicators}</TabsTrigger>
-              <TabsTrigger value="alerts"><BellRing className="h-4 w-4 me-2" />{t.alerts}</TabsTrigger>
-              <TabsTrigger value="logs"><History className="h-4 w-4 me-2" />{t.logs}</TabsTrigger>
-              <TabsTrigger value="tools"><Settings className="h-4 w-4 me-2" />{t.tools}</TabsTrigger>
+              <TabsTrigger value="overview"><Shield className="h-4 w-4 me-2" />{t('overview')}</TabsTrigger>
+              <TabsTrigger value="indicators"><Gauge className="h-4 w-4 me-2" />{t('indicators')}</TabsTrigger>
+              <TabsTrigger value="alerts"><BellRing className="h-4 w-4 me-2" />{t('alerts')}</TabsTrigger>
+              <TabsTrigger value="logs"><History className="h-4 w-4 me-2" />{t('logs')}</TabsTrigger>
+              <TabsTrigger value="tools"><Settings className="h-4 w-4 me-2" />{t('tools')}</TabsTrigger>
             </TabsList>
             
             {/* Overview Tab */}
@@ -604,7 +459,7 @@ export default function SecurityCenterPage() {
                         <div className="absolute inset-0 flex items-center justify-center"><span className="text-4xl font-bold">{metrics.securityScore}%</span></div>
                       </div>
                       <div>
-                        <h2 className="text-3xl font-bold mb-2">{t.securityScore}</h2>
+                        <h2 className="text-3xl font-bold mb-2">{t('securityScore')}</h2>
                         <Badge className="bg-white/20 text-white text-lg px-4 py-1">{scoreInfo.label}</Badge>
                         <p className="text-white/70 mt-2">{t('clickToViewScoreDetails')}</p>
                       </div>
@@ -622,7 +477,7 @@ export default function SecurityCenterPage() {
                       <Badge variant="outline" className="text-green-600">{((metrics.protectedAccounts / metrics.totalAccounts) * 100).toFixed(0)}%</Badge>
                     </div>
                     <h3 className="font-bold text-2xl">{metrics.protectedAccounts.toLocaleString()}</h3>
-                    <p className="text-sm text-muted-foreground">{t.protectedAccounts}</p>
+                    <p className="text-sm text-muted-foreground">{t('protectedAccounts')}</p>
                     <Progress value={(metrics.protectedAccounts / metrics.totalAccounts) * 100} className="mt-2 h-2" />
                   </CardContent>
                 </Card>
@@ -633,7 +488,7 @@ export default function SecurityCenterPage() {
                       <Badge variant="outline" className="text-blue-600">{metrics.applicationSecurity}%</Badge>
                     </div>
                     <h3 className="font-bold text-2xl">{metrics.applicationSecurity}%</h3>
-                    <p className="text-sm text-muted-foreground">{t.applicationSecurity}</p>
+                    <p className="text-sm text-muted-foreground">{t('applicationSecurity')}</p>
                     <Progress value={metrics.applicationSecurity} className="mt-2 h-2" />
                   </CardContent>
                 </Card>
@@ -644,17 +499,17 @@ export default function SecurityCenterPage() {
                       <Badge variant="outline" className="text-orange-600">24h</Badge>
                     </div>
                     <h3 className="font-bold text-2xl">{metrics.failedLogins24h}</h3>
-                    <p className="text-sm text-muted-foreground">{t.failedLogins}</p>
+                    <p className="text-sm text-muted-foreground">{t('failedLogins')}</p>
                   </CardContent>
                 </Card>
                 <Card className="hover:shadow-lg transition-all">
                   <CardContent className="p-5">
                     <div className="flex items-center justify-between mb-3">
                       <Lock className="h-8 w-8 text-red-600" />
-                      <Badge variant="outline" className="text-red-600">{t.accounts}</Badge>
+                      <Badge variant="outline" className="text-red-600">{t('accounts')}</Badge>
                     </div>
                     <h3 className="font-bold text-2xl">{metrics.lockedAccounts}</h3>
-                    <p className="text-sm text-muted-foreground">{t.lockedAccounts}</p>
+                    <p className="text-sm text-muted-foreground">{t('lockedAccounts')}</p>
                   </CardContent>
                 </Card>
               </div>
@@ -665,7 +520,7 @@ export default function SecurityCenterPage() {
                     <div className="flex items-center gap-3 mb-3">
                       <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center"><Lock className="h-5 w-5 text-green-600" /></div>
                       <div>
-                        <p className="text-sm text-muted-foreground">{t.encryptedData}</p>
+                        <p className="text-sm text-muted-foreground">{t('encryptedData')}</p>
                         <p className="font-bold text-xl text-green-600">{metrics.encryptedData}%</p>
                       </div>
                     </div>
@@ -677,8 +532,8 @@ export default function SecurityCenterPage() {
                     <div className="flex items-center gap-3 mb-3">
                       <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center"><Key className="h-5 w-5 text-blue-600" /></div>
                       <div>
-                        <p className="text-sm text-muted-foreground">{t.passwordPolicy}</p>
-                        <p className="font-bold text-xl text-blue-600">{t.strong}</p>
+                        <p className="text-sm text-muted-foreground">{t('passwordPolicy')}</p>
+                        <p className="font-bold text-xl text-blue-600">{t('strong')}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-blue-600" /><span className="text-sm text-blue-600">{t('12Characters')}</span></div>
@@ -689,7 +544,7 @@ export default function SecurityCenterPage() {
                     <div className="flex items-center gap-3 mb-3">
                       <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center"><Database className="h-5 w-5 text-purple-600" /></div>
                       <div>
-                        <p className="text-sm text-muted-foreground">{t.backupStatus}</p>
+                        <p className="text-sm text-muted-foreground">{t('backupStatus')}</p>
                         <p className="font-bold text-xl text-purple-600">{metrics.totalBackups}</p>
                       </div>
                     </div>
@@ -701,7 +556,7 @@ export default function SecurityCenterPage() {
                     <div className="flex items-center gap-3 mb-3">
                       <div className="w-10 h-10 rounded-xl bg-cyan-100 flex items-center justify-center"><FileText className="h-5 w-5 text-cyan-600" /></div>
                       <div>
-                        <p className="text-sm text-muted-foreground">{t.loggingCoverage}</p>
+                        <p className="text-sm text-muted-foreground">{t('loggingCoverage')}</p>
                         <p className="font-bold text-xl text-cyan-600">{metrics.loggingCoverage}%</p>
                       </div>
                     </div>
@@ -712,7 +567,7 @@ export default function SecurityCenterPage() {
               
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
-                  <CardTitle className="flex items-center gap-2"><BellRing className="h-5 w-5 text-brand-navy" />{t.securityAlerts}</CardTitle>
+                  <CardTitle className="flex items-center gap-2"><BellRing className="h-5 w-5 text-brand-navy" />{t('securityAlerts')}</CardTitle>
                   <Button variant="outline" size="sm" onClick={() => setActiveTab('alerts')}>{t('viewAll')}<ChevronRight className="h-4 w-4 ms-1 rtl:rotate-180" /></Button>
                 </CardHeader>
                 <CardContent>
@@ -743,7 +598,7 @@ export default function SecurityCenterPage() {
             {/* Indicators Tab */}
             <TabsContent value="indicators" className="space-y-6">
               <Card>
-                <CardHeader><CardTitle className="flex items-center gap-2"><Gauge className="h-5 w-5 text-brand-navy" />{t.scoreFactors}</CardTitle></CardHeader>
+                <CardHeader><CardTitle className="flex items-center gap-2"><Gauge className="h-5 w-5 text-brand-navy" />{t('scoreFactors')}</CardTitle></CardHeader>
                 <CardContent>
                   <div className="space-y-4">
                     {scoreFactors.map(factor => (
@@ -764,12 +619,12 @@ export default function SecurityCenterPage() {
             <TabsContent value="alerts" className="space-y-6">
               <div className="flex items-center gap-4">
                 <Select value={filterPriority} onValueChange={setFilterPriority}>
-                  <SelectTrigger className="w-48"><SelectValue placeholder={t.filterByPriority} /></SelectTrigger>
+                  <SelectTrigger className="w-48"><SelectValue placeholder={t('filterByPriority')} /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">{t.all}</SelectItem>
-                    <SelectItem value="high">{t.highPriority}</SelectItem>
-                    <SelectItem value="medium">{t.mediumPriority}</SelectItem>
-                    <SelectItem value="low">{t.lowPriority}</SelectItem>
+                    <SelectItem value="all">{t('all')}</SelectItem>
+                    <SelectItem value="high">{t('highPriority')}</SelectItem>
+                    <SelectItem value="medium">{t('mediumPriority')}</SelectItem>
+                    <SelectItem value="low">{t('lowPriority')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -793,9 +648,9 @@ export default function SecurityCenterPage() {
                             </div>
                           </div>
                           <div className="flex gap-2">
-                            <Button variant="outline" size="sm"><Eye className="h-4 w-4 me-1" />{t.viewDetails}</Button>
-                            <Button variant="outline" size="sm">{t.dismiss}</Button>
-                            <Button variant="destructive" size="sm">{t.escalate}</Button>
+                            <Button variant="outline" size="sm"><Eye className="h-4 w-4 me-1" />{t('viewDetails')}</Button>
+                            <Button variant="outline" size="sm">{t('dismiss')}</Button>
+                            <Button variant="destructive" size="sm">{t('escalate')}</Button>
                           </div>
                         </div>
                       </CardContent>
@@ -810,19 +665,19 @@ export default function SecurityCenterPage() {
               <div className="flex items-center gap-4">
                 <div className="relative flex-1 max-w-md">
                   <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input placeholder={t.search} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="ps-10" />
+                  <Input placeholder={t('search')} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="ps-10" />
                 </div>
                 <Select value={filterType} onValueChange={setFilterType}>
-                  <SelectTrigger className="w-48"><SelectValue placeholder={t.filterByType} /></SelectTrigger>
+                  <SelectTrigger className="w-48"><SelectValue placeholder={t('filterByType')} /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">{t.all}</SelectItem>
-                    <SelectItem value="login">{t.loginAttempt}</SelectItem>
-                    <SelectItem value="login_failed">{t.loginFailed}</SelectItem>
-                    <SelectItem value="password_change">{t.passwordChange}</SelectItem>
-                    <SelectItem value="account_locked">{t.accountLocked}</SelectItem>
+                    <SelectItem value="all">{t('all')}</SelectItem>
+                    <SelectItem value="login">{t('loginAttempt')}</SelectItem>
+                    <SelectItem value="login_failed">{t('loginFailed')}</SelectItem>
+                    <SelectItem value="password_change">{t('passwordChange')}</SelectItem>
+                    <SelectItem value="account_locked">{t('accountLocked')}</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button variant="outline"><Download className="h-4 w-4 me-2" />{t.export}</Button>
+                <Button variant="outline"><Download className="h-4 w-4 me-2" />{t('export')}</Button>
               </div>
               <Card>
                 <CardContent className="p-0">
@@ -864,41 +719,41 @@ export default function SecurityCenterPage() {
                 <Card className="cursor-pointer hover:shadow-lg transition-all border-2 border-red-100 hover:border-red-300" onClick={openLockDialog}>
                   <CardContent className="p-6 text-center">
                     <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-red-100 flex items-center justify-center"><Lock className="h-7 w-7 text-red-600" /></div>
-                    <h4 className="font-bold mb-1">{t.lockAccount}</h4>
+                    <h4 className="font-bold mb-1">{t('lockAccount')}</h4>
                     <p className="text-xs text-muted-foreground">{t('searchLockAccount')}</p>
                   </CardContent>
                 </Card>
                 <Card className="cursor-pointer hover:shadow-lg transition-all border-2 border-green-100 hover:border-green-300" onClick={openUnlockDialog}>
                   <CardContent className="p-6 text-center">
                     <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-green-100 flex items-center justify-center"><Unlock className="h-7 w-7 text-green-600" /></div>
-                    <h4 className="font-bold mb-1">{t.unlockAccount}</h4>
+                    <h4 className="font-bold mb-1">{t('unlockAccount')}</h4>
                     <p className="text-xs text-muted-foreground">{t('searchUnlockAccount')}</p>
                   </CardContent>
                 </Card>
                 <Card className="cursor-pointer hover:shadow-lg transition-all border-2 border-orange-100 hover:border-orange-300" onClick={() => setShowEndSessionsDialog(true)}>
                   <CardContent className="p-6 text-center">
                     <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-orange-100 flex items-center justify-center"><LogOut className="h-7 w-7 text-orange-600" /></div>
-                    <h4 className="font-bold mb-1">{t.endAllSessions}</h4>
+                    <h4 className="font-bold mb-1">{t('endAllSessions')}</h4>
                     <p className="text-xs text-muted-foreground">{t('endAllSessions')}</p>
                   </CardContent>
                 </Card>
                 <Card className="cursor-pointer hover:shadow-lg transition-all border-2 border-purple-100 hover:border-purple-300" onClick={openForcePasswordDialog}>
                   <CardContent className="p-6 text-center">
                     <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-purple-100 flex items-center justify-center"><KeyRound className="h-7 w-7 text-purple-600" /></div>
-                    <h4 className="font-bold mb-1">{t.forcePasswordChange}</h4>
+                    <h4 className="font-bold mb-1">{t('forcePasswordChange')}</h4>
                     <p className="text-xs text-muted-foreground">{t('userRoleAll')}</p>
                   </CardContent>
                 </Card>
               </div>
               
               <Card>
-                <CardHeader><CardTitle className="flex items-center gap-2"><Brain className="h-5 w-5 text-brand-navy" />{t.aiRecommendations}</CardTitle></CardHeader>
+                <CardHeader><CardTitle className="flex items-center gap-2"><Brain className="h-5 w-5 text-brand-navy" />{t('aiRecommendations')}</CardTitle></CardHeader>
                 <CardContent className="space-y-4">
                   {aiRecommendations.map(rec => (
                     <div key={rec.id} className="p-4 bg-muted/30 rounded-xl">
                       <div className="flex items-start justify-between mb-2">
                         <h4 className="font-medium">{isRTL ? rec.title_ar : rec.title_en}</h4>
-                        <Badge variant={rec.priority === 'high' ? 'destructive' : rec.priority === 'medium' ? 'default' : 'secondary'}>{rec.priority === 'high' ? t.highPriority : rec.priority === 'medium' ? t.mediumPriority : t.lowPriority}</Badge>
+                        <Badge variant={rec.priority === 'high' ? 'destructive' : rec.priority === 'medium' ? 'default' : 'secondary'}>{rec.priority === 'high' ? t('highPriority') : rec.priority === 'medium' ? t('mediumPriority') : t('lowPriority')}</Badge>
                       </div>
                       <p className="text-sm text-muted-foreground mb-2">{isRTL ? rec.description_ar : rec.description_en}</p>
                       <Badge variant="outline" className="text-green-600"><TrendingUp className="h-3 w-3 me-1" />{rec.impact}</Badge>
@@ -913,7 +768,7 @@ export default function SecurityCenterPage() {
         {/* Score Details Dialog */}
         <Dialog open={showScoreDetailsDialog} onOpenChange={setShowScoreDetailsDialog}>
           <DialogContent className="max-w-lg">
-            <DialogHeader><DialogTitle className="flex items-center gap-2"><Gauge className="h-5 w-5 text-brand-navy" />{t.scoreFactors}</DialogTitle></DialogHeader>
+            <DialogHeader><DialogTitle className="flex items-center gap-2"><Gauge className="h-5 w-5 text-brand-navy" />{t('scoreFactors')}</DialogTitle></DialogHeader>
             <div className="py-4 space-y-4">
               {scoreFactors.map(factor => (
                 <div key={factor.id} className="space-y-2">
@@ -934,7 +789,7 @@ export default function SecurityCenterPage() {
                 </div>
               </div>
             </div>
-            <DialogFooter><Button onClick={() => setShowScoreDetailsDialog(false)} className="bg-brand-navy">{t.close}</Button></DialogFooter>
+            <DialogFooter><Button onClick={() => setShowScoreDetailsDialog(false)} className="bg-brand-navy">{t('close')}</Button></DialogFooter>
           </DialogContent>
         </Dialog>
         
@@ -942,7 +797,7 @@ export default function SecurityCenterPage() {
         <Dialog open={showLockAccountDialog} onOpenChange={setShowLockAccountDialog}>
           <DialogContent className="max-w-lg">
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2"><Lock className="h-5 w-5 text-red-600" />{t.lockAccount}</DialogTitle>
+              <DialogTitle className="flex items-center gap-2"><Lock className="h-5 w-5 text-red-600" />{t('lockAccount')}</DialogTitle>
               <DialogDescription>{t('searchForAccountByEmailOrPhone')}</DialogDescription>
             </DialogHeader>
             <div className="py-4 space-y-4">
@@ -1002,14 +857,14 @@ export default function SecurityCenterPage() {
               )}
             </div>
             <DialogFooter className="flex-row-reverse gap-2">
-              <Button variant="outline" onClick={() => setShowLockAccountDialog(false)}>{t.cancel}</Button>
+              <Button variant="outline" onClick={() => setShowLockAccountDialog(false)}>{t('cancel')}</Button>
               <Button 
                 variant="destructive" 
                 onClick={handleLockAccount} 
                 disabled={!selectedAccount || actionLoading}
               >
                 {actionLoading ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : <Lock className="h-4 w-4 me-2" />}
-                {t.lockAccount}
+                {t('lockAccount')}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -1019,7 +874,7 @@ export default function SecurityCenterPage() {
         <Dialog open={showUnlockAccountDialog} onOpenChange={setShowUnlockAccountDialog}>
           <DialogContent className="max-w-lg">
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2"><Unlock className="h-5 w-5 text-green-600" />{t.unlockAccount}</DialogTitle>
+              <DialogTitle className="flex items-center gap-2"><Unlock className="h-5 w-5 text-green-600" />{t('unlockAccount')}</DialogTitle>
               <DialogDescription>{t('searchForLockedAccountToUnlock')}</DialogDescription>
             </DialogHeader>
             <div className="py-4 space-y-4">
@@ -1063,14 +918,14 @@ export default function SecurityCenterPage() {
               )}
             </div>
             <DialogFooter className="flex-row-reverse gap-2">
-              <Button variant="outline" onClick={() => setShowUnlockAccountDialog(false)}>{t.cancel}</Button>
+              <Button variant="outline" onClick={() => setShowUnlockAccountDialog(false)}>{t('cancel')}</Button>
               <Button 
                 className="bg-green-600 hover:bg-green-700"
                 onClick={handleUnlockAccount} 
                 disabled={!selectedAccount || actionLoading}
               >
                 {actionLoading ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : <Unlock className="h-4 w-4 me-2" />}
-                {t.unlockAccount}
+                {t('unlockAccount')}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -1080,7 +935,7 @@ export default function SecurityCenterPage() {
         <Dialog open={showEndSessionsDialog} onOpenChange={setShowEndSessionsDialog}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2"><LogOut className="h-5 w-5 text-orange-600" />{t.endAllSessions}</DialogTitle>
+              <DialogTitle className="flex items-center gap-2"><LogOut className="h-5 w-5 text-orange-600" />{t('endAllSessions')}</DialogTitle>
               <DialogDescription>{t('thisWillEndAllActiveSessionsForAllUsers')}</DialogDescription>
             </DialogHeader>
             <div className="py-4">
@@ -1098,7 +953,7 @@ export default function SecurityCenterPage() {
               </div>
             </div>
             <DialogFooter className="flex-row-reverse gap-2">
-              <Button variant="outline" onClick={() => setShowEndSessionsDialog(false)}>{t.cancel}</Button>
+              <Button variant="outline" onClick={() => setShowEndSessionsDialog(false)}>{t('cancel')}</Button>
               <Button 
                 variant="destructive" 
                 onClick={handleEndAllSessions} 
@@ -1115,7 +970,7 @@ export default function SecurityCenterPage() {
         <Dialog open={showForcePasswordDialog} onOpenChange={setShowForcePasswordDialog}>
           <DialogContent className="max-w-lg">
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2"><KeyRound className="h-5 w-5 text-purple-600" />{t.forcePasswordChange}</DialogTitle>
+              <DialogTitle className="flex items-center gap-2"><KeyRound className="h-5 w-5 text-purple-600" />{t('forcePasswordChange')}</DialogTitle>
               <DialogDescription>{t('forcePasswordChangeForUserRoleOrEveryone')}</DialogDescription>
             </DialogHeader>
             <div className="py-4 space-y-4">
@@ -1219,7 +1074,7 @@ export default function SecurityCenterPage() {
               )}
             </div>
             <DialogFooter className="flex-row-reverse gap-2">
-              <Button variant="outline" onClick={() => setShowForcePasswordDialog(false)}>{t.cancel}</Button>
+              <Button variant="outline" onClick={() => setShowForcePasswordDialog(false)}>{t('cancel')}</Button>
               <Button 
                 variant={forcePasswordType === 'all' ? 'destructive' : 'default'}
                 className={forcePasswordType !== 'all' ? 'bg-purple-600 hover:bg-purple-700' : ''}
@@ -1231,7 +1086,7 @@ export default function SecurityCenterPage() {
                 }
               >
                 {actionLoading ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : <KeyRound className="h-4 w-4 me-2" />}
-                {t.forcePasswordChange}
+                {t('forcePasswordChange')}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -1240,7 +1095,7 @@ export default function SecurityCenterPage() {
         {/* AI Report Dialog */}
         <Dialog open={showAIReportDialog} onOpenChange={setShowAIReportDialog}>
           <DialogContent className="max-w-lg">
-            <DialogHeader><DialogTitle className="flex items-center gap-2"><Brain className="h-5 w-5 text-brand-navy" />{t.aiAnalysis}</DialogTitle><DialogDescription>{t('comprehensiveSecurityAnalysisUsingAi')}</DialogDescription></DialogHeader>
+            <DialogHeader><DialogTitle className="flex items-center gap-2"><Brain className="h-5 w-5 text-brand-navy" />{t('aiAnalysis')}</DialogTitle><DialogDescription>{t('comprehensiveSecurityAnalysisUsingAi')}</DialogDescription></DialogHeader>
             <div className="py-4">
               <div className="p-4 bg-muted/30 rounded-xl text-center">
                 <Brain className="h-16 w-16 mx-auto text-brand-navy/30 mb-4" />
@@ -1248,8 +1103,8 @@ export default function SecurityCenterPage() {
               </div>
             </div>
             <DialogFooter className="flex-row-reverse gap-2">
-              <Button variant="outline" onClick={() => setShowAIReportDialog(false)}>{t.cancel}</Button>
-              <Button onClick={handleGenerateAIReport} disabled={generatingReport} className="bg-brand-navy">{generatingReport ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : <Zap className="h-4 w-4 me-2" />}{t.generateReport}</Button>
+              <Button variant="outline" onClick={() => setShowAIReportDialog(false)}>{t('cancel')}</Button>
+              <Button onClick={handleGenerateAIReport} disabled={generatingReport} className="bg-brand-navy">{generatingReport ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : <Zap className="h-4 w-4 me-2" />}{t('generateReport')}</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

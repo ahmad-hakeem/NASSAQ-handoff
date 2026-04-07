@@ -72,7 +72,7 @@ export default function SessionStartPage() {
     if (stored) {
       try { setLessonData(JSON.parse(stored)?.lesson); return; } catch (e) { console.error('Error parsing stored lesson:', e); }
     }
-    const t = setTimeout(() => { nassaqError('لم يتم تحديد الحصة'); navigate('/teacher/home'); }, 600);
+    const timer = setTimeout(() => { nassaqError('لم يتم تحديد الحصة'); navigate('/teacher/home'); }, 600);
     return () => clearTimeout(t);
   }, [location.state, navigate]);
 
@@ -229,7 +229,7 @@ export default function SessionStartPage() {
   }), [students]);
 
   const theme = isDark ? 'dark' : 'light';
-  const t = {
+  const themeStyles = {
     bg: isDark ? 'bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950' : 'bg-gradient-to-b from-gray-50 via-white to-gray-100',
     headerBg: isDark ? 'bg-slate-900/95 backdrop-blur-xl border-white/10' : 'bg-white/95 backdrop-blur-xl border-gray-200',
     text: isDark ? 'text-white' : 'text-gray-900',
@@ -247,7 +247,7 @@ export default function SessionStartPage() {
 
   if (step === 'starting' || (loading && !students.length)) {
     return (
-      <div className={`min-h-screen ${t.bg} flex items-center justify-center`} dir={isRTL ? 'rtl' : 'ltr'}>
+      <div className={`min-h-screen ${themeStyles.bg} flex items-center justify-center`} dir={isRTL ? 'rtl' : 'ltr'}>
         <div className="text-center">
           <div className="relative mx-auto w-28 h-28 mb-8">
             <div className="absolute inset-0 rounded-full bg-brand-turquoise/20 animate-ping" />
@@ -256,8 +256,8 @@ export default function SessionStartPage() {
               <Play className="h-12 w-12 text-white drop-shadow-lg" />
             </div>
           </div>
-          <h2 className={`font-cairo text-3xl font-bold ${t.text} mb-3`}>جارٍ بدء الحصة…</h2>
-          <p className={`${t.textSub} text-base mb-6 font-tajawal`}>يتم التحقق وإعداد سجل الحضور</p>
+          <h2 className={`font-cairo text-3xl font-bold ${themeStyles.text} mb-3`}>جارٍ بدء الحصة…</h2>
+          <p className={`${themeStyles.textSub} text-base mb-6 font-tajawal`}>يتم التحقق وإعداد سجل الحضور</p>
           <div className="flex items-center justify-center gap-3">
             <div className="w-2.5 h-2.5 rounded-full bg-brand-turquoise animate-bounce" style={{ animationDelay: '0ms' }} />
             <div className="w-2.5 h-2.5 rounded-full bg-brand-turquoise animate-bounce" style={{ animationDelay: '150ms' }} />
@@ -329,10 +329,10 @@ export default function SessionStartPage() {
   const presentPct = stats.total > 0 ? Math.round((stats.present / stats.total) * 100) : 0;
 
   return (
-    <div className={`min-h-screen ${t.bg} flex flex-col transition-colors duration-300`} dir={isRTL ? 'rtl' : 'ltr'}>
-      <header className={`${t.headerBg} border-b px-4 py-3 sticky top-0 z-20 transition-colors duration-300`}>
+    <div className={`min-h-screen ${themeStyles.bg} flex flex-col transition-colors duration-300`} dir={isRTL ? 'rtl' : 'ltr'}>
+      <header className={`${themeStyles.headerBg} border-b px-4 py-3 sticky top-0 z-20 transition-colors duration-300`}>
         <div className="max-w-5xl mx-auto flex items-center justify-between gap-3">
-          <button onClick={() => navigate('/teacher')} className={`${t.textSub} ${isDark ? 'hover:text-white' : 'hover:text-gray-900'} p-2 rounded-xl ${t.btnBg} transition-all border`}>
+          <button onClick={() => navigate('/teacher')} className={`${themeStyles.textSub} ${isDark ? 'hover:text-white' : 'hover:text-gray-900'} p-2 rounded-xl ${themeStyles.btnBg} transition-all border`}>
             <ArrowRight className="h-5 w-5" />
           </button>
 
@@ -341,9 +341,9 @@ export default function SessionStartPage() {
               <div className="w-6 h-6 rounded-lg bg-brand-turquoise/20 flex items-center justify-center">
                 <GraduationCap className="h-3.5 w-3.5 text-brand-turquoise" />
               </div>
-              <h1 className={`font-cairo font-bold ${t.text} text-base`}>{sessionInfo?.subjectName}</h1>
+              <h1 className={`font-cairo font-bold ${themeStyles.text} text-base`}>{sessionInfo?.subjectName}</h1>
             </div>
-            <p className={`${t.textSub} text-xs font-tajawal mt-0.5`}>{sessionInfo?.className}</p>
+            <p className={`${themeStyles.textSub} text-xs font-tajawal mt-0.5`}>{sessionInfo?.className}</p>
           </div>
 
           <div className="flex items-center gap-2">
@@ -352,7 +352,7 @@ export default function SessionStartPage() {
                 onClick={() => setGenderSplit(v => !v)}
                 className={`p-2 rounded-xl transition-all border ${genderSplit
                   ? 'bg-brand-turquoise/20 text-brand-turquoise border-brand-turquoise/30'
-                  : `${t.btnBg} ${t.btnText}`
+                  : `${themeStyles.btnBg} ${themeStyles.btnText}`
                 }`}
                 title={genderSplit ? 'عرض موحد' : 'تقسيم حسب الجنس'}
               >
@@ -361,7 +361,7 @@ export default function SessionStartPage() {
             )}
             <button
               onClick={toggleTheme}
-              className={`p-2 rounded-xl transition-all border ${t.btnBg} ${t.btnText}`}
+              className={`p-2 rounded-xl transition-all border ${themeStyles.btnBg} ${themeStyles.btnText}`}
               title={isDark ? 'الوضع الفاتح' : 'الوضع الداكن'}
             >
               {isDark ? <Sun className="h-4 w-4 text-amber-400" /> : <Moon className="h-4 w-4" />}
@@ -374,21 +374,21 @@ export default function SessionStartPage() {
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-5xl mx-auto p-4 space-y-5">
 
-          <div className={`rounded-2xl border ${t.cardBg} p-5 transition-colors duration-300`}>
+          <div className={`rounded-2xl border ${themeStyles.cardBg} p-5 transition-colors duration-300`}>
             <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-turquoise to-cyan-600 flex items-center justify-center shadow-lg shadow-brand-turquoise/20">
                   <Users className="h-5 w-5 text-white" />
                 </div>
                 <div>
-                  <span className={`font-cairo font-bold ${t.text} text-sm block`}>سجل الحضور</span>
-                  <span className={`${t.textMuted} text-xs font-tajawal`}>{stats.total} طالب</span>
+                  <span className={`font-cairo font-bold ${themeStyles.text} text-sm block`}>سجل الحضور</span>
+                  <span className={`${themeStyles.textMuted} text-xs font-tajawal`}>{stats.total} طالب</span>
                 </div>
               </div>
               <div className="flex items-center gap-2">
                 <div className={`px-4 py-2 rounded-xl ${isDark ? 'bg-emerald-500/15' : 'bg-emerald-50'} border ${isDark ? 'border-emerald-500/20' : 'border-emerald-200'}`}>
                   <span className={`font-mono font-bold text-2xl ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>{presentPct}%</span>
-                  <span className={`${t.textSub} text-xs ms-1 font-tajawal`}>حضور</span>
+                  <span className={`${themeStyles.textSub} text-xs ms-1 font-tajawal`}>حضور</span>
                 </div>
               </div>
             </div>
@@ -398,17 +398,17 @@ export default function SessionStartPage() {
                 { key: 'present', icon: UserCheck, label: 'حاضر', gradient: 'from-emerald-500 to-emerald-600', numColor: isDark ? 'text-emerald-400' : 'text-emerald-600' },
                 { key: 'absent', icon: UserX, label: 'غائب', gradient: 'from-red-500 to-red-600', numColor: isDark ? 'text-red-400' : 'text-red-600' },
               ].map(s => (
-                <div key={s.key} className={`${t.statBg} rounded-xl p-3 text-center border transition-all duration-300 hover:scale-[1.02]`}>
+                <div key={s.key} className={`${themeStyles.statBg} rounded-xl p-3 text-center border transition-all duration-300 hover:scale-[1.02]`}>
                   <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${s.gradient} flex items-center justify-center mx-auto mb-2 shadow-sm`}>
                     <s.icon className="h-4 w-4 text-white" />
                   </div>
                   <div className={`text-2xl font-bold ${s.numColor} font-mono`}>{stats[s.key]}</div>
-                  <div className={`${t.textMuted} text-[10px] mt-1 font-cairo font-medium`}>{s.label}</div>
+                  <div className={`${themeStyles.textMuted} text-[10px] mt-1 font-cairo font-medium`}>{s.label}</div>
                 </div>
               ))}
             </div>
 
-            <div className={`h-3 ${t.progressBg} rounded-full overflow-hidden flex transition-colors duration-300`}>
+            <div className={`h-3 ${themeStyles.progressBg} rounded-full overflow-hidden flex transition-colors duration-300`}>
               {stats.total > 0 && <>
                 <div className="bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all duration-500 rounded-s-full" style={{ width: `${(stats.present / stats.total) * 100}%` }} />
                 <div className="bg-gradient-to-r from-red-500 to-red-400 transition-all duration-500 rounded-e-full" style={{ width: `${(stats.absent / stats.total) * 100}%` }} />
@@ -458,9 +458,9 @@ export default function SessionStartPage() {
                 <div className="w-8 h-8 rounded-xl bg-brand-turquoise/20 flex items-center justify-center">
                   <Users className="h-4 w-4 text-brand-turquoise" />
                 </div>
-                <span className={`${t.text} text-sm font-cairo font-bold`}>الطلاب ({stats.total})</span>
-                <div className={`flex-1 h-px ${t.divider}`} />
-                <span className={`${t.textMuted} text-[10px] font-cairo flex items-center gap-1`}>
+                <span className={`${themeStyles.text} text-sm font-cairo font-bold`}>الطلاب ({stats.total})</span>
+                <div className={`flex-1 h-px ${themeStyles.divider}`} />
+                <span className={`${themeStyles.textMuted} text-[10px] font-cairo flex items-center gap-1`}>
                   اضغط على الطالب لتسجيل غياب
                 </span>
               </div>
@@ -473,12 +473,12 @@ export default function SessionStartPage() {
           )}
 
           {students.length === 0 && (
-            <div className={`text-center py-20 ${t.textMuted}`}>
+            <div className={`text-center py-20 ${themeStyles.textMuted}`}>
               <div className="w-24 h-24 rounded-2xl bg-gray-500/10 flex items-center justify-center mx-auto mb-5">
                 <AlertCircle className="h-12 w-12 opacity-30" />
               </div>
               <p className="font-cairo text-xl font-bold mb-2">لا يوجد طلاب في هذا الفصل</p>
-              <p className={`${t.textMuted} text-sm font-tajawal`}>تأكد من إضافة الطلاب إلى الفصل من لوحة الإدارة</p>
+              <p className={`${themeStyles.textMuted} text-sm font-tajawal`}>تأكد من إضافة الطلاب إلى الفصل من لوحة الإدارة</p>
             </div>
           )}
 
@@ -519,12 +519,12 @@ function GenderSection({ students, gender, label, theme, t, isDark, onUpdate }) 
     : (isDark ? 'border-pink-500/20' : 'border-pink-200');
 
   return (
-    <div className={`rounded-2xl border ${t.sectionBg} overflow-hidden transition-colors duration-300`}>
+    <div className={`rounded-2xl border ${themeStyles.sectionBg} overflow-hidden transition-colors duration-300`}>
       <div className={`flex items-center gap-3 p-4 border-b ${headerBorder}`}>
         <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${accentGradient} flex items-center justify-center shadow-sm`}>
           <span className="text-lg">{isMale ? '👦' : '👧'}</span>
         </div>
-        <span className={`${t.text} text-sm font-cairo font-bold`}>{label}</span>
+        <span className={`${themeStyles.text} text-sm font-cairo font-bold`}>{label}</span>
         <Badge className={badgeClass}>
           {students.length}
         </Badge>
@@ -558,7 +558,7 @@ function StudentCard({ student, index, onUpdate, theme, t, isDark }) {
       className={`w-full rounded-xl border ${style.card} overflow-hidden transition-all duration-200 shadow-md ${style.glow} active:scale-[0.97] flex items-center gap-3 p-3 text-start`}
     >
       <div className="relative flex-shrink-0">
-        <div className={`w-12 h-12 rounded-full ring-2 ${style.ring} ring-offset-2 ${t.ringOffset} overflow-hidden transition-all ${isAbsent ? 'opacity-50 grayscale' : ''}`}>
+        <div className={`w-12 h-12 rounded-full ring-2 ${style.ring} ring-offset-2 ${themeStyles.ringOffset} overflow-hidden transition-all ${isAbsent ? 'opacity-50 grayscale' : ''}`}>
           <img
             src={avatarSrc}
             alt={student.full_name}
@@ -574,11 +574,11 @@ function StudentCard({ student, index, onUpdate, theme, t, isDark }) {
       </div>
 
       <div className="flex-1 min-w-0">
-        <p className={`${t.text} font-medium text-sm truncate font-cairo ${isAbsent ? 'line-through opacity-60' : ''}`}>
+        <p className={`${themeStyles.text} font-medium text-sm truncate font-cairo ${isAbsent ? 'line-through opacity-60' : ''}`}>
           {student.full_name || `طالب ${index + 1}`}
         </p>
         <div className="flex items-center gap-2 mt-0.5">
-          <span className={`${t.textMuted} text-xs font-mono`}>{student.student_code}</span>
+          <span className={`${themeStyles.textMuted} text-xs font-mono`}>{student.student_code}</span>
           {student.gender && (
             <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-cairo ${
               isFemale

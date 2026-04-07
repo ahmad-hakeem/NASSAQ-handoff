@@ -96,183 +96,6 @@ import { useAuth } from '../contexts/AuthContext';
 import SectionErrorBoundary from '../components/SectionErrorBoundary';
 
 // Translations
-const translations = {
-  ar: {
-    pageTitle: 'التقارير والتحليلات',
-    pageSubtitle: 'تحليل البيانات التعليمية واستخراج التقارير',
-    overview: 'نظرة عامة',
-    reports: 'التقارير',
-    aiInsights: 'رؤى الذكاء الاصطناعي',
-    tools: 'الأدوات',
-    totalSchools: 'إجمالي المدارس',
-    totalStudents: 'إجمالي الطلاب',
-    totalTeachers: 'إجمالي المعلمين',
-    activeUsers: 'المستخدمين النشطين',
-    schoolDistribution: 'توزيع المدارس حسب المدينة',
-    attendanceRates: 'نسب الحضور في جميع المدارس',
-    growthTrend: 'اتجاه النمو',
-    performanceOverview: 'نظرة عامة على الأداء',
-    filters: 'الفلاتر',
-    applyFilters: 'تطبيق الفلاتر',
-    resetFilters: 'إعادة تعيين',
-    saveFilters: 'حفظ الفلاتر',
-    exportReport: 'تصدير التقرير',
-    scheduleReport: 'جدولة التقرير',
-    shareReport: 'مشاركة التقرير',
-    aiReportBuilder: 'منشئ التقارير بالذكاء الاصطناعي',
-    compareSchools: 'مقارنة المدارس',
-    comparePeriods: 'مقارنة الفترات',
-    downloadAISummary: 'تحميل ملخص AI',
-    recentReports: 'التقارير الأخيرة',
-    scheduledReports: 'التقارير المجدولة',
-    addScheduledReport: 'إضافة تقرير',
-    viewReport: 'عرض التقرير',
-    downloadReport: 'تحميل التقرير',
-    reportName: 'اسم التقرير',
-    reportType: 'نوع التقرير',
-    selectSchools: 'اختر المدارس',
-    selectPeriod: 'اختر الفترة',
-    frequency: 'التكرار',
-    recipients: 'المستلمين',
-    daily: 'يومي',
-    weekly: 'أسبوعي',
-    monthly: 'شهري',
-    today: 'اليوم',
-    thisWeek: 'هذا الأسبوع',
-    thisMonth: 'هذا الشهر',
-    thisSemester: 'هذا الفصل',
-    thisYear: 'هذه السنة',
-    customRange: 'نطاق مخصص',
-    allSchools: 'جميع المدارس',
-    allCities: 'جميع المدن',
-    allStages: 'جميع المراحل',
-    primary: 'ابتدائي',
-    middle: 'متوسط',
-    secondary: 'ثانوي',
-    schoolReports: 'تقارير المدارس',
-    studentReports: 'تقارير الطلاب',
-    teacherReports: 'تقارير المعلمين',
-    academicReports: 'الأداء الأكاديمي',
-    attendanceReports: 'تقارير الحضور',
-    behaviorReports: 'تقارير السلوك',
-    subscriptionReports: 'تقارير الاشتراكات',
-    usageReports: 'استخدام المنصة',
-    aiReports: 'تقارير AI',
-    hcdReports: 'مؤشرات تنمية القدرات',
-    present: 'حاضر',
-    absent: 'غائب',
-    late: 'متأخر',
-    pdf: 'PDF',
-    excel: 'Excel',
-    csv: 'CSV',
-    close: 'إغلاق',
-    save: 'حفظ',
-    cancel: 'إلغاء',
-    generate: 'إنشاء',
-    activeFilters: 'الفلاتر المفعلة',
-    city: 'المدينة',
-    stage: 'المرحلة',
-    period: 'الفترة',
-    school: 'المدرسة',
-    status: 'الحالة',
-    active: 'نشط',
-    suspended: 'معلق',
-    all: 'الكل',
-    Riyadh: 'الرياض',
-    Jeddah: 'جدة',
-    Makkah: 'مكة المكرمة',
-    Madinah: 'المدينة المنورة',
-    Dammam: 'الدمام',
-  },
-  en: {
-    pageTitle: 'Analytics & Reports',
-    pageSubtitle: 'Analyze educational data and generate reports',
-    overview: 'Overview',
-    reports: 'Reports',
-    aiInsights: 'AI Insights',
-    tools: 'Tools',
-    totalSchools: 'Total Schools',
-    totalStudents: 'Total Students',
-    totalTeachers: 'Total Teachers',
-    activeUsers: 'Active Users',
-    schoolDistribution: 'School Distribution by City',
-    attendanceRates: 'Attendance Rates in All Schools',
-    growthTrend: 'Growth Trend',
-    performanceOverview: 'Performance Overview',
-    filters: 'Filters',
-    applyFilters: 'Apply Filters',
-    resetFilters: 'Reset',
-    saveFilters: 'Save Filters',
-    exportReport: 'Export Report',
-    scheduleReport: 'Schedule Report',
-    shareReport: 'Share Report',
-    aiReportBuilder: 'AI Report Builder',
-    compareSchools: 'Compare Schools',
-    comparePeriods: 'Compare Periods',
-    downloadAISummary: 'Download AI Summary',
-    recentReports: 'Recent Reports',
-    scheduledReports: 'Scheduled Reports',
-    addScheduledReport: 'Add Report',
-    viewReport: 'View Report',
-    downloadReport: 'Download Report',
-    reportName: 'Report Name',
-    reportType: 'Report Type',
-    selectSchools: 'Select Schools',
-    selectPeriod: 'Select Period',
-    frequency: 'Frequency',
-    recipients: 'Recipients',
-    daily: 'Daily',
-    weekly: 'Weekly',
-    monthly: 'Monthly',
-    today: 'Today',
-    thisWeek: 'This Week',
-    thisMonth: 'This Month',
-    thisSemester: 'This Semester',
-    thisYear: 'This Year',
-    customRange: 'Custom Range',
-    allSchools: 'All Schools',
-    allCities: 'All Cities',
-    allStages: 'All Stages',
-    primary: 'Primary',
-    middle: 'Middle',
-    secondary: 'Secondary',
-    schoolReports: 'School Reports',
-    studentReports: 'Student Reports',
-    teacherReports: 'Teacher Reports',
-    academicReports: 'Academic Performance',
-    attendanceReports: 'Attendance Reports',
-    behaviorReports: 'Behavior Reports',
-    subscriptionReports: 'Subscription Reports',
-    usageReports: 'Platform Usage',
-    aiReports: 'AI Reports',
-    hcdReports: 'HCD Indicators',
-    present: 'Present',
-    absent: 'Absent',
-    late: 'Late',
-    pdf: 'PDF',
-    excel: 'Excel',
-    csv: 'CSV',
-    close: 'Close',
-    save: 'Save',
-    cancel: 'Cancel',
-    generate: 'Generate',
-    activeFilters: 'Active Filters',
-    city: 'City',
-    stage: 'Stage',
-    period: 'Period',
-    school: 'School',
-    status: 'Status',
-    active: 'Active',
-    suspended: 'Suspended',
-    all: 'All',
-    Riyadh: 'Riyadh',
-    Jeddah: 'Jeddah',
-    Makkah: 'Makkah',
-    Madinah: 'Madinah',
-    Dammam: 'Dammam',
-  }
-};
-
 // Empty initial states - data will be fetched from API
 const INITIAL_CITIES_DATA = [];
 const INITIAL_ATTENDANCE_DATA = [];
@@ -694,7 +517,6 @@ export const PlatformAnalyticsPage = () => {
   
   // Custom tooltip for charts
   const CustomTooltip = ({ active, payload, label }) => {
-    const { t } = useTranslation();
     if (active && payload && payload.length) {
       return (
         <div className="bg-white p-3 rounded-lg shadow-lg border">
@@ -718,8 +540,8 @@ export const PlatformAnalyticsPage = () => {
           <div className="container mx-auto px-4 lg:px-6 py-4">
             <div className="flex items-center justify-between mb-4">
               <PageHeader 
-                title={t.pageTitle} 
-                subtitle={t.pageSubtitle}
+                title={t('pageTitle')} 
+                subtitle={t('pageSubtitle')}
                 icon={BarChart3}
                 className="mb-0"
               />
@@ -730,7 +552,7 @@ export const PlatformAnalyticsPage = () => {
                   onClick={() => setShowFiltersSheet(true)}
                 >
                   <Filter className="h-4 w-4 me-2" />
-                  {t.filters}
+                  {t('filters')}
                   {activeFiltersCount > 0 && (
                     <Badge className="ms-2 bg-brand-navy">{activeFiltersCount}</Badge>
                   )}
@@ -740,7 +562,7 @@ export const PlatformAnalyticsPage = () => {
                   onClick={() => setShowExportDialog(true)}
                 >
                   <Download className="h-4 w-4 me-2" />
-                  {t.exportReport}
+                  {t('exportReport')}
                 </Button>
               </div>
             </div>
@@ -748,22 +570,22 @@ export const PlatformAnalyticsPage = () => {
             {/* Active Filters Bar */}
             {activeFiltersCount > 0 && (
               <div className="flex items-center gap-2 flex-wrap py-2 px-3 bg-brand-navy/5 rounded-xl mb-4">
-                <span className="text-sm font-medium text-muted-foreground">{t.activeFilters}:</span>
+                <span className="text-sm font-medium text-muted-foreground">{t('activeFilters')}:</span>
                 {filters.city !== 'all' && (
                   <Badge variant="secondary" className="flex items-center gap-1">
-                    {t.city}: {t[filters.city] || filters.city}
+                    {t('city')}: {t[filters.city] || filters.city}
                     <X className="h-3 w-3 cursor-pointer" onClick={() => removeFilter('city')} />
                   </Badge>
                 )}
                 {filters.stage !== 'all' && (
                   <Badge variant="secondary" className="flex items-center gap-1">
-                    {t.stage}: {t[filters.stage]}
+                    {t('stage')}: {t[filters.stage]}
                     <X className="h-3 w-3 cursor-pointer" onClick={() => removeFilter('stage')} />
                   </Badge>
                 )}
                 {filters.period !== 'thisMonth' && (
                   <Badge variant="secondary" className="flex items-center gap-1">
-                    {t.period}: {t[filters.period]}
+                    {t('period')}: {t[filters.period]}
                     <X className="h-3 w-3 cursor-pointer" onClick={() => removeFilter('period')} />
                   </Badge>
                 )}
@@ -775,7 +597,7 @@ export const PlatformAnalyticsPage = () => {
                 )}
                 <Button variant="ghost" size="sm" onClick={handleResetFilters} className="h-6 px-2">
                   <RotateCcw className="h-3 w-3 me-1" />
-                  {t.resetFilters}
+                  {t('resetFilters')}
                 </Button>
               </div>
             )}
@@ -788,19 +610,19 @@ export const PlatformAnalyticsPage = () => {
             <TabsList className="grid w-full max-w-2xl grid-cols-4">
               <TabsTrigger value="overview" className="flex items-center gap-2">
                 <BarChart3 className="h-4 w-4" />
-                {t.overview}
+                {t('overview')}
               </TabsTrigger>
               <TabsTrigger value="reports" className="flex items-center gap-2">
                 <FileText className="h-4 w-4" />
-                {t.reports}
+                {t('reports')}
               </TabsTrigger>
               <TabsTrigger value="insights" className="flex items-center gap-2">
                 <Brain className="h-4 w-4" />
-                {t.aiInsights}
+                {t('aiInsights')}
               </TabsTrigger>
               <TabsTrigger value="tools" className="flex items-center gap-2">
                 <Settings className="h-4 w-4" />
-                {t.tools}
+                {t('tools')}
               </TabsTrigger>
             </TabsList>
             
@@ -840,7 +662,7 @@ export const PlatformAnalyticsPage = () => {
                   <CardContent className="p-5">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-white/70 text-sm">{t.totalSchools}</p>
+                        <p className="text-white/70 text-sm">{t('totalSchools')}</p>
                         <p className="text-3xl font-bold">{stats.totalSchools}</p>
                         <p className="text-xs text-white/60 mt-1 flex items-center">
                           <TrendingUp className="h-3 w-3 me-1" />
@@ -857,7 +679,7 @@ export const PlatformAnalyticsPage = () => {
                   <CardContent className="p-5">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-white/70 text-sm">{t.totalStudents}</p>
+                        <p className="text-white/70 text-sm">{t('totalStudents')}</p>
                         <p className="text-3xl font-bold">{stats.totalStudents.toLocaleString()}</p>
                         <p className="text-xs text-white/60 mt-1 flex items-center">
                           <TrendingUp className="h-3 w-3 me-1" />
@@ -874,7 +696,7 @@ export const PlatformAnalyticsPage = () => {
                   <CardContent className="p-5">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-white/70 text-sm">{t.totalTeachers}</p>
+                        <p className="text-white/70 text-sm">{t('totalTeachers')}</p>
                         <p className="text-3xl font-bold">{stats.totalTeachers.toLocaleString()}</p>
                         <p className="text-xs text-white/60 mt-1 flex items-center">
                           <TrendingUp className="h-3 w-3 me-1" />
@@ -1016,7 +838,7 @@ export const PlatformAnalyticsPage = () => {
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <MapPin className="h-5 w-5 text-brand-navy" />
-                      {t.schoolDistribution}
+                      {t('schoolDistribution')}
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -1084,7 +906,7 @@ export const PlatformAnalyticsPage = () => {
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <UserCheck className="h-5 w-5 text-brand-navy" />
-                      {t.attendanceRates}
+                      {t('attendanceRates')}
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -1150,7 +972,7 @@ export const PlatformAnalyticsPage = () => {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <TrendingUp className="h-5 w-5 text-brand-navy" />
-                    {t.growthTrend}
+                    {t('growthTrend')}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -1234,7 +1056,7 @@ export const PlatformAnalyticsPage = () => {
                 <CardHeader className="flex flex-row items-center justify-between">
                   <CardTitle className="flex items-center gap-2">
                     <Clock className="h-5 w-5 text-brand-navy" />
-                    {t.recentReports}
+                    {t('recentReports')}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -1255,7 +1077,7 @@ export const PlatformAnalyticsPage = () => {
                             onClick={() => openPreview(report)}
                           >
                             <Eye className="h-4 w-4 me-1" />
-                            {t.viewReport}
+                            {t('viewReport')}
                           </Button>
                           <Button
                             variant="outline"
@@ -1266,7 +1088,7 @@ export const PlatformAnalyticsPage = () => {
                             }}
                           >
                             <Download className="h-4 w-4 me-1" />
-                            {t.downloadReport}
+                            {t('downloadReport')}
                           </Button>
                         </div>
                       </div>
@@ -1280,7 +1102,7 @@ export const PlatformAnalyticsPage = () => {
                 <CardHeader className="flex flex-row items-center justify-between">
                   <CardTitle className="flex items-center gap-2">
                     <CalendarClock className="h-5 w-5 text-brand-navy" />
-                    {t.scheduledReports}
+                    {t('scheduledReports')}
                   </CardTitle>
                   <Button 
                     variant="outline" 
@@ -1289,7 +1111,7 @@ export const PlatformAnalyticsPage = () => {
                     onClick={() => setShowAddScheduledDialog(true)}
                   >
                     <Plus className="h-4 w-4 me-1" />
-                    {t.addScheduledReport}
+                    {t('addScheduledReport')}
                   </Button>
                 </CardHeader>
                 <CardContent>
@@ -1364,7 +1186,7 @@ export const PlatformAnalyticsPage = () => {
                         disabled={loading}
                       >
                         <Download className="h-4 w-4 me-2" />
-                        {t.downloadAISummary}
+                        {t('downloadAISummary')}
                       </Button>
                     </div>
                   </div>
@@ -1575,7 +1397,7 @@ export const PlatformAnalyticsPage = () => {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Sparkles className="h-5 w-5 text-brand-navy" />
-                    {t.aiReportBuilder}
+                    {t('aiReportBuilder')}
                   </CardTitle>
                   <CardDescription>
                     {t('writeYourRequestAndAiWillGenerateTheReport')}
@@ -1599,7 +1421,7 @@ export const PlatformAnalyticsPage = () => {
                       ) : (
                         <Zap className="h-4 w-4 me-2" />
                       )}
-                      {t.generate}
+                      {t('generate')}
                     </Button>
                   </div>
                 </CardContent>
@@ -1615,7 +1437,7 @@ export const PlatformAnalyticsPage = () => {
                     <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-blue-100 flex items-center justify-center">
                       <Download className="h-7 w-7 text-blue-600" />
                     </div>
-                    <h4 className="font-bold mb-1">{t.exportReport}</h4>
+                    <h4 className="font-bold mb-1">{t('exportReport')}</h4>
                     <p className="text-sm text-muted-foreground">PDF, Excel, CSV</p>
                   </CardContent>
                 </Card>
@@ -1626,7 +1448,7 @@ export const PlatformAnalyticsPage = () => {
                     <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-purple-100 flex items-center justify-center">
                       <CalendarClock className="h-7 w-7 text-purple-600" />
                     </div>
-                    <h4 className="font-bold mb-1">{t.scheduleReport}</h4>
+                    <h4 className="font-bold mb-1">{t('scheduleReport')}</h4>
                     <p className="text-sm text-muted-foreground">{t('dailyWeeklyMonthly')}</p>
                   </CardContent>
                 </Card>
@@ -1637,7 +1459,7 @@ export const PlatformAnalyticsPage = () => {
                     <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-green-100 flex items-center justify-center">
                       <Share2 className="h-7 w-7 text-green-600" />
                     </div>
-                    <h4 className="font-bold mb-1">{t.shareReport}</h4>
+                    <h4 className="font-bold mb-1">{t('shareReport')}</h4>
                     <p className="text-sm text-muted-foreground">{t('emailLinkTeam')}</p>
                   </CardContent>
                 </Card>
@@ -1648,7 +1470,7 @@ export const PlatformAnalyticsPage = () => {
                     <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-pink-100 flex items-center justify-center">
                       <Brain className="h-7 w-7 text-pink-600" />
                     </div>
-                    <h4 className="font-bold mb-1">{t.aiReportBuilder}</h4>
+                    <h4 className="font-bold mb-1">{t('aiReportBuilder')}</h4>
                     <p className="text-sm text-muted-foreground">{t('generateSmartReport')}</p>
                   </CardContent>
                 </Card>
@@ -1659,7 +1481,7 @@ export const PlatformAnalyticsPage = () => {
                     <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-orange-100 flex items-center justify-center">
                       <Scale className="h-7 w-7 text-orange-600" />
                     </div>
-                    <h4 className="font-bold mb-1">{t.compareSchools}</h4>
+                    <h4 className="font-bold mb-1">{t('compareSchools')}</h4>
                     <p className="text-sm text-muted-foreground">{t('comparePerformance')}</p>
                   </CardContent>
                 </Card>
@@ -1670,7 +1492,7 @@ export const PlatformAnalyticsPage = () => {
                     <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-cyan-100 flex items-center justify-center">
                       <ArrowUpDown className="h-7 w-7 text-cyan-600" />
                     </div>
-                    <h4 className="font-bold mb-1">{t.comparePeriods}</h4>
+                    <h4 className="font-bold mb-1">{t('comparePeriods')}</h4>
                     <p className="text-sm text-muted-foreground">{t('timeComparison')}</p>
                   </CardContent>
                 </Card>
@@ -1685,24 +1507,24 @@ export const PlatformAnalyticsPage = () => {
             <SheetHeader>
               <SheetTitle className="flex items-center gap-2">
                 <Filter className="h-5 w-5 text-brand-navy" />
-                {t.filters}
+                {t('filters')}
               </SheetTitle>
             </SheetHeader>
             <div className="space-y-6 py-6">
               {/* Period Filter */}
               <div className="space-y-2">
-                <Label>{t.period}</Label>
+                <Label>{t('period')}</Label>
                 <Select value={filters.period} onValueChange={(v) => setFilters(prev => ({ ...prev, period: v }))}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="today">{t.today}</SelectItem>
-                    <SelectItem value="thisWeek">{t.thisWeek}</SelectItem>
-                    <SelectItem value="thisMonth">{t.thisMonth}</SelectItem>
-                    <SelectItem value="thisSemester">{t.thisSemester}</SelectItem>
-                    <SelectItem value="thisYear">{t.thisYear}</SelectItem>
-                    <SelectItem value="customRange">{t.customRange}</SelectItem>
+                    <SelectItem value="today">{t('today')}</SelectItem>
+                    <SelectItem value="thisWeek">{t('thisWeek')}</SelectItem>
+                    <SelectItem value="thisMonth">{t('thisMonth')}</SelectItem>
+                    <SelectItem value="thisSemester">{t('thisSemester')}</SelectItem>
+                    <SelectItem value="thisYear">{t('thisYear')}</SelectItem>
+                    <SelectItem value="customRange">{t('customRange')}</SelectItem>
                   </SelectContent>
                 </Select>
                 
@@ -1730,13 +1552,13 @@ export const PlatformAnalyticsPage = () => {
               
               {/* School Filter */}
               <div className="space-y-2">
-                <Label>{t.school}</Label>
+                <Label>{t('school')}</Label>
                 <Select value={filters.school} onValueChange={(v) => setFilters(prev => ({ ...prev, school: v }))}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">{t.allSchools}</SelectItem>
+                    <SelectItem value="all">{t('allSchools')}</SelectItem>
                     <SelectItem value="school1">{t('alNoorSchool')}</SelectItem>
                     <SelectItem value="school2">{t('alAmalSchool')}</SelectItem>
                     <SelectItem value="school3">{t('excellenceSchool')}</SelectItem>
@@ -1746,34 +1568,34 @@ export const PlatformAnalyticsPage = () => {
               
               {/* City Filter */}
               <div className="space-y-2">
-                <Label>{t.city}</Label>
+                <Label>{t('city')}</Label>
                 <Select value={filters.city} onValueChange={(v) => setFilters(prev => ({ ...prev, city: v }))}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">{t.allCities}</SelectItem>
-                    <SelectItem value="Riyadh">{t.Riyadh}</SelectItem>
-                    <SelectItem value="Jeddah">{t.Jeddah}</SelectItem>
-                    <SelectItem value="Makkah">{t.Makkah}</SelectItem>
-                    <SelectItem value="Madinah">{t.Madinah}</SelectItem>
-                    <SelectItem value="Dammam">{t.Dammam}</SelectItem>
+                    <SelectItem value="all">{t('allCities')}</SelectItem>
+                    <SelectItem value="Riyadh">{t('Riyadh')}</SelectItem>
+                    <SelectItem value="Jeddah">{t('Jeddah')}</SelectItem>
+                    <SelectItem value="Makkah">{t('Makkah')}</SelectItem>
+                    <SelectItem value="Madinah">{t('Madinah')}</SelectItem>
+                    <SelectItem value="Dammam">{t('Dammam')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               
               {/* Stage Filter */}
               <div className="space-y-2">
-                <Label>{t.stage}</Label>
+                <Label>{t('stage')}</Label>
                 <Select value={filters.stage} onValueChange={(v) => setFilters(prev => ({ ...prev, stage: v }))}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">{t.allStages}</SelectItem>
-                    <SelectItem value="primary">{t.primary}</SelectItem>
-                    <SelectItem value="middle">{t.middle}</SelectItem>
-                    <SelectItem value="secondary">{t.secondary}</SelectItem>
+                    <SelectItem value="all">{t('allStages')}</SelectItem>
+                    <SelectItem value="primary">{t('primary')}</SelectItem>
+                    <SelectItem value="middle">{t('middle')}</SelectItem>
+                    <SelectItem value="secondary">{t('secondary')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1786,22 +1608,22 @@ export const PlatformAnalyticsPage = () => {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">{t.all}</SelectItem>
-                    <SelectItem value="active">{t.active}</SelectItem>
-                    <SelectItem value="suspended">{t.suspended}</SelectItem>
+                    <SelectItem value="all">{t('all')}</SelectItem>
+                    <SelectItem value="active">{t('active')}</SelectItem>
+                    <SelectItem value="suspended">{t('suspended')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               
               {/* Report Type Filter */}
               <div className="space-y-2">
-                <Label>{t.reportType}</Label>
+                <Label>{t('reportType')}</Label>
                 <Select value={filters.reportType} onValueChange={(v) => setFilters(prev => ({ ...prev, reportType: v }))}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">{t.all}</SelectItem>
+                    <SelectItem value="all">{t('all')}</SelectItem>
                     {REPORT_TYPES.map(type => (
                       <SelectItem key={type.id} value={type.id}>
                         {isRTL ? type.label_ar : type.label_en}
@@ -1814,15 +1636,15 @@ export const PlatformAnalyticsPage = () => {
             <SheetFooter className="flex gap-2">
               <Button variant="outline" onClick={handleResetFilters} className="flex-1 rounded-xl">
                 <RotateCcw className="h-4 w-4 me-2" />
-                {t.resetFilters}
+                {t('resetFilters')}
               </Button>
               <Button variant="outline" onClick={handleSaveFilters} className="rounded-xl">
                 <Save className="h-4 w-4 me-2" />
-                {t.saveFilters}
+                {t('saveFilters')}
               </Button>
               <Button onClick={handleApplyFilters} className="flex-1 bg-brand-navy rounded-xl">
                 <Check className="h-4 w-4 me-2" />
-                {t.applyFilters}
+                {t('applyFilters')}
               </Button>
             </SheetFooter>
           </SheetContent>
@@ -1834,7 +1656,7 @@ export const PlatformAnalyticsPage = () => {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Download className="h-5 w-5 text-brand-navy" />
-                {t.exportReport}
+                {t('exportReport')}
               </DialogTitle>
               <DialogDescription>
                 {t('chooseReportFormatToDownload')}
@@ -1857,11 +1679,11 @@ export const PlatformAnalyticsPage = () => {
             </div>
             <DialogFooter className="flex-row-reverse gap-2">
               <Button variant="outline" onClick={() => setShowExportDialog(false)}>
-                {t.cancel}
+                {t('cancel')}
               </Button>
               <Button onClick={handleExport} disabled={loading} className="bg-brand-navy">
                 {loading ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : <Download className="h-4 w-4 me-2" />}
-                {t.downloadReport}
+                {t('downloadReport')}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -1876,12 +1698,12 @@ export const PlatformAnalyticsPage = () => {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <CalendarClock className="h-5 w-5 text-brand-navy" />
-                {t.scheduleReport}
+                {t('scheduleReport')}
               </DialogTitle>
             </DialogHeader>
             <div className="py-4 space-y-4">
               <div className="space-y-2">
-                <Label>{t.reportName}</Label>
+                <Label>{t('reportName')}</Label>
                 <Input
                   value={scheduleForm.name}
                   onChange={(e) => setScheduleForm(prev => ({ ...prev, name: e.target.value }))}
@@ -1890,7 +1712,7 @@ export const PlatformAnalyticsPage = () => {
               </div>
               
               <div className="space-y-2">
-                <Label>{t.reportType}</Label>
+                <Label>{t('reportType')}</Label>
                 <Select value={scheduleForm.type} onValueChange={(v) => setScheduleForm(prev => ({ ...prev, type: v }))}>
                   <SelectTrigger>
                     <SelectValue />
@@ -1906,34 +1728,34 @@ export const PlatformAnalyticsPage = () => {
               </div>
               
               <div className="space-y-2">
-                <Label>{t.selectSchools}</Label>
+                <Label>{t('selectSchools')}</Label>
                 <Select value={scheduleForm.schools} onValueChange={(v) => setScheduleForm(prev => ({ ...prev, schools: v }))}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">{t.allSchools}</SelectItem>
+                    <SelectItem value="all">{t('allSchools')}</SelectItem>
                     <SelectItem value="selected">{t('selectedSchools')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               
               <div className="space-y-2">
-                <Label>{t.frequency}</Label>
+                <Label>{t('frequency')}</Label>
                 <Select value={scheduleForm.frequency} onValueChange={(v) => setScheduleForm(prev => ({ ...prev, frequency: v }))}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="daily">{t.daily}</SelectItem>
-                    <SelectItem value="weekly">{t.weekly}</SelectItem>
-                    <SelectItem value="monthly">{t.monthly}</SelectItem>
+                    <SelectItem value="daily">{t('daily')}</SelectItem>
+                    <SelectItem value="weekly">{t('weekly')}</SelectItem>
+                    <SelectItem value="monthly">{t('monthly')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               
               <div className="space-y-2">
-                <Label>{t.recipients}</Label>
+                <Label>{t('recipients')}</Label>
                 <Input
                   value={scheduleForm.recipients}
                   onChange={(e) => setScheduleForm(prev => ({ ...prev, recipients: e.target.value }))}
@@ -1946,11 +1768,11 @@ export const PlatformAnalyticsPage = () => {
                 setShowScheduleDialog(false);
                 setShowAddScheduledDialog(false);
               }}>
-                {t.cancel}
+                {t('cancel')}
               </Button>
               <Button onClick={handleScheduleReport} className="bg-brand-navy">
                 <Check className="h-4 w-4 me-2" />
-                {t.save}
+                {t('save')}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -1962,7 +1784,7 @@ export const PlatformAnalyticsPage = () => {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Share2 className="h-5 w-5 text-brand-navy" />
-                {t.shareReport}
+                {t('shareReport')}
               </DialogTitle>
             </DialogHeader>
             <div className="py-4 space-y-4">
@@ -1985,17 +1807,17 @@ export const PlatformAnalyticsPage = () => {
               </div>
               
               <div className="space-y-2">
-                <Label>{t.recipients}</Label>
+                <Label>{t('recipients')}</Label>
                 <Input placeholder={t('enterEmailAddress')} />
               </div>
             </div>
             <DialogFooter className="flex-row-reverse gap-2">
               <Button variant="outline" onClick={() => setShowShareDialog(false)}>
-                {t.cancel}
+                {t('cancel')}
               </Button>
               <Button onClick={handleShareReport} className="bg-brand-navy">
                 <Share2 className="h-4 w-4 me-2" />
-                {t.shareReport}
+                {t('shareReport')}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -2007,7 +1829,7 @@ export const PlatformAnalyticsPage = () => {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Brain className="h-5 w-5 text-brand-navy" />
-                {t.aiReportBuilder}
+                {t('aiReportBuilder')}
               </DialogTitle>
               <DialogDescription>
                 {t('writeYourRequestAndAiWillGenerateTheAppropriateRep')}
@@ -2032,7 +1854,7 @@ export const PlatformAnalyticsPage = () => {
             </div>
             <DialogFooter className="flex-row-reverse gap-2">
               <Button variant="outline" onClick={() => setShowAIBuilderDialog(false)}>
-                {t.cancel}
+                {t('cancel')}
               </Button>
               <Button onClick={handleGenerateAIReport} disabled={!aiQuery || generatingAI} className="bg-brand-navy">
                 {generatingAI ? (
@@ -2040,7 +1862,7 @@ export const PlatformAnalyticsPage = () => {
                 ) : (
                   <Zap className="h-4 w-4 me-2" />
                 )}
-                {t.generate}
+                {t('generate')}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -2052,7 +1874,7 @@ export const PlatformAnalyticsPage = () => {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Scale className="h-5 w-5 text-brand-navy" />
-                {t.compareSchools}
+                {t('compareSchools')}
               </DialogTitle>
             </DialogHeader>
             <div className="py-4 space-y-4">
@@ -2082,7 +1904,7 @@ export const PlatformAnalyticsPage = () => {
             </div>
             <DialogFooter className="flex-row-reverse gap-2">
               <Button variant="outline" onClick={() => setShowCompareSchoolsDialog(false)}>
-                {t.cancel}
+                {t('cancel')}
               </Button>
               <Button className="bg-brand-navy">
                 <Scale className="h-4 w-4 me-2" />
@@ -2098,7 +1920,7 @@ export const PlatformAnalyticsPage = () => {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <ArrowUpDown className="h-5 w-5 text-brand-navy" />
-                {t.comparePeriods}
+                {t('comparePeriods')}
               </DialogTitle>
             </DialogHeader>
             <div className="py-4 space-y-4">
@@ -2110,9 +1932,9 @@ export const PlatformAnalyticsPage = () => {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="thisMonth">{t.thisMonth}</SelectItem>
+                      <SelectItem value="thisMonth">{t('thisMonth')}</SelectItem>
                       <SelectItem value="lastMonth">{t('lastMonth')}</SelectItem>
-                      <SelectItem value="thisSemester">{t.thisSemester}</SelectItem>
+                      <SelectItem value="thisSemester">{t('thisSemester')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -2133,7 +1955,7 @@ export const PlatformAnalyticsPage = () => {
             </div>
             <DialogFooter className="flex-row-reverse gap-2">
               <Button variant="outline" onClick={() => setShowComparePeriodsDialog(false)}>
-                {t.cancel}
+                {t('cancel')}
               </Button>
               <Button className="bg-brand-navy">
                 <ArrowUpDown className="h-4 w-4 me-2" />
@@ -2183,14 +2005,14 @@ export const PlatformAnalyticsPage = () => {
             </div>
             <DialogFooter className="flex-row-reverse gap-2">
               <Button variant="outline" onClick={() => setShowPreviewDialog(false)}>
-                {t.close}
+                {t('close')}
               </Button>
               <Button onClick={() => {
                 handleExport();
                 setShowPreviewDialog(false);
               }} className="bg-brand-navy">
                 <Download className="h-4 w-4 me-2" />
-                {t.downloadReport}
+                {t('downloadReport')}
               </Button>
             </DialogFooter>
           </DialogContent>

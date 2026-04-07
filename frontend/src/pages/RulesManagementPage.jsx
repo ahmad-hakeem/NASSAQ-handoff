@@ -85,127 +85,6 @@ import {
 } from 'lucide-react';
 
 // Translations
-const translations = {
-  ar: {
-    pageTitle: 'إدارة القواعد',
-    pageSubtitle: 'إدارة القواعد التعليمية والتشغيلية للمنصة',
-    newRule: 'قاعدة جديدة',
-    refresh: 'تحديث',
-    search: 'البحث في القواعد...',
-    filter: 'تصفية',
-    totalRules: 'إجمالي القواعد',
-    activeRules: 'قواعد نشطة',
-    draftRules: 'قواعد مسودة',
-    categories: 'الفئات',
-    allRules: 'جميع القواعد',
-    byCategory: 'حسب الفئة',
-    recent: 'الأحدث',
-    active: 'نشط',
-    draft: 'مسودة',
-    disabled: 'معطل',
-    view: 'عرض',
-    edit: 'تعديل',
-    delete: 'حذف',
-    duplicate: 'نسخ',
-    enable: 'تفعيل',
-    disable: 'تعطيل',
-    rule: 'قاعدة',
-    rules: 'قواعد',
-    cancel: 'إلغاء',
-    save: 'حفظ',
-    create: 'إنشاء',
-    createRule: 'إنشاء قاعدة جديدة',
-    editRule: 'تعديل القاعدة',
-    ruleName: 'اسم القاعدة',
-    ruleDescription: 'وصف القاعدة',
-    ruleCategory: 'فئة القاعدة',
-    ruleType: 'نوع القاعدة',
-    ruleValue: 'قيمة القاعدة',
-    ruleStatus: 'حالة القاعدة',
-    appliesTo: 'تطبق على',
-    priority: 'الأولوية',
-    high: 'عالية',
-    medium: 'متوسطة',
-    low: 'منخفضة',
-    allSchools: 'جميع المدارس',
-    specificSchools: 'مدارس محددة',
-    deleteConfirm: 'هل أنت متأكد من حذف هذه القاعدة؟',
-    deleteWarning: 'هذا الإجراء لا يمكن التراجع عنه.',
-    ruleCreated: 'تم إنشاء القاعدة بنجاح',
-    ruleUpdated: 'تم تحديث القاعدة بنجاح',
-    ruleDeleted: 'تم حذف القاعدة بنجاح',
-    ruleDuplicated: 'تم نسخ القاعدة بنجاح',
-    ruleEnabled: 'تم تفعيل القاعدة',
-    ruleDisabled: 'تم تعطيل القاعدة',
-    export: 'تصدير',
-    import: 'استيراد',
-    history: 'السجل',
-    conditions: 'الشروط',
-    actions: 'الإجراءات',
-    noRules: 'لا توجد قواعد',
-    noRulesDesc: 'ابدأ بإنشاء قاعدة جديدة',
-  },
-  en: {
-    pageTitle: 'Rules Management',
-    pageSubtitle: 'Manage educational and operational platform rules',
-    newRule: 'New Rule',
-    refresh: 'Refresh',
-    search: 'Search rules...',
-    filter: 'Filter',
-    totalRules: 'Total Rules',
-    activeRules: 'Active Rules',
-    draftRules: 'Draft Rules',
-    categories: 'Categories',
-    allRules: 'All Rules',
-    byCategory: 'By Category',
-    recent: 'Recent',
-    active: 'Active',
-    draft: 'Draft',
-    disabled: 'Disabled',
-    view: 'View',
-    edit: 'Edit',
-    delete: 'Delete',
-    duplicate: 'Duplicate',
-    enable: 'Enable',
-    disable: 'Disable',
-    rule: 'rule',
-    rules: 'rules',
-    cancel: 'Cancel',
-    save: 'Save',
-    create: 'Create',
-    createRule: 'Create New Rule',
-    editRule: 'Edit Rule',
-    ruleName: 'Rule Name',
-    ruleDescription: 'Rule Description',
-    ruleCategory: 'Rule Category',
-    ruleType: 'Rule Type',
-    ruleValue: 'Rule Value',
-    ruleStatus: 'Rule Status',
-    appliesTo: 'Applies To',
-    priority: 'Priority',
-    high: 'High',
-    medium: 'Medium',
-    low: 'Low',
-    allSchools: 'All Schools',
-    specificSchools: 'Specific Schools',
-    deleteConfirm: 'Are you sure you want to delete this rule?',
-    deleteWarning: 'This action cannot be undone.',
-    ruleCreated: 'Rule created successfully',
-    ruleUpdated: 'Rule updated successfully',
-    ruleDeleted: 'Rule deleted successfully',
-    ruleDuplicated: 'Rule duplicated successfully',
-    ruleEnabled: 'Rule enabled',
-    ruleDisabled: 'Rule disabled',
-    export: 'Export',
-    import: 'Import',
-    history: 'History',
-    conditions: 'Conditions',
-    actions: 'Actions',
-    noRules: 'No rules found',
-    noRulesDesc: 'Start by creating a new rule',
-  }
-};
-
 // Rule Categories
 const RULE_CATEGORIES = {
   attendance: {
@@ -405,7 +284,7 @@ export const RulesManagementPage = () => {
   const handleCreateRule = async () => {
     try {
       await api.post('/system/rules', formData);
-      toast.success(t.ruleCreated);
+      toast.success(t('ruleCreated'));
       setShowCreateDialog(false);
       resetForm();
       fetchRules();
@@ -419,7 +298,7 @@ export const RulesManagementPage = () => {
   const handleEditRule = async () => {
     try {
       await api.put(`/system/rules/${showEditSheet.id}`, formData);
-      toast.success(t.ruleUpdated);
+      toast.success(t('ruleUpdated'));
       setShowEditSheet(null);
       resetForm();
       fetchRules();
@@ -433,7 +312,7 @@ export const RulesManagementPage = () => {
   const handleDeleteRule = async () => {
     try {
       await api.delete(`/system/rules/${showDeleteDialog.id}`);
-      toast.success(t.ruleDeleted);
+      toast.success(t('ruleDeleted'));
       setShowDeleteDialog(null);
       fetchRules();
     } catch (error) {
@@ -460,7 +339,7 @@ export const RulesManagementPage = () => {
     
     try {
       await api.post('/system/rules', newRuleData);
-      toast.success(t.ruleDuplicated);
+      toast.success(t('ruleDuplicated'));
       fetchRules();
     } catch (error) {
       console.error('Error duplicating rule:', error);
@@ -474,7 +353,7 @@ export const RulesManagementPage = () => {
     setRules(prev => prev.map(r => 
       r.id === rule.id ? { ...r, status: newStatus, updated_at: new Date().toISOString().split('T')[0] } : r
     ));
-    toast.success(newStatus === 'active' ? t.ruleEnabled : t.ruleDisabled);
+    toast.success(newStatus === 'active' ? t('ruleEnabled') : t('ruleDisabled'));
   };
   
   // Reset form
@@ -519,11 +398,11 @@ export const RulesManagementPage = () => {
   const getStatusBadge = (status) => {
     switch (status) {
       case 'active':
-        return <Badge className="bg-green-500 text-white"><CheckCircle2 className="h-3 w-3 me-1" />{t.active}</Badge>;
+        return <Badge className="bg-green-500 text-white"><CheckCircle2 className="h-3 w-3 me-1" />{t('active')}</Badge>;
       case 'draft':
-        return <Badge className="bg-yellow-500 text-white"><Clock className="h-3 w-3 me-1" />{t.draft}</Badge>;
+        return <Badge className="bg-yellow-500 text-white"><Clock className="h-3 w-3 me-1" />{t('draft')}</Badge>;
       case 'disabled':
-        return <Badge className="bg-gray-500 text-white"><XCircle className="h-3 w-3 me-1" />{t.disabled}</Badge>;
+        return <Badge className="bg-gray-500 text-white"><XCircle className="h-3 w-3 me-1" />{t('disabled')}</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
@@ -533,11 +412,11 @@ export const RulesManagementPage = () => {
   const getPriorityBadge = (priority) => {
     switch (priority) {
       case 'high':
-        return <Badge variant="outline" className="border-red-500 text-red-600">{t.high}</Badge>;
+        return <Badge variant="outline" className="border-red-500 text-red-600">{t('high')}</Badge>;
       case 'medium':
-        return <Badge variant="outline" className="border-yellow-500 text-yellow-600">{t.medium}</Badge>;
+        return <Badge variant="outline" className="border-yellow-500 text-yellow-600">{t('medium')}</Badge>;
       case 'low':
-        return <Badge variant="outline" className="border-green-500 text-green-600">{t.low}</Badge>;
+        return <Badge variant="outline" className="border-green-500 text-green-600">{t('low')}</Badge>;
       default:
         return <Badge variant="outline">{priority}</Badge>;
     }
@@ -562,8 +441,8 @@ export const RulesManagementPage = () => {
           <div className="container mx-auto px-4 lg:px-6 py-4">
             <div className="flex items-center justify-between mb-4">
               <PageHeader 
-                title={t.pageTitle} 
-                subtitle={t.pageSubtitle}
+                title={t('pageTitle')} 
+                subtitle={t('pageSubtitle')}
                 icon={BookOpen}
                 className="mb-0"
               />
@@ -594,7 +473,7 @@ export const RulesManagementPage = () => {
                   }}
                 >
                   <Download className="h-4 w-4 me-2" />
-                  {t.export}
+                  {t('export')}
                 </Button>
                 <Button 
                   className="rounded-xl bg-brand-navy hover:bg-brand-navy/90"
@@ -602,7 +481,7 @@ export const RulesManagementPage = () => {
                   data-testid="create-rule-btn"
                 >
                   <Plus className="h-4 w-4 me-2" />
-                  {t.newRule}
+                  {t('newRule')}
                 </Button>
               </div>
             </div>
@@ -613,7 +492,7 @@ export const RulesManagementPage = () => {
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-white/70 text-sm">{t.totalRules}</p>
+                      <p className="text-white/70 text-sm">{t('totalRules')}</p>
                       <p className="text-3xl font-bold">{stats.total}</p>
                     </div>
                     <BookOpen className="h-10 w-10 text-white/30" />
@@ -624,7 +503,7 @@ export const RulesManagementPage = () => {
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-green-600 text-sm">{t.activeRules}</p>
+                      <p className="text-green-600 text-sm">{t('activeRules')}</p>
                       <p className="text-3xl font-bold text-green-700">{stats.active}</p>
                     </div>
                     <CheckCircle className="h-10 w-10 text-green-200" />
@@ -635,7 +514,7 @@ export const RulesManagementPage = () => {
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-yellow-600 text-sm">{t.draftRules}</p>
+                      <p className="text-yellow-600 text-sm">{t('draftRules')}</p>
                       <p className="text-3xl font-bold text-yellow-700">{stats.draft}</p>
                     </div>
                     <Clock className="h-10 w-10 text-yellow-200" />
@@ -646,7 +525,7 @@ export const RulesManagementPage = () => {
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-purple-600 text-sm">{t.categories}</p>
+                      <p className="text-purple-600 text-sm">{t('categories')}</p>
                       <p className="text-3xl font-bold text-purple-700">{Object.keys(RULE_CATEGORIES).length}</p>
                     </div>
                     <Settings className="h-10 w-10 text-purple-200" />
@@ -660,7 +539,7 @@ export const RulesManagementPage = () => {
               <div className="relative flex-1 min-w-[300px]">
                 <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder={t.search}
+                  placeholder={t('search')}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="ps-10 rounded-xl"
@@ -669,7 +548,7 @@ export const RulesManagementPage = () => {
               
               <Select value={selectedCategory} onValueChange={setSelectedCategory}>
                 <SelectTrigger className="w-40 rounded-xl">
-                  <SelectValue placeholder={t.ruleCategory} />
+                  <SelectValue placeholder={t('ruleCategory')} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">{t('allCategories')}</SelectItem>
@@ -683,13 +562,13 @@ export const RulesManagementPage = () => {
               
               <Select value={selectedStatus} onValueChange={setSelectedStatus}>
                 <SelectTrigger className="w-36 rounded-xl">
-                  <SelectValue placeholder={t.ruleStatus} />
+                  <SelectValue placeholder={t('ruleStatus')} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">{t('allStatus')}</SelectItem>
-                  <SelectItem value="active">{t.active}</SelectItem>
-                  <SelectItem value="draft">{t.draft}</SelectItem>
-                  <SelectItem value="disabled">{t.disabled}</SelectItem>
+                  <SelectItem value="active">{t('active')}</SelectItem>
+                  <SelectItem value="draft">{t('draft')}</SelectItem>
+                  <SelectItem value="disabled">{t('disabled')}</SelectItem>
                 </SelectContent>
               </Select>
               
@@ -724,8 +603,8 @@ export const RulesManagementPage = () => {
         <main className="container mx-auto px-4 lg:px-6 py-6">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
             <TabsList>
-              <TabsTrigger value="all">{t.allRules}</TabsTrigger>
-              <TabsTrigger value="category">{t.byCategory}</TabsTrigger>
+              <TabsTrigger value="all">{t('allRules')}</TabsTrigger>
+              <TabsTrigger value="category">{t('byCategory')}</TabsTrigger>
             </TabsList>
             
             {/* All Rules Tab */}
@@ -733,11 +612,11 @@ export const RulesManagementPage = () => {
               {filteredRules.length === 0 ? (
                 <Card className="p-12 text-center">
                   <BookOpen className="h-16 w-16 mx-auto text-muted-foreground/30 mb-4" />
-                  <h3 className="font-bold text-lg mb-2">{t.noRules}</h3>
-                  <p className="text-muted-foreground mb-4">{t.noRulesDesc}</p>
+                  <h3 className="font-bold text-lg mb-2">{t('noRules')}</h3>
+                  <p className="text-muted-foreground mb-4">{t('noRulesDesc')}</p>
                   <Button onClick={() => setShowCreateDialog(true)}>
                     <Plus className="h-4 w-4 me-2" />
-                    {t.newRule}
+                    {t('newRule')}
                   </Button>
                 </Card>
               ) : viewMode === 'grid' ? (
@@ -772,13 +651,13 @@ export const RulesManagementPage = () => {
                           <div className="space-y-3">
                             {/* Value */}
                             <div className="flex items-center justify-between p-2 bg-muted/30 rounded-lg">
-                              <span className="text-sm text-muted-foreground">{t.ruleValue}:</span>
+                              <span className="text-sm text-muted-foreground">{t('ruleValue')}:</span>
                               <span className="font-bold text-brand-navy">{formatValue(rule)}</span>
                             </div>
                             
                             {/* Priority */}
                             <div className="flex items-center justify-between">
-                              <span className="text-sm text-muted-foreground">{t.priority}:</span>
+                              <span className="text-sm text-muted-foreground">{t('priority')}:</span>
                               {getPriorityBadge(rule.priority)}
                             </div>
                             
@@ -791,7 +670,7 @@ export const RulesManagementPage = () => {
                                 onClick={() => setShowViewSheet(rule)}
                               >
                                 <Eye className="h-3 w-3 me-1" />
-                                {t.view}
+                                {t('view')}
                               </Button>
                               <Button 
                                 variant="outline" 
@@ -800,7 +679,7 @@ export const RulesManagementPage = () => {
                                 onClick={() => openEdit(rule)}
                               >
                                 <Edit className="h-3 w-3 me-1" />
-                                {t.edit}
+                                {t('edit')}
                               </Button>
                               <Button 
                                 variant="outline" 
@@ -887,7 +766,7 @@ export const RulesManagementPage = () => {
                       <div>
                         <h3 className="font-bold text-lg">{isRTL ? category.title_ar : category.title_en}</h3>
                         <p className="text-sm text-muted-foreground">
-                          {category.count} {t.rules}
+                          {category.count} {t('rules')}
                         </p>
                       </div>
                     </div>
@@ -910,7 +789,7 @@ export const RulesManagementPage = () => {
                               <span className="font-bold text-brand-navy">{formatValue(rule)}</span>
                               <Button variant="ghost" size="sm" onClick={() => openEdit(rule)}>
                                 <Edit className="h-4 w-4 me-1" />
-                                {t.edit}
+                                {t('edit')}
                               </Button>
                             </div>
                           </CardContent>
@@ -930,13 +809,13 @@ export const RulesManagementPage = () => {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Plus className="h-5 w-5 text-brand-navy" />
-                {t.createRule}
+                {t('createRule')}
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>{t.ruleName} (عربي)</Label>
+                  <Label>{t('ruleName')} (عربي)</Label>
                   <Input 
                     value={formData.name_ar}
                     onChange={(e) => setFormData({ ...formData, name_ar: e.target.value })}
@@ -944,7 +823,7 @@ export const RulesManagementPage = () => {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>{t.ruleName} (English)</Label>
+                  <Label>{t('ruleName')} (English)</Label>
                   <Input 
                     value={formData.name_en}
                     onChange={(e) => setFormData({ ...formData, name_en: e.target.value })}
@@ -956,7 +835,7 @@ export const RulesManagementPage = () => {
               
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>{t.ruleCategory}</Label>
+                  <Label>{t('ruleCategory')}</Label>
                   <Select value={formData.category} onValueChange={(v) => setFormData({ ...formData, category: v })}>
                     <SelectTrigger>
                       <SelectValue />
@@ -971,7 +850,7 @@ export const RulesManagementPage = () => {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>{t.ruleType}</Label>
+                  <Label>{t('ruleType')}</Label>
                   <Select value={formData.type} onValueChange={(v) => setFormData({ ...formData, type: v })}>
                     <SelectTrigger>
                       <SelectValue />
@@ -989,7 +868,7 @@ export const RulesManagementPage = () => {
               
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>{t.ruleValue}</Label>
+                  <Label>{t('ruleValue')}</Label>
                   {formData.type === 'boolean' ? (
                     <Select 
                       value={formData.value?.toString()} 
@@ -1012,22 +891,22 @@ export const RulesManagementPage = () => {
                   )}
                 </div>
                 <div className="space-y-2">
-                  <Label>{t.priority}</Label>
+                  <Label>{t('priority')}</Label>
                   <Select value={formData.priority} onValueChange={(v) => setFormData({ ...formData, priority: v })}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="high">{t.high}</SelectItem>
-                      <SelectItem value="medium">{t.medium}</SelectItem>
-                      <SelectItem value="low">{t.low}</SelectItem>
+                      <SelectItem value="high">{t('high')}</SelectItem>
+                      <SelectItem value="medium">{t('medium')}</SelectItem>
+                      <SelectItem value="low">{t('low')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
               
               <div className="space-y-2">
-                <Label>{t.ruleDescription} (عربي)</Label>
+                <Label>{t('ruleDescription')} (عربي)</Label>
                 <Textarea 
                   value={formData.description_ar}
                   onChange={(e) => setFormData({ ...formData, description_ar: e.target.value })}
@@ -1038,11 +917,11 @@ export const RulesManagementPage = () => {
             </div>
             <DialogFooter className="flex-row-reverse gap-2">
               <Button variant="outline" onClick={() => { setShowCreateDialog(false); resetForm(); }}>
-                {t.cancel}
+                {t('cancel')}
               </Button>
               <Button onClick={handleCreateRule} className="bg-brand-navy">
                 <Plus className="h-4 w-4 me-2" />
-                {t.create}
+                {t('create')}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -1054,19 +933,19 @@ export const RulesManagementPage = () => {
             <SheetHeader>
               <SheetTitle className="flex items-center gap-2">
                 <Edit className="h-5 w-5 text-brand-navy" />
-                {t.editRule}
+                {t('editRule')}
               </SheetTitle>
             </SheetHeader>
             <div className="space-y-4 py-6">
               <div className="space-y-2">
-                <Label>{t.ruleName} (عربي)</Label>
+                <Label>{t('ruleName')} (عربي)</Label>
                 <Input 
                   value={formData.name_ar}
                   onChange={(e) => setFormData({ ...formData, name_ar: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
-                <Label>{t.ruleName} (English)</Label>
+                <Label>{t('ruleName')} (English)</Label>
                 <Input 
                   value={formData.name_en}
                   onChange={(e) => setFormData({ ...formData, name_en: e.target.value })}
@@ -1074,7 +953,7 @@ export const RulesManagementPage = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label>{t.ruleValue}</Label>
+                <Label>{t('ruleValue')}</Label>
                 {formData.type === 'boolean' ? (
                   <Select 
                     value={formData.value?.toString()} 
@@ -1097,33 +976,33 @@ export const RulesManagementPage = () => {
                 )}
               </div>
               <div className="space-y-2">
-                <Label>{t.ruleStatus}</Label>
+                <Label>{t('ruleStatus')}</Label>
                 <Select value={formData.status} onValueChange={(v) => setFormData({ ...formData, status: v })}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="active">{t.active}</SelectItem>
-                    <SelectItem value="draft">{t.draft}</SelectItem>
-                    <SelectItem value="disabled">{t.disabled}</SelectItem>
+                    <SelectItem value="active">{t('active')}</SelectItem>
+                    <SelectItem value="draft">{t('draft')}</SelectItem>
+                    <SelectItem value="disabled">{t('disabled')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>{t.priority}</Label>
+                <Label>{t('priority')}</Label>
                 <Select value={formData.priority} onValueChange={(v) => setFormData({ ...formData, priority: v })}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="high">{t.high}</SelectItem>
-                    <SelectItem value="medium">{t.medium}</SelectItem>
-                    <SelectItem value="low">{t.low}</SelectItem>
+                    <SelectItem value="high">{t('high')}</SelectItem>
+                    <SelectItem value="medium">{t('medium')}</SelectItem>
+                    <SelectItem value="low">{t('low')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>{t.ruleDescription}</Label>
+                <Label>{t('ruleDescription')}</Label>
                 <Textarea 
                   value={formData.description_ar}
                   onChange={(e) => setFormData({ ...formData, description_ar: e.target.value })}
@@ -1134,7 +1013,7 @@ export const RulesManagementPage = () => {
               <div className="flex gap-2 pt-4">
                 <Button onClick={handleEditRule} className="flex-1 bg-brand-navy">
                   <Save className="h-4 w-4 me-2" />
-                  {t.save}
+                  {t('save')}
                 </Button>
                 <Button 
                   variant="outline" 
@@ -1161,23 +1040,23 @@ export const RulesManagementPage = () => {
                 </SheetHeader>
                 <div className="space-y-6 py-6">
                   <div className="p-4 bg-brand-navy/5 rounded-xl text-center">
-                    <p className="text-sm text-muted-foreground mb-1">{t.ruleValue}</p>
+                    <p className="text-sm text-muted-foreground mb-1">{t('ruleValue')}</p>
                     <p className="text-4xl font-bold text-brand-navy">{formatValue(showViewSheet)}</p>
                   </div>
                   
                   <div className="grid grid-cols-2 gap-4">
                     <div className="p-3 bg-muted/30 rounded-lg">
-                      <p className="text-sm text-muted-foreground">{t.ruleStatus}</p>
+                      <p className="text-sm text-muted-foreground">{t('ruleStatus')}</p>
                       <div className="mt-1">{getStatusBadge(showViewSheet.status)}</div>
                     </div>
                     <div className="p-3 bg-muted/30 rounded-lg">
-                      <p className="text-sm text-muted-foreground">{t.priority}</p>
+                      <p className="text-sm text-muted-foreground">{t('priority')}</p>
                       <div className="mt-1">{getPriorityBadge(showViewSheet.priority)}</div>
                     </div>
                   </div>
                   
                   <div className="p-3 bg-muted/30 rounded-lg">
-                    <p className="text-sm text-muted-foreground">{t.ruleCategory}</p>
+                    <p className="text-sm text-muted-foreground">{t('ruleCategory')}</p>
                     <p className="font-medium mt-1">
                       {isRTL 
                         ? getCategoryInfo(showViewSheet.category).title_ar 
@@ -1188,11 +1067,11 @@ export const RulesManagementPage = () => {
                   <div className="flex gap-2">
                     <Button onClick={() => { openEdit(showViewSheet); setShowViewSheet(null); }} className="flex-1">
                       <Edit className="h-4 w-4 me-2" />
-                      {t.edit}
+                      {t('edit')}
                     </Button>
                     <Button variant="outline" onClick={() => handleDuplicateRule(showViewSheet)}>
                       <Copy className="h-4 w-4 me-2" />
-                      {t.duplicate}
+                      {t('duplicate')}
                     </Button>
                   </div>
                 </div>
@@ -1207,19 +1086,19 @@ export const RulesManagementPage = () => {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-red-600">
                 <Trash2 className="h-5 w-5" />
-                {t.delete}
+                {t('delete')}
               </DialogTitle>
               <DialogDescription>
-                {t.deleteConfirm}
+                {t('deleteConfirm')}
                 <br />
-                <strong className="text-red-600">{t.deleteWarning}</strong>
+                <strong className="text-red-600">{t('deleteWarning')}</strong>
               </DialogDescription>
             </DialogHeader>
             <DialogFooter className="flex-row-reverse gap-2">
-              <Button variant="outline" onClick={() => setShowDeleteDialog(null)}>{t.cancel}</Button>
+              <Button variant="outline" onClick={() => setShowDeleteDialog(null)}>{t('cancel')}</Button>
               <Button variant="destructive" onClick={handleDeleteRule}>
                 <Trash2 className="h-4 w-4 me-2" />
-                {t.delete}
+                {t('delete')}
               </Button>
             </DialogFooter>
           </DialogContent>

@@ -29,99 +29,6 @@ import { Textarea } from '../components/ui/textarea';
 import CreateSchoolWizard from '../components/wizards/CreateSchoolWizard';
 import { Sidebar } from '../components/layout/Sidebar';
 
-const translations = {
-  ar: {
-    pageTitle: 'إدارة المدارس',
-    pageSubtitle: 'إدارة جميع المدارس والمؤسسات التعليمية',
-    addSchool: 'إضافة مدرسة',
-    totalSchools: 'إجمالي المدارس',
-    totalTeachers: 'إجمالي المعلمين',
-    totalStudents: 'إجمالي الطلاب',
-    totalClasses: 'إجمالي الفصول',
-    activeSchools: 'نشطة',
-    suspendedSchools: 'موقوفة',
-    setupSchools: 'قيد الإعداد',
-    pendingSchools: 'معلقة',
-    searchPlaceholder: 'بحث بالاسم أو المدينة...',
-    allStatus: 'جميع الحالات',
-    active: 'نشطة',
-    suspended: 'موقوفة',
-    setup: 'قيد الإعداد',
-    pending: 'معلقة',
-    status: 'الحالة',
-    allCities: 'جميع المدن',
-    city: 'المدينة',
-    reset: 'إعادة ضبط',
-    filters: 'الفلاتر',
-    apply: 'تطبيق',
-    noResults: 'لا توجد نتائج',
-    tryChangingFilters: 'جرب تغيير معايير البحث أو الفلاتر',
-    resetFilters: 'إعادة ضبط الفلاتر',
-    openDashboard: 'فتح لوحة التحكم',
-    students: 'طالب',
-    teachers: 'معلم',
-    classes: 'فصل',
-    parents: 'ولي أمر',
-    setup_score: 'الجاهزية',
-    suspend: 'تعليق',
-    activate: 'تفعيل',
-    school: 'مدرسة',
-    suspendSchool: 'تعليق المدرسة',
-    suspendConfirm: 'هل أنت متأكد من تعليق هذه المدرسة؟ سيتم تعطيل جميع الحسابات المرتبطة بها.',
-    cancel: 'إلغاء',
-    confirm: 'تأكيد',
-    hasTimetable: 'لديها جدول',
-    noTimetable: 'بدون جدول',
-    sessionsToday: 'حصة اليوم',
-    viewAll: 'عرض الكل',
-  },
-  en: {
-    pageTitle: 'Schools Management',
-    pageSubtitle: 'Manage all schools and educational institutions',
-    addSchool: 'Add School',
-    totalSchools: 'Total Schools',
-    totalTeachers: 'Total Teachers',
-    totalStudents: 'Total Students',
-    totalClasses: 'Total Classes',
-    activeSchools: 'Active',
-    suspendedSchools: 'Suspended',
-    setupSchools: 'Setup',
-    pendingSchools: 'Pending',
-    searchPlaceholder: 'Search by name or city...',
-    allStatus: 'All Status',
-    active: 'Active',
-    suspended: 'Suspended',
-    setup: 'Setup',
-    pending: 'Pending',
-    status: 'Status',
-    allCities: 'All Cities',
-    city: 'City',
-    reset: 'Reset',
-    filters: 'Filters',
-    apply: 'Apply',
-    noResults: 'No results found',
-    tryChangingFilters: 'Try changing search criteria or filters',
-    resetFilters: 'Reset Filters',
-    openDashboard: 'Open Dashboard',
-    students: 'Students',
-    teachers: 'Teachers',
-    classes: 'Classes',
-    parents: 'Parents',
-    setup_score: 'Setup',
-    suspend: 'Suspend',
-    activate: 'Activate',
-    school: 'school',
-    suspendSchool: 'Suspend School',
-    suspendConfirm: 'Are you sure you want to suspend this school? All associated accounts will be disabled.',
-    cancel: 'Cancel',
-    confirm: 'Confirm',
-    hasTimetable: 'Has Timetable',
-    noTimetable: 'No Timetable',
-    sessionsToday: 'Sessions Today',
-    viewAll: 'View All',
-  }
-};
-
 const SCHOOL_STATUS = {
   active: { label: 'نشطة', label_en: 'Active', color: 'bg-emerald-500', badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' },
   suspended: { label: 'موقوفة', label_en: 'Suspended', color: 'bg-red-500', badge: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
@@ -374,8 +281,8 @@ export default function TenantsManagement() {
                     <Building2 className="h-6 w-6" />
                   </div>
                   <div>
-                    <h1 className="text-2xl sm:text-3xl font-bold font-cairo">{t.pageTitle}</h1>
-                    <p className="text-white/70 text-sm font-tajawal">{t.pageSubtitle}</p>
+                    <h1 className="text-2xl sm:text-3xl font-bold font-cairo">{t('pageTitle')}</h1>
+                    <p className="text-white/70 text-sm font-tajawal">{t('pageSubtitle')}</p>
                   </div>
                 </div>
               </div>
@@ -395,7 +302,7 @@ export default function TenantsManagement() {
                   onClick={() => setShowCreateWizard(true)}
                 >
                   <Plus className="h-4 w-4 me-1.5" />
-                  {t.addSchool}
+                  {t('addSchool')}
                 </Button>
               </div>
             </div>
@@ -403,13 +310,13 @@ export default function TenantsManagement() {
             {/* Stats Row */}
             <div className="relative mt-6 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
               {[
-                { label: t.totalSchools, value: stats.total, icon: Building2, onClick: () => setActiveStatusFilter(null) },
-                { label: t.activeSchools, value: stats.active, icon: CheckCircle2, onClick: () => handleStatusFilter('active'), active: activeStatusFilter === 'active', color: 'text-emerald-400' },
-                { label: t.suspendedSchools, value: stats.suspended, icon: XCircle, onClick: () => handleStatusFilter('suspended'), active: activeStatusFilter === 'suspended', color: 'text-red-400' },
-                { label: t.pendingSchools, value: stats.pending, icon: Clock, onClick: () => handleStatusFilter('pending'), active: activeStatusFilter === 'pending', color: 'text-amber-400' },
-                { label: t.totalStudents, value: stats.totalStudents.toLocaleString(), icon: GraduationCap },
-                { label: t.totalTeachers, value: stats.totalTeachers, icon: UserCheck },
-                { label: t.totalClasses, value: stats.totalClasses, icon: Layers },
+                { label: t('totalSchools'), value: stats.total, icon: Building2, onClick: () => setActiveStatusFilter(null) },
+                { label: t('activeSchools'), value: stats.active, icon: CheckCircle2, onClick: () => handleStatusFilter('active'), active: activeStatusFilter === 'active', color: 'text-emerald-400' },
+                { label: t('suspendedSchools'), value: stats.suspended, icon: XCircle, onClick: () => handleStatusFilter('suspended'), active: activeStatusFilter === 'suspended', color: 'text-red-400' },
+                { label: t('pendingSchools'), value: stats.pending, icon: Clock, onClick: () => handleStatusFilter('pending'), active: activeStatusFilter === 'pending', color: 'text-amber-400' },
+                { label: t('totalStudents'), value: stats.totalStudents.toLocaleString(), icon: GraduationCap },
+                { label: t('totalTeachers'), value: stats.totalTeachers, icon: UserCheck },
+                { label: t('totalClasses'), value: stats.totalClasses, icon: Layers },
               ].map((item, i) => (
                 <button
                   key={i}
@@ -443,7 +350,7 @@ export default function TenantsManagement() {
             <div className="relative flex-1 max-w-md">
               <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
               <Input
-                placeholder={t.searchPlaceholder}
+                placeholder={t('searchPlaceholder')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="ps-10 rounded-xl border-slate-200 dark:border-slate-700"
@@ -461,19 +368,19 @@ export default function TenantsManagement() {
                   <SelectValue placeholder={t.status} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">{t.allStatus}</SelectItem>
-                  <SelectItem value="active">{t.active}</SelectItem>
-                  <SelectItem value="suspended">{t.suspended}</SelectItem>
-                  <SelectItem value="pending">{t.pending}</SelectItem>
+                  <SelectItem value="all">{t('allStatus')}</SelectItem>
+                  <SelectItem value="active">{t('active')}</SelectItem>
+                  <SelectItem value="suspended">{t('suspended')}</SelectItem>
+                  <SelectItem value="pending">{t('pending')}</SelectItem>
                 </SelectContent>
               </Select>
 
               <Select value={filters.city} onValueChange={(v) => setFilters(f => ({ ...f, city: v }))}>
                 <SelectTrigger className="w-36 rounded-xl">
-                  <SelectValue placeholder={t.city} />
+                  <SelectValue placeholder={t('city')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">{t.allCities}</SelectItem>
+                  <SelectItem value="all">{t('allCities')}</SelectItem>
                   {cities.map(city => (
                     <SelectItem key={city} value={city}>{city}</SelectItem>
                   ))}
@@ -482,7 +389,7 @@ export default function TenantsManagement() {
 
               <Button variant="outline" size="sm" onClick={resetFilters} className="rounded-xl">
                 <RefreshCw className="h-4 w-4 me-1.5" />
-                {t.reset}
+                {t('reset')}
               </Button>
 
               <div className="flex items-center border rounded-xl overflow-hidden ms-1">
@@ -582,11 +489,11 @@ export default function TenantsManagement() {
           {filteredSchools.length === 0 ? (
             <Card className="border-0 shadow-md p-12 text-center">
               <Building2 className="h-16 w-16 mx-auto text-slate-300 dark:text-slate-600 mb-4" />
-              <h3 className="font-bold text-lg mb-2 font-cairo">{t.noResults}</h3>
-              <p className="text-slate-500 mb-4">{t.tryChangingFilters}</p>
+              <h3 className="font-bold text-lg mb-2 font-cairo">{t('noResults')}</h3>
+              <p className="text-slate-500 mb-4">{t('tryChangingFilters')}</p>
               <Button onClick={resetFilters} variant="outline">
                 <RefreshCw className="h-4 w-4 me-2" />
-                {t.resetFilters}
+                {t('resetFilters')}
               </Button>
             </Card>
           ) : viewMode === 'table' ? (
@@ -597,11 +504,11 @@ export default function TenantsManagement() {
                   <thead>
                     <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
                       <th className="text-start p-3 font-medium text-slate-500">{t('school')}</th>
-                      <th className="text-center p-3 font-medium text-slate-500">{t.students}</th>
-                      <th className="text-center p-3 font-medium text-slate-500">{t.teachers}</th>
-                      <th className="text-center p-3 font-medium text-slate-500">{t.classes}</th>
-                      <th className="text-center p-3 font-medium text-slate-500">{t.parents}</th>
-                      <th className="text-center p-3 font-medium text-slate-500">{t.setup_score}</th>
+                      <th className="text-center p-3 font-medium text-slate-500">{t('students')}</th>
+                      <th className="text-center p-3 font-medium text-slate-500">{t('teachers')}</th>
+                      <th className="text-center p-3 font-medium text-slate-500">{t('classes')}</th>
+                      <th className="text-center p-3 font-medium text-slate-500">{t('parents')}</th>
+                      <th className="text-center p-3 font-medium text-slate-500">{t('setup_score')}</th>
                       <th className="text-center p-3 font-medium text-slate-500">{t.status}</th>
                       <th className="text-center p-3 font-medium text-slate-500">{t('actions2')}</th>
                     </tr>
@@ -648,7 +555,7 @@ export default function TenantsManagement() {
                             </Button>
                             <Button size="sm" className="bg-brand-navy hover:bg-brand-navy/90 text-white rounded-lg text-xs" onClick={() => handleEnterSchoolDashboard(school)}>
                               <Eye className="h-3.5 w-3.5 me-1" />
-                              {t.openDashboard}
+                              {t('openDashboard')}
                             </Button>
                           </div>
                         </td>
@@ -691,13 +598,13 @@ export default function TenantsManagement() {
                         {school.has_timetable && (
                           <span className="flex items-center gap-1">
                             <Calendar className="h-3 w-3" />
-                            {t.hasTimetable}
+                            {t('hasTimetable')}
                           </span>
                         )}
                         {school.sessions_today > 0 && (
                           <span className="flex items-center gap-1">
                             <Activity className="h-3 w-3" />
-                            {school.sessions_today} {t.sessionsToday}
+                            {school.sessions_today} {t('sessionsToday')}
                           </span>
                         )}
                       </div>
@@ -706,10 +613,10 @@ export default function TenantsManagement() {
                     {/* Stats Grid */}
                     <div className="grid grid-cols-4 gap-0 border-b border-slate-100 dark:border-slate-800">
                       {[
-                        { label: t.students, value: school.student_count || 0, color: 'text-blue-600' },
-                        { label: t.teachers, value: school.teacher_count || 0, color: 'text-purple-600' },
-                        { label: t.classes, value: school.class_count || 0, color: 'text-indigo-600' },
-                        { label: t.parents, value: school.parent_count || 0, color: 'text-emerald-600' },
+                        { label: t('students'), value: school.student_count || 0, color: 'text-blue-600' },
+                        { label: t('teachers'), value: school.teacher_count || 0, color: 'text-purple-600' },
+                        { label: t('classes'), value: school.class_count || 0, color: 'text-indigo-600' },
+                        { label: t('parents'), value: school.parent_count || 0, color: 'text-emerald-600' },
                       ].map((stat, i) => (
                         <div key={i} className={`text-center py-3 ${i < 3 ? 'border-e border-slate-100 dark:border-slate-800' : ''}`}>
                           <p className={`text-lg font-bold ${stat.color}`}>{stat.value}</p>
@@ -722,7 +629,7 @@ export default function TenantsManagement() {
                     <div className="p-4 space-y-3">
                       {/* Setup Score */}
                       <div className="flex items-center justify-between">
-                        <span className="text-xs text-slate-500">{t.setup_score}</span>
+                        <span className="text-xs text-slate-500">{t('setup_score')}</span>
                         <div className="flex items-center gap-2">
                           <div className="w-24 h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                             <div
@@ -751,7 +658,7 @@ export default function TenantsManagement() {
                           onClick={() => handleEnterSchoolDashboard(school)}
                         >
                           <Eye className="h-3.5 w-3.5 me-1" />
-                          {t.openDashboard}
+                          {t('openDashboard')}
                         </Button>
                         <div className="flex items-center gap-1.5 px-2 py-1.5 bg-slate-100 dark:bg-slate-800 rounded-xl">
                           <Switch
@@ -762,7 +669,7 @@ export default function TenantsManagement() {
                             }}
                             className="data-[state=checked]:bg-emerald-500"
                           />
-                          <span className="text-[10px] text-slate-500">{school.status === 'suspended' ? t.activate : t.suspend}</span>
+                          <span className="text-[10px] text-slate-500">{school.status === 'suspended' ? t('activate') : t('suspend')}</span>
                         </div>
                       </div>
                     </div>
@@ -779,7 +686,7 @@ export default function TenantsManagement() {
       <Sheet open={showFilters} onOpenChange={setShowFilters}>
         <SheetContent side={isRTL ? 'right' : 'left'} className="w-[85vw] sm:w-[400px]">
           <SheetHeader>
-            <SheetTitle className="font-cairo">{t.filters}</SheetTitle>
+            <SheetTitle className="font-cairo">{t('filters')}</SheetTitle>
           </SheetHeader>
           <div className="space-y-6 mt-6">
             <div className="space-y-2">
@@ -787,19 +694,19 @@ export default function TenantsManagement() {
               <Select value={filters.status} onValueChange={(v) => { setFilters(f => ({ ...f, status: v })); setActiveStatusFilter(null); }}>
                 <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">{t.allStatus}</SelectItem>
-                  <SelectItem value="active">{t.active}</SelectItem>
-                  <SelectItem value="suspended">{t.suspended}</SelectItem>
-                  <SelectItem value="pending">{t.pending}</SelectItem>
+                  <SelectItem value="all">{t('allStatus')}</SelectItem>
+                  <SelectItem value="active">{t('active')}</SelectItem>
+                  <SelectItem value="suspended">{t('suspended')}</SelectItem>
+                  <SelectItem value="pending">{t('pending')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">{t.city}</label>
+              <label className="text-sm font-medium">{t('city')}</label>
               <Select value={filters.city} onValueChange={(v) => setFilters(f => ({ ...f, city: v }))}>
                 <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">{t.allCities}</SelectItem>
+                  <SelectItem value="all">{t('allCities')}</SelectItem>
                   {cities.map(city => (
                     <SelectItem key={city} value={city}>{city}</SelectItem>
                   ))}
@@ -807,8 +714,8 @@ export default function TenantsManagement() {
               </Select>
             </div>
             <div className="flex gap-3 pt-4">
-              <Button variant="outline" onClick={resetFilters} className="flex-1 rounded-xl">{t.reset}</Button>
-              <Button onClick={() => setShowFilters(false)} className="flex-1 bg-brand-navy rounded-xl">{t.apply}</Button>
+              <Button variant="outline" onClick={resetFilters} className="flex-1 rounded-xl">{t('reset')}</Button>
+              <Button onClick={() => setShowFilters(false)} className="flex-1 bg-brand-navy rounded-xl">{t('apply')}</Button>
             </div>
           </div>
         </SheetContent>
@@ -820,10 +727,10 @@ export default function TenantsManagement() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-red-600">
               <AlertTriangle className="h-5 w-5" />
-              {t.suspendSchool}
+              {t('suspendSchool')}
             </DialogTitle>
             <DialogDescription>
-              {t.suspendConfirm}
+              {t('suspendConfirm')}
               <br />
               <strong>{showSuspendDialog?.name}</strong>
             </DialogDescription>
@@ -842,11 +749,11 @@ export default function TenantsManagement() {
           </div>
           <DialogFooter className="flex-row-reverse gap-2">
             <Button variant="outline" onClick={() => { setShowSuspendDialog(null); setActionReason(''); }} disabled={actionLoading}>
-              {t.cancel}
+              {t('cancel')}
             </Button>
             <Button variant="destructive" onClick={handleSuspendConfirm} disabled={actionLoading || !actionReason.trim()}>
               {actionLoading ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : <Pause className="h-4 w-4 me-2" />}
-              {t.suspend}
+              {t('suspend')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -880,7 +787,7 @@ export default function TenantsManagement() {
           </div>
           <DialogFooter className="flex-row-reverse gap-2">
             <Button variant="outline" onClick={() => { setShowActivateDialog(null); setActionReason(''); }} disabled={actionLoading}>
-              {t.cancel}
+              {t('cancel')}
             </Button>
             <Button className="bg-emerald-500 hover:bg-emerald-600" onClick={handleActivateConfirm} disabled={actionLoading || !actionReason.trim()}>
               {actionLoading ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : <Play className="h-4 w-4 me-2" />}

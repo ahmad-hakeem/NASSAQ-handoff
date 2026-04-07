@@ -98,205 +98,6 @@ import {
 } from 'lucide-react';
 
 // Translations
-const translations = {
-  ar: {
-    pageTitle: 'إعدادات النظام',
-    pageSubtitle: 'إدارة وتكوين إعدادات المنصة الشاملة',
-    accountSettings: 'إعدادات الحساب',
-    generalSettings: 'الإعدادات العامة',
-    brandIdentity: 'الهوية والعلامة التجارية',
-    termsConditions: 'الشروط والأحكام',
-    privacyPolicy: 'سياسة الخصوصية',
-    contactInfo: 'بيانات التواصل',
-    securitySessions: 'الأمان والجلسات',
-    switchUser: 'تبديل المستخدم',
-    logout: 'تسجيل الخروج',
-    name: 'الاسم',
-    email: 'البريد الإلكتروني',
-    phone: 'رقم الهاتف',
-    language: 'اللغة',
-    profilePicture: 'الصورة الشخصية',
-    changePassword: 'تغيير كلمة المرور',
-    currentPassword: 'كلمة المرور الحالية',
-    newPassword: 'كلمة المرور الجديدة',
-    confirmPassword: 'تأكيد كلمة المرور',
-    save: 'حفظ',
-    cancel: 'إلغاء',
-    saveChanges: 'حفظ التغييرات',
-    saving: 'جاري الحفظ...',
-    savedSuccessfully: 'تم الحفظ بنجاح',
-    platformName: 'اسم المنصة',
-    platformNameAr: 'اسم المنصة (عربي)',
-    platformNameEn: 'اسم المنصة (إنجليزي)',
-    browserTitle: 'عنوان المتصفح',
-    logo: 'الشعار',
-    favicon: 'أيقونة الموقع',
-    primaryColor: 'اللون الأساسي',
-    secondaryColor: 'اللون الثانوي',
-    defaultLanguage: 'اللغة الافتراضية',
-    dateFormat: 'نظام التاريخ',
-    timezone: 'المنطقة الزمنية',
-    arabic: 'العربية',
-    english: 'الإنجليزية',
-    hijri: 'هجري',
-    gregorian: 'ميلادي',
-    emailNotifications: 'إشعارات البريد',
-    smsNotifications: 'إشعارات SMS',
-    pushNotifications: 'إشعارات النظام',
-    aiFeatures: 'ميزات الذكاء الاصطناعي',
-    registrationOpen: 'التسجيل مفتوح',
-    termsText: 'نص الشروط والأحكام',
-    privacyText: 'نص سياسة الخصوصية',
-    publishVersion: 'نشر نسخة جديدة',
-    currentVersion: 'النسخة الحالية',
-    lastUpdated: 'آخر تحديث',
-    versionHistory: 'سجل الإصدارات',
-    compareVersions: 'مقارنة الإصدارات',
-    primaryEmail: 'البريد الإلكتروني الرئيسي',
-    primaryPhone: 'رقم الهاتف الرئيسي',
-    alternatePhone: 'رقم هاتف بديل',
-    address: 'العنوان',
-    workingHours: 'ساعات العمل',
-    website: 'الموقع الإلكتروني',
-    supportEmail: 'بريد الدعم الفني',
-    socialMedia: 'وسائل التواصل الاجتماعي',
-    ownerName: 'اسم الجهة المالكة',
-    billingInfo: 'بيانات الفواتير',
-    activeSessions: 'الجلسات النشطة',
-    linkedDevices: 'الأجهزة المرتبطة',
-    loginHistory: 'سجل تسجيل الدخول',
-    switchHistory: 'سجل تبديل المستخدم',
-    twoFactorAuth: 'المصادقة الثنائية',
-    passwordPolicy: 'سياسة كلمات المرور',
-    sessionTimeout: 'مهلة الجلسة',
-    deviceRestrictions: 'قيود الأجهزة',
-    endAllSessions: 'إنهاء جميع الجلسات',
-    endOtherSessions: 'إنهاء الجلسات الأخرى',
-    selectUser: 'اختر المستخدم',
-    switchUserMode: 'أنت الآن في وضع تبديل المستخدم',
-    returnToAdmin: 'العودة لحسابك',
-    logoutNormal: 'تسجيل خروج عادي',
-    logoutAllDevices: 'الخروج من جميع الأجهزة',
-    logoutOtherDevices: 'إنهاء الجلسات الأخرى فقط',
-    confirmLogout: 'تأكيد تسجيل الخروج',
-    sessionExpiry: 'مدة صلاحية الجلسة (بالدقائق)',
-    maxSessions: 'الحد الأقصى للجلسات المتزامنة',
-    minutes: 'دقيقة',
-    hours: 'ساعة',
-    days: 'يوم',
-    uploadLogo: 'رفع الشعار',
-    uploadFavicon: 'رفع الأيقونة',
-    uploadImage: 'رفع صورة',
-    dragDrop: 'اسحب وأفلت أو انقر للرفع',
-    systemInfo: 'معلومات النظام',
-    version: 'الإصدار',
-    environment: 'البيئة',
-    serverStatus: 'حالة الخادم',
-    databaseStatus: 'حالة قاعدة البيانات',
-    online: 'متصل',
-    offline: 'غير متصل',
-    maintenanceMode: 'وضع الصيانة',
-  },
-  en: {
-    pageTitle: 'System Settings',
-    pageSubtitle: 'Manage and configure platform settings',
-    accountSettings: 'Account Settings',
-    generalSettings: 'General Settings',
-    brandIdentity: 'Brand & Identity',
-    termsConditions: 'Terms & Conditions',
-    privacyPolicy: 'Privacy Policy',
-    contactInfo: 'Contact Information',
-    securitySessions: 'Security & Sessions',
-    switchUser: 'Switch User',
-    logout: 'Logout',
-    name: 'Name',
-    email: 'Email',
-    phone: 'Phone Number',
-    language: 'Language',
-    profilePicture: 'Profile Picture',
-    changePassword: 'Change Password',
-    currentPassword: 'Current Password',
-    newPassword: 'New Password',
-    confirmPassword: 'Confirm Password',
-    save: 'Save',
-    cancel: 'Cancel',
-    saveChanges: 'Save Changes',
-    saving: 'Saving...',
-    savedSuccessfully: 'Saved successfully',
-    platformName: 'Platform Name',
-    platformNameAr: 'Platform Name (Arabic)',
-    platformNameEn: 'Platform Name (English)',
-    browserTitle: 'Browser Title',
-    logo: 'Logo',
-    favicon: 'Favicon',
-    primaryColor: 'Primary Color',
-    secondaryColor: 'Secondary Color',
-    defaultLanguage: 'Default Language',
-    dateFormat: 'Date Format',
-    timezone: 'Timezone',
-    arabic: 'Arabic',
-    english: 'English',
-    hijri: 'Hijri',
-    gregorian: 'Gregorian',
-    emailNotifications: 'Email Notifications',
-    smsNotifications: 'SMS Notifications',
-    pushNotifications: 'Push Notifications',
-    aiFeatures: 'AI Features',
-    registrationOpen: 'Registration Open',
-    termsText: 'Terms & Conditions Text',
-    privacyText: 'Privacy Policy Text',
-    publishVersion: 'Publish New Version',
-    currentVersion: 'Current Version',
-    lastUpdated: 'Last Updated',
-    versionHistory: 'Version History',
-    compareVersions: 'Compare Versions',
-    primaryEmail: 'Primary Email',
-    primaryPhone: 'Primary Phone',
-    alternatePhone: 'Alternate Phone',
-    address: 'Address',
-    workingHours: 'Working Hours',
-    website: 'Website',
-    supportEmail: 'Support Email',
-    socialMedia: 'Social Media',
-    ownerName: 'Owner Name',
-    billingInfo: 'Billing Information',
-    activeSessions: 'Active Sessions',
-    linkedDevices: 'Linked Devices',
-    loginHistory: 'Login History',
-    switchHistory: 'Switch User History',
-    twoFactorAuth: 'Two-Factor Authentication',
-    passwordPolicy: 'Password Policy',
-    sessionTimeout: 'Session Timeout',
-    deviceRestrictions: 'Device Restrictions',
-    endAllSessions: 'End All Sessions',
-    endOtherSessions: 'End Other Sessions',
-    selectUser: 'Select User',
-    switchUserMode: 'You are in Switch User mode',
-    returnToAdmin: 'Return to your account',
-    logoutNormal: 'Normal Logout',
-    logoutAllDevices: 'Logout from All Devices',
-    logoutOtherDevices: 'End Other Sessions Only',
-    confirmLogout: 'Confirm Logout',
-    sessionExpiry: 'Session Expiry (minutes)',
-    maxSessions: 'Max Concurrent Sessions',
-    minutes: 'minutes',
-    hours: 'hours',
-    days: 'days',
-    uploadLogo: 'Upload Logo',
-    uploadFavicon: 'Upload Favicon',
-    uploadImage: 'Upload Image',
-    dragDrop: 'Drag & drop or click to upload',
-    systemInfo: 'System Information',
-    version: 'Version',
-    environment: 'Environment',
-    serverStatus: 'Server Status',
-    databaseStatus: 'Database Status',
-    online: 'Online',
-    offline: 'Offline',
-    maintenanceMode: 'Maintenance Mode',
-  }
-};
-
 // Navigation tabs
 const SETTINGS_TABS = [
   { id: 'account', icon: User, label_ar: 'إعدادات الحساب', label_en: 'Account' },
@@ -677,7 +478,7 @@ export const PlatformSettingsPage = () => {
         registration_open: generalSettings.registrationOpen,
       });
       
-      toast.success(t.savedSuccessfully);
+      toast.success(t('savedSuccessfully'));
       await fetchSettings();
     } catch (error) {
       console.error('Error saving general settings:', error);
@@ -709,7 +510,7 @@ export const PlatformSettingsPage = () => {
         social_facebook: contactInfo.socialMedia.facebook,
         social_youtube: contactInfo.socialMedia.youtube,
       });
-      toast.success(t.savedSuccessfully);
+      toast.success(t('savedSuccessfully'));
       await fetchSettings();
     } catch (error) {
       console.error('Error saving contact settings:', error);
@@ -732,7 +533,7 @@ export const PlatformSettingsPage = () => {
         require_numbers: securitySettings.passwordRequireNumbers ? 1 : 0,
         require_special_chars: securitySettings.passwordRequireSpecial ? 1 : 0,
       });
-      toast.success(t.savedSuccessfully);
+      toast.success(t('savedSuccessfully'));
       await fetchSettings();
     } catch (error) {
       console.error('Error saving security settings:', error);
@@ -755,7 +556,7 @@ export const PlatformSettingsPage = () => {
         phone: accountData.phone,
         language: accountData.language,
       });
-      toast.success(res.data?.message || t.savedSuccessfully);
+      toast.success(res.data?.message || t('savedSuccessfully'));
       if (refreshUser) await refreshUser();
       await fetchSettings();
     } catch (error) {
@@ -863,7 +664,7 @@ export const PlatformSettingsPage = () => {
         await handleSavePrivacyVersion();
         break;
       default:
-        toast.success(t.savedSuccessfully);
+        toast.success(t('savedSuccessfully'));
     }
   };
   
@@ -972,8 +773,8 @@ export const PlatformSettingsPage = () => {
           <div className="container mx-auto px-4 lg:px-6 py-4">
             <div className="flex items-center justify-between">
               <PageHeader 
-                title={t.pageTitle} 
-                subtitle={t.pageSubtitle}
+                title={t('pageTitle')} 
+                subtitle={t('pageSubtitle')}
                 icon={Settings}
                 className="mb-0"
               />
@@ -994,7 +795,7 @@ export const PlatformSettingsPage = () => {
                   ) : (
                     <Save className="h-4 w-4 me-2" />
                   )}
-                  {loading ? t.saving : hasUnsavedChanges ? (t('saveChanges3')) : t.saveChanges}
+                  {loading ? t('saving') : hasUnsavedChanges ? (t('saveChanges3')) : t('saveChanges')}
                 </Button>
               </div>
             </div>
@@ -1045,7 +846,7 @@ export const PlatformSettingsPage = () => {
                       className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-all"
                     >
                       <Users className="h-5 w-5" />
-                      {t.switchUser}
+                      {t('switchUser')}
                     </button>
                     
                     {/* Logout */}
@@ -1054,7 +855,7 @@ export const PlatformSettingsPage = () => {
                       className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-red-600 hover:bg-red-50 transition-all"
                     >
                       <LogOut className="h-5 w-5" />
-                      {t.logout}
+                      {t('logout')}
                     </button>
                   </nav>
                 </CardContent>
@@ -1099,7 +900,7 @@ export const PlatformSettingsPage = () => {
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
                         <User className="h-5 w-5 text-brand-navy" />
-                        {t.accountSettings}
+                        {t('accountSettings')}
                       </CardTitle>
                       <CardDescription>
                         {t('manageYourPersonalAccountInformation')}
@@ -1120,7 +921,7 @@ export const PlatformSettingsPage = () => {
                           )}
                         </div>
                         <div>
-                          <h4 className="font-medium mb-2">{t.profilePicture}</h4>
+                          <h4 className="font-medium mb-2">{t('profilePicture')}</h4>
                           <input
                             ref={fileInputRef}
                             type="file"
@@ -1137,7 +938,7 @@ export const PlatformSettingsPage = () => {
                               onClick={() => fileInputRef.current?.click()}
                             >
                               <Upload className="h-4 w-4 me-2" />
-                              {t.uploadImage}
+                              {t('uploadImage')}
                             </Button>
                             {accountData.profilePicture && (
                               <Button
@@ -1175,7 +976,7 @@ export const PlatformSettingsPage = () => {
                       {/* Account Info */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="space-y-2">
-                          <Label>{t.name}</Label>
+                          <Label>{t('name')}</Label>
                           <Input
                             value={accountData.name}
                             onChange={(e) => setAccountData({ ...accountData, name: e.target.value })}
@@ -1203,7 +1004,7 @@ export const PlatformSettingsPage = () => {
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label>{t.language}</Label>
+                          <Label>{t('language')}</Label>
                           <Select 
                             value={accountData.language} 
                             onValueChange={(v) => setAccountData({ ...accountData, language: v })}
@@ -1212,8 +1013,8 @@ export const PlatformSettingsPage = () => {
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="ar">{t.arabic}</SelectItem>
-                              <SelectItem value="en">{t.english}</SelectItem>
+                              <SelectItem value="ar">{t('arabic')}</SelectItem>
+                              <SelectItem value="en">{t('english')}</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -1228,7 +1029,7 @@ export const PlatformSettingsPage = () => {
                             <Key className="h-5 w-5 text-orange-600" />
                           </div>
                           <div>
-                            <h4 className="font-medium">{t.changePassword}</h4>
+                            <h4 className="font-medium">{t('changePassword')}</h4>
                             <p className="text-sm text-muted-foreground">
                               {t('changeYourAccountPassword')}
                             </p>
@@ -1251,14 +1052,14 @@ export const PlatformSettingsPage = () => {
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
                         <Settings className="h-5 w-5 text-brand-navy" />
-                        {t.generalSettings}
+                        {t('generalSettings')}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-6">
                       {/* Platform Name */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="space-y-2">
-                          <Label>{t.platformNameAr}</Label>
+                          <Label>{t('platformNameAr')}</Label>
                           <Input
                             value={generalSettings.platformNameAr}
                             onChange={(e) => setGeneralSettings({ ...generalSettings, platformNameAr: e.target.value })}
@@ -1266,7 +1067,7 @@ export const PlatformSettingsPage = () => {
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label>{t.platformNameEn}</Label>
+                          <Label>{t('platformNameEn')}</Label>
                           <Input
                             value={generalSettings.platformNameEn}
                             onChange={(e) => setGeneralSettings({ ...generalSettings, platformNameEn: e.target.value })}
@@ -1277,7 +1078,7 @@ export const PlatformSettingsPage = () => {
                       </div>
                       
                       <div className="space-y-2">
-                        <Label>{t.browserTitle}</Label>
+                        <Label>{t('browserTitle')}</Label>
                         <Input
                           value={generalSettings.browserTitle}
                           onChange={(e) => setGeneralSettings({ ...generalSettings, browserTitle: e.target.value })}
@@ -1290,7 +1091,7 @@ export const PlatformSettingsPage = () => {
                       {/* Language & Date */}
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div className="space-y-2">
-                          <Label>{t.defaultLanguage}</Label>
+                          <Label>{t('defaultLanguage')}</Label>
                           <Select 
                             value={generalSettings.defaultLanguage} 
                             onValueChange={(v) => setGeneralSettings({ ...generalSettings, defaultLanguage: v })}
@@ -1299,13 +1100,13 @@ export const PlatformSettingsPage = () => {
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="ar">{t.arabic}</SelectItem>
-                              <SelectItem value="en">{t.english}</SelectItem>
+                              <SelectItem value="ar">{t('arabic')}</SelectItem>
+                              <SelectItem value="en">{t('english')}</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
                         <div className="space-y-2">
-                          <Label>{t.dateFormat}</Label>
+                          <Label>{t('dateFormat')}</Label>
                           <Select 
                             value={generalSettings.dateFormat} 
                             onValueChange={(v) => setGeneralSettings({ ...generalSettings, dateFormat: v })}
@@ -1314,14 +1115,14 @@ export const PlatformSettingsPage = () => {
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="hijri">{t.hijri}</SelectItem>
-                              <SelectItem value="gregorian">{t.gregorian}</SelectItem>
+                              <SelectItem value="hijri">{t('hijri')}</SelectItem>
+                              <SelectItem value="gregorian">{t('gregorian')}</SelectItem>
                               <SelectItem value="both">{t('both')}</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
                         <div className="space-y-2">
-                          <Label>{t.timezone}</Label>
+                          <Label>{t('timezone')}</Label>
                           <Select 
                             value={generalSettings.timezone} 
                             onValueChange={(v) => setGeneralSettings({ ...generalSettings, timezone: v })}
@@ -1345,7 +1146,7 @@ export const PlatformSettingsPage = () => {
                         <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl">
                           <div className="flex items-center gap-3">
                             <Mail className="h-5 w-5 text-muted-foreground" />
-                            <span>{t.emailNotifications}</span>
+                            <span>{t('emailNotifications')}</span>
                           </div>
                           <Switch
                             checked={generalSettings.emailNotifications}
@@ -1355,7 +1156,7 @@ export const PlatformSettingsPage = () => {
                         <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl">
                           <div className="flex items-center gap-3">
                             <Smartphone className="h-5 w-5 text-muted-foreground" />
-                            <span>{t.smsNotifications}</span>
+                            <span>{t('smsNotifications')}</span>
                           </div>
                           <Switch
                             checked={generalSettings.smsNotifications}
@@ -1365,7 +1166,7 @@ export const PlatformSettingsPage = () => {
                         <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl">
                           <div className="flex items-center gap-3">
                             <Bell className="h-5 w-5 text-muted-foreground" />
-                            <span>{t.pushNotifications}</span>
+                            <span>{t('pushNotifications')}</span>
                           </div>
                           <Switch
                             checked={generalSettings.pushNotifications}
@@ -1375,7 +1176,7 @@ export const PlatformSettingsPage = () => {
                         <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl">
                           <div className="flex items-center gap-3">
                             <Zap className="h-5 w-5 text-muted-foreground" />
-                            <span>{t.aiFeatures}</span>
+                            <span>{t('aiFeatures')}</span>
                           </div>
                           <Switch
                             checked={generalSettings.aiFeatures}
@@ -1385,7 +1186,7 @@ export const PlatformSettingsPage = () => {
                         <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl">
                           <div className="flex items-center gap-3">
                             <Users className="h-5 w-5 text-muted-foreground" />
-                            <span>{t.registrationOpen}</span>
+                            <span>{t('registrationOpen')}</span>
                           </div>
                           <Switch
                             checked={generalSettings.registrationOpen}
@@ -1395,7 +1196,7 @@ export const PlatformSettingsPage = () => {
                         <div className="flex items-center justify-between p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
                           <div className="flex items-center gap-3">
                             <AlertTriangle className="h-5 w-5 text-yellow-600" />
-                            <span className="text-yellow-800">{t.maintenanceMode}</span>
+                            <span className="text-yellow-800">{t('maintenanceMode')}</span>
                           </div>
                           <Switch
                             checked={generalSettings.maintenanceMode}
@@ -1410,26 +1211,26 @@ export const PlatformSettingsPage = () => {
                       <div>
                         <h4 className="font-medium mb-4 flex items-center gap-2">
                           <Server className="h-5 w-5" />
-                          {t.systemInfo}
+                          {t('systemInfo')}
                         </h4>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                           <div className="bg-muted/30 rounded-xl p-4">
-                            <p className="text-sm text-muted-foreground">{t.version}</p>
+                            <p className="text-sm text-muted-foreground">{t('version')}</p>
                             <p className="font-mono font-bold">2.1.0</p>
                           </div>
                           <div className="bg-muted/30 rounded-xl p-4">
-                            <p className="text-sm text-muted-foreground">{t.environment}</p>
+                            <p className="text-sm text-muted-foreground">{t('environment')}</p>
                             <p className="font-mono font-bold">Production</p>
                           </div>
                           <div className="bg-muted/30 rounded-xl p-4">
-                            <p className="text-sm text-muted-foreground">{t.serverStatus}</p>
+                            <p className="text-sm text-muted-foreground">{t('serverStatus')}</p>
                             <div className="flex items-center gap-2">
                               <CheckCircle2 className="h-4 w-4 text-green-500" />
-                              <span className="font-bold text-green-600">{t.online}</span>
+                              <span className="font-bold text-green-600">{t('online')}</span>
                             </div>
                           </div>
                           <div className="bg-muted/30 rounded-xl p-4">
-                            <p className="text-sm text-muted-foreground">{t.databaseStatus}</p>
+                            <p className="text-sm text-muted-foreground">{t('databaseStatus')}</p>
                             <div className="flex items-center gap-2">
                               <CheckCircle2 className="h-4 w-4 text-green-500" />
                               <span className="font-bold text-green-600">MongoDB</span>
@@ -1449,27 +1250,27 @@ export const PlatformSettingsPage = () => {
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
                         <Palette className="h-5 w-5 text-brand-navy" />
-                        {t.brandIdentity}
+                        {t('brandIdentity')}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-6">
                       {/* Logo & Favicon */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="space-y-3">
-                          <Label>{t.logo}</Label>
+                          <Label>{t('logo')}</Label>
                           <div className="border-2 border-dashed rounded-xl p-8 text-center hover:border-brand-navy/50 transition-colors cursor-pointer">
                             <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-brand-navy/10 flex items-center justify-center">
                               <Building2 className="h-10 w-10 text-brand-navy" />
                             </div>
-                            <p className="text-sm text-muted-foreground">{t.dragDrop}</p>
+                            <p className="text-sm text-muted-foreground">{t('dragDrop')}</p>
                             <Button variant="outline" size="sm" className="mt-3 rounded-xl">
                               <Upload className="h-4 w-4 me-2" />
-                              {t.uploadLogo}
+                              {t('uploadLogo')}
                             </Button>
                           </div>
                         </div>
                         <div className="space-y-3">
-                          <Label>{t.favicon}</Label>
+                          <Label>{t('favicon')}</Label>
                           <div className="border-2 border-dashed rounded-xl p-8 text-center hover:border-brand-navy/50 transition-colors cursor-pointer">
                             <div className="w-16 h-16 mx-auto mb-4 rounded-xl bg-brand-navy/10 flex items-center justify-center">
                               <Hash className="h-8 w-8 text-brand-navy" />
@@ -1477,7 +1278,7 @@ export const PlatformSettingsPage = () => {
                             <p className="text-sm text-muted-foreground">32x32 px</p>
                             <Button variant="outline" size="sm" className="mt-3 rounded-xl">
                               <Upload className="h-4 w-4 me-2" />
-                              {t.uploadFavicon}
+                              {t('uploadFavicon')}
                             </Button>
                           </div>
                         </div>
@@ -1490,7 +1291,7 @@ export const PlatformSettingsPage = () => {
                         <h4 className="font-medium mb-4">{t('colors')}</h4>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                           <div className="space-y-2">
-                            <Label>{t.primaryColor}</Label>
+                            <Label>{t('primaryColor')}</Label>
                             <div className="flex items-center gap-3">
                               <div 
                                 className="w-12 h-12 rounded-xl shadow-inner cursor-pointer"
@@ -1505,7 +1306,7 @@ export const PlatformSettingsPage = () => {
                             </div>
                           </div>
                           <div className="space-y-2">
-                            <Label>{t.secondaryColor}</Label>
+                            <Label>{t('secondaryColor')}</Label>
                             <div className="flex items-center gap-3">
                               <div 
                                 className="w-12 h-12 rounded-xl shadow-inner cursor-pointer"
@@ -1548,7 +1349,7 @@ export const PlatformSettingsPage = () => {
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
                         <FileText className="h-5 w-5 text-brand-navy" />
-                        {t.termsConditions}
+                        {t('termsConditions')}
                       </CardTitle>
                       <CardDescription>
                         {t('managePlatformTermsAndConditions')}
@@ -1559,28 +1360,28 @@ export const PlatformSettingsPage = () => {
                       <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl">
                         <div className="flex items-center gap-6">
                           <div>
-                            <p className="text-sm text-muted-foreground">{t.currentVersion}</p>
+                            <p className="text-sm text-muted-foreground">{t('currentVersion')}</p>
                             <p className="font-bold">{termsData.version}</p>
                           </div>
                           <div>
-                            <p className="text-sm text-muted-foreground">{t.lastUpdated}</p>
+                            <p className="text-sm text-muted-foreground">{t('lastUpdated')}</p>
                             <p className="font-medium">{formatDateTime(termsData.lastUpdated)}</p>
                           </div>
                         </div>
                         <div className="flex gap-2">
                           <Button variant="outline" className="rounded-xl" onClick={() => setShowVersionHistoryDialog(true)}>
                             <History className="h-4 w-4 me-2" />
-                            {t.versionHistory}
+                            {t('versionHistory')}
                           </Button>
                           <Button className="rounded-xl bg-brand-navy" onClick={() => setShowPublishDialog(true)}>
-                            {t.publishVersion}
+                            {t('publishVersion')}
                           </Button>
                         </div>
                       </div>
                       
                       {/* Content Editor */}
                       <div className="space-y-2">
-                        <Label>{t.termsText}</Label>
+                        <Label>{t('termsText')}</Label>
                         <Textarea
                           value={termsData.content}
                           onChange={(e) => setTermsData({ ...termsData, content: e.target.value })}
@@ -1600,7 +1401,7 @@ export const PlatformSettingsPage = () => {
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
                         <Shield className="h-5 w-5 text-brand-navy" />
-                        {t.privacyPolicy}
+                        {t('privacyPolicy')}
                       </CardTitle>
                       <CardDescription>
                         {t('managePlatformPrivacyPolicy')}
@@ -1611,28 +1412,28 @@ export const PlatformSettingsPage = () => {
                       <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl">
                         <div className="flex items-center gap-6">
                           <div>
-                            <p className="text-sm text-muted-foreground">{t.currentVersion}</p>
+                            <p className="text-sm text-muted-foreground">{t('currentVersion')}</p>
                             <p className="font-bold">{privacyData.version}</p>
                           </div>
                           <div>
-                            <p className="text-sm text-muted-foreground">{t.lastUpdated}</p>
+                            <p className="text-sm text-muted-foreground">{t('lastUpdated')}</p>
                             <p className="font-medium">{formatDateTime(privacyData.lastUpdated)}</p>
                           </div>
                         </div>
                         <div className="flex gap-2">
                           <Button variant="outline" className="rounded-xl" onClick={() => setShowVersionHistoryDialog(true)}>
                             <History className="h-4 w-4 me-2" />
-                            {t.versionHistory}
+                            {t('versionHistory')}
                           </Button>
                           <Button className="rounded-xl bg-brand-navy" onClick={() => setShowPublishDialog(true)}>
-                            {t.publishVersion}
+                            {t('publishVersion')}
                           </Button>
                         </div>
                       </div>
                       
                       {/* Content Editor */}
                       <div className="space-y-2">
-                        <Label>{t.privacyText}</Label>
+                        <Label>{t('privacyText')}</Label>
                         <Textarea
                           value={privacyData.content}
                           onChange={(e) => setPrivacyData({ ...privacyData, content: e.target.value })}
@@ -1652,14 +1453,14 @@ export const PlatformSettingsPage = () => {
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
                         <Mail className="h-5 w-5 text-brand-navy" />
-                        {t.contactInfo}
+                        {t('contactInfo')}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-6">
                       {/* Contact Details */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="space-y-2">
-                          <Label>{t.primaryEmail}</Label>
+                          <Label>{t('primaryEmail')}</Label>
                           <div className="flex gap-2">
                             <Input
                               type="email"
@@ -1678,7 +1479,7 @@ export const PlatformSettingsPage = () => {
                           </div>
                         </div>
                         <div className="space-y-2">
-                          <Label>{t.supportEmail}</Label>
+                          <Label>{t('supportEmail')}</Label>
                           <Input
                             type="email"
                             value={contactInfo.supportEmail}
@@ -1688,7 +1489,7 @@ export const PlatformSettingsPage = () => {
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label>{t.primaryPhone}</Label>
+                          <Label>{t('primaryPhone')}</Label>
                           <Input
                             type="tel"
                             value={contactInfo.primaryPhone}
@@ -1698,7 +1499,7 @@ export const PlatformSettingsPage = () => {
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label>{t.alternatePhone}</Label>
+                          <Label>{t('alternatePhone')}</Label>
                           <Input
                             type="tel"
                             value={contactInfo.alternatePhone}
@@ -1710,7 +1511,7 @@ export const PlatformSettingsPage = () => {
                       </div>
                       
                       <div className="space-y-2">
-                        <Label>{t.address}</Label>
+                        <Label>{t('address')}</Label>
                         <Textarea
                           value={contactInfo.address}
                           onChange={(e) => setContactInfo({ ...contactInfo, address: e.target.value })}
@@ -1721,7 +1522,7 @@ export const PlatformSettingsPage = () => {
                       
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="space-y-2">
-                          <Label>{t.workingHours}</Label>
+                          <Label>{t('workingHours')}</Label>
                           <Input
                             value={contactInfo.workingHours}
                             onChange={(e) => setContactInfo({ ...contactInfo, workingHours: e.target.value })}
@@ -1729,7 +1530,7 @@ export const PlatformSettingsPage = () => {
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label>{t.website}</Label>
+                          <Label>{t('website')}</Label>
                           <Input
                             value={contactInfo.website}
                             onChange={(e) => setContactInfo({ ...contactInfo, website: e.target.value })}
@@ -1740,7 +1541,7 @@ export const PlatformSettingsPage = () => {
                       </div>
                       
                       <div className="space-y-2">
-                        <Label>{t.ownerName}</Label>
+                        <Label>{t('ownerName')}</Label>
                         <Input
                           value={contactInfo.ownerName}
                           onChange={(e) => setContactInfo({ ...contactInfo, ownerName: e.target.value })}
@@ -1754,7 +1555,7 @@ export const PlatformSettingsPage = () => {
                       <div>
                         <h4 className="font-medium mb-4 flex items-center gap-2">
                           <Link2 className="h-5 w-5" />
-                          {t.socialMedia}
+                          {t('socialMedia')}
                         </h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-xl">
@@ -1838,14 +1639,14 @@ export const PlatformSettingsPage = () => {
                       <div>
                         <CardTitle className="flex items-center gap-2">
                           <Monitor className="h-5 w-5 text-brand-navy" />
-                          {t.activeSessions}
+                          {t('activeSessions')}
                         </CardTitle>
                         <CardDescription>
                           {t('yourActiveSessionsOnDifferentDevices')}
                         </CardDescription>
                       </div>
                       <Button variant="outline" className="rounded-xl" onClick={handleEndAllSessions}>
-                        {t.endOtherSessions}
+                        {t('endOtherSessions')}
                       </Button>
                     </CardHeader>
                     <CardContent>
@@ -1910,7 +1711,7 @@ export const PlatformSettingsPage = () => {
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
                         <Shield className="h-5 w-5 text-brand-navy" />
-                        {t.securitySessions}
+                        {t('securitySessions')}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-6">
@@ -1921,7 +1722,7 @@ export const PlatformSettingsPage = () => {
                             <Shield className="h-5 w-5 text-purple-600" />
                           </div>
                           <div>
-                            <h4 className="font-medium">{t.twoFactorAuth}</h4>
+                            <h4 className="font-medium">{t('twoFactorAuth')}</h4>
                             <p className="text-sm text-muted-foreground">
                               {t('extraLayerOfSecurityForYourAccount')}
                             </p>
@@ -1936,7 +1737,7 @@ export const PlatformSettingsPage = () => {
                       {/* Session Settings */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="space-y-2">
-                          <Label>{t.sessionExpiry}</Label>
+                          <Label>{t('sessionExpiry')}</Label>
                           <Select 
                             value={String(securitySettings.sessionTimeout)} 
                             onValueChange={(v) => setSecuritySettings({ ...securitySettings, sessionTimeout: parseInt(v) })}
@@ -1945,16 +1746,16 @@ export const PlatformSettingsPage = () => {
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="15">15 {t.minutes}</SelectItem>
-                              <SelectItem value="30">30 {t.minutes}</SelectItem>
-                              <SelectItem value="60">60 {t.minutes}</SelectItem>
-                              <SelectItem value="120">2 {t.hours}</SelectItem>
-                              <SelectItem value="1440">24 {t.hours}</SelectItem>
+                              <SelectItem value="15">15 {t('minutes')}</SelectItem>
+                              <SelectItem value="30">30 {t('minutes')}</SelectItem>
+                              <SelectItem value="60">60 {t('minutes')}</SelectItem>
+                              <SelectItem value="120">2 {t('hours')}</SelectItem>
+                              <SelectItem value="1440">24 {t('hours')}</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
                         <div className="space-y-2">
-                          <Label>{t.maxSessions}</Label>
+                          <Label>{t('maxSessions')}</Label>
                           <Select 
                             value={String(securitySettings.maxSessions)} 
                             onValueChange={(v) => setSecuritySettings({ ...securitySettings, maxSessions: parseInt(v) })}
@@ -1976,7 +1777,7 @@ export const PlatformSettingsPage = () => {
                       
                       {/* Password Policy */}
                       <div>
-                        <h4 className="font-medium mb-4">{t.passwordPolicy}</h4>
+                        <h4 className="font-medium mb-4">{t('passwordPolicy')}</h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl">
                             <span>{t('minimumLength')}</span>
@@ -2019,12 +1820,12 @@ export const PlatformSettingsPage = () => {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Key className="h-5 w-5 text-brand-navy" />
-                {t.changePassword}
+                {t('changePassword')}
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label>{t.currentPassword}</Label>
+                <Label>{t('currentPassword')}</Label>
                 <div className="relative">
                   <Input
                     type={showPassword ? 'text' : 'password'}
@@ -2043,7 +1844,7 @@ export const PlatformSettingsPage = () => {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>{t.newPassword}</Label>
+                <Label>{t('newPassword')}</Label>
                 <Input
                   type={showPassword ? 'text' : 'password'}
                   value={passwordForm.newPassword}
@@ -2052,7 +1853,7 @@ export const PlatformSettingsPage = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label>{t.confirmPassword}</Label>
+                <Label>{t('confirmPassword')}</Label>
                 <Input
                   type={showPassword ? 'text' : 'password'}
                   value={passwordForm.confirmPassword}
@@ -2062,10 +1863,10 @@ export const PlatformSettingsPage = () => {
               </div>
             </div>
             <DialogFooter className="flex-row-reverse gap-2">
-              <Button variant="outline" onClick={() => setShowPasswordDialog(false)}>{t.cancel}</Button>
+              <Button variant="outline" onClick={() => setShowPasswordDialog(false)}>{t('cancel')}</Button>
               <Button onClick={handleChangePassword} disabled={loading} className="bg-brand-navy">
                 {loading ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : <Key className="h-4 w-4 me-2" />}
-                {t.save}
+                {t('save')}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -2077,7 +1878,7 @@ export const PlatformSettingsPage = () => {
             <AlertDialogHeader>
               <AlertDialogTitle className="flex items-center gap-2">
                 <LogOut className="h-5 w-5 text-red-600" />
-                {t.confirmLogout}
+                {t('confirmLogout')}
               </AlertDialogTitle>
               <AlertDialogDescription>
                 {t('chooseLogoutMethod')}
@@ -2090,7 +1891,7 @@ export const PlatformSettingsPage = () => {
                 onClick={() => handleLogout('normal')}
               >
                 <LogOut className="h-4 w-4 me-3" />
-                {t.logoutNormal}
+                {t('logoutNormal')}
               </Button>
               <Button 
                 variant="outline" 
@@ -2098,7 +1899,7 @@ export const PlatformSettingsPage = () => {
                 onClick={() => handleLogout('all')}
               >
                 <Monitor className="h-4 w-4 me-3" />
-                {t.logoutAllDevices}
+                {t('logoutAllDevices')}
               </Button>
               <Button 
                 variant="outline" 
@@ -2106,11 +1907,11 @@ export const PlatformSettingsPage = () => {
                 onClick={() => handleLogout('others')}
               >
                 <Users className="h-4 w-4 me-3" />
-                {t.logoutOtherDevices}
+                {t('logoutOtherDevices')}
               </Button>
             </div>
             <AlertDialogFooter>
-              <AlertDialogCancel>{t.cancel}</AlertDialogCancel>
+              <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
@@ -2121,7 +1922,7 @@ export const PlatformSettingsPage = () => {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Users className="h-5 w-5 text-brand-navy" />
-                {t.switchUser}
+                {t('switchUser')}
               </DialogTitle>
               <DialogDescription>
                 {t('temporarilyAccessAnotherUserAccount')}
@@ -2129,7 +1930,7 @@ export const PlatformSettingsPage = () => {
             </DialogHeader>
             <div className="py-4">
               <div className="space-y-2">
-                <Label>{t.selectUser}</Label>
+                <Label>{t('selectUser')}</Label>
                 <Select>
                   <SelectTrigger className="rounded-xl">
                     <SelectValue placeholder={t('selectUser')} />
@@ -2157,10 +1958,10 @@ export const PlatformSettingsPage = () => {
               </div>
             </div>
             <DialogFooter className="flex-row-reverse gap-2">
-              <Button variant="outline" onClick={() => setShowSwitchUserDialog(false)}>{t.cancel}</Button>
+              <Button variant="outline" onClick={() => setShowSwitchUserDialog(false)}>{t('cancel')}</Button>
               <Button className="bg-brand-navy">
                 <Users className="h-4 w-4 me-2" />
-                {t.switchUser}
+                {t('switchUser')}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -2170,7 +1971,7 @@ export const PlatformSettingsPage = () => {
         <Dialog open={showPublishDialog} onOpenChange={setShowPublishDialog}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>{t.publishVersion}</DialogTitle>
+              <DialogTitle>{t('publishVersion')}</DialogTitle>
               <DialogDescription>
                 {t('publishANewVersionOfTermsOrPolicy')}
               </DialogDescription>
@@ -2192,10 +1993,10 @@ export const PlatformSettingsPage = () => {
               </div>
             </div>
             <DialogFooter className="flex-row-reverse gap-2">
-              <Button variant="outline" onClick={() => setShowPublishDialog(false)}>{t.cancel}</Button>
+              <Button variant="outline" onClick={() => setShowPublishDialog(false)}>{t('cancel')}</Button>
               <Button onClick={handlePublishVersion} className="bg-brand-navy">
                 <CheckCircle2 className="h-4 w-4 me-2" />
-                {t.publishVersion}
+                {t('publishVersion')}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -2207,7 +2008,7 @@ export const PlatformSettingsPage = () => {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <History className="h-5 w-5 text-brand-navy" />
-                {t.versionHistory}
+                {t('versionHistory')}
               </DialogTitle>
             </DialogHeader>
             <ScrollArea className="h-[300px] py-4">
@@ -2233,7 +2034,7 @@ export const PlatformSettingsPage = () => {
               </div>
             </ScrollArea>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setShowVersionHistoryDialog(false)}>{t.cancel}</Button>
+              <Button variant="outline" onClick={() => setShowVersionHistoryDialog(false)}>{t('cancel')}</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

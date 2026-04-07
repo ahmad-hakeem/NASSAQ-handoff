@@ -456,7 +456,6 @@ export const Sidebar = ({ children }) => {
   const isActive = (href) => location.pathname === href;
 
   const SidebarContent = () => {
-    const { t } = useTranslation();
     return (
     <div className="flex flex-col h-full">
       {/* Logo */}

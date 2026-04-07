@@ -98,145 +98,6 @@ import {
 const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 
 // Translations
-const translations = {
-  ar: {
-    pageTitle: 'التكاملات',
-    pageSubtitle: 'إدارة التكاملات والربط مع الأنظمة الخارجية وواجهات البرمجة',
-    integrations: 'التكاملات',
-    apiManagement: 'إدارة API',
-    all: 'الكل',
-    government: 'حكومية',
-    payment: 'مدفوعات',
-    sms: 'رسائل SMS',
-    messaging: 'المراسلة',
-    email: 'بريد إلكتروني',
-    storage: 'تخزين',
-    ai: 'ذكاء اصطناعي',
-    other: 'أخرى',
-    addIntegration: 'إضافة تكامل',
-    active: 'نشط',
-    inactive: 'غير نشط',
-    pending: 'قيد الإعداد',
-    error: 'خطأ',
-    notConfigured: 'غير مهيأ',
-    lastSync: 'آخر مزامنة',
-    testConnection: 'اختبار الاتصال',
-    sync: 'مزامنة',
-    edit: 'تعديل',
-    delete: 'حذف',
-    enable: 'تفعيل',
-    disable: 'تعطيل',
-    viewLogs: 'عرض السجلات',
-    setupIntegration: 'إعداد',
-    viewDetails: 'التفاصيل',
-    totalIntegrations: 'إجمالي التكاملات',
-    activeIntegrations: 'تكاملات نشطة',
-    pendingIntegrations: 'قيد الإعداد',
-    errorIntegrations: 'بها أخطاء',
-    search: 'بحث عن تكامل...',
-    searchPlaceholder: 'ابحث بالاسم، النوع، أو الحالة...',
-    logs: 'السجلات',
-    settings: 'الإعدادات',
-    endpoints: 'نقاط الاتصال',
-    webhooks: 'Webhooks',
-    copy: 'نسخ',
-    copied: 'تم النسخ',
-    copyAll: 'نسخ جميع البيانات',
-    shareTemplate: 'قالب المشاركة',
-    generateNewKey: 'إنشاء مفتاح جديد',
-    revokeKey: 'إلغاء المفتاح',
-    apiKeys: 'مفاتيح API',
-    nassaqApi: 'واجهة برمجة نسق',
-    documentation: 'التوثيق',
-    baseUrl: 'الرابط الأساسي',
-    createdAt: 'تاريخ الإنشاء',
-    lastUsed: 'آخر استخدام',
-    permissions: 'الصلاحيات',
-    readOnly: 'قراءة فقط',
-    readWrite: 'قراءة وكتابة',
-    fullAccess: 'وصول كامل',
-    cardView: 'عرض الكروت',
-    tableView: 'عرض الجدول',
-    filterByCategory: 'تصفية حسب الفئة',
-    filterByStatus: 'تصفية حسب الحالة',
-    clearFilters: 'مسح الفلاتر',
-    noResults: 'لا توجد نتائج',
-    save: 'حفظ',
-    cancel: 'إلغاء',
-    apiKey: 'مفتاح API',
-    secretKey: 'المفتاح السري',
-    webhookUrl: 'رابط Webhook',
-  },
-  en: {
-    pageTitle: 'Integrations',
-    pageSubtitle: 'Manage integrations and API connections',
-    integrations: 'Integrations',
-    apiManagement: 'API Management',
-    all: 'All',
-    government: 'Government',
-    payment: 'Payment',
-    sms: 'SMS',
-    messaging: 'Messaging',
-    email: 'Email',
-    storage: 'Storage',
-    ai: 'AI',
-    other: 'Other',
-    addIntegration: 'Add Integration',
-    active: 'Active',
-    inactive: 'Inactive',
-    pending: 'Pending',
-    error: 'Error',
-    notConfigured: 'Not Configured',
-    lastSync: 'Last Sync',
-    testConnection: 'Test',
-    sync: 'Sync',
-    edit: 'Edit',
-    delete: 'Delete',
-    enable: 'Enable',
-    disable: 'Disable',
-    viewLogs: 'Logs',
-    setupIntegration: 'Setup',
-    viewDetails: 'Details',
-    totalIntegrations: 'Total Integrations',
-    activeIntegrations: 'Active',
-    pendingIntegrations: 'Pending',
-    errorIntegrations: 'With Errors',
-    search: 'Search integration...',
-    searchPlaceholder: 'Search by name, type, or status...',
-    logs: 'Logs',
-    settings: 'Settings',
-    endpoints: 'Endpoints',
-    webhooks: 'Webhooks',
-    copy: 'Copy',
-    copied: 'Copied',
-    copyAll: 'Copy All',
-    shareTemplate: 'Share Template',
-    generateNewKey: 'Generate New Key',
-    revokeKey: 'Revoke Key',
-    apiKeys: 'API Keys',
-    nassaqApi: 'NASSAQ API',
-    documentation: 'Documentation',
-    baseUrl: 'Base URL',
-    createdAt: 'Created At',
-    lastUsed: 'Last Used',
-    permissions: 'Permissions',
-    readOnly: 'Read Only',
-    readWrite: 'Read/Write',
-    fullAccess: 'Full Access',
-    cardView: 'Card View',
-    tableView: 'Table View',
-    filterByCategory: 'Filter by Category',
-    filterByStatus: 'Filter by Status',
-    clearFilters: 'Clear Filters',
-    noResults: 'No results',
-    save: 'Save',
-    cancel: 'Cancel',
-    apiKey: 'API Key',
-    secretKey: 'Secret Key',
-    webhookUrl: 'Webhook URL',
-  }
-};
-
 // Integration categories
 const INTEGRATION_CATEGORIES = [
   { id: 'all', icon: Link2, color: 'from-gray-500 to-gray-600', label_ar: 'الكل', label_en: 'All' },
@@ -364,13 +225,13 @@ export default function IntegrationsPage() {
   const getStatusInfo = (status) => {
     switch (status) {
       case 'active':
-        return { label: t.active, color: 'bg-green-500', textColor: 'text-green-600', bgLight: 'bg-green-100', icon: CheckCircle2 };
+        return { label: t('active'), color: 'bg-green-500', textColor: 'text-green-600', bgLight: 'bg-green-100', icon: CheckCircle2 };
       case 'inactive':
-        return { label: t.inactive, color: 'bg-gray-500', textColor: 'text-gray-600', bgLight: 'bg-gray-100', icon: PowerOff };
+        return { label: t('inactive'), color: 'bg-gray-500', textColor: 'text-gray-600', bgLight: 'bg-gray-100', icon: PowerOff };
       case 'pending':
-        return { label: t.pending, color: 'bg-yellow-500', textColor: 'text-yellow-600', bgLight: 'bg-yellow-100', icon: Clock };
+        return { label: t('pending'), color: 'bg-yellow-500', textColor: 'text-yellow-600', bgLight: 'bg-yellow-100', icon: Clock };
       case 'error':
-        return { label: t.error, color: 'bg-red-500', textColor: 'text-red-600', bgLight: 'bg-red-100', icon: XCircle };
+        return { label: t('error'), color: 'bg-red-500', textColor: 'text-red-600', bgLight: 'bg-red-100', icon: XCircle };
       default:
         return { label: status, color: 'bg-gray-500', textColor: 'text-gray-600', bgLight: 'bg-gray-100', icon: AlertTriangle };
     }
@@ -409,7 +270,7 @@ export default function IntegrationsPage() {
       await navigator.clipboard.writeText(text);
       setCopiedField(field);
       setTimeout(() => setCopiedField(null), 2000);
-      toast.success(t.copied);
+      toast.success(t('copied'));
     } catch (err) {
       nassaqError(t('copyFailed'));
     }
@@ -537,8 +398,8 @@ ${baseUrl}/webhooks
           <div className="container mx-auto px-4 lg:px-6 py-4">
             <div className="flex items-center justify-between mb-4">
               <PageHeader 
-                title={t.pageTitle} 
-                subtitle={t.pageSubtitle}
+                title={t('pageTitle')} 
+                subtitle={t('pageSubtitle')}
                 icon={Link2}
                 className="mb-0"
               />
@@ -548,7 +409,7 @@ ${baseUrl}/webhooks
                 data-testid="add-integration-btn"
               >
                 <Plus className="h-4 w-4 me-2" />
-                {t.addIntegration}
+                {t('addIntegration')}
               </Button>
             </div>
             
@@ -557,11 +418,11 @@ ${baseUrl}/webhooks
               <TabsList className="grid w-full max-w-md grid-cols-2">
                 <TabsTrigger value="integrations" className="flex items-center gap-2">
                   <PlugZap className="h-4 w-4" />
-                  {t.integrations}
+                  {t('integrations')}
                 </TabsTrigger>
                 <TabsTrigger value="api" className="flex items-center gap-2">
                   <Key className="h-4 w-4" />
-                  {t.apiManagement}
+                  {t('apiManagement')}
                 </TabsTrigger>
               </TabsList>
             </Tabs>
@@ -614,7 +475,7 @@ ${baseUrl}/webhooks
                       </div>
                       <span className="text-3xl font-bold">{stats.total}</span>
                     </div>
-                    <p className="text-sm text-muted-foreground">{t.totalIntegrations}</p>
+                    <p className="text-sm text-muted-foreground">{t('totalIntegrations')}</p>
                   </CardContent>
                 </Card>
                 
@@ -629,7 +490,7 @@ ${baseUrl}/webhooks
                       </div>
                       <span className="text-3xl font-bold text-green-600">{stats.active}</span>
                     </div>
-                    <p className="text-sm text-muted-foreground">{t.activeIntegrations}</p>
+                    <p className="text-sm text-muted-foreground">{t('activeIntegrations')}</p>
                   </CardContent>
                 </Card>
                 
@@ -644,7 +505,7 @@ ${baseUrl}/webhooks
                       </div>
                       <span className="text-3xl font-bold text-yellow-600">{stats.pending}</span>
                     </div>
-                    <p className="text-sm text-muted-foreground">{t.pendingIntegrations}</p>
+                    <p className="text-sm text-muted-foreground">{t('pendingIntegrations')}</p>
                   </CardContent>
                 </Card>
                 
@@ -659,7 +520,7 @@ ${baseUrl}/webhooks
                       </div>
                       <span className="text-3xl font-bold text-red-600">{stats.error}</span>
                     </div>
-                    <p className="text-sm text-muted-foreground">{t.errorIntegrations}</p>
+                    <p className="text-sm text-muted-foreground">{t('errorIntegrations')}</p>
                   </CardContent>
                 </Card>
               </div>
@@ -669,7 +530,7 @@ ${baseUrl}/webhooks
                 <div className="relative flex-1 max-w-md">
                   <Search className="absolute start-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                   <Input
-                    placeholder={t.searchPlaceholder}
+                    placeholder={t('searchPlaceholder')}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="ps-12 h-12 rounded-xl text-base"
@@ -705,7 +566,7 @@ ${baseUrl}/webhooks
                       </Badge>
                     )}
                     <Button variant="ghost" size="sm" onClick={clearFilters}>
-                      {t.clearFilters}
+                      {t('clearFilters')}
                     </Button>
                   </div>
                 )}
@@ -737,12 +598,12 @@ ${baseUrl}/webhooks
                   <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-muted flex items-center justify-center">
                     <Search className="h-8 w-8 text-muted-foreground" />
                   </div>
-                  <h3 className="text-lg font-medium mb-2">{t.noResults}</h3>
+                  <h3 className="text-lg font-medium mb-2">{t('noResults')}</h3>
                   <p className="text-muted-foreground mb-4">
                     {t('tryChangingSearchCriteriaOrFilters')}
                   </p>
                   <Button variant="outline" onClick={clearFilters}>
-                    {t.clearFilters}
+                    {t('clearFilters')}
                   </Button>
                 </Card>
               ) : viewMode === 'card' ? (
@@ -811,13 +672,13 @@ ${baseUrl}/webhooks
                           {/* Last Sync */}
                           <div className="flex items-center gap-2 text-xs text-muted-foreground mb-4">
                             <Clock className="h-3 w-3" />
-                            <span>{t.lastSync}: {formatDateTime(integration.last_sync)}</span>
+                            <span>{t('lastSync')}: {formatDateTime(integration.last_sync)}</span>
                           </div>
                           
                           {/* Toggle */}
                           <div className="flex items-center justify-between pb-4 border-b mb-4">
                             <span className="text-sm font-medium">
-                              {integration.is_active ? t.active : t.inactive}
+                              {integration.is_active ? t('active') : t('inactive')}
                             </span>
                             <Switch
                               checked={integration.is_active}
@@ -835,7 +696,7 @@ ${baseUrl}/webhooks
                               onClick={() => openDetails(integration)}
                             >
                               <Settings className="h-4 w-4 me-1" />
-                              {t.setupIntegration}
+                              {t('setupIntegration')}
                             </Button>
                             <Button
                               variant="outline"
@@ -849,7 +710,7 @@ ${baseUrl}/webhooks
                               ) : (
                                 <>
                                   <Zap className="h-4 w-4 me-1" />
-                                  {t.testConnection}
+                                  {t('testConnection')}
                                 </>
                               )}
                             </Button>
@@ -860,7 +721,7 @@ ${baseUrl}/webhooks
                               onClick={() => openLogs(integration)}
                             >
                               <History className="h-4 w-4 me-1" />
-                              {t.viewLogs}
+                              {t('viewLogs')}
                             </Button>
                             <Button
                               variant="outline"
@@ -874,7 +735,7 @@ ${baseUrl}/webhooks
                               ) : (
                                 <>
                                   <RefreshCw className="h-4 w-4 me-1" />
-                                  {t.sync}
+                                  {t('sync')}
                                 </>
                               )}
                             </Button>
@@ -888,7 +749,7 @@ ${baseUrl}/webhooks
                             onClick={() => openDetails(integration)}
                           >
                             <Eye className="h-4 w-4 me-2" />
-                            {t.viewDetails}
+                            {t('viewDetails')}
                             <ChevronRight className="h-4 w-4 ms-auto rtl:rotate-180" />
                           </Button>
                         </CardContent>
@@ -905,7 +766,7 @@ ${baseUrl}/webhooks
                         <TableHead>{t('integration')}</TableHead>
                         <TableHead>{t('type4')}</TableHead>
                         <TableHead>{t('status2')}</TableHead>
-                        <TableHead>{t.lastSync}</TableHead>
+                        <TableHead>{t('lastSync')}</TableHead>
                         <TableHead>{t('actions2')}</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -997,7 +858,7 @@ ${baseUrl}/webhooks
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h2 className="text-2xl font-bold mb-2">{t.nassaqApi}</h2>
+                      <h2 className="text-2xl font-bold mb-2">{t('nassaqApi')}</h2>
                       <p className="text-white/70">
                         {t('manageNassaqPlatformApiKeysAndAccess')}
                       </p>
@@ -1009,14 +870,14 @@ ${baseUrl}/webhooks
                         onClick={() => setShowShareDialog(true)}
                       >
                         <Share2 className="h-4 w-4 me-2" />
-                        {t.shareTemplate}
+                        {t('shareTemplate')}
                       </Button>
                       <Button 
                         className="rounded-xl bg-white text-brand-navy hover:bg-white/90"
                         onClick={() => setShowNewKeyDialog(true)}
                       >
                         <Plus className="h-4 w-4 me-2" />
-                        {t.generateNewKey}
+                        {t('generateNewKey')}
                       </Button>
                     </div>
                   </div>
@@ -1030,7 +891,7 @@ ${baseUrl}/webhooks
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <Key className="h-5 w-5 text-brand-navy" />
-                      {t.apiKeys}
+                      {t('apiKeys')}
                     </CardTitle>
                     <CardDescription>
                       {t('apiAccessKeys')}
@@ -1047,18 +908,18 @@ ${baseUrl}/webhooks
                             <h4 className="font-medium flex items-center gap-2">
                               {key.name}
                               {key.is_active ? (
-                                <Badge className="bg-green-500">{t.active}</Badge>
+                                <Badge className="bg-green-500">{t('active')}</Badge>
                               ) : (
-                                <Badge variant="secondary">{t.inactive}</Badge>
+                                <Badge variant="secondary">{t('inactive')}</Badge>
                               )}
                             </h4>
                             <p className="text-xs text-muted-foreground mt-1">
-                              {t.createdAt}: {formatDateTime(key.created_at)}
+                              {t('createdAt')}: {formatDateTime(key.created_at)}
                             </p>
                           </div>
                           <Badge variant="outline">
-                            {key.permissions === 'full_access' ? t.fullAccess :
-                             key.permissions === 'read_write' ? t.readWrite : t.readOnly}
+                            {key.permissions === 'full_access' ? t('fullAccess') :
+                             key.permissions === 'read_write' ? t('readWrite') : t('readOnly')}
                           </Badge>
                         </div>
                         
@@ -1108,7 +969,7 @@ ${baseUrl}/webhooks
                             onClick={() => handleRevokeKey(key.id)}
                           >
                             <Lock className="h-4 w-4 me-1" />
-                            {t.revokeKey}
+                            {t('revokeKey')}
                           </Button>
                         )}
                       </div>
@@ -1121,7 +982,7 @@ ${baseUrl}/webhooks
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <Terminal className="h-5 w-5 text-brand-navy" />
-                      {t.endpoints}
+                      {t('endpoints')}
                     </CardTitle>
                     <CardDescription>
                       {t('availableApiEndpoints')}
@@ -1130,7 +991,7 @@ ${baseUrl}/webhooks
                   <CardContent>
                     {/* Base URL */}
                     <div className="mb-4 p-3 bg-brand-navy/5 rounded-xl">
-                      <Label className="text-xs text-muted-foreground">{t.baseUrl}</Label>
+                      <Label className="text-xs text-muted-foreground">{t('baseUrl')}</Label>
                       <div className="flex items-center gap-2 mt-1">
                         <code className="flex-1 font-mono text-sm" dir="ltr">{API_URL}/api</code>
                         <Button
@@ -1177,7 +1038,7 @@ ${baseUrl}/webhooks
                     {/* Documentation Link */}
                     <Button variant="outline" className="w-full mt-4 rounded-xl">
                       <FileText className="h-4 w-4 me-2" />
-                      {t.documentation}
+                      {t('documentation')}
                       <ExternalLink className="h-4 w-4 ms-auto" />
                     </Button>
                   </CardContent>
@@ -1243,7 +1104,7 @@ ${baseUrl}/webhooks
                     </div>
                     
                     <div className="space-y-2">
-                      <Label>{t.apiKey}</Label>
+                      <Label>{t('apiKey')}</Label>
                       <div className="flex gap-2">
                         <Input type="password" value="••••••••••••••••••••" readOnly dir="ltr" />
                         <Button variant="outline" size="icon">
@@ -1253,7 +1114,7 @@ ${baseUrl}/webhooks
                     </div>
                     
                     <div className="space-y-2">
-                      <Label>{t.webhookUrl}</Label>
+                      <Label>{t('webhookUrl')}</Label>
                       <div className="flex gap-2">
                         <Input value={`${API_URL}/api/webhooks/${selectedIntegration.id}`} readOnly dir="ltr" />
                         <Button
@@ -1292,7 +1153,7 @@ ${baseUrl}/webhooks
                     ) : (
                       <Zap className="h-4 w-4 me-2" />
                     )}
-                    {t.testConnection}
+                    {t('testConnection')}
                   </Button>
                   <Button 
                     variant="outline" 
@@ -1305,7 +1166,7 @@ ${baseUrl}/webhooks
                     ) : (
                       <RefreshCw className="h-4 w-4 me-2" />
                     )}
-                    {t.sync}
+                    {t('sync')}
                   </Button>
                 </div>
               </div>
@@ -1319,7 +1180,7 @@ ${baseUrl}/webhooks
             <SheetHeader>
               <SheetTitle className="flex items-center gap-2">
                 <History className="h-5 w-5 text-brand-navy" />
-                {t.logs}
+                {t('logs')}
                 {selectedIntegration && (
                   <Badge variant="outline">{isRTL ? selectedIntegration.name : selectedIntegration.name_en}</Badge>
                 )}
@@ -1376,7 +1237,7 @@ ${baseUrl}/webhooks
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Share2 className="h-5 w-5 text-brand-navy" />
-                {t.shareTemplate}
+                {t('shareTemplate')}
               </DialogTitle>
               <DialogDescription>
                 {t('readyTemplateForSharingIntegrationData')}
@@ -1393,7 +1254,7 @@ ${baseUrl}/webhooks
             </div>
             <DialogFooter className="flex-row-reverse gap-2">
               <Button variant="outline" onClick={() => setShowShareDialog(false)}>
-                {t.cancel}
+                {t('cancel')}
               </Button>
               <Button 
                 onClick={() => {
@@ -1403,7 +1264,7 @@ ${baseUrl}/webhooks
                 className="bg-brand-navy"
               >
                 <Copy className="h-4 w-4 me-2" />
-                {t.copyAll}
+                {t('copyAll')}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -1415,7 +1276,7 @@ ${baseUrl}/webhooks
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Key className="h-5 w-5 text-brand-navy" />
-                {t.generateNewKey}
+                {t('generateNewKey')}
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-4 py-4">
@@ -1438,20 +1299,20 @@ ${baseUrl}/webhooks
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="read_only">{t.readOnly}</SelectItem>
-                    <SelectItem value="read_write">{t.readWrite}</SelectItem>
-                    <SelectItem value="full_access">{t.fullAccess}</SelectItem>
+                    <SelectItem value="read_only">{t('readOnly')}</SelectItem>
+                    <SelectItem value="read_write">{t('readWrite')}</SelectItem>
+                    <SelectItem value="full_access">{t('fullAccess')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
             <DialogFooter className="flex-row-reverse gap-2">
               <Button variant="outline" onClick={() => setShowNewKeyDialog(false)}>
-                {t.cancel}
+                {t('cancel')}
               </Button>
               <Button onClick={handleGenerateKey} className="bg-brand-navy" disabled={!newKeyForm.name}>
                 <Plus className="h-4 w-4 me-2" />
-                {t.generateNewKey}
+                {t('generateNewKey')}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -1463,7 +1324,7 @@ ${baseUrl}/webhooks
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Plus className="h-5 w-5 text-brand-navy" />
-                {t.addIntegration}
+                {t('addIntegration')}
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-4 py-4">
@@ -1521,7 +1382,7 @@ ${baseUrl}/webhooks
               
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>{t.apiKey}</Label>
+                  <Label>{t('apiKey')}</Label>
                   <Input
                     type="password"
                     value={formData.api_key}
@@ -1530,7 +1391,7 @@ ${baseUrl}/webhooks
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>{t.secretKey}</Label>
+                  <Label>{t('secretKey')}</Label>
                   <Input
                     type="password"
                     value={formData.secret_key}
@@ -1542,10 +1403,10 @@ ${baseUrl}/webhooks
             </div>
             <DialogFooter className="flex-row-reverse gap-2">
               <Button variant="outline" onClick={() => setShowAddDialog(false)}>
-                {t.cancel}
+                {t('cancel')}
               </Button>
               <Button className="bg-brand-navy">
-                {t.save}
+                {t('save')}
               </Button>
             </DialogFooter>
           </DialogContent>

@@ -70,155 +70,6 @@ import {
 import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart as RechartPie, Pie, Cell } from 'recharts';
 
 // Translations
-const translations = {
-  ar: {
-    pageTitle: 'مراقبة النظام',
-    pageSubtitle: 'المركز الفني لمتابعة الحالة التشغيلية للمنصة',
-    refresh: 'تحديث',
-    autoRefresh: 'تحديث تلقائي',
-    lastUpdate: 'آخر تحديث',
-    systemHealth: 'صحة النظام',
-    healthy: 'سليم',
-    warning: 'تحذير',
-    critical: 'حرج',
-    serverResources: 'موارد الخوادم',
-    cpuUsage: 'استهلاك المعالج',
-    memoryUsage: 'استهلاك الذاكرة',
-    diskUsage: 'استهلاك التخزين',
-    networkUsage: 'استهلاك الشبكة',
-    databasePerformance: 'أداء قواعد البيانات',
-    activeConnections: 'اتصالات نشطة',
-    queryTime: 'زمن الاستعلام',
-    slowQueries: 'استعلامات بطيئة',
-    apiPerformance: 'أداء الـ APIs',
-    avgResponseTime: 'متوسط زمن الاستجابة',
-    requestsPerMin: 'طلبات/دقيقة',
-    successRate: 'نسبة النجاح',
-    failedRequests: 'طلبات فاشلة',
-    systemOperations: 'عمليات النظام',
-    totalOperations: 'إجمالي العمليات',
-    activeUsers: 'مستخدمون نشطون',
-    errorCount: 'عدد الأخطاء',
-    errors: 'الأخطاء',
-    viewErrorLogs: 'عرض سجل الأخطاء',
-    errorType: 'نوع الخطأ',
-    errorMessage: 'رسالة الخطأ',
-    errorTime: 'وقت الحدوث',
-    errorSeverity: 'مستوى الخطورة',
-    backgroundJobs: 'المهام الخلفية',
-    jobsQueue: 'طابور المهام',
-    running: 'قيد التنفيذ',
-    pending: 'في الانتظار',
-    completed: 'مكتمل',
-    failed: 'فشل',
-    integrationsStatus: 'حالة التكاملات',
-    integration: 'التكامل',
-    status: 'الحالة',
-    lastSync: 'آخر مزامنة',
-    connected: 'متصل',
-    disconnected: 'غير متصل',
-    aiStatus: 'حالة الذكاء الاصطناعي',
-    aiOperations: 'عمليات AI',
-    aiModels: 'نماذج AI',
-    aiUsage: 'استخدام AI',
-    tools: 'الأدوات',
-    viewLogs: 'عرض السجلات',
-    monitorAPIs: 'مراقبة APIs',
-    monitorJobs: 'مراقبة المهام',
-    restartService: 'إعادة تشغيل خدمة',
-    reSync: 'إعادة المزامنة',
-    escalateAlert: 'تصعيد تنبيه',
-    downloadReport: 'تنزيل تقرير',
-    runDiagnostics: 'تشغيل التشخيص',
-    aiDiagnosis: 'تشخيص AI',
-    overview: 'نظرة عامة',
-    details: 'التفاصيل',
-    alerts: 'التنبيهات',
-    noAlerts: 'لا توجد تنبيهات',
-    allSystemsOperational: 'جميع الأنظمة تعمل بشكل طبيعي',
-    ms: 'مللي ثانية',
-    seconds: 'ثانية',
-    minutes: 'دقيقة',
-    hours: 'ساعة',
-    today: 'اليوم',
-    thisWeek: 'هذا الأسبوع',
-    thisMonth: 'هذا الشهر',
-  },
-  en: {
-    pageTitle: 'System Monitoring',
-    pageSubtitle: 'Technical center for monitoring platform operational status',
-    refresh: 'Refresh',
-    autoRefresh: 'Auto Refresh',
-    lastUpdate: 'Last Update',
-    systemHealth: 'System Health',
-    healthy: 'Healthy',
-    warning: 'Warning',
-    critical: 'Critical',
-    serverResources: 'Server Resources',
-    cpuUsage: 'CPU Usage',
-    memoryUsage: 'Memory Usage',
-    diskUsage: 'Disk Usage',
-    networkUsage: 'Network Usage',
-    databasePerformance: 'Database Performance',
-    activeConnections: 'Active Connections',
-    queryTime: 'Query Time',
-    slowQueries: 'Slow Queries',
-    apiPerformance: 'API Performance',
-    avgResponseTime: 'Avg Response Time',
-    requestsPerMin: 'Requests/min',
-    successRate: 'Success Rate',
-    failedRequests: 'Failed Requests',
-    systemOperations: 'System Operations',
-    totalOperations: 'Total Operations',
-    activeUsers: 'Active Users',
-    errorCount: 'Error Count',
-    errors: 'Errors',
-    viewErrorLogs: 'View Error Logs',
-    errorType: 'Error Type',
-    errorMessage: 'Error Message',
-    errorTime: 'Time',
-    errorSeverity: 'Severity',
-    backgroundJobs: 'Background Jobs',
-    jobsQueue: 'Jobs Queue',
-    running: 'Running',
-    pending: 'Pending',
-    completed: 'Completed',
-    failed: 'Failed',
-    integrationsStatus: 'Integrations Status',
-    integration: 'Integration',
-    status: 'Status',
-    lastSync: 'Last Sync',
-    connected: 'Connected',
-    disconnected: 'Disconnected',
-    aiStatus: 'AI Status',
-    aiOperations: 'AI Operations',
-    aiModels: 'AI Models',
-    aiUsage: 'AI Usage',
-    tools: 'Tools',
-    viewLogs: 'View Logs',
-    monitorAPIs: 'Monitor APIs',
-    monitorJobs: 'Monitor Jobs',
-    restartService: 'Restart Service',
-    reSync: 'Re-Sync',
-    escalateAlert: 'Escalate Alert',
-    downloadReport: 'Download Report',
-    runDiagnostics: 'Run Diagnostics',
-    aiDiagnosis: 'AI Diagnosis',
-    overview: 'Overview',
-    details: 'Details',
-    alerts: 'Alerts',
-    noAlerts: 'No Alerts',
-    allSystemsOperational: 'All systems are operational',
-    ms: 'ms',
-    seconds: 'seconds',
-    minutes: 'minutes',
-    hours: 'hours',
-    today: 'Today',
-    thisWeek: 'This Week',
-    thisMonth: 'This Month',
-  }
-};
-
 // Empty initial states - data will be fetched from API
 const INITIAL_ERRORS = [];
 const INITIAL_JOBS = [];
@@ -420,10 +271,10 @@ export const SystemMonitoringPage = () => {
   
   // Pie chart data
   const jobsPieData = [
-    { name: t.running, value: metrics.jobsRunning, color: '#3B82F6' },
-    { name: t.pending, value: metrics.jobsPending, color: '#F59E0B' },
-    { name: t.completed, value: metrics.jobsCompleted, color: '#10B981' },
-    { name: t.failed, value: metrics.jobsFailed, color: '#EF4444' },
+    { name: t('running'), value: metrics.jobsRunning, color: '#3B82F6' },
+    { name: t('pending'), value: metrics.jobsPending, color: '#F59E0B' },
+    { name: t('completed'), value: metrics.jobsCompleted, color: '#10B981' },
+    { name: t('failed'), value: metrics.jobsFailed, color: '#EF4444' },
   ];
   
   return (
@@ -434,8 +285,8 @@ export const SystemMonitoringPage = () => {
           <div className="container mx-auto px-4 lg:px-6 py-4">
             <div className="flex items-center justify-between mb-4">
               <PageHeader 
-                title={t.pageTitle} 
-                subtitle={t.pageSubtitle}
+                title={t('pageTitle')} 
+                subtitle={t('pageSubtitle')}
                 icon={Activity}
                 className="mb-0"
               />
@@ -444,7 +295,7 @@ export const SystemMonitoringPage = () => {
                 <div className={`flex items-center gap-2 px-4 py-2 rounded-xl ${healthColor.split(' ')[1]}/10`}>
                   <div className={`w-3 h-3 rounded-full ${healthColor.split(' ')[1]} animate-pulse`}></div>
                   <span className={`font-bold ${healthColor.split(' ')[0]}`}>
-                    {healthStatus === 'healthy' ? t.healthy : healthStatus === 'warning' ? t.warning : t.critical}
+                    {healthStatus === 'healthy' ? t('healthy') : healthStatus === 'warning' ? t('warning') : t('critical')}
                   </span>
                 </div>
                 
@@ -456,12 +307,12 @@ export const SystemMonitoringPage = () => {
                   className="rounded-xl"
                 >
                   {autoRefresh ? <Pause className="h-4 w-4 me-2" /> : <Play className="h-4 w-4 me-2" />}
-                  {t.autoRefresh}
+                  {t('autoRefresh')}
                 </Button>
                 
                 <Button variant="outline" onClick={handleRefresh} className="rounded-xl">
                   <RefreshCw className="h-4 w-4 me-2" />
-                  {t.refresh}
+                  {t('refresh')}
                 </Button>
               </div>
             </div>
@@ -469,7 +320,7 @@ export const SystemMonitoringPage = () => {
             {/* Last Update */}
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Clock className="h-4 w-4" />
-              {t.lastUpdate}: {formatTime(lastUpdate)}
+              {t('lastUpdate')}: {formatTime(lastUpdate)}
             </div>
           </div>
         </header>
@@ -478,17 +329,17 @@ export const SystemMonitoringPage = () => {
         <main className="container mx-auto px-4 lg:px-6 py-6">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
             <TabsList>
-              <TabsTrigger value="overview">{t.overview}</TabsTrigger>
-              <TabsTrigger value="details">{t.details}</TabsTrigger>
+              <TabsTrigger value="overview">{t('overview')}</TabsTrigger>
+              <TabsTrigger value="details">{t('details')}</TabsTrigger>
               <TabsTrigger value="alerts" className="relative">
-                {t.alerts}
+                {t('alerts')}
                 {alerts.filter(a => !a.resolved).length > 0 && (
                   <span className="absolute -top-1 -end-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
                     {alerts.filter(a => !a.resolved).length}
                   </span>
                 )}
               </TabsTrigger>
-              <TabsTrigger value="tools">{t.tools}</TabsTrigger>
+              <TabsTrigger value="tools">{t('tools')}</TabsTrigger>
             </TabsList>
             
             {/* Overview Tab */}
@@ -503,7 +354,7 @@ export const SystemMonitoringPage = () => {
                         <div className="p-2 bg-blue-100 rounded-lg">
                           <Cpu className="h-5 w-5 text-blue-600" />
                         </div>
-                        <span className="font-medium">{t.cpuUsage}</span>
+                        <span className="font-medium">{t('cpuUsage')}</span>
                       </div>
                       <span className={`text-2xl font-bold ${getMetricColor(metrics.cpu)}`}>
                         {metrics.cpu.toFixed(0)}%
@@ -521,7 +372,7 @@ export const SystemMonitoringPage = () => {
                         <div className="p-2 bg-purple-100 rounded-lg">
                           <HardDrive className="h-5 w-5 text-purple-600" />
                         </div>
-                        <span className="font-medium">{t.memoryUsage}</span>
+                        <span className="font-medium">{t('memoryUsage')}</span>
                       </div>
                       <span className={`text-2xl font-bold ${getMetricColor(metrics.memory)}`}>
                         {metrics.memory.toFixed(0)}%
@@ -539,7 +390,7 @@ export const SystemMonitoringPage = () => {
                         <div className="p-2 bg-green-100 rounded-lg">
                           <Database className="h-5 w-5 text-green-600" />
                         </div>
-                        <span className="font-medium">{t.diskUsage}</span>
+                        <span className="font-medium">{t('diskUsage')}</span>
                       </div>
                       <span className={`text-2xl font-bold ${getMetricColor(metrics.disk, { warning: 80, critical: 95 })}`}>
                         {metrics.disk}%
@@ -557,7 +408,7 @@ export const SystemMonitoringPage = () => {
                         <div className="p-2 bg-cyan-100 rounded-lg">
                           <Wifi className="h-5 w-5 text-cyan-600" />
                         </div>
-                        <span className="font-medium">{t.networkUsage}</span>
+                        <span className="font-medium">{t('networkUsage')}</span>
                       </div>
                       <span className={`text-2xl font-bold ${getMetricColor(metrics.network)}`}>
                         {metrics.network}%
@@ -573,7 +424,7 @@ export const SystemMonitoringPage = () => {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <TrendingUp className="h-5 w-5 text-brand-navy" />
-                    {t.serverResources} - {t.today}
+                    {t('serverResources')} - {t('today')}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -590,9 +441,9 @@ export const SystemMonitoringPage = () => {
                             borderRadius: '8px',
                           }}
                         />
-                        <Area type="monotone" dataKey="cpu" stroke="#3B82F6" fill="#3B82F6" fillOpacity={0.2} name={t.cpuUsage} />
-                        <Area type="monotone" dataKey="memory" stroke="#8B5CF6" fill="#8B5CF6" fillOpacity={0.2} name={t.memoryUsage} />
-                        <Area type="monotone" dataKey="network" stroke="#06B6D4" fill="#06B6D4" fillOpacity={0.2} name={t.networkUsage} />
+                        <Area type="monotone" dataKey="cpu" stroke="#3B82F6" fill="#3B82F6" fillOpacity={0.2} name={t('cpuUsage')} />
+                        <Area type="monotone" dataKey="memory" stroke="#8B5CF6" fill="#8B5CF6" fillOpacity={0.2} name={t('memoryUsage')} />
+                        <Area type="monotone" dataKey="network" stroke="#06B6D4" fill="#06B6D4" fillOpacity={0.2} name={t('networkUsage')} />
                       </AreaChart>
                     </ResponsiveContainer>
                   </div>
@@ -608,19 +459,19 @@ export const SystemMonitoringPage = () => {
                       <div className="p-2 bg-blue-500 rounded-lg">
                         <Globe className="h-5 w-5 text-white" />
                       </div>
-                      <span className="font-medium">{t.apiPerformance}</span>
+                      <span className="font-medium">{t('apiPerformance')}</span>
                     </div>
                     <div className="space-y-2">
                       <div className="flex justify-between">
-                        <span className="text-sm text-muted-foreground">{t.avgResponseTime}</span>
-                        <span className="font-bold">{metrics.apiResponseTime} {t.ms}</span>
+                        <span className="text-sm text-muted-foreground">{t('avgResponseTime')}</span>
+                        <span className="font-bold">{metrics.apiResponseTime} {t('ms')}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm text-muted-foreground">{t.requestsPerMin}</span>
+                        <span className="text-sm text-muted-foreground">{t('requestsPerMin')}</span>
                         <span className="font-bold">{metrics.apiRequestsPerMin}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm text-muted-foreground">{t.successRate}</span>
+                        <span className="text-sm text-muted-foreground">{t('successRate')}</span>
                         <span className="font-bold text-green-600">{metrics.apiSuccessRate}%</span>
                       </div>
                     </div>
@@ -634,19 +485,19 @@ export const SystemMonitoringPage = () => {
                       <div className="p-2 bg-green-500 rounded-lg">
                         <Database className="h-5 w-5 text-white" />
                       </div>
-                      <span className="font-medium">{t.databasePerformance}</span>
+                      <span className="font-medium">{t('databasePerformance')}</span>
                     </div>
                     <div className="space-y-2">
                       <div className="flex justify-between">
-                        <span className="text-sm text-muted-foreground">{t.activeConnections}</span>
+                        <span className="text-sm text-muted-foreground">{t('activeConnections')}</span>
                         <span className="font-bold">{metrics.dbConnections}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm text-muted-foreground">{t.queryTime}</span>
-                        <span className="font-bold">{metrics.dbQueryTime} {t.ms}</span>
+                        <span className="text-sm text-muted-foreground">{t('queryTime')}</span>
+                        <span className="font-bold">{metrics.dbQueryTime} {t('ms')}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm text-muted-foreground">{t.slowQueries}</span>
+                        <span className="text-sm text-muted-foreground">{t('slowQueries')}</span>
                         <span className={`font-bold ${metrics.dbSlowQueries > 5 ? 'text-yellow-600' : 'text-green-600'}`}>
                           {metrics.dbSlowQueries}
                         </span>
@@ -662,19 +513,19 @@ export const SystemMonitoringPage = () => {
                       <div className="p-2 bg-purple-500 rounded-lg">
                         <Zap className="h-5 w-5 text-white" />
                       </div>
-                      <span className="font-medium">{t.systemOperations}</span>
+                      <span className="font-medium">{t('systemOperations')}</span>
                     </div>
                     <div className="space-y-2">
                       <div className="flex justify-between">
-                        <span className="text-sm text-muted-foreground">{t.totalOperations}</span>
+                        <span className="text-sm text-muted-foreground">{t('totalOperations')}</span>
                         <span className="font-bold">{metrics.totalOperations.toLocaleString()}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm text-muted-foreground">{t.activeUsers}</span>
+                        <span className="text-sm text-muted-foreground">{t('activeUsers')}</span>
                         <span className="font-bold">{metrics.activeUsers}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm text-muted-foreground">{t.errorCount}</span>
+                        <span className="text-sm text-muted-foreground">{t('errorCount')}</span>
                         <span className={`font-bold ${metrics.errors > 5 ? 'text-red-600' : 'text-green-600'}`}>
                           {metrics.errors}
                         </span>
@@ -690,20 +541,20 @@ export const SystemMonitoringPage = () => {
                       <div className="p-2 bg-pink-500 rounded-lg">
                         <Brain className="h-5 w-5 text-white" />
                       </div>
-                      <span className="font-medium">{t.aiStatus}</span>
+                      <span className="font-medium">{t('aiStatus')}</span>
                     </div>
                     <div className="space-y-2">
                       <div className="flex justify-between">
-                        <span className="text-sm text-muted-foreground">{t.aiOperations}</span>
+                        <span className="text-sm text-muted-foreground">{t('aiOperations')}</span>
                         <span className="font-bold">{metrics.aiOperations}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm text-muted-foreground">{t.aiModels}</span>
-                        <span className="font-bold">{metrics.aiModelsActive} {t.active}</span>
+                        <span className="text-sm text-muted-foreground">{t('aiModels')}</span>
+                        <span className="font-bold">{metrics.aiModelsActive} {t('active')}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-sm text-muted-foreground">{t.status}</span>
-                        <Badge className="bg-green-500">{t.healthy}</Badge>
+                        <Badge className="bg-green-500">{t('healthy')}</Badge>
                       </div>
                     </div>
                   </CardContent>
@@ -717,7 +568,7 @@ export const SystemMonitoringPage = () => {
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <Link2 className="h-5 w-5 text-brand-navy" />
-                      {t.integrationsStatus}
+                      {t('integrationsStatus')}
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -738,7 +589,7 @@ export const SystemMonitoringPage = () => {
                             </span>
                           </div>
                           <Badge className={integration.status === 'connected' ? 'bg-green-500' : 'bg-red-500'}>
-                            {integration.status === 'connected' ? t.connected : t.disconnected}
+                            {integration.status === 'connected' ? t('connected') : t('disconnected')}
                           </Badge>
                         </div>
                       ))}
@@ -752,11 +603,11 @@ export const SystemMonitoringPage = () => {
                     <div className="flex items-center justify-between">
                       <CardTitle className="flex items-center gap-2">
                         <Layers className="h-5 w-5 text-brand-navy" />
-                        {t.backgroundJobs}
+                        {t('backgroundJobs')}
                       </CardTitle>
                       <Button variant="outline" size="sm" onClick={() => setShowJobsSheet(true)}>
                         <Eye className="h-4 w-4 me-2" />
-                        {t.details}
+                        {t('details')}
                       </Button>
                     </div>
                   </CardHeader>
@@ -764,19 +615,19 @@ export const SystemMonitoringPage = () => {
                     <div className="grid grid-cols-4 gap-4 text-center">
                       <div className="p-3 bg-blue-50 rounded-xl">
                         <p className="text-2xl font-bold text-blue-600">{metrics.jobsRunning}</p>
-                        <p className="text-xs text-muted-foreground">{t.running}</p>
+                        <p className="text-xs text-muted-foreground">{t('running')}</p>
                       </div>
                       <div className="p-3 bg-yellow-50 rounded-xl">
                         <p className="text-2xl font-bold text-yellow-600">{metrics.jobsPending}</p>
-                        <p className="text-xs text-muted-foreground">{t.pending}</p>
+                        <p className="text-xs text-muted-foreground">{t('pending')}</p>
                       </div>
                       <div className="p-3 bg-green-50 rounded-xl">
                         <p className="text-2xl font-bold text-green-600">{metrics.jobsCompleted}</p>
-                        <p className="text-xs text-muted-foreground">{t.completed}</p>
+                        <p className="text-xs text-muted-foreground">{t('completed')}</p>
                       </div>
                       <div className="p-3 bg-red-50 rounded-xl">
                         <p className="text-2xl font-bold text-red-600">{metrics.jobsFailed}</p>
-                        <p className="text-xs text-muted-foreground">{t.failed}</p>
+                        <p className="text-xs text-muted-foreground">{t('failed')}</p>
                       </div>
                     </div>
                   </CardContent>
@@ -792,11 +643,11 @@ export const SystemMonitoringPage = () => {
                   <div className="flex items-center justify-between">
                     <CardTitle className="flex items-center gap-2">
                       <AlertTriangle className="h-5 w-5 text-yellow-500" />
-                      {t.errors}
+                      {t('errors')}
                     </CardTitle>
                     <Button variant="outline" size="sm" onClick={() => setShowErrorLogs(true)}>
                       <FileText className="h-4 w-4 me-2" />
-                      {t.viewErrorLogs}
+                      {t('viewErrorLogs')}
                     </Button>
                   </div>
                 </CardHeader>
@@ -839,7 +690,7 @@ export const SystemMonitoringPage = () => {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Layers className="h-5 w-5 text-brand-navy" />
-                    {t.jobsQueue}
+                    {t('jobsQueue')}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -878,8 +729,8 @@ export const SystemMonitoringPage = () => {
               {alerts.filter(a => !a.resolved).length === 0 ? (
                 <Card className="p-12 text-center">
                   <CheckCircle2 className="h-16 w-16 mx-auto text-green-500 mb-4" />
-                  <h3 className="font-bold text-lg mb-2">{t.noAlerts}</h3>
-                  <p className="text-muted-foreground">{t.allSystemsOperational}</p>
+                  <h3 className="font-bold text-lg mb-2">{t('noAlerts')}</h3>
+                  <p className="text-muted-foreground">{t('allSystemsOperational')}</p>
                 </Card>
               ) : (
                 <div className="space-y-4">
@@ -916,7 +767,7 @@ export const SystemMonitoringPage = () => {
                                   onClick={() => toast.success(t('alertEscalatedToTechTeam'))}
                                 >
                                   <Bell className="h-4 w-4 me-2" />
-                                  {t.escalateAlert}
+                                  {t('escalateAlert')}
                                 </Button>
                                 <Button 
                                   size="sm" 
@@ -948,7 +799,7 @@ export const SystemMonitoringPage = () => {
                     <div className="w-14 h-14 mx-auto mb-4 rounded-xl bg-red-100 flex items-center justify-center">
                       <FileText className="h-7 w-7 text-red-600" />
                     </div>
-                    <h3 className="font-bold mb-2">{t.viewLogs}</h3>
+                    <h3 className="font-bold mb-2">{t('viewLogs')}</h3>
                     <p className="text-sm text-muted-foreground">
                       {t('viewDetailedErrorLogs')}
                     </p>
@@ -964,7 +815,7 @@ export const SystemMonitoringPage = () => {
                     <div className="w-14 h-14 mx-auto mb-4 rounded-xl bg-blue-100 flex items-center justify-center">
                       <Globe className="h-7 w-7 text-blue-600" />
                     </div>
-                    <h3 className="font-bold mb-2">{t.monitorAPIs}</h3>
+                    <h3 className="font-bold mb-2">{t('monitorAPIs')}</h3>
                     <p className="text-sm text-muted-foreground">
                       {t('monitorApiEndpoints')}
                     </p>
@@ -980,7 +831,7 @@ export const SystemMonitoringPage = () => {
                     <div className="w-14 h-14 mx-auto mb-4 rounded-xl bg-purple-100 flex items-center justify-center">
                       <Layers className="h-7 w-7 text-purple-600" />
                     </div>
-                    <h3 className="font-bold mb-2">{t.monitorJobs}</h3>
+                    <h3 className="font-bold mb-2">{t('monitorJobs')}</h3>
                     <p className="text-sm text-muted-foreground">
                       {t('monitorBackgroundJobs')}
                     </p>
@@ -1005,7 +856,7 @@ export const SystemMonitoringPage = () => {
                     <div className="w-14 h-14 mx-auto mb-4 rounded-xl bg-orange-100 flex items-center justify-center">
                       <RotateCcw className="h-7 w-7 text-orange-600" />
                     </div>
-                    <h3 className="font-bold mb-2">{t.restartService}</h3>
+                    <h3 className="font-bold mb-2">{t('restartService')}</h3>
                     <p className="text-sm text-muted-foreground">
                       {t('restartASpecificService')}
                     </p>
@@ -1030,7 +881,7 @@ export const SystemMonitoringPage = () => {
                     <div className="w-14 h-14 mx-auto mb-4 rounded-xl bg-cyan-100 flex items-center justify-center">
                       <RefreshCw className="h-7 w-7 text-cyan-600" />
                     </div>
-                    <h3 className="font-bold mb-2">{t.reSync}</h3>
+                    <h3 className="font-bold mb-2">{t('reSync')}</h3>
                     <p className="text-sm text-muted-foreground">
                       {t('resyncIntegrations')}
                     </p>
@@ -1046,7 +897,7 @@ export const SystemMonitoringPage = () => {
                     <div className="w-14 h-14 mx-auto mb-4 rounded-xl bg-yellow-100 flex items-center justify-center">
                       <Bell className="h-7 w-7 text-yellow-600" />
                     </div>
-                    <h3 className="font-bold mb-2">{t.escalateAlert}</h3>
+                    <h3 className="font-bold mb-2">{t('escalateAlert')}</h3>
                     <p className="text-sm text-muted-foreground">
                       {t('escalateAlertToTechTeam')}
                     </p>
@@ -1077,7 +928,7 @@ export const SystemMonitoringPage = () => {
                     <div className="w-14 h-14 mx-auto mb-4 rounded-xl bg-green-100 flex items-center justify-center">
                       <Download className="h-7 w-7 text-green-600" />
                     </div>
-                    <h3 className="font-bold mb-2">{t.downloadReport}</h3>
+                    <h3 className="font-bold mb-2">{t('downloadReport')}</h3>
                     <p className="text-sm text-muted-foreground">
                       {t('downloadDiagnosticReport')}
                     </p>
@@ -1093,7 +944,7 @@ export const SystemMonitoringPage = () => {
                     <div className="w-14 h-14 mx-auto mb-4 rounded-xl bg-gradient-to-br from-pink-500 to-purple-500 flex items-center justify-center">
                       <Brain className="h-7 w-7 text-white" />
                     </div>
-                    <h3 className="font-bold mb-2">{t.aiDiagnosis}</h3>
+                    <h3 className="font-bold mb-2">{t('aiDiagnosis')}</h3>
                     <p className="text-sm text-muted-foreground">
                       {t('runAiSystemDiagnosis')}
                     </p>
@@ -1110,7 +961,7 @@ export const SystemMonitoringPage = () => {
             <SheetHeader>
               <SheetTitle className="flex items-center gap-2">
                 <FileText className="h-5 w-5 text-brand-navy" />
-                {t.viewErrorLogs}
+                {t('viewErrorLogs')}
               </SheetTitle>
             </SheetHeader>
             <ScrollArea className="h-[calc(100vh-120px)] mt-6">
@@ -1155,7 +1006,7 @@ export const SystemMonitoringPage = () => {
             <SheetHeader>
               <SheetTitle className="flex items-center gap-2">
                 <Layers className="h-5 w-5 text-brand-navy" />
-                {t.backgroundJobs}
+                {t('backgroundJobs')}
               </SheetTitle>
             </SheetHeader>
             <div className="mt-6 space-y-4">
@@ -1207,7 +1058,7 @@ export const SystemMonitoringPage = () => {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Brain className="h-5 w-5 text-brand-navy" />
-                {t.aiDiagnosis}
+                {t('aiDiagnosis')}
               </DialogTitle>
               <DialogDescription>
                 {t('theSystemWillPerformComprehensiveTechnicalAnalysis')}
@@ -1248,11 +1099,11 @@ export const SystemMonitoringPage = () => {
                 </div>
                 <DialogFooter className="flex-row-reverse gap-2">
                   <Button variant="outline" onClick={() => setShowDiagnosticDialog(false)}>
-                    {t.cancel}
+                    {t('cancel')}
                   </Button>
                   <Button onClick={runDiagnosis} className="bg-brand-navy">
                     <Brain className="h-4 w-4 me-2" />
-                    {t.runDiagnostics}
+                    {t('runDiagnostics')}
                   </Button>
                 </DialogFooter>
               </>

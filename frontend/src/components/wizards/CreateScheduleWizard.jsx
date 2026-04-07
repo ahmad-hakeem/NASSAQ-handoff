@@ -306,8 +306,8 @@ export const CreateScheduleWizard = ({ open, onClose, onOpenChange }) => {
                                 <SelectValue placeholder={t('teacher2')} />
                               </SelectTrigger>
                               <SelectContent>
-                                {options.teachers.map((t) => (
-                                  <SelectItem key={t.teacher_id} value={t.teacher_id}>{t.full_name_ar}</SelectItem>
+                                {options.teachers.map((teacher) => (
+                                  <SelectItem key={teacher.teacher_id} value={teacher.teacher_id}>{teacher.full_name_ar}</SelectItem>
                                 ))}
                               </SelectContent>
                             </Select>
