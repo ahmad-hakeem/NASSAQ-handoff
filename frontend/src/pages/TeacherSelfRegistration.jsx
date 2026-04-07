@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -48,6 +48,7 @@ const BG_PATTERN = 'https://customer-assets.emergentagent.com/job_f5ea20bb-5cf5-
 
 
 export const TeacherSelfRegistration = () => {
+  const { t } = useTranslation();
   const { isRTL, toggleLanguage } = useTheme();
   const { api } = useAuth();
   const navigate = useNavigate();
@@ -152,11 +153,11 @@ export const TeacherSelfRegistration = () => {
             email: response.data.invitee_email || '',
             referred_by: inviteCode,
           }));
-          toast.success(isRTL ? 'تم التعرف على الدعوة بنجاح' : 'Invite recognized successfully');
+          toast.success(t('inviteRecognizedSuccessfully'));
         }
       } catch (error) {
         console.error('Invalid invite:', error);
-        nassaqError(isRTL ? 'رمز الدعوة غير صالح' : 'Invalid invite code');
+        nassaqError(t('invalidInviteCode'));
       }
     };
     
@@ -176,32 +177,32 @@ export const TeacherSelfRegistration = () => {
     const newErrors = {};
     
     if (!formData.full_name.trim()) {
-      newErrors.full_name = isRTL ? 'الاسم الكامل مطلوب' : 'Full name is required';
+      newErrors.full_name = t('fullNameIsRequired');
     }
     if (!formData.national_id.trim()) {
-      newErrors.national_id = isRTL ? 'رقم الهوية مطلوب' : 'National ID is required';
+      newErrors.national_id = t('nationalIdIsRequired');
     } else if (!/^[0-9]{10}$/.test(formData.national_id)) {
-      newErrors.national_id = isRTL ? 'رقم الهوية يجب أن يكون 10 أرقام' : 'National ID must be 10 digits';
+      newErrors.national_id = t('nationalIdMustBe10Digits');
     }
     if (!formData.phone.trim()) {
-      newErrors.phone = isRTL ? 'رقم الهاتف مطلوب' : 'Phone number is required';
+      newErrors.phone = t('phoneNumberIsRequired');
     } else if (!/^[0-9+\-\s]{9,15}$/.test(formData.phone)) {
-      newErrors.phone = isRTL ? 'رقم الهاتف غير صالح' : 'Invalid phone number';
+      newErrors.phone = t('invalidPhoneNumber');
     }
     if (!formData.email.trim()) {
-      newErrors.email = isRTL ? 'البريد الإلكتروني مطلوب' : 'Email is required';
+      newErrors.email = t('emailIsRequired');
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      newErrors.email = isRTL ? 'البريد الإلكتروني غير صالح' : 'Invalid email format';
+      newErrors.email = t('invalidEmailFormat2');
     }
     if (!formData.password) {
-      newErrors.password = isRTL ? 'كلمة المرور مطلوبة' : 'Password is required';
+      newErrors.password = t('passwordIsRequired');
     } else if (formData.password.length < 6) {
-      newErrors.password = isRTL ? 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' : 'Password must be at least 6 characters';
+      newErrors.password = t('passwordMustBeAtLeast6Characters');
     }
     if (!formData.confirm_password) {
-      newErrors.confirm_password = isRTL ? 'تأكيد كلمة المرور مطلوب' : 'Please confirm your password';
+      newErrors.confirm_password = t('pleaseConfirmYourPassword');
     } else if (formData.password !== formData.confirm_password) {
-      newErrors.confirm_password = isRTL ? 'كلمات المرور غير متطابقة' : 'Passwords do not match';
+      newErrors.confirm_password = t('passwordsDoNotMatch3');
     }
     
     setErrors(newErrors);
@@ -212,16 +213,16 @@ export const TeacherSelfRegistration = () => {
     const newErrors = {};
     
     if (!formData.subject) {
-      newErrors.subject = isRTL ? 'المادة الدراسية مطلوبة' : 'Subject is required';
+      newErrors.subject = t('subjectIsRequired');
     }
     if (!formData.education_level) {
-      newErrors.education_level = isRTL ? 'المرحلة التعليمية مطلوبة' : 'Education level is required';
+      newErrors.education_level = t('educationLevelIsRequired');
     }
     if (!formData.years_of_experience) {
-      newErrors.years_of_experience = isRTL ? 'سنوات الخبرة مطلوبة' : 'Years of experience required';
+      newErrors.years_of_experience = t('yearsOfExperienceRequired');
     }
     if (!formData.academic_degree) {
-      newErrors.academic_degree = isRTL ? 'المؤهل العلمي مطلوب' : 'Academic degree is required';
+      newErrors.academic_degree = t('academicDegreeIsRequired');
     }
     
     setErrors(newErrors);
@@ -232,7 +233,7 @@ export const TeacherSelfRegistration = () => {
     const newErrors = {};
     
     if (!formData.teacher_rank) {
-      newErrors.teacher_rank = isRTL ? 'رتبة المعلم مطلوبة' : 'Teacher rank is required';
+      newErrors.teacher_rank = t('teacherRankIsRequired');
     }
     
     setErrors(newErrors);
@@ -243,13 +244,13 @@ export const TeacherSelfRegistration = () => {
     const newErrors = {};
     
     if (!formData.school_name.trim()) {
-      newErrors.school_name = isRTL ? 'اسم المدرسة مطلوب' : 'School name is required';
+      newErrors.school_name = t('schoolNameIsRequired');
     }
     if (!formData.school_city.trim()) {
-      newErrors.school_city = isRTL ? 'مدينة المدرسة مطلوبة' : 'School city is required';
+      newErrors.school_city = t('schoolCityIsRequired');
     }
     if (!formData.school_type) {
-      newErrors.school_type = isRTL ? 'نوع المدرسة مطلوب' : 'School type is required';
+      newErrors.school_type = t('schoolTypeIsRequired');
     }
     
     setErrors(newErrors);
@@ -319,7 +320,7 @@ export const TeacherSelfRegistration = () => {
       localStorage.setItem('nassaq_token', access_token);
       localStorage.setItem('nassaq_refresh_token', refresh_token);
       
-      toast.success(isRTL ? 'تم تسجيل حسابك بنجاح! جاري الدخول...' : 'Account created successfully! Logging in...');
+      toast.success(t('accountCreatedSuccessfullyLoggingIn'));
       
       setTimeout(() => {
         window.location.href = '/dashboard';
@@ -327,7 +328,7 @@ export const TeacherSelfRegistration = () => {
     } catch (error) {
       console.error('Submission error:', error);
       const errData = error.response?.data;
-      const message = errData?.error?.message || errData?.detail || (isRTL ? 'حدث خطأ أثناء الإرسال' : 'Error submitting request');
+      const message = errData?.error?.message || errData?.detail || (t('errorSubmittingRequest'));
       nassaqError(message);
     } finally {
       setSubmitting(false);
@@ -337,7 +338,7 @@ export const TeacherSelfRegistration = () => {
   // Track request
   const handleTrackRequest = async () => {
     if (!trackingCode.trim()) {
-      nassaqError(isRTL ? 'الرجاء إدخال كود التتبع' : 'Please enter tracking code');
+      nassaqError(t('pleaseEnterTrackingCode'));
       return;
     }
     
@@ -348,7 +349,7 @@ export const TeacherSelfRegistration = () => {
       setTrackingResult(response.data);
     } catch (error) {
       console.error('Tracking error:', error);
-      nassaqError(isRTL ? 'لم يتم العثور على الطلب' : 'Request not found');
+      nassaqError(t('requestNotFound'));
       setTrackingResult(null);
     } finally {
       setIsTracking(false);
@@ -359,13 +360,13 @@ export const TeacherSelfRegistration = () => {
   const copyTrackingCode = () => {
     if (submissionResult?.tracking_code) {
       navigator.clipboard.writeText(submissionResult.tracking_code);
-      toast.success(isRTL ? 'تم نسخ كود التتبع' : 'Tracking code copied');
+      toast.success(t('trackingCodeCopied'));
     }
   };
 
   // Format remaining time
   const formatRemainingTime = (seconds) => {
-    if (!seconds || seconds <= 0) return isRTL ? 'منتهي' : 'Expired';
+    if (!seconds || seconds <= 0) return t('expired');
     
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
@@ -391,12 +392,12 @@ export const TeacherSelfRegistration = () => {
       },
       rejected: { 
         color: 'bg-red-100 text-red-700 border-red-200', 
-        label: isRTL ? 'مرفوض' : 'Rejected',
+        label: t('rejected'),
         icon: AlertCircle
       },
       more_info: { 
         color: 'bg-blue-100 text-blue-700 border-blue-200', 
-        label: isRTL ? 'يحتاج معلومات إضافية' : 'More Info Required',
+        label: t('moreInfoRequired'),
         icon: AlertCircle
       },
     };
@@ -413,12 +414,12 @@ export const TeacherSelfRegistration = () => {
     },
     { 
       number: 2, 
-      title: isRTL ? 'المعلومات المهنية' : 'Professional Info',
+      title: t('professionalInfo2'),
       icon: GraduationCap,
     },
     { 
       number: 3, 
-      title: isRTL ? 'رتبة المعلم' : 'Teacher Rank',
+      title: t('teacherRank2'),
       icon: Award,
     },
     { 
@@ -428,7 +429,7 @@ export const TeacherSelfRegistration = () => {
     },
     { 
       number: 5, 
-      title: isRTL ? 'تأكيد الطلب' : 'Confirmation',
+      title: t('confirmation'),
       icon: CheckCircle2,
     },
   ];
@@ -470,24 +471,24 @@ export const TeacherSelfRegistration = () => {
           
           {/* Tagline */}
           <h2 className="font-cairo text-3xl font-bold text-white mb-4">
-            {isRTL ? 'نَسَّق' : 'NASSAQ'}
+            {t('nassaq')}
           </h2>
           <p className="text-xl text-brand-turquoise font-cairo font-semibold mb-8">
-            {isRTL ? 'منصة إدارة التعليم الذكية' : 'Smart Education Management'}
+            {t('smartEducationManagement')}
           </p>
           
           <div className="space-y-4 text-white/80 font-tajawal text-sm">
             <div className="flex items-center gap-3">
               <Sparkles className="h-5 w-5 text-brand-turquoise" />
-              <span>{isRTL ? 'أدوات تعليمية متقدمة' : 'Advanced educational tools'}</span>
+              <span>{t('advancedEducationalTools')}</span>
             </div>
             <div className="flex items-center gap-3">
               <Award className="h-5 w-5 text-brand-turquoise" />
-              <span>{isRTL ? 'تطوير مهني مستمر' : 'Continuous professional development'}</span>
+              <span>{t('continuousProfessionalDevelopment')}</span>
             </div>
             <div className="flex items-center gap-3">
               <BookOpen className="h-5 w-5 text-brand-turquoise" />
-              <span>{isRTL ? 'موارد تعليمية غنية' : 'Rich educational resources'}</span>
+              <span>{t('richEducationalResources')}</span>
             </div>
           </div>
           
@@ -495,7 +496,7 @@ export const TeacherSelfRegistration = () => {
           {inviteInfo && (
             <div className="mt-8 p-4 bg-white/10 rounded-2xl backdrop-blur-sm">
               <p className="text-white/90 text-sm font-tajawal">
-                {isRTL ? 'دعوة من: ' : 'Invited by: '}
+                {t('invitedBy')}
                 <span className="font-bold text-brand-turquoise">{inviteInfo.inviter_name}</span>
               </p>
             </div>
@@ -516,7 +517,7 @@ export const TeacherSelfRegistration = () => {
             <Link to="/" className="flex items-center gap-2">
               <Home className="h-5 w-5" />
               <span className="font-tajawal">
-                {isRTL ? 'العودة للموقع' : 'Back to Website'}
+                {t('backToWebsite')}
               </span>
             </Link>
           </Button>
@@ -528,7 +529,7 @@ export const TeacherSelfRegistration = () => {
             data-testid="language-toggle-btn"
           >
             <Globe className="h-5 w-5 me-2" />
-            <span className="font-tajawal">{isRTL ? 'EN' : 'عربي'}</span>
+            <span className="font-tajawal">{t('key_awupdb')}</span>
           </Button>
         </div>
 
@@ -546,7 +547,7 @@ export const TeacherSelfRegistration = () => {
                 <div className="relative flex-1">
                   <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder={isRTL ? 'أدخل كود التتبع للاستعلام عن طلبك' : 'Enter tracking code to check your request'}
+                    placeholder={t('enterTrackingCodeToCheckYourRequest')}
                     value={trackingCode}
                     onChange={(e) => setTrackingCode(e.target.value)}
                     className="ps-10 h-10 rounded-xl text-sm"
@@ -566,7 +567,7 @@ export const TeacherSelfRegistration = () => {
                   ) : (
                     <>
                       <Timer className="h-4 w-4 me-2" />
-                      {isRTL ? 'تتبع' : 'Track'}
+                      {t('track')}
                     </>
                   )}
                 </Button>
@@ -577,7 +578,7 @@ export const TeacherSelfRegistration = () => {
                 <div className="mt-4 p-4 bg-card border rounded-xl">
                   <div className="flex items-center justify-between mb-3">
                     <span className="font-tajawal text-sm text-muted-foreground">
-                      {isRTL ? 'حالة الطلب' : 'Request Status'}
+                      {t('requestStatus')}
                     </span>
                     <div className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusInfo(trackingResult.status).color}`}>
                       {getStatusInfo(trackingResult.status).label}
@@ -586,7 +587,7 @@ export const TeacherSelfRegistration = () => {
                   <div className="flex items-center gap-2 text-sm">
                     <Timer className="h-4 w-4 text-brand-turquoise" />
                     <span className="font-tajawal">
-                      {isRTL ? 'الوقت المتبقي للمراجعة: ' : 'Review time remaining: '}
+                      {t('reviewTimeRemaining')}
                       <span className="font-bold">{formatRemainingTime(trackingResult.remaining_seconds)}</span>
                     </span>
                   </div>
@@ -638,11 +639,11 @@ export const TeacherSelfRegistration = () => {
           <Card className="w-full max-w-2xl card-nassaq" data-testid="registration-card">
             <CardHeader className="text-center pb-2">
               <h1 className="font-cairo text-2xl font-bold text-foreground">
-                {isRTL ? 'تسجيل معلم جديد' : 'New Teacher Registration'}
+                {t('newTeacherRegistration')}
               </h1>
               {currentStep < 5 && (
                 <p className="text-muted-foreground font-tajawal text-sm">
-                  {isRTL ? 'الخطوة' : 'Step'} {currentStep} {isRTL ? 'من' : 'of'} 4 - {steps[currentStep - 1].title}
+                  {t('step')} {currentStep} {isRTL ? 'من' : 'of'} 4 - {steps[currentStep - 1].title}
                 </p>
               )}
             </CardHeader>
@@ -654,13 +655,13 @@ export const TeacherSelfRegistration = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="full_name" className="font-tajawal">
-                        {isRTL ? 'الاسم الكامل' : 'Full Name'} *
+                        {t('fullName')} *
                       </Label>
                       <div className="relative">
                         <User className="absolute start-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                         <Input
                           id="full_name"
-                          placeholder={isRTL ? 'أدخل اسمك الكامل' : 'Enter your full name'}
+                          placeholder={t('enterYourFullName')}
                           value={formData.full_name}
                           onChange={(e) => updateFormData('full_name', e.target.value)}
                           className={`ps-10 h-12 rounded-xl font-tajawal ${errors.full_name ? 'border-destructive' : ''}`}
@@ -674,7 +675,7 @@ export const TeacherSelfRegistration = () => {
 
                     <div className="space-y-2">
                       <Label htmlFor="national_id" className="font-tajawal">
-                        {isRTL ? 'رقم الهوية' : 'National ID'} *
+                        {t('nationalId')} *
                       </Label>
                       <div className="relative">
                         <IdCard className="absolute start-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
@@ -720,7 +721,7 @@ export const TeacherSelfRegistration = () => {
 
                     <div className="space-y-2">
                       <Label htmlFor="email" className="font-tajawal">
-                        {isRTL ? 'البريد الإلكتروني' : 'Email'} *
+                        {t('email2')} *
                       </Label>
                       <div className="relative">
                         <Mail className="absolute start-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
@@ -744,7 +745,7 @@ export const TeacherSelfRegistration = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="password" className="font-tajawal">
-                        {isRTL ? 'كلمة المرور' : 'Password'} *
+                        {t('password')} *
                       </Label>
                       <div className="relative">
                         <Lock className="absolute start-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
@@ -774,14 +775,14 @@ export const TeacherSelfRegistration = () => {
 
                     <div className="space-y-2">
                       <Label htmlFor="confirm_password" className="font-tajawal">
-                        {isRTL ? 'تأكيد كلمة المرور' : 'Confirm Password'} *
+                        {t('confirmPassword')} *
                       </Label>
                       <div className="relative">
                         <Lock className="absolute start-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                         <Input
                           id="confirm_password"
                           type={showConfirmPassword ? 'text' : 'password'}
-                          placeholder={isRTL ? 'أعد إدخال كلمة المرور' : 'Re-enter password'}
+                          placeholder={t('reenterPassword2')}
                           value={formData.confirm_password}
                           onChange={(e) => updateFormData('confirm_password', e.target.value)}
                           className={`ps-10 pe-10 h-12 rounded-xl font-tajawal ${errors.confirm_password ? 'border-destructive' : ''}`}
@@ -811,7 +812,7 @@ export const TeacherSelfRegistration = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label className="font-tajawal">
-                        {isRTL ? 'المادة الدراسية' : 'Subject'} *
+                        {t('subject4')} *
                       </Label>
                       <Select
                         value={formData.subject}
@@ -821,7 +822,7 @@ export const TeacherSelfRegistration = () => {
                           className={`h-12 rounded-xl ${errors.subject ? 'border-destructive' : ''}`}
                           data-testid="subject-select"
                         >
-                          <SelectValue placeholder={isRTL ? 'اختر المادة' : 'Select subject'} />
+                          <SelectValue placeholder={t('selectSubject')} />
                         </SelectTrigger>
                         <SelectContent>
                           {subjects.map((subject) => (
@@ -838,7 +839,7 @@ export const TeacherSelfRegistration = () => {
 
                     <div className="space-y-2">
                       <Label className="font-tajawal">
-                        {isRTL ? 'المرحلة التعليمية' : 'Education Level'} *
+                        {t('educationLevel')} *
                       </Label>
                       <Select
                         value={formData.education_level}
@@ -848,7 +849,7 @@ export const TeacherSelfRegistration = () => {
                           className={`h-12 rounded-xl ${errors.education_level ? 'border-destructive' : ''}`}
                           data-testid="education-level-select"
                         >
-                          <SelectValue placeholder={isRTL ? 'اختر المرحلة' : 'Select level'} />
+                          <SelectValue placeholder={t('selectLevel')} />
                         </SelectTrigger>
                         <SelectContent>
                           {educationLevels.map((level) => (
@@ -876,7 +877,7 @@ export const TeacherSelfRegistration = () => {
                           type="number"
                           min="0"
                           max="50"
-                          placeholder={isRTL ? 'مثال: 5' : 'e.g., 5'}
+                          placeholder={t('eg5')}
                           value={formData.years_of_experience}
                           onChange={(e) => updateFormData('years_of_experience', e.target.value)}
                           className={`ps-10 h-12 rounded-xl font-tajawal ${errors.years_of_experience ? 'border-destructive' : ''}`}
@@ -890,7 +891,7 @@ export const TeacherSelfRegistration = () => {
 
                     <div className="space-y-2">
                       <Label className="font-tajawal">
-                        {isRTL ? 'المؤهل العلمي' : 'Academic Degree'} *
+                        {t('academicDegree')} *
                       </Label>
                       <Select
                         value={formData.academic_degree}
@@ -900,7 +901,7 @@ export const TeacherSelfRegistration = () => {
                           className={`h-12 rounded-xl ${errors.academic_degree ? 'border-destructive' : ''}`}
                           data-testid="academic-degree-select"
                         >
-                          <SelectValue placeholder={isRTL ? 'اختر المؤهل' : 'Select degree'} />
+                          <SelectValue placeholder={t('selectDegree2')} />
                         </SelectTrigger>
                         <SelectContent>
                           {academicDegrees.map((degree) => (
@@ -922,9 +923,7 @@ export const TeacherSelfRegistration = () => {
               {currentStep === 3 && (
                 <div className="space-y-5" data-testid="step-3-content">
                   <p className="text-muted-foreground font-tajawal text-center mb-6">
-                    {isRTL 
-                      ? 'اختر رتبتك المهنية وفق نظام الرتب المعتمد'
-                      : 'Select your professional rank according to the approved system'}
+                    {t('selectYourProfessionalRankAccordingToTheApprovedSy')}
                   </p>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -969,23 +968,21 @@ export const TeacherSelfRegistration = () => {
                   <div className="bg-brand-turquoise/10 border border-brand-turquoise/20 rounded-xl p-4 mb-4">
                     <p className="text-sm text-foreground font-tajawal">
                       <span className="font-bold">
-                        {isRTL ? 'ملاحظة: ' : 'Note: '}
+                        {t('note2')}
                       </span>
-                      {isRTL 
-                        ? 'أدخل بيانات المدرسة التي تعمل بها حالياً حتى لو لم تكن مسجلة في المنصة. سيتواصل معها فريقنا لاحقاً.'
-                        : 'Enter your current school information even if not registered on the platform. Our team will contact them later.'}
+                      {t('enterYourCurrentSchoolInformationEvenIfNotRegister')}
                     </p>
                   </div>
 
                   <div className="space-y-2">
                     <Label htmlFor="school_name" className="font-tajawal">
-                      {isRTL ? 'اسم المدرسة' : 'School Name'} *
+                      {t('schoolName')} *
                     </Label>
                     <div className="relative">
                       <Building2 className="absolute start-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                       <Input
                         id="school_name"
-                        placeholder={isRTL ? 'مدرسة ...' : 'School name...'}
+                        placeholder={t('schoolName3')}
                         value={formData.school_name}
                         onChange={(e) => updateFormData('school_name', e.target.value)}
                         className={`ps-10 h-12 rounded-xl font-tajawal ${errors.school_name ? 'border-destructive' : ''}`}
@@ -1000,7 +997,7 @@ export const TeacherSelfRegistration = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label className="font-tajawal">
-                        {isRTL ? 'الدولة' : 'Country'} *
+                        {t('country')} *
                       </Label>
                       <Select
                         value={formData.school_country}
@@ -1021,13 +1018,13 @@ export const TeacherSelfRegistration = () => {
 
                     <div className="space-y-2">
                       <Label htmlFor="school_city" className="font-tajawal">
-                        {isRTL ? 'المدينة' : 'City'} *
+                        {t('city')} *
                       </Label>
                       <div className="relative">
                         <MapPin className="absolute start-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                         <Input
                           id="school_city"
-                          placeholder={isRTL ? 'الرياض' : 'Riyadh'}
+                          placeholder={t('riyadh')}
                           value={formData.school_city}
                           onChange={(e) => updateFormData('school_city', e.target.value)}
                           className={`ps-10 h-12 rounded-xl font-tajawal ${errors.school_city ? 'border-destructive' : ''}`}
@@ -1042,7 +1039,7 @@ export const TeacherSelfRegistration = () => {
 
                   <div className="space-y-2">
                     <Label className="font-tajawal">
-                      {isRTL ? 'نوع المدرسة' : 'School Type'} *
+                      {t('schoolType')} *
                     </Label>
                     <Select
                       value={formData.school_type}
@@ -1052,7 +1049,7 @@ export const TeacherSelfRegistration = () => {
                         className={`h-12 rounded-xl ${errors.school_type ? 'border-destructive' : ''}`}
                         data-testid="school-type-select"
                       >
-                        <SelectValue placeholder={isRTL ? 'اختر نوع المدرسة' : 'Select school type'} />
+                        <SelectValue placeholder={t('selectSchoolType')} />
                       </SelectTrigger>
                       <SelectContent>
                         {schoolTypes.map((type) => (
@@ -1100,7 +1097,7 @@ export const TeacherSelfRegistration = () => {
                       className="bg-brand-navy hover:bg-brand-navy-light rounded-xl font-tajawal"
                       data-testid="next-step-btn"
                     >
-                      {isRTL ? 'التالي' : 'Next'}
+                      {t('next')}
                       {isRTL ? (
                         <ArrowLeft className="h-4 w-4 ms-2" />
                       ) : (
@@ -1117,11 +1114,11 @@ export const TeacherSelfRegistration = () => {
                       {submitting ? (
                         <span className="flex items-center gap-2">
                           <Loader2 className="h-5 w-5 animate-spin" />
-                          {isRTL ? 'جاري إنشاء الحساب...' : 'Creating Account...'}
+                          {t('creatingAccount')}
                         </span>
                       ) : (
                         <span className="flex items-center gap-2">
-                          {isRTL ? 'إنشاء الحساب' : 'Create Account'}
+                          {t('createAccount')}
                           <CheckCircle2 className="h-5 w-5" />
                         </span>
                       )}
@@ -1134,7 +1131,7 @@ export const TeacherSelfRegistration = () => {
               {currentStep < 5 && (
                 <div className="mt-6 text-center">
                   <p className="text-sm text-muted-foreground font-tajawal">
-                    {isRTL ? 'لديك حساب بالفعل؟' : 'Already have an account?'}{' '}
+                    {t('alreadyHaveAnAccount')}{' '}
                     <Link 
                       to="/login" 
                       className="text-brand-turquoise hover:underline font-medium"

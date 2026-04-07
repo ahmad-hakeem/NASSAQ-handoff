@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Progress } from '../../components/ui/progress';
@@ -30,6 +30,7 @@ const ProgressCard = ({ icon: Icon, title, value, maxValue, color, detail }) => 
 );
 
 const StudentProgressPage = () => {
+  const { t } = useTranslation();
   const { token, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
@@ -66,7 +67,7 @@ const StudentProgressPage = () => {
           <Card className="rounded-2xl border-0 shadow-sm">
             <CardContent className="py-16 text-center">
               <AlertCircle className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-              <p className="text-muted-foreground">{isRTL ? 'تعذر تحميل البيانات' : 'Could not load data'}</p>
+              <p className="text-muted-foreground">{t('couldNotLoadData')}</p>
             </CardContent>
           </Card>
         </div>
@@ -82,13 +83,13 @@ const StudentProgressPage = () => {
         <div className="flex items-center gap-2 mb-2">
           <BarChart3 className="h-6 w-6 text-emerald-600" />
           <h1 className="text-xl font-bold font-cairo">
-            {isRTL ? 'تقدمي الدراسي' : 'My Progress'}
+            {t('myProgress')}
           </h1>
         </div>
 
         <ProgressCard
           icon={CheckCircle}
-          title={isRTL ? 'نسبة الحضور' : 'Attendance Rate'}
+          title={t('attendanceRate')}
           value={attendance?.rate || 0}
           color="green"
           detail={isRTL
@@ -98,7 +99,7 @@ const StudentProgressPage = () => {
 
         <ProgressCard
           icon={TrendingUp}
-          title={isRTL ? 'المعدل الأكاديمي' : 'Academic Average'}
+          title={t('academicAverage')}
           value={academics?.average || 0}
           color="blue"
           detail={isRTL
@@ -108,7 +109,7 @@ const StudentProgressPage = () => {
 
         <ProgressCard
           icon={Users}
-          title={isRTL ? 'مستوى المشاركة' : 'Participation Level'}
+          title={t('participationLevel')}
           value={participation?.rate || 0}
           color="amber"
           detail={isRTL
@@ -118,7 +119,7 @@ const StudentProgressPage = () => {
 
         <ProgressCard
           icon={Heart}
-          title={isRTL ? 'جودة السلوك' : 'Behavior Quality'}
+          title={t('behaviorQuality')}
           value={behaviour?.quality || 0}
           color="red"
           detail={isRTL
@@ -157,7 +158,7 @@ const StudentProgressPage = () => {
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-base">
                 <TrendingUp className="h-5 w-5 text-emerald-600" />
-                {isRTL ? 'تطور الأداء الشهري' : 'Monthly Performance Trend'}
+                {t('monthlyPerformanceTrend')}
               </CardTitle>
             </CardHeader>
             <CardContent>

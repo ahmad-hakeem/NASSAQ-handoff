@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
@@ -37,6 +37,7 @@ import {
 
 
 const ChildDetailsPage = () => {
+  const { t } = useTranslation();
   const { nassaqError, nassaqWarning } = useNassaqAlert();
   const { childId } = useParams();
   const { token, api } = useAuth();
@@ -66,7 +67,7 @@ const ChildDetailsPage = () => {
       setSchedule(scheduleRes.data);
     } catch (error) {
       console.error('Error fetching child data:', error);
-      nassaqError(isRTL ? 'حدث خطأ في جلب البيانات' : 'Error fetching data');
+      nassaqError(t('errorFetchingData'));
     } finally {
       setLoading(false);
     }
@@ -111,12 +112,12 @@ const ChildDetailsPage = () => {
             <CardContent className="py-12 text-center">
               <User className="h-16 w-16 mx-auto mb-4 text-gray-300" />
               <h3 className="font-bold text-lg text-gray-700 mb-2">
-                {isRTL ? 'لم يتم العثور على الطالب' : 'Student not found'}
+                {t('studentNotFound')}
               </h3>
               <Link to="/parent">
                 <Button variant="outline">
                   <ChevronLeft className="h-4 w-4 me-2" />
-                  {isRTL ? 'العودة' : 'Go Back'}
+                  {t('goBack')}
                 </Button>
               </Link>
             </CardContent>
@@ -185,7 +186,7 @@ const ChildDetailsPage = () => {
                   {grades?.overall_average || 0}%
                 </span>
               </div>
-              <p className="text-xs text-muted-foreground">{isRTL ? 'المعدل العام' : 'Average'}</p>
+              <p className="text-xs text-muted-foreground">{t('average2')}</p>
               <Progress value={grades?.overall_average || 0} className="h-1.5 mt-2" />
             </CardContent>
           </Card>
@@ -195,13 +196,13 @@ const ChildDetailsPage = () => {
         <Tabs defaultValue="grades" className="w-full">
           <TabsList className="grid w-full grid-cols-3 bg-gray-100 rounded-xl p-1">
             <TabsTrigger value="grades" className="rounded-lg text-xs">
-              {isRTL ? 'الدرجات' : 'Grades'}
+              {t('grades')}
             </TabsTrigger>
             <TabsTrigger value="attendance" className="rounded-lg text-xs">
-              {isRTL ? 'الحضور' : 'Attendance'}
+              {t('attendance2')}
             </TabsTrigger>
             <TabsTrigger value="schedule" className="rounded-lg text-xs">
-              {isRTL ? 'الجدول' : 'Schedule'}
+              {t('schedule')}
             </TabsTrigger>
           </TabsList>
 
@@ -230,7 +231,7 @@ const ChildDetailsPage = () => {
                   ) : (
                     <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                       <Award className="h-12 w-12 mb-3 opacity-30" />
-                      <p>{isRTL ? 'لا توجد درجات' : 'No grades'}</p>
+                      <p>{t('noGrades')}</p>
                     </div>
                   )}
                 </ScrollArea>
@@ -245,19 +246,19 @@ const ChildDetailsPage = () => {
                 <div className="grid grid-cols-4 gap-2 text-center">
                   <div className="p-2 bg-green-50 rounded-lg">
                     <p className="text-lg font-bold text-green-600">{attendance?.statistics?.present || 0}</p>
-                    <p className="text-[10px] text-muted-foreground">{isRTL ? 'حاضر' : 'Present'}</p>
+                    <p className="text-[10px] text-muted-foreground">{t('present')}</p>
                   </div>
                   <div className="p-2 bg-red-50 rounded-lg">
                     <p className="text-lg font-bold text-red-600">{attendance?.statistics?.absent || 0}</p>
-                    <p className="text-[10px] text-muted-foreground">{isRTL ? 'غائب' : 'Absent'}</p>
+                    <p className="text-[10px] text-muted-foreground">{t('absent')}</p>
                   </div>
                   <div className="p-2 bg-amber-50 rounded-lg">
                     <p className="text-lg font-bold text-amber-600">{attendance?.statistics?.late || 0}</p>
-                    <p className="text-[10px] text-muted-foreground">{isRTL ? 'متأخر' : 'Late'}</p>
+                    <p className="text-[10px] text-muted-foreground">{t('late')}</p>
                   </div>
                   <div className="p-2 bg-blue-50 rounded-lg">
                     <p className="text-lg font-bold text-blue-600">{attendance?.statistics?.excused || 0}</p>
-                    <p className="text-[10px] text-muted-foreground">{isRTL ? 'بعذر' : 'Excused'}</p>
+                    <p className="text-[10px] text-muted-foreground">{t('excused2')}</p>
                   </div>
                 </div>
               </CardHeader>
@@ -272,10 +273,10 @@ const ChildDetailsPage = () => {
                             <span className="text-sm">{record.date}</span>
                           </div>
                           <Badge variant="outline" className="text-xs">
-                            {record.status === 'present' && (isRTL ? 'حاضر' : 'Present')}
-                            {record.status === 'absent' && (isRTL ? 'غائب' : 'Absent')}
-                            {record.status === 'late' && (isRTL ? 'متأخر' : 'Late')}
-                            {record.status === 'excused' && (isRTL ? 'بعذر' : 'Excused')}
+                            {record.status === 'present' && (t('present'))}
+                            {record.status === 'absent' && (t('absent'))}
+                            {record.status === 'late' && (t('late'))}
+                            {record.status === 'excused' && (t('excused2'))}
                           </Badge>
                         </div>
                       ))}
@@ -283,7 +284,7 @@ const ChildDetailsPage = () => {
                   ) : (
                     <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                       <Calendar className="h-12 w-12 mb-3 opacity-30" />
-                      <p>{isRTL ? 'لا توجد سجلات' : 'No records'}</p>
+                      <p>{t('noRecords')}</p>
                     </div>
                   )}
                 </ScrollArea>
@@ -325,14 +326,14 @@ const ChildDetailsPage = () => {
                       <Link to={`/parent/child/${childId}/schedule`}>
                         <Button variant="outline" className="w-full mt-2 gap-2">
                           <Calendar className="h-4 w-4" />
-                          {isRTL ? 'عرض الجدول الكامل' : 'View Full Schedule'}
+                          {t('viewFullSchedule')}
                         </Button>
                       </Link>
                     </div>
                   ) : (
                     <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                       <Calendar className="h-12 w-12 mb-3 opacity-30" />
-                      <p>{isRTL ? 'لا يوجد جدول' : 'No schedule'}</p>
+                      <p>{t('noSchedule')}</p>
                     </div>
                   )}
                 </ScrollArea>
@@ -346,13 +347,13 @@ const ChildDetailsPage = () => {
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
               <MessageSquare className="h-5 w-5 text-indigo-600" />
-              {isRTL ? 'التواصل مع المعلمين' : 'Contact Teachers'}
+              {t('contactTeachers')}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <Link to={`/parent/child/${childId}/teachers`}>
               <Button className="w-full bg-indigo-600 hover:bg-indigo-700">
-                {isRTL ? 'عرض قائمة المعلمين' : 'View Teachers List'}
+                {t('viewTeachersList')}
               </Button>
             </Link>
           </CardContent>

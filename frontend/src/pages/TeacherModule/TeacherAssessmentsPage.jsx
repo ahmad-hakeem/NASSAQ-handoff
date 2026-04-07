@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 
+import { useTranslation } from '../../contexts/ThemeContext';
 const ASSESSMENT_TYPES = [
   { value: 'exam', label: 'اختبار', labelEn: 'Exam' },
   { value: 'quiz', label: 'اختبار قصير', labelEn: 'Quiz' },
@@ -27,6 +28,7 @@ const ASSESSMENT_TYPES = [
 ];
 
 export default function TeacherAssessmentsPage() {
+  const { t } = useTranslation();
   const { user, api, isRTL } = useAuth();
   const [loading, setLoading] = useState(true);
   const [assessments, setAssessments] = useState([]);
@@ -86,7 +88,7 @@ export default function TeacherAssessmentsPage() {
 
   const createAssessment = async () => {
     if (!newAssessment.title || !newAssessment.class_id || !newAssessment.subject_id) {
-      nassaqError(isRTL ? 'يرجى ملء جميع الحقول المطلوبة' : 'Please fill all required fields');
+      nassaqError(t('pleaseFillAllRequiredFields'));
       return;
     }
     
@@ -103,7 +105,7 @@ export default function TeacherAssessmentsPage() {
         description: newAssessment.description || undefined,
         is_published: false
       });
-      toast.success(isRTL ? 'تم إنشاء التقييم' : 'Assessment created');
+      toast.success(t('assessmentCreated'));
       setShowCreateDialog(false);
       setNewAssessment({
         title: '', assessment_type: 'exam', class_id: '', subject_id: '',
@@ -112,7 +114,7 @@ export default function TeacherAssessmentsPage() {
       fetchData();
     } catch (error) {
       console.error('Error creating assessment:', error?.response?.data || error);
-      nassaqError(isRTL ? 'خطأ في إنشاء التقييم' : 'Error creating assessment');
+      nassaqError(t('errorCreatingAssessment'));
     } finally {
       setSaving(false);
     }
@@ -134,7 +136,7 @@ export default function TeacherAssessmentsPage() {
       
       setShowGradeDialog(true);
     } catch (error) {
-      nassaqError(isRTL ? 'خطأ في تحميل الطلاب' : 'Error loading students');
+      nassaqError(t('errorLoadingStudents'));
     }
   };
 
@@ -149,11 +151,11 @@ export default function TeacherAssessmentsPage() {
       }));
       
       await api.post(`/assessments/${selectedAssessment.id}/grades`, { grades: gradeEntries });
-      toast.success(isRTL ? 'تم حفظ الدرجات' : 'Grades saved');
+      toast.success(t('gradesSaved'));
       setShowGradeDialog(false);
       fetchData();
     } catch (error) {
-      nassaqError(isRTL ? 'خطأ في حفظ الدرجات' : 'Error saving grades');
+      nassaqError(t('errorSavingGrades'));
     } finally {
       setSaving(false);
     }
@@ -175,23 +177,23 @@ export default function TeacherAssessmentsPage() {
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
               <h1 className="text-2xl font-bold text-brand-navy dark:text-brand-turquoise font-cairo">
-                {isRTL ? 'التقييمات والدرجات' : 'Assessments & Grades'}
+                {t('assessmentsGrades')}
               </h1>
               <p className="text-sm text-muted-foreground">
-                {isRTL ? 'إنشاء وإدارة التقييمات وإدخال الدرجات' : 'Create assessments and enter grades'}
+                {t('createAssessmentsAndEnterGrades')}
               </p>
             </div>
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}>
                 <RefreshCw className={`h-4 w-4 me-1 ${loading ? 'animate-spin' : ''}`} />
-                {isRTL ? 'تحديث' : 'Refresh'}
+                {t('refresh')}
               </Button>
               <Button 
                 className="bg-brand-turquoise hover:bg-brand-turquoise/90"
                 onClick={() => setShowCreateDialog(true)}
               >
                 <Plus className="h-4 w-4 me-1" />
-                {isRTL ? 'تقييم جديد' : 'New Assessment'}
+                {t('newAssessment')}
               </Button>
             </div>
           </div>
@@ -201,10 +203,10 @@ export default function TeacherAssessmentsPage() {
         <div className="p-4">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="mb-4">
-              <TabsTrigger value="all">{isRTL ? 'الكل' : 'All'}</TabsTrigger>
-              <TabsTrigger value="draft">{isRTL ? 'مسودة' : 'Draft'}</TabsTrigger>
-              <TabsTrigger value="published">{isRTL ? 'منشور' : 'Published'}</TabsTrigger>
-              <TabsTrigger value="graded">{isRTL ? 'مُقيَّم' : 'Graded'}</TabsTrigger>
+              <TabsTrigger value="all">{t('all')}</TabsTrigger>
+              <TabsTrigger value="draft">{t('draft')}</TabsTrigger>
+              <TabsTrigger value="published">{t('published')}</TabsTrigger>
+              <TabsTrigger value="graded">{t('graded4')}</TabsTrigger>
             </TabsList>
           </Tabs>
 
@@ -216,13 +218,13 @@ export default function TeacherAssessmentsPage() {
             <Card>
               <CardContent className="text-center py-16">
                 <FileText className="h-16 w-16 mx-auto mb-4 text-muted-foreground/30" />
-                <h3 className="font-bold mb-2">{isRTL ? 'لا توجد تقييمات' : 'No assessments'}</h3>
+                <h3 className="font-bold mb-2">{t('noAssessments')}</h3>
                 <p className="text-muted-foreground mb-4">
-                  {isRTL ? 'ابدأ بإنشاء تقييم جديد' : 'Start by creating a new assessment'}
+                  {t('startByCreatingANewAssessment')}
                 </p>
                 <Button onClick={() => setShowCreateDialog(true)}>
                   <Plus className="h-4 w-4 me-1" />
-                  {isRTL ? 'تقييم جديد' : 'New Assessment'}
+                  {t('newAssessment')}
                 </Button>
               </CardContent>
             </Card>
@@ -247,15 +249,15 @@ export default function TeacherAssessmentsPage() {
                         assessment.status === 'published' ? 'default' :
                         assessment.status === 'graded' ? 'success' : 'secondary'
                       }>
-                        {assessment.status === 'draft' ? (isRTL ? 'مسودة' : 'Draft') :
-                         assessment.status === 'published' ? (isRTL ? 'منشور' : 'Published') :
-                         (isRTL ? 'مُقيَّم' : 'Graded')}
+                        {assessment.status === 'draft' ? (t('draft')) :
+                         assessment.status === 'published' ? (t('published')) :
+                         (t('graded4'))}
                       </Badge>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">{isRTL ? 'الفصل' : 'Class'}</span>
+                      <span className="text-muted-foreground">{t('class')}</span>
                       <span className="font-medium">{assessment.class_name || '-'}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
@@ -264,7 +266,7 @@ export default function TeacherAssessmentsPage() {
                     </div>
                     {(assessment.date || assessment.due_date) && (
                       <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">{isRTL ? 'التاريخ' : 'Date'}</span>
+                        <span className="text-muted-foreground">{t('date')}</span>
                         <span className="font-medium">{new Date(assessment.date || assessment.due_date).toLocaleDateString('ar-SA')}</span>
                       </div>
                     )}
@@ -277,7 +279,7 @@ export default function TeacherAssessmentsPage() {
                         onClick={() => openGradeEntry(assessment)}
                       >
                         <Edit2 className="h-3.5 w-3.5 me-1" />
-                        {isRTL ? 'الدرجات' : 'Grades'}
+                        {t('grades')}
                       </Button>
                       <Button variant="outline" size="sm">
                         <Eye className="h-3.5 w-3.5" />
@@ -294,20 +296,20 @@ export default function TeacherAssessmentsPage() {
         <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
           <DialogContent className="w-[95vw] max-w-lg">
             <DialogHeader>
-              <DialogTitle className="font-cairo">{isRTL ? 'إنشاء تقييم جديد' : 'Create New Assessment'}</DialogTitle>
+              <DialogTitle className="font-cairo">{t('createNewAssessment')}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label>{isRTL ? 'اسم التقييم' : 'Assessment Name'} *</Label>
+                <Label>{t('assessmentName')} *</Label>
                 <Input 
                   value={newAssessment.title}
                   onChange={(e) => setNewAssessment({...newAssessment, title: e.target.value})}
-                  placeholder={isRTL ? 'مثال: اختبار منتصف الفصل' : 'e.g., Midterm Exam'}
+                  placeholder={t('egMidtermExam')}
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>{isRTL ? 'النوع' : 'Type'}</Label>
+                  <Label>{t('type4')}</Label>
                   <Select value={newAssessment.assessment_type} onValueChange={(v) => setNewAssessment({...newAssessment, assessment_type: v})}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -318,9 +320,9 @@ export default function TeacherAssessmentsPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>{isRTL ? 'الفصل' : 'Class'} *</Label>
+                  <Label>{t('class')} *</Label>
                   <Select value={newAssessment.class_id} onValueChange={(v) => setNewAssessment({...newAssessment, class_id: v})}>
-                    <SelectTrigger><SelectValue placeholder={isRTL ? 'اختر' : 'Select'} /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder={t('select2')} /></SelectTrigger>
                     <SelectContent>
                       {classes.map(c => (
                         <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
@@ -331,7 +333,7 @@ export default function TeacherAssessmentsPage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>{isRTL ? 'المادة' : 'Subject'} *</Label>
+                  <Label>{t('subject')} *</Label>
                   <Select value={newAssessment.subject_id} onValueChange={(v) => setNewAssessment({...newAssessment, subject_id: v})}>
                     <SelectTrigger><SelectValue placeholder={isRTL ? 'اختر المادة' : 'Select Subject'} /></SelectTrigger>
                     <SelectContent>
@@ -342,7 +344,7 @@ export default function TeacherAssessmentsPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>{isRTL ? 'الدرجة الكلية' : 'Max Score'}</Label>
+                  <Label>{t('maxScore')}</Label>
                   <Input 
                     type="number"
                     value={newAssessment.max_score}
@@ -352,7 +354,7 @@ export default function TeacherAssessmentsPage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>{isRTL ? 'التاريخ' : 'Date'}</Label>
+                  <Label>{t('date')}</Label>
                   <Input 
                     type="date"
                     value={newAssessment.date}
@@ -360,7 +362,7 @@ export default function TeacherAssessmentsPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>{isRTL ? 'الوصف' : 'Description'}</Label>
+                  <Label>{t('description')}</Label>
                   <Textarea 
                     value={newAssessment.description}
                     onChange={(e) => setNewAssessment({...newAssessment, description: e.target.value})}
@@ -371,11 +373,11 @@ export default function TeacherAssessmentsPage() {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
-                {isRTL ? 'إلغاء' : 'Cancel'}
+                {t('cancel')}
               </Button>
               <Button onClick={createAssessment} disabled={saving}>
                 {saving && <Loader2 className="h-4 w-4 animate-spin me-2" />}
-                {isRTL ? 'إنشاء' : 'Create'}
+                {t('create')}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -386,7 +388,7 @@ export default function TeacherAssessmentsPage() {
           <DialogContent className="w-[95vw] max-w-2xl max-h-[80vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="font-cairo">
-                {isRTL ? 'إدخال الدرجات' : 'Enter Grades'} - {selectedAssessment?.title || selectedAssessment?.name}
+                {t('enterGrades')} - {selectedAssessment?.title || selectedAssessment?.name}
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-3 py-4">
@@ -413,12 +415,12 @@ export default function TeacherAssessmentsPage() {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowGradeDialog(false)}>
-                {isRTL ? 'إلغاء' : 'Cancel'}
+                {t('cancel')}
               </Button>
               <Button onClick={saveGrades} disabled={saving}>
                 {saving && <Loader2 className="h-4 w-4 animate-spin me-2" />}
                 <Save className="h-4 w-4 me-1" />
-                {isRTL ? 'حفظ الدرجات' : 'Save Grades'}
+                {t('saveGrades')}
               </Button>
             </DialogFooter>
           </DialogContent>

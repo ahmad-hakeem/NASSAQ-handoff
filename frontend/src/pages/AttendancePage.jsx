@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { Sidebar } from '../components/layout/Sidebar';
 import { HakimAssistant } from '../components/hakim/HakimAssistant';
 import { Button } from '../components/ui/button';
@@ -92,6 +92,7 @@ const statusConfig = {
 };
 
 export const AttendancePage = () => {
+  const { t } = useTranslation();
   const { user, api } = useAuth();
   const { isRTL, toggleTheme, toggleLanguage, isDark } = useTheme();
   
@@ -187,7 +188,7 @@ export const AttendancePage = () => {
       setAttendanceRecords(records);
     } catch (error) {
       console.error('Failed to fetch students:', error);
-      nassaqError(isRTL ? 'فشل تحميل الطلاب' : 'Failed to load students');
+      nassaqError(t('failedToLoadStudents'));
     } finally {
       setLoading(false);
     }
@@ -216,7 +217,7 @@ export const AttendancePage = () => {
 
   const handleSaveAttendance = async () => {
     if (!selectedClass) {
-      nassaqError(isRTL ? 'يرجى اختيار الفصل' : 'Please select a class');
+      nassaqError(t('pleaseSelectAClass'));
       return;
     }
 
@@ -242,7 +243,7 @@ export const AttendancePage = () => {
         }));
 
       if (records.length === 0) {
-        nassaqError(isRTL ? 'لا يوجد سجلات حضور للحفظ' : 'No attendance records to save');
+        nassaqError(t('noAttendanceRecordsToSave'));
         return;
       }
 
@@ -254,14 +255,14 @@ export const AttendancePage = () => {
         records
       });
 
-      toast.success(isRTL ? 'تم حفظ الحضور بنجاح' : 'Attendance saved successfully');
+      toast.success(t('attendanceSavedSuccessfully'));
       
       // Refresh data
       fetchStudentsWithAttendance();
       
     } catch (error) {
       console.error('Failed to save attendance:', error);
-      nassaqError(isRTL ? 'فشل حفظ الحضور' : 'Failed to save attendance');
+      nassaqError(t('failedToSaveAttendance'));
     } finally {
       setSaving(false);
     }
@@ -275,7 +276,7 @@ export const AttendancePage = () => {
       }
     });
     setAttendanceRecords(newRecords);
-    toast.success(isRTL ? 'تم تحديد الجميع حاضرين' : 'All marked as present');
+    toast.success(t('allMarkedAsPresent'));
   };
 
   const fetchDailyReport = async () => {
@@ -341,10 +342,10 @@ export const AttendancePage = () => {
             <div>
               <h1 className="font-cairo text-2xl font-bold text-foreground flex items-center gap-2">
                 <CalendarCheck className="h-7 w-7 text-brand-turquoise" />
-                {isRTL ? 'تسجيل الحضور' : 'Attendance'}
+                {t('attendance3')}
               </h1>
               <p className="text-sm text-muted-foreground font-tajawal">
-                {isRTL ? 'تسجيل حضور وغياب الطلاب' : 'Record student attendance'}
+                {t('recordStudentAttendance')}
               </p>
             </div>
             
@@ -368,15 +369,15 @@ export const AttendancePage = () => {
             <TabsList className="grid w-full max-w-md grid-cols-3">
               <TabsTrigger value="record" className="rounded-xl">
                 <CalendarCheck className="h-4 w-4 me-2" />
-                {isRTL ? 'تسجيل' : 'Record'}
+                {t('record')}
               </TabsTrigger>
               <TabsTrigger value="daily" className="rounded-xl">
                 <Calendar className="h-4 w-4 me-2" />
-                {isRTL ? 'التقرير اليومي' : 'Daily'}
+                {t('daily')}
               </TabsTrigger>
               <TabsTrigger value="summary" className="rounded-xl">
                 <BarChart3 className="h-4 w-4 me-2" />
-                {isRTL ? 'الملخص' : 'Summary'}
+                {t('summary')}
               </TabsTrigger>
             </TabsList>
 
@@ -387,7 +388,7 @@ export const AttendancePage = () => {
                 <CardContent className="p-4">
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div className="space-y-2">
-                      <Label>{isRTL ? 'التاريخ' : 'Date'}</Label>
+                      <Label>{t('date')}</Label>
                       <Input
                         type="date"
                         value={selectedDate}
@@ -398,10 +399,10 @@ export const AttendancePage = () => {
                     </div>
                     
                     <div className="space-y-2">
-                      <Label>{isRTL ? 'الفصل' : 'Class'}</Label>
+                      <Label>{t('class')}</Label>
                       <Select value={selectedClass} onValueChange={setSelectedClass}>
                         <SelectTrigger className="rounded-xl" data-testid="select-class">
-                          <SelectValue placeholder={isRTL ? 'اختر الفصل' : 'Select class'} />
+                          <SelectValue placeholder={t('selectClass')} />
                         </SelectTrigger>
                         <SelectContent>
                           {classes.map((cls) => (
@@ -414,13 +415,13 @@ export const AttendancePage = () => {
                     </div>
                     
                     <div className="space-y-2">
-                      <Label>{isRTL ? 'المادة (اختياري)' : 'Subject (optional)'}</Label>
+                      <Label>{t('subjectOptional')}</Label>
                       <Select value={selectedSubject} onValueChange={setSelectedSubject}>
                         <SelectTrigger className="rounded-xl">
-                          <SelectValue placeholder={isRTL ? 'اختر المادة' : 'Select subject'} />
+                          <SelectValue placeholder={t('selectSubject')} />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="none">{isRTL ? 'بدون تحديد' : 'None'}</SelectItem>
+                          <SelectItem value="none">{t('none')}</SelectItem>
                           {subjects.map((subject) => (
                             <SelectItem key={subject.id} value={subject.id}>
                               {subject.name}
@@ -431,13 +432,13 @@ export const AttendancePage = () => {
                     </div>
                     
                     <div className="space-y-2">
-                      <Label>{isRTL ? 'الحصة (اختياري)' : 'Period (optional)'}</Label>
+                      <Label>{t('periodOptional')}</Label>
                       <Select value={selectedTimeSlot} onValueChange={setSelectedTimeSlot}>
                         <SelectTrigger className="rounded-xl">
-                          <SelectValue placeholder={isRTL ? 'اختر الحصة' : 'Select period'} />
+                          <SelectValue placeholder={t('selectPeriod')} />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="none">{isRTL ? 'بدون تحديد' : 'None'}</SelectItem>
+                          <SelectItem value="none">{t('none')}</SelectItem>
                           {timeSlots.map((slot) => (
                             <SelectItem key={slot.id} value={slot.id}>
                               {slot.name} ({slot.start_time} - {slot.end_time})
@@ -460,7 +461,7 @@ export const AttendancePage = () => {
                       </div>
                       <div>
                         <p className="text-2xl font-bold">{stats.total}</p>
-                        <p className="text-xs text-muted-foreground">{isRTL ? 'إجمالي' : 'Total'}</p>
+                        <p className="text-xs text-muted-foreground">{t('total2')}</p>
                       </div>
                     </div>
                   </CardContent>
@@ -474,7 +475,7 @@ export const AttendancePage = () => {
                       </div>
                       <div>
                         <p className="text-2xl font-bold">{stats.present}</p>
-                        <p className="text-xs text-muted-foreground">{isRTL ? 'حاضر' : 'Present'}</p>
+                        <p className="text-xs text-muted-foreground">{t('present')}</p>
                       </div>
                     </div>
                   </CardContent>
@@ -488,7 +489,7 @@ export const AttendancePage = () => {
                       </div>
                       <div>
                         <p className="text-2xl font-bold">{stats.absent}</p>
-                        <p className="text-xs text-muted-foreground">{isRTL ? 'غائب' : 'Absent'}</p>
+                        <p className="text-xs text-muted-foreground">{t('absent')}</p>
                       </div>
                     </div>
                   </CardContent>
@@ -502,7 +503,7 @@ export const AttendancePage = () => {
                       </div>
                       <div>
                         <p className="text-2xl font-bold">{stats.late}</p>
-                        <p className="text-xs text-muted-foreground">{isRTL ? 'متأخر' : 'Late'}</p>
+                        <p className="text-xs text-muted-foreground">{t('late')}</p>
                       </div>
                     </div>
                   </CardContent>
@@ -516,7 +517,7 @@ export const AttendancePage = () => {
                       </div>
                       <div>
                         <p className="text-2xl font-bold">{stats.excused}</p>
-                        <p className="text-xs text-muted-foreground">{isRTL ? 'بعذر' : 'Excused'}</p>
+                        <p className="text-xs text-muted-foreground">{t('excused2')}</p>
                       </div>
                     </div>
                   </CardContent>
@@ -529,7 +530,7 @@ export const AttendancePage = () => {
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-medium">
-                        {isRTL ? 'نسبة الحضور' : 'Attendance Rate'}
+                        {t('attendanceRate')}
                       </span>
                       <span className="text-sm font-bold text-brand-turquoise">{attendanceRate}%</span>
                     </div>
@@ -547,9 +548,9 @@ export const AttendancePage = () => {
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div>
-                      <CardTitle className="font-cairo">{isRTL ? 'قائمة الطلاب' : 'Student List'}</CardTitle>
+                      <CardTitle className="font-cairo">{t('studentList')}</CardTitle>
                       <CardDescription>
-                        {isRTL ? 'اضغط على الحالة لتغييرها' : 'Click status to change it'}
+                        {t('clickStatusToChangeIt')}
                       </CardDescription>
                     </div>
                     <div className="flex gap-2">
@@ -560,7 +561,7 @@ export const AttendancePage = () => {
                         data-testid="mark-all-present-btn"
                       >
                         <CheckCircle className="h-4 w-4 me-2" />
-                        {isRTL ? 'الكل حاضر' : 'All Present'}
+                        {t('allPresent')}
                       </Button>
                       <Button 
                         onClick={handleSaveAttendance}
@@ -569,7 +570,7 @@ export const AttendancePage = () => {
                         data-testid="save-attendance-btn"
                       >
                         <Save className="h-4 w-4 me-2" />
-                        {saving ? (isRTL ? 'جاري الحفظ...' : 'Saving...') : (isRTL ? 'حفظ الحضور' : 'Save Attendance')}
+                        {saving ? (t('saving')) : (t('saveAttendance'))}
                       </Button>
                     </div>
                   </div>
@@ -578,11 +579,11 @@ export const AttendancePage = () => {
                 <CardContent>
                   {loading ? (
                     <div className="text-center py-8 text-muted-foreground">
-                      {isRTL ? 'جاري التحميل...' : 'Loading...'}
+                      {t('loading')}
                     </div>
                   ) : students.length === 0 ? (
                     <div className="text-center py-8 text-muted-foreground">
-                      {isRTL ? 'لا يوجد طلاب في هذا الفصل' : 'No students in this class'}
+                      {t('noStudentsInThisClass')}
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -648,8 +649,8 @@ export const AttendancePage = () => {
                               >
                                 <FileText className="h-3 w-3 me-1" />
                                 {attendanceRecords[student.id]?.notes 
-                                  ? (isRTL ? 'تعديل الملاحظة' : 'Edit Note')
-                                  : (isRTL ? 'إضافة ملاحظة' : 'Add Note')
+                                  ? (t('editNote'))
+                                  : (t('addNote'))
                                 }
                               </Button>
                             </CardContent>
@@ -673,35 +674,35 @@ export const AttendancePage = () => {
                         <p className="text-4xl font-bold text-brand-turquoise">
                           {dailyReport.summary.attendance_rate}%
                         </p>
-                        <p className="text-sm text-muted-foreground">{isRTL ? 'نسبة الحضور' : 'Attendance Rate'}</p>
+                        <p className="text-sm text-muted-foreground">{t('attendanceRate')}</p>
                       </CardContent>
                     </Card>
                     
                     <Card className="card-nassaq">
                       <CardContent className="p-4 text-center">
                         <p className="text-2xl font-bold">{dailyReport.summary.total_students}</p>
-                        <p className="text-xs text-muted-foreground">{isRTL ? 'إجمالي' : 'Total'}</p>
+                        <p className="text-xs text-muted-foreground">{t('total2')}</p>
                       </CardContent>
                     </Card>
                     
                     <Card className="card-nassaq">
                       <CardContent className="p-4 text-center">
                         <p className="text-2xl font-bold text-green-600">{dailyReport.summary.present}</p>
-                        <p className="text-xs text-muted-foreground">{isRTL ? 'حاضر' : 'Present'}</p>
+                        <p className="text-xs text-muted-foreground">{t('present')}</p>
                       </CardContent>
                     </Card>
                     
                     <Card className="card-nassaq">
                       <CardContent className="p-4 text-center">
                         <p className="text-2xl font-bold text-red-600">{dailyReport.summary.absent}</p>
-                        <p className="text-xs text-muted-foreground">{isRTL ? 'غائب' : 'Absent'}</p>
+                        <p className="text-xs text-muted-foreground">{t('absent')}</p>
                       </CardContent>
                     </Card>
                     
                     <Card className="card-nassaq">
                       <CardContent className="p-4 text-center">
                         <p className="text-2xl font-bold text-yellow-600">{dailyReport.summary.late}</p>
-                        <p className="text-xs text-muted-foreground">{isRTL ? 'متأخر' : 'Late'}</p>
+                        <p className="text-xs text-muted-foreground">{t('late')}</p>
                       </CardContent>
                     </Card>
                   </div>
@@ -717,10 +718,10 @@ export const AttendancePage = () => {
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            <TableHead>{isRTL ? 'الطالب' : 'Student'}</TableHead>
-                            <TableHead>{isRTL ? 'الحالة' : 'Status'}</TableHead>
-                            <TableHead>{isRTL ? 'الملاحظات' : 'Notes'}</TableHead>
-                            <TableHead>{isRTL ? 'المسجل' : 'Recorded By'}</TableHead>
+                            <TableHead>{t('student3')}</TableHead>
+                            <TableHead>{t('status2')}</TableHead>
+                            <TableHead>{t('notes')}</TableHead>
+                            <TableHead>{t('recordedBy')}</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -754,29 +755,29 @@ export const AttendancePage = () => {
                   {/* Overall Summary */}
                   <Card className="card-nassaq">
                     <CardHeader>
-                      <CardTitle className="font-cairo">{isRTL ? 'الملخص العام' : 'Overall Summary'}</CardTitle>
+                      <CardTitle className="font-cairo">{t('overallSummary')}</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                         <div className="text-center p-4 bg-muted rounded-xl">
                           <p className="text-3xl font-bold text-brand-turquoise">{summaryReport.overall.attendance_rate}%</p>
-                          <p className="text-sm text-muted-foreground">{isRTL ? 'معدل الحضور' : 'Attendance Rate'}</p>
+                          <p className="text-sm text-muted-foreground">{t('attendanceRate2')}</p>
                         </div>
                         <div className="text-center p-4 bg-muted rounded-xl">
                           <p className="text-3xl font-bold">{summaryReport.overall.total_records}</p>
-                          <p className="text-sm text-muted-foreground">{isRTL ? 'إجمالي السجلات' : 'Total Records'}</p>
+                          <p className="text-sm text-muted-foreground">{t('totalRecords')}</p>
                         </div>
                         <div className="text-center p-4 bg-green-100 dark:bg-green-900/30 rounded-xl">
                           <p className="text-3xl font-bold text-green-600">{summaryReport.overall.present}</p>
-                          <p className="text-sm text-muted-foreground">{isRTL ? 'حاضر' : 'Present'}</p>
+                          <p className="text-sm text-muted-foreground">{t('present')}</p>
                         </div>
                         <div className="text-center p-4 bg-red-100 dark:bg-red-900/30 rounded-xl">
                           <p className="text-3xl font-bold text-red-600">{summaryReport.overall.absent}</p>
-                          <p className="text-sm text-muted-foreground">{isRTL ? 'غائب' : 'Absent'}</p>
+                          <p className="text-sm text-muted-foreground">{t('absent')}</p>
                         </div>
                         <div className="text-center p-4 bg-yellow-100 dark:bg-yellow-900/30 rounded-xl">
                           <p className="text-3xl font-bold text-yellow-600">{summaryReport.overall.late}</p>
-                          <p className="text-sm text-muted-foreground">{isRTL ? 'متأخر' : 'Late'}</p>
+                          <p className="text-sm text-muted-foreground">{t('late')}</p>
                         </div>
                       </div>
                     </CardContent>
@@ -791,11 +792,11 @@ export const AttendancePage = () => {
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            <TableHead>{isRTL ? 'التاريخ' : 'Date'}</TableHead>
-                            <TableHead>{isRTL ? 'الإجمالي' : 'Total'}</TableHead>
-                            <TableHead>{isRTL ? 'حاضر' : 'Present'}</TableHead>
-                            <TableHead>{isRTL ? 'غائب' : 'Absent'}</TableHead>
-                            <TableHead>{isRTL ? 'متأخر' : 'Late'}</TableHead>
+                            <TableHead>{t('date')}</TableHead>
+                            <TableHead>{t('total')}</TableHead>
+                            <TableHead>{t('present')}</TableHead>
+                            <TableHead>{t('absent')}</TableHead>
+                            <TableHead>{t('late')}</TableHead>
                             <TableHead>{isRTL ? 'نسبة الحضور' : 'Rate'}</TableHead>
                           </TableRow>
                         </TableHeader>
@@ -828,23 +829,23 @@ export const AttendancePage = () => {
         <Dialog open={notesDialog.open} onOpenChange={(open) => setNotesDialog({ open, studentId: notesDialog.studentId })}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle className="font-cairo">{isRTL ? 'ملاحظات الحضور' : 'Attendance Notes'}</DialogTitle>
+              <DialogTitle className="font-cairo">{t('attendanceNotes')}</DialogTitle>
               <DialogDescription>
-                {isRTL ? 'أضف ملاحظة حول حضور الطالب' : 'Add a note about student attendance'}
+                {t('addANoteAboutStudentAttendance')}
               </DialogDescription>
             </DialogHeader>
             <Textarea
               value={noteText}
               onChange={(e) => setNoteText(e.target.value)}
-              placeholder={isRTL ? 'اكتب ملاحظتك هنا...' : 'Write your note here...'}
+              placeholder={t('writeYourNoteHere')}
               className="min-h-[100px] rounded-xl"
             />
             <DialogFooter>
               <Button variant="outline" onClick={() => setNotesDialog({ open: false, studentId: null })} className="rounded-xl">
-                {isRTL ? 'إلغاء' : 'Cancel'}
+                {t('cancel')}
               </Button>
               <Button onClick={handleNotesSave} className="bg-brand-navy rounded-xl">
-                {isRTL ? 'حفظ' : 'Save'}
+                {t('save')}
               </Button>
             </DialogFooter>
           </DialogContent>

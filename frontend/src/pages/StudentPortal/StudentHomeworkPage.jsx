@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
@@ -30,6 +30,7 @@ import {
 
 
 const StudentHomeworkPage = () => {
+  const { t } = useTranslation();
   const { token, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
@@ -68,9 +69,9 @@ const StudentHomeworkPage = () => {
       
       // Show appropriate error message
       if (error.response?.status === 403) {
-        nassaqError(isRTL ? 'لا يمكنك الوصول إلى هذه الصفحة. يجب تسجيل الدخول كطالب.' : 'Access denied. Please login as a student.');
+        nassaqError(t('accessDeniedPleaseLoginAsAStudent'));
       } else {
-        nassaqError(isRTL ? 'حدث خطأ في جلب الواجبات' : 'Error fetching homework');
+        nassaqError(t('errorFetchingHomework'));
       }
       
       // Set empty data
@@ -93,7 +94,7 @@ const StudentHomeworkPage = () => {
 
   const getStatusLabel = (status) => {
     const labels = {
-      pending: isRTL ? 'قيد الانتظار' : 'Pending',
+      pending: t('pending5'),
       completed: isRTL ? 'مكتمل' : 'Completed',
       overdue: isRTL ? 'متأخر' : 'Overdue'
     };
@@ -116,8 +117,8 @@ const StudentHomeworkPage = () => {
     const diff = Math.ceil((due - today) / (1000 * 60 * 60 * 24));
     
     if (diff < 0) return isRTL ? `متأخر ${Math.abs(diff)} يوم` : `${Math.abs(diff)} days overdue`;
-    if (diff === 0) return isRTL ? 'اليوم' : 'Today';
-    if (diff === 1) return isRTL ? 'غداً' : 'Tomorrow';
+    if (diff === 0) return t('today2');
+    if (diff === 1) return t('tomorrow');
     return isRTL ? `${diff} أيام متبقية` : `${diff} days left`;
   };
 
@@ -148,9 +149,9 @@ const StudentHomeworkPage = () => {
                   <ClipboardList className="h-6 w-6 text-purple-600" />
                 </div>
                 <div>
-                  <h1 className="font-bold text-lg">{isRTL ? 'الواجبات المنزلية' : 'Homework'}</h1>
+                  <h1 className="font-bold text-lg">{t('homework2')}</h1>
                   <p className="text-sm text-muted-foreground">
-                    {totalPending} {isRTL ? 'واجب قيد الانتظار' : 'pending assignments'}
+                    {totalPending} {t('pendingAssignments')}
                   </p>
                 </div>
               </div>
@@ -175,7 +176,7 @@ const StudentHomeworkPage = () => {
                 <Clock className="h-4 w-4 text-amber-600" />
               </div>
               <p className="text-lg font-bold text-amber-600">{totalPending}</p>
-              <p className="text-[10px] text-muted-foreground">{isRTL ? 'قيد الانتظار' : 'Pending'}</p>
+              <p className="text-[10px] text-muted-foreground">{t('pending5')}</p>
             </CardContent>
           </Card>
 
@@ -204,7 +205,7 @@ const StudentHomeworkPage = () => {
         <Tabs defaultValue="pending" className="w-full">
           <TabsList className="grid w-full grid-cols-3 bg-gray-100 rounded-xl p-1">
             <TabsTrigger value="pending" className="rounded-lg text-xs">
-              {isRTL ? 'قيد الانتظار' : 'Pending'} ({totalPending})
+              {t('pending5')} ({totalPending})
             </TabsTrigger>
             <TabsTrigger value="completed" className="rounded-lg text-xs">
               {isRTL ? 'مكتمل' : 'Completed'} ({totalCompleted})
@@ -243,7 +244,7 @@ const StudentHomeworkPage = () => {
                             {/* Teacher name */}
                             {item.teacher_name && (
                               <p className="text-xs text-muted-foreground mb-2">
-                                {isRTL ? 'المعلم:' : 'Teacher:'} {item.teacher_name}
+                                {t('teacher4')} {item.teacher_name}
                               </p>
                             )}
                             
@@ -263,7 +264,7 @@ const StudentHomeworkPage = () => {
                               )}
                               {(status === 'completed' || item.status === 'graded') && item.grade !== null && item.grade !== undefined && (
                                 <Badge className="bg-green-100 text-green-700 border-0">
-                                  {isRTL ? 'الدرجة:' : 'Grade:'} {item.grade}{item.max_grade ? `/${item.max_grade}` : '%'}
+                                  {t('grade3')} {item.grade}{item.max_grade ? `/${item.max_grade}` : '%'}
                                 </Badge>
                               )}
                             </div>
@@ -272,7 +273,7 @@ const StudentHomeworkPage = () => {
                             {item.feedback && (
                               <div className="mt-2 p-2 bg-blue-50 rounded-lg">
                                 <p className="text-xs text-blue-700">
-                                  <strong>{isRTL ? 'ملاحظات المعلم:' : 'Teacher feedback:'}</strong> {item.feedback}
+                                  <strong>{t('teacherFeedback')}</strong> {item.feedback}
                                 </p>
                               </div>
                             )}
@@ -283,9 +284,9 @@ const StudentHomeworkPage = () => {
                       <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                         <FileText className="h-12 w-12 mb-3 opacity-30" />
                         <p>
-                          {status === 'pending' && (isRTL ? 'لا توجد واجبات قيد الانتظار' : 'No pending homework')}
-                          {status === 'completed' && (isRTL ? 'لا توجد واجبات مكتملة' : 'No completed homework')}
-                          {status === 'overdue' && (isRTL ? 'لا توجد واجبات متأخرة' : 'No overdue homework')}
+                          {status === 'pending' && (t('noPendingHomework'))}
+                          {status === 'completed' && (t('noCompletedHomework'))}
+                          {status === 'overdue' && (t('noOverdueHomework'))}
                         </p>
                       </div>
                     )}

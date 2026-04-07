@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
@@ -26,6 +26,7 @@ import {
 
 
 const StudentGradesPage = () => {
+  const { t } = useTranslation();
   const { token, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
@@ -43,7 +44,7 @@ const StudentGradesPage = () => {
       setGradesData(response.data);
     } catch (error) {
       console.error('Error fetching grades:', error);
-      nassaqError(isRTL ? 'حدث خطأ في جلب الدرجات' : 'Error fetching grades');
+      nassaqError(t('errorFetchingGrades'));
     } finally {
       setLoading(false);
     }
@@ -64,11 +65,11 @@ const StudentGradesPage = () => {
   };
 
   const getGradeLabel = (percentage) => {
-    if (percentage >= 90) return isRTL ? 'ممتاز' : 'Excellent';
-    if (percentage >= 80) return isRTL ? 'جيد جداً' : 'Very Good';
-    if (percentage >= 70) return isRTL ? 'جيد' : 'Good';
-    if (percentage >= 60) return isRTL ? 'مقبول' : 'Pass';
-    return isRTL ? 'ضعيف' : 'Fail';
+    if (percentage >= 90) return t('excellent');
+    if (percentage >= 80) return t('veryGood');
+    if (percentage >= 70) return t('good');
+    if (percentage >= 60) return t('pass');
+    return t('fail');
   };
 
   if (loading) {
@@ -103,7 +104,7 @@ const StudentGradesPage = () => {
               </div>
               <div className="hidden md:block text-center">
                 <p className="text-4xl font-bold">{gradesData?.total_grades || 0}</p>
-                <p className="text-sm text-blue-100">{isRTL ? 'درجة مسجلة' : 'Grades Recorded'}</p>
+                <p className="text-sm text-blue-100">{t('gradesRecorded')}</p>
               </div>
             </div>
           </CardContent>
@@ -114,7 +115,7 @@ const StudentGradesPage = () => {
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
               <BarChart3 className="h-5 w-5 text-blue-600" />
-              {isRTL ? 'نظرة عامة على المواد' : 'Subjects Overview'}
+              {t('subjectsOverview')}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -127,7 +128,7 @@ const StudentGradesPage = () => {
                         <BookOpen className={`h-4 w-4 ${getGradeColor(subject.average)}`} />
                         <span className="font-medium text-sm">{subject.subject}</span>
                         <Badge variant="outline" className="text-xs">
-                          {subject.grades?.length || 0} {isRTL ? 'درجات' : 'grades'}
+                          {subject.grades?.length || 0} {t('grades3')}
                         </Badge>
                       </div>
                       <div className="flex items-center gap-2">
@@ -148,7 +149,7 @@ const StudentGradesPage = () => {
             ) : (
               <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                 <Award className="h-12 w-12 mb-3 opacity-30" />
-                <p>{isRTL ? 'لا توجد درجات مسجلة' : 'No grades recorded'}</p>
+                <p>{t('noGradesRecorded')}</p>
               </div>
             )}
           </CardContent>
@@ -160,7 +161,7 @@ const StudentGradesPage = () => {
             <CardHeader className="pb-2">
               <CardTitle className="text-base flex items-center gap-2">
                 <FileText className="h-5 w-5 text-blue-600" />
-                {isRTL ? 'تفاصيل الدرجات' : 'Grades Details'}
+                {t('gradesDetails')}
               </CardTitle>
             </CardHeader>
             <CardContent>

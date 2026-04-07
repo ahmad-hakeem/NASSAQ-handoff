@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { Sidebar } from '../components/layout/Sidebar';
 import { HakimAssistant } from '../components/hakim/HakimAssistant';
 import { Button } from '../components/ui/button';
@@ -40,6 +40,7 @@ import {
 } from '../components/ui/select';
 
 export const PlatformReportsPage = () => {
+  const { t } = useTranslation();
   const { user, api } = useAuth();
   const { isRTL, toggleTheme, toggleLanguage, isDark } = useTheme();
   const [stats, setStats] = useState(null);
@@ -59,7 +60,7 @@ export const PlatformReportsPage = () => {
       setSchools(schoolsRes.data);
     } catch (error) {
       console.error('Failed to fetch data:', error);
-      nassaqError(isRTL ? 'فشل تحميل البيانات' : 'Failed to load data');
+      nassaqError(t('failedToLoadData'));
     } finally {
       setLoading(false);
     }
@@ -73,9 +74,9 @@ export const PlatformReportsPage = () => {
     toast.promise(
       new Promise(resolve => setTimeout(resolve, 2000)),
       {
-        loading: isRTL ? 'جاري تصدير التقرير...' : 'Exporting report...',
-        success: isRTL ? 'تم تصدير التقرير بنجاح' : 'Report exported successfully',
-        error: isRTL ? 'فشل تصدير التقرير' : 'Failed to export report',
+        loading: t('exportingReport'),
+        success: t('reportExportedSuccessfully'),
+        error: t('failedToExportReport'),
       }
     );
   };
@@ -101,7 +102,7 @@ export const PlatformReportsPage = () => {
 
   // Schools by region
   const schoolsByRegion = schools.reduce((acc, school) => {
-    const region = school.region || (isRTL ? 'غير محدد' : 'Unknown');
+    const region = school.region || (t('unknown'));
     acc[region] = (acc[region] || 0) + 1;
     return acc;
   }, {});
@@ -112,7 +113,7 @@ export const PlatformReportsPage = () => {
 
   const kpiCards = [
     {
-      title: isRTL ? 'إجمالي المدارس' : 'Total Schools',
+      title: t('totalSchools'),
       value: stats?.total_schools || 0,
       icon: Building2,
       trend: '+12%',
@@ -120,7 +121,7 @@ export const PlatformReportsPage = () => {
       color: 'brand-navy',
     },
     {
-      title: isRTL ? 'المدارس النشطة' : 'Active Schools',
+      title: t('activeSchools'),
       value: activeSchools,
       icon: Activity,
       trend: '+5%',
@@ -128,7 +129,7 @@ export const PlatformReportsPage = () => {
       color: 'green-500',
     },
     {
-      title: isRTL ? 'إجمالي الطلاب' : 'Total Students',
+      title: t('totalStudents'),
       value: totalStudents,
       icon: GraduationCap,
       trend: '+8%',
@@ -136,7 +137,7 @@ export const PlatformReportsPage = () => {
       color: 'brand-turquoise',
     },
     {
-      title: isRTL ? 'إجمالي المعلمين' : 'Total Teachers',
+      title: t('totalTeachers'),
       value: totalTeachers,
       icon: UserCheck,
       trend: '+3%',
@@ -144,7 +145,7 @@ export const PlatformReportsPage = () => {
       color: 'brand-purple',
     },
     {
-      title: isRTL ? 'متوسط الطلاب/مدرسة' : 'Avg Students/School',
+      title: t('avgStudentsschool'),
       value: avgStudentsPerSchool,
       icon: Users,
       trend: '0%',
@@ -152,7 +153,7 @@ export const PlatformReportsPage = () => {
       color: 'orange-500',
     },
     {
-      title: isRTL ? 'المستخدمون النشطون' : 'Active Users',
+      title: t('activeUsers'),
       value: stats?.active_users || 0,
       icon: Users,
       trend: '+15%',
@@ -163,26 +164,26 @@ export const PlatformReportsPage = () => {
 
   const reportTypes = [
     {
-      title: isRTL ? 'تقرير المدارس الشامل' : 'Comprehensive Schools Report',
-      description: isRTL ? 'تقرير تفصيلي عن جميع المدارس في المنصة' : 'Detailed report of all schools on the platform',
+      title: t('comprehensiveSchoolsReport'),
+      description: t('detailedReportOfAllSchoolsOnThePlatform'),
       icon: Building2,
       type: 'schools',
     },
     {
-      title: isRTL ? 'تقرير المستخدمين' : 'Users Report',
-      description: isRTL ? 'إحصائيات المستخدمين حسب الدور والحالة' : 'User statistics by role and status',
+      title: t('usersReport'),
+      description: t('userStatisticsByRoleAndStatus'),
       icon: Users,
       type: 'users',
     },
     {
-      title: isRTL ? 'تقرير الأداء' : 'Performance Report',
-      description: isRTL ? 'مؤشرات أداء المنصة والمدارس' : 'Platform and schools performance metrics',
+      title: t('performanceReport'),
+      description: t('platformAndSchoolsPerformanceMetrics'),
       icon: BarChart3,
       type: 'performance',
     },
     {
-      title: isRTL ? 'تقرير النشاط اليومي' : 'Daily Activity Report',
-      description: isRTL ? 'تقرير عن النشاط اليومي في المنصة' : 'Report on daily platform activity',
+      title: t('dailyActivityReport'),
+      description: t('reportOnDailyPlatformActivity'),
       icon: Activity,
       type: 'activity',
     },
@@ -199,7 +200,7 @@ export const PlatformReportsPage = () => {
                 {isRTL ? 'التقارير والتحليلات' : 'Reports & Analytics'}
               </h1>
               <p className="text-sm text-muted-foreground font-tajawal">
-                {isRTL ? 'تحليلات شاملة للمنصة' : 'Comprehensive platform analytics'}
+                {t('comprehensivePlatformAnalytics')}
               </p>
             </div>
             
@@ -210,10 +211,10 @@ export const PlatformReportsPage = () => {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="today">{isRTL ? 'اليوم' : 'Today'}</SelectItem>
-                  <SelectItem value="week">{isRTL ? 'هذا الأسبوع' : 'This Week'}</SelectItem>
-                  <SelectItem value="month">{isRTL ? 'هذا الشهر' : 'This Month'}</SelectItem>
-                  <SelectItem value="year">{isRTL ? 'هذا العام' : 'This Year'}</SelectItem>
+                  <SelectItem value="today">{t('today2')}</SelectItem>
+                  <SelectItem value="week">{t('thisWeek2')}</SelectItem>
+                  <SelectItem value="month">{t('thisMonth2')}</SelectItem>
+                  <SelectItem value="year">{t('thisYear')}</SelectItem>
                 </SelectContent>
               </Select>
               
@@ -234,7 +235,7 @@ export const PlatformReportsPage = () => {
           {/* KPI Cards */}
           <section>
             <h2 className="font-cairo text-xl font-bold text-foreground mb-4">
-              {isRTL ? 'مؤشرات الأداء الرئيسية' : 'Key Performance Indicators'}
+              {t('keyPerformanceIndicators')}
             </h2>
             
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
@@ -271,7 +272,7 @@ export const PlatformReportsPage = () => {
             {/* Schools by Status */}
             <Card className="card-nassaq">
               <CardHeader>
-                <CardTitle className="font-cairo">{isRTL ? 'المدارس حسب الحالة' : 'Schools by Status'}</CardTitle>
+                <CardTitle className="font-cairo">{t('schoolsByStatus')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
@@ -279,7 +280,7 @@ export const PlatformReportsPage = () => {
                     <div className="flex justify-between text-sm">
                       <span className="flex items-center gap-2">
                         <span className="w-3 h-3 rounded-full bg-green-500"></span>
-                        {isRTL ? 'نشطة' : 'Active'}
+                        {t('active2')}
                       </span>
                       <span className="font-bold">{schoolsByStatus.active}</span>
                     </div>
@@ -290,7 +291,7 @@ export const PlatformReportsPage = () => {
                     <div className="flex justify-between text-sm">
                       <span className="flex items-center gap-2">
                         <span className="w-3 h-3 rounded-full bg-yellow-500"></span>
-                        {isRTL ? 'معلقة' : 'Pending'}
+                        {t('pending2')}
                       </span>
                       <span className="font-bold">{schoolsByStatus.pending}</span>
                     </div>
@@ -301,7 +302,7 @@ export const PlatformReportsPage = () => {
                     <div className="flex justify-between text-sm">
                       <span className="flex items-center gap-2">
                         <span className="w-3 h-3 rounded-full bg-red-500"></span>
-                        {isRTL ? 'موقوفة' : 'Suspended'}
+                        {t('suspended')}
                       </span>
                       <span className="font-bold">{schoolsByStatus.suspended}</span>
                     </div>
@@ -314,13 +315,13 @@ export const PlatformReportsPage = () => {
             {/* Top Regions */}
             <Card className="card-nassaq">
               <CardHeader>
-                <CardTitle className="font-cairo">{isRTL ? 'المدارس حسب المنطقة' : 'Schools by Region'}</CardTitle>
+                <CardTitle className="font-cairo">{t('schoolsByRegion')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
                   {topRegions.length === 0 ? (
                     <p className="text-sm text-muted-foreground text-center py-4">
-                      {isRTL ? 'لا توجد بيانات' : 'No data available'}
+                      {t('noDataAvailable')}
                     </p>
                   ) : (
                     topRegions.map(([region, count], index) => (
@@ -343,13 +344,13 @@ export const PlatformReportsPage = () => {
           {/* Top Schools */}
           <Card className="card-nassaq">
             <CardHeader>
-              <CardTitle className="font-cairo">{isRTL ? 'أكبر المدارس حسب عدد الطلاب' : 'Top Schools by Students'}</CardTitle>
+              <CardTitle className="font-cairo">{t('topSchoolsByStudents')}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
                 {topSchoolsByStudents.length === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-4">
-                    {isRTL ? 'لا توجد بيانات' : 'No data available'}
+                    {t('noDataAvailable')}
                   </p>
                 ) : (
                   topSchoolsByStudents.map((school, index) => (
@@ -379,9 +380,9 @@ export const PlatformReportsPage = () => {
           {/* Export Reports */}
           <Card className="card-nassaq">
             <CardHeader>
-              <CardTitle className="font-cairo">{isRTL ? 'تصدير التقارير' : 'Export Reports'}</CardTitle>
+              <CardTitle className="font-cairo">{t('exportReports')}</CardTitle>
               <CardDescription>
-                {isRTL ? 'تصدير التقارير بصيغة PDF أو Excel' : 'Export reports in PDF or Excel format'}
+                {t('exportReportsInPdfOrExcelFormat')}
               </CardDescription>
             </CardHeader>
             <CardContent>

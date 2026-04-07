@@ -297,7 +297,14 @@ async def create_subject(
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
-    
+
+    try:
+        from services.translation_service import translate_fields, is_available
+        if is_available():
+            subject_doc = await translate_fields(subject_doc, ["name"])
+    except Exception:
+        pass
+
     await gd_insert(db.session, "subjects", subject_doc)
     return SubjectResponse(**subject_doc)
 

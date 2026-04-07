@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { useTranslation } from '../../contexts/ThemeContext';
 const MALE_AVATAR = (
   <svg viewBox="0 0 40 40" className="w-full h-full">
     <circle cx="20" cy="20" r="20" fill="#E8F4FD" />
@@ -41,6 +42,7 @@ const FEMALE_AVATAR = (
 );
 
 const DraggableStudentChip = ({ student, isRTL, onView, onEdit, onDelete, onAction, canDrag }) => {
+  const { t } = useTranslation();
   const [isDragging, setIsDragging] = useState(false);
 
   const handleDragStart = (e) => {
@@ -95,7 +97,7 @@ const DraggableStudentChip = ({ student, isRTL, onView, onEdit, onDelete, onActi
       <Badge variant={student.is_active !== false ? 'default' : 'destructive'}
         className={`text-[9px] h-4 rounded-full border-0 px-1.5 shrink-0 ${student.is_active !== false ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : ''}`}>
         <span className={`w-1 h-1 rounded-full me-0.5 ${student.is_active !== false ? 'bg-emerald-500' : 'bg-red-500'}`} />
-        {student.is_active !== false ? (isRTL ? 'نشط' : 'Active') : (isRTL ? 'معلق' : 'Off')}
+        {student.is_active !== false ? (t('active')) : (isRTL ? 'معلق' : 'Off')}
       </Badge>
       <DropdownMenu>
         <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
@@ -104,12 +106,12 @@ const DraggableStudentChip = ({ student, isRTL, onView, onEdit, onDelete, onActi
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-44" onClick={(e) => e.stopPropagation()}>
-          <DropdownMenuItem onClick={() => onView(student)}><Eye className="h-3.5 w-3.5 me-2" />{isRTL ? 'عرض الملف' : 'View Profile'}</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => onEdit(student)}><Edit className="h-3.5 w-3.5 me-2" />{isRTL ? 'تعديل' : 'Edit'}</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onView(student)}><Eye className="h-3.5 w-3.5 me-2" />{t('viewProfile')}</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onEdit(student)}><Edit className="h-3.5 w-3.5 me-2" />{t('edit')}</DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => onAction(student, 'reset-password')}><Key className="h-3.5 w-3.5 me-2" />{isRTL ? 'إعادة كلمة المرور' : 'Reset Password'}</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onAction(student, 'reset-password')}><Key className="h-3.5 w-3.5 me-2" />{t('resetPassword2')}</DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => onDelete(student)} className="text-red-600"><Trash2 className="h-3.5 w-3.5 me-2" />{isRTL ? 'حذف' : 'Delete'}</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onDelete(student)} className="text-red-600"><Trash2 className="h-3.5 w-3.5 me-2" />{t('delete')}</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
@@ -222,12 +224,12 @@ const ClassColumn = ({
               <GraduationCap className="h-8 w-8 mx-auto text-muted-foreground/20 mb-2" />
               <p className="text-xs text-muted-foreground/50">
                 {searchQuery
-                  ? (isRTL ? 'لا يوجد نتائج بحث' : 'No search results')
-                  : (isRTL ? 'لا يوجد طلاب' : 'No students')}
+                  ? (t('noSearchResults'))
+                  : (t('noStudents'))}
               </p>
               {canDrag && !searchQuery && (
                 <p className="text-[10px] text-brand-turquoise/60 mt-1">
-                  {isRTL ? 'اسحب طالباً هنا لنقله' : 'Drag a student here to transfer'}
+                  {t('dragAStudentHereToTransfer')}
                 </p>
               )}
             </div>
@@ -316,7 +318,7 @@ const UnassignedColumn = ({
           <AlertTriangle className="h-4.5 w-4.5 text-amber-600" />
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="font-bold text-sm text-amber-800 truncate">{isRTL ? 'بدون فصل' : 'Unassigned'}</h3>
+          <h3 className="font-bold text-sm text-amber-800 truncate">{t('unassigned')}</h3>
           <p className="text-[10px] text-amber-600/70">{isRTL ? `${students.length} طالب بدون فصل` : `${students.length} unassigned students`}</p>
         </div>
         <Badge variant="outline" className="text-[10px] h-5 rounded-full font-bold shrink-0 bg-amber-100 text-amber-700 border-amber-300">
@@ -396,7 +398,7 @@ export default function StudentClassGrid({
     return (
       <Card className="p-12 text-center border-dashed">
         <GraduationCap className="h-16 w-16 mx-auto text-muted-foreground/15 mb-4" />
-        <p className="text-muted-foreground font-medium">{isRTL ? 'لا توجد بيانات' : 'No data available'}</p>
+        <p className="text-muted-foreground font-medium">{t('noDataAvailable')}</p>
       </Card>
     );
   }
@@ -407,7 +409,7 @@ export default function StudentClassGrid({
         <div className="flex items-center gap-2 p-3 rounded-xl bg-brand-turquoise/5 border border-brand-turquoise/20">
           <ArrowRightLeft className="h-4 w-4 text-brand-turquoise shrink-0" />
           <p className="text-xs text-brand-turquoise font-medium">
-            {isRTL ? 'اسحب الطالب وأفلته في فصل آخر لنقله مباشرة' : 'Drag and drop students between classes to transfer them'}
+            {t('dragAndDropStudentsBetweenClassesToTransferThem')}
           </p>
         </div>
       )}

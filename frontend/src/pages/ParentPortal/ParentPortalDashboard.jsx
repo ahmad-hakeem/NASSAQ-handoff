@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
@@ -37,6 +37,7 @@ import {
 import { formatHijriDate } from '../../utils/hijriDate';
 
 const ParentPortalDashboard = () => {
+  const { t } = useTranslation();
   const { token, user, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
@@ -109,11 +110,11 @@ const ParentPortalDashboard = () => {
                 <div>
                   <p className="text-indigo-100 text-sm">{formatHijriDate()}</p>
                   <h1 className="text-xl md:text-2xl font-bold font-cairo mt-1">
-                    {isRTL ? 'مرحباً' : 'Welcome'}, {dashboard?.parent?.name?.split(' ')[0]}
+                    {t('welcome')}, {dashboard?.parent?.name?.split(' ')[0]}
                   </h1>
                   <p className="text-indigo-100 flex items-center gap-2 mt-1 text-sm">
                     <GraduationCap className="h-4 w-4" />
-                    {dashboard?.children_count || 0} {dashboard?.children_count === 1 ? (isRTL ? 'ابن مسجل' : 'child enrolled') : (isRTL ? 'أبناء مسجلين' : 'children enrolled')}
+                    {dashboard?.children_count || 0} {dashboard?.children_count === 1 ? (t('childEnrolled')) : (t('childrenEnrolled'))}
                   </p>
                 </div>
               </div>
@@ -122,11 +123,11 @@ const ParentPortalDashboard = () => {
               <div className="hidden md:flex gap-4">
                 <div className="text-center px-4 py-2 bg-white/10 rounded-xl backdrop-blur-sm">
                   <p className="text-2xl font-bold">{dashboard?.unread_notifications || 0}</p>
-                  <p className="text-xs text-indigo-100">{isRTL ? 'إشعارات' : 'Notifications'}</p>
+                  <p className="text-xs text-indigo-100">{t('notifications2')}</p>
                 </div>
                 <div className="text-center px-4 py-2 bg-white/10 rounded-xl backdrop-blur-sm">
                   <p className="text-2xl font-bold">{dashboard?.unread_messages || 0}</p>
-                  <p className="text-xs text-indigo-100">{isRTL ? 'رسائل' : 'Messages'}</p>
+                  <p className="text-xs text-indigo-100">{t('messages3')}</p>
                 </div>
               </div>
             </div>
@@ -172,14 +173,14 @@ const ParentPortalDashboard = () => {
             <CardContent className="py-12 text-center">
               <Users className="h-16 w-16 mx-auto mb-4 text-gray-300" />
               <h3 className="font-bold text-lg text-gray-700 mb-2">
-                {isRTL ? 'لا يوجد أبناء مسجلين' : 'No children enrolled'}
+                {t('noChildrenEnrolled')}
               </h3>
               <p className="text-muted-foreground text-sm mb-4">
-                {isRTL ? 'تواصل مع إدارة المدرسة لربط حسابك بأبنائك' : 'Contact school administration to link your account'}
+                {t('contactSchoolAdministrationToLinkYourAccount')}
               </p>
               <Button variant="outline">
                 <MessageSquare className="h-4 w-4 me-2" />
-                {isRTL ? 'تواصل مع الإدارة' : 'Contact Admin'}
+                {t('contactAdmin')}
               </Button>
             </CardContent>
           </Card>
@@ -209,7 +210,7 @@ const ParentPortalDashboard = () => {
                   </div>
                   <Link to={`/parent/child/${selectedChild.id}`}>
                     <Button variant="outline" size="sm" className="text-indigo-600 border-indigo-200">
-                      {isRTL ? 'التفاصيل' : 'Details'}
+                      {t('details')}
                       <ChevronLeft className="h-4 w-4 ms-1" />
                     </Button>
                   </Link>
@@ -244,7 +245,7 @@ const ParentPortalDashboard = () => {
                       {selectedChild.average_score}%
                     </span>
                   </div>
-                  <p className="text-xs text-muted-foreground">{isRTL ? 'المعدل العام' : 'Average'}</p>
+                  <p className="text-xs text-muted-foreground">{t('average2')}</p>
                   <Progress value={selectedChild.average_score} className="h-1.5 mt-2" />
                 </CardContent>
               </Card>
@@ -256,10 +257,10 @@ const ParentPortalDashboard = () => {
                 <CardTitle className="flex items-center justify-between text-base">
                   <div className="flex items-center gap-2">
                     <TrendingUp className="h-5 w-5 text-blue-600" />
-                    {isRTL ? 'آخر الدرجات' : 'Recent Grades'}
+                    {t('recentGrades')}
                   </div>
                   <Link to={`/parent/child/${selectedChild.id}/grades`} className="text-xs text-blue-600 hover:underline">
-                    {isRTL ? 'عرض الكل' : 'View All'}
+                    {t('viewAll')}
                   </Link>
                 </CardTitle>
               </CardHeader>
@@ -296,7 +297,7 @@ const ParentPortalDashboard = () => {
                 <Card className="rounded-xl border-0 shadow-sm hover:shadow-md transition-all cursor-pointer">
                   <CardContent className="p-4 text-center">
                     <Calendar className="h-8 w-8 mx-auto mb-2 text-indigo-600" />
-                    <p className="text-sm font-medium">{isRTL ? 'الجدول' : 'Schedule'}</p>
+                    <p className="text-sm font-medium">{t('schedule')}</p>
                   </CardContent>
                 </Card>
               </Link>
@@ -305,7 +306,7 @@ const ParentPortalDashboard = () => {
                 <Card className="rounded-xl border-0 shadow-sm hover:shadow-md transition-all cursor-pointer">
                   <CardContent className="p-4 text-center">
                     <CheckCircle className="h-8 w-8 mx-auto mb-2 text-green-600" />
-                    <p className="text-sm font-medium">{isRTL ? 'الحضور' : 'Attendance'}</p>
+                    <p className="text-sm font-medium">{t('attendance2')}</p>
                   </CardContent>
                 </Card>
               </Link>
@@ -314,7 +315,7 @@ const ParentPortalDashboard = () => {
                 <Card className="rounded-xl border-0 shadow-sm hover:shadow-md transition-all cursor-pointer">
                   <CardContent className="p-4 text-center">
                     <Users className="h-8 w-8 mx-auto mb-2 text-purple-600" />
-                    <p className="text-sm font-medium">{isRTL ? 'المعلمون' : 'Teachers'}</p>
+                    <p className="text-sm font-medium">{t('teachers')}</p>
                   </CardContent>
                 </Card>
               </Link>
@@ -323,7 +324,7 @@ const ParentPortalDashboard = () => {
                 <Card className="rounded-xl border-0 shadow-sm hover:shadow-md transition-all cursor-pointer">
                   <CardContent className="p-4 text-center">
                     <MessageSquare className="h-8 w-8 mx-auto mb-2 text-blue-600" />
-                    <p className="text-sm font-medium">{isRTL ? 'التواصل' : 'Messages'}</p>
+                    <p className="text-sm font-medium">{t('messages')}</p>
                   </CardContent>
                 </Card>
               </Link>

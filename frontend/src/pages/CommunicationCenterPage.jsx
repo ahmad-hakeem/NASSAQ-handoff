@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Sidebar } from '../components/layout/Sidebar';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
@@ -75,6 +75,7 @@ const iconMap = {
 };
 
 export const CommunicationCenterPage = () => {
+  const { t } = useTranslation();
   const { isRTL, isDark } = useTheme();
   const { api } = useAuth();
   const { nassaqWarning, nassaqError } = useNassaqAlert();
@@ -152,7 +153,7 @@ export const CommunicationCenterPage = () => {
       
     } catch (error) {
       console.error('Failed to fetch communication data:', error);
-      nassaqError(isRTL ? 'فشل تحميل البيانات' : 'Failed to load data');
+      nassaqError(t('failedToLoadData'));
     } finally {
       setLoading(false);
     }
@@ -165,7 +166,7 @@ export const CommunicationCenterPage = () => {
   // Send or schedule message
   const handleSendMessage = async (schedule = false) => {
     if (!newMessage.title || !newMessage.content || !newMessage.audience) {
-      nassaqWarning(isRTL ? 'يرجى تعبئة جميع الحقول المطلوبة' : 'Please fill all required fields');
+      nassaqWarning(t('pleaseFillAllRequiredFields2'));
       return;
     }
     
@@ -183,9 +184,9 @@ export const CommunicationCenterPage = () => {
       const response = await api.post('/communication', payload);
       
       if (response.data.status === 'sent' || !schedule) {
-        toast.success(isRTL ? 'تم إرسال الرسالة بنجاح ✓' : 'Message sent successfully ✓');
+        toast.success(t('messageSentSuccessfully'));
       } else {
-        toast.success(isRTL ? 'تمت جدولة الرسالة بنجاح ✓' : 'Message scheduled successfully ✓');
+        toast.success(t('messageScheduledSuccessfully'));
       }
       
       // Reset form
@@ -196,7 +197,7 @@ export const CommunicationCenterPage = () => {
       
     } catch (error) {
       console.error('Failed to send message:', error);
-      nassaqError(isRTL ? 'فشل إرسال الرسالة' : 'Failed to send message');
+      nassaqError(t('failedToSendMessage'));
     } finally {
       setSending(false);
     }
@@ -207,11 +208,11 @@ export const CommunicationCenterPage = () => {
     try {
       setSending(true);
       await api.post(`/communication/${messageId}/send-now`);
-      toast.success(isRTL ? 'تم إرسال الرسالة بنجاح ✓' : 'Message sent successfully ✓');
+      toast.success(t('messageSentSuccessfully'));
       await fetchData();
     } catch (error) {
       console.error('Failed to send message:', error);
-      nassaqError(isRTL ? 'فشل إرسال الرسالة' : 'Failed to send message');
+      nassaqError(t('failedToSendMessage'));
     } finally {
       setSending(false);
     }
@@ -229,13 +230,13 @@ export const CommunicationCenterPage = () => {
         audience: selectedMessage.audience,
         scheduled_at: selectedMessage.scheduled_at
       });
-      toast.success(isRTL ? 'تم تحديث الرسالة المجدولة ✓' : 'Scheduled message updated ✓');
+      toast.success(t('scheduledMessageUpdated'));
       setEditScheduledOpen(false);
       setSelectedMessage(null);
       await fetchData();
     } catch (error) {
       console.error('Failed to update message:', error);
-      nassaqError(isRTL ? 'فشل تحديث الرسالة' : 'Failed to update message');
+      nassaqError(t('failedToUpdateMessage'));
     } finally {
       setSending(false);
     }
@@ -247,13 +248,13 @@ export const CommunicationCenterPage = () => {
     
     try {
       await api.delete(`/communication/${messageToDelete.id}`);
-      toast.success(isRTL ? 'تم حذف الرسالة ✓' : 'Message deleted ✓');
+      toast.success(t('messageDeleted'));
       setDeleteConfirmOpen(false);
       setMessageToDelete(null);
       await fetchData();
     } catch (error) {
       console.error('Failed to delete message:', error);
-      nassaqError(isRTL ? 'فشل حذف الرسالة' : 'Failed to delete message');
+      nassaqError(t('failedToDeleteMessage'));
     }
   };
 
@@ -277,16 +278,16 @@ export const CommunicationCenterPage = () => {
       content: template.content_template || ''
     }));
     setTemplatesOpen(false);
-    toast.success(isRTL ? 'تم تطبيق القالب' : 'Template applied');
+    toast.success(t('templateApplied'));
   };
 
   // Get audience label
   const getAudienceLabel = (audience) => {
     const labels = {
-      all: isRTL ? 'الجميع' : 'Everyone',
-      teachers: isRTL ? 'المعلمين' : 'Teachers',
-      students: isRTL ? 'الطلاب' : 'Students',
-      parents: isRTL ? 'أولياء الأمور' : 'Parents'
+      all: t('everyone'),
+      teachers: t('teachers2'),
+      students: t('students'),
+      parents: t('parents')
     };
     return labels[audience] || audience;
   };
@@ -327,10 +328,10 @@ export const CommunicationCenterPage = () => {
       : receivedMessages.filter(m => m.is_read);
 
   const tabs = [
-    { id: 'inbox', label: isRTL ? 'صندوق الوارد' : 'Inbox', icon: Inbox, badge: unreadCount },
-    { id: 'compose', label: isRTL ? 'إنشاء رسالة' : 'Compose', icon: MessageSquare },
-    { id: 'sent', label: isRTL ? 'المرسلة' : 'Sent', icon: Send, badge: sentMessages.length },
-    { id: 'scheduled', label: isRTL ? 'المجدولة' : 'Scheduled', icon: Clock, badge: scheduledMessages.length },
+    { id: 'inbox', label: t('inbox'), icon: Inbox, badge: unreadCount },
+    { id: 'compose', label: t('compose'), icon: MessageSquare },
+    { id: 'sent', label: t('sent'), icon: Send, badge: sentMessages.length },
+    { id: 'scheduled', label: t('scheduled'), icon: Clock, badge: scheduledMessages.length },
   ];
 
   return (
@@ -343,7 +344,7 @@ export const CommunicationCenterPage = () => {
                 {isRTL ? 'مركز التواصل والإشعارات' : 'Communication & Notifications Center'}
               </h1>
               <p className="text-sm text-muted-foreground font-tajawal">
-                {isRTL ? 'إرسال واستقبال الرسائل والإشعارات' : 'Send and receive messages and notifications'}
+                {t('sendAndReceiveMessagesAndNotifications')}
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -355,7 +356,7 @@ export const CommunicationCenterPage = () => {
                 data-testid="refresh-btn"
               >
                 <RefreshCw className={`h-4 w-4 me-2 ${loading ? 'animate-spin' : ''}`} />
-                {isRTL ? 'تحديث' : 'Refresh'}
+                {t('refresh')}
               </Button>
             </div>
           </div>
@@ -389,16 +390,16 @@ export const CommunicationCenterPage = () => {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <h2 className="font-cairo text-lg font-semibold">{isRTL ? 'صندوق الوارد' : 'Inbox'}</h2>
+                  <h2 className="font-cairo text-lg font-semibold">{t('inbox')}</h2>
                   {unreadCount > 0 && (
-                    <Badge variant="destructive" className="font-cairo">{unreadCount} {isRTL ? 'جديدة' : 'new'}</Badge>
+                    <Badge variant="destructive" className="font-cairo">{unreadCount} {t('new3')}</Badge>
                   )}
                 </div>
                 <div className="flex items-center gap-2">
                   {['all', 'unread', 'read'].map((f) => (
                     <Button key={f} variant={inboxFilter === f ? 'default' : 'outline'} size="sm" className="rounded-lg text-xs"
                       onClick={() => setInboxFilter(f)}>
-                      {f === 'all' ? (isRTL ? 'الكل' : 'All') : f === 'unread' ? (isRTL ? 'غير مقروءة' : 'Unread') : (isRTL ? 'مقروءة' : 'Read')}
+                      {f === 'all' ? (t('all')) : f === 'unread' ? (t('unread')) : (t('read'))}
                     </Button>
                   ))}
                 </div>
@@ -412,11 +413,11 @@ export const CommunicationCenterPage = () => {
                     </div>
                     <p className="text-lg font-cairo font-semibold text-muted-foreground">
                       {inboxFilter === 'unread' 
-                        ? (isRTL ? 'لا توجد رسائل غير مقروءة' : 'No unread messages')
-                        : (isRTL ? 'صندوق الوارد فارغ' : 'Your inbox is empty')}
+                        ? (t('noUnreadMessages'))
+                        : (t('yourInboxIsEmpty'))}
                     </p>
                     <p className="text-sm text-muted-foreground/60 font-tajawal mt-1">
-                      {isRTL ? 'ستظهر الرسائل الجديدة هنا' : 'New messages will appear here'}
+                      {t('newMessagesWillAppearHere')}
                     </p>
                   </CardContent>
                 </Card>
@@ -463,7 +464,7 @@ export const CommunicationCenterPage = () => {
                               )}
                               {msg.sender_name && (
                                 <p className="text-[11px] text-muted-foreground/70 mt-0.5 font-tajawal">
-                                  {isRTL ? 'من:' : 'From:'} {msg.sender_name}
+                                  {t('from')} {msg.sender_name}
                                 </p>
                               )}
                             </div>
@@ -479,7 +480,7 @@ export const CommunicationCenterPage = () => {
                                 </Badge>
                                 {msg.sender_name && (
                                   <span className="text-[11px] text-muted-foreground font-tajawal">
-                                    {isRTL ? 'المرسل:' : 'Sender:'} {msg.sender_name}
+                                    {t('sender')} {msg.sender_name}
                                   </span>
                                 )}
                               </div>
@@ -505,7 +506,7 @@ export const CommunicationCenterPage = () => {
                     </div>
                     <div>
                       <p className="text-2xl font-bold">{sentMessages.length}</p>
-                      <p className="text-sm text-muted-foreground">{isRTL ? 'رسائل مرسلة' : 'Sent Messages'}</p>
+                      <p className="text-sm text-muted-foreground">{t('sentMessages')}</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -517,7 +518,7 @@ export const CommunicationCenterPage = () => {
                     </div>
                     <div>
                       <p className="text-2xl font-bold">{receivedMessages.length}</p>
-                      <p className="text-sm text-muted-foreground">{isRTL ? 'صندوق الوارد' : 'Inbox'}</p>
+                      <p className="text-sm text-muted-foreground">{t('inbox')}</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -529,7 +530,7 @@ export const CommunicationCenterPage = () => {
                     </div>
                     <div>
                       <p className="text-2xl font-bold">{scheduledMessages.length}</p>
-                      <p className="text-sm text-muted-foreground">{isRTL ? 'مجدولة' : 'Scheduled'}</p>
+                      <p className="text-sm text-muted-foreground">{t('scheduled2')}</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -541,7 +542,7 @@ export const CommunicationCenterPage = () => {
                     </div>
                     <div>
                       <p className="text-2xl font-bold">{templates.length}</p>
-                      <p className="text-sm text-muted-foreground">{isRTL ? 'قوالب جاهزة' : 'Templates'}</p>
+                      <p className="text-sm text-muted-foreground">{t('templates')}</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -552,16 +553,16 @@ export const CommunicationCenterPage = () => {
                   <CardHeader>
                     <CardTitle className="font-cairo flex items-center gap-2">
                       <MessageSquare className="h-5 w-5 text-brand-turquoise" />
-                      {isRTL ? 'إنشاء رسالة جديدة' : 'Compose New Message'}
+                      {t('composeNewMessage')}
                     </CardTitle>
                     <CardDescription>
-                      {isRTL ? 'أرسل رسالة للمستخدمين في مدرستك' : 'Send a message to users in your school'}
+                      {t('sendAMessageToUsersInYourSchool')}
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div>
                       <Label className="text-sm font-medium mb-2 block">
-                        {isRTL ? 'الجمهور المستهدف' : 'Target Audience'} *
+                        {t('targetAudience')} *
                       </Label>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                         {audienceGroups.map((group) => {
@@ -584,11 +585,11 @@ export const CommunicationCenterPage = () => {
                     </div>
                     <div>
                       <Label className="text-sm font-medium mb-2 block">
-                        {isRTL ? 'عنوان الرسالة' : 'Message Title'} *
+                        {t('messageTitle')} *
                       </Label>
                       <Input value={newMessage.title}
                         onChange={(e) => setNewMessage(prev => ({ ...prev, title: e.target.value }))}
-                        placeholder={isRTL ? 'أدخل عنوان الرسالة...' : 'Enter message title...'}
+                        placeholder={t('enterMessageTitle')}
                         className="rounded-xl" data-testid="message-title-input" />
                     </div>
                     <div>
@@ -597,12 +598,12 @@ export const CommunicationCenterPage = () => {
                       </Label>
                       <Textarea value={newMessage.content}
                         onChange={(e) => setNewMessage(prev => ({ ...prev, content: e.target.value }))}
-                        placeholder={isRTL ? 'اكتب رسالتك هنا...' : 'Write your message here...'}
+                        placeholder={t('writeYourMessageHere')}
                         className="rounded-xl min-h-[150px]" data-testid="message-content-input" />
                     </div>
                     <div>
                       <Label className="text-sm font-medium mb-2 block">
-                        {isRTL ? 'جدولة الإرسال (اختياري)' : 'Schedule Send (Optional)'}
+                        {t('scheduleSendOptional')}
                       </Label>
                       <Input type="datetime-local" value={newMessage.scheduled_at}
                         onChange={(e) => setNewMessage(prev => ({ ...prev, scheduled_at: e.target.value }))}
@@ -611,7 +612,7 @@ export const CommunicationCenterPage = () => {
                     <div className="flex justify-end gap-3 pt-4">
                       <Button variant="outline" className="rounded-xl"
                         onClick={() => setNewMessage({ title: '', content: '', audience: '', scheduled_at: '' })}>
-                        {isRTL ? 'مسح' : 'Clear'}
+                        {t('clear3')}
                       </Button>
                       {newMessage.scheduled_at && (
                         <Button variant="secondary" className="rounded-xl"
@@ -619,7 +620,7 @@ export const CommunicationCenterPage = () => {
                           disabled={sending || !newMessage.title || !newMessage.content || !newMessage.audience}
                           data-testid="schedule-btn">
                           {sending ? <Loader2 className="h-4 w-4 me-2 animate-spin" /> : <Clock className="h-4 w-4 me-2" />}
-                          {isRTL ? 'جدولة' : 'Schedule'}
+                          {t('schedule2')}
                         </Button>
                       )}
                       <Button className="rounded-xl bg-brand-navy hover:bg-brand-navy/90"
@@ -627,7 +628,7 @@ export const CommunicationCenterPage = () => {
                         disabled={sending || !newMessage.title || !newMessage.content || !newMessage.audience}
                         data-testid="send-now-btn">
                         {sending ? <Loader2 className="h-4 w-4 me-2 animate-spin" /> : <Send className="h-4 w-4 me-2" />}
-                        {isRTL ? 'إرسال الآن' : 'Send Now'}
+                        {t('sendNow')}
                       </Button>
                     </div>
                   </CardContent>
@@ -644,7 +645,7 @@ export const CommunicationCenterPage = () => {
                     <CardContent className="space-y-2">
                       {templates.length === 0 ? (
                         <p className="text-sm text-muted-foreground text-center py-4">
-                          {isRTL ? 'لا توجد قوالب' : 'No templates'}
+                          {t('noTemplates')}
                         </p>
                       ) : (
                         templates.slice(0, 5).map((template) => {
@@ -663,12 +664,12 @@ export const CommunicationCenterPage = () => {
 
                   <Card className="card-nassaq">
                     <CardHeader>
-                      <CardTitle className="font-cairo text-lg">{isRTL ? 'آخر الرسائل' : 'Recent Messages'}</CardTitle>
+                      <CardTitle className="font-cairo text-lg">{t('recentMessages')}</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3">
                       {sentMessages.length === 0 ? (
                         <p className="text-sm text-muted-foreground text-center py-4">
-                          {isRTL ? 'لا توجد رسائل مرسلة' : 'No sent messages'}
+                          {t('noSentMessages')}
                         </p>
                       ) : (
                         sentMessages.slice(0, 3).map((msg) => (
@@ -693,14 +694,14 @@ export const CommunicationCenterPage = () => {
             <div className="space-y-4">
               <h2 className="font-cairo text-lg font-semibold flex items-center gap-2">
                 <Send className="h-5 w-5 text-brand-navy" />
-                {isRTL ? 'الرسائل المرسلة' : 'Sent Messages'}
+                {t('sentMessages2')}
                 <Badge variant="secondary" className="font-cairo">{sentMessages.length}</Badge>
               </h2>
               {sentMessages.length === 0 ? (
                 <Card className="card-nassaq">
                   <CardContent className="py-16 text-center">
                     <Send className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
-                    <p className="text-muted-foreground font-cairo">{isRTL ? 'لا توجد رسائل مرسلة' : 'No sent messages'}</p>
+                    <p className="text-muted-foreground font-cairo">{t('noSentMessages')}</p>
                   </CardContent>
                 </Card>
               ) : (
@@ -711,12 +712,12 @@ export const CommunicationCenterPage = () => {
                       <CardContent className="p-4">
                         <div className="flex items-center justify-between mb-2">
                           <p className="font-medium font-cairo">{msg.title}</p>
-                          <Badge variant="default" className="bg-green-500">{isRTL ? 'مرسلة' : 'Sent'}</Badge>
+                          <Badge variant="default" className="bg-green-500">{t('sent2')}</Badge>
                         </div>
                         <p className="text-sm text-muted-foreground line-clamp-2">{msg.content}</p>
                         <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground font-tajawal">
-                          <span>{isRTL ? 'الجمهور:' : 'Audience:'} {getAudienceLabel(msg.audience)}</span>
-                          <span>{isRTL ? 'المستلمون:' : 'Recipients:'} {msg.recipient_count || msg.sent_count || 0}</span>
+                          <span>{t('audience')} {getAudienceLabel(msg.audience)}</span>
+                          <span>{t('recipients2')} {msg.recipient_count || msg.sent_count || 0}</span>
                           <span>{formatDate(msg.sent_at || msg.created_at)}</span>
                         </div>
                       </CardContent>
@@ -731,14 +732,14 @@ export const CommunicationCenterPage = () => {
             <div className="space-y-4">
               <h2 className="font-cairo text-lg font-semibold flex items-center gap-2">
                 <Clock className="h-5 w-5 text-yellow-600" />
-                {isRTL ? 'الرسائل المجدولة' : 'Scheduled Messages'}
+                {t('scheduledMessages')}
                 <Badge variant="secondary" className="font-cairo">{scheduledMessages.length}</Badge>
               </h2>
               {scheduledMessages.length === 0 ? (
                 <Card className="card-nassaq">
                   <CardContent className="py-16 text-center">
                     <Clock className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
-                    <p className="text-muted-foreground font-cairo">{isRTL ? 'لا توجد رسائل مجدولة' : 'No scheduled messages'}</p>
+                    <p className="text-muted-foreground font-cairo">{t('noScheduledMessages')}</p>
                   </CardContent>
                 </Card>
               ) : (
@@ -750,27 +751,27 @@ export const CommunicationCenterPage = () => {
                           <p className="font-medium font-cairo">{msg.title}</p>
                           <Badge variant="outline" className="text-yellow-700 border-yellow-500">
                             <Clock className="h-3 w-3 me-1" />
-                            {isRTL ? 'مجدولة' : 'Scheduled'}
+                            {t('scheduled2')}
                           </Badge>
                         </div>
                         <p className="text-sm text-muted-foreground line-clamp-2">{msg.content}</p>
                         <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground font-tajawal">
-                          <span>{isRTL ? 'الجمهور:' : 'Audience:'} {getAudienceLabel(msg.audience)}</span>
+                          <span>{t('audience')} {getAudienceLabel(msg.audience)}</span>
                           <span>•</span>
-                          <span>{isRTL ? 'موعد الإرسال:' : 'Send at:'} {formatDate(msg.scheduled_at)}</span>
+                          <span>{t('sendAt')} {formatDate(msg.scheduled_at)}</span>
                         </div>
                         <div className="flex gap-2 mt-4">
                           <Button size="sm" variant="outline" className="flex-1"
                             onClick={() => { setSelectedMessage({...msg}); setEditScheduledOpen(true); }}
                             data-testid={`edit-scheduled-${msg.id}`}>
                             <Edit className="h-4 w-4 me-1" />
-                            {isRTL ? 'تعديل' : 'Edit'}
+                            {t('edit')}
                           </Button>
                           <Button size="sm" className="flex-1 bg-green-600 hover:bg-green-700"
                             onClick={() => handleSendScheduledNow(msg.id)} disabled={sending}
                             data-testid={`send-now-scheduled-${msg.id}`}>
                             {sending ? <Loader2 className="h-4 w-4 me-1 animate-spin" /> : <Send className="h-4 w-4 me-1" />}
-                            {isRTL ? 'إرسال الآن' : 'Send Now'}
+                            {t('sendNow')}
                           </Button>
                           <Button size="sm" variant="destructive"
                             onClick={() => { setMessageToDelete(msg); setDeleteConfirmOpen(true); }}
@@ -795,13 +796,13 @@ export const CommunicationCenterPage = () => {
           <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle className="font-cairo">
-                {isRTL ? 'تعديل الرسالة المجدولة' : 'Edit Scheduled Message'}
+                {t('editScheduledMessage')}
               </DialogTitle>
             </DialogHeader>
             {selectedMessage && (
               <div className="space-y-4 mt-4">
                 <div>
-                  <Label>{isRTL ? 'الجمهور المستهدف' : 'Target Audience'}</Label>
+                  <Label>{t('targetAudience')}</Label>
                   <Select 
                     value={selectedMessage.audience}
                     onValueChange={(v) => setSelectedMessage({...selectedMessage, audience: v})}
@@ -819,7 +820,7 @@ export const CommunicationCenterPage = () => {
                   </Select>
                 </div>
                 <div>
-                  <Label>{isRTL ? 'عنوان الرسالة' : 'Message Title'}</Label>
+                  <Label>{t('messageTitle')}</Label>
                   <Input
                     value={selectedMessage.title}
                     onChange={(e) => setSelectedMessage({...selectedMessage, title: e.target.value})}
@@ -836,7 +837,7 @@ export const CommunicationCenterPage = () => {
                   />
                 </div>
                 <div>
-                  <Label>{isRTL ? 'موعد الإرسال' : 'Scheduled Time'}</Label>
+                  <Label>{t('scheduledTime')}</Label>
                   <Input
                     type="datetime-local"
                     value={selectedMessage.scheduled_at?.slice(0, 16) || ''}
@@ -846,11 +847,11 @@ export const CommunicationCenterPage = () => {
                 </div>
                 <DialogFooter className="gap-2">
                   <Button variant="outline" onClick={() => setEditScheduledOpen(false)}>
-                    {isRTL ? 'إلغاء' : 'Cancel'}
+                    {t('cancel')}
                   </Button>
                   <Button onClick={handleUpdateScheduledMessage} disabled={sending}>
                     {sending ? <Loader2 className="h-4 w-4 me-2 animate-spin" /> : <CheckCircle className="h-4 w-4 me-2" />}
-                    {isRTL ? 'حفظ التغييرات' : 'Save Changes'}
+                    {t('saveChanges2')}
                   </Button>
                 </DialogFooter>
               </div>
@@ -864,10 +865,10 @@ export const CommunicationCenterPage = () => {
             <DialogHeader>
               <DialogTitle className="font-cairo flex items-center gap-2">
                 <FileText className="h-5 w-5 text-brand-purple" />
-                {isRTL ? 'القوالب الجاهزة' : 'Message Templates'}
+                {t('messageTemplates')}
               </DialogTitle>
               <DialogDescription>
-                {isRTL ? 'اختر قالباً لتعبئة نموذج الرسالة تلقائياً' : 'Choose a template to auto-fill the message form'}
+                {t('chooseATemplateToAutofillTheMessageForm')}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-3 mt-4">
@@ -917,11 +918,11 @@ export const CommunicationCenterPage = () => {
               <div className="space-y-4 mt-4">
                 <div className="flex items-center gap-2">
                   <Badge variant="secondary">{getAudienceLabel(selectedMessage.audience)}</Badge>
-                  <Badge variant="outline">{selectedMessage.recipient_count || 0} {isRTL ? 'مستلم' : 'recipients'}</Badge>
+                  <Badge variant="outline">{selectedMessage.recipient_count || 0} {t('recipients3')}</Badge>
                 </div>
                 <p className="text-sm whitespace-pre-wrap">{selectedMessage.content}</p>
                 <p className="text-xs text-muted-foreground">
-                  {isRTL ? 'تاريخ الإرسال:' : 'Sent at:'} {formatDate(selectedMessage.sent_at || selectedMessage.created_at)}
+                  {t('sentAt')} {formatDate(selectedMessage.sent_at || selectedMessage.created_at)}
                 </p>
               </div>
             )}
@@ -934,7 +935,7 @@ export const CommunicationCenterPage = () => {
             <AlertDialogHeader>
               <AlertDialogTitle className="flex items-center gap-2">
                 <AlertTriangle className="h-5 w-5 text-red-500" />
-                {isRTL ? 'تأكيد الحذف' : 'Confirm Delete'}
+                {t('confirmDelete')}
               </AlertDialogTitle>
               <AlertDialogDescription>
                 {isRTL 
@@ -944,12 +945,12 @@ export const CommunicationCenterPage = () => {
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>{isRTL ? 'إلغاء' : 'Cancel'}</AlertDialogCancel>
+              <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
               <AlertDialogAction 
                 onClick={handleDeleteMessage}
                 className="bg-red-500 hover:bg-red-600"
               >
-                {isRTL ? 'حذف' : 'Delete'}
+                {t('delete')}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

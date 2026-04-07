@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
@@ -29,6 +29,7 @@ const COLOR_MAP = {
 };
 
 const AchievementCard = ({ achievement, isRTL, earned = true }) => {
+  const { t } = useTranslation();
   const IconComponent = ICON_MAP[achievement.icon] || Star;
   const colors = COLOR_MAP[achievement.color] || COLOR_MAP.gold;
 
@@ -57,7 +58,7 @@ const AchievementCard = ({ achievement, isRTL, earned = true }) => {
           </div>
           {earned && (
             <Badge className={`${colors.bg} ${colors.text} ${colors.border} border text-xs`}>
-              {isRTL ? 'مكتسب' : 'Earned'}
+              {t('earned')}
             </Badge>
           )}
         </div>
@@ -104,7 +105,7 @@ const StudentAchievementsPage = () => {
           <Card className="rounded-2xl border-0 shadow-sm">
             <CardContent className="py-16 text-center">
               <AlertCircle className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-              <p className="text-muted-foreground">{isRTL ? 'تعذر تحميل البيانات' : 'Could not load data'}</p>
+              <p className="text-muted-foreground">{t('couldNotLoadData')}</p>
             </CardContent>
           </Card>
         </div>
@@ -119,10 +120,10 @@ const StudentAchievementsPage = () => {
           <CardContent className="p-6 text-center">
             <Trophy className="h-12 w-12 mx-auto mb-3" />
             <h1 className="text-2xl font-bold font-cairo">
-              {isRTL ? 'إنجازاتي' : 'My Achievements'}
+              {t('myAchievements')}
             </h1>
             <p className="text-amber-100 mt-2">
-              {data.total_earned} / {data.total_possible} {isRTL ? 'إنجاز مكتسب' : 'achievements earned'}
+              {data.total_earned} / {data.total_possible} {t('achievementsEarned')}
             </p>
             <div className="flex justify-center gap-1 mt-3">
               {Array.from({ length: data.total_possible }).map((_, i) => (
@@ -141,7 +142,7 @@ const StudentAchievementsPage = () => {
           <>
             <h2 className="font-bold text-lg font-cairo flex items-center gap-2 px-1">
               <Award className="h-5 w-5 text-amber-500" />
-              {isRTL ? 'الإنجازات المكتسبة' : 'Earned Achievements'}
+              {t('earnedAchievements')}
             </h2>
             <div className="space-y-3">
               {data.earned.map(a => (
@@ -155,7 +156,7 @@ const StudentAchievementsPage = () => {
           <>
             <h2 className="font-bold text-lg font-cairo flex items-center gap-2 px-1 mt-4">
               <Lock className="h-5 w-5 text-gray-400" />
-              {isRTL ? 'إنجازات لم تُكتسب بعد' : 'Locked Achievements'}
+              {t('lockedAchievements')}
             </h2>
             <div className="space-y-3">
               {data.locked.map(a => (

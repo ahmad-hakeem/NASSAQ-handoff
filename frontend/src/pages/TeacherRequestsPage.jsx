@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Sidebar } from '../components/layout/Sidebar';
 import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
@@ -55,6 +55,7 @@ import {
 } from '../components/ui/select';
 
 export const TeacherRequestsPage = () => {
+  const { t } = useTranslation();
   const { api } = useAuth();
   const { isRTL, isDark } = useTheme();
   const [requests, setRequests] = useState([]);
@@ -133,7 +134,7 @@ export const TeacherRequestsPage = () => {
       setRequests(deduped);
     } catch (error) {
       console.error('Failed to fetch requests:', error);
-      nassaqError(isRTL ? 'فشل في تحميل الطلبات' : 'Failed to load requests');
+      nassaqError(t('failedToLoadRequests'));
       setRequests([]);
     } finally {
       setLoading(false);
@@ -161,7 +162,7 @@ export const TeacherRequestsPage = () => {
         }
       }
 
-      toast.success(isRTL ? 'تم قبول الطلب بنجاح' : 'Request approved successfully');
+      toast.success(t('requestApprovedSuccessfully'));
       setDetailsDialogOpen(false);
 
       if (result?.temporary_password || result?.email || result?.school_code) {
@@ -172,7 +173,7 @@ export const TeacherRequestsPage = () => {
     } catch (error) {
       console.error('Failed to approve request:', error);
       const detail = error.response?.data?.detail;
-      nassaqError(detail || (isRTL ? 'فشل في قبول الطلب' : 'Failed to approve request'));
+      nassaqError(detail || (t('failedToApproveRequest')));
     } finally {
       setApproving(false);
     }
@@ -182,19 +183,19 @@ export const TeacherRequestsPage = () => {
     try {
       if (req.source === 'teacher_registration') {
         await api.post(`/teacher-registration/requests/${req.id}/reject`, {
-          reason: isRTL ? 'تم رفض الطلب من قبل المسؤول' : 'Rejected by admin'
+          reason: t('rejectedByAdmin')
         });
       } else {
         await api.post(`/registration-requests/${req.id}/reject`, {
-          reason: isRTL ? 'تم رفض الطلب من قبل المسؤول' : 'Rejected by admin'
+          reason: t('rejectedByAdmin')
         });
       }
-      toast.success(isRTL ? 'تم رفض الطلب' : 'Request rejected');
+      toast.success(t('requestRejected'));
       setDetailsDialogOpen(false);
       fetchRequests();
     } catch (error) {
       console.error('Failed to reject request:', error);
-      nassaqError(isRTL ? 'فشل في رفض الطلب' : 'Failed to reject request');
+      nassaqError(t('failedToRejectRequest'));
     }
   };
 
@@ -219,13 +220,13 @@ export const TeacherRequestsPage = () => {
     switch (status) {
       case 'pending':
       case 'pending_review':
-        return <Badge className="bg-yellow-100 text-yellow-700">{isRTL ? 'قيد المراجعة' : 'Pending'}</Badge>;
+        return <Badge className="bg-yellow-100 text-yellow-700">{t('pending6')}</Badge>;
       case 'approved':
         return <Badge className="bg-green-100 text-green-700">{isRTL ? 'مقبول' : 'Approved'}</Badge>;
       case 'rejected':
-        return <Badge className="bg-red-100 text-red-700">{isRTL ? 'مرفوض' : 'Rejected'}</Badge>;
+        return <Badge className="bg-red-100 text-red-700">{t('rejected')}</Badge>;
       case 'more_info_requested':
-        return <Badge className="bg-blue-100 text-blue-700">{isRTL ? 'طلب معلومات' : 'Info Requested'}</Badge>;
+        return <Badge className="bg-blue-100 text-blue-700">{t('infoRequested')}</Badge>;
       default:
         return <Badge variant="secondary">{status}</Badge>;
     }
@@ -235,7 +236,7 @@ export const TeacherRequestsPage = () => {
     if (type === 'school') {
       return <Badge className="bg-purple-100 text-purple-700"><School className="h-3 w-3 me-1 inline" />{isRTL ? 'مدرسة' : 'School'}</Badge>;
     }
-    return <Badge className="bg-blue-100 text-blue-700"><GraduationCap className="h-3 w-3 me-1 inline" />{isRTL ? 'معلم' : 'Teacher'}</Badge>;
+    return <Badge className="bg-blue-100 text-blue-700"><GraduationCap className="h-3 w-3 me-1 inline" />{t('teacher')}</Badge>;
   };
 
   const isPending = (status) => ['pending', 'pending_review'].includes(status);
@@ -256,16 +257,16 @@ export const TeacherRequestsPage = () => {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="font-cairo text-2xl font-bold text-foreground">
-                {isRTL ? 'طلبات التسجيل' : 'Registration Requests'}
+                {t('registrationRequests')}
               </h1>
               <p className="text-sm text-muted-foreground font-tajawal">
-                {isRTL ? 'مراجعة وإدارة طلبات تسجيل المعلمين والمدارس' : 'Review and manage teacher & school registration requests'}
+                {t('reviewAndManageTeacherSchoolRegistrationRequests')}
               </p>
             </div>
             <div className="flex items-center gap-3">
               <Button variant="outline" className="rounded-xl" onClick={() => fetchRequests()}>
                 <RefreshCw className={`h-4 w-4 me-2 ${loading ? 'animate-spin' : ''}`} />
-                {isRTL ? 'تحديث' : 'Refresh'}
+                {t('refresh')}
               </Button>
             </div>
           </div>
@@ -281,12 +282,10 @@ export const TeacherRequestsPage = () => {
               </div>
               <div>
                 <h3 className="font-cairo font-medium text-brand-navy dark:text-brand-turquoise">
-                  {isRTL ? 'نظام إدارة الطلبات' : 'Requests Management System'}
+                  {t('requestsManagementSystem')}
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  {isRTL 
-                    ? 'يمكنك إنشاء ومتابعة جميع طلباتك من هنا.'
-                    : 'You can create and track all your requests here.'}
+                  {t('youCanCreateAndTrackAllYourRequestsHere')}
                 </p>
               </div>
             </CardContent>
@@ -301,7 +300,7 @@ export const TeacherRequestsPage = () => {
                 </div>
                 <div>
                   <p className="text-2xl font-bold">{stats.total}</p>
-                  <p className="text-sm text-muted-foreground">{isRTL ? 'إجمالي الطلبات' : 'Total Requests'}</p>
+                  <p className="text-sm text-muted-foreground">{t('totalRequests')}</p>
                 </div>
               </CardContent>
             </Card>
@@ -312,7 +311,7 @@ export const TeacherRequestsPage = () => {
                 </div>
                 <div>
                   <p className="text-2xl font-bold">{stats.pending}</p>
-                  <p className="text-sm text-muted-foreground">{isRTL ? 'قيد المراجعة' : 'Pending'}</p>
+                  <p className="text-sm text-muted-foreground">{t('pending6')}</p>
                 </div>
               </CardContent>
             </Card>
@@ -334,7 +333,7 @@ export const TeacherRequestsPage = () => {
                 </div>
                 <div>
                   <p className="text-2xl font-bold">{stats.rejected}</p>
-                  <p className="text-sm text-muted-foreground">{isRTL ? 'مرفوض' : 'Rejected'}</p>
+                  <p className="text-sm text-muted-foreground">{t('rejected')}</p>
                 </div>
               </CardContent>
             </Card>
@@ -345,7 +344,7 @@ export const TeacherRequestsPage = () => {
             <div className="relative flex-1 min-w-[300px]">
               <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder={isRTL ? 'البحث في الطلبات...' : 'Search requests...'}
+                placeholder={t('searchRequests')}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="ps-10 rounded-xl"
@@ -356,9 +355,9 @@ export const TeacherRequestsPage = () => {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">{isRTL ? 'جميع الأنواع' : 'All Types'}</SelectItem>
-                <SelectItem value="school">{isRTL ? 'مدارس' : 'Schools'}</SelectItem>
-                <SelectItem value="teacher">{isRTL ? 'معلمين' : 'Teachers'}</SelectItem>
+                <SelectItem value="all">{t('allTypes')}</SelectItem>
+                <SelectItem value="school">{t('schools4')}</SelectItem>
+                <SelectItem value="teacher">{t('teachers3')}</SelectItem>
               </SelectContent>
             </Select>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -366,10 +365,10 @@ export const TeacherRequestsPage = () => {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">{isRTL ? 'جميع الحالات' : 'All Status'}</SelectItem>
-                <SelectItem value="pending">{isRTL ? 'قيد المراجعة' : 'Pending'}</SelectItem>
+                <SelectItem value="all">{t('allStatus')}</SelectItem>
+                <SelectItem value="pending">{t('pending6')}</SelectItem>
                 <SelectItem value="approved">{isRTL ? 'مقبول' : 'Approved'}</SelectItem>
-                <SelectItem value="rejected">{isRTL ? 'مرفوض' : 'Rejected'}</SelectItem>
+                <SelectItem value="rejected">{t('rejected')}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -380,20 +379,20 @@ export const TeacherRequestsPage = () => {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>{isRTL ? 'النوع' : 'Type'}</TableHead>
-                    <TableHead>{isRTL ? 'الاسم' : 'Name'}</TableHead>
-                    <TableHead>{isRTL ? 'البريد الإلكتروني' : 'Email'}</TableHead>
-                    <TableHead>{isRTL ? 'الهاتف' : 'Phone'}</TableHead>
-                    <TableHead>{isRTL ? 'التفاصيل' : 'Details'}</TableHead>
-                    <TableHead>{isRTL ? 'الحالة' : 'Status'}</TableHead>
-                    <TableHead>{isRTL ? 'الإجراءات' : 'Actions'}</TableHead>
+                    <TableHead>{t('type4')}</TableHead>
+                    <TableHead>{t('name')}</TableHead>
+                    <TableHead>{t('email2')}</TableHead>
+                    <TableHead>{t('phone2')}</TableHead>
+                    <TableHead>{t('details')}</TableHead>
+                    <TableHead>{t('status2')}</TableHead>
+                    <TableHead>{t('actions2')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredRequests.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                        {isRTL ? 'لا توجد طلبات' : 'No requests found'}
+                        {t('noRequestsFound')}
                       </TableCell>
                     </TableRow>
                   )}
@@ -405,7 +404,7 @@ export const TeacherRequestsPage = () => {
                       <TableCell dir="ltr" className="text-sm">{request.phone}</TableCell>
                       <TableCell className="text-sm">
                         {request.account_type === 'school'
-                          ? `${request.school_city || ''} • ${isRTL ? 'سعة' : 'Cap'}: ${request.student_capacity || '-'}`
+                          ? `${request.school_city || ''} • ${t('cap')}: ${request.student_capacity || '-'}`
                           : `${request.subject || ''} • ${request.experience_years || 0} ${isRTL ? 'سنوات' : 'yrs'}`}
                       </TableCell>
                       <TableCell>{getStatusBadge(request.status)}</TableCell>
@@ -455,7 +454,7 @@ export const TeacherRequestsPage = () => {
             <DialogHeader>
               <DialogTitle className="font-cairo flex items-center gap-2">
                 {selectedRequest && getTypeBadge(selectedRequest?.account_type)}
-                {isRTL ? 'تفاصيل الطلب' : 'Request Details'}
+                {t('requestDetails')}
               </DialogTitle>
             </DialogHeader>
             {selectedRequest && (
@@ -463,21 +462,21 @@ export const TeacherRequestsPage = () => {
                 <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-xl">
                   <User className="h-5 w-5 text-muted-foreground shrink-0" />
                   <div>
-                    <p className="text-sm text-muted-foreground">{isRTL ? 'الاسم' : 'Name'}</p>
+                    <p className="text-sm text-muted-foreground">{t('name')}</p>
                     <p className="font-medium">{selectedRequest.display_name}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-xl">
                   <Mail className="h-5 w-5 text-muted-foreground shrink-0" />
                   <div>
-                    <p className="text-sm text-muted-foreground">{isRTL ? 'البريد الإلكتروني' : 'Email'}</p>
+                    <p className="text-sm text-muted-foreground">{t('email2')}</p>
                     <p className="font-medium" dir="ltr">{selectedRequest.email}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-xl">
                   <Phone className="h-5 w-5 text-muted-foreground shrink-0" />
                   <div>
-                    <p className="text-sm text-muted-foreground">{isRTL ? 'رقم الهاتف' : 'Phone'}</p>
+                    <p className="text-sm text-muted-foreground">{t('phone3')}</p>
                     <p className="font-medium" dir="ltr">{selectedRequest.phone}</p>
                   </div>
                 </div>
@@ -487,14 +486,14 @@ export const TeacherRequestsPage = () => {
                     <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-xl">
                       <Building2 className="h-5 w-5 text-muted-foreground shrink-0" />
                       <div>
-                        <p className="text-sm text-muted-foreground">{isRTL ? 'اسم المدرسة' : 'School Name'}</p>
+                        <p className="text-sm text-muted-foreground">{t('schoolName')}</p>
                         <p className="font-medium">{selectedRequest.school_name}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-xl">
                       <MapPin className="h-5 w-5 text-muted-foreground shrink-0" />
                       <div>
-                        <p className="text-sm text-muted-foreground">{isRTL ? 'المدينة' : 'City'}</p>
+                        <p className="text-sm text-muted-foreground">{t('city')}</p>
                         <p className="font-medium">{selectedRequest.school_city || '-'}</p>
                       </div>
                     </div>
@@ -502,7 +501,7 @@ export const TeacherRequestsPage = () => {
                       <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-xl">
                         <MapPin className="h-5 w-5 text-muted-foreground shrink-0" />
                         <div>
-                          <p className="text-sm text-muted-foreground">{isRTL ? 'العنوان' : 'Address'}</p>
+                          <p className="text-sm text-muted-foreground">{t('address')}</p>
                           <p className="font-medium">{selectedRequest.school_address}</p>
                         </div>
                       </div>
@@ -510,7 +509,7 @@ export const TeacherRequestsPage = () => {
                     <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-xl">
                       <Users className="h-5 w-5 text-muted-foreground shrink-0" />
                       <div>
-                        <p className="text-sm text-muted-foreground">{isRTL ? 'السعة الطلابية' : 'Student Capacity'}</p>
+                        <p className="text-sm text-muted-foreground">{t('studentCapacity2')}</p>
                         <p className="font-medium">{selectedRequest.student_capacity || '-'}</p>
                       </div>
                     </div>
@@ -520,7 +519,7 @@ export const TeacherRequestsPage = () => {
                     <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-xl">
                       <Building2 className="h-5 w-5 text-muted-foreground shrink-0" />
                       <div>
-                        <p className="text-sm text-muted-foreground">{isRTL ? 'المدرسة' : 'School'}</p>
+                        <p className="text-sm text-muted-foreground">{t('school')}</p>
                         <p className="font-medium">{selectedRequest.school_name || '-'}</p>
                       </div>
                     </div>
@@ -537,7 +536,7 @@ export const TeacherRequestsPage = () => {
                 )}
 
                 <div className="flex items-center justify-between p-2">
-                  <span className="text-sm text-muted-foreground">{isRTL ? 'الحالة' : 'Status'}</span>
+                  <span className="text-sm text-muted-foreground">{t('status2')}</span>
                   {getStatusBadge(selectedRequest.status)}
                 </div>
               </div>
@@ -546,7 +545,7 @@ export const TeacherRequestsPage = () => {
               <DialogFooter>
                 <Button variant="outline" onClick={() => handleReject(selectedRequest)}>
                   <X className="h-4 w-4 me-2" />
-                  {isRTL ? 'رفض' : 'Reject'}
+                  {t('reject')}
                 </Button>
                 <Button 
                   onClick={() => handleApprove(selectedRequest)} 
@@ -554,7 +553,7 @@ export const TeacherRequestsPage = () => {
                   disabled={approving}
                 >
                   <Check className="h-4 w-4 me-2" />
-                  {approving ? (isRTL ? 'جاري القبول...' : 'Approving...') : (isRTL ? 'قبول' : 'Approve')}
+                  {approving ? (t('approving')) : (t('approve'))}
                 </Button>
               </DialogFooter>
             )}
@@ -567,10 +566,10 @@ export const TeacherRequestsPage = () => {
             <DialogHeader>
               <DialogTitle className="font-cairo text-green-700">
                 <CheckCircle className="h-5 w-5 inline me-2" />
-                {isRTL ? 'تم القبول بنجاح' : 'Approved Successfully'}
+                {t('approvedSuccessfully')}
               </DialogTitle>
               <DialogDescription>
-                {isRTL ? 'بيانات الدخول للحساب الجديد:' : 'Login credentials for the new account:'}
+                {t('loginCredentialsForTheNewAccount')}
               </DialogDescription>
             </DialogHeader>
             {credentialsDialog && (
@@ -578,7 +577,7 @@ export const TeacherRequestsPage = () => {
                 {credentialsDialog.school_code && (
                   <div className="flex items-center justify-between p-3 bg-purple-50 dark:bg-purple-900/20 rounded-xl">
                     <div>
-                      <p className="text-sm text-muted-foreground">{isRTL ? 'رمز المدرسة' : 'School Code'}</p>
+                      <p className="text-sm text-muted-foreground">{t('schoolCode')}</p>
                       <p className="font-mono font-bold text-lg">{credentialsDialog.school_code}</p>
                     </div>
                     <Button variant="ghost" size="sm" onClick={() => copyToClipboard(credentialsDialog.school_code)}>
@@ -588,7 +587,7 @@ export const TeacherRequestsPage = () => {
                 )}
                 <div className="flex items-center justify-between p-3 bg-muted/30 rounded-xl">
                   <div>
-                    <p className="text-sm text-muted-foreground">{isRTL ? 'البريد الإلكتروني' : 'Email'}</p>
+                    <p className="text-sm text-muted-foreground">{t('email2')}</p>
                     <p className="font-medium" dir="ltr">{credentialsDialog.email}</p>
                   </div>
                   <Button variant="ghost" size="sm" onClick={() => copyToClipboard(credentialsDialog.email)}>
@@ -597,7 +596,7 @@ export const TeacherRequestsPage = () => {
                 </div>
                 <div className="flex items-center justify-between p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-xl">
                   <div>
-                    <p className="text-sm text-muted-foreground">{isRTL ? 'كلمة المرور المؤقتة' : 'Temporary Password'}</p>
+                    <p className="text-sm text-muted-foreground">{t('temporaryPassword')}</p>
                     <p className="font-mono font-bold">{credentialsDialog.temporary_password}</p>
                   </div>
                   <Button variant="ghost" size="sm" onClick={() => copyToClipboard(credentialsDialog.temporary_password)}>
@@ -606,13 +605,13 @@ export const TeacherRequestsPage = () => {
                 </div>
                 {credentialsDialog.message_template && (
                   <div className="p-3 bg-muted/30 rounded-xl">
-                    <p className="text-sm text-muted-foreground mb-2">{isRTL ? 'رسالة للإرسال:' : 'Message to send:'}</p>
+                    <p className="text-sm text-muted-foreground mb-2">{t('messageToSend')}</p>
                     <pre className="text-xs whitespace-pre-wrap font-tajawal bg-background p-2 rounded-lg max-h-40 overflow-y-auto" dir="rtl">
                       {credentialsDialog.message_template}
                     </pre>
                     <Button variant="outline" size="sm" className="mt-2 w-full" onClick={() => copyToClipboard(credentialsDialog.message_template)}>
                       <Copy className="h-4 w-4 me-2" />
-                      {isRTL ? 'نسخ الرسالة' : 'Copy Message'}
+                      {t('copyMessage')}
                     </Button>
                   </div>
                 )}
@@ -620,7 +619,7 @@ export const TeacherRequestsPage = () => {
             )}
             <DialogFooter>
               <Button onClick={() => setCredentialsDialog(null)}>
-                {isRTL ? 'إغلاق' : 'Close'}
+                {t('close')}
               </Button>
             </DialogFooter>
           </DialogContent>

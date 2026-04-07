@@ -87,14 +87,14 @@ export const SubjectsPage = () => {
   const categoryOptions = [
     { value: 'core', label: isRTL ? 'أساسي' : 'Core' },
     { value: 'elective', label: isRTL ? 'اختياري' : 'Elective' },
-    { value: 'language', label: isRTL ? 'لغات' : 'Language' },
-    { value: 'science', label: isRTL ? 'علوم' : 'Science' },
-    { value: 'math', label: isRTL ? 'رياضيات' : 'Mathematics' },
-    { value: 'social', label: isRTL ? 'اجتماعيات' : 'Social Studies' },
-    { value: 'arts', label: isRTL ? 'فنون' : 'Arts' },
-    { value: 'physical', label: isRTL ? 'رياضة' : 'Physical Education' },
-    { value: 'technology', label: isRTL ? 'تقنية' : 'Technology' },
-    { value: 'religion', label: isRTL ? 'دين' : 'Religion' },
+    { value: 'language', label: t('language2') },
+    { value: 'science', label: t('science') },
+    { value: 'math', label: t('mathematics') },
+    { value: 'social', label: t('socialStudies') },
+    { value: 'arts', label: t('arts') },
+    { value: 'physical', label: t('physicalEducation') },
+    { value: 'technology', label: t('technology') },
+    { value: 'religion', label: t('religion') },
   ];
 
   const fetchData = async () => {
@@ -107,7 +107,7 @@ export const SubjectsPage = () => {
       setSchools(schoolsRes.data);
     } catch (error) {
       console.error('Failed to fetch data:', error);
-      nassaqError(isRTL ? 'فشل تحميل البيانات' : 'Failed to load data');
+      nassaqError(t('failedToLoadData'));
     } finally {
       setLoading(false);
     }
@@ -132,19 +132,19 @@ export const SubjectsPage = () => {
 
   const handleCreateSubject = async () => {
     if (!newSubject.name || !newSubject.school_id || !newSubject.code) {
-      nassaqError(isRTL ? 'يرجى ملء جميع الحقول المطلوبة' : 'Please fill all required fields');
+      nassaqError(t('pleaseFillAllRequiredFields'));
       return;
     }
 
     setSubmitting(true);
     try {
       const response = await api.post('/subjects', newSubject);
-      toast.success(isRTL ? 'تم إضافة المادة بنجاح' : 'Subject added successfully');
+      toast.success(t('subjectAddedSuccessfully'));
       setCreateDialogOpen(false);
       resetForm();
       setSubjects(prev => [...prev, response.data]);
     } catch (error) {
-      nassaqError(error.response?.data?.detail || (isRTL ? 'فشل إضافة المادة' : 'Failed to add subject'));
+      nassaqError(error.response?.data?.detail || (t('failedToAddSubject')));
     } finally {
       setSubmitting(false);
     }
@@ -152,35 +152,35 @@ export const SubjectsPage = () => {
 
   const handleEditSubject = async () => {
     if (!editingSubject || !editingSubject.name || !editingSubject.school_id) {
-      nassaqError(isRTL ? 'يرجى ملء جميع الحقول المطلوبة' : 'Please fill all required fields');
+      nassaqError(t('pleaseFillAllRequiredFields'));
       return;
     }
 
     setSubmitting(true);
     try {
       const response = await api.put(`/subjects/${editingSubject.id}`, editingSubject);
-      toast.success(isRTL ? 'تم تحديث المادة بنجاح' : 'Subject updated successfully');
+      toast.success(t('subjectUpdatedSuccessfully'));
       setEditDialogOpen(false);
       setEditingSubject(null);
       setSubjects(prev => prev.map(s => s.id === editingSubject.id ? response.data : s));
     } catch (error) {
-      nassaqError(error.response?.data?.detail || (isRTL ? 'فشل تحديث المادة' : 'Failed to update subject'));
+      nassaqError(error.response?.data?.detail || (t('failedToUpdateSubject')));
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleDeleteSubject = async (subjectId) => {
-    if (!confirm(isRTL ? 'هل أنت متأكد من حذف هذه المادة؟' : 'Are you sure you want to delete this subject?')) {
+    if (!confirm(t('areYouSureYouWantToDeleteThisSubject'))) {
       return;
     }
     
     try {
       await api.delete(`/subjects/${subjectId}`);
-      toast.success(isRTL ? 'تم حذف المادة' : 'Subject deleted');
+      toast.success(t('subjectDeleted'));
       setSubjects(prev => prev.filter(s => s.id !== subjectId));
     } catch (error) {
-      nassaqError(isRTL ? 'فشل حذف المادة' : 'Failed to delete subject');
+      nassaqError(t('failedToDeleteSubject'));
     }
   };
 
@@ -236,7 +236,7 @@ export const SubjectsPage = () => {
               </Button>
               <div>
                 <h1 className="font-cairo text-2xl font-bold text-foreground">
-                  {isRTL ? 'إدارة المواد الدراسية' : 'Subjects Management'}
+                  {t('subjectsManagement')}
                 </h1>
                 <p className="text-sm text-muted-foreground font-tajawal">
                   {isRTL ? `${filteredSubjects.length} مادة` : `${filteredSubjects.length} subjects`}
@@ -262,7 +262,7 @@ export const SubjectsPage = () => {
               <div className="relative flex-1 min-w-[200px] max-w-sm">
                 <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                 <Input
-                  placeholder={isRTL ? 'بحث عن مادة...' : 'Search subjects...'}
+                  placeholder={t('searchSubjects')}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="ps-10 rounded-xl"
@@ -272,10 +272,10 @@ export const SubjectsPage = () => {
               
               <Select value={selectedSchool} onValueChange={setSelectedSchool}>
                 <SelectTrigger className="w-[200px] rounded-xl">
-                  <SelectValue placeholder={isRTL ? 'جميع المدارس' : 'All Schools'} />
+                  <SelectValue placeholder={t('allSchools')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">{isRTL ? 'جميع المدارس' : 'All Schools'}</SelectItem>
+                  <SelectItem value="all">{t('allSchools')}</SelectItem>
                   {schools.map(school => (
                     <SelectItem key={school.id} value={school.id}>{school.name}</SelectItem>
                   ))}
@@ -287,33 +287,33 @@ export const SubjectsPage = () => {
               <DialogTrigger asChild>
                 <Button className="bg-brand-turquoise hover:bg-brand-turquoise-light rounded-xl" data-testid="add-subject-btn">
                   <Plus className="h-5 w-5 me-2" />
-                  {isRTL ? 'إضافة مادة' : 'Add Subject'}
+                  {t('addSubject')}
                 </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-[550px]">
                 <DialogHeader>
                   <DialogTitle className="font-cairo">
-                    {isRTL ? 'إضافة مادة جديدة' : 'Add New Subject'}
+                    {t('addNewSubject')}
                   </DialogTitle>
                   <DialogDescription>
-                    {isRTL ? 'أدخل بيانات المادة الجديدة' : 'Enter the new subject details'}
+                    {t('enterTheNewSubjectDetails')}
                   </DialogDescription>
                 </DialogHeader>
                 
                 <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label>{isRTL ? 'اسم المادة (عربي) *' : 'Subject Name (Arabic) *'}</Label>
+                      <Label>{t('subjectNameArabic')}</Label>
                       <Input
                         value={newSubject.name}
                         onChange={(e) => setNewSubject({ ...newSubject, name: e.target.value })}
-                        placeholder={isRTL ? 'الرياضيات' : 'Mathematics'}
+                        placeholder={t('mathematics2')}
                         className="rounded-xl"
                         data-testid="subject-name-input"
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>{isRTL ? 'اسم المادة (إنجليزي)' : 'Subject Name (English)'}</Label>
+                      <Label>{t('subjectNameEnglish')}</Label>
                       <Input
                         value={newSubject.name_en}
                         onChange={(e) => setNewSubject({ ...newSubject, name_en: e.target.value })}
@@ -325,7 +325,7 @@ export const SubjectsPage = () => {
                   
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label>{isRTL ? 'رمز المادة *' : 'Subject Code *'}</Label>
+                      <Label>{t('subjectCode')}</Label>
                       <Input
                         value={newSubject.code}
                         onChange={(e) => setNewSubject({ ...newSubject, code: e.target.value.toUpperCase() })}
@@ -335,13 +335,13 @@ export const SubjectsPage = () => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>{isRTL ? 'المدرسة *' : 'School *'}</Label>
+                      <Label>{t('school2')}</Label>
                       <Select 
                         value={newSubject.school_id} 
                         onValueChange={(value) => setNewSubject({ ...newSubject, school_id: value })}
                       >
                         <SelectTrigger className="rounded-xl" data-testid="subject-school-select">
-                          <SelectValue placeholder={isRTL ? 'اختر المدرسة' : 'Select School'} />
+                          <SelectValue placeholder={t('selectSchool')} />
                         </SelectTrigger>
                         <SelectContent>
                           {schools.map(school => (
@@ -354,13 +354,13 @@ export const SubjectsPage = () => {
                   
                   <div className="grid grid-cols-3 gap-4">
                     <div className="space-y-2">
-                      <Label>{isRTL ? 'التصنيف' : 'Category'}</Label>
+                      <Label>{t('category')}</Label>
                       <Select 
                         value={newSubject.category} 
                         onValueChange={(value) => setNewSubject({ ...newSubject, category: value })}
                       >
                         <SelectTrigger className="rounded-xl">
-                          <SelectValue placeholder={isRTL ? 'اختر' : 'Select'} />
+                          <SelectValue placeholder={t('select2')} />
                         </SelectTrigger>
                         <SelectContent>
                           {categoryOptions.map(cat => (
@@ -370,7 +370,7 @@ export const SubjectsPage = () => {
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label>{isRTL ? 'الساعات المعتمدة' : 'Credits'}</Label>
+                      <Label>{t('credits')}</Label>
                       <Input
                         type="number"
                         min={1}
@@ -381,7 +381,7 @@ export const SubjectsPage = () => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>{isRTL ? 'ساعات أسبوعية' : 'Weekly Hours'}</Label>
+                      <Label>{t('weeklyHours')}</Label>
                       <Input
                         type="number"
                         min={1}
@@ -394,11 +394,11 @@ export const SubjectsPage = () => {
                   </div>
                   
                   <div className="space-y-2">
-                    <Label>{isRTL ? 'الوصف' : 'Description'}</Label>
+                    <Label>{t('description')}</Label>
                     <Textarea
                       value={newSubject.description}
                       onChange={(e) => setNewSubject({ ...newSubject, description: e.target.value })}
-                      placeholder={isRTL ? 'وصف المادة...' : 'Subject description...'}
+                      placeholder={t('subjectDescription')}
                       className="rounded-xl min-h-[80px]"
                     />
                   </div>
@@ -406,7 +406,7 @@ export const SubjectsPage = () => {
                 
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setCreateDialogOpen(false)} className="rounded-xl">
-                    {isRTL ? 'إلغاء' : 'Cancel'}
+                    {t('cancel')}
                   </Button>
                   <Button 
                     onClick={handleCreateSubject} 
@@ -415,9 +415,9 @@ export const SubjectsPage = () => {
                     data-testid="create-subject-btn"
                   >
                     {submitting ? (
-                      <><Loader2 className="h-4 w-4 animate-spin me-2" />{isRTL ? 'جاري الإضافة...' : 'Adding...'}</>
+                      <><Loader2 className="h-4 w-4 animate-spin me-2" />{t('adding')}</>
                     ) : (
-                      isRTL ? 'إضافة' : 'Add'
+                      t('add')
                     )}
                   </Button>
                 </DialogFooter>
@@ -429,10 +429,10 @@ export const SubjectsPage = () => {
               <DialogContent className="sm:max-w-[550px]">
                 <DialogHeader>
                   <DialogTitle className="font-cairo">
-                    {isRTL ? 'تعديل المادة' : 'Edit Subject'}
+                    {t('editSubject')}
                   </DialogTitle>
                   <DialogDescription>
-                    {isRTL ? 'قم بتحديث بيانات المادة' : 'Update subject details'}
+                    {t('updateSubjectDetails')}
                   </DialogDescription>
                 </DialogHeader>
                 
@@ -440,7 +440,7 @@ export const SubjectsPage = () => {
                   <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto">
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label>{isRTL ? 'اسم المادة (عربي) *' : 'Subject Name (Arabic) *'}</Label>
+                        <Label>{t('subjectNameArabic')}</Label>
                         <Input
                           value={editingSubject.name}
                           onChange={(e) => setEditingSubject({ ...editingSubject, name: e.target.value })}
@@ -448,7 +448,7 @@ export const SubjectsPage = () => {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label>{isRTL ? 'اسم المادة (إنجليزي)' : 'Subject Name (English)'}</Label>
+                        <Label>{t('subjectNameEnglish')}</Label>
                         <Input
                           value={editingSubject.name_en || ''}
                           onChange={(e) => setEditingSubject({ ...editingSubject, name_en: e.target.value })}
@@ -459,7 +459,7 @@ export const SubjectsPage = () => {
                     
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label>{isRTL ? 'رمز المادة *' : 'Subject Code *'}</Label>
+                        <Label>{t('subjectCode')}</Label>
                         <Input
                           value={editingSubject.code || ''}
                           onChange={(e) => setEditingSubject({ ...editingSubject, code: e.target.value.toUpperCase() })}
@@ -467,13 +467,13 @@ export const SubjectsPage = () => {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label>{isRTL ? 'المدرسة *' : 'School *'}</Label>
+                        <Label>{t('school2')}</Label>
                         <Select 
                           value={editingSubject.school_id} 
                           onValueChange={(value) => setEditingSubject({ ...editingSubject, school_id: value })}
                         >
                           <SelectTrigger className="rounded-xl">
-                            <SelectValue placeholder={isRTL ? 'اختر المدرسة' : 'Select School'} />
+                            <SelectValue placeholder={t('selectSchool')} />
                           </SelectTrigger>
                           <SelectContent>
                             {schools.map(school => (
@@ -486,13 +486,13 @@ export const SubjectsPage = () => {
                     
                     <div className="grid grid-cols-3 gap-4">
                       <div className="space-y-2">
-                        <Label>{isRTL ? 'التصنيف' : 'Category'}</Label>
+                        <Label>{t('category')}</Label>
                         <Select 
                           value={editingSubject.category || ''} 
                           onValueChange={(value) => setEditingSubject({ ...editingSubject, category: value })}
                         >
                           <SelectTrigger className="rounded-xl">
-                            <SelectValue placeholder={isRTL ? 'اختر' : 'Select'} />
+                            <SelectValue placeholder={t('select2')} />
                           </SelectTrigger>
                           <SelectContent>
                             {categoryOptions.map(cat => (
@@ -502,7 +502,7 @@ export const SubjectsPage = () => {
                         </Select>
                       </div>
                       <div className="space-y-2">
-                        <Label>{isRTL ? 'الساعات المعتمدة' : 'Credits'}</Label>
+                        <Label>{t('credits')}</Label>
                         <Input
                           type="number"
                           min={1}
@@ -513,7 +513,7 @@ export const SubjectsPage = () => {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label>{isRTL ? 'ساعات أسبوعية' : 'Weekly Hours'}</Label>
+                        <Label>{t('weeklyHours')}</Label>
                         <Input
                           type="number"
                           min={1}
@@ -526,7 +526,7 @@ export const SubjectsPage = () => {
                     </div>
                     
                     <div className="space-y-2">
-                      <Label>{isRTL ? 'الوصف' : 'Description'}</Label>
+                      <Label>{t('description')}</Label>
                       <Textarea
                         value={editingSubject.description || ''}
                         onChange={(e) => setEditingSubject({ ...editingSubject, description: e.target.value })}
@@ -538,7 +538,7 @@ export const SubjectsPage = () => {
                 
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setEditDialogOpen(false)} className="rounded-xl">
-                    {isRTL ? 'إلغاء' : 'Cancel'}
+                    {t('cancel')}
                   </Button>
                   <Button 
                     onClick={handleEditSubject} 
@@ -546,9 +546,9 @@ export const SubjectsPage = () => {
                     disabled={submitting}
                   >
                     {submitting ? (
-                      <><Loader2 className="h-4 w-4 animate-spin me-2" />{isRTL ? 'جاري التحديث...' : 'Updating...'}</>
+                      <><Loader2 className="h-4 w-4 animate-spin me-2" />{t('updating')}</>
                     ) : (
-                      isRTL ? 'حفظ التغييرات' : 'Save Changes'
+                      t('saveChanges2')
                     )}
                   </Button>
                 </DialogFooter>
@@ -568,12 +568,12 @@ export const SubjectsPage = () => {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>{isRTL ? 'المادة' : 'Subject'}</TableHead>
-                        <TableHead>{isRTL ? 'الرمز' : 'Code'}</TableHead>
-                        <TableHead>{isRTL ? 'التصنيف' : 'Category'}</TableHead>
-                        <TableHead>{isRTL ? 'المدرسة' : 'School'}</TableHead>
-                        <TableHead>{isRTL ? 'الساعات' : 'Hours'}</TableHead>
-                        <TableHead>{isRTL ? 'الحالة' : 'Status'}</TableHead>
+                        <TableHead>{t('subject')}</TableHead>
+                        <TableHead>{t('code')}</TableHead>
+                        <TableHead>{t('category')}</TableHead>
+                        <TableHead>{t('school')}</TableHead>
+                        <TableHead>{t('hours')}</TableHead>
+                        <TableHead>{t('status2')}</TableHead>
                         <TableHead className="w-12"></TableHead>
                       </TableRow>
                     </TableHeader>
@@ -582,7 +582,7 @@ export const SubjectsPage = () => {
                         <TableRow>
                           <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
                             <Library className="h-12 w-12 mx-auto mb-4 opacity-20" />
-                            <p>{isRTL ? 'لا يوجد مواد' : 'No subjects found'}</p>
+                            <p>{t('noSubjectsFound')}</p>
                           </TableCell>
                         </TableRow>
                       ) : (
@@ -615,12 +615,12 @@ export const SubjectsPage = () => {
                             <TableCell>
                               <div className="flex items-center gap-1 text-sm">
                                 <Clock className="h-4 w-4 text-brand-turquoise" />
-                                {subject.weekly_hours || 3} {isRTL ? 'س/أسبوع' : 'h/week'}
+                                {subject.weekly_hours || 3} {t('hweek')}
                               </div>
                             </TableCell>
                             <TableCell>
                               <Badge className={subject.is_active !== false ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>
-                                {subject.is_active !== false ? (isRTL ? 'نشط' : 'Active') : (isRTL ? 'غير نشط' : 'Inactive')}
+                                {subject.is_active !== false ? (t('active')) : (t('inactive'))}
                               </Badge>
                             </TableCell>
                             <TableCell>
@@ -633,14 +633,14 @@ export const SubjectsPage = () => {
                                 <DropdownMenuContent align="end">
                                   <DropdownMenuItem onClick={() => openEditDialog(subject)}>
                                     <Edit className="h-4 w-4 me-2" />
-                                    {isRTL ? 'تعديل' : 'Edit'}
+                                    {t('edit')}
                                   </DropdownMenuItem>
                                   <DropdownMenuItem 
                                     className="text-red-600"
                                     onClick={() => handleDeleteSubject(subject.id)}
                                   >
                                     <Trash2 className="h-4 w-4 me-2" />
-                                    {isRTL ? 'حذف' : 'Delete'}
+                                    {t('delete')}
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>

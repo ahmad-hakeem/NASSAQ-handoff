@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
@@ -13,6 +13,7 @@ import {
 
 
 const ParentMessagesPage = () => {
+  const { t } = useTranslation();
   const { token, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
@@ -47,7 +48,7 @@ const ParentMessagesPage = () => {
       <div className="p-4 space-y-4" data-testid="parent-messages-page">
         <div className="flex items-center gap-2 mb-2">
           <MessageSquare className="h-6 w-6 text-indigo-600" />
-          <h1 className="text-xl font-bold font-cairo">{isRTL ? 'التواصل والرسائل' : 'Messages'}</h1>
+          <h1 className="text-xl font-bold font-cairo">{t('messages2')}</h1>
         </div>
 
         {messages.length === 0 ? (
@@ -55,10 +56,10 @@ const ParentMessagesPage = () => {
             <CardContent className="py-16 text-center">
               <MessageSquare className="h-16 w-16 mx-auto mb-4 text-gray-300" />
               <h3 className="font-bold text-lg text-gray-700 mb-2">
-                {isRTL ? 'لا توجد رسائل' : 'No messages yet'}
+                {t('noMessagesYet')}
               </h3>
               <p className="text-muted-foreground text-sm">
-                {isRTL ? 'ستظهر الرسائل هنا عند التواصل مع المعلمين' : 'Messages will appear here when communicating with teachers'}
+                {t('messagesWillAppearHereWhenCommunicatingWithTeacher')}
               </p>
             </CardContent>
           </Card>

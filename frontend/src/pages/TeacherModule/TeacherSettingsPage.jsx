@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import { Sidebar } from '../../components/layout/Sidebar';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -25,12 +25,13 @@ import {
 const BG_PATTERN = 'https://customer-assets.emergentagent.com/job_f5ea20bb-5cf5-462f-a7f0-958201e27f89/artifacts/1itjy61q_Nassaq%20Background.png';
 
 const PasswordStrength = ({ password, isRTL }) => {
+  const { t } = useTranslation();
   const checks = [
-    { test: password.length >= 8, label: isRTL ? '٨ أحرف على الأقل' : 'At least 8 characters' },
-    { test: /[A-Z]/.test(password), label: isRTL ? 'حرف كبير' : 'Uppercase letter' },
-    { test: /[a-z]/.test(password), label: isRTL ? 'حرف صغير' : 'Lowercase letter' },
-    { test: /[0-9]/.test(password), label: isRTL ? 'رقم' : 'Number' },
-    { test: /[^A-Za-z0-9]/.test(password), label: isRTL ? 'رمز خاص' : 'Special character' },
+    { test: password.length >= 8, label: t('atLeast8Characters') },
+    { test: /[A-Z]/.test(password), label: t('uppercaseLetter') },
+    { test: /[a-z]/.test(password), label: t('lowercaseLetter') },
+    { test: /[0-9]/.test(password), label: t('number') },
+    { test: /[^A-Za-z0-9]/.test(password), label: t('specialCharacter') },
   ];
   const passed = checks.filter(c => c.test).length;
   const strength = passed === 0 ? 0 : passed <= 2 ? 1 : passed <= 3 ? 2 : passed <= 4 ? 3 : 4;
@@ -168,10 +169,10 @@ export default function TeacherSettingsPage() {
       if (profile.bio !== undefined && profile.bio !== null) payload.bio = profile.bio;
       await api.put('/users/me/profile', payload);
       await refreshUser?.();
-      toast.success(isRTL ? 'تم حفظ الملف الشخصي بنجاح' : 'Profile saved successfully');
+      toast.success(t('profileSavedSuccessfully'));
     } catch (error) {
       const detail = error?.response?.data?.detail;
-      const msg = typeof detail === 'string' ? detail : (isRTL ? 'خطأ في حفظ البيانات' : 'Error saving profile');
+      const msg = typeof detail === 'string' ? detail : (t('errorSavingProfile'));
       nassaqError(msg);
     } finally {
       setSaving(false);
@@ -182,10 +183,10 @@ export default function TeacherSettingsPage() {
     setSaving(true);
     try {
       await api.put(`/users/${user?.id}/notifications/settings`, notifications);
-      toast.success(isRTL ? 'تم حفظ إعدادات الإشعارات' : 'Notification settings saved');
+      toast.success(t('notificationSettingsSaved'));
     } catch (e) {
       console.error('Error saving notification settings:', e);
-      nassaqError(isRTL ? 'خطأ في حفظ الإعدادات' : 'Error saving settings');
+      nassaqError(t('errorSavingSettings'));
     } finally {
       setSaving(false);
     }
@@ -193,11 +194,11 @@ export default function TeacherSettingsPage() {
 
   const changePassword = async () => {
     if (passwordForm.new_password !== passwordForm.confirm_password) {
-      nassaqError(isRTL ? 'كلمة المرور الجديدة غير متطابقة' : 'Passwords do not match');
+      nassaqError(t('passwordsDoNotMatch4'));
       return;
     }
     if (passwordForm.new_password.length < 8) {
-      nassaqError(isRTL ? 'كلمة المرور يجب أن تكون ٨ أحرف على الأقل' : 'Password must be at least 8 characters');
+      nassaqError(t('passwordMustBeAtLeast8Characters2'));
       return;
     }
     setSaving(true);
@@ -206,12 +207,12 @@ export default function TeacherSettingsPage() {
         current_password: passwordForm.current_password,
         new_password: passwordForm.new_password,
       });
-      toast.success(isRTL ? 'تم تغيير كلمة المرور بنجاح' : 'Password changed successfully');
+      toast.success(t('passwordChangedSuccessfully'));
       setShowPasswordDialog(false);
       setPasswordForm({ current_password: '', new_password: '', confirm_password: '' });
     } catch (error) {
       const msg = error?.response?.data?.detail;
-      nassaqError(msg || (isRTL ? 'خطأ في تغيير كلمة المرور' : 'Error changing password'));
+      nassaqError(msg || (t('errorChangingPassword2')));
     } finally {
       setSaving(false);
     }
@@ -222,11 +223,11 @@ export default function TeacherSettingsPage() {
     if (!file) return;
     const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
     if (!allowed.includes(file.type)) {
-      nassaqError(isRTL ? 'صيغة غير مدعومة (jpg, png, webp فقط)' : 'Unsupported format (jpg, png, webp only)');
+      nassaqError(t('unsupportedFormatJpgPngWebpOnly'));
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      nassaqError(isRTL ? 'حجم الصورة يجب أن لا يتجاوز 5 ميغابايت' : 'Image must be under 5MB');
+      nassaqError(t('imageMustBeUnder5mb2'));
       return;
     }
     const reader = new FileReader();
@@ -239,7 +240,7 @@ export default function TeacherSettingsPage() {
         toast.success(isRTL ? 'تم تحديث الصورة الشخصية' : 'Profile picture updated');
       } catch (e) {
         console.error('Error uploading avatar:', e);
-        nassaqError(isRTL ? 'خطأ في رفع الصورة' : 'Error uploading image');
+        nassaqError(t('errorUploadingImage'));
       }
     };
     reader.readAsDataURL(file);
@@ -250,10 +251,10 @@ export default function TeacherSettingsPage() {
       await api.put('/users/me/profile', { avatar_url: '' });
       setProfile(p => ({ ...p, avatar_url: '' }));
       await refreshUser?.();
-      toast.success(isRTL ? 'تم حذف الصورة الشخصية' : 'Profile picture removed');
+      toast.success(t('profilePictureRemoved'));
     } catch (e) {
       console.error('Error removing avatar:', e);
-      nassaqError(isRTL ? 'خطأ في حذف الصورة' : 'Error removing image');
+      nassaqError(t('errorRemovingImage'));
     }
   };
 
@@ -262,8 +263,8 @@ export default function TeacherSettingsPage() {
     const willBeDark = !isDark;
     toast.success(
       willBeDark
-        ? (isRTL ? 'تم تفعيل الوضع الداكن' : 'Dark mode enabled')
-        : (isRTL ? 'تم تفعيل الوضع الفاتح' : 'Light mode enabled')
+        ? (t('darkModeEnabled'))
+        : (t('lightModeEnabled'))
     );
   };
 
@@ -275,16 +276,16 @@ export default function TeacherSettingsPage() {
       toast.success(lang === 'ar' ? 'تم تغيير اللغة إلى العربية' : 'Language changed to English');
     } catch (e) {
       console.error('Error changing language:', e);
-      nassaqError(isRTL ? 'خطأ في تغيير اللغة' : 'Error changing language');
+      nassaqError(t('errorChangingLanguage'));
     }
   };
 
   const sections = [
-    { id: 'profile', label: isRTL ? 'الملف الشخصي' : 'Profile', desc: isRTL ? 'البيانات الأساسية' : 'Basic info', icon: User },
-    { id: 'security', label: isRTL ? 'الأمان' : 'Security', desc: isRTL ? 'كلمة المرور والحماية' : 'Password & protection', icon: Shield },
-    { id: 'notifications', label: isRTL ? 'الإشعارات' : 'Notifications', desc: isRTL ? 'تفضيلات التنبيهات' : 'Alert preferences', icon: Bell },
-    { id: 'preferences', label: isRTL ? 'التفضيلات' : 'Preferences', desc: isRTL ? 'اللغة والمظهر' : 'Language & appearance', icon: Globe },
-    { id: 'activity', label: isRTL ? 'سجل النشاط' : 'Activity Log', desc: isRTL ? 'آخر العمليات' : 'Recent actions', icon: History },
+    { id: 'profile', label: t('profile3'), desc: isRTL ? 'البيانات الأساسية' : 'Basic info', icon: User },
+    { id: 'security', label: t('security'), desc: t('passwordProtection'), icon: Shield },
+    { id: 'notifications', label: t('notifications'), desc: t('alertPreferences'), icon: Bell },
+    { id: 'preferences', label: t('preferences'), desc: t('languageAppearance'), icon: Globe },
+    { id: 'activity', label: t('activityLog'), desc: t('recentActions'), icon: History },
   ];
 
   const Chevron = isRTL ? ChevronLeft : ChevronRight;
@@ -301,7 +302,7 @@ export default function TeacherSettingsPage() {
     const groups = {};
     acts.forEach(act => {
       const ts = act.timestamp;
-      let dateKey = isRTL ? 'تاريخ غير محدد' : 'Unknown date';
+      let dateKey = t('unknownDate');
       if (ts) {
         try {
           dateKey = new Date(ts).toLocaleDateString(isRTL ? 'ar-SA' : 'en-US', { dateStyle: 'long' });
@@ -325,10 +326,10 @@ export default function TeacherSettingsPage() {
                 </div>
                 <div>
                   <h1 className="text-xl sm:text-2xl font-bold text-brand-navy dark:text-brand-turquoise font-cairo">
-                    {isRTL ? 'الملف الشخصي والإعدادات' : 'Profile & Settings'}
+                    {t('profileSettings')}
                   </h1>
                   <p className="text-sm text-muted-foreground font-cairo">
-                    {isRTL ? 'إدارة حسابك وبياناتك الشخصية' : 'Manage your account and personal data'}
+                    {t('manageYourAccountAndPersonalData')}
                   </p>
                 </div>
               </div>
@@ -362,7 +363,7 @@ export default function TeacherSettingsPage() {
                     </div>
                     <h3 className="font-bold text-lg mt-3 font-cairo text-foreground">{profile.full_name}</h3>
                     <Badge variant="outline" className="mt-1 text-brand-turquoise border-brand-turquoise/30 bg-brand-turquoise/5">
-                      {isRTL ? 'معلم' : 'Teacher'}
+                      {t('teacher')}
                     </Badge>
                     {schoolName && (
                       <div className="flex items-center justify-center gap-1.5 mt-2 text-xs text-muted-foreground">
@@ -411,12 +412,12 @@ export default function TeacherSettingsPage() {
                         <CardContent className="p-4">
                           <div className="flex items-center gap-2 mb-4">
                             <Award className="h-4 w-4 text-brand-turquoise" />
-                            <span className="font-cairo font-bold text-sm text-brand-navy dark:text-brand-turquoise">{isRTL ? 'إحصائيات التدريس' : 'Teaching Stats'}</span>
+                            <span className="font-cairo font-bold text-sm text-brand-navy dark:text-brand-turquoise">{t('teachingStats')}</span>
                           </div>
                           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
                             {[
-                              { label: isRTL ? 'فصولي' : 'My Classes', value: teachingStats.classesCount || 0, icon: BookOpen, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-900/30' },
-                              { label: isRTL ? 'طلابي' : 'My Students', value: teachingStats.studentsCount || 0, icon: Users, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-900/30' },
+                              { label: t('myClasses'), value: teachingStats.classesCount || 0, icon: BookOpen, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-900/30' },
+                              { label: t('myStudents'), value: teachingStats.studentsCount || 0, icon: Users, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-900/30' },
                               { label: isRTL ? 'معدل الحضور' : 'Attendance', value: `${teachingStats.avgAttendance || 0}%`, icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-900/30' },
                               { label: isRTL ? 'المشاركة' : 'Participation', value: `${teachingStats.avgParticipation || 0}%`, icon: Activity, color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-900/30' },
                               { label: isRTL ? 'إجمالي الحصص' : 'Sessions', value: teachingStats.totalSessions || 0, icon: Flame, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-900/30' },
@@ -438,18 +439,18 @@ export default function TeacherSettingsPage() {
                       <CardHeader className="pb-4">
                         <CardTitle className="text-lg font-cairo flex items-center gap-2">
                           <User className="h-5 w-5 text-brand-turquoise" />
-                          {isRTL ? 'البيانات الشخصية' : 'Personal Information'}
+                          {t('personalInformation')}
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-5">
                         <div className="grid sm:grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <Label className="flex items-center gap-1.5 text-sm font-cairo"><User className="h-3.5 w-3.5 text-muted-foreground" />{isRTL ? 'الاسم الكامل' : 'Full Name'}</Label>
+                            <Label className="flex items-center gap-1.5 text-sm font-cairo"><User className="h-3.5 w-3.5 text-muted-foreground" />{t('fullName')}</Label>
                             <Input value={profile.full_name} disabled className="bg-muted/30 cursor-not-allowed" />
-                            <p className="text-[10px] text-muted-foreground font-cairo">{isRTL ? 'لا يمكن تغيير الاسم — يتم من قبل الإدارة' : 'Name can only be changed by admin'}</p>
+                            <p className="text-[10px] text-muted-foreground font-cairo">{t('nameCanOnlyBeChangedByAdmin')}</p>
                           </div>
                           <div className="space-y-2">
-                            <Label className="flex items-center gap-1.5 text-sm font-cairo"><Mail className="h-3.5 w-3.5 text-muted-foreground" />{isRTL ? 'البريد الإلكتروني' : 'Email'}</Label>
+                            <Label className="flex items-center gap-1.5 text-sm font-cairo"><Mail className="h-3.5 w-3.5 text-muted-foreground" />{t('email2')}</Label>
                             <Input value={profile.email} onChange={(e) => setProfile({ ...profile, email: e.target.value })} type="email" dir="ltr" />
                           </div>
                           <div className="space-y-2">
@@ -457,16 +458,16 @@ export default function TeacherSettingsPage() {
                             <Input value={profile.phone} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} dir="ltr" placeholder="+966 5XX XXX XXXX" />
                           </div>
                           <div className="space-y-2">
-                            <Label className="flex items-center gap-1.5 text-sm font-cairo"><Building2 className="h-3.5 w-3.5 text-muted-foreground" />{isRTL ? 'المدرسة' : 'School'}</Label>
+                            <Label className="flex items-center gap-1.5 text-sm font-cairo"><Building2 className="h-3.5 w-3.5 text-muted-foreground" />{t('school')}</Label>
                             <Input value={schoolName} disabled className="bg-muted/30 cursor-not-allowed" />
                           </div>
                           <div className="space-y-2">
-                            <Label className="flex items-center gap-1.5 text-sm font-cairo"><Shield className="h-3.5 w-3.5 text-muted-foreground" />{isRTL ? 'الدور الوظيفي' : 'Role'}</Label>
-                            <Input value={isRTL ? 'معلم' : 'Teacher'} disabled className="bg-muted/30 cursor-not-allowed" />
+                            <Label className="flex items-center gap-1.5 text-sm font-cairo"><Shield className="h-3.5 w-3.5 text-muted-foreground" />{t('role2')}</Label>
+                            <Input value={t('teacher')} disabled className="bg-muted/30 cursor-not-allowed" />
                           </div>
                           {teacherInfo?.teacher_number && (
                             <div className="space-y-2">
-                              <Label className="flex items-center gap-1.5 text-sm font-cairo"><IdCard className="h-3.5 w-3.5 text-muted-foreground" />{isRTL ? 'رقم المعلم' : 'Teacher ID'}</Label>
+                              <Label className="flex items-center gap-1.5 text-sm font-cairo"><IdCard className="h-3.5 w-3.5 text-muted-foreground" />{t('teacherId')}</Label>
                               <Input value={teacherInfo.teacher_number} disabled className="bg-muted/30 cursor-not-allowed" dir="ltr" />
                             </div>
                           )}
@@ -475,7 +476,7 @@ export default function TeacherSettingsPage() {
                         <div className="flex items-center gap-3 pt-2">
                           <Button onClick={saveProfile} disabled={saving} className="bg-brand-turquoise hover:bg-brand-turquoise/90">
                             {saving ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : <Save className="h-4 w-4 me-2" />}
-                            {isRTL ? 'حفظ التغييرات' : 'Save Changes'}
+                            {t('saveChanges2')}
                           </Button>
                         </div>
                       </CardContent>
@@ -485,7 +486,7 @@ export default function TeacherSettingsPage() {
                       <CardHeader className="pb-4">
                         <CardTitle className="text-lg font-cairo flex items-center gap-2">
                           <Camera className="h-5 w-5 text-brand-turquoise" />
-                          {isRTL ? 'الصورة الشخصية' : 'Profile Picture'}
+                          {t('profilePicture')}
                         </CardTitle>
                       </CardHeader>
                       <CardContent>
@@ -497,7 +498,7 @@ export default function TeacherSettingsPage() {
                           <div className="space-y-2">
                             <div className="flex items-center gap-2">
                               <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
-                                <Upload className="h-4 w-4 me-1.5" />{isRTL ? 'رفع صورة' : 'Upload Photo'}
+                                <Upload className="h-4 w-4 me-1.5" />{t('uploadPhoto')}
                               </Button>
                               {profile.avatar_url && (
                                 <Button variant="outline" size="sm" onClick={removeAvatar} className="text-red-500 hover:text-red-600">
@@ -505,7 +506,7 @@ export default function TeacherSettingsPage() {
                                 </Button>
                               )}
                             </div>
-                            <p className="text-[10px] text-muted-foreground font-cairo">{isRTL ? 'JPG أو PNG أو WEBP — بحد أقصى 5 ميغابايت' : 'JPG, PNG, or WEBP — max 5MB'}</p>
+                            <p className="text-[10px] text-muted-foreground font-cairo">{t('jpgPngOrWebpMax5mb')}</p>
                           </div>
                         </div>
                       </CardContent>
@@ -518,7 +519,7 @@ export default function TeacherSettingsPage() {
                     <CardHeader className="pb-4">
                       <CardTitle className="text-lg font-cairo flex items-center gap-2">
                         <Shield className="h-5 w-5 text-brand-turquoise" />
-                        {isRTL ? 'الأمان وكلمة المرور' : 'Security & Password'}
+                        {t('securityPassword')}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
@@ -529,12 +530,12 @@ export default function TeacherSettingsPage() {
                               <Key className="h-5 w-5 text-amber-600" />
                             </div>
                             <div>
-                              <p className="font-medium font-cairo">{isRTL ? 'كلمة المرور' : 'Password'}</p>
-                              <p className="text-xs text-muted-foreground font-cairo">{isRTL ? 'تغيير كلمة المرور الخاصة بحسابك' : 'Change your account password'}</p>
+                              <p className="font-medium font-cairo">{t('password')}</p>
+                              <p className="text-xs text-muted-foreground font-cairo">{t('changeYourAccountPassword2')}</p>
                             </div>
                           </div>
                           <Button variant="outline" onClick={() => setShowPasswordDialog(true)}>
-                            <Lock className="h-4 w-4 me-1.5" />{isRTL ? 'تغيير' : 'Change'}
+                            <Lock className="h-4 w-4 me-1.5" />{t('change')}
                           </Button>
                         </div>
                       </div>
@@ -546,12 +547,12 @@ export default function TeacherSettingsPage() {
                               <CheckCircle2 className="h-5 w-5 text-green-600" />
                             </div>
                             <div>
-                              <p className="font-medium font-cairo">{isRTL ? 'حالة الحساب' : 'Account Status'}</p>
-                              <p className="text-xs text-muted-foreground font-cairo">{isRTL ? 'حسابك نشط ومحمي' : 'Your account is active and protected'}</p>
+                              <p className="font-medium font-cairo">{t('accountStatus')}</p>
+                              <p className="text-xs text-muted-foreground font-cairo">{t('yourAccountIsActiveAndProtected')}</p>
                             </div>
                           </div>
                           <Badge className="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400 border-0">
-                            {isRTL ? 'نشط' : 'Active'}
+                            {t('active')}
                           </Badge>
                         </div>
                       </div>
@@ -563,12 +564,12 @@ export default function TeacherSettingsPage() {
                               <Mail className="h-5 w-5 text-blue-600" />
                             </div>
                             <div>
-                              <p className="font-medium font-cairo">{isRTL ? 'البريد الإلكتروني المرتبط' : 'Linked Email'}</p>
+                              <p className="font-medium font-cairo">{t('linkedEmail')}</p>
                               <p className="text-xs text-muted-foreground" dir="ltr">{profile.email}</p>
                             </div>
                           </div>
                           <Badge variant="outline" className="text-blue-600 border-blue-200">
-                            {isRTL ? 'مُفعّل' : 'Verified'}
+                            {t('verified2')}
                           </Badge>
                         </div>
                       </div>
@@ -581,12 +582,12 @@ export default function TeacherSettingsPage() {
                     <CardHeader className="pb-4">
                       <CardTitle className="text-lg font-cairo flex items-center gap-2">
                         <Bell className="h-5 w-5 text-brand-turquoise" />
-                        {isRTL ? 'إعدادات الإشعارات' : 'Notification Settings'}
+                        {t('notificationSettings')}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-6">
                       <div>
-                        <h3 className="font-medium font-cairo text-sm mb-3">{isRTL ? 'طرق التنبيه' : 'Notification Methods'}</h3>
+                        <h3 className="font-medium font-cairo text-sm mb-3">{t('notificationMethods')}</h3>
                         <div className="space-y-3">
                           {[
                             { key: 'email_notifications', labelAr: 'إشعارات البريد', labelEn: 'Email Notifications', descAr: 'استلام الإشعارات عبر البريد الإلكتروني', descEn: 'Receive notifications via email' },
@@ -605,7 +606,7 @@ export default function TeacherSettingsPage() {
                       </div>
 
                       <div>
-                        <h3 className="font-medium font-cairo text-sm mb-3">{isRTL ? 'أنواع التنبيهات' : 'Alert Types'}</h3>
+                        <h3 className="font-medium font-cairo text-sm mb-3">{t('alertTypes')}</h3>
                         <div className="space-y-3">
                           {[
                             { key: 'attendance_alerts', labelAr: 'تنبيهات الحضور', labelEn: 'Attendance Alerts', descAr: 'تنبيهات غياب الطلاب والتأخر', descEn: 'Student absence and tardiness alerts' },
@@ -626,7 +627,7 @@ export default function TeacherSettingsPage() {
 
                       <Button onClick={saveNotifications} disabled={saving} className="bg-brand-turquoise hover:bg-brand-turquoise/90">
                         {saving ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : <Save className="h-4 w-4 me-2" />}
-                        {isRTL ? 'حفظ إعدادات الإشعارات' : 'Save Notification Settings'}
+                        {t('saveNotificationSettings')}
                       </Button>
                     </CardContent>
                   </Card>
@@ -637,7 +638,7 @@ export default function TeacherSettingsPage() {
                     <CardHeader className="pb-4">
                       <CardTitle className="text-lg font-cairo flex items-center gap-2">
                         <Globe className="h-5 w-5 text-brand-turquoise" />
-                        {isRTL ? 'التفضيلات' : 'Preferences'}
+                        {t('preferences')}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-5">
@@ -648,8 +649,8 @@ export default function TeacherSettingsPage() {
                               <Globe className="h-5 w-5 text-brand-turquoise" />
                             </div>
                             <div>
-                              <p className="font-medium font-cairo">{isRTL ? 'لغة الواجهة' : 'Interface Language'}</p>
-                              <p className="text-xs text-muted-foreground font-cairo">{isRTL ? 'اختر اللغة المفضلة للنظام' : 'Choose your preferred language'}</p>
+                              <p className="font-medium font-cairo">{t('interfaceLanguage')}</p>
+                              <p className="text-xs text-muted-foreground font-cairo">{t('chooseYourPreferredLanguage')}</p>
                             </div>
                           </div>
                         </div>
@@ -675,7 +676,7 @@ export default function TeacherSettingsPage() {
                             </div>
                             <div>
                               <p className="font-medium font-cairo">{isRTL ? 'المظهر' : 'Appearance'}</p>
-                              <p className="text-xs text-muted-foreground font-cairo">{isDark ? (isRTL ? 'الوضع الداكن مُفعّل' : 'Dark mode enabled') : (isRTL ? 'الوضع الفاتح مُفعّل' : 'Light mode enabled')}</p>
+                              <p className="text-xs text-muted-foreground font-cairo">{isDark ? (t('darkModeEnabled2')) : (t('lightModeEnabled2'))}</p>
                             </div>
                           </div>
                           <Switch checked={isDark} onCheckedChange={handleThemeToggle} />
@@ -690,7 +691,7 @@ export default function TeacherSettingsPage() {
                     <CardHeader className="pb-4">
                       <CardTitle className="text-lg font-cairo flex items-center gap-2">
                         <History className="h-5 w-5 text-brand-turquoise" />
-                        {isRTL ? 'سجل النشاط' : 'Activity Log'}
+                        {t('activityLog')}
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
@@ -701,8 +702,8 @@ export default function TeacherSettingsPage() {
                       ) : activities.length === 0 ? (
                         <div className="flex flex-col items-center py-16 text-center">
                           <History className="h-12 w-12 mb-3 text-muted-foreground/30" />
-                          <p className="text-muted-foreground font-cairo">{isRTL ? 'لا توجد أنشطة مسجلة بعد' : 'No activities recorded yet'}</p>
-                          <p className="text-xs text-muted-foreground/60 mt-1 font-cairo">{isRTL ? 'ستظهر أنشطتك هنا عند استخدام المنصة' : 'Your activities will appear here as you use the platform'}</p>
+                          <p className="text-muted-foreground font-cairo">{t('noActivitiesRecordedYet')}</p>
+                          <p className="text-xs text-muted-foreground/60 mt-1 font-cairo">{t('yourActivitiesWillAppearHereAsYouUseThePlatform')}</p>
                         </div>
                       ) : (
                         <div className="space-y-6">
@@ -757,12 +758,12 @@ export default function TeacherSettingsPage() {
             <DialogHeader>
               <DialogTitle className="font-cairo flex items-center gap-2">
                 <Lock className="h-5 w-5 text-brand-turquoise" />
-                {isRTL ? 'تغيير كلمة المرور' : 'Change Password'}
+                {t('changePassword')}
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-4 py-2">
               <div className="space-y-2">
-                <Label className="font-cairo">{isRTL ? 'كلمة المرور الحالية' : 'Current Password'}</Label>
+                <Label className="font-cairo">{t('currentPassword')}</Label>
                 <div className="relative">
                   <Input type={showPw.current ? 'text' : 'password'} value={passwordForm.current_password} onChange={(e) => setPasswordForm({ ...passwordForm, current_password: e.target.value })} dir="ltr" className="pe-10" />
                   <button type="button" onClick={() => setShowPw({ ...showPw, current: !showPw.current })} className="absolute end-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
@@ -771,7 +772,7 @@ export default function TeacherSettingsPage() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label className="font-cairo">{isRTL ? 'كلمة المرور الجديدة' : 'New Password'}</Label>
+                <Label className="font-cairo">{t('newPassword')}</Label>
                 <div className="relative">
                   <Input type={showPw.new ? 'text' : 'password'} value={passwordForm.new_password} onChange={(e) => setPasswordForm({ ...passwordForm, new_password: e.target.value })} dir="ltr" className="pe-10" />
                   <button type="button" onClick={() => setShowPw({ ...showPw, new: !showPw.new })} className="absolute end-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
@@ -781,7 +782,7 @@ export default function TeacherSettingsPage() {
                 <PasswordStrength password={passwordForm.new_password} isRTL={isRTL} />
               </div>
               <div className="space-y-2">
-                <Label className="font-cairo">{isRTL ? 'تأكيد كلمة المرور الجديدة' : 'Confirm New Password'}</Label>
+                <Label className="font-cairo">{t('confirmNewPassword')}</Label>
                 <div className="relative">
                   <Input type={showPw.confirm ? 'text' : 'password'} value={passwordForm.confirm_password} onChange={(e) => setPasswordForm({ ...passwordForm, confirm_password: e.target.value })} dir="ltr" className="pe-10" />
                   <button type="button" onClick={() => setShowPw({ ...showPw, confirm: !showPw.confirm })} className="absolute end-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
@@ -789,20 +790,20 @@ export default function TeacherSettingsPage() {
                   </button>
                 </div>
                 {passwordForm.confirm_password && passwordForm.new_password !== passwordForm.confirm_password && (
-                  <p className="text-xs text-red-500 font-cairo flex items-center gap-1"><X className="h-3 w-3" />{isRTL ? 'كلمة المرور غير متطابقة' : 'Passwords do not match'}</p>
+                  <p className="text-xs text-red-500 font-cairo flex items-center gap-1"><X className="h-3 w-3" />{t('passwordsDoNotMatch5')}</p>
                 )}
                 {passwordForm.confirm_password && passwordForm.new_password === passwordForm.confirm_password && passwordForm.new_password.length > 0 && (
-                  <p className="text-xs text-emerald-500 font-cairo flex items-center gap-1"><Check className="h-3 w-3" />{isRTL ? 'كلمة المرور متطابقة' : 'Passwords match'}</p>
+                  <p className="text-xs text-emerald-500 font-cairo flex items-center gap-1"><Check className="h-3 w-3" />{t('passwordsMatch2')}</p>
                 )}
               </div>
             </div>
             <DialogFooter className="gap-2">
               <Button variant="outline" onClick={() => { setShowPasswordDialog(false); setPasswordForm({ current_password: '', new_password: '', confirm_password: '' }); }}>
-                {isRTL ? 'إلغاء' : 'Cancel'}
+                {t('cancel')}
               </Button>
               <Button onClick={changePassword} disabled={saving || !passwordForm.current_password || !passwordForm.new_password || passwordForm.new_password !== passwordForm.confirm_password} className="bg-brand-turquoise hover:bg-brand-turquoise/90">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : <Lock className="h-4 w-4 me-2" />}
-                {isRTL ? 'تغيير كلمة المرور' : 'Change Password'}
+                {t('changePassword')}
               </Button>
             </DialogFooter>
           </DialogContent>

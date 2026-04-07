@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sidebar } from '../components/layout/Sidebar';
 import { PageHeader } from '../components/layout/PageHeader';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -250,7 +250,6 @@ export default function SecurityCenterPage() {
   const navigate = useNavigate();
   const { api } = useAuth();
   const { nassaqError, nassaqWarning } = useNassaqAlert();
-  const t = translations[isRTL ? 'ar' : 'en'];
   
   const [activeTab, setActiveTab] = useState('overview');
   const [loading, setLoading] = useState(false);
@@ -300,6 +299,7 @@ export default function SecurityCenterPage() {
   });
   
   const getScoreColor = (score) => {
+  const { t } = useTranslation();
     if (score >= 90) return { color: 'text-green-600', bg: 'bg-green-500', label: t.excellent };
     if (score >= 70) return { color: 'text-blue-600', bg: 'bg-blue-500', label: t.good };
     if (score >= 50) return { color: 'text-yellow-600', bg: 'bg-yellow-500', label: t.warning };
@@ -347,7 +347,7 @@ export default function SecurityCenterPage() {
   
   const handleRefresh = () => {
     setRefreshing(true);
-    setTimeout(() => { setRefreshing(false); toast.success(isRTL ? 'تم تحديث البيانات' : 'Data refreshed'); }, 1500);
+    setTimeout(() => { setRefreshing(false); toast.success(t('dataRefreshed')); }, 1500);
   };
   
   // ============= NEW SECURITY API FUNCTIONS =============
@@ -360,11 +360,11 @@ export default function SecurityCenterPage() {
       const response = await api.post('/security/search-account', { search_query: accountSearchQuery });
       setSearchResults(response.data || []);
       if (response.data?.length === 0) {
-        toast.info(isRTL ? 'لم يتم العثور على نتائج' : 'No results found');
+        toast.info(t('noResultsFound'));
       }
     } catch (error) {
       console.error('Search error:', error);
-      nassaqError(isRTL ? 'فشل البحث' : 'Search failed');
+      nassaqError(t('searchFailed'));
     } finally {
       setSearchLoading(false);
     }
@@ -376,14 +376,14 @@ export default function SecurityCenterPage() {
     setActionLoading(true);
     try {
       await api.post(`/security/lock-account/${selectedAccount.id}`);
-      toast.success(isRTL ? 'تم قفل الحساب بنجاح' : 'Account locked successfully');
+      toast.success(t('accountLockedSuccessfully'));
       setShowLockAccountDialog(false);
       setSelectedAccount(null);
       setSearchResults([]);
       setAccountSearchQuery('');
     } catch (error) {
       console.error('Lock error:', error);
-      nassaqError(isRTL ? 'فشل قفل الحساب' : 'Failed to lock account');
+      nassaqError(t('failedToLockAccount'));
     } finally {
       setActionLoading(false);
     }
@@ -395,14 +395,14 @@ export default function SecurityCenterPage() {
     setActionLoading(true);
     try {
       await api.post(`/security/unlock-account/${selectedAccount.id}`);
-      toast.success(isRTL ? 'تم فتح الحساب بنجاح' : 'Account unlocked successfully');
+      toast.success(t('accountUnlockedSuccessfully'));
       setShowUnlockAccountDialog(false);
       setSelectedAccount(null);
       setSearchResults([]);
       setAccountSearchQuery('');
     } catch (error) {
       console.error('Unlock error:', error);
-      nassaqError(isRTL ? 'فشل فتح الحساب' : 'Failed to unlock account');
+      nassaqError(t('failedToUnlockAccount'));
     } finally {
       setActionLoading(false);
     }
@@ -421,7 +421,7 @@ export default function SecurityCenterPage() {
       setShowEndSessionsDialog(false);
     } catch (error) {
       console.error('End sessions error:', error);
-      nassaqError(isRTL ? 'فشل إنهاء الجلسات' : 'Failed to end sessions');
+      nassaqError(t('failedToEndSessions'));
     } finally {
       setActionLoading(false);
     }
@@ -448,7 +448,7 @@ export default function SecurityCenterPage() {
       setForcePasswordType('user');
     } catch (error) {
       console.error('Force password error:', error);
-      nassaqError(isRTL ? 'فشل فرض تغيير كلمة المرور' : 'Failed to force password change');
+      nassaqError(t('failedToForcePasswordChange'));
     } finally {
       setActionLoading(false);
     }
@@ -518,12 +518,12 @@ export default function SecurityCenterPage() {
     link.click();
     
     setLoading(false);
-    toast.success(isRTL ? 'تم تحميل تقرير الأمان' : 'Security report downloaded');
+    toast.success(t('securityReportDownloaded'));
   };
   
   const handleGenerateAIReport = () => {
     setGeneratingReport(true);
-    setTimeout(() => { setGeneratingReport(false); toast.success(isRTL ? 'تم إنشاء تقرير AI' : 'AI report generated'); setShowAIReportDialog(false); }, 3000);
+    setTimeout(() => { setGeneratingReport(false); toast.success(t('aiReportGenerated')); setShowAIReportDialog(false); }, 3000);
   };
   
   const handleQuickAction = (action) => {
@@ -541,9 +541,9 @@ export default function SecurityCenterPage() {
       toast.promise(
         new Promise((resolve) => setTimeout(resolve, 3000)),
         {
-          loading: isRTL ? 'جاري الفحص الأمني...' : 'Running security scan...',
-          success: isRTL ? 'اكتمل الفحص الأمني. النتيجة: 95%' : 'Security scan complete. Score: 95%',
-          error: isRTL ? 'فشل الفحص' : 'Scan failed',
+          loading: t('runningSecurityScan'),
+          success: t('securityScanCompleteScore95'),
+          error: t('scanFailed'),
         }
       );
     } else {
@@ -606,7 +606,7 @@ export default function SecurityCenterPage() {
                       <div>
                         <h2 className="text-3xl font-bold mb-2">{t.securityScore}</h2>
                         <Badge className="bg-white/20 text-white text-lg px-4 py-1">{scoreInfo.label}</Badge>
-                        <p className="text-white/70 mt-2">{isRTL ? 'انقر لعرض تفاصيل الدرجة' : 'Click to view score details'}</p>
+                        <p className="text-white/70 mt-2">{t('clickToViewScoreDetails')}</p>
                       </div>
                     </div>
                     <ShieldCheck className="h-24 w-24 text-white/20" />
@@ -669,7 +669,7 @@ export default function SecurityCenterPage() {
                         <p className="font-bold text-xl text-green-600">{metrics.encryptedData}%</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-green-600" /><span className="text-sm text-green-600">{isRTL ? 'مشفر بالكامل' : 'Fully Encrypted'}</span></div>
+                    <div className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-green-600" /><span className="text-sm text-green-600">{t('fullyEncrypted')}</span></div>
                   </CardContent>
                 </Card>
                 <Card className="bg-blue-50 border-blue-200">
@@ -681,7 +681,7 @@ export default function SecurityCenterPage() {
                         <p className="font-bold text-xl text-blue-600">{t.strong}</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-blue-600" /><span className="text-sm text-blue-600">{isRTL ? '12+ حرف' : '12+ characters'}</span></div>
+                    <div className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-blue-600" /><span className="text-sm text-blue-600">{t('12Characters')}</span></div>
                   </CardContent>
                 </Card>
                 <Card className="bg-purple-50 border-purple-200">
@@ -705,7 +705,7 @@ export default function SecurityCenterPage() {
                         <p className="font-bold text-xl text-cyan-600">{metrics.loggingCoverage}%</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-cyan-600" /><span className="text-sm text-cyan-600">{isRTL ? 'تغطية كاملة' : 'Full Coverage'}</span></div>
+                    <div className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-cyan-600" /><span className="text-sm text-cyan-600">{t('fullCoverage')}</span></div>
                   </CardContent>
                 </Card>
               </div>
@@ -713,7 +713,7 @@ export default function SecurityCenterPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
                   <CardTitle className="flex items-center gap-2"><BellRing className="h-5 w-5 text-brand-navy" />{t.securityAlerts}</CardTitle>
-                  <Button variant="outline" size="sm" onClick={() => setActiveTab('alerts')}>{isRTL ? 'عرض الكل' : 'View All'}<ChevronRight className="h-4 w-4 ms-1 rtl:rotate-180" /></Button>
+                  <Button variant="outline" size="sm" onClick={() => setActiveTab('alerts')}>{t('viewAll')}<ChevronRight className="h-4 w-4 ms-1 rtl:rotate-180" /></Button>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
@@ -865,28 +865,28 @@ export default function SecurityCenterPage() {
                   <CardContent className="p-6 text-center">
                     <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-red-100 flex items-center justify-center"><Lock className="h-7 w-7 text-red-600" /></div>
                     <h4 className="font-bold mb-1">{t.lockAccount}</h4>
-                    <p className="text-xs text-muted-foreground">{isRTL ? 'البحث وقفل حساب' : 'Search & lock account'}</p>
+                    <p className="text-xs text-muted-foreground">{t('searchLockAccount')}</p>
                   </CardContent>
                 </Card>
                 <Card className="cursor-pointer hover:shadow-lg transition-all border-2 border-green-100 hover:border-green-300" onClick={openUnlockDialog}>
                   <CardContent className="p-6 text-center">
                     <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-green-100 flex items-center justify-center"><Unlock className="h-7 w-7 text-green-600" /></div>
                     <h4 className="font-bold mb-1">{t.unlockAccount}</h4>
-                    <p className="text-xs text-muted-foreground">{isRTL ? 'البحث وفتح حساب' : 'Search & unlock account'}</p>
+                    <p className="text-xs text-muted-foreground">{t('searchUnlockAccount')}</p>
                   </CardContent>
                 </Card>
                 <Card className="cursor-pointer hover:shadow-lg transition-all border-2 border-orange-100 hover:border-orange-300" onClick={() => setShowEndSessionsDialog(true)}>
                   <CardContent className="p-6 text-center">
                     <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-orange-100 flex items-center justify-center"><LogOut className="h-7 w-7 text-orange-600" /></div>
                     <h4 className="font-bold mb-1">{t.endAllSessions}</h4>
-                    <p className="text-xs text-muted-foreground">{isRTL ? 'إنهاء كل الجلسات' : 'End all sessions'}</p>
+                    <p className="text-xs text-muted-foreground">{t('endAllSessions')}</p>
                   </CardContent>
                 </Card>
                 <Card className="cursor-pointer hover:shadow-lg transition-all border-2 border-purple-100 hover:border-purple-300" onClick={openForcePasswordDialog}>
                   <CardContent className="p-6 text-center">
                     <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-purple-100 flex items-center justify-center"><KeyRound className="h-7 w-7 text-purple-600" /></div>
                     <h4 className="font-bold mb-1">{t.forcePasswordChange}</h4>
-                    <p className="text-xs text-muted-foreground">{isRTL ? 'فردي / فئة / الكل' : 'User / Role / All'}</p>
+                    <p className="text-xs text-muted-foreground">{t('userRoleAll')}</p>
                   </CardContent>
                 </Card>
               </div>
@@ -929,7 +929,7 @@ export default function SecurityCenterPage() {
               ))}
               <div className="pt-4 border-t">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold">{isRTL ? 'الدرجة الإجمالية' : 'Total Score'}</span>
+                  <span className="font-bold">{t('totalScore')}</span>
                   <span className={`text-2xl font-bold ${scoreInfo.color}`}>{metrics.securityScore}%</span>
                 </div>
               </div>
@@ -943,12 +943,12 @@ export default function SecurityCenterPage() {
           <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2"><Lock className="h-5 w-5 text-red-600" />{t.lockAccount}</DialogTitle>
-              <DialogDescription>{isRTL ? 'ابحث عن الحساب بالبريد أو رقم الهاتف' : 'Search for account by email or phone'}</DialogDescription>
+              <DialogDescription>{t('searchForAccountByEmailOrPhone')}</DialogDescription>
             </DialogHeader>
             <div className="py-4 space-y-4">
               <div className="flex gap-2">
                 <Input 
-                  placeholder={isRTL ? 'البريد الإلكتروني أو رقم الهاتف' : 'Email or phone number'} 
+                  placeholder={t('emailOrPhoneNumber')} 
                   value={accountSearchQuery}
                   onChange={(e) => setAccountSearchQuery(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSearchAccount()}
@@ -978,7 +978,7 @@ export default function SecurityCenterPage() {
                         </div>
                         <div className="text-end">
                           <Badge variant="outline">{account.role}</Badge>
-                          {account.is_locked && <Badge className="bg-red-500 text-white ms-2">{isRTL ? 'مقفل' : 'Locked'}</Badge>}
+                          {account.is_locked && <Badge className="bg-red-500 text-white ms-2">{t('locked')}</Badge>}
                         </div>
                       </div>
                     </div>
@@ -988,14 +988,14 @@ export default function SecurityCenterPage() {
               
               {selectedAccount && (
                 <div className="space-y-2">
-                  <Label>{isRTL ? 'السبب' : 'Reason'}</Label>
+                  <Label>{t('reason2')}</Label>
                   <Select value={lockReason} onValueChange={setLockReason}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="suspicious">{isRTL ? 'نشاط مشبوه' : 'Suspicious Activity'}</SelectItem>
-                      <SelectItem value="violation">{isRTL ? 'مخالفة السياسات' : 'Policy Violation'}</SelectItem>
-                      <SelectItem value="security">{isRTL ? 'أمان' : 'Security Concern'}</SelectItem>
-                      <SelectItem value="other">{isRTL ? 'أخرى' : 'Other'}</SelectItem>
+                      <SelectItem value="suspicious">{t('suspiciousActivity')}</SelectItem>
+                      <SelectItem value="violation">{t('policyViolation')}</SelectItem>
+                      <SelectItem value="security">{t('securityConcern')}</SelectItem>
+                      <SelectItem value="other">{t('other')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -1020,12 +1020,12 @@ export default function SecurityCenterPage() {
           <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2"><Unlock className="h-5 w-5 text-green-600" />{t.unlockAccount}</DialogTitle>
-              <DialogDescription>{isRTL ? 'ابحث عن الحساب المقفل لفتحه' : 'Search for locked account to unlock'}</DialogDescription>
+              <DialogDescription>{t('searchForLockedAccountToUnlock')}</DialogDescription>
             </DialogHeader>
             <div className="py-4 space-y-4">
               <div className="flex gap-2">
                 <Input 
-                  placeholder={isRTL ? 'البريد الإلكتروني أو رقم الهاتف' : 'Email or phone number'} 
+                  placeholder={t('emailOrPhoneNumber')} 
                   value={accountSearchQuery}
                   onChange={(e) => setAccountSearchQuery(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSearchAccount()}
@@ -1054,7 +1054,7 @@ export default function SecurityCenterPage() {
                         </div>
                         <div className="text-end">
                           <Badge variant="outline">{account.role}</Badge>
-                          {account.is_locked && <Badge className="bg-red-500 text-white ms-2">{isRTL ? 'مقفل' : 'Locked'}</Badge>}
+                          {account.is_locked && <Badge className="bg-red-500 text-white ms-2">{t('locked')}</Badge>}
                         </div>
                       </div>
                     </div>
@@ -1081,18 +1081,16 @@ export default function SecurityCenterPage() {
           <DialogContent>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2"><LogOut className="h-5 w-5 text-orange-600" />{t.endAllSessions}</DialogTitle>
-              <DialogDescription>{isRTL ? 'هذا الإجراء سينهي جميع الجلسات النشطة لجميع المستخدمين' : 'This will end all active sessions for all users'}</DialogDescription>
+              <DialogDescription>{t('thisWillEndAllActiveSessionsForAllUsers')}</DialogDescription>
             </DialogHeader>
             <div className="py-4">
               <div className="p-4 bg-orange-50 border border-orange-200 rounded-xl">
                 <div className="flex items-start gap-3">
                   <AlertTriangle className="h-6 w-6 text-orange-600 mt-0.5" />
                   <div>
-                    <p className="font-medium text-orange-800">{isRTL ? 'تحذير هام' : 'Important Warning'}</p>
+                    <p className="font-medium text-orange-800">{t('importantWarning')}</p>
                     <p className="text-sm text-orange-700 mt-1">
-                      {isRTL 
-                        ? 'سيتم تسجيل خروج جميع المستخدمين من النظام (باستثنائك). استخدم هذا فقط في حالات الطوارئ.'
-                        : 'All users will be logged out (except you). Use this only in emergencies.'
+                      {t('allUsersWillBeLoggedOutExceptYouUseThisOnlyInEmerg')
                       }
                     </p>
                   </div>
@@ -1107,7 +1105,7 @@ export default function SecurityCenterPage() {
                 disabled={actionLoading}
               >
                 {actionLoading ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : <LogOut className="h-4 w-4 me-2" />}
-                {isRTL ? 'إنهاء جميع الجلسات' : 'End All Sessions'}
+                {t('endAllSessions2')}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -1118,7 +1116,7 @@ export default function SecurityCenterPage() {
           <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2"><KeyRound className="h-5 w-5 text-purple-600" />{t.forcePasswordChange}</DialogTitle>
-              <DialogDescription>{isRTL ? 'فرض تغيير كلمة المرور على مستخدم، فئة، أو الجميع' : 'Force password change for user, role, or everyone'}</DialogDescription>
+              <DialogDescription>{t('forcePasswordChangeForUserRoleOrEveryone')}</DialogDescription>
             </DialogHeader>
             <div className="py-4 space-y-4">
               {/* Option Selection */}
@@ -1128,21 +1126,21 @@ export default function SecurityCenterPage() {
                   onClick={() => setForcePasswordType('user')}
                   className={forcePasswordType === 'user' ? 'bg-purple-600' : ''}
                 >
-                  {isRTL ? 'مستخدم محدد' : 'Specific User'}
+                  {t('specificUser')}
                 </Button>
                 <Button 
                   variant={forcePasswordType === 'role' ? 'default' : 'outline'}
                   onClick={() => setForcePasswordType('role')}
                   className={forcePasswordType === 'role' ? 'bg-purple-600' : ''}
                 >
-                  {isRTL ? 'فئة معينة' : 'By Role'}
+                  {t('byRole')}
                 </Button>
                 <Button 
                   variant={forcePasswordType === 'all' ? 'default' : 'outline'}
                   onClick={() => setForcePasswordType('all')}
                   className={forcePasswordType === 'all' ? 'bg-red-600' : ''}
                 >
-                  {isRTL ? 'الجميع' : 'Everyone'}
+                  {t('everyone')}
                 </Button>
               </div>
               
@@ -1151,7 +1149,7 @@ export default function SecurityCenterPage() {
                 <>
                   <div className="flex gap-2">
                     <Input 
-                      placeholder={isRTL ? 'البريد الإلكتروني أو رقم الهاتف' : 'Email or phone number'} 
+                      placeholder={t('emailOrPhoneNumber')} 
                       value={accountSearchQuery}
                       onChange={(e) => setAccountSearchQuery(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && handleSearchAccount()}
@@ -1190,9 +1188,9 @@ export default function SecurityCenterPage() {
               {/* Role Selection */}
               {forcePasswordType === 'role' && (
                 <div className="space-y-2">
-                  <Label>{isRTL ? 'اختر الفئة' : 'Select Role'}</Label>
+                  <Label>{t('selectRole')}</Label>
                   <Select value={selectedRole} onValueChange={setSelectedRole}>
-                    <SelectTrigger><SelectValue placeholder={isRTL ? 'اختر الفئة...' : 'Select role...'} /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder={t('selectRole2')} /></SelectTrigger>
                     <SelectContent>
                       {availableRoles.map((role) => (
                         <SelectItem key={role.id} value={role.id}>
@@ -1210,11 +1208,9 @@ export default function SecurityCenterPage() {
                   <div className="flex items-start gap-3">
                     <AlertTriangle className="h-6 w-6 text-red-600 mt-0.5" />
                     <div>
-                      <p className="font-medium text-red-800">{isRTL ? 'تحذير خطير!' : 'Critical Warning!'}</p>
+                      <p className="font-medium text-red-800">{t('criticalWarning')}</p>
                       <p className="text-sm text-red-700 mt-1">
-                        {isRTL 
-                          ? 'سيتم تسجيل خروج جميع المستخدمين وإجبارهم على تغيير كلمة المرور. استخدم هذا فقط في حالات الاختراق!'
-                          : 'All users will be logged out and forced to change password. Use only in case of breach!'
+                        {t('allUsersWillBeLoggedOutAndForcedToChangePasswordUs')
                         }
                       </p>
                     </div>
@@ -1244,11 +1240,11 @@ export default function SecurityCenterPage() {
         {/* AI Report Dialog */}
         <Dialog open={showAIReportDialog} onOpenChange={setShowAIReportDialog}>
           <DialogContent className="max-w-lg">
-            <DialogHeader><DialogTitle className="flex items-center gap-2"><Brain className="h-5 w-5 text-brand-navy" />{t.aiAnalysis}</DialogTitle><DialogDescription>{isRTL ? 'تحليل شامل للوضع الأمني باستخدام الذكاء الاصطناعي' : 'Comprehensive security analysis using AI'}</DialogDescription></DialogHeader>
+            <DialogHeader><DialogTitle className="flex items-center gap-2"><Brain className="h-5 w-5 text-brand-navy" />{t.aiAnalysis}</DialogTitle><DialogDescription>{t('comprehensiveSecurityAnalysisUsingAi')}</DialogDescription></DialogHeader>
             <div className="py-4">
               <div className="p-4 bg-muted/30 rounded-xl text-center">
                 <Brain className="h-16 w-16 mx-auto text-brand-navy/30 mb-4" />
-                <p className="text-muted-foreground">{isRTL ? 'سيقوم الذكاء الاصطناعي بتحليل جميع البيانات الأمنية وإنشاء تقرير شامل' : 'AI will analyze all security data and generate a comprehensive report'}</p>
+                <p className="text-muted-foreground">{t('aiWillAnalyzeAllSecurityDataAndGenerateAComprehens')}</p>
               </div>
             </div>
             <DialogFooter className="flex-row-reverse gap-2">

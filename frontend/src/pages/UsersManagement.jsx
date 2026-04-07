@@ -44,6 +44,7 @@ import {
   getRoleInfo,
 } from '../components/users-management';
 
+import { useTranslation } from '../contexts/ThemeContext';
 export default function UsersManagement() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -124,7 +125,7 @@ export default function UsersManagement() {
       setTotalUsers(serverTotal);
     } catch (error) {
       console.error('Error fetching users:', error);
-      nassaqError(isRTL ? 'فشل في تحميل المستخدمين' : 'Failed to load users');
+      nassaqError(t('failedToLoadUsers'));
       setUsers([]);
       setTotalUsers(0);
     } finally {
@@ -358,6 +359,7 @@ export default function UsersManagement() {
   };
 
   const copyToClipboard = (text) => {
+  const { t } = useTranslation();
     navigator.clipboard.writeText(text);
     toast.success('تم النسخ');
   };

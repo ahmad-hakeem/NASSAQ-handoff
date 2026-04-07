@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
@@ -26,6 +26,7 @@ const DAY_NAMES = {
 };
 
 const ChildSchedulePage = () => {
+  const { t } = useTranslation();
   const { nassaqError, nassaqWarning } = useNassaqAlert();
   const { childId } = useParams();
   const { token, api } = useAuth();
@@ -49,7 +50,7 @@ const ChildSchedulePage = () => {
       setChild(childRes.data);
     } catch (error) {
       console.error('Error fetching schedule:', error);
-      nassaqError(isRTL ? 'حدث خطأ في جلب الجدول' : 'Error fetching schedule');
+      nassaqError(t('errorFetchingSchedule'));
     } finally {
       setLoading(false);
     }
@@ -98,20 +99,20 @@ const ChildSchedulePage = () => {
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={handlePrint} className="gap-2 print:hidden">
               <Printer className="h-4 w-4" />
-              {isRTL ? 'طباعة' : 'Print'}
+              {t('print')}
             </Button>
             <div className="flex bg-gray-100 rounded-lg p-0.5 print:hidden">
               <button
                 onClick={() => setViewMode('list')}
                 className={`px-3 py-1 text-xs rounded-md transition ${viewMode === 'list' ? 'bg-white shadow-sm font-medium' : 'text-gray-500'}`}
               >
-                {isRTL ? 'قائمة' : 'List'}
+                {t('list')}
               </button>
               <button
                 onClick={() => setViewMode('grid')}
                 className={`px-3 py-1 text-xs rounded-md transition ${viewMode === 'grid' ? 'bg-white shadow-sm font-medium' : 'text-gray-500'}`}
               >
-                {isRTL ? 'شبكة' : 'Grid'}
+                {t('grid')}
               </button>
             </div>
           </div>
@@ -122,10 +123,10 @@ const ChildSchedulePage = () => {
             <CardContent className="py-16 text-center">
               <Calendar className="h-16 w-16 mx-auto mb-4 text-gray-300" />
               <h3 className="font-bold text-lg text-gray-700 mb-2">
-                {isRTL ? 'لا يوجد جدول دراسي حالياً' : 'No schedule available'}
+                {t('noScheduleAvailable')}
               </h3>
               <p className="text-sm text-muted-foreground">
-                {isRTL ? 'سيتم عرض الجدول بعد نشره من إدارة المدرسة' : 'Schedule will appear after it is published by school admin'}
+                {t('scheduleWillAppearAfterItIsPublishedBySchoolAdmin')}
               </p>
             </CardContent>
           </Card>
@@ -191,7 +192,7 @@ const ChildSchedulePage = () => {
                     <thead>
                       <tr>
                         <th className="p-2 text-gray-500 font-medium border-b w-16">
-                          {isRTL ? 'الفترة' : 'Period'}
+                          {t('period')}
                         </th>
                         {days.map(day => {
                           const dayInfo = DAY_NAMES[day] || { ar: day, color: 'from-gray-500 to-gray-600' };

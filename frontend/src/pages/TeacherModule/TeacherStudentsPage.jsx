@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 
+import { useTranslation } from '../../contexts/ThemeContext';
 export default function TeacherStudentsPage() {
   const { user, api, isRTL } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -87,7 +88,7 @@ export default function TeacherStudentsPage() {
       setStudents(enrichedStudents);
     } catch (error) {
       console.error('Error:', error);
-      nassaqError(isRTL ? 'خطأ في تحميل الطلاب' : 'Error loading students');
+      nassaqError(t('errorLoadingStudents'));
     } finally {
       setLoading(false);
     }
@@ -140,9 +141,10 @@ export default function TeacherStudentsPage() {
   };
 
   const openMessageParent = (e, student) => {
+  const { t } = useTranslation();
     e.stopPropagation();
     if (!student.parent_id) {
-      nassaqError(isRTL ? 'لا يوجد ولي أمر مرتبط بهذا الطالب' : 'No parent linked to this student');
+      nassaqError(t('noParentLinkedToThisStudent'));
       return;
     }
     setMessageTarget(student);
@@ -153,7 +155,7 @@ export default function TeacherStudentsPage() {
 
   const handleSendParentMessage = async () => {
     if (!messageSubject.trim() || !messageBody.trim()) {
-      nassaqError(isRTL ? 'يرجى ملء الموضوع والرسالة' : 'Please fill in subject and message');
+      nassaqError(t('pleaseFillInSubjectAndMessage'));
       return;
     }
     setSendingMessage(true);
@@ -169,10 +171,10 @@ export default function TeacherStudentsPage() {
         student_name: messageTarget.full_name,
         class_id: selectedClass
       });
-      toast.success(isRTL ? 'تم إرسال الرسالة لولي الأمر بنجاح' : 'Message sent to parent successfully');
+      toast.success(t('messageSentToParentSuccessfully'));
       setShowMessageDialog(false);
     } catch (error) {
-      nassaqError(isRTL ? 'خطأ في إرسال الرسالة' : 'Error sending message');
+      nassaqError(t('errorSendingMessage'));
     } finally {
       setSendingMessage(false);
     }
@@ -198,16 +200,16 @@ export default function TeacherStudentsPage() {
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
               <h1 className="text-2xl font-bold text-brand-navy dark:text-brand-turquoise font-cairo">
-                {isRTL ? 'طلابي' : 'My Students'}
+                {t('myStudents')}
               </h1>
               <p className="text-sm text-muted-foreground">
-                {isRTL ? 'عرض ومتابعة بيانات الطلاب' : 'View and track student data'}
+                {t('viewAndTrackStudentData')}
               </p>
             </div>
             <div className="flex items-center gap-2">
               <Select value={selectedClass} onValueChange={setSelectedClass}>
                 <SelectTrigger className="w-full sm:w-[180px]" data-testid="class-select">
-                  <SelectValue placeholder={isRTL ? 'اختر الفصل' : 'Select class'} />
+                  <SelectValue placeholder={t('selectClass')} />
                 </SelectTrigger>
                 <SelectContent>
                   {classes.map(cls => (
@@ -218,7 +220,7 @@ export default function TeacherStudentsPage() {
               <div className="relative">
                 <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder={isRTL ? 'بحث...' : 'Search...'}
+                  placeholder={t('search')}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="ps-9 w-full sm:w-[180px]"
@@ -242,19 +244,19 @@ export default function TeacherStudentsPage() {
               <div className="text-2xl font-bold text-green-600">
                 {Math.round(filteredStudents.reduce((s, st) => s + (st.attendance_rate || 0), 0) / filteredStudents.length) || 0}%
               </div>
-              <div className="text-xs text-muted-foreground">{isRTL ? 'متوسط الحضور' : 'Avg Attendance'}</div>
+              <div className="text-xs text-muted-foreground">{t('avgAttendance')}</div>
             </div>
             <div className="text-center p-3 rounded-lg bg-white dark:bg-gray-800">
               <div className="text-2xl font-bold text-blue-600">
                 {Math.round(filteredStudents.reduce((s, st) => s + (st.average_grade || 0), 0) / filteredStudents.length) || 0}
               </div>
-              <div className="text-xs text-muted-foreground">{isRTL ? 'متوسط الدرجات' : 'Avg Grade'}</div>
+              <div className="text-xs text-muted-foreground">{t('avgGrade')}</div>
             </div>
             <div className="text-center p-3 rounded-lg bg-white dark:bg-gray-800">
               <div className="text-2xl font-bold text-purple-600">
                 {filteredStudents.filter(s => (s.average_grade || 0) >= 90).length}
               </div>
-              <div className="text-xs text-muted-foreground">{isRTL ? 'متفوقين' : 'Top Students'}</div>
+              <div className="text-xs text-muted-foreground">{t('topStudents3')}</div>
             </div>
           </div>
         </div>
@@ -269,9 +271,9 @@ export default function TeacherStudentsPage() {
             <Card>
               <CardContent className="text-center py-16">
                 <Users className="h-16 w-16 mx-auto mb-4 text-muted-foreground/30" />
-                <h3 className="font-bold mb-2">{isRTL ? 'لا يوجد طلاب' : 'No students'}</h3>
+                <h3 className="font-bold mb-2">{t('noStudents')}</h3>
                 <p className="text-muted-foreground">
-                  {isRTL ? 'اختر فصلاً لعرض الطلاب' : 'Select a class to view students'}
+                  {t('selectAClassToViewStudents')}
                 </p>
               </CardContent>
             </Card>
@@ -311,7 +313,7 @@ export default function TeacherStudentsPage() {
                         <div className={`text-sm font-bold ${getGradeColor(student.average_grade || 0)}`}>
                           {student.average_grade || 0}
                         </div>
-                        <div className="text-[10px] text-muted-foreground">{isRTL ? 'درجة' : 'Grade'}</div>
+                        <div className="text-[10px] text-muted-foreground">{t('grade4')}</div>
                       </div>
                       <div className="p-2 rounded bg-purple-50 dark:bg-purple-900/20">
                         <Star className="h-4 w-4 mx-auto mb-1 text-purple-600" />
@@ -323,11 +325,11 @@ export default function TeacherStudentsPage() {
                     {/* Progress Bar */}
                     <div>
                       <div className="flex items-center justify-between text-xs mb-1">
-                        <span className="text-muted-foreground">{isRTL ? 'الأداء العام' : 'Overall'}</span>
+                        <span className="text-muted-foreground">{t('overall')}</span>
                         <span className={`font-medium ${getGradeColor(student.average_grade || 0)}`}>
-                          {student.average_grade >= 90 ? (isRTL ? 'ممتاز' : 'Excellent') :
-                           student.average_grade >= 75 ? (isRTL ? 'جيد جداً' : 'Very Good') :
-                           student.average_grade >= 60 ? (isRTL ? 'جيد' : 'Good') : (isRTL ? 'يحتاج تحسين' : 'Needs Improvement')}
+                          {student.average_grade >= 90 ? (t('excellent')) :
+                           student.average_grade >= 75 ? (t('veryGood')) :
+                           student.average_grade >= 60 ? (t('good')) : (isRTL ? 'يحتاج تحسين' : 'Needs Improvement')}
                         </span>
                       </div>
                       <Progress value={student.average_grade || 0} className="h-2" />
@@ -341,7 +343,7 @@ export default function TeacherStudentsPage() {
                         onClick={(e) => openMessageParent(e, student)}
                       >
                         <MessageSquare className="h-3.5 w-3.5" />
-                        {isRTL ? 'مراسلة ولي الأمر' : 'Message Parent'}
+                        {t('messageParent')}
                       </Button>
                     )}
                   </CardContent>
@@ -357,7 +359,7 @@ export default function TeacherStudentsPage() {
             <DialogHeader>
               <DialogTitle className="font-cairo flex items-center gap-2">
                 <MessageSquare className="h-5 w-5 text-brand-turquoise" />
-                {isRTL ? 'مراسلة ولي أمر' : 'Message Parent'}
+                {t('messageParent2')}
               </DialogTitle>
             </DialogHeader>
             {messageTarget && (
@@ -371,30 +373,30 @@ export default function TeacherStudentsPage() {
                   <div>
                     <p className="font-medium text-sm">{messageTarget.full_name}</p>
                     <p className="text-xs text-muted-foreground">
-                      {isRTL ? 'ولي الأمر' : 'Parent'}: {messageTarget.parent_name || messageTarget.parent_id}
+                      {t('parent')}: {messageTarget.parent_name || messageTarget.parent_id}
                     </p>
                   </div>
                 </div>
 
                 <div>
                   <label className="text-sm font-medium mb-1.5 block">
-                    {isRTL ? 'الموضوع' : 'Subject'}
+                    {t('subject3')}
                   </label>
                   <Input
                     value={messageSubject}
                     onChange={(e) => setMessageSubject(e.target.value)}
-                    placeholder={isRTL ? 'أدخل موضوع الرسالة...' : 'Enter message subject...'}
+                    placeholder={t('enterMessageSubject')}
                   />
                 </div>
 
                 <div>
                   <label className="text-sm font-medium mb-1.5 block">
-                    {isRTL ? 'الرسالة' : 'Message'}
+                    {t('message2')}
                   </label>
                   <Textarea
                     value={messageBody}
                     onChange={(e) => setMessageBody(e.target.value)}
-                    placeholder={isRTL ? 'اكتب رسالتك لولي الأمر...' : 'Type your message to the parent...'}
+                    placeholder={t('typeYourMessageToTheParent')}
                     rows={5}
                   />
                 </div>
@@ -402,7 +404,7 @@ export default function TeacherStudentsPage() {
             )}
             <DialogFooter className="gap-2">
               <Button variant="outline" onClick={() => setShowMessageDialog(false)}>
-                {isRTL ? 'إلغاء' : 'Cancel'}
+                {t('cancel')}
               </Button>
               <Button
                 className="bg-brand-turquoise hover:bg-brand-turquoise/90 gap-1.5"
@@ -414,7 +416,7 @@ export default function TeacherStudentsPage() {
                 ) : (
                   <Send className="h-4 w-4" />
                 )}
-                {isRTL ? 'إرسال' : 'Send'}
+                {t('send')}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -446,7 +448,7 @@ export default function TeacherStudentsPage() {
                         onClick={(e) => { setShowDetailsDialog(false); openMessageParent(e, selectedStudent); }}
                       >
                         <MessageSquare className="h-3.5 w-3.5" />
-                        {isRTL ? 'مراسلة ولي الأمر' : 'Message Parent'}
+                        {t('messageParent')}
                       </Button>
                     )}
                   </>
@@ -461,10 +463,10 @@ export default function TeacherStudentsPage() {
             ) : studentDetails && (
               <Tabs defaultValue="overview" className="mt-4">
                 <TabsList className="grid grid-cols-3 sm:grid-cols-5 w-full">
-                  <TabsTrigger value="overview">{isRTL ? 'نظرة عامة' : 'Overview'}</TabsTrigger>
-                  <TabsTrigger value="attendance">{isRTL ? 'الحضور' : 'Attendance'}</TabsTrigger>
-                  <TabsTrigger value="grades">{isRTL ? 'الدرجات' : 'Grades'}</TabsTrigger>
-                  <TabsTrigger value="behavior">{isRTL ? 'السلوك' : 'Behavior'}</TabsTrigger>
+                  <TabsTrigger value="overview">{t('overview')}</TabsTrigger>
+                  <TabsTrigger value="attendance">{t('attendance2')}</TabsTrigger>
+                  <TabsTrigger value="grades">{t('grades')}</TabsTrigger>
+                  <TabsTrigger value="behavior">{t('behavior')}</TabsTrigger>
                   <TabsTrigger value="ai-insights" className="gap-1">
                     <Brain className="h-3.5 w-3.5" />
                     {isRTL ? 'تحليل ذكي' : 'AI Insights'}
@@ -484,21 +486,21 @@ export default function TeacherStudentsPage() {
                       <CardContent className="p-4 text-center">
                         <FileText className="h-7 w-7 mx-auto mb-1 text-blue-600" />
                         <div className="text-2xl font-bold">{studentDetails?.grades?.average ?? selectedStudent?.average_grade ?? 0}</div>
-                        <div className="text-xs text-muted-foreground">{isRTL ? 'متوسط الدرجات' : 'Avg Grade'}</div>
+                        <div className="text-xs text-muted-foreground">{t('avgGrade')}</div>
                       </CardContent>
                     </Card>
                     <Card>
                       <CardContent className="p-4 text-center">
                         <Star className="h-7 w-7 mx-auto mb-1 text-purple-600" />
                         <div className="text-2xl font-bold">{studentDetails?.behavior?.total_points ?? 0}</div>
-                        <div className="text-xs text-muted-foreground">{isRTL ? 'نقاط السلوك' : 'Behavior Pts'}</div>
+                        <div className="text-xs text-muted-foreground">{t('behaviorPts')}</div>
                       </CardContent>
                     </Card>
                     <Card>
                       <CardContent className="p-4 text-center">
                         <TrendingUp className="h-7 w-7 mx-auto mb-1 text-amber-600" />
                         <div className="text-2xl font-bold">{studentDetails?.participation?.participation_count ?? 0}</div>
-                        <div className="text-xs text-muted-foreground">{isRTL ? 'المشاركات' : 'Participations'}</div>
+                        <div className="text-xs text-muted-foreground">{t('participations')}</div>
                       </CardContent>
                     </Card>
                   </div>
@@ -506,7 +508,7 @@ export default function TeacherStudentsPage() {
                   {(studentDetails?.skills || []).length > 0 && (
                     <Card>
                       <CardHeader className="pb-2">
-                        <CardTitle className="text-sm">{isRTL ? 'المهارات المسجلة' : 'Recorded Skills'}</CardTitle>
+                        <CardTitle className="text-sm">{t('recordedSkills')}</CardTitle>
                       </CardHeader>
                       <CardContent className="flex flex-wrap gap-2">
                         {studentDetails.skills.slice(0, 8).map((skill, idx) => (
@@ -521,7 +523,7 @@ export default function TeacherStudentsPage() {
                   {selectedStudent?.parent_phone && (
                     <Card>
                       <CardHeader className="pb-2">
-                        <CardTitle className="text-sm">{isRTL ? 'بيانات التواصل' : 'Contact Info'}</CardTitle>
+                        <CardTitle className="text-sm">{t('contactInfo')}</CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-2">
                         <div className="flex items-center gap-2">
@@ -544,19 +546,19 @@ export default function TeacherStudentsPage() {
                     <Card>
                       <CardContent className="p-3 text-center">
                         <div className="text-lg font-bold text-green-600">{studentDetails?.attendance?.present ?? 0}</div>
-                        <div className="text-xs text-muted-foreground">{isRTL ? 'حاضر' : 'Present'}</div>
+                        <div className="text-xs text-muted-foreground">{t('present')}</div>
                       </CardContent>
                     </Card>
                     <Card>
                       <CardContent className="p-3 text-center">
                         <div className="text-lg font-bold text-red-600">{studentDetails?.attendance?.absent ?? 0}</div>
-                        <div className="text-xs text-muted-foreground">{isRTL ? 'غائب' : 'Absent'}</div>
+                        <div className="text-xs text-muted-foreground">{t('absent')}</div>
                       </CardContent>
                     </Card>
                     <Card>
                       <CardContent className="p-3 text-center">
                         <div className="text-lg font-bold text-amber-600">{studentDetails?.attendance?.late ?? 0}</div>
-                        <div className="text-xs text-muted-foreground">{isRTL ? 'متأخر' : 'Late'}</div>
+                        <div className="text-xs text-muted-foreground">{t('late')}</div>
                       </CardContent>
                     </Card>
                   </div>
@@ -564,7 +566,7 @@ export default function TeacherStudentsPage() {
                   {(studentDetails?.attendance?.trend || []).length > 0 && (
                     <Card>
                       <CardHeader className="pb-2">
-                        <CardTitle className="text-sm">{isRTL ? 'اتجاه الحضور الشهري' : 'Monthly Attendance Trend'}</CardTitle>
+                        <CardTitle className="text-sm">{t('monthlyAttendanceTrend')}</CardTitle>
                       </CardHeader>
                       <CardContent>
                         <div className="space-y-2">
@@ -584,12 +586,12 @@ export default function TeacherStudentsPage() {
 
                   <Card>
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-sm">{isRTL ? 'آخر السجلات' : 'Recent Records'}</CardTitle>
+                      <CardTitle className="text-sm">{t('recentRecords')}</CardTitle>
                     </CardHeader>
                     <CardContent>
                       {(studentDetails?.attendance?.recent || []).length === 0 ? (
                         <p className="text-center text-muted-foreground py-4 text-sm">
-                          {isRTL ? 'لا توجد سجلات حضور' : 'No attendance records'}
+                          {t('noAttendanceRecords')}
                         </p>
                       ) : (
                         <div className="space-y-2">
@@ -597,9 +599,9 @@ export default function TeacherStudentsPage() {
                             <div key={idx} className="flex items-center justify-between p-2 rounded bg-muted/30">
                               <span className="text-sm">{new Date(record.date).toLocaleDateString('ar-SA')}</span>
                               <Badge variant={record.status === 'present' ? 'default' : 'destructive'}>
-                                {record.status === 'present' ? (isRTL ? 'حاضر' : 'Present') :
-                                 record.status === 'absent' ? (isRTL ? 'غائب' : 'Absent') :
-                                 (isRTL ? 'متأخر' : 'Late')}
+                                {record.status === 'present' ? (t('present')) :
+                                 record.status === 'absent' ? (t('absent')) :
+                                 (t('late'))}
                               </Badge>
                             </div>
                           ))}
@@ -613,7 +615,7 @@ export default function TeacherStudentsPage() {
                   {studentDetails?.grades?.average > 0 && (
                     <Card>
                       <CardContent className="p-4 flex items-center justify-between">
-                        <span className="text-sm font-medium">{isRTL ? 'المتوسط العام' : 'Overall Average'}</span>
+                        <span className="text-sm font-medium">{t('overallAverage')}</span>
                         <div className={`text-2xl font-bold ${getGradeColor(studentDetails.grades.average)}`}>
                           {studentDetails.grades.average}
                         </div>
@@ -624,7 +626,7 @@ export default function TeacherStudentsPage() {
                     <CardContent className="p-4">
                       {(studentDetails?.grades?.records || []).length === 0 ? (
                         <p className="text-center text-muted-foreground py-4 text-sm">
-                          {isRTL ? 'لا توجد درجات' : 'No grades'}
+                          {t('noGrades')}
                         </p>
                       ) : (
                         <div className="space-y-2">
@@ -632,7 +634,7 @@ export default function TeacherStudentsPage() {
                             <div key={idx} className="flex items-center justify-between p-2 rounded bg-muted/30">
                               <div>
                                 <p className="font-medium text-sm">{grade.assessment_name || grade.subject_name}</p>
-                                <p className="text-xs text-muted-foreground">{grade.type || (isRTL ? 'تقييم' : 'Assessment')}</p>
+                                <p className="text-xs text-muted-foreground">{grade.type || (t('assessment'))}</p>
                               </div>
                               <Badge className={getGradeColor(grade.score || 0)}>
                                 {grade.score || 0} / {grade.max_score || 100}
@@ -648,7 +650,7 @@ export default function TeacherStudentsPage() {
                 <TabsContent value="behavior" className="mt-4 space-y-4">
                   <Card>
                     <CardContent className="p-4 flex items-center justify-between">
-                      <span className="text-sm font-medium">{isRTL ? 'إجمالي النقاط' : 'Total Points'}</span>
+                      <span className="text-sm font-medium">{t('totalPoints2')}</span>
                       <div className={`text-2xl font-bold ${(studentDetails?.behavior?.total_points ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                         {(studentDetails?.behavior?.total_points ?? 0) >= 0 ? '+' : ''}{studentDetails?.behavior?.total_points ?? 0}
                       </div>
@@ -658,7 +660,7 @@ export default function TeacherStudentsPage() {
                   {(studentDetails?.participation?.recent || []).length > 0 && (
                     <Card>
                       <CardHeader className="pb-2">
-                        <CardTitle className="text-sm">{isRTL ? 'تفاعلات الحصص' : 'Session Interactions'}</CardTitle>
+                        <CardTitle className="text-sm">{t('sessionInteractions')}</CardTitle>
                       </CardHeader>
                       <CardContent>
                         <div className="space-y-2">
@@ -682,12 +684,12 @@ export default function TeacherStudentsPage() {
 
                   <Card>
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-sm">{isRTL ? 'سجلات السلوك' : 'Behavior Records'}</CardTitle>
+                      <CardTitle className="text-sm">{t('behaviorRecords2')}</CardTitle>
                     </CardHeader>
                     <CardContent>
                       {(studentDetails?.behavior?.records || []).length === 0 && (studentDetails?.behavior?.session_records || []).length === 0 ? (
                         <p className="text-center text-muted-foreground py-4 text-sm">
-                          {isRTL ? 'لا توجد سجلات سلوكية' : 'No behavior records'}
+                          {t('noBehaviorRecords3')}
                         </p>
                       ) : (
                         <div className="space-y-2">
@@ -699,7 +701,7 @@ export default function TeacherStudentsPage() {
                               } border`}
                             >
                               <div className="flex items-center justify-between">
-                                <span className="font-medium text-sm">{record.note || (isRTL ? 'ملاحظة' : 'Note')}</span>
+                                <span className="font-medium text-sm">{record.note || (t('note'))}</span>
                                 <Badge variant={(record.points || 0) > 0 ? 'default' : 'destructive'}>
                                   {(record.points || 0) > 0 ? '+' : ''}{record.points || 0}
                                 </Badge>
@@ -720,7 +722,7 @@ export default function TeacherStudentsPage() {
                   {loadingAI ? (
                     <div className="flex flex-col items-center justify-center py-10">
                       <Loader2 className="h-8 w-8 animate-spin text-brand-turquoise mb-3" />
-                      <p className="text-sm text-muted-foreground">{isRTL ? 'جاري تحليل بيانات الطالب...' : 'Analyzing student data...'}</p>
+                      <p className="text-sm text-muted-foreground">{t('analyzingStudentData')}</p>
                     </div>
                   ) : aiInsights ? (
                     <>
@@ -729,7 +731,7 @@ export default function TeacherStudentsPage() {
                           <div className="flex items-center justify-between mb-3">
                             <div className="flex items-center gap-2">
                               <Activity className="h-5 w-5 text-brand-turquoise" />
-                              <h4 className="font-bold font-cairo">{isRTL ? 'تقييم المخاطر' : 'Risk Assessment'}</h4>
+                              <h4 className="font-bold font-cairo">{t('riskAssessment')}</h4>
                             </div>
                             <Badge className={`${
                               aiInsights.risk_assessment?.category === 'low' ? 'bg-green-100 text-green-700' :
@@ -744,7 +746,7 @@ export default function TeacherStudentsPage() {
                             <div className="text-3xl font-bold text-brand-turquoise">{Math.round(aiInsights.risk_assessment?.score || 0)}%</div>
                             <div className="flex-1">
                               <Progress value={aiInsights.risk_assessment?.score || 0} className="h-2" />
-                              <p className="text-xs text-muted-foreground mt-1">{isRTL ? 'مؤشر الاستقرار (أعلى = أفضل)' : 'Stability index (higher = better)'}</p>
+                              <p className="text-xs text-muted-foreground mt-1">{t('stabilityIndexHigherBetter')}</p>
                             </div>
                           </div>
                         </CardContent>
@@ -755,7 +757,7 @@ export default function TeacherStudentsPage() {
                           <CardHeader className="pb-2">
                             <CardTitle className="text-sm font-cairo flex items-center gap-2 text-green-700 dark:text-green-400">
                               <ArrowUpCircle className="h-4 w-4" />
-                              {isRTL ? 'نقاط القوة' : 'Strengths'}
+                              {t('strengths')}
                             </CardTitle>
                           </CardHeader>
                           <CardContent>
@@ -770,7 +772,7 @@ export default function TeacherStudentsPage() {
                               </div>
                             ) : (
                               <p className="text-sm text-muted-foreground text-center py-3">
-                                {isRTL ? 'لا توجد بيانات كافية' : 'Not enough data'}
+                                {t('notEnoughData')}
                               </p>
                             )}
                           </CardContent>
@@ -780,7 +782,7 @@ export default function TeacherStudentsPage() {
                           <CardHeader className="pb-2">
                             <CardTitle className="text-sm font-cairo flex items-center gap-2 text-red-700 dark:text-red-400">
                               <ArrowDownCircle className="h-4 w-4" />
-                              {isRTL ? 'نقاط التحسين' : 'Areas for Improvement'}
+                              {t('areasForImprovement')}
                             </CardTitle>
                           </CardHeader>
                           <CardContent>
@@ -795,7 +797,7 @@ export default function TeacherStudentsPage() {
                               </div>
                             ) : (
                               <p className="text-sm text-muted-foreground text-center py-3">
-                                {isRTL ? 'لا توجد ملاحظات' : 'No concerns'}
+                                {t('noConcerns')}
                               </p>
                             )}
                           </CardContent>
@@ -807,7 +809,7 @@ export default function TeacherStudentsPage() {
                           <CardHeader className="pb-2">
                             <CardTitle className="text-sm font-cairo flex items-center gap-2 text-blue-700 dark:text-blue-400">
                               <Target className="h-4 w-4" />
-                              {isRTL ? 'الأهداف المقترحة' : 'Suggested Goals'}
+                              {t('suggestedGoals')}
                             </CardTitle>
                           </CardHeader>
                           <CardContent>
@@ -837,7 +839,7 @@ export default function TeacherStudentsPage() {
                           <CardHeader className="pb-2">
                             <CardTitle className="text-sm font-cairo flex items-center gap-2 text-purple-700 dark:text-purple-400">
                               <Lightbulb className="h-4 w-4" />
-                              {isRTL ? 'الخطة العلاجية والإثرائية' : 'Improvement & Enrichment Plan'}
+                              {t('improvementEnrichmentPlan')}
                             </CardTitle>
                           </CardHeader>
                           <CardContent>
@@ -850,16 +852,16 @@ export default function TeacherStudentsPage() {
                                       <h5 className="font-medium text-sm font-cairo">{action.title_ar}</h5>
                                     </div>
                                     <Badge variant="outline" className="text-[10px] shrink-0">
-                                      {action.deadline_days} {isRTL ? 'يوم' : 'days'}
+                                      {action.deadline_days} {t('days')}
                                     </Badge>
                                   </div>
                                   <p className="text-xs text-muted-foreground font-cairo ps-6">{action.description_ar}</p>
                                   <p className="text-[10px] text-brand-turquoise font-cairo ps-6 mt-1">
-                                    {isRTL ? 'المسؤول: ' : 'Responsible: '}
+                                    {t('responsible')}
                                     {action.responsible === 'class_teacher' ? (isRTL ? 'معلم الفصل' : 'Class Teacher') :
-                                     action.responsible === 'subject_teachers' ? (isRTL ? 'معلمو المواد' : 'Subject Teachers') :
-                                     action.responsible === 'counselor' ? (isRTL ? 'المرشد الطلابي' : 'Counselor') :
-                                     action.responsible === 'school_principal' ? (isRTL ? 'مدير المدرسة' : 'Principal') :
+                                     action.responsible === 'subject_teachers' ? (t('subjectTeachers')) :
+                                     action.responsible === 'counselor' ? (t('counselor')) :
+                                     action.responsible === 'school_principal' ? (t('principal')) :
                                      action.responsible}
                                   </p>
                                 </div>
@@ -885,7 +887,7 @@ export default function TeacherStudentsPage() {
                         </span>
                         <Button variant="ghost" size="sm" onClick={() => fetchAIInsights(selectedStudent?.id)} className="h-7 text-xs">
                           <RefreshCw className="h-3 w-3 me-1" />
-                          {isRTL ? 'تحديث' : 'Refresh'}
+                          {t('refresh')}
                         </Button>
                       </div>
                     </>
@@ -893,7 +895,7 @@ export default function TeacherStudentsPage() {
                     <Card className="p-8 text-center">
                       <Brain className="h-12 w-12 mx-auto text-muted-foreground/30 mb-3" />
                       <p className="text-muted-foreground text-sm font-cairo">
-                        {isRTL ? 'لا تتوفر بيانات كافية للتحليل حالياً. يحتاج النظام لبيانات حضور وتفاعل لإنشاء التحليل الذكي.' : 'Not enough data available for analysis. The system needs attendance and interaction data.'}
+                        {t('notEnoughDataAvailableForAnalysisTheSystemNeedsAtt')}
                       </p>
                       <Button variant="outline" size="sm" className="mt-3" onClick={() => fetchAIInsights(selectedStudent?.id)}>
                         <Brain className="h-3.5 w-3.5 me-1" />

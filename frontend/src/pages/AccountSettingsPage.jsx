@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { isGenericName } from '../components/GenericNameGuard';
 import { Sidebar } from '../components/layout/Sidebar';
 import { HakimAssistant } from '../components/hakim/HakimAssistant';
@@ -77,13 +77,14 @@ import {
 import { ImageCropModal } from '../components/ui/ImageCropModal';
 
 const PasswordStrength = ({ password, isRTL }) => {
+  const { t } = useTranslation();
   const { nassaqError, nassaqWarning } = useNassaqAlert();
   const checks = [
-    { test: password.length >= 8, label: isRTL ? '٨ أحرف على الأقل' : 'At least 8 characters' },
-    { test: /[A-Z]/.test(password), label: isRTL ? 'حرف كبير' : 'Uppercase letter' },
-    { test: /[a-z]/.test(password), label: isRTL ? 'حرف صغير' : 'Lowercase letter' },
-    { test: /[0-9]/.test(password), label: isRTL ? 'رقم' : 'Number' },
-    { test: /[^A-Za-z0-9]/.test(password), label: isRTL ? 'رمز خاص' : 'Special character' },
+    { test: password.length >= 8, label: t('atLeast8Characters') },
+    { test: /[A-Z]/.test(password), label: t('uppercaseLetter') },
+    { test: /[a-z]/.test(password), label: t('lowercaseLetter') },
+    { test: /[0-9]/.test(password), label: t('number') },
+    { test: /[^A-Za-z0-9]/.test(password), label: t('specialCharacter') },
   ];
   const passed = checks.filter(c => c.test).length;
   const strength = passed === 0 ? 0 : passed <= 2 ? 1 : passed <= 3 ? 2 : passed <= 4 ? 3 : 4;
@@ -265,7 +266,7 @@ export const AccountSettingsPage = () => {
 
   const handleSaveProfile = async () => {
     if (isGenericName(profile.full_name)) {
-      nassaqError(isRTL ? 'يجب استخدام اسمك الشخصي الحقيقي بدلاً من اسم عام أو وظيفي' : 'You must use your real personal name');
+      nassaqError(t('youMustUseYourRealPersonalName'));
       return;
     }
     setSaving(true);
@@ -286,10 +287,10 @@ export const AccountSettingsPage = () => {
       await refreshUser();
       setOriginalProfile({ ...profile });
       setSaveSuccess('profile');
-      toast.success(isRTL ? 'تم حفظ الملف الشخصي بنجاح' : 'Profile saved successfully');
+      toast.success(t('profileSavedSuccessfully'));
       setTimeout(() => setSaveSuccess(null), 3000);
     } catch (error) {
-      nassaqError(error.response?.data?.detail || (isRTL ? 'فشل حفظ الملف الشخصي' : 'Failed to save profile'));
+      nassaqError(error.response?.data?.detail || (t('failedToSaveProfile')));
     } finally {
       setSaving(false);
     }
@@ -303,10 +304,10 @@ export const AccountSettingsPage = () => {
         setProfile(prev => ({ ...prev, avatar_url: base64Data }));
         window.dispatchEvent(new CustomEvent('user-updated', { detail: { avatar_url: base64Data } }));
         await refreshUser();
-        toast.success(isRTL ? 'تم تحديث الصورة الشخصية' : 'Avatar updated');
+        toast.success(t('avatarUpdated'));
       }
     } catch (err) {
-      nassaqError(err.response?.data?.detail || (isRTL ? 'فشل رفع الصورة' : 'Failed to upload avatar'));
+      nassaqError(err.response?.data?.detail || (t('failedToUploadAvatar')));
       throw err;
     } finally {
       setSaving(false);
@@ -315,15 +316,15 @@ export const AccountSettingsPage = () => {
 
   const handleChangePassword = async () => {
     if (!passwordData.current_password) {
-      nassaqError(isRTL ? 'أدخل كلمة المرور الحالية' : 'Enter current password');
+      nassaqError(t('enterCurrentPassword'));
       return;
     }
     if (passwordData.new_password !== passwordData.confirm_password) {
-      nassaqError(isRTL ? 'كلمتا المرور غير متطابقتين' : 'Passwords do not match');
+      nassaqError(t('passwordsDoNotMatch'));
       return;
     }
     if (passwordData.new_password.length < 8) {
-      nassaqError(isRTL ? 'كلمة المرور يجب أن تكون 8 أحرف على الأقل' : 'Password must be at least 8 characters');
+      nassaqError(t('passwordMustBeAtLeast8Characters'));
       return;
     }
     setSaving(true);
@@ -334,11 +335,11 @@ export const AccountSettingsPage = () => {
       });
       await refreshUser();
       setSaveSuccess('password');
-      toast.success(isRTL ? 'تم تغيير كلمة المرور بنجاح' : 'Password changed successfully');
+      toast.success(t('passwordChangedSuccessfully'));
       setPasswordData({ current_password: '', new_password: '', confirm_password: '' });
       setTimeout(() => setSaveSuccess(null), 3000);
     } catch (error) {
-      nassaqError(error.response?.data?.detail || (isRTL ? 'فشل تغيير كلمة المرور' : 'Failed to change password'));
+      nassaqError(error.response?.data?.detail || (t('failedToChangePassword')));
     } finally {
       setSaving(false);
     }
@@ -350,10 +351,10 @@ export const AccountSettingsPage = () => {
       await api.put('/users/me/notifications', notifications);
       await refreshUser();
       setSaveSuccess('notifications');
-      toast.success(isRTL ? 'تم حفظ إعدادات الإشعارات' : 'Notification settings saved');
+      toast.success(t('notificationSettingsSaved'));
       setTimeout(() => setSaveSuccess(null), 3000);
     } catch (error) {
-      nassaqError(isRTL ? 'فشل حفظ الإعدادات' : 'Failed to save settings');
+      nassaqError(t('failedToSaveSettings'));
     } finally {
       setSaving(false);
     }
@@ -367,10 +368,10 @@ export const AccountSettingsPage = () => {
       if (preferences.theme !== theme) setTheme(preferences.theme);
       await refreshUser();
       setSaveSuccess('preferences');
-      toast.success(isRTL ? 'تم حفظ التفضيلات' : 'Preferences saved');
+      toast.success(t('preferencesSaved'));
       setTimeout(() => setSaveSuccess(null), 3000);
     } catch (error) {
-      nassaqError(isRTL ? 'فشل حفظ التفضيلات' : 'Failed to save preferences');
+      nassaqError(t('failedToSavePreferences'));
     } finally {
       setSaving(false);
     }
@@ -381,10 +382,10 @@ export const AccountSettingsPage = () => {
     try {
       const response = await api.post(`/user-roles/switch/${roleId}`);
       if (response.data?.access_token) localStorage.setItem('token', response.data.access_token);
-      toast.success(isRTL ? 'تم تبديل الدور بنجاح' : 'Role switched successfully');
+      toast.success(t('roleSwitchedSuccessfully'));
       setTimeout(() => window.location.reload(), 1000);
     } catch (error) {
-      nassaqError(error.response?.data?.detail || (isRTL ? 'فشل تبديل الدور' : 'Failed to switch role'));
+      nassaqError(error.response?.data?.detail || (t('failedToSwitchRole')));
     } finally {
       setSwitchingRole(false);
       setShowRoleSwitchDialog(false);
@@ -410,16 +411,16 @@ export const AccountSettingsPage = () => {
   };
 
   const sections = [
-    { id: 'profile', icon: User, label: isRTL ? 'الملف الشخصي' : 'Profile', desc: isRTL ? 'الاسم واللقب والبريد' : 'Name, title, email' },
-    { id: 'security', icon: Shield, label: isRTL ? 'الأمان' : 'Security', desc: isRTL ? 'كلمة المرور والجلسات' : 'Password & sessions' },
-    { id: 'notifications', icon: Bell, label: isRTL ? 'الإشعارات' : 'Notifications', desc: isRTL ? 'تنبيهات البريد والرسائل' : 'Email & SMS alerts' },
-    { id: 'preferences', icon: Palette, label: isRTL ? 'التفضيلات' : 'Preferences', desc: isRTL ? 'اللغة والمظهر والوقت' : 'Language, theme, time' },
+    { id: 'profile', icon: User, label: t('profile3'), desc: t('nameTitleEmail') },
+    { id: 'security', icon: Shield, label: t('security'), desc: t('passwordSessions') },
+    { id: 'notifications', icon: Bell, label: t('notifications'), desc: t('emailSmsAlerts') },
+    { id: 'preferences', icon: Palette, label: t('preferences'), desc: t('languageThemeTime') },
   ];
 
   const SaveButton = ({ onClick, sectionKey, label }) => (
     <Button onClick={onClick} disabled={saving} className="bg-brand-navy rounded-xl gap-2 min-w-[140px]" data-testid={`save-${sectionKey}`}>
       {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : saveSuccess === sectionKey ? <CheckCircle className="h-4 w-4 text-emerald-400" /> : <Save className="h-4 w-4" />}
-      {saveSuccess === sectionKey ? (isRTL ? 'تم الحفظ ✓' : 'Saved ✓') : label}
+      {saveSuccess === sectionKey ? (t('saved')) : label}
     </Button>
   );
 
@@ -434,18 +435,18 @@ export const AccountSettingsPage = () => {
               </div>
               <div>
                 <h1 className="font-cairo text-xl font-bold text-foreground">
-                  {isRTL ? 'إعدادات الحساب' : 'Account Settings'}
+                  {t('accountSettings')}
                 </h1>
                 <p className="text-xs text-muted-foreground font-tajawal">
-                  {isRTL ? 'إدارة ملفك الشخصي وتفضيلاتك' : 'Manage your profile and preferences'}
+                  {t('manageYourProfileAndPreferences')}
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" onClick={toggleLanguage} className="rounded-xl" aria-label={isRTL ? 'تغيير اللغة' : 'Toggle language'}>
+              <Button variant="ghost" size="icon" onClick={toggleLanguage} className="rounded-xl" aria-label={t('toggleLanguage')}>
                 <Globe className="h-5 w-5" />
               </Button>
-              <Button variant="ghost" size="icon" onClick={toggleTheme} className="rounded-xl" aria-label={isRTL ? 'تبديل المظهر' : 'Toggle theme'}>
+              <Button variant="ghost" size="icon" onClick={toggleTheme} className="rounded-xl" aria-label={t('toggleTheme')}>
                 {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
               </Button>
             </div>
@@ -491,7 +492,7 @@ export const AccountSettingsPage = () => {
                     )}
                     <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/20 text-xs">
                       <CheckCircle className="h-3 w-3 me-1" />
-                      {isRTL ? 'موثق' : 'Verified'}
+                      {t('verified')}
                     </Badge>
                   </div>
                 </div>
@@ -499,12 +500,12 @@ export const AccountSettingsPage = () => {
                   {userRoles.length > 1 && (
                     <Button variant="secondary" size="sm" onClick={() => setShowRoleSwitchDialog(true)} className="rounded-xl bg-white/10 hover:bg-white/20 text-white border-0 text-xs">
                       <RefreshCw className="h-3.5 w-3.5 me-1.5" />
-                      {isRTL ? 'تبديل الدور' : 'Switch Role'}
+                      {t('switchRole2')}
                     </Button>
                   )}
                   <Button variant="secondary" size="sm" onClick={() => setShowLogoutDialog(true)} className="rounded-xl bg-red-500/15 hover:bg-red-500/25 text-red-300 border-0 text-xs">
                     <LogOut className="h-3.5 w-3.5 me-1.5" />
-                    {isRTL ? 'تسجيل خروج' : 'Logout'}
+                    {t('logout3')}
                   </Button>
                 </div>
               </div>
@@ -514,7 +515,7 @@ export const AccountSettingsPage = () => {
                 <div className="flex items-center gap-4">
                   <span className="flex items-center gap-1.5">
                     <Calendar className="h-3.5 w-3.5" />
-                    {isRTL ? 'تاريخ الإنشاء: ' : 'Created: '}
+                    {t('created2')}
                     {user?.created_at ? new Date(user.created_at).toLocaleDateString(isRTL ? 'ar-SA' : 'en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}
                   </span>
                   <span className="flex items-center gap-1.5">
@@ -547,24 +548,24 @@ export const AccountSettingsPage = () => {
                     <CardHeader className="pb-4">
                       <CardTitle className="font-cairo flex items-center gap-2 text-lg">
                         <User className="h-5 w-5 text-brand-turquoise" />
-                        {isRTL ? 'المعلومات الشخصية' : 'Personal Information'}
+                        {t('personalInformation2')}
                         {profileChanged && (
                           <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[10px] ms-2 border-0">
                             <AlertTriangle className="h-3 w-3 me-1" />
-                            {isRTL ? 'تغييرات غير محفوظة' : 'Unsaved changes'}
+                            {t('unsavedChanges')}
                           </Badge>
                         )}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-5">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                        <FieldGroup label={isRTL ? 'اللقب' : 'Title'}>
+                        <FieldGroup label={t('title')}>
                           <Select value={profile.title} onValueChange={(v) => setProfile({ ...profile, title: v })}>
-                            <SelectTrigger className="rounded-xl" data-testid="profile-title"><SelectValue placeholder={isRTL ? 'اختر اللقب' : 'Select Title'} /></SelectTrigger>
+                            <SelectTrigger className="rounded-xl" data-testid="profile-title"><SelectValue placeholder={t('selectTitle')} /></SelectTrigger>
                             <SelectContent>{titleOptions.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
                           </Select>
                         </FieldGroup>
-                        <FieldGroup label={isRTL ? 'الاسم الكامل (عربي)' : 'Full Name (Arabic)'} icon={User}>
+                        <FieldGroup label={t('fullNameArabic')} icon={User}>
                           <Input value={profile.full_name} onChange={(e) => setProfile({ ...profile, full_name: e.target.value })} className={`rounded-xl ${isGenericName(profile.full_name) ? 'border-amber-400 focus:border-amber-500' : ''}`} data-testid="profile-name-ar" dir="rtl" />
                           {isGenericName(profile.full_name) && (
                             <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
@@ -573,10 +574,10 @@ export const AccountSettingsPage = () => {
                             </p>
                           )}
                         </FieldGroup>
-                        <FieldGroup label={isRTL ? 'الاسم الكامل (إنجليزي)' : 'Full Name (English)'} icon={User}>
+                        <FieldGroup label={t('fullNameEnglish')} icon={User}>
                           <Input value={profile.full_name_en} onChange={(e) => setProfile({ ...profile, full_name_en: e.target.value })} className="rounded-xl" data-testid="profile-name-en" dir="ltr" />
                         </FieldGroup>
-                        <FieldGroup label={isRTL ? 'البريد الإلكتروني' : 'Email'} icon={Mail}>
+                        <FieldGroup label={t('email2')} icon={Mail}>
                           <Input type="email" value={profile.email} onChange={(e) => setProfile({ ...profile, email: e.target.value })} className="rounded-xl" data-testid="profile-email" dir="ltr" />
                         </FieldGroup>
                         <FieldGroup label={isRTL ? 'رقم الهاتف' : 'Phone Number'} icon={Phone}>
@@ -585,9 +586,9 @@ export const AccountSettingsPage = () => {
                       </div>
                       <div className="flex items-center justify-between pt-2 border-t border-border/30">
                         <p className="text-xs text-muted-foreground font-tajawal">
-                          {isRTL ? 'سيتم حفظ التغييرات مباشرة في قاعدة البيانات' : 'Changes will be saved directly to the database'}
+                          {t('changesWillBeSavedDirectlyToTheDatabase')}
                         </p>
-                        <SaveButton onClick={handleSaveProfile} sectionKey="profile" label={isRTL ? 'حفظ التغييرات' : 'Save Changes'} />
+                        <SaveButton onClick={handleSaveProfile} sectionKey="profile" label={t('saveChanges2')} />
                       </div>
                     </CardContent>
                   </Card>
@@ -600,12 +601,12 @@ export const AccountSettingsPage = () => {
                     <CardHeader className="pb-4">
                       <CardTitle className="font-cairo flex items-center gap-2 text-lg">
                         <Key className="h-5 w-5 text-brand-turquoise" />
-                        {isRTL ? 'تغيير كلمة المرور' : 'Change Password'}
+                        {t('changePassword')}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-5">
                       <div className="max-w-md space-y-4">
-                        <FieldGroup label={isRTL ? 'كلمة المرور الحالية' : 'Current Password'} icon={Lock}>
+                        <FieldGroup label={t('currentPassword')} icon={Lock}>
                           <div className="relative">
                             <Input
                               type={showPassword.current ? 'text' : 'password'}
@@ -615,13 +616,13 @@ export const AccountSettingsPage = () => {
                             />
                             <Button type="button" variant="ghost" size="icon" className="absolute end-1 top-1/2 -translate-y-1/2 h-8 w-8"
                               onClick={() => setShowPassword({ ...showPassword, current: !showPassword.current })}
-                              aria-label={isRTL ? 'إظهار/إخفاء كلمة المرور' : 'Toggle password visibility'}
+                              aria-label={t('togglePasswordVisibility')}
                             >
                               {showPassword.current ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                             </Button>
                           </div>
                         </FieldGroup>
-                        <FieldGroup label={isRTL ? 'كلمة المرور الجديدة' : 'New Password'} icon={Key}>
+                        <FieldGroup label={t('newPassword')} icon={Key}>
                           <div className="relative">
                             <Input
                               type={showPassword.new ? 'text' : 'password'}
@@ -631,14 +632,14 @@ export const AccountSettingsPage = () => {
                             />
                             <Button type="button" variant="ghost" size="icon" className="absolute end-1 top-1/2 -translate-y-1/2 h-8 w-8"
                               onClick={() => setShowPassword({ ...showPassword, new: !showPassword.new })}
-                              aria-label={isRTL ? 'إظهار/إخفاء كلمة المرور' : 'Toggle password visibility'}
+                              aria-label={t('togglePasswordVisibility')}
                             >
                               {showPassword.new ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                             </Button>
                           </div>
                           <PasswordStrength password={passwordData.new_password} isRTL={isRTL} />
                         </FieldGroup>
-                        <FieldGroup label={isRTL ? 'تأكيد كلمة المرور' : 'Confirm Password'} icon={Lock}>
+                        <FieldGroup label={t('confirmPassword')} icon={Lock}>
                           <div className="relative">
                             <Input
                               type={showPassword.confirm ? 'text' : 'password'}
@@ -649,28 +650,28 @@ export const AccountSettingsPage = () => {
                             />
                             <Button type="button" variant="ghost" size="icon" className="absolute end-1 top-1/2 -translate-y-1/2 h-8 w-8"
                               onClick={() => setShowPassword({ ...showPassword, confirm: !showPassword.confirm })}
-                              aria-label={isRTL ? 'إظهار/إخفاء كلمة المرور' : 'Toggle password visibility'}
+                              aria-label={t('togglePasswordVisibility')}
                             >
                               {showPassword.confirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                             </Button>
                           </div>
                           {passwordData.confirm_password && passwordData.confirm_password !== passwordData.new_password && (
                             <p className="text-xs text-red-500 font-tajawal flex items-center gap-1 mt-1">
-                              <X className="h-3 w-3" />{isRTL ? 'كلمتا المرور غير متطابقتين' : 'Passwords do not match'}
+                              <X className="h-3 w-3" />{t('passwordsDoNotMatch')}
                             </p>
                           )}
                           {passwordData.confirm_password && passwordData.confirm_password === passwordData.new_password && (
                             <p className="text-xs text-emerald-500 font-tajawal flex items-center gap-1 mt-1">
-                              <Check className="h-3 w-3" />{isRTL ? 'كلمتا المرور متطابقتان' : 'Passwords match'}
+                              <Check className="h-3 w-3" />{t('passwordsMatch')}
                             </p>
                           )}
                         </FieldGroup>
                       </div>
                       <div className="flex items-center justify-between pt-2 border-t border-border/30">
                         <p className="text-xs text-muted-foreground font-tajawal">
-                          {isRTL ? 'سيتم تسجيل التغيير في سجل الأمان' : 'Change will be logged in the security audit'}
+                          {t('changeWillBeLoggedInTheSecurityAudit')}
                         </p>
-                        <SaveButton onClick={handleChangePassword} sectionKey="password" label={isRTL ? 'تغيير كلمة المرور' : 'Change Password'} />
+                        <SaveButton onClick={handleChangePassword} sectionKey="password" label={t('changePassword')} />
                       </div>
                     </CardContent>
                   </Card>
@@ -679,7 +680,7 @@ export const AccountSettingsPage = () => {
                     <CardHeader className="pb-4">
                       <CardTitle className="font-cairo flex items-center gap-2 text-lg">
                         <Fingerprint className="h-5 w-5 text-brand-turquoise" />
-                        {isRTL ? 'حالة الأمان' : 'Security Status'}
+                        {t('securityStatus')}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3">
@@ -689,11 +690,11 @@ export const AccountSettingsPage = () => {
                             <CheckCircle className="h-5 w-5 text-emerald-500" />
                           </div>
                           <div>
-                            <p className="font-medium text-sm">{isRTL ? 'البريد الإلكتروني موثق' : 'Email Verified'}</p>
+                            <p className="font-medium text-sm">{t('emailVerified')}</p>
                             <p className="text-xs text-muted-foreground">{profile.email}</p>
                           </div>
                         </div>
-                        <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400 border-0 text-xs">{isRTL ? 'موثق' : 'Verified'}</Badge>
+                        <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400 border-0 text-xs">{t('verified')}</Badge>
                       </div>
                       <div className="flex items-center justify-between p-4 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-800/30">
                         <div className="flex items-center gap-3">
@@ -701,8 +702,8 @@ export const AccountSettingsPage = () => {
                             <AlertCircle className="h-5 w-5 text-amber-500" />
                           </div>
                           <div>
-                            <p className="font-medium text-sm">{isRTL ? 'المصادقة الثنائية' : 'Two-Factor Authentication'}</p>
-                            <p className="text-xs text-muted-foreground">{isRTL ? 'أضف طبقة أمان إضافية لحسابك' : 'Add an extra layer of security'}</p>
+                            <p className="font-medium text-sm">{t('twofactorAuthentication')}</p>
+                            <p className="text-xs text-muted-foreground">{t('addAnExtraLayerOfSecurity')}</p>
                           </div>
                         </div>
                         <Button variant="outline" size="sm" className="rounded-lg text-xs">{isRTL ? 'تفعيل' : 'Enable'}</Button>
@@ -715,7 +716,7 @@ export const AccountSettingsPage = () => {
                       <CardHeader className="pb-4">
                         <CardTitle className="font-cairo flex items-center gap-2 text-lg">
                           <History className="h-5 w-5 text-brand-turquoise" />
-                          {isRTL ? 'الجلسات النشطة' : 'Active Sessions'}
+                          {t('activeSessions2')}
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-3">
@@ -726,13 +727,13 @@ export const AccountSettingsPage = () => {
                                 <Monitor className="h-4 w-4 text-muted-foreground" />
                               </div>
                               <div>
-                                <p className="text-sm font-medium">{session.device || session.user_agent?.substring(0, 30) || (isRTL ? 'جهاز غير معروف' : 'Unknown device')}</p>
+                                <p className="text-sm font-medium">{session.device || session.user_agent?.substring(0, 30) || (t('unknownDevice'))}</p>
                                 <p className="text-[10px] text-muted-foreground">{session.ip_address || '—'} • {session.created_at ? new Date(session.created_at).toLocaleString(isRTL ? 'ar-SA' : 'en-US') : '—'}</p>
                               </div>
                             </div>
                             {i === 0 && (
                               <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400 text-[10px] border-0">
-                                {isRTL ? 'الحالية' : 'Current'}
+                                {t('current3')}
                               </Badge>
                             )}
                           </div>
@@ -748,33 +749,33 @@ export const AccountSettingsPage = () => {
                   <CardHeader className="pb-4">
                     <CardTitle className="font-cairo flex items-center gap-2 text-lg">
                       <Bell className="h-5 w-5 text-brand-turquoise" />
-                      {isRTL ? 'إعدادات الإشعارات' : 'Notification Settings'}
+                      {t('notificationSettings')}
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-5">
                     <div>
-                      <p className="text-sm font-cairo font-medium mb-3">{isRTL ? 'قنوات التنبيه' : 'Alert Channels'}</p>
+                      <p className="text-sm font-cairo font-medium mb-3">{t('alertChannels')}</p>
                       <div className="space-y-2">
-                        <NotificationRow title={isRTL ? 'إشعارات البريد الإلكتروني' : 'Email Notifications'} desc={isRTL ? 'استلام الإشعارات عبر البريد الإلكتروني' : 'Receive notifications via email'} checked={notifications.email_notifications} onChange={(v) => setNotifications({ ...notifications, email_notifications: v })} />
-                        <NotificationRow title={isRTL ? 'الرسائل النصية SMS' : 'SMS Notifications'} desc={isRTL ? 'استلام الإشعارات عبر الرسائل النصية' : 'Receive notifications via SMS'} checked={notifications.sms_notifications} onChange={(v) => setNotifications({ ...notifications, sms_notifications: v })} />
-                        <NotificationRow title={isRTL ? 'إشعارات المتصفح' : 'Push Notifications'} desc={isRTL ? 'إشعارات فورية في المتصفح' : 'Instant browser push notifications'} checked={notifications.push_notifications} onChange={(v) => setNotifications({ ...notifications, push_notifications: v })} />
+                        <NotificationRow title={t('emailNotifications')} desc={t('receiveNotificationsViaEmail')} checked={notifications.email_notifications} onChange={(v) => setNotifications({ ...notifications, email_notifications: v })} />
+                        <NotificationRow title={t('smsNotifications')} desc={t('receiveNotificationsViaSms')} checked={notifications.sms_notifications} onChange={(v) => setNotifications({ ...notifications, sms_notifications: v })} />
+                        <NotificationRow title={isRTL ? 'إشعارات المتصفح' : 'Push Notifications'} desc={t('instantBrowserPushNotifications')} checked={notifications.push_notifications} onChange={(v) => setNotifications({ ...notifications, push_notifications: v })} />
                       </div>
                     </div>
                     <div>
-                      <p className="text-sm font-cairo font-medium mb-3">{isRTL ? 'أنواع التنبيهات' : 'Alert Types'}</p>
+                      <p className="text-sm font-cairo font-medium mb-3">{t('alertTypes')}</p>
                       <div className="space-y-2">
-                        <NotificationRow title={isRTL ? 'تنبيهات الحضور' : 'Attendance Alerts'} desc={isRTL ? 'إشعارات عن الغياب والتأخر' : 'Alerts about absences and tardiness'} checked={notifications.attendance_alerts} onChange={(v) => setNotifications({ ...notifications, attendance_alerts: v })} />
-                        <NotificationRow title={isRTL ? 'تنبيهات الدرجات' : 'Grade Alerts'} desc={isRTL ? 'إشعارات عن الدرجات والنتائج' : 'Alerts about grades and results'} checked={notifications.grade_alerts} onChange={(v) => setNotifications({ ...notifications, grade_alerts: v })} />
-                        <NotificationRow title={isRTL ? 'تنبيهات السلوك' : 'Behavior Alerts'} desc={isRTL ? 'إشعارات عن السلوك والانضباط' : 'Alerts about behavior and discipline'} checked={notifications.behavior_alerts} onChange={(v) => setNotifications({ ...notifications, behavior_alerts: v })} />
-                        <NotificationRow title={isRTL ? 'الإعلانات العامة' : 'Announcements'} desc={isRTL ? 'إشعارات بالإعلانات والتحديثات' : 'Announcements and updates'} checked={notifications.announcement_alerts} onChange={(v) => setNotifications({ ...notifications, announcement_alerts: v })} />
-                        <NotificationRow title={isRTL ? 'الملخص الأسبوعي' : 'Weekly Digest'} desc={isRTL ? 'ملخص أسبوعي شامل بالتحديثات' : 'Comprehensive weekly summary'} checked={notifications.weekly_digest} onChange={(v) => setNotifications({ ...notifications, weekly_digest: v })} />
+                        <NotificationRow title={t('attendanceAlerts')} desc={t('alertsAboutAbsencesAndTardiness')} checked={notifications.attendance_alerts} onChange={(v) => setNotifications({ ...notifications, attendance_alerts: v })} />
+                        <NotificationRow title={t('gradeAlerts')} desc={t('alertsAboutGradesAndResults')} checked={notifications.grade_alerts} onChange={(v) => setNotifications({ ...notifications, grade_alerts: v })} />
+                        <NotificationRow title={t('behaviorAlerts')} desc={t('alertsAboutBehaviorAndDiscipline')} checked={notifications.behavior_alerts} onChange={(v) => setNotifications({ ...notifications, behavior_alerts: v })} />
+                        <NotificationRow title={t('announcements')} desc={t('announcementsAndUpdates')} checked={notifications.announcement_alerts} onChange={(v) => setNotifications({ ...notifications, announcement_alerts: v })} />
+                        <NotificationRow title={t('weeklyDigest')} desc={t('comprehensiveWeeklySummary')} checked={notifications.weekly_digest} onChange={(v) => setNotifications({ ...notifications, weekly_digest: v })} />
                       </div>
                     </div>
                     <div className="flex items-center justify-between pt-2 border-t border-border/30">
                       <p className="text-xs text-muted-foreground font-tajawal">
-                        {isRTL ? 'التغييرات تُحفظ مباشرة في حسابك' : 'Changes are saved directly to your account'}
+                        {t('changesAreSavedDirectlyToYourAccount')}
                       </p>
-                      <SaveButton onClick={handleSaveNotifications} sectionKey="notifications" label={isRTL ? 'حفظ الإعدادات' : 'Save Settings'} />
+                      <SaveButton onClick={handleSaveNotifications} sectionKey="notifications" label={t('saveSettings')} />
                     </div>
                   </CardContent>
                 </Card>
@@ -785,12 +786,12 @@ export const AccountSettingsPage = () => {
                   <CardHeader className="pb-4">
                     <CardTitle className="font-cairo flex items-center gap-2 text-lg">
                       <Palette className="h-5 w-5 text-brand-turquoise" />
-                      {isRTL ? 'التفضيلات والمظهر' : 'Preferences & Appearance'}
+                      {t('preferencesAppearance')}
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-5">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                      <FieldGroup label={isRTL ? 'اللغة' : 'Language'} icon={Languages}>
+                      <FieldGroup label={t('language')} icon={Languages}>
                         <Select value={preferences.language} onValueChange={(v) => setPreferences({ ...preferences, language: v })}>
                           <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
                           <SelectContent>
@@ -799,26 +800,26 @@ export const AccountSettingsPage = () => {
                           </SelectContent>
                         </Select>
                       </FieldGroup>
-                      <FieldGroup label={isRTL ? 'المظهر' : 'Theme'} icon={Monitor}>
+                      <FieldGroup label={t('theme')} icon={Monitor}>
                         <Select value={preferences.theme} onValueChange={(v) => setPreferences({ ...preferences, theme: v })}>
                           <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="light">{isRTL ? 'فاتح' : 'Light'}</SelectItem>
-                            <SelectItem value="dark">{isRTL ? 'داكن' : 'Dark'}</SelectItem>
-                            <SelectItem value="system">{isRTL ? 'حسب النظام' : 'System'}</SelectItem>
+                            <SelectItem value="light">{t('light')}</SelectItem>
+                            <SelectItem value="dark">{t('dark')}</SelectItem>
+                            <SelectItem value="system">{t('system')}</SelectItem>
                           </SelectContent>
                         </Select>
                       </FieldGroup>
-                      <FieldGroup label={isRTL ? 'تنسيق الوقت' : 'Time Format'} icon={Clock}>
+                      <FieldGroup label={t('timeFormat')} icon={Clock}>
                         <Select value={preferences.time_format} onValueChange={(v) => setPreferences({ ...preferences, time_format: v })}>
                           <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="12h">{isRTL ? '12 ساعة (صباحاً/مساءً)' : '12 Hour (AM/PM)'}</SelectItem>
-                            <SelectItem value="24h">{isRTL ? '24 ساعة' : '24 Hour'}</SelectItem>
+                            <SelectItem value="12h">{t('12HourAmpm')}</SelectItem>
+                            <SelectItem value="24h">{t('24Hour')}</SelectItem>
                           </SelectContent>
                         </Select>
                       </FieldGroup>
-                      <FieldGroup label={isRTL ? 'تنسيق التاريخ' : 'Date Format'} icon={Calendar}>
+                      <FieldGroup label={t('dateFormat')} icon={Calendar}>
                         <Select value={preferences.date_format} onValueChange={(v) => setPreferences({ ...preferences, date_format: v })}>
                           <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
                           <SelectContent>
@@ -828,22 +829,22 @@ export const AccountSettingsPage = () => {
                           </SelectContent>
                         </Select>
                       </FieldGroup>
-                      <FieldGroup label={isRTL ? 'أول يوم في الأسبوع' : 'First Day of Week'}>
+                      <FieldGroup label={t('firstDayOfWeek')}>
                         <Select value={preferences.first_day_of_week} onValueChange={(v) => setPreferences({ ...preferences, first_day_of_week: v })}>
                           <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="sunday">{isRTL ? 'الأحد' : 'Sunday'}</SelectItem>
-                            <SelectItem value="monday">{isRTL ? 'الإثنين' : 'Monday'}</SelectItem>
-                            <SelectItem value="saturday">{isRTL ? 'السبت' : 'Saturday'}</SelectItem>
+                            <SelectItem value="sunday">{t('sunday')}</SelectItem>
+                            <SelectItem value="monday">{t('monday')}</SelectItem>
+                            <SelectItem value="saturday">{t('saturday')}</SelectItem>
                           </SelectContent>
                         </Select>
                       </FieldGroup>
                     </div>
                     <div className="flex items-center justify-between pt-2 border-t border-border/30">
                       <p className="text-xs text-muted-foreground font-tajawal">
-                        {isRTL ? 'ستُطبق التغييرات فوراً وتُحفظ في حسابك' : 'Changes will be applied immediately and saved to your account'}
+                        {t('changesWillBeAppliedImmediatelyAndSavedToYourAccou')}
                       </p>
-                      <SaveButton onClick={handleSavePreferences} sectionKey="preferences" label={isRTL ? 'حفظ التفضيلات' : 'Save Preferences'} />
+                      <SaveButton onClick={handleSavePreferences} sectionKey="preferences" label={t('savePreferences')} />
                     </div>
                   </CardContent>
                 </Card>
@@ -855,13 +856,13 @@ export const AccountSettingsPage = () => {
         <AlertDialog open={showLogoutDialog} onOpenChange={setShowLogoutDialog}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle className="font-cairo">{isRTL ? 'تسجيل الخروج' : 'Logout'}</AlertDialogTitle>
-              <AlertDialogDescription>{isRTL ? 'هل أنت متأكد من تسجيل الخروج من حسابك؟' : 'Are you sure you want to logout?'}</AlertDialogDescription>
+              <AlertDialogTitle className="font-cairo">{t('logout')}</AlertDialogTitle>
+              <AlertDialogDescription>{t('areYouSureYouWantToLogout')}</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel className="rounded-xl">{isRTL ? 'إلغاء' : 'Cancel'}</AlertDialogCancel>
-              <AlertDialogAction onClick={() => { logout(); toast.success(isRTL ? 'تم تسجيل الخروج' : 'Logged out'); }} className="bg-red-500 rounded-xl">
-                <LogOut className="h-4 w-4 me-2" />{isRTL ? 'تسجيل خروج' : 'Logout'}
+              <AlertDialogCancel className="rounded-xl">{t('cancel')}</AlertDialogCancel>
+              <AlertDialogAction onClick={() => { logout(); toast.success(t('loggedOut')); }} className="bg-red-500 rounded-xl">
+                <LogOut className="h-4 w-4 me-2" />{t('logout3')}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -872,15 +873,15 @@ export const AccountSettingsPage = () => {
             <DialogHeader>
               <DialogTitle className="font-cairo flex items-center gap-2">
                 <RefreshCw className="h-5 w-5 text-brand-turquoise" />
-                {isRTL ? 'تبديل الدور' : 'Switch Role'}
+                {t('switchRole2')}
               </DialogTitle>
-              <DialogDescription>{isRTL ? 'اختر الدور الذي تريد التبديل إليه' : 'Select the role to switch to'}</DialogDescription>
+              <DialogDescription>{t('selectTheRoleToSwitchTo')}</DialogDescription>
             </DialogHeader>
             <div className="space-y-2.5 mt-4">
               {userRoles.length === 0 ? (
                 <div className="text-center py-8">
                   <Users className="h-10 w-10 mx-auto text-muted-foreground/30 mb-3" />
-                  <p className="text-sm text-muted-foreground">{isRTL ? 'لا توجد أدوار أخرى متاحة' : 'No other roles available'}</p>
+                  <p className="text-sm text-muted-foreground">{t('noOtherRolesAvailable')}</p>
                 </div>
               ) : (
                 userRoles.map((role) => (
@@ -906,7 +907,7 @@ export const AccountSettingsPage = () => {
                         </div>
                       </div>
                       {role.is_active ? (
-                        <Badge className="bg-brand-turquoise text-white text-xs"><CheckCircle className="h-3 w-3 me-1" />{isRTL ? 'نشط' : 'Active'}</Badge>
+                        <Badge className="bg-brand-turquoise text-white text-xs"><CheckCircle className="h-3 w-3 me-1" />{t('active')}</Badge>
                       ) : switchingRole ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
                     </CardContent>
                   </Card>

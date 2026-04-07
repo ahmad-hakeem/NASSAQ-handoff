@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
@@ -15,6 +15,7 @@ import {
 
 
 const ParentReportsPage = () => {
+  const { t } = useTranslation();
   const { api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
@@ -88,14 +89,14 @@ const ParentReportsPage = () => {
       <div className="p-4 space-y-4" data-testid="parent-reports-page">
         <div className="flex items-center gap-2 mb-2">
           <FileText className="h-6 w-6 text-indigo-600" />
-          <h1 className="text-xl font-bold font-cairo">{isRTL ? 'التقارير' : 'Reports'}</h1>
+          <h1 className="text-xl font-bold font-cairo">{t('reports')}</h1>
         </div>
 
         {children.length === 0 ? (
           <Card className="rounded-2xl border-0 shadow-sm">
             <CardContent className="py-12 text-center">
               <FileText className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-              <p className="text-muted-foreground">{isRTL ? 'لا يوجد تقارير' : 'No reports available'}</p>
+              <p className="text-muted-foreground">{t('noReportsAvailable')}</p>
             </CardContent>
           </Card>
         ) : (
@@ -130,36 +131,36 @@ const ParentReportsPage = () => {
                       <div className="p-3 bg-green-50 rounded-xl text-center">
                         <CheckCircle className="h-6 w-6 mx-auto mb-1 text-green-600" />
                         <p className="text-lg font-bold text-green-600">{report.attendance?.rate}%</p>
-                        <p className="text-[10px] text-muted-foreground">{isRTL ? 'الحضور' : 'Attendance'}</p>
+                        <p className="text-[10px] text-muted-foreground">{t('attendance2')}</p>
                       </div>
                       <div className="p-3 bg-blue-50 rounded-xl text-center">
                         <TrendingUp className="h-6 w-6 mx-auto mb-1 text-blue-600" />
                         <p className="text-lg font-bold text-blue-600">{report.academics?.overall_average}%</p>
-                        <p className="text-[10px] text-muted-foreground">{isRTL ? 'المعدل' : 'Average'}</p>
+                        <p className="text-[10px] text-muted-foreground">{t('average')}</p>
                       </div>
                     </div>
 
                     <div className="space-y-3">
-                      <h3 className="text-sm font-bold">{isRTL ? 'تفاصيل الحضور' : 'Attendance Details'}</h3>
+                      <h3 className="text-sm font-bold">{t('attendanceDetails')}</h3>
                       <div className="grid grid-cols-3 gap-2 text-center text-xs">
                         <div className="p-2 bg-green-50 rounded-lg">
                           <p className="font-bold text-green-600">{report.attendance?.present}</p>
-                          <p className="text-muted-foreground">{isRTL ? 'حاضر' : 'Present'}</p>
+                          <p className="text-muted-foreground">{t('present')}</p>
                         </div>
                         <div className="p-2 bg-red-50 rounded-lg">
                           <p className="font-bold text-red-600">{report.attendance?.absent}</p>
-                          <p className="text-muted-foreground">{isRTL ? 'غائب' : 'Absent'}</p>
+                          <p className="text-muted-foreground">{t('absent')}</p>
                         </div>
                         <div className="p-2 bg-amber-50 rounded-lg">
                           <p className="font-bold text-amber-600">{report.attendance?.late}</p>
-                          <p className="text-muted-foreground">{isRTL ? 'متأخر' : 'Late'}</p>
+                          <p className="text-muted-foreground">{t('late')}</p>
                         </div>
                       </div>
                     </div>
 
                     {report.academics?.subject_averages && Object.keys(report.academics.subject_averages).length > 0 && (
                       <div className="space-y-3">
-                        <h3 className="text-sm font-bold">{isRTL ? 'المعدل حسب المادة' : 'Subject Averages'}</h3>
+                        <h3 className="text-sm font-bold">{t('subjectAverages')}</h3>
                         {Object.entries(report.academics.subject_averages).map(([subj, avg]) => (
                           <div key={subj}>
                             <div className="flex justify-between text-sm mb-1">
@@ -177,16 +178,16 @@ const ParentReportsPage = () => {
                     <div className="grid grid-cols-2 gap-3">
                       <div className="p-3 bg-purple-50 rounded-xl">
                         <Heart className="h-5 w-5 text-purple-600 mb-1" />
-                        <p className="text-sm font-bold">{isRTL ? 'السلوك' : 'Behavior'}</p>
+                        <p className="text-sm font-bold">{t('behavior')}</p>
                         <p className="text-xs text-muted-foreground">
-                          {isRTL ? 'إيجابي' : 'Positive'}: {report.behaviour?.positive} | {isRTL ? 'سلبي' : 'Negative'}: {report.behaviour?.negative}
+                          {t('positive')}: {report.behaviour?.positive} | {t('negative')}: {report.behaviour?.negative}
                         </p>
                       </div>
                       <div className="p-3 bg-amber-50 rounded-xl">
                         <Star className="h-5 w-5 text-amber-600 mb-1" />
                         <p className="text-sm font-bold">{isRTL ? 'المشاركة' : 'Participation'}</p>
                         <p className="text-xs text-muted-foreground">
-                          {report.participation?.total_points} {isRTL ? 'نقطة' : 'points'}
+                          {report.participation?.total_points} {t('points')}
                         </p>
                       </div>
                     </div>

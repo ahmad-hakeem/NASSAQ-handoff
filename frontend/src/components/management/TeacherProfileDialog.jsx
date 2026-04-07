@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -41,7 +41,7 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
       setProfile(res.data?.profile);
     } catch (e) {
       setProfile(null);
-      nassaqError(e.response?.data?.detail || (isRTL ? 'فشل تحميل الملف الشخصي' : 'Failed to load profile'));
+      nassaqError(e.response?.data?.detail || (t('failedToLoadProfile')));
     } finally {
       setLoading(false);
     }
@@ -66,7 +66,7 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
       fetchProfile();
       onRefresh?.();
     } catch (e) {
-      nassaqError(e.response?.data?.detail || (isRTL ? 'فشل التحديث' : 'Update failed'));
+      nassaqError(e.response?.data?.detail || (t('updateFailed')));
     } finally {
       setSaving(false);
     }
@@ -76,13 +76,13 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
     setSaving(true);
     try {
       await api.put(`/principal/teacher/${teacher.id}/professional-info`, formData);
-      toast.success(isRTL ? 'تم تحديث البيانات المهنية' : 'Professional info updated');
+      toast.success(t('professionalInfoUpdated'));
       setEditing(false);
       setEditSection(null);
       fetchProfile();
       onRefresh?.();
     } catch (e) {
-      nassaqError(e.response?.data?.detail || (isRTL ? 'فشل التحديث' : 'Update failed'));
+      nassaqError(e.response?.data?.detail || (t('updateFailed')));
     } finally {
       setSaving(false);
     }
@@ -93,14 +93,14 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
     try {
       const res = await api.put(`/principal/teacher/${teacher.id}/credentials`, credForm);
       if (res.data?.account_created) {
-        toast.success(isRTL ? 'تم إنشاء حساب دخول للمعلم بنجاح' : 'Login account created successfully');
+        toast.success(t('loginAccountCreatedSuccessfully2'));
       } else {
-        toast.success(isRTL ? 'تم تحديث بيانات الدخول' : 'Credentials updated');
+        toast.success(t('credentialsUpdated'));
       }
       setCredForm({ new_email: '', new_password: '' });
       fetchProfile();
     } catch (e) {
-      nassaqError(e.response?.data?.detail || (isRTL ? 'فشل التحديث' : 'Update failed'));
+      nassaqError(e.response?.data?.detail || (t('updateFailed')));
     } finally {
       setSaving(false);
     }
@@ -110,10 +110,10 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
     try {
       const res = await api.post('/principal/generate-password');
       setCredForm(p => ({ ...p, new_password: res.data.password }));
-      toast.success(isRTL ? 'تم توليد كلمة مرور قوية' : 'Strong password generated');
+      toast.success(t('strongPasswordGenerated'));
     } catch (e) {
       console.error('Error generating password:', e);
-      nassaqError(isRTL ? 'فشل توليد كلمة المرور' : 'Failed to generate password');
+      nassaqError(t('failedToGeneratePassword'));
     }
   };
 
@@ -121,8 +121,8 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
     setActionLoading(newStatus);
     try {
       await api.put(`/principal/teacher/${teacher.id}/status`, { status: newStatus });
-      const labels = { active: isRTL ? 'نشط' : 'Active', suspended: isRTL ? 'معلق' : 'Suspended', closed: isRTL ? 'مغلق' : 'Closed' };
-      toast.success(`${isRTL ? 'تم تغيير الحالة إلى' : 'Status changed to'}: ${labels[newStatus] || newStatus}`);
+      const labels = { active: t('active'), suspended: isRTL ? 'معلق' : 'Suspended', closed: t('closed') };
+      toast.success(`${t('statusChangedTo')}: ${labels[newStatus] || newStatus}`);
       if (newStatus === 'closed') {
         onRefresh?.();
         onClose?.();
@@ -131,35 +131,36 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
         onRefresh?.();
       }
     } catch (e) {
-      nassaqError(e.response?.data?.detail || (isRTL ? 'فشلت العملية' : 'Action failed'));
+      nassaqError(e.response?.data?.detail || (t('actionFailed')));
     } finally {
       setActionLoading('');
     }
   };
 
   const handleDelete = () => {
+  const { t } = useTranslation();
     nassaqConfirm(
-      isRTL ? 'هل أنت متأكد من حذف هذا المعلم نهائياً؟ لا يمكن التراجع عن هذا الإجراء.' : 'Are you sure you want to permanently delete this teacher? This action cannot be undone.',
+      t('areYouSureYouWantToPermanentlyDeleteThisTeacherThi'),
       async () => {
         setActionLoading('delete');
         try {
           await api.delete(`/teachers/${teacher.id}`);
-          toast.success(isRTL ? 'تم حذف المعلم بنجاح' : 'Teacher deleted successfully');
+          toast.success(t('teacherDeletedSuccessfully'));
           onClose?.();
           onRefresh?.();
         } catch (e) {
-          nassaqError(e.response?.data?.detail || (isRTL ? 'فشل حذف المعلم' : 'Failed to delete teacher'));
+          nassaqError(e.response?.data?.detail || (t('failedToDeleteTeacher')));
         } finally {
           setActionLoading('');
         }
       },
-      { title: isRTL ? 'تأكيد الحذف النهائي' : 'Confirm Permanent Delete', confirmText: isRTL ? 'نعم، احذف نهائياً' : 'Yes, Delete Permanently', cancelText: isRTL ? 'إلغاء' : 'Cancel' }
+      { title: t('confirmPermanentDelete'), confirmText: t('yesDeletePermanently'), cancelText: t('cancel') }
     );
   };
 
   const copyToClipboard = (text, label) => {
     navigator.clipboard.writeText(text);
-    toast.success(`${isRTL ? 'تم نسخ' : 'Copied'} ${label}`);
+    toast.success(`${t('copied')} ${label}`);
   };
 
   const startEdit = (section) => {
@@ -183,8 +184,8 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
     inactive: 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400',
     closed: 'bg-red-200 text-red-800 dark:bg-red-900/50 dark:text-red-300'
   };
-  const statusLabels = { active: isRTL ? 'نشط' : 'Active', suspended: isRTL ? 'معلق' : 'Suspended', inactive: isRTL ? 'غير نشط' : 'Inactive', closed: isRTL ? 'مغلق' : 'Closed' };
-  const rankLabels = { teacher: isRTL ? 'معلم' : 'Teacher', senior_teacher: isRTL ? 'معلم أول' : 'Senior Teacher', expert: isRTL ? 'معلم خبير' : 'Expert', department_head: isRTL ? 'رئيس قسم' : 'Department Head' };
+  const statusLabels = { active: t('active'), suspended: isRTL ? 'معلق' : 'Suspended', inactive: t('inactive'), closed: t('closed') };
+  const rankLabels = { teacher: t('teacher'), senior_teacher: t('seniorTeacher'), expert: t('expert'), department_head: t('departmentHead') };
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
@@ -196,10 +197,10 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
             </div>
             <div className="flex-1">
               <h2 className="text-xl font-bold">{p?.basic_info?.full_name || teacher.full_name}</h2>
-              <p className="text-emerald-100 text-sm">{p?.professional_info?.specialization || teacher.specialization || (isRTL ? 'معلم' : 'Teacher')}</p>
+              <p className="text-emerald-100 text-sm">{p?.professional_info?.specialization || teacher.specialization || (t('teacher'))}</p>
               <div className="flex items-center gap-2 mt-1">
                 <Badge className={`text-[10px] ${statusColors[status]}`}>{statusLabels[status]}</Badge>
-                <Badge className="text-[10px] bg-white/20 text-white border-0">{rankLabels[p?.professional_info?.teacher_rank] || teacher.rank || (isRTL ? 'معلم' : 'Teacher')}</Badge>
+                <Badge className="text-[10px] bg-white/20 text-white border-0">{rankLabels[p?.professional_info?.teacher_rank] || teacher.rank || (t('teacher'))}</Badge>
               </div>
             </div>
           </div>
@@ -211,22 +212,22 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
           ) : (
             <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="grid grid-cols-6 w-full mb-4">
-                <TabsTrigger value="info" className="text-xs"><User className="h-3.5 w-3.5 me-1" />{isRTL ? 'الملف' : 'Profile'}</TabsTrigger>
-                <TabsTrigger value="professional" className="text-xs"><Briefcase className="h-3.5 w-3.5 me-1" />{isRTL ? 'المهني' : 'Career'}</TabsTrigger>
-                <TabsTrigger value="credentials" className="text-xs"><Key className="h-3.5 w-3.5 me-1" />{isRTL ? 'الدخول' : 'Login'}</TabsTrigger>
-                <TabsTrigger value="assignments" className="text-xs"><BookOpen className="h-3.5 w-3.5 me-1" />{isRTL ? 'الإسنادات' : 'Assign'}</TabsTrigger>
-                <TabsTrigger value="activity" className="text-xs"><History className="h-3.5 w-3.5 me-1" />{isRTL ? 'النشاط' : 'Activity'}</TabsTrigger>
-                <TabsTrigger value="actions" className="text-xs"><Settings2 className="h-3.5 w-3.5 me-1" />{isRTL ? 'إجراءات' : 'Actions'}</TabsTrigger>
+                <TabsTrigger value="info" className="text-xs"><User className="h-3.5 w-3.5 me-1" />{t('profile')}</TabsTrigger>
+                <TabsTrigger value="professional" className="text-xs"><Briefcase className="h-3.5 w-3.5 me-1" />{t('career')}</TabsTrigger>
+                <TabsTrigger value="credentials" className="text-xs"><Key className="h-3.5 w-3.5 me-1" />{t('login2')}</TabsTrigger>
+                <TabsTrigger value="assignments" className="text-xs"><BookOpen className="h-3.5 w-3.5 me-1" />{t('assign2')}</TabsTrigger>
+                <TabsTrigger value="activity" className="text-xs"><History className="h-3.5 w-3.5 me-1" />{t('activity')}</TabsTrigger>
+                <TabsTrigger value="actions" className="text-xs"><Settings2 className="h-3.5 w-3.5 me-1" />{t('actions')}</TabsTrigger>
               </TabsList>
 
               <TabsContent value="info" className="space-y-4">
                 <div className="flex justify-between items-center">
-                  <h3 className="font-semibold text-sm">{isRTL ? 'البيانات الأساسية والتواصل' : 'Basic & Contact Info'}</h3>
+                  <h3 className="font-semibold text-sm">{t('basicContactInfo')}</h3>
                   {!editing ? (
-                    <Button size="sm" variant="outline" onClick={() => startEdit('basic')}><Edit className="h-3.5 w-3.5 me-1" />{isRTL ? 'تعديل' : 'Edit'}</Button>
+                    <Button size="sm" variant="outline" onClick={() => startEdit('basic')}><Edit className="h-3.5 w-3.5 me-1" />{t('edit')}</Button>
                   ) : editSection === 'basic' ? (
                     <div className="flex gap-2">
-                      <Button size="sm" onClick={handleSaveBasicInfo} disabled={saving}>{saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5 me-1" />}{isRTL ? 'حفظ' : 'Save'}</Button>
+                      <Button size="sm" onClick={handleSaveBasicInfo} disabled={saving}>{saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5 me-1" />}{t('save')}</Button>
                       <Button size="sm" variant="outline" onClick={() => { setEditing(false); setEditSection(null); }}><X className="h-3.5 w-3.5" /></Button>
                     </div>
                   ) : null}
@@ -234,14 +235,14 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
                 {editing && editSection === 'basic' ? (
                   <div className="grid grid-cols-2 gap-3">
                     {[
-                      { key: 'full_name', label: isRTL ? 'الاسم الكامل' : 'Full Name', icon: User },
-                      { key: 'national_id', label: isRTL ? 'رقم الهوية' : 'National ID', icon: Hash },
-                      { key: 'phone', label: isRTL ? 'الجوال' : 'Phone', icon: Phone },
-                      { key: 'email', label: isRTL ? 'البريد' : 'Email', icon: Mail },
-                      { key: 'nationality', label: isRTL ? 'الجنسية' : 'Nationality', icon: MapPin },
-                      { key: 'date_of_birth', label: isRTL ? 'تاريخ الميلاد' : 'Date of Birth', icon: Calendar },
-                      { key: 'address', label: isRTL ? 'العنوان' : 'Address', icon: MapPin },
-                      { key: 'city', label: isRTL ? 'المدينة' : 'City', icon: MapPin },
+                      { key: 'full_name', label: t('fullName'), icon: User },
+                      { key: 'national_id', label: t('nationalId'), icon: Hash },
+                      { key: 'phone', label: t('phone'), icon: Phone },
+                      { key: 'email', label: t('email'), icon: Mail },
+                      { key: 'nationality', label: t('nationality'), icon: MapPin },
+                      { key: 'date_of_birth', label: t('dateOfBirth'), icon: Calendar },
+                      { key: 'address', label: t('address'), icon: MapPin },
+                      { key: 'city', label: t('city'), icon: MapPin },
                     ].map(({ key, label, icon: Icon }) => (
                       <div key={key} className="space-y-1">
                         <Label className="text-xs flex items-center gap-1"><Icon className="h-3 w-3" />{label}</Label>
@@ -252,14 +253,14 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
                 ) : (
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     {[
-                      { label: isRTL ? 'الاسم' : 'Name', value: p?.basic_info?.full_name, icon: User },
-                      { label: isRTL ? 'الهوية' : 'ID', value: p?.basic_info?.national_id, icon: Hash },
-                      { label: isRTL ? 'الجوال' : 'Phone', value: p?.contact_info?.phone, icon: Phone },
-                      { label: isRTL ? 'البريد' : 'Email', value: p?.contact_info?.email || teacher.email, icon: Mail },
-                      { label: isRTL ? 'الجنسية' : 'Nationality', value: p?.basic_info?.nationality, icon: MapPin },
-                      { label: isRTL ? 'الجنس' : 'Gender', value: p?.basic_info?.gender === 'male' ? (isRTL ? 'ذكر' : 'Male') : p?.basic_info?.gender === 'female' ? (isRTL ? 'أنثى' : 'Female') : '-', icon: User },
-                      { label: isRTL ? 'العنوان' : 'Address', value: p?.contact_info?.address, icon: MapPin },
-                      { label: isRTL ? 'المدينة' : 'City', value: p?.contact_info?.city, icon: MapPin },
+                      { label: t('name'), value: p?.basic_info?.full_name, icon: User },
+                      { label: t('id'), value: p?.basic_info?.national_id, icon: Hash },
+                      { label: t('phone'), value: p?.contact_info?.phone, icon: Phone },
+                      { label: t('email'), value: p?.contact_info?.email || teacher.email, icon: Mail },
+                      { label: t('nationality'), value: p?.basic_info?.nationality, icon: MapPin },
+                      { label: t('gender'), value: p?.basic_info?.gender === 'male' ? (t('male')) : p?.basic_info?.gender === 'female' ? (t('female')) : '-', icon: User },
+                      { label: t('address'), value: p?.contact_info?.address, icon: MapPin },
+                      { label: t('city'), value: p?.contact_info?.city, icon: MapPin },
                     ].map(({ label, value, icon: Icon }, i) => (
                       <div key={i} className="flex items-start gap-2">
                         <Icon className="h-3.5 w-3.5 mt-0.5 text-muted-foreground shrink-0" />
@@ -270,21 +271,21 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
                 )}
 
                 <div className="border-t pt-3">
-                  <h4 className="font-semibold text-sm mb-2">{isRTL ? 'حالة الحساب' : 'Account Status'}</h4>
+                  <h4 className="font-semibold text-sm mb-2">{t('accountStatus')}</h4>
                   <div className="flex flex-wrap gap-2">
                     {status !== 'active' && (
                       <Button size="sm" variant="outline" className="text-green-600 border-green-300" onClick={() => handleStatusChange('active')} disabled={!!actionLoading}>
-                        {actionLoading === 'active' ? <Loader2 className="h-3.5 w-3.5 animate-spin me-1" /> : <UserCheck className="h-3.5 w-3.5 me-1" />}{isRTL ? 'تفعيل' : 'Activate'}
+                        {actionLoading === 'active' ? <Loader2 className="h-3.5 w-3.5 animate-spin me-1" /> : <UserCheck className="h-3.5 w-3.5 me-1" />}{t('activate')}
                       </Button>
                     )}
                     {status === 'active' && (
                       <Button size="sm" variant="outline" className="text-amber-600 border-amber-300" onClick={() => handleStatusChange('suspended')} disabled={!!actionLoading}>
-                        {actionLoading === 'suspended' ? <Loader2 className="h-3.5 w-3.5 animate-spin me-1" /> : <UserX className="h-3.5 w-3.5 me-1" />}{isRTL ? 'تعليق' : 'Suspend'}
+                        {actionLoading === 'suspended' ? <Loader2 className="h-3.5 w-3.5 animate-spin me-1" /> : <UserX className="h-3.5 w-3.5 me-1" />}{t('suspend')}
                       </Button>
                     )}
                     {status !== 'closed' && (
-                      <Button size="sm" variant="outline" className="text-red-600 border-red-300" onClick={() => nassaqConfirm(isRTL ? 'هل أنت متأكد من إغلاق الحساب؟' : 'Are you sure you want to close this account?', () => handleStatusChange('closed'), { title: isRTL ? 'تأكيد الإغلاق' : 'Confirm Close', confirmText: isRTL ? 'نعم، أغلق' : 'Yes, Close', cancelText: isRTL ? 'إلغاء' : 'Cancel' })} disabled={!!actionLoading}>
-                        {actionLoading === 'closed' ? <Loader2 className="h-3.5 w-3.5 animate-spin me-1" /> : <AlertTriangle className="h-3.5 w-3.5 me-1" />}{isRTL ? 'إغلاق' : 'Close'}
+                      <Button size="sm" variant="outline" className="text-red-600 border-red-300" onClick={() => nassaqConfirm(t('areYouSureYouWantToCloseThisAccount'), () => handleStatusChange('closed'), { title: t('confirmClose'), confirmText: t('yesClose'), cancelText: t('cancel') })} disabled={!!actionLoading}>
+                        {actionLoading === 'closed' ? <Loader2 className="h-3.5 w-3.5 animate-spin me-1" /> : <AlertTriangle className="h-3.5 w-3.5 me-1" />}{t('close')}
                       </Button>
                     )}
                   </div>
@@ -293,12 +294,12 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
 
               <TabsContent value="professional" className="space-y-4">
                 <div className="flex justify-between items-center">
-                  <h3 className="font-semibold text-sm">{isRTL ? 'البيانات المهنية' : 'Professional Info'}</h3>
+                  <h3 className="font-semibold text-sm">{t('professionalInfo')}</h3>
                   {!editing ? (
-                    <Button size="sm" variant="outline" onClick={() => startEdit('professional')}><Edit className="h-3.5 w-3.5 me-1" />{isRTL ? 'تعديل' : 'Edit'}</Button>
+                    <Button size="sm" variant="outline" onClick={() => startEdit('professional')}><Edit className="h-3.5 w-3.5 me-1" />{t('edit')}</Button>
                   ) : editSection === 'professional' ? (
                     <div className="flex gap-2">
-                      <Button size="sm" onClick={handleSaveProfessional} disabled={saving}>{saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5 me-1" />}{isRTL ? 'حفظ' : 'Save'}</Button>
+                      <Button size="sm" onClick={handleSaveProfessional} disabled={saving}>{saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5 me-1" />}{t('save')}</Button>
                       <Button size="sm" variant="outline" onClick={() => { setEditing(false); setEditSection(null); }}><X className="h-3.5 w-3.5" /></Button>
                     </div>
                   ) : null}
@@ -306,62 +307,62 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
                 {editing && editSection === 'professional' ? (
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <Label className="text-xs">{isRTL ? 'التخصص' : 'Specialization'}</Label>
+                      <Label className="text-xs">{t('specialization')}</Label>
                       <Input value={formData.specialization || ''} onChange={(e) => setFormData(p => ({ ...p, specialization: e.target.value }))} className="h-8 text-sm" />
                     </div>
                     <div className="space-y-1">
-                      <Label className="text-xs">{isRTL ? 'الدرجة العلمية' : 'Degree'}</Label>
+                      <Label className="text-xs">{t('degree')}</Label>
                       <Select value={formData.academic_degree || ''} onValueChange={(v) => setFormData(p => ({ ...p, academic_degree: v }))}>
                         <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="diploma">{isRTL ? 'دبلوم' : 'Diploma'}</SelectItem>
-                          <SelectItem value="bachelor">{isRTL ? 'بكالوريوس' : "Bachelor's"}</SelectItem>
-                          <SelectItem value="master">{isRTL ? 'ماجستير' : "Master's"}</SelectItem>
-                          <SelectItem value="doctorate">{isRTL ? 'دكتوراه' : 'Doctorate'}</SelectItem>
+                          <SelectItem value="diploma">{t('diploma')}</SelectItem>
+                          <SelectItem value="bachelor">{t('bachelors')}</SelectItem>
+                          <SelectItem value="master">{t('masters')}</SelectItem>
+                          <SelectItem value="doctorate">{t('doctorate')}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-1">
-                      <Label className="text-xs">{isRTL ? 'الرتبة' : 'Rank'}</Label>
+                      <Label className="text-xs">{t('rank')}</Label>
                       <Select value={formData.teacher_rank || ''} onValueChange={(v) => setFormData(p => ({ ...p, teacher_rank: v }))}>
                         <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="teacher">{isRTL ? 'معلم' : 'Teacher'}</SelectItem>
-                          <SelectItem value="senior_teacher">{isRTL ? 'معلم أول' : 'Senior Teacher'}</SelectItem>
-                          <SelectItem value="expert">{isRTL ? 'معلم خبير' : 'Expert'}</SelectItem>
-                          <SelectItem value="department_head">{isRTL ? 'رئيس قسم' : 'Department Head'}</SelectItem>
+                          <SelectItem value="teacher">{t('teacher')}</SelectItem>
+                          <SelectItem value="senior_teacher">{t('seniorTeacher')}</SelectItem>
+                          <SelectItem value="expert">{t('expert')}</SelectItem>
+                          <SelectItem value="department_head">{t('departmentHead')}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-1">
-                      <Label className="text-xs">{isRTL ? 'سنوات الخبرة' : 'Experience'}</Label>
+                      <Label className="text-xs">{t('experience')}</Label>
                       <Input type="number" value={formData.years_of_experience ?? ''} onChange={(e) => setFormData(p => ({ ...p, years_of_experience: parseInt(e.target.value) || 0 }))} className="h-8 text-sm" />
                     </div>
                     <div className="space-y-1">
-                      <Label className="text-xs">{isRTL ? 'نوع العقد' : 'Contract'}</Label>
+                      <Label className="text-xs">{t('contract')}</Label>
                       <Select value={formData.contract_type || ''} onValueChange={(v) => setFormData(p => ({ ...p, contract_type: v }))}>
                         <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="permanent">{isRTL ? 'دائم' : 'Permanent'}</SelectItem>
-                          <SelectItem value="contract">{isRTL ? 'متعاقد' : 'Contract'}</SelectItem>
-                          <SelectItem value="part_time">{isRTL ? 'دوام جزئي' : 'Part-time'}</SelectItem>
+                          <SelectItem value="permanent">{t('permanent')}</SelectItem>
+                          <SelectItem value="contract">{t('contract2')}</SelectItem>
+                          <SelectItem value="part_time">{t('parttime')}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-1">
-                      <Label className="text-xs">{isRTL ? 'رقم الموظف' : 'Employee #'}</Label>
+                      <Label className="text-xs">{t('employee')}</Label>
                       <Input value={formData.employee_number || ''} onChange={(e) => setFormData(p => ({ ...p, employee_number: e.target.value }))} className="h-8 text-sm" />
                     </div>
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     {[
-                      { label: isRTL ? 'التخصص' : 'Specialization', value: p?.professional_info?.specialization, icon: BookOpen },
-                      { label: isRTL ? 'الدرجة' : 'Degree', value: p?.professional_info?.academic_degree, icon: Award },
-                      { label: isRTL ? 'الرتبة' : 'Rank', value: rankLabels[p?.professional_info?.teacher_rank] || p?.professional_info?.teacher_rank, icon: Shield },
-                      { label: isRTL ? 'الخبرة' : 'Experience', value: p?.professional_info?.years_of_experience ? `${p.professional_info.years_of_experience} ${isRTL ? 'سنة' : 'yrs'}` : '-', icon: Clock },
-                      { label: isRTL ? 'العقد' : 'Contract', value: p?.professional_info?.contract_type, icon: FileText },
-                      { label: isRTL ? 'رقم الموظف' : 'Employee #', value: p?.professional_info?.employee_number, icon: Hash },
+                      { label: t('specialization'), value: p?.professional_info?.specialization, icon: BookOpen },
+                      { label: t('degree2'), value: p?.professional_info?.academic_degree, icon: Award },
+                      { label: t('rank'), value: rankLabels[p?.professional_info?.teacher_rank] || p?.professional_info?.teacher_rank, icon: Shield },
+                      { label: t('experience2'), value: p?.professional_info?.years_of_experience ? `${p.professional_info.years_of_experience} ${t('yrs')}` : '-', icon: Clock },
+                      { label: t('contract3'), value: p?.professional_info?.contract_type, icon: FileText },
+                      { label: t('employee'), value: p?.professional_info?.employee_number, icon: Hash },
                     ].map(({ label, value, icon: Icon }, i) => (
                       <div key={i} className="flex items-start gap-2">
                         <Icon className="h-3.5 w-3.5 mt-0.5 text-muted-foreground shrink-0" />
@@ -372,49 +373,49 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
                 )}
 
                 <div className="border-t pt-3">
-                  <h4 className="text-xs font-semibold text-muted-foreground mb-2">{isRTL ? 'البيانات التشغيلية' : 'Operational'}</h4>
+                  <h4 className="text-xs font-semibold text-muted-foreground mb-2">{t('operational')}</h4>
                   <div className="grid grid-cols-3 gap-3">
                     <Card className="border-emerald-200/50"><CardContent className="p-3 text-center">
                       <p className="text-lg font-bold text-emerald-600">{p?.operational_info?.max_periods_per_week || '-'}</p>
-                      <p className="text-[10px] text-muted-foreground">{isRTL ? 'حصة/أسبوع' : 'Periods/wk'}</p>
+                      <p className="text-[10px] text-muted-foreground">{t('periodswk')}</p>
                     </CardContent></Card>
                     <Card className="border-emerald-200/50"><CardContent className="p-3 text-center">
                       <p className="text-lg font-bold text-emerald-600">{p?.assignments?.length || 0}</p>
-                      <p className="text-[10px] text-muted-foreground">{isRTL ? 'إسنادات' : 'Assignments'}</p>
+                      <p className="text-[10px] text-muted-foreground">{t('assignments')}</p>
                     </CardContent></Card>
                     <Card className="border-emerald-200/50"><CardContent className="p-3 text-center">
                       <p className="text-lg font-bold text-emerald-600">{p?.operational_info?.total_sessions || 0}</p>
-                      <p className="text-[10px] text-muted-foreground">{isRTL ? 'حصص مسجلة' : 'Sessions'}</p>
+                      <p className="text-[10px] text-muted-foreground">{t('sessions')}</p>
                     </CardContent></Card>
                   </div>
                 </div>
               </TabsContent>
 
               <TabsContent value="credentials" className="space-y-4">
-                <h3 className="font-semibold text-sm">{isRTL ? 'إدارة بيانات الدخول' : 'Login Credentials'}</h3>
+                <h3 className="font-semibold text-sm">{t('loginCredentials')}</h3>
                 {!p?.user_account?.id ? (
                   <Card className="border-amber-200 bg-amber-50/50"><CardContent className="p-4 space-y-3">
                     <div className="flex items-center gap-2 text-amber-700">
                       <AlertTriangle className="h-4 w-4 shrink-0" />
-                      <span className="font-medium text-sm">{isRTL ? 'لم يتم إنشاء حساب دخول بعد' : 'No login account created yet'}</span>
+                      <span className="font-medium text-sm">{t('noLoginAccountCreatedYet')}</span>
                     </div>
-                    <p className="text-xs text-amber-600">{isRTL ? 'هذا المعلم لديه ملف تعريفي فقط ولا يمكنه تسجيل الدخول حتى يتم إنشاء حساب له.' : 'This teacher only has a profile record and cannot log in until an account is created.'}</p>
+                    <p className="text-xs text-amber-600">{t('thisTeacherOnlyHasAProfileRecordAndCannotLogInUnti')}</p>
                     <div className="border-t border-amber-200 pt-3 space-y-3">
                       <div className="space-y-1">
-                        <Label className="text-xs">{isRTL ? 'البريد الإلكتروني' : 'Email'}</Label>
-                        <Input type="email" value={credForm.new_email || teacher.email || ''} onChange={(e) => setCredForm(p => ({ ...p, new_email: e.target.value }))} className="h-8 text-sm" placeholder={isRTL ? 'البريد الإلكتروني للحساب' : 'Account email'} />
+                        <Label className="text-xs">{t('email2')}</Label>
+                        <Input type="email" value={credForm.new_email || teacher.email || ''} onChange={(e) => setCredForm(p => ({ ...p, new_email: e.target.value }))} className="h-8 text-sm" placeholder={t('accountEmail')} />
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-xs">{isRTL ? 'كلمة المرور' : 'Password'}</Label>
+                        <Label className="text-xs">{t('password')}</Label>
                         <div className="flex gap-2">
                           <div className="relative flex-1">
-                            <Input type={showPassword ? 'text' : 'password'} value={credForm.new_password} onChange={(e) => setCredForm(p => ({ ...p, new_password: e.target.value }))} className="h-8 text-sm pe-8" placeholder={isRTL ? 'كلمة مرور الحساب الجديد' : 'New account password'} />
+                            <Input type={showPassword ? 'text' : 'password'} value={credForm.new_password} onChange={(e) => setCredForm(p => ({ ...p, new_password: e.target.value }))} className="h-8 text-sm pe-8" placeholder={t('newAccountPassword')} />
                             <Button size="icon" variant="ghost" className="h-6 w-6 absolute top-1 end-1" onClick={() => setShowPassword(!showPassword)}>
                               {showPassword ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
                             </Button>
                           </div>
                           {credForm.new_password && (
-                            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => copyToClipboard(credForm.new_password, isRTL ? 'كلمة المرور' : 'Password')}>
+                            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => copyToClipboard(credForm.new_password, t('password'))}>
                               <Copy className="h-3.5 w-3.5" />
                             </Button>
                           )}
@@ -422,10 +423,10 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
                       </div>
                       <div className="flex gap-2">
                         <Button size="sm" variant="outline" onClick={handleGeneratePassword} className="text-amber-600 border-amber-300">
-                          <Shield className="h-3.5 w-3.5 me-1" />{isRTL ? 'توليد كلمة مرور' : 'Generate Password'}
+                          <Shield className="h-3.5 w-3.5 me-1" />{t('generatePassword')}
                         </Button>
                         <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={handleSaveCredentials} disabled={saving || (!credForm.new_password)}>
-                          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin me-1" /> : <UserCheck className="h-3.5 w-3.5 me-1" />}{isRTL ? 'إنشاء حساب دخول' : 'Create Login Account'}
+                          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin me-1" /> : <UserCheck className="h-3.5 w-3.5 me-1" />}{t('createLoginAccount')}
                         </Button>
                       </div>
                     </div>
@@ -433,11 +434,11 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
                 ) : (
                 <Card><CardContent className="p-4 space-y-3">
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">{isRTL ? 'البريد الحالي' : 'Current Email'}</span>
+                    <span className="text-muted-foreground">{t('currentEmail')}</span>
                     <div className="flex items-center gap-2">
                       <span className="font-medium">{p?.user_account?.email || teacher.email || '-'}</span>
                       {(p?.user_account?.email || teacher.email) && (
-                        <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => copyToClipboard(p?.user_account?.email || teacher.email, isRTL ? 'البريد' : 'Email')}>
+                        <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => copyToClipboard(p?.user_account?.email || teacher.email, t('email'))}>
                           <Copy className="h-3 w-3" />
                         </Button>
                       )}
@@ -445,11 +446,11 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
                   </div>
                   <div className="border-t pt-3 space-y-3">
                     <div className="space-y-1">
-                      <Label className="text-xs">{isRTL ? 'البريد الجديد (اختياري)' : 'New Email (optional)'}</Label>
-                      <Input type="email" value={credForm.new_email} onChange={(e) => setCredForm(p => ({ ...p, new_email: e.target.value }))} className="h-8 text-sm" placeholder={isRTL ? 'أدخل البريد الجديد' : 'Enter new email'} />
+                      <Label className="text-xs">{t('newEmailOptional')}</Label>
+                      <Input type="email" value={credForm.new_email} onChange={(e) => setCredForm(p => ({ ...p, new_email: e.target.value }))} className="h-8 text-sm" placeholder={t('enterNewEmail')} />
                     </div>
                     <div className="space-y-1">
-                      <Label className="text-xs">{isRTL ? 'كلمة المرور الجديدة' : 'New Password'}</Label>
+                      <Label className="text-xs">{t('newPassword')}</Label>
                       <div className="flex gap-2">
                         <div className="relative flex-1">
                           <Input type={showPassword ? 'text' : 'password'} value={credForm.new_password} onChange={(e) => setCredForm(p => ({ ...p, new_password: e.target.value }))} className="h-8 text-sm pe-8" />
@@ -458,7 +459,7 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
                           </Button>
                         </div>
                         {credForm.new_password && (
-                          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => copyToClipboard(credForm.new_password, isRTL ? 'كلمة المرور' : 'Password')}>
+                          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => copyToClipboard(credForm.new_password, t('password'))}>
                             <Copy className="h-3.5 w-3.5" />
                           </Button>
                         )}
@@ -466,10 +467,10 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
                     </div>
                     <div className="flex gap-2">
                       <Button size="sm" variant="outline" onClick={handleGeneratePassword} className="text-emerald-600">
-                        <Shield className="h-3.5 w-3.5 me-1" />{isRTL ? 'توليد عبر حكيم' : 'Generate via Hakim'}
+                        <Shield className="h-3.5 w-3.5 me-1" />{t('generateViaHakim')}
                       </Button>
                       <Button size="sm" onClick={handleSaveCredentials} disabled={saving || (!credForm.new_email && !credForm.new_password)}>
-                        {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin me-1" /> : <Save className="h-3.5 w-3.5 me-1" />}{isRTL ? 'حفظ' : 'Save'}
+                        {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin me-1" /> : <Save className="h-3.5 w-3.5 me-1" />}{t('save')}
                       </Button>
                     </div>
                   </div>
@@ -478,7 +479,7 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
               </TabsContent>
 
               <TabsContent value="assignments" className="space-y-4">
-                <h3 className="font-semibold text-sm">{isRTL ? 'الإسنادات الحالية' : 'Current Assignments'}</h3>
+                <h3 className="font-semibold text-sm">{t('currentAssignments')}</h3>
                 {p?.assignments?.length > 0 ? (
                   <div className="space-y-2">
                     {p.assignments.map((a, i) => (
@@ -488,7 +489,7 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
                             <p className="font-medium text-sm">{a.class_name || a.class_id}</p>
                             <p className="text-xs text-muted-foreground">{a.subject_name || a.subject_id}</p>
                           </div>
-                          <Badge variant="outline" className="text-[10px]">{a.periods_per_week || '-'} {isRTL ? 'حصة' : 'periods'}</Badge>
+                          <Badge variant="outline" className="text-[10px]">{a.periods_per_week || '-'} {t('periods')}</Badge>
                         </CardContent>
                       </Card>
                     ))}
@@ -496,13 +497,13 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
                 ) : (
                   <div className="text-center py-8 text-muted-foreground text-sm">
                     <BookOpen className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                    {isRTL ? 'لا توجد إسنادات حالية' : 'No current assignments'}
+                    {t('noCurrentAssignments')}
                   </div>
                 )}
               </TabsContent>
 
               <TabsContent value="activity" className="space-y-4">
-                <h3 className="font-semibold text-sm">{isRTL ? 'سجل النشاط' : 'Activity Log'}</h3>
+                <h3 className="font-semibold text-sm">{t('activityLog')}</h3>
                 {p?.recent_activity?.length > 0 ? (
                   <div className="space-y-2 max-h-[300px] overflow-y-auto">
                     {p.recent_activity.map((log, i) => (
@@ -518,13 +519,13 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
                 ) : (
                   <div className="text-center py-8 text-muted-foreground text-sm">
                     <History className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                    {isRTL ? 'لا يوجد سجل نشاط' : 'No activity log'}
+                    {t('noActivityLog')}
                   </div>
                 )}
               </TabsContent>
 
               <TabsContent value="actions" className="space-y-4">
-                <h3 className="font-semibold text-sm">{isRTL ? 'إدارة الحساب' : 'Account Management'}</h3>
+                <h3 className="font-semibold text-sm">{t('accountManagement')}</h3>
                 <div className="grid grid-cols-2 gap-3">
                   {profile?.basic_info?.status !== 'active' && (
                     <Button
@@ -535,8 +536,8 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
                     >
                       <UserCheck className="h-4 w-4 me-2 text-green-500" />
                       <div className="text-start">
-                        <p className="text-sm font-medium text-green-700">{isRTL ? 'تفعيل الحساب' : 'Activate Account'}</p>
-                        <p className="text-xs text-muted-foreground">{isRTL ? 'إعادة تفعيل حساب المعلم' : 'Re-activate the teacher account'}</p>
+                        <p className="text-sm font-medium text-green-700">{t('activateAccount')}</p>
+                        <p className="text-xs text-muted-foreground">{t('reactivateTheTeacherAccount')}</p>
                       </div>
                       {actionLoading === 'status' && <Loader2 className="h-4 w-4 animate-spin ms-auto" />}
                     </Button>
@@ -550,8 +551,8 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
                     >
                       <UserX className="h-4 w-4 me-2 text-yellow-600" />
                       <div className="text-start">
-                        <p className="text-sm font-medium text-yellow-700">{isRTL ? 'تعليق الحساب' : 'Suspend Account'}</p>
-                        <p className="text-xs text-muted-foreground">{isRTL ? 'تعليق مؤقت لحساب المعلم' : 'Temporarily suspend the account'}</p>
+                        <p className="text-sm font-medium text-yellow-700">{t('suspendAccount')}</p>
+                        <p className="text-xs text-muted-foreground">{t('temporarilySuspendTheAccount2')}</p>
                       </div>
                       {actionLoading === 'status' && <Loader2 className="h-4 w-4 animate-spin ms-auto" />}
                     </Button>
@@ -565,8 +566,8 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
                     >
                       <X className="h-4 w-4 me-2 text-gray-500" />
                       <div className="text-start">
-                        <p className="text-sm font-medium text-gray-700">{isRTL ? 'إغلاق الحساب' : 'Close Account'}</p>
-                        <p className="text-xs text-muted-foreground">{isRTL ? 'إغلاق الحساب بشكل دائم' : 'Permanently close the account'}</p>
+                        <p className="text-sm font-medium text-gray-700">{t('closeAccount')}</p>
+                        <p className="text-xs text-muted-foreground">{t('permanentlyCloseTheAccount')}</p>
                       </div>
                       {actionLoading === 'status' && <Loader2 className="h-4 w-4 animate-spin ms-auto" />}
                     </Button>
@@ -579,13 +580,13 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
                   >
                     <Key className="h-4 w-4 me-2 text-blue-500" />
                     <div className="text-start">
-                      <p className="text-sm font-medium">{isRTL ? 'إعادة تعيين كلمة المرور' : 'Reset Password'}</p>
-                      <p className="text-xs text-muted-foreground">{isRTL ? 'إنشاء كلمة مرور جديدة' : 'Generate a new password'}</p>
+                      <p className="text-sm font-medium">{t('resetPassword')}</p>
+                      <p className="text-xs text-muted-foreground">{t('generateANewPassword')}</p>
                     </div>
                   </Button>
                 </div>
                 <div className="border-t pt-4 mt-4">
-                  <h3 className="font-semibold text-sm text-red-600 mb-3">{isRTL ? 'منطقة الخطر' : 'Danger Zone'}</h3>
+                  <h3 className="font-semibold text-sm text-red-600 mb-3">{t('dangerZone')}</h3>
                   <Button
                     variant="outline"
                     className="justify-start h-auto py-3 border-red-200 hover:bg-red-50 w-full"
@@ -594,8 +595,8 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
                   >
                     <Trash2 className="h-4 w-4 me-2 text-red-500" />
                     <div className="text-start">
-                      <p className="text-sm font-medium text-red-600">{isRTL ? 'حذف المعلم نهائياً' : 'Delete Teacher Permanently'}</p>
-                      <p className="text-xs text-muted-foreground">{isRTL ? 'لا يمكن التراجع عن هذا الإجراء' : 'This action cannot be undone'}</p>
+                      <p className="text-sm font-medium text-red-600">{t('deleteTeacherPermanently')}</p>
+                      <p className="text-xs text-muted-foreground">{t('thisActionCannotBeUndone')}</p>
                     </div>
                     {actionLoading === 'delete' && <Loader2 className="h-4 w-4 animate-spin ms-auto" />}
                   </Button>

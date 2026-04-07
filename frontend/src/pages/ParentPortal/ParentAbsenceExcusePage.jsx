@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -22,6 +22,7 @@ const STATUS_CONFIG = {
 };
 
 const ParentAbsenceExcusePage = () => {
+  const { t } = useTranslation();
   const { token, user, api } = useAuth();
   const { isRTL } = useTheme();
   const [children, setChildren] = useState([]);
@@ -59,7 +60,7 @@ const ParentAbsenceExcusePage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!selectedChild || !absenceDate || !reason.trim()) {
-      toast.error(isRTL ? 'يرجى تعبئة جميع الحقول المطلوبة' : 'Please fill all required fields');
+      toast.error(t('pleaseFillAllRequiredFields2'));
       return;
     }
     setSubmitting(true);
@@ -70,7 +71,7 @@ const ParentAbsenceExcusePage = () => {
         reason: reason.trim(),
         attachment_name: attachmentName || null,
       });
-      toast.success(isRTL ? 'تم إرسال العذر بنجاح' : 'Excuse submitted successfully');
+      toast.success(t('excuseSubmittedSuccessfully'));
       setExcuses(prev => [res.data.excuse, ...prev]);
       setAbsenceDate('');
       setReason('');
@@ -110,10 +111,10 @@ const ParentAbsenceExcusePage = () => {
           <div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 font-cairo flex items-center gap-2">
               <FileText className="h-7 w-7 text-indigo-600" />
-              {isRTL ? 'تقديم عذر غياب' : 'Absence Excuse'}
+              {t('absenceExcuse2')}
             </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              {isRTL ? 'أرسل عذر غياب لطفلك للمدرسة' : 'Submit an absence excuse for your child'}
+              {t('submitAnAbsenceExcuseForYourChild')}
             </p>
           </div>
           <Button
@@ -123,9 +124,9 @@ const ParentAbsenceExcusePage = () => {
             className="gap-1"
           >
             {showForm ? (
-              <>{isRTL ? 'السجل' : 'History'} <History className="h-4 w-4" /></>
+              <>{t('history')} <History className="h-4 w-4" /></>
             ) : (
-              <>{isRTL ? 'عذر جديد' : 'New Excuse'} <FileText className="h-4 w-4" /></>
+              <>{t('newExcuse')} <FileText className="h-4 w-4" /></>
             )}
           </Button>
         </div>
@@ -135,18 +136,18 @@ const ParentAbsenceExcusePage = () => {
             <div className="h-1.5 bg-gradient-to-r from-indigo-500 to-purple-500" />
             <CardHeader className="pb-2">
               <CardTitle className="text-lg font-cairo">
-                {isRTL ? 'نموذج عذر الغياب' : 'Absence Excuse Form'}
+                {t('absenceExcuseForm')}
               </CardTitle>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 block">
-                    {isRTL ? 'الابن/الابنة *' : 'Child *'}
+                    {t('child')}
                   </label>
                   <Select value={selectedChild} onValueChange={setSelectedChild}>
                     <SelectTrigger>
-                      <SelectValue placeholder={isRTL ? 'اختر الطالب' : 'Select child'} />
+                      <SelectValue placeholder={t('selectChild')} />
                     </SelectTrigger>
                     <SelectContent>
                       {children.map(child => (
@@ -166,7 +167,7 @@ const ParentAbsenceExcusePage = () => {
 
                 <div>
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 block">
-                    {isRTL ? 'تاريخ الغياب *' : 'Date of Absence *'}
+                    {t('dateOfAbsence')}
                   </label>
                   <Input
                     type="date"
@@ -179,12 +180,12 @@ const ParentAbsenceExcusePage = () => {
 
                 <div>
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 block">
-                    {isRTL ? 'سبب الغياب *' : 'Reason for Absence *'}
+                    {t('reasonForAbsence')}
                   </label>
                   <textarea
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
-                    placeholder={isRTL ? 'اكتب سبب الغياب هنا...' : 'Describe the reason for absence...'}
+                    placeholder={t('describeTheReasonForAbsence')}
                     className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-none"
                     required
                   />
@@ -192,16 +193,16 @@ const ParentAbsenceExcusePage = () => {
 
                 <div>
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 block">
-                    {isRTL ? 'مرفق (اختياري)' : 'Attachment (Optional)'}
+                    {t('attachmentOptional')}
                   </label>
                   <Input
                     type="text"
                     value={attachmentName}
                     onChange={(e) => setAttachmentName(e.target.value)}
-                    placeholder={isRTL ? 'اسم المستند أو رابط المرفق' : 'Document name or attachment link'}
+                    placeholder={t('documentNameOrAttachmentLink')}
                   />
                   <p className="text-xs text-gray-400 mt-1">
-                    {isRTL ? 'يمكنك كتابة اسم المستند الداعم (مثل تقرير طبي)' : 'Enter the name of the supporting document (e.g., medical report)'}
+                    {t('enterTheNameOfTheSupportingDocumentEgMedicalReport')}
                   </p>
                 </div>
 
@@ -215,7 +216,7 @@ const ParentAbsenceExcusePage = () => {
                   ) : (
                     <>
                       <Send className="h-4 w-4 me-2" />
-                      {isRTL ? 'إرسال العذر' : 'Submit Excuse'}
+                      {t('submitExcuse')}
                     </>
                   )}
                 </Button>
@@ -227,7 +228,7 @@ const ParentAbsenceExcusePage = () => {
         <div className="space-y-3">
           <h2 className="text-lg font-bold font-cairo text-gray-800 dark:text-gray-200 flex items-center gap-2">
             <History className="h-5 w-5 text-indigo-500" />
-            {isRTL ? 'سجل الأعذار' : 'Excuse History'}
+            {t('excuseHistory')}
             {excuses.length > 0 && (
               <Badge variant="secondary" className="text-xs">{excuses.length}</Badge>
             )}
@@ -238,7 +239,7 @@ const ParentAbsenceExcusePage = () => {
               <CardContent className="text-center py-10">
                 <FileText className="h-12 w-12 mx-auto mb-3 text-gray-300 dark:text-gray-600" />
                 <p className="text-gray-500 dark:text-gray-400 font-cairo">
-                  {isRTL ? 'لا توجد أعذار مسجلة بعد' : 'No excuses submitted yet'}
+                  {t('noExcusesSubmittedYet')}
                 </p>
               </CardContent>
             </Card>

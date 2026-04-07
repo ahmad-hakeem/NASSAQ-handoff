@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Input } from '../components/ui/input';
@@ -145,7 +145,6 @@ export default function TenantsManagement() {
   const navigate = useNavigate();
   const { nassaqError, nassaqWarning } = useNassaqAlert();
   const isRTL = contextIsRTL !== false;
-  const t = translations[isRTL ? 'ar' : 'en'];
 
   const [schools, setSchools] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -202,10 +201,10 @@ export default function TenantsManagement() {
         }));
       }
       setSchools(schoolsData);
-      if (showToast) toast.success(isRTL ? 'تم تحديث البيانات' : 'Data refreshed');
+      if (showToast) toast.success(t('dataRefreshed'));
     } catch (error) {
       console.error('Error fetching schools:', error);
-      nassaqError(isRTL ? 'خطأ في تحميل المدارس' : 'Error loading schools');
+      nassaqError(t('errorLoadingSchools'));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -256,6 +255,7 @@ export default function TenantsManagement() {
   };
 
   const resetFilters = () => {
+  const { t } = useTranslation();
     setFilters({ status: 'all', city: 'all' });
     setSearchQuery('');
     setActiveStatusFilter(null);
@@ -267,7 +267,7 @@ export default function TenantsManagement() {
 
   const handleEnterSchoolDashboard = (school) => {
     if (!school?.id) {
-      nassaqError(isRTL ? 'خطأ: بيانات المدرسة غير صالحة' : 'Error: Invalid school data');
+      nassaqError(t('errorInvalidSchoolData'));
       return;
     }
     enterSchoolContext(school);
@@ -279,7 +279,7 @@ export default function TenantsManagement() {
 
   const handleSuspendConfirm = async () => {
     if (!actionReason.trim()) {
-      nassaqError(isRTL ? 'يجب إدخال سبب التعليق' : 'Reason is required');
+      nassaqError(t('reasonIsRequired'));
       return;
     }
     setActionLoading(true);
@@ -300,7 +300,7 @@ export default function TenantsManagement() {
 
   const handleActivateConfirm = async () => {
     if (!actionReason.trim()) {
-      nassaqError(isRTL ? 'يجب إدخال سبب التفعيل' : 'Reason is required');
+      nassaqError(t('reasonIsRequired2'));
       return;
     }
     setActionLoading(true);
@@ -333,7 +333,7 @@ export default function TenantsManagement() {
       setSchools(prev => prev.filter(s => s.id !== draft.id));
       toast.success(isRTL ? `تم حذف مسودة "${draft.name}"` : `Draft "${draft.name}" deleted`);
     } catch (err) {
-      nassaqError(err.response?.data?.detail || (isRTL ? 'فشل حذف المسودة' : 'Failed to delete draft'));
+      nassaqError(err.response?.data?.detail || (t('failedToDeleteDraft')));
     } finally {
       setDeletingDraftId(null);
     }
@@ -351,7 +351,7 @@ export default function TenantsManagement() {
           <div className="text-center space-y-4">
             <Loader2 className="h-12 w-12 animate-spin text-brand-turquoise mx-auto" />
             <p className="text-lg font-cairo text-slate-600 dark:text-slate-400">
-              {isRTL ? 'جاري تحميل المدارس...' : 'Loading schools...'}
+              {t('loadingSchools')}
             </p>
           </div>
         </div>
@@ -387,7 +387,7 @@ export default function TenantsManagement() {
                   disabled={refreshing}
                 >
                   <RefreshCw className={`h-4 w-4 me-1.5 ${refreshing ? 'animate-spin' : ''}`} />
-                  {isRTL ? 'تحديث' : 'Refresh'}
+                  {t('refresh')}
                 </Button>
                 <Button
                   size="sm"
@@ -516,7 +516,7 @@ export default function TenantsManagement() {
                       {isRTL ? `مسودات الإنشاء (${draftSchools.length})` : `School Drafts (${draftSchools.length})`}
                     </p>
                     <p className="text-xs text-amber-600/70 dark:text-amber-400/60">
-                      {isRTL ? 'مدارس لم يكتمل إنشاؤها بعد — يمكنك متابعة الإعداد أو حذفها' : 'Schools not fully set up yet — continue setup or delete'}
+                      {t('schoolsNotFullySetUpYetContinueSetupOrDelete')}
                     </p>
                   </div>
                 </div>
@@ -535,7 +535,7 @@ export default function TenantsManagement() {
                           <span className="text-white font-bold text-sm">{draft.name?.charAt(0) || '?'}</span>
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-slate-800 dark:text-white truncate font-cairo text-sm">{draft.name || (isRTL ? 'مسودة مدرسة' : 'Draft School')}</p>
+                          <p className="font-semibold text-slate-800 dark:text-white truncate font-cairo text-sm">{draft.name || (t('draftSchool'))}</p>
                           <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-0.5">
                             {draft.city && <><MapPin className="h-3 w-3" /><span>{draft.city}</span></>}
                             {draft.created_at && (
@@ -549,7 +549,7 @@ export default function TenantsManagement() {
 
                       <Badge className="mb-3 bg-amber-100 text-amber-700 border-amber-200 text-[10px]">
                         <Clock className="h-3 w-3 me-1" />
-                        {isRTL ? 'قيد الإعداد' : 'Setup'}
+                        {t('setup2')}
                       </Badge>
 
                       <div className="flex items-center gap-2">
@@ -559,7 +559,7 @@ export default function TenantsManagement() {
                           onClick={() => navigate(`/platform/schools/${draft.id}`)}
                         >
                           <FileEdit className="h-3.5 w-3.5" />
-                          {isRTL ? 'متابعة الإعداد' : 'Continue Setup'}
+                          {t('continueSetup')}
                         </Button>
                         <Button
                           size="sm"
@@ -596,14 +596,14 @@ export default function TenantsManagement() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
-                      <th className="text-start p-3 font-medium text-slate-500">{isRTL ? 'المدرسة' : 'School'}</th>
+                      <th className="text-start p-3 font-medium text-slate-500">{t('school')}</th>
                       <th className="text-center p-3 font-medium text-slate-500">{t.students}</th>
                       <th className="text-center p-3 font-medium text-slate-500">{t.teachers}</th>
                       <th className="text-center p-3 font-medium text-slate-500">{t.classes}</th>
                       <th className="text-center p-3 font-medium text-slate-500">{t.parents}</th>
                       <th className="text-center p-3 font-medium text-slate-500">{t.setup_score}</th>
                       <th className="text-center p-3 font-medium text-slate-500">{t.status}</th>
-                      <th className="text-center p-3 font-medium text-slate-500">{isRTL ? 'الإجراءات' : 'Actions'}</th>
+                      <th className="text-center p-3 font-medium text-slate-500">{t('actions2')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -644,7 +644,7 @@ export default function TenantsManagement() {
                           <div className="flex items-center justify-center gap-1.5">
                             <Button size="sm" variant="outline" className="rounded-lg text-xs border-brand-navy/30 text-brand-navy" onClick={() => navigate(`/platform/schools/${school.id}`)}>
                               <ExternalLink className="h-3 w-3 me-1" />
-                              {isRTL ? 'تفاصيل' : 'Details'}
+                              {t('details2')}
                             </Button>
                             <Button size="sm" className="bg-brand-navy hover:bg-brand-navy/90 text-white rounded-lg text-xs" onClick={() => handleEnterSchoolDashboard(school)}>
                               <Eye className="h-3.5 w-3.5 me-1" />
@@ -743,7 +743,7 @@ export default function TenantsManagement() {
                           onClick={() => navigate(`/platform/schools/${school.id}`)}
                         >
                           <ExternalLink className="h-3.5 w-3.5 me-1" />
-                          {isRTL ? 'تفاصيل' : 'Details'}
+                          {t('details2')}
                         </Button>
                         <Button
                           size="sm"
@@ -830,10 +830,10 @@ export default function TenantsManagement() {
           </DialogHeader>
           <div className="space-y-3 py-2">
             <label className="text-sm font-medium">
-              {isRTL ? 'سبب التعليق (مطلوب)' : 'Reason for Suspension (required)'}
+              {t('reasonForSuspensionRequired')}
             </label>
             <Textarea
-              placeholder={isRTL ? 'أدخل سبب التعليق...' : 'Enter reason for suspension...'}
+              placeholder={t('enterReasonForSuspension')}
               value={actionReason}
               onChange={(e) => setActionReason(e.target.value)}
               rows={3}
@@ -858,7 +858,7 @@ export default function TenantsManagement() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-emerald-600">
               <Play className="h-5 w-5" />
-              {isRTL ? 'تفعيل المدرسة' : 'Activate School'}
+              {t('activateSchool')}
             </DialogTitle>
             <DialogDescription>
               {isRTL
@@ -868,10 +868,10 @@ export default function TenantsManagement() {
           </DialogHeader>
           <div className="space-y-3 py-2">
             <label className="text-sm font-medium">
-              {isRTL ? 'سبب التفعيل (مطلوب)' : 'Reason for Activation (required)'}
+              {t('reasonForActivationRequired')}
             </label>
             <Textarea
-              placeholder={isRTL ? 'أدخل سبب التفعيل...' : 'Enter reason for activation...'}
+              placeholder={t('enterReasonForActivation')}
               value={actionReason}
               onChange={(e) => setActionReason(e.target.value)}
               rows={3}
@@ -884,7 +884,7 @@ export default function TenantsManagement() {
             </Button>
             <Button className="bg-emerald-500 hover:bg-emerald-600" onClick={handleActivateConfirm} disabled={actionLoading || !actionReason.trim()}>
               {actionLoading ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : <Play className="h-4 w-4 me-2" />}
-              {isRTL ? 'تفعيل' : 'Activate'}
+              {t('activate')}
             </Button>
           </DialogFooter>
         </DialogContent>

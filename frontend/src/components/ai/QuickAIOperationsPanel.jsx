@@ -19,6 +19,7 @@ import {
   Gauge, Check, X, ExternalLink, FileCheck, AlertTriangle
 } from 'lucide-react';
 
+import { useTranslation } from '../../contexts/ThemeContext';
 // AI Status States
 const AI_STATUS = {
   ACTIVE: { label: 'نشط', label_en: 'Active', color: 'bg-green-500', textColor: 'text-green-500' },
@@ -149,25 +150,26 @@ export default function QuickAIOperationsPanel({ api, isRTL = true }) {
   
   // Generate operation results - Empty states when no data
   const generateOperationResults = (operationId) => {
+  const { t } = useTranslation();
     switch (operationId) {
       case 'system_diagnosis':
         return {
-          title: isRTL ? 'نتائج تشخيص النظام' : 'System Diagnosis Results',
-          summary: isRTL ? 'يتم تحليل البيانات...' : 'Analyzing data...',
+          title: t('systemDiagnosisResults'),
+          summary: t('analyzingData'),
           items: [], // Empty - will be populated from API
           recommendations: []
         };
       case 'data_quality':
         return {
-          title: isRTL ? 'نتائج فحص جودة البيانات' : 'Data Quality Results',
-          summary: isRTL ? 'جاري الفحص...' : 'Checking...',
+          title: t('dataQualityResults'),
+          summary: t('checking'),
           qualityScore: 0,
           items: [], // Empty - will be populated from API
         };
       case 'import_analyzer':
         return {
-          title: isRTL ? 'نتائج ملفات الاستيراد اليوم' : 'Today\'s Import Files Results',
-          summary: isRTL ? 'لا توجد عمليات استيراد اليوم' : 'No imports today',
+          title: t('todaysImportFilesResults'),
+          summary: t('noImportsToday'),
           importStats: {
             total: 0,
             success: 0,
@@ -178,7 +180,7 @@ export default function QuickAIOperationsPanel({ api, isRTL = true }) {
         };
       case 'alerts_review':
         return {
-          title: isRTL ? 'التنبيهات غير المقروءة' : 'Unread Alerts',
+          title: t('unreadAlerts'),
           summary: isRTL ? `لديك ${openAlerts} تنبيهات غير مقروءة` : `You have ${openAlerts} unread alerts`,
           unreadCount: openAlerts,
           alertsLink: '/admin/audit',
@@ -186,8 +188,8 @@ export default function QuickAIOperationsPanel({ api, isRTL = true }) {
         };
       default:
         return {
-          title: isRTL ? 'نتائج العملية' : 'Operation Results',
-          summary: isRTL ? 'تمت العملية بنجاح' : 'Operation completed successfully',
+          title: t('operationResults'),
+          summary: t('operationCompletedSuccessfully'),
           items: [],
         };
     }
@@ -196,7 +198,7 @@ export default function QuickAIOperationsPanel({ api, isRTL = true }) {
   // Refresh AI Status
   const refreshStatus = () => {
     setLastUpdate(new Date().toLocaleTimeString('ar-SA'));
-    toast.success(isRTL ? 'تم تحديث حالة الذكاء الاصطناعي' : 'AI status updated');
+    toast.success(t('aiStatusUpdated'));
   };
   
   // Navigate to action link
@@ -217,12 +219,10 @@ export default function QuickAIOperationsPanel({ api, isRTL = true }) {
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-purple to-brand-turquoise flex items-center justify-center">
               <Brain className="h-6 w-6 text-white" />
             </div>
-            {isRTL ? 'لوحة العمليات الذكية السريعة' : 'Quick AI Operations Panel'}
+            {t('quickAiOperationsPanel')}
           </h2>
           <p className="text-sm text-muted-foreground mt-1">
-            {isRTL 
-              ? 'تنفيذ وتحليل ومراقبة العمليات الذكية على مستوى المنصة بالكامل'
-              : 'Execute, analyze and monitor AI operations across the entire platform'
+            {t('executeAnalyzeAndMonitorAiOperationsAcrossTheEntir')
             }
           </p>
         </div>
@@ -242,19 +242,19 @@ export default function QuickAIOperationsPanel({ api, isRTL = true }) {
               <div className="flex items-center gap-1 text-sm">
                 <Activity className="h-4 w-4 text-brand-turquoise" />
                 <span>{operationsToday}</span>
-                <span className="text-muted-foreground">{isRTL ? 'عملية اليوم' : 'ops today'}</span>
+                <span className="text-muted-foreground">{t('opsToday')}</span>
               </div>
               <div className="h-6 w-px bg-border" />
               <div className="flex items-center gap-1 text-sm">
                 <Bell className="h-4 w-4 text-orange-500" />
                 <span>{openAlerts}</span>
-                <span className="text-muted-foreground">{isRTL ? 'تنبيه غير مقروء' : 'unread alerts'}</span>
+                <span className="text-muted-foreground">{t('unreadAlerts2')}</span>
               </div>
               <div className="h-6 w-px bg-border" />
               <div className="flex items-center gap-1 text-sm">
                 <Sparkles className="h-4 w-4 text-brand-purple" />
                 <span>{pendingRecommendations}</span>
-                <span className="text-muted-foreground">{isRTL ? 'توصية' : 'recommendations'}</span>
+                <span className="text-muted-foreground">{t('recommendations')}</span>
               </div>
             </div>
             
@@ -262,24 +262,24 @@ export default function QuickAIOperationsPanel({ api, isRTL = true }) {
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" onClick={refreshStatus} className="rounded-lg">
                 <RefreshCw className="h-4 w-4 me-1" />
-                {isRTL ? 'تحديث' : 'Refresh'}
+                {t('refresh')}
               </Button>
               <Button variant="outline" size="sm" onClick={() => runOperation('system_diagnosis')} className="rounded-lg">
                 <Gauge className="h-4 w-4 me-1" />
-                {isRTL ? 'تشخيص' : 'Diagnose'}
+                {t('diagnose')}
               </Button>
             </div>
           </div>
           
           {/* معلومات إضافية */}
           <div className="flex items-center gap-4 mt-3 pt-3 border-t text-xs text-muted-foreground">
-            <span>{isRTL ? 'آخر تحديث:' : 'Last update:'} {lastUpdate}</span>
+            <span>{t('lastUpdate')} {lastUpdate}</span>
             <span>•</span>
-            <span>{isRTL ? 'المدارس المفعّل لها AI:' : 'AI-enabled schools:'} {aiEnabledSchools}/{totalSchools}</span>
+            <span>{t('aienabledSchools')} {aiEnabledSchools}/{totalSchools}</span>
             <span>•</span>
             <span className="text-green-500 flex items-center gap-1">
               <CheckCircle2 className="h-3 w-3" />
-              {isRTL ? 'جميع المحركات تعمل' : 'All engines running'}
+              {t('allEnginesRunning')}
             </span>
           </div>
         </CardContent>
@@ -321,7 +321,7 @@ export default function QuickAIOperationsPanel({ api, isRTL = true }) {
               {/* Click hint instead of button */}
               <div className="flex items-center gap-1 text-xs text-muted-foreground group-hover:text-brand-purple transition-colors">
                 <Play className="h-3 w-3" />
-                <span>{isRTL ? 'اضغط للتشغيل' : 'Click to run'}</span>
+                <span>{t('clickToRun')}</span>
               </div>
             </CardContent>
           </Card>
@@ -335,7 +335,7 @@ export default function QuickAIOperationsPanel({ api, isRTL = true }) {
           <CardHeader className="pb-2">
             <CardTitle className="font-cairo text-base flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-yellow-500" />
-              {isRTL ? 'المهام الذكية المقترحة' : 'AI Suggested Actions'}
+              {t('aiSuggestedActions')}
               <Badge className="bg-yellow-500 text-white">{SUGGESTED_ACTIONS.length}</Badge>
             </CardTitle>
           </CardHeader>
@@ -376,7 +376,7 @@ export default function QuickAIOperationsPanel({ api, isRTL = true }) {
           <CardHeader className="pb-2">
             <CardTitle className="font-cairo text-base flex items-center gap-2">
               <History className="h-5 w-5 text-brand-turquoise" />
-              {isRTL ? 'سجل العمليات الأخيرة' : 'Recent Operations'}
+              {t('recentOperations')}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -412,7 +412,7 @@ export default function QuickAIOperationsPanel({ api, isRTL = true }) {
                       size="sm" 
                       variant="ghost" 
                       className="h-7 px-2 cursor-pointer hover:bg-brand-turquoise/10"
-                      onClick={() => toast.success(isRTL ? 'تم تحديث السجل' : 'Log refreshed')}
+                      onClick={() => toast.success(t('logRefreshed'))}
                     >
                       <RefreshCw className="h-3 w-3" />
                     </Button>
@@ -440,8 +440,8 @@ export default function QuickAIOperationsPanel({ api, isRTL = true }) {
             </DialogTitle>
             <DialogDescription>
               {isProcessing 
-                ? (isRTL ? 'جاري التحليل...' : 'Analyzing...')
-                : (isRTL ? 'نتائج العملية' : 'Operation Results')
+                ? (t('analyzing'))
+                : (t('operationResults'))
               }
             </DialogDescription>
           </DialogHeader>
@@ -451,7 +451,7 @@ export default function QuickAIOperationsPanel({ api, isRTL = true }) {
               <div className="w-16 h-16 rounded-full bg-brand-purple/10 flex items-center justify-center">
                 <Brain className="h-8 w-8 text-brand-purple animate-pulse" />
               </div>
-              <p className="text-sm text-muted-foreground">{isRTL ? 'يتم تحليل البيانات...' : 'Analyzing data...'}</p>
+              <p className="text-sm text-muted-foreground">{t('analyzingData')}</p>
               <Progress value={66} className="w-48" />
             </div>
           ) : operationResult && (
@@ -466,7 +466,7 @@ export default function QuickAIOperationsPanel({ api, isRTL = true }) {
               {operationResult.qualityScore && (
                 <div className="p-4 rounded-lg border">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium">{isRTL ? 'نسبة جودة البيانات' : 'Data Quality Score'}</span>
+                    <span className="text-sm font-medium">{t('dataQualityScore')}</span>
                     <span className={`font-bold ${operationResult.qualityScore >= 80 ? 'text-green-500' : operationResult.qualityScore >= 60 ? 'text-yellow-500' : 'text-red-500'}`}>
                       {operationResult.qualityScore}%
                     </span>
@@ -480,19 +480,19 @@ export default function QuickAIOperationsPanel({ api, isRTL = true }) {
                 <div className="grid grid-cols-4 gap-3">
                   <div className="p-3 rounded-lg bg-muted/50 text-center">
                     <p className="text-2xl font-bold">{operationResult.importStats.total}</p>
-                    <p className="text-xs text-muted-foreground">{isRTL ? 'إجمالي الملفات' : 'Total Files'}</p>
+                    <p className="text-xs text-muted-foreground">{t('totalFiles')}</p>
                   </div>
                   <div className="p-3 rounded-lg bg-green-50 text-center border border-green-200">
                     <p className="text-2xl font-bold text-green-600">{operationResult.importStats.success}</p>
-                    <p className="text-xs text-green-600">{isRTL ? 'ناجح' : 'Success'}</p>
+                    <p className="text-xs text-green-600">{t('success')}</p>
                   </div>
                   <div className="p-3 rounded-lg bg-red-50 text-center border border-red-200">
                     <p className="text-2xl font-bold text-red-600">{operationResult.importStats.failed}</p>
-                    <p className="text-xs text-red-600">{isRTL ? 'فشل' : 'Failed'}</p>
+                    <p className="text-xs text-red-600">{t('failed')}</p>
                   </div>
                   <div className="p-3 rounded-lg bg-yellow-50 text-center border border-yellow-200">
                     <p className="text-2xl font-bold text-yellow-600">{operationResult.importStats.pending}</p>
-                    <p className="text-xs text-yellow-600">{isRTL ? 'معلق' : 'Pending'}</p>
+                    <p className="text-xs text-yellow-600">{t('pending')}</p>
                   </div>
                 </div>
               )}
@@ -504,8 +504,8 @@ export default function QuickAIOperationsPanel({ api, isRTL = true }) {
                     <div className="flex items-center gap-3">
                       <Bell className="h-6 w-6 text-red-500" />
                       <div>
-                        <p className="font-bold text-red-700">{operationResult.unreadCount} {isRTL ? 'تنبيهات غير مقروءة' : 'Unread Alerts'}</p>
-                        <p className="text-sm text-red-600">{isRTL ? 'اضغط للانتقال لصفحة التنبيهات' : 'Click to view alerts page'}</p>
+                        <p className="font-bold text-red-700">{operationResult.unreadCount} {t('unreadAlerts3')}</p>
+                        <p className="text-sm text-red-600">{t('clickToViewAlertsPage')}</p>
                       </div>
                     </div>
                     <Button 
@@ -516,7 +516,7 @@ export default function QuickAIOperationsPanel({ api, isRTL = true }) {
                       }}
                     >
                       <ExternalLink className="h-4 w-4 me-1" />
-                      {isRTL ? 'عرض التنبيهات' : 'View Alerts'}
+                      {t('viewAlerts')}
                     </Button>
                   </div>
                 </div>
@@ -570,7 +570,7 @@ export default function QuickAIOperationsPanel({ api, isRTL = true }) {
                         <span className="text-sm">{item.label}</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        {item.records && <span className="text-xs text-muted-foreground">{item.records} {isRTL ? 'سجل' : 'records'}</span>}
+                        {item.records && <span className="text-xs text-muted-foreground">{item.records} {t('records')}</span>}
                         {item.error && <span className="text-xs text-red-500">{item.error}</span>}
                         <Badge className={
                           item.type === 'critical' ? 'bg-red-500' :
@@ -588,7 +588,7 @@ export default function QuickAIOperationsPanel({ api, isRTL = true }) {
               {/* عرض بعض التنبيهات */}
               {operationResult.alertsLink && operationResult.items && (
                 <div className="space-y-2">
-                  <p className="text-sm font-medium text-muted-foreground">{isRTL ? 'آخر التنبيهات:' : 'Recent alerts:'}</p>
+                  <p className="text-sm font-medium text-muted-foreground">{t('recentAlerts')}</p>
                   {operationResult.items.map((item, index) => (
                     <div 
                       key={index}
@@ -617,7 +617,7 @@ export default function QuickAIOperationsPanel({ api, isRTL = true }) {
                 <div className="p-4 rounded-lg border border-brand-purple/20 bg-brand-purple/5">
                   <h4 className="font-bold mb-2 flex items-center gap-2">
                     <Sparkles className="h-4 w-4 text-brand-purple" />
-                    {isRTL ? 'التوصيات' : 'Recommendations'}
+                    {t('recommendations2')}
                   </h4>
                   <ul className="space-y-1">
                     {operationResult.recommendations.map((rec, index) => (
@@ -634,7 +634,7 @@ export default function QuickAIOperationsPanel({ api, isRTL = true }) {
           
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => { setActiveDialog(null); setOperationResult(null); }}>
-              {isRTL ? 'إغلاق' : 'Close'}
+              {t('close')}
             </Button>
           </DialogFooter>
         </DialogContent>

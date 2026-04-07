@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Card, CardContent } from '../ui/card';
@@ -36,6 +36,7 @@ const notificationTypeConfig = {
 };
 
 export const NotificationBell = () => {
+  const { t } = useTranslation();
   const { api, user } = useAuth();
   const { isRTL } = useTheme();
   const navigate = useNavigate();
@@ -122,7 +123,7 @@ export const NotificationBell = () => {
     const hours = Math.floor(diff / 3600000);
     const days = Math.floor(diff / 86400000);
     
-    if (minutes < 1) return isRTL ? 'الآن' : 'Now';
+    if (minutes < 1) return t('now');
     if (minutes < 60) return isRTL ? `${minutes}د` : `${minutes}m`;
     if (hours < 24) return isRTL ? `${hours}س` : `${hours}h`;
     return isRTL ? `${days}ي` : `${days}d`;
@@ -156,11 +157,11 @@ export const NotificationBell = () => {
         <div className="p-3 border-b border-border">
           <div className="flex items-center justify-between">
             <h4 className="font-semibold font-cairo">
-              {isRTL ? 'الإشعارات' : 'Notifications'}
+              {t('notifications')}
             </h4>
             {unreadCount > 0 && (
               <Badge variant="secondary" className="text-xs">
-                {unreadCount} {isRTL ? 'جديد' : 'new'}
+                {unreadCount} {t('new')}
               </Badge>
             )}
           </div>
@@ -169,13 +170,13 @@ export const NotificationBell = () => {
         <ScrollArea className="h-[300px]">
           {loading ? (
             <div className="p-4 text-center text-sm text-muted-foreground">
-              {isRTL ? 'جاري التحميل...' : 'Loading...'}
+              {t('loading')}
             </div>
           ) : notifications.length === 0 ? (
             <div className="p-8 text-center">
               <Bell className="h-10 w-10 mx-auto text-muted-foreground/50 mb-2" />
               <p className="text-sm text-muted-foreground">
-                {isRTL ? 'لا يوجد إشعارات' : 'No notifications'}
+                {t('noNotifications')}
               </p>
             </div>
           ) : (
@@ -236,7 +237,7 @@ export const NotificationBell = () => {
               navigate('/notifications');
             }}
           >
-            {isRTL ? 'عرض جميع الإشعارات' : 'View All Notifications'}
+            {t('viewAllNotifications')}
             <ChevronRight className={`h-4 w-4 ms-1 ${isRTL ? 'rotate-180' : ''}`} />
           </Button>
         </div>

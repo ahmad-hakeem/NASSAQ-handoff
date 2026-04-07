@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
@@ -12,6 +12,7 @@ import {
 
 
 const ChildBehaviorPage = () => {
+  const { t } = useTranslation();
   const { childId } = useParams();
   const { token, api } = useAuth();
   const { isRTL } = useTheme();
@@ -60,14 +61,14 @@ const ChildBehaviorPage = () => {
             <CardContent className="p-4 text-center">
               <ThumbsUp className="h-8 w-8 mx-auto mb-2 text-green-600" />
               <p className="text-2xl font-bold text-green-600">{positive.length}</p>
-              <p className="text-xs text-muted-foreground">{isRTL ? 'إيجابي' : 'Positive'}</p>
+              <p className="text-xs text-muted-foreground">{t('positive')}</p>
             </CardContent>
           </Card>
           <Card className="rounded-xl border-0 shadow-sm">
             <CardContent className="p-4 text-center">
               <ThumbsDown className="h-8 w-8 mx-auto mb-2 text-red-600" />
               <p className="text-2xl font-bold text-red-600">{negative.length}</p>
-              <p className="text-xs text-muted-foreground">{isRTL ? 'سلبي' : 'Negative'}</p>
+              <p className="text-xs text-muted-foreground">{t('negative')}</p>
             </CardContent>
           </Card>
         </div>
@@ -76,7 +77,7 @@ const ChildBehaviorPage = () => {
           <Card className="rounded-2xl border-0 shadow-sm">
             <CardContent className="py-12 text-center">
               <Heart className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-              <p className="text-muted-foreground text-sm">{isRTL ? 'لا يوجد سجلات سلوك' : 'No behavior records'}</p>
+              <p className="text-muted-foreground text-sm">{t('noBehaviorRecords')}</p>
             </CardContent>
           </Card>
         ) : (
@@ -96,7 +97,7 @@ const ChildBehaviorPage = () => {
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center justify-between">
-                        <p className="font-medium text-sm">{record.category || record.title || (record.type === 'positive' ? (isRTL ? 'سلوك إيجابي' : 'Positive') : (isRTL ? 'سلوك سلبي' : 'Negative'))}</p>
+                        <p className="font-medium text-sm">{record.category || record.title || (record.type === 'positive' ? (t('positive2')) : (t('negative2')))}</p>
                         <Badge className={`text-xs ${record.type === 'positive' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'} border-0`}>
                           {record.points ? `${record.points > 0 ? '+' : ''}${record.points}` : record.type === 'positive' ? '+' : '-'}
                         </Badge>

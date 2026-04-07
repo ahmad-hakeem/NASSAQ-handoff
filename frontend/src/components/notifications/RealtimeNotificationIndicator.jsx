@@ -35,6 +35,7 @@ import {
   Lock,
 } from 'lucide-react';
 
+import { useTranslation } from '../../contexts/ThemeContext';
 // Notification type icons
 const notificationIcons = {
   teacher_request: UserPlus,
@@ -54,6 +55,7 @@ const priorityColors = {
 };
 
 export const RealtimeNotificationIndicator = ({ isRTL = true }) => {
+  const { t } = useTranslation();
   const {
     isConnected,
     onlineUsers,
@@ -120,7 +122,7 @@ export const RealtimeNotificationIndicator = ({ isRTL = true }) => {
         <DropdownMenuLabel className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Bell className="h-4 w-4" />
-            <span>{isRTL ? 'الإشعارات الفورية' : 'Real-time Notifications'}</span>
+            <span>{t('realtimeNotifications')}</span>
           </div>
           <div className="flex items-center gap-1">
             {/* Online users */}
@@ -143,7 +145,7 @@ export const RealtimeNotificationIndicator = ({ isRTL = true }) => {
         {showSettings ? (
           <div className="p-3 space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm">{isRTL ? 'صوت الإشعارات' : 'Sound'}</span>
+              <span className="text-sm">{t('sound')}</span>
               <Switch 
                 checked={soundEnabled} 
                 onCheckedChange={toggleSound}
@@ -152,10 +154,10 @@ export const RealtimeNotificationIndicator = ({ isRTL = true }) => {
             </div>
             
             <div className="flex items-center justify-between">
-              <span className="text-sm">{isRTL ? 'إشعارات المتصفح' : 'Browser Notifications'}</span>
+              <span className="text-sm">{t('browserNotifications')}</span>
               {browserNotificationsEnabled ? (
                 <Badge variant="outline" className="text-green-600 border-green-600">
-                  {isRTL ? 'مفعّل' : 'Enabled'}
+                  {t('enabled')}
                 </Badge>
               ) : (
                 <Button 
@@ -174,7 +176,7 @@ export const RealtimeNotificationIndicator = ({ isRTL = true }) => {
               className="w-full"
               onClick={() => setShowSettings(false)}
             >
-              {isRTL ? 'إغلاق الإعدادات' : 'Close Settings'}
+              {t('closeSettings')}
             </Button>
           </div>
         ) : (
@@ -189,7 +191,7 @@ export const RealtimeNotificationIndicator = ({ isRTL = true }) => {
                 className="text-xs"
               >
                 <CheckCheck className="h-3 w-3 me-1" />
-                {isRTL ? 'قراءة الكل' : 'Mark all read'}
+                {t('markAllRead')}
               </Button>
               
               <div className="flex items-center gap-1">
@@ -220,7 +222,7 @@ export const RealtimeNotificationIndicator = ({ isRTL = true }) => {
               {notifications.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
                   <Bell className="h-8 w-8 mb-2 opacity-30" />
-                  <p className="text-sm">{isRTL ? 'لا توجد إشعارات' : 'No notifications'}</p>
+                  <p className="text-sm">{t('noNotifications2')}</p>
                 </div>
               ) : (
                 <div className="space-y-1 p-1">

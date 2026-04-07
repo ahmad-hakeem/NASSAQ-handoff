@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { Sidebar } from '../components/layout/Sidebar';
 import { HakimAssistant } from '../components/hakim/HakimAssistant';
 import { Button } from '../components/ui/button';
@@ -65,6 +65,7 @@ import { BulkTeacherImport } from '../components/wizards/BulkTeacherImport';
 import AddStudentWizard from '../components/wizards/AddStudentWizard';
 
 export const TeachersPage = () => {
+  const { t } = useTranslation();
   const { user, api } = useAuth();
   const { isRTL, toggleTheme, toggleLanguage, isDark } = useTheme();
   const [teachers, setTeachers] = useState([]);
@@ -130,7 +131,7 @@ export const TeachersPage = () => {
       }
     } catch (error) {
       console.error('Failed to fetch data:', error);
-      nassaqError(isRTL ? 'فشل تحميل البيانات' : 'Failed to load data');
+      nassaqError(t('failedToLoadData'));
     } finally {
       setLoading(false);
     }
@@ -151,14 +152,14 @@ export const TeachersPage = () => {
     const schoolId = isSchoolLevel ? userSchoolId : newTeacher.school_id;
     
     if (!newTeacher.full_name || !newTeacher.email || !schoolId || !newTeacher.specialization) {
-      nassaqError(isRTL ? 'يرجى ملء جميع الحقول المطلوبة' : 'Please fill all required fields');
+      nassaqError(t('pleaseFillAllRequiredFields'));
       return;
     }
 
     setSubmitting(true);
     try {
       const response = await api.post('/teachers', { ...newTeacher, school_id: schoolId });
-      toast.success(isRTL ? 'تم إضافة المعلم بنجاح' : 'Teacher added successfully');
+      toast.success(t('teacherAddedSuccessfully'));
       setCreateDialogOpen(false);
       setNewTeacher({
         full_name: '',
@@ -173,7 +174,7 @@ export const TeachersPage = () => {
       });
       setTeachers(prev => [...prev, response.data]);
     } catch (error) {
-      nassaqError(error.response?.data?.detail || (isRTL ? 'فشل إضافة المعلم' : 'Failed to add teacher'));
+      nassaqError(error.response?.data?.detail || (t('failedToAddTeacher')));
     } finally {
       setSubmitting(false);
     }
@@ -181,12 +182,12 @@ export const TeachersPage = () => {
 
   const handleDeleteTeacher = async (teacherId) => {
     nassaqConfirm(
-      isRTL ? 'هل أنت متأكد من حذف هذا المعلم؟ سيتم حذف جميع البيانات المرتبطة نهائياً.' : 'Are you sure you want to delete this teacher? All related data will be permanently removed.',
+      t('areYouSureYouWantToDeleteThisTeacherAllRelatedData'),
       async () => {
         try {
           const res = await api.delete(`/teachers/${teacherId}`);
           const cleanup = res.data?.cleanup;
-          let msg = isRTL ? 'تم حذف المعلم بنجاح' : 'Teacher deleted successfully';
+          let msg = t('teacherDeletedSuccessfully');
           if (cleanup) {
             const parts = Object.entries(cleanup).filter(([_, v]) => v > 0).map(([k, v]) => `${k}: ${v}`);
             if (parts.length > 0) msg += ` (${parts.join(', ')})`;
@@ -194,10 +195,10 @@ export const TeachersPage = () => {
           toast.success(msg);
           setTeachers(prev => prev.filter(t => t.id !== teacherId));
         } catch (error) {
-          nassaqError(error.response?.data?.detail || (isRTL ? 'فشل حذف المعلم' : 'Failed to delete teacher'));
+          nassaqError(error.response?.data?.detail || (t('failedToDeleteTeacher')));
         }
       },
-      { title: isRTL ? 'تأكيد الحذف النهائي' : 'Confirm Permanent Delete', confirmText: isRTL ? 'نعم، احذف نهائياً' : 'Yes, Delete Permanently', cancelText: isRTL ? 'إلغاء' : 'Cancel' }
+      { title: t('confirmPermanentDelete'), confirmText: t('yesDeletePermanently'), cancelText: t('cancel') }
     );
   };
 
@@ -254,7 +255,7 @@ export const TeachersPage = () => {
               <div className="relative flex-1 max-w-sm">
                 <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                 <Input
-                  placeholder={isRTL ? 'بحث عن معلم...' : 'Search teachers...'}
+                  placeholder={t('searchTeachers')}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="ps-10 rounded-xl"
@@ -266,10 +267,10 @@ export const TeachersPage = () => {
               {!isSchoolLevel && schools.length > 0 && (
                 <Select value={selectedSchool} onValueChange={setSelectedSchool}>
                   <SelectTrigger className="w-[200px] rounded-xl">
-                    <SelectValue placeholder={isRTL ? 'جميع المدارس' : 'All Schools'} />
+                    <SelectValue placeholder={t('allSchools')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">{isRTL ? 'جميع المدارس' : 'All Schools'}</SelectItem>
+                    <SelectItem value="all">{t('allSchools')}</SelectItem>
                     {schools.map(school => (
                       <SelectItem key={school.id} value={school.id}>{school.name}</SelectItem>
                     ))}
@@ -287,7 +288,7 @@ export const TeachersPage = () => {
                 data-testid="bulk-import-btn"
               >
                 <Upload className="h-5 w-5 me-2" />
-                {isRTL ? 'استيراد جماعي' : 'Bulk Import'}
+                {t('bulkImport')}
               </Button>
               
               <Button 
@@ -296,7 +297,7 @@ export const TeachersPage = () => {
                 data-testid="add-student-btn"
               >
                 <GraduationCap className="h-5 w-5 me-2" />
-                {isRTL ? 'إضافة طالب' : 'Add Student'}
+                {t('addStudent')}
               </Button>
               
               <Button 
@@ -305,7 +306,7 @@ export const TeachersPage = () => {
                 data-testid="add-teacher-btn"
               >
                 <UserPlus className="h-5 w-5 me-2" />
-                {isRTL ? 'إضافة معلم' : 'Add Teacher'}
+                {t('addTeacher')}
               </Button>
             </div>
 
@@ -314,27 +315,27 @@ export const TeachersPage = () => {
               <DialogContent className="sm:max-w-[600px]">
                 <DialogHeader>
                   <DialogTitle className="font-cairo">
-                    {isRTL ? 'إضافة معلم جديد' : 'Add New Teacher'}
+                    {t('addNewTeacher')}
                   </DialogTitle>
                   <DialogDescription>
-                    {isRTL ? 'أدخل بيانات المعلم الجديد' : 'Enter the new teacher details'}
+                    {t('enterTheNewTeacherDetails')}
                   </DialogDescription>
                 </DialogHeader>
                 
                 <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label>{isRTL ? 'الاسم الكامل (عربي) *' : 'Full Name (Arabic) *'}</Label>
+                      <Label>{t('fullNameArabic2')}</Label>
                       <Input
                         value={newTeacher.full_name}
                         onChange={(e) => setNewTeacher({ ...newTeacher, full_name: e.target.value })}
-                        placeholder={isRTL ? 'أحمد محمد' : 'Ahmed Mohammed'}
+                        placeholder={t('ahmedMohammed')}
                         className="rounded-xl"
                         data-testid="teacher-name-input"
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>{isRTL ? 'الاسم الكامل (إنجليزي)' : 'Full Name (English)'}</Label>
+                      <Label>{t('fullNameEnglish')}</Label>
                       <Input
                         value={newTeacher.full_name_en}
                         onChange={(e) => setNewTeacher({ ...newTeacher, full_name_en: e.target.value })}
@@ -346,7 +347,7 @@ export const TeachersPage = () => {
                   
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label>{isRTL ? 'البريد الإلكتروني *' : 'Email *'}</Label>
+                      <Label>{t('email4')}</Label>
                       <Input
                         type="email"
                         value={newTeacher.email}
@@ -357,7 +358,7 @@ export const TeachersPage = () => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>{isRTL ? 'رقم الهاتف' : 'Phone'}</Label>
+                      <Label>{t('phone3')}</Label>
                       <Input
                         value={newTeacher.phone}
                         onChange={(e) => setNewTeacher({ ...newTeacher, phone: e.target.value })}
@@ -369,13 +370,13 @@ export const TeachersPage = () => {
                   
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label>{isRTL ? 'المدرسة *' : 'School *'}</Label>
+                      <Label>{t('school2')}</Label>
                       <Select 
                         value={newTeacher.school_id} 
                         onValueChange={(value) => setNewTeacher({ ...newTeacher, school_id: value })}
                       >
                         <SelectTrigger className="rounded-xl" data-testid="teacher-school-select">
-                          <SelectValue placeholder={isRTL ? 'اختر المدرسة' : 'Select School'} />
+                          <SelectValue placeholder={t('selectSchool')} />
                         </SelectTrigger>
                         <SelectContent>
                           {schools.map(school => (
@@ -385,11 +386,11 @@ export const TeachersPage = () => {
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label>{isRTL ? 'التخصص *' : 'Specialization *'}</Label>
+                      <Label>{t('specialization2')}</Label>
                       <Input
                         value={newTeacher.specialization}
                         onChange={(e) => setNewTeacher({ ...newTeacher, specialization: e.target.value })}
-                        placeholder={isRTL ? 'رياضيات' : 'Mathematics'}
+                        placeholder={t('mathematics')}
                         className="rounded-xl"
                         data-testid="teacher-specialization-input"
                       />
@@ -418,17 +419,17 @@ export const TeachersPage = () => {
                   </div>
                   
                   <div className="space-y-2">
-                    <Label>{isRTL ? 'الجنس' : 'Gender'}</Label>
+                    <Label>{t('gender')}</Label>
                     <Select 
                       value={newTeacher.gender} 
                       onValueChange={(value) => setNewTeacher({ ...newTeacher, gender: value })}
                     >
                       <SelectTrigger className="rounded-xl">
-                        <SelectValue placeholder={isRTL ? 'اختر الجنس' : 'Select Gender'} />
+                        <SelectValue placeholder={t('selectGender')} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="male">{isRTL ? 'ذكر' : 'Male'}</SelectItem>
-                        <SelectItem value="female">{isRTL ? 'أنثى' : 'Female'}</SelectItem>
+                        <SelectItem value="male">{t('male')}</SelectItem>
+                        <SelectItem value="female">{t('female')}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -436,7 +437,7 @@ export const TeachersPage = () => {
                 
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setCreateDialogOpen(false)} className="rounded-xl">
-                    {isRTL ? 'إلغاء' : 'Cancel'}
+                    {t('cancel')}
                   </Button>
                   <Button 
                     onClick={handleCreateTeacher} 
@@ -445,9 +446,9 @@ export const TeachersPage = () => {
                     data-testid="create-teacher-btn"
                   >
                     {submitting ? (
-                      <><Loader2 className="h-4 w-4 animate-spin me-2" />{isRTL ? 'جاري الإضافة...' : 'Adding...'}</>
+                      <><Loader2 className="h-4 w-4 animate-spin me-2" />{t('adding')}</>
                     ) : (
-                      isRTL ? 'إضافة' : 'Add'
+                      t('add')
                     )}
                   </Button>
                 </DialogFooter>
@@ -467,11 +468,11 @@ export const TeachersPage = () => {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>{isRTL ? 'المعلم' : 'Teacher'}</TableHead>
-                        <TableHead>{isRTL ? 'التخصص' : 'Specialization'}</TableHead>
-                        <TableHead>{isRTL ? 'المدرسة' : 'School'}</TableHead>
-                        <TableHead>{isRTL ? 'الخبرة' : 'Experience'}</TableHead>
-                        <TableHead>{isRTL ? 'الحالة' : 'Status'}</TableHead>
+                        <TableHead>{t('teacher2')}</TableHead>
+                        <TableHead>{t('specialization')}</TableHead>
+                        <TableHead>{t('school')}</TableHead>
+                        <TableHead>{t('experience2')}</TableHead>
+                        <TableHead>{t('status2')}</TableHead>
                         <TableHead className="w-12"></TableHead>
                       </TableRow>
                     </TableHeader>
@@ -480,7 +481,7 @@ export const TeachersPage = () => {
                         <TableRow>
                           <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
                             <UserCheck className="h-12 w-12 mx-auto mb-4 opacity-20" />
-                            <p>{isRTL ? 'لا يوجد معلمين' : 'No teachers found'}</p>
+                            <p>{t('noTeachersFound')}</p>
                           </TableCell>
                         </TableRow>
                       ) : (
@@ -514,7 +515,7 @@ export const TeachersPage = () => {
                             </TableCell>
                             <TableCell>
                               <Badge className={teacher.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>
-                                {teacher.is_active ? (isRTL ? 'نشط' : 'Active') : (isRTL ? 'غير نشط' : 'Inactive')}
+                                {teacher.is_active ? (t('active')) : (t('inactive'))}
                               </Badge>
                             </TableCell>
                             <TableCell>
@@ -527,14 +528,14 @@ export const TeachersPage = () => {
                                 <DropdownMenuContent align="end">
                                   <DropdownMenuItem>
                                     <Edit className="h-4 w-4 me-2" />
-                                    {isRTL ? 'تعديل' : 'Edit'}
+                                    {t('edit')}
                                   </DropdownMenuItem>
                                   <DropdownMenuItem 
                                     className="text-red-600"
                                     onClick={() => handleDeleteTeacher(teacher.id)}
                                   >
                                     <Trash2 className="h-4 w-4 me-2" />
-                                    {isRTL ? 'حذف' : 'Delete'}
+                                    {t('delete')}
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
@@ -577,7 +578,7 @@ export const TeachersPage = () => {
           grades={grades}
           classes={classes}
           onSuccess={() => {
-            toast.success(isRTL ? 'تم إضافة الطالب بنجاح' : 'Student added successfully');
+            toast.success(t('studentAddedSuccessfully'));
             fetchData();
           }}
         />

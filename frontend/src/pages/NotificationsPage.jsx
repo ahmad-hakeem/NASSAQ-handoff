@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { Sidebar } from '../components/layout/Sidebar';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
@@ -41,6 +41,7 @@ const priorityConfig = {
 };
 
 export const NotificationsPage = () => {
+  const { t } = useTranslation();
   const { user, api } = useAuth();
   const { isRTL } = useTheme();
   const navigate = useNavigate();
@@ -97,9 +98,9 @@ export const NotificationsPage = () => {
     try {
       await api.put(`/notifications/${notificationId}/read`);
       setNotifications(prev => prev.map(n => n.id === notificationId ? { ...n, read_status: true } : n));
-      toast.success(isRTL ? 'تم تحديد الإشعار كمقروء' : 'Marked as read');
+      toast.success(t('markedAsRead'));
     } catch (error) {
-      nassaqError(isRTL ? 'فشل تحديد الإشعار' : 'Failed to mark as read');
+      nassaqError(t('failedToMarkAsRead'));
     }
   };
 
@@ -107,9 +108,9 @@ export const NotificationsPage = () => {
     try {
       await api.put('/notifications/mark-all-read');
       setNotifications(prev => prev.map(n => ({ ...n, read_status: true })));
-      toast.success(isRTL ? 'تم تحديد جميع الإشعارات كمقروءة' : 'All marked as read');
+      toast.success(t('allMarkedAsRead'));
     } catch (error) {
-      nassaqError(isRTL ? 'فشل تحديد الإشعارات' : 'Failed to mark all as read');
+      nassaqError(t('failedToMarkAllAsRead'));
     }
   };
 
@@ -117,9 +118,9 @@ export const NotificationsPage = () => {
     try {
       await api.delete(`/notifications/${notificationId}`);
       setNotifications(prev => prev.filter(n => n.id !== notificationId));
-      toast.success(isRTL ? 'تم حذف الإشعار' : 'Notification deleted');
+      toast.success(t('notificationDeleted'));
     } catch (error) {
-      nassaqError(isRTL ? 'فشل حذف الإشعار' : 'Failed to delete notification');
+      nassaqError(t('failedToDeleteNotification'));
     }
   };
 
@@ -133,9 +134,9 @@ export const NotificationsPage = () => {
     setSavingPrefs(true);
     try {
       await api.put(`/users/${user?.id}/notifications/settings`, prefSettings);
-      toast.success(isRTL ? 'تم حفظ التفضيلات' : 'Preferences saved');
+      toast.success(t('preferencesSaved'));
     } catch (error) {
-      nassaqError(isRTL ? 'فشل حفظ التفضيلات' : 'Failed to save preferences');
+      nassaqError(t('failedToSavePreferences'));
     } finally { setSavingPrefs(false); }
   };
 
@@ -159,8 +160,8 @@ export const NotificationsPage = () => {
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
     const notifDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    if (notifDate.getTime() === today.getTime()) return isRTL ? 'اليوم' : 'Today';
-    if (notifDate.getTime() === yesterday.getTime()) return isRTL ? 'أمس' : 'Yesterday';
+    if (notifDate.getTime() === today.getTime()) return t('today2');
+    if (notifDate.getTime() === yesterday.getTime()) return t('yesterday');
     return date.toLocaleDateString(isRTL ? 'ar-SA' : 'en-US', { weekday: 'long', day: 'numeric', month: 'long' });
   };
 
@@ -185,7 +186,7 @@ export const NotificationsPage = () => {
   const groupedByDate = useMemo(() => {
     const groups = {};
     filteredNotifications.forEach(n => {
-      const label = n.created_at ? getDateLabel(n.created_at) : (isRTL ? 'غير محدد' : 'Unknown');
+      const label = n.created_at ? getDateLabel(n.created_at) : (t('unknown'));
       if (!groups[label]) groups[label] = [];
       groups[label].push(n);
     });
@@ -264,20 +265,20 @@ export const NotificationsPage = () => {
             <div>
               <h1 className="text-2xl font-bold text-brand-navy dark:text-brand-turquoise font-cairo flex items-center gap-2">
                 <Bell className="h-6 w-6" />
-                {isRTL ? 'مركز الإشعارات' : 'Notifications Center'}
+                {t('notificationsCenter')}
                 {unreadCount > 0 && <Badge className="bg-red-500 text-white border-0">{unreadCount}</Badge>}
               </h1>
-              <p className="text-sm text-muted-foreground">{isRTL ? 'جميع إشعاراتك في مكان واحد' : 'All your notifications in one place'}</p>
+              <p className="text-sm text-muted-foreground">{t('allYourNotificationsInOnePlace')}</p>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <div className="relative">
                 <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input placeholder={isRTL ? 'بحث في الإشعارات...' : 'Search notifications...'} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="ps-9 w-full sm:w-[200px] h-9" />
+                <Input placeholder={t('searchNotifications')} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="ps-9 w-full sm:w-[200px] h-9" />
               </div>
               <Button variant="outline" size="sm" onClick={fetchNotifications} disabled={loading}><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /></Button>
               {unreadCount > 0 && (
                 <Button onClick={handleMarkAllAsRead} className="bg-brand-turquoise hover:bg-brand-turquoise/90" size="sm">
-                  <CheckCheck className="h-4 w-4 me-1" /><span className="hidden sm:inline">{isRTL ? 'تحديد الكل كمقروء' : 'Mark All Read'}</span>
+                  <CheckCheck className="h-4 w-4 me-1" /><span className="hidden sm:inline">{t('markAllRead2')}</span>
                 </Button>
               )}
             </div>
@@ -286,18 +287,18 @@ export const NotificationsPage = () => {
 
         <div className="p-4 max-w-[1400px] mx-auto space-y-5">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Card className="overflow-hidden"><CardContent className="p-3 text-center bg-blue-50 dark:bg-blue-950/30"><Bell className="h-5 w-5 mx-auto mb-1.5 text-blue-600" /><div className="text-xl font-bold font-cairo text-blue-600">{notifications.length}</div><div className="text-[10px] text-muted-foreground">{isRTL ? 'إجمالي' : 'Total'}</div></CardContent></Card>
-            <Card className="overflow-hidden"><CardContent className="p-3 text-center bg-red-50 dark:bg-red-950/30"><AlertCircle className="h-5 w-5 mx-auto mb-1.5 text-red-600" /><div className="text-xl font-bold font-cairo text-red-600">{unreadCount}</div><div className="text-[10px] text-muted-foreground">{isRTL ? 'غير مقروءة' : 'Unread'}</div></CardContent></Card>
-            <Card className="overflow-hidden"><CardContent className="p-3 text-center bg-green-50 dark:bg-green-950/30"><Check className="h-5 w-5 mx-auto mb-1.5 text-green-600" /><div className="text-xl font-bold font-cairo text-green-600">{notifications.length - unreadCount}</div><div className="text-[10px] text-muted-foreground">{isRTL ? 'مقروءة' : 'Read'}</div></CardContent></Card>
-            <Card className="overflow-hidden"><CardContent className="p-3 text-center bg-purple-50 dark:bg-purple-950/30"><Eye className="h-5 w-5 mx-auto mb-1.5 text-purple-600" /><div className="text-xl font-bold font-cairo text-purple-600">{notifications.length > 0 ? Math.round(((notifications.length - unreadCount) / notifications.length) * 100) : 0}%</div><div className="text-[10px] text-muted-foreground">{isRTL ? 'نسبة القراءة' : 'Read Rate'}</div></CardContent></Card>
+            <Card className="overflow-hidden"><CardContent className="p-3 text-center bg-blue-50 dark:bg-blue-950/30"><Bell className="h-5 w-5 mx-auto mb-1.5 text-blue-600" /><div className="text-xl font-bold font-cairo text-blue-600">{notifications.length}</div><div className="text-[10px] text-muted-foreground">{t('total2')}</div></CardContent></Card>
+            <Card className="overflow-hidden"><CardContent className="p-3 text-center bg-red-50 dark:bg-red-950/30"><AlertCircle className="h-5 w-5 mx-auto mb-1.5 text-red-600" /><div className="text-xl font-bold font-cairo text-red-600">{unreadCount}</div><div className="text-[10px] text-muted-foreground">{t('unread')}</div></CardContent></Card>
+            <Card className="overflow-hidden"><CardContent className="p-3 text-center bg-green-50 dark:bg-green-950/30"><Check className="h-5 w-5 mx-auto mb-1.5 text-green-600" /><div className="text-xl font-bold font-cairo text-green-600">{notifications.length - unreadCount}</div><div className="text-[10px] text-muted-foreground">{t('read')}</div></CardContent></Card>
+            <Card className="overflow-hidden"><CardContent className="p-3 text-center bg-purple-50 dark:bg-purple-950/30"><Eye className="h-5 w-5 mx-auto mb-1.5 text-purple-600" /><div className="text-xl font-bold font-cairo text-purple-600">{notifications.length > 0 ? Math.round(((notifications.length - unreadCount) / notifications.length) * 100) : 0}%</div><div className="text-[10px] text-muted-foreground">{t('readRate')}</div></CardContent></Card>
           </div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="mb-4 bg-muted/50 flex-wrap">
-              <TabsTrigger value="all" className="gap-1.5"><Inbox className="h-3.5 w-3.5" />{isRTL ? 'جميع الإشعارات' : 'All'}<Badge variant="secondary" className="text-[9px] h-4 border-0">{filteredNotifications.length}</Badge></TabsTrigger>
-              <TabsTrigger value="unread" className="gap-1.5"><BellOff className="h-3.5 w-3.5" />{isRTL ? 'غير مقروءة' : 'Unread'}{unreadCount > 0 && <Badge className="bg-red-500 text-white text-[9px] h-4 border-0">{unreadCount}</Badge>}</TabsTrigger>
-              <TabsTrigger value="types" className="gap-1.5"><Filter className="h-3.5 w-3.5" />{isRTL ? 'حسب النوع' : 'By Type'}</TabsTrigger>
-              <TabsTrigger value="preferences" className="gap-1.5"><Settings className="h-3.5 w-3.5" />{isRTL ? 'التفضيلات' : 'Preferences'}</TabsTrigger>
+              <TabsTrigger value="all" className="gap-1.5"><Inbox className="h-3.5 w-3.5" />{t('all2')}<Badge variant="secondary" className="text-[9px] h-4 border-0">{filteredNotifications.length}</Badge></TabsTrigger>
+              <TabsTrigger value="unread" className="gap-1.5"><BellOff className="h-3.5 w-3.5" />{t('unread')}{unreadCount > 0 && <Badge className="bg-red-500 text-white text-[9px] h-4 border-0">{unreadCount}</Badge>}</TabsTrigger>
+              <TabsTrigger value="types" className="gap-1.5"><Filter className="h-3.5 w-3.5" />{t('byType')}</TabsTrigger>
+              <TabsTrigger value="preferences" className="gap-1.5"><Settings className="h-3.5 w-3.5" />{t('preferences')}</TabsTrigger>
             </TabsList>
 
             <TabsContent value="all">
@@ -307,9 +308,9 @@ export const NotificationsPage = () => {
                     <CardTitle className="text-base font-cairo">{isRTL ? 'جميع الإشعارات' : 'All Notifications'}</CardTitle>
                     <div className="flex gap-2 flex-wrap">
                       <Select value={filterType} onValueChange={val => { setFilterType(val); setTimeout(() => fetchNotifications(), 0); }}>
-                        <SelectTrigger className="w-[130px] h-9"><SelectValue placeholder={isRTL ? 'النوع' : 'Type'} /></SelectTrigger>
+                        <SelectTrigger className="w-[130px] h-9"><SelectValue placeholder={t('type4')} /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="all">{isRTL ? 'كل الأنواع' : 'All Types'}</SelectItem>
+                          <SelectItem value="all">{t('allTypes2')}</SelectItem>
                           {Object.entries(notificationTypeConfig).map(([key, config]) => (
                             <SelectItem key={key} value={key}>{isRTL ? config.label.ar : config.label.en}</SelectItem>
                           ))}
@@ -318,24 +319,24 @@ export const NotificationsPage = () => {
                       <Select value={filterRead} onValueChange={val => { setFilterRead(val); setTimeout(() => fetchNotifications(), 0); }}>
                         <SelectTrigger className="w-[110px] h-9"><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="all">{isRTL ? 'الكل' : 'All'}</SelectItem>
-                          <SelectItem value="unread">{isRTL ? 'غير مقروء' : 'Unread'}</SelectItem>
-                          <SelectItem value="read">{isRTL ? 'مقروء' : 'Read'}</SelectItem>
+                          <SelectItem value="all">{t('all')}</SelectItem>
+                          <SelectItem value="unread">{t('unread2')}</SelectItem>
+                          <SelectItem value="read">{t('read2')}</SelectItem>
                         </SelectContent>
                       </Select>
                       <Select value={timePeriod} onValueChange={setTimePeriod}>
                         <SelectTrigger className="w-[110px] h-9"><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="all">{isRTL ? 'كل الفترات' : 'All Time'}</SelectItem>
-                          <SelectItem value="today">{isRTL ? 'اليوم' : 'Today'}</SelectItem>
-                          <SelectItem value="week">{isRTL ? 'الأسبوع' : 'This Week'}</SelectItem>
-                          <SelectItem value="month">{isRTL ? 'الشهر' : 'This Month'}</SelectItem>
+                          <SelectItem value="all">{t('allTime')}</SelectItem>
+                          <SelectItem value="today">{t('today2')}</SelectItem>
+                          <SelectItem value="week">{t('thisWeek')}</SelectItem>
+                          <SelectItem value="month">{t('thisMonth')}</SelectItem>
                         </SelectContent>
                       </Select>
                       <Select value={filterPriority} onValueChange={setFilterPriority}>
                         <SelectTrigger className="w-[110px] h-9"><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="all">{isRTL ? 'كل الأولويات' : 'All Priority'}</SelectItem>
+                          <SelectItem value="all">{t('allPriority')}</SelectItem>
                           {Object.entries(priorityConfig).map(([key, config]) => (
                             <SelectItem key={key} value={key}>{isRTL ? config.label.ar : config.label.en}</SelectItem>
                           ))}
@@ -349,7 +350,7 @@ export const NotificationsPage = () => {
                     {loading ? (
                       <div className="flex items-center justify-center py-16"><Loader2 className="h-8 w-8 animate-spin text-brand-turquoise" /></div>
                     ) : filteredNotifications.length === 0 ? (
-                      <div className="flex flex-col items-center py-16 text-center"><BellOff className="h-14 w-14 mb-4 text-muted-foreground/30" /><p className="text-muted-foreground font-cairo">{isRTL ? 'لا توجد إشعارات' : 'No notifications'}</p></div>
+                      <div className="flex flex-col items-center py-16 text-center"><BellOff className="h-14 w-14 mb-4 text-muted-foreground/30" /><p className="text-muted-foreground font-cairo">{t('noNotifications2')}</p></div>
                     ) : (
                       <div className="space-y-5">
                         {Object.entries(groupedByDate).map(([dateLabel, notifs]) => (
@@ -372,10 +373,10 @@ export const NotificationsPage = () => {
 
             <TabsContent value="unread">
               <Card>
-                <CardHeader className="pb-3"><CardTitle className="text-base font-cairo flex items-center gap-2"><AlertCircle className="h-4 w-4 text-red-500" />{isRTL ? 'الإشعارات غير المقروءة' : 'Unread Notifications'}<Badge className="bg-red-500 text-white border-0">{unreadCount}</Badge></CardTitle></CardHeader>
+                <CardHeader className="pb-3"><CardTitle className="text-base font-cairo flex items-center gap-2"><AlertCircle className="h-4 w-4 text-red-500" />{t('unreadNotifications')}<Badge className="bg-red-500 text-white border-0">{unreadCount}</Badge></CardTitle></CardHeader>
                 <CardContent>
                   {unreadCount === 0 ? (
-                    <div className="flex flex-col items-center py-16 text-center"><Check className="h-14 w-14 mb-4 text-green-400" /><p className="text-muted-foreground font-cairo font-medium">{isRTL ? 'لا توجد إشعارات غير مقروءة' : 'No unread notifications'}</p><p className="text-xs text-muted-foreground/60 mt-1">{isRTL ? 'أنت على اطلاع بكل شيء!' : 'You\'re all caught up!'}</p></div>
+                    <div className="flex flex-col items-center py-16 text-center"><Check className="h-14 w-14 mb-4 text-green-400" /><p className="text-muted-foreground font-cairo font-medium">{t('noUnreadNotifications')}</p><p className="text-xs text-muted-foreground/60 mt-1">{t('youreAllCaughtUp')}</p></div>
                   ) : (
                     <div className="space-y-2.5">{notifications.filter(n => !n.read_status).map(renderNotificationCard)}</div>
                   )}
@@ -398,7 +399,7 @@ export const NotificationsPage = () => {
                         </CardTitle>
                       </CardHeader>
                       <CardContent>
-                        {typeNotifs.length === 0 ? (<p className="text-xs text-muted-foreground text-center py-4">{isRTL ? 'لا توجد إشعارات' : 'No notifications'}</p>) : (
+                        {typeNotifs.length === 0 ? (<p className="text-xs text-muted-foreground text-center py-4">{t('noNotifications2')}</p>) : (
                           <div className="space-y-2">{typeNotifs.slice(0, 3).map(n => (
                             <div key={n.id} className={`p-2.5 rounded-lg border cursor-pointer transition-all hover:bg-muted/30 ${!n.read_status ? 'bg-brand-turquoise/5 border-brand-turquoise/20' : ''}`} onClick={() => handleNotificationClick(n)}>
                               <div className="flex items-center gap-2 mb-0.5"><h4 className="text-xs font-medium truncate">{isRTL ? n.title : (n.title_en || n.title)}</h4>{!n.read_status && <span className="w-1.5 h-1.5 rounded-full bg-brand-turquoise shrink-0" />}</div>
@@ -423,12 +424,12 @@ export const NotificationsPage = () => {
                     <>
                       <div className="space-y-3">
                         {[
-                          { key: 'email_notifications', label: isRTL ? 'إشعارات البريد الإلكتروني' : 'Email Notifications', desc: isRTL ? 'استلام إشعارات عبر البريد' : 'Receive notifications via email' },
-                          { key: 'push_notifications', label: isRTL ? 'إشعارات فورية' : 'Push Notifications', desc: isRTL ? 'إشعارات في المتصفح' : 'Browser push notifications' },
-                          { key: 'attendance_alerts', label: isRTL ? 'تنبيهات الحضور' : 'Attendance Alerts', desc: isRTL ? 'تنبيهات عند تسجيل حضور/غياب' : 'Alerts on attendance changes' },
-                          { key: 'grade_notifications', label: isRTL ? 'إشعارات الدرجات' : 'Grade Notifications', desc: isRTL ? 'إشعارات عند تحديث الدرجات' : 'Alerts on grade updates' },
-                          { key: 'behavior_alerts', label: isRTL ? 'تنبيهات السلوك' : 'Behavior Alerts', desc: isRTL ? 'إشعارات السلوكيات المسجلة' : 'Alerts on behavior records' },
-                          { key: 'announcement_notifications', label: isRTL ? 'الإعلانات' : 'Announcements', desc: isRTL ? 'إشعارات الإعلانات العامة' : 'School announcements' },
+                          { key: 'email_notifications', label: t('emailNotifications'), desc: t('receiveNotificationsViaEmail2') },
+                          { key: 'push_notifications', label: t('pushNotifications'), desc: t('browserPushNotifications') },
+                          { key: 'attendance_alerts', label: t('attendanceAlerts'), desc: t('alertsOnAttendanceChanges') },
+                          { key: 'grade_notifications', label: t('gradeNotifications'), desc: t('alertsOnGradeUpdates') },
+                          { key: 'behavior_alerts', label: t('behaviorAlerts'), desc: t('alertsOnBehaviorRecords') },
+                          { key: 'announcement_notifications', label: t('announcements2'), desc: t('schoolAnnouncements') },
                         ].map(pref => (
                           <div key={pref.key} className="flex items-center justify-between p-3 rounded-xl border hover:bg-muted/30 transition-colors">
                             <div><p className="text-sm font-medium font-cairo">{pref.label}</p><p className="text-xs text-muted-foreground">{pref.desc}</p></div>
@@ -437,7 +438,7 @@ export const NotificationsPage = () => {
                         ))}
                       </div>
                       <Button className="bg-brand-turquoise hover:bg-brand-turquoise/90" onClick={handleSavePreferences} disabled={savingPrefs}>
-                        {savingPrefs && <Loader2 className="h-4 w-4 animate-spin me-2" />}{isRTL ? 'حفظ التفضيلات' : 'Save Preferences'}
+                        {savingPrefs && <Loader2 className="h-4 w-4 animate-spin me-2" />}{t('savePreferences')}
                       </Button>
                     </>
                   )}

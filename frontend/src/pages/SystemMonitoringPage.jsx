@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Sidebar } from '../components/layout/Sidebar';
 import { PageHeader } from '../components/layout/PageHeader';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -226,9 +226,9 @@ const INITIAL_INTEGRATIONS = [];
 const INITIAL_ALERTS = [];
 
 export const SystemMonitoringPage = () => {
+  const { t } = useTranslation();
   const { isRTL = true, isDark } = useTheme();
   const { api } = useAuth();
-  const t = translations[isRTL ? 'ar' : 'en'];
   const diagnosisTimeoutRef = useRef(null);
   
   // States
@@ -360,7 +360,7 @@ export const SystemMonitoringPage = () => {
   const handleRefresh = () => {
     fetchMonitoringData();
     setLastUpdate(new Date());
-    toast.success(isRTL ? 'تم تحديث البيانات' : 'Data refreshed');
+    toast.success(t('dataRefreshed'));
   };
   
   // Get health status
@@ -411,7 +411,7 @@ export const SystemMonitoringPage = () => {
     diagnosisTimeoutRef.current = setTimeout(() => {
       setIsDiagnosing(false);
       setShowDiagnosticDialog(false);
-      toast.success(isRTL ? 'تم إكمال التشخيص - النظام سليم' : 'Diagnosis complete - System healthy');
+      toast.success(t('diagnosisCompleteSystemHealthy'));
     }, 3000);
   };
   
@@ -907,13 +907,13 @@ export const SystemMonitoringPage = () => {
                           </div>
                           <div className="flex items-center gap-2">
                             {alert.resolved ? (
-                              <Badge className="bg-green-500">{isRTL ? 'تم الحل' : 'Resolved'}</Badge>
+                              <Badge className="bg-green-500">{t('resolved')}</Badge>
                             ) : (
                               <>
                                 <Button 
                                   variant="outline" 
                                   size="sm"
-                                  onClick={() => toast.success(isRTL ? 'تم تصعيد التنبيه للفريق التقني' : 'Alert escalated to tech team')}
+                                  onClick={() => toast.success(t('alertEscalatedToTechTeam'))}
                                 >
                                   <Bell className="h-4 w-4 me-2" />
                                   {t.escalateAlert}
@@ -921,9 +921,9 @@ export const SystemMonitoringPage = () => {
                                 <Button 
                                   size="sm" 
                                   className="bg-brand-navy"
-                                  onClick={() => toast.success(isRTL ? 'تم بدء معالجة التنبيه' : 'Alert processing started')}
+                                  onClick={() => toast.success(t('alertProcessingStarted'))}
                                 >
-                                  {isRTL ? 'معالجة' : 'Handle'}
+                                  {t('handle')}
                                 </Button>
                               </>
                             )}
@@ -950,7 +950,7 @@ export const SystemMonitoringPage = () => {
                     </div>
                     <h3 className="font-bold mb-2">{t.viewLogs}</h3>
                     <p className="text-sm text-muted-foreground">
-                      {isRTL ? 'عرض سجل الأخطاء التفصيلي' : 'View detailed error logs'}
+                      {t('viewDetailedErrorLogs')}
                     </p>
                   </CardContent>
                 </Card>
@@ -958,7 +958,7 @@ export const SystemMonitoringPage = () => {
                 {/* Monitor APIs */}
                 <Card 
                   className="card-nassaq hover:shadow-lg transition-all cursor-pointer"
-                  onClick={() => toast.success(isRTL ? 'جاري فتح لوحة مراقبة APIs...' : 'Opening API monitoring...')}
+                  onClick={() => toast.success(t('openingApiMonitoring'))}
                 >
                   <CardContent className="p-6 text-center">
                     <div className="w-14 h-14 mx-auto mb-4 rounded-xl bg-blue-100 flex items-center justify-center">
@@ -966,7 +966,7 @@ export const SystemMonitoringPage = () => {
                     </div>
                     <h3 className="font-bold mb-2">{t.monitorAPIs}</h3>
                     <p className="text-sm text-muted-foreground">
-                      {isRTL ? 'مراقبة واجهات البرمجة' : 'Monitor API endpoints'}
+                      {t('monitorApiEndpoints')}
                     </p>
                   </CardContent>
                 </Card>
@@ -982,7 +982,7 @@ export const SystemMonitoringPage = () => {
                     </div>
                     <h3 className="font-bold mb-2">{t.monitorJobs}</h3>
                     <p className="text-sm text-muted-foreground">
-                      {isRTL ? 'مراقبة المهام الخلفية' : 'Monitor background jobs'}
+                      {t('monitorBackgroundJobs')}
                     </p>
                   </CardContent>
                 </Card>
@@ -994,9 +994,9 @@ export const SystemMonitoringPage = () => {
                     toast.promise(
                       new Promise((resolve) => setTimeout(resolve, 2000)),
                       {
-                        loading: isRTL ? 'جاري إعادة تشغيل الخدمة...' : 'Restarting service...',
-                        success: isRTL ? 'تم إعادة تشغيل الخدمة بنجاح' : 'Service restarted successfully',
-                        error: isRTL ? 'فشل إعادة التشغيل' : 'Restart failed',
+                        loading: t('restartingService'),
+                        success: t('serviceRestartedSuccessfully'),
+                        error: t('restartFailed'),
                       }
                     );
                   }}
@@ -1007,7 +1007,7 @@ export const SystemMonitoringPage = () => {
                     </div>
                     <h3 className="font-bold mb-2">{t.restartService}</h3>
                     <p className="text-sm text-muted-foreground">
-                      {isRTL ? 'إعادة تشغيل خدمة معينة' : 'Restart a specific service'}
+                      {t('restartASpecificService')}
                     </p>
                   </CardContent>
                 </Card>
@@ -1019,9 +1019,9 @@ export const SystemMonitoringPage = () => {
                     toast.promise(
                       new Promise((resolve) => setTimeout(resolve, 2500)),
                       {
-                        loading: isRTL ? 'جاري إعادة المزامنة...' : 'Re-syncing...',
-                        success: isRTL ? 'تمت إعادة المزامنة بنجاح' : 'Re-sync completed successfully',
-                        error: isRTL ? 'فشلت المزامنة' : 'Sync failed',
+                        loading: t('resyncing'),
+                        success: t('resyncCompletedSuccessfully'),
+                        error: t('syncFailed'),
                       }
                     );
                   }}
@@ -1032,7 +1032,7 @@ export const SystemMonitoringPage = () => {
                     </div>
                     <h3 className="font-bold mb-2">{t.reSync}</h3>
                     <p className="text-sm text-muted-foreground">
-                      {isRTL ? 'إعادة مزامنة التكاملات' : 'Re-sync integrations'}
+                      {t('resyncIntegrations')}
                     </p>
                   </CardContent>
                 </Card>
@@ -1040,7 +1040,7 @@ export const SystemMonitoringPage = () => {
                 {/* Escalate Alert */}
                 <Card 
                   className="card-nassaq hover:shadow-lg transition-all cursor-pointer"
-                  onClick={() => toast.success(isRTL ? 'تم تصعيد التنبيه للفريق التقني' : 'Alert escalated to tech team')}
+                  onClick={() => toast.success(t('alertEscalatedToTechTeam'))}
                 >
                   <CardContent className="p-6 text-center">
                     <div className="w-14 h-14 mx-auto mb-4 rounded-xl bg-yellow-100 flex items-center justify-center">
@@ -1048,7 +1048,7 @@ export const SystemMonitoringPage = () => {
                     </div>
                     <h3 className="font-bold mb-2">{t.escalateAlert}</h3>
                     <p className="text-sm text-muted-foreground">
-                      {isRTL ? 'تصعيد تنبيه للفريق التقني' : 'Escalate alert to tech team'}
+                      {t('escalateAlertToTechTeam')}
                     </p>
                   </CardContent>
                 </Card>
@@ -1070,7 +1070,7 @@ export const SystemMonitoringPage = () => {
                     link.href = URL.createObjectURL(blob);
                     link.download = `system_diagnostic_${new Date().toISOString().split('T')[0]}.json`;
                     link.click();
-                    toast.success(isRTL ? 'تم تنزيل التقرير التشخيصي' : 'Diagnostic report downloaded');
+                    toast.success(t('diagnosticReportDownloaded'));
                   }}
                 >
                   <CardContent className="p-6 text-center">
@@ -1079,7 +1079,7 @@ export const SystemMonitoringPage = () => {
                     </div>
                     <h3 className="font-bold mb-2">{t.downloadReport}</h3>
                     <p className="text-sm text-muted-foreground">
-                      {isRTL ? 'تنزيل تقرير تشخيصي' : 'Download diagnostic report'}
+                      {t('downloadDiagnosticReport')}
                     </p>
                   </CardContent>
                 </Card>
@@ -1095,7 +1095,7 @@ export const SystemMonitoringPage = () => {
                     </div>
                     <h3 className="font-bold mb-2">{t.aiDiagnosis}</h3>
                     <p className="text-sm text-muted-foreground">
-                      {isRTL ? 'تشغيل تشخيص ذكي للنظام' : 'Run AI system diagnosis'}
+                      {t('runAiSystemDiagnosis')}
                     </p>
                   </CardContent>
                 </Card>
@@ -1118,7 +1118,7 @@ export const SystemMonitoringPage = () => {
                 {errorLogs.length === 0 ? (
                   <div className="text-center text-muted-foreground py-12">
                     <CheckCircle2 className="h-12 w-12 mx-auto mb-4 text-green-500" />
-                    <p>{isRTL ? 'لا توجد أخطاء مسجلة' : 'No errors recorded'}</p>
+                    <p>{t('noErrorsRecorded')}</p>
                   </div>
                 ) : (
                   errorLogs.map((error, index) => (
@@ -1162,7 +1162,7 @@ export const SystemMonitoringPage = () => {
               {jobs.length === 0 ? (
                 <div className="text-center text-muted-foreground py-12">
                   <CheckCircle2 className="h-12 w-12 mx-auto mb-4 text-green-500" />
-                  <p>{isRTL ? 'لا توجد مهام نشطة' : 'No active jobs'}</p>
+                  <p>{t('noActiveJobs')}</p>
                 </div>
               ) : (
                 jobs.map((job) => (
@@ -1186,7 +1186,7 @@ export const SystemMonitoringPage = () => {
                       </>
                     )}
                     <div className="flex items-center justify-between text-sm text-muted-foreground">
-                      <span>{isRTL ? 'بدأ في:' : 'Started:'} {job.started}</span>
+                      <span>{t('started')} {job.started}</span>
                       {job.status === 'running' && (
                         <Button variant="ghost" size="sm">
                           <Pause className="h-4 w-4" />
@@ -1210,9 +1210,7 @@ export const SystemMonitoringPage = () => {
                 {t.aiDiagnosis}
               </DialogTitle>
               <DialogDescription>
-                {isRTL 
-                  ? 'سيقوم النظام بتحليل شامل للحالة التقنية باستخدام الذكاء الاصطناعي'
-                  : 'The system will perform comprehensive technical analysis using AI'}
+                {t('theSystemWillPerformComprehensiveTechnicalAnalysis')}
               </DialogDescription>
             </DialogHeader>
             
@@ -1222,10 +1220,10 @@ export const SystemMonitoringPage = () => {
                   <RefreshCw className="h-8 w-8 text-brand-navy animate-spin" />
                 </div>
                 <p className="font-medium">
-                  {isRTL ? 'جاري التشخيص...' : 'Running diagnosis...'}
+                  {t('runningDiagnosis')}
                 </p>
                 <p className="text-sm text-muted-foreground mt-2">
-                  {isRTL ? 'يرجى الانتظار' : 'Please wait'}
+                  {t('pleaseWait')}
                 </p>
               </div>
             ) : (
@@ -1233,19 +1231,19 @@ export const SystemMonitoringPage = () => {
                 <div className="py-4 space-y-3">
                   <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
                     <CheckCircle2 className="h-5 w-5 text-green-500" />
-                    <span>{isRTL ? 'تحليل مؤشرات الأداء' : 'Performance metrics analysis'}</span>
+                    <span>{t('performanceMetricsAnalysis')}</span>
                   </div>
                   <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
                     <CheckCircle2 className="h-5 w-5 text-green-500" />
-                    <span>{isRTL ? 'مراجعة استهلاك الموارد' : 'Resource consumption review'}</span>
+                    <span>{t('resourceConsumptionReview')}</span>
                   </div>
                   <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
                     <CheckCircle2 className="h-5 w-5 text-green-500" />
-                    <span>{isRTL ? 'فحص التكاملات' : 'Integrations check'}</span>
+                    <span>{t('integrationsCheck')}</span>
                   </div>
                   <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
                     <CheckCircle2 className="h-5 w-5 text-green-500" />
-                    <span>{isRTL ? 'تحليل الأخطاء المتكررة' : 'Error pattern analysis'}</span>
+                    <span>{t('errorPatternAnalysis')}</span>
                   </div>
                 </div>
                 <DialogFooter className="flex-row-reverse gap-2">

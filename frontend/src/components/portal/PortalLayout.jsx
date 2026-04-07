@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import { Button } from '../ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import {
@@ -32,6 +32,7 @@ import {
 const LOGO_WHITE = 'https://customer-assets.emergentagent.com/job_f5ea20bb-5cf5-462f-a7f0-958201e27f89/artifacts/q04svb5j_Nassaq%20LinkedIn%20Logo%20White.png';
 
 export const PortalLayout = ({ children, portalType = 'student' }) => {
+  const { t } = useTranslation();
   const { user, logout } = useAuth();
   const { isRTL } = useTheme();
   const location = useLocation();
@@ -49,25 +50,25 @@ export const PortalLayout = ({ children, portalType = 'student' }) => {
   };
 
   const studentMenuItems = [
-    { icon: Home, label: isRTL ? 'الرئيسية' : 'Home', href: '/student' },
-    { icon: Calendar, label: isRTL ? 'الجدول' : 'Schedule', href: '/student/schedule' },
-    { icon: BookOpen, label: isRTL ? 'الدرجات' : 'Grades', href: '/student/grades' },
-    { icon: CheckCircle, label: isRTL ? 'الحضور' : 'Attendance', href: '/student/attendance' },
-    { icon: User, label: isRTL ? 'ملفي' : 'Profile', href: '/student/profile' },
-    { icon: BarChart3, label: isRTL ? 'تقدمي' : 'Progress', href: '/student/progress' },
+    { icon: Home, label: t('home'), href: '/student' },
+    { icon: Calendar, label: t('schedule'), href: '/student/schedule' },
+    { icon: BookOpen, label: t('grades'), href: '/student/grades' },
+    { icon: CheckCircle, label: t('attendance2'), href: '/student/attendance' },
+    { icon: User, label: t('profile2'), href: '/student/profile' },
+    { icon: BarChart3, label: t('progress'), href: '/student/progress' },
     { icon: Trophy, label: isRTL ? 'إنجازاتي' : 'Achievements', href: '/student/achievements' },
-    { icon: Bell, label: isRTL ? 'الإشعارات' : 'Notifications', href: '/notifications' },
+    { icon: Bell, label: t('notifications'), href: '/notifications' },
   ];
 
   const parentMenuItems = [
-    { icon: Home, label: isRTL ? 'الرئيسية' : 'Home', href: '/parent' },
-    { icon: Users, label: isRTL ? 'أبنائي' : 'My Children', href: '/parent/children' },
-    { icon: FileText, label: isRTL ? 'عذر غياب' : 'Absence Excuse', href: '/parent/absence-excuse' },
-    { icon: CalendarCheck, label: isRTL ? 'طلب اجتماع' : 'Meeting Request', href: '/parent/meeting-request' },
-    { icon: BarChart3, label: isRTL ? 'التقارير' : 'Reports', href: '/parent/reports' },
-    { icon: MessageSquare, label: isRTL ? 'التواصل' : 'Messages', href: '/parent/messages' },
-    { icon: Bell, label: isRTL ? 'الإشعارات' : 'Notifications', href: '/notifications' },
-    { icon: Settings, label: isRTL ? 'الإعدادات' : 'Settings', href: '/parent/settings' },
+    { icon: Home, label: t('home'), href: '/parent' },
+    { icon: Users, label: t('myChildren'), href: '/parent/children' },
+    { icon: FileText, label: t('absenceExcuse'), href: '/parent/absence-excuse' },
+    { icon: CalendarCheck, label: t('meetingRequest'), href: '/parent/meeting-request' },
+    { icon: BarChart3, label: t('reports'), href: '/parent/reports' },
+    { icon: MessageSquare, label: t('messages'), href: '/parent/messages' },
+    { icon: Bell, label: t('notifications'), href: '/notifications' },
+    { icon: Settings, label: t('settings'), href: '/parent/settings' },
   ];
 
   const menuItems = isStudent ? studentMenuItems : parentMenuItems;
@@ -157,7 +158,7 @@ export const PortalLayout = ({ children, portalType = 'student' }) => {
                 data-testid="logout-btn"
               >
                 <LogOut className="h-4 w-4" />
-                {isRTL ? 'خروج' : 'Logout'}
+                {t('logout2')}
               </button>
             </div>
           </div>
@@ -182,7 +183,7 @@ export const PortalLayout = ({ children, portalType = 'student' }) => {
                 <div>
                   <p className="font-bold">{user?.full_name}</p>
                   <p className="text-sm text-white/70">
-                    {isStudent ? (isRTL ? 'طالب' : 'Student') : (isRTL ? 'ولي أمر' : 'Parent')}
+                    {isStudent ? (t('student')) : (isRTL ? 'ولي أمر' : 'Parent')}
                   </p>
                 </div>
               </div>
@@ -213,7 +214,7 @@ export const PortalLayout = ({ children, portalType = 'student' }) => {
                 className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 mt-4 border-t pt-4"
               >
                 <Settings className="h-5 w-5" />
-                {isRTL ? 'الإعدادات' : 'Settings'}
+                {t('settings')}
               </Link>
               
               {/* Logout */}
@@ -222,7 +223,7 @@ export const PortalLayout = ({ children, portalType = 'student' }) => {
                 className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-red-600 hover:bg-red-50 w-full"
               >
                 <LogOut className="h-5 w-5" />
-                {isRTL ? 'تسجيل الخروج' : 'Logout'}
+                {t('logout')}
               </button>
             </nav>
           </div>

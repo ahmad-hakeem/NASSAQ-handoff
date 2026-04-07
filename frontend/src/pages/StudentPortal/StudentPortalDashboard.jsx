@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
@@ -19,6 +19,7 @@ import {
 import { formatHijriDate } from '../../utils/hijriDate';
 
 const StudentPortalDashboard = () => {
+  const { t } = useTranslation();
   const { token, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
@@ -73,13 +74,13 @@ const StudentPortalDashboard = () => {
             <CardContent className="py-16 text-center">
               <AlertCircle className="h-16 w-16 mx-auto mb-4 text-gray-300" />
               <h3 className="font-bold text-lg text-gray-700 mb-2">
-                {isRTL ? 'تعذر تحميل لوحة التحكم' : 'Could not load dashboard'}
+                {t('couldNotLoadDashboard')}
               </h3>
               <button
                 onClick={() => window.location.reload()}
                 className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700"
               >
-                {isRTL ? 'إعادة المحاولة' : 'Retry'}
+                {t('retry')}
               </button>
             </CardContent>
           </Card>
@@ -90,13 +91,13 @@ const StudentPortalDashboard = () => {
 
   const getActivityTypeBadge = (type) => {
     const map = {
-      sports: { label: isRTL ? 'رياضي' : 'Sports', cls: 'bg-green-100 text-green-700' },
-      cultural: { label: isRTL ? 'ثقافي' : 'Cultural', cls: 'bg-blue-100 text-blue-700' },
-      scientific: { label: isRTL ? 'علمي' : 'Scientific', cls: 'bg-purple-100 text-purple-700' },
-      social: { label: isRTL ? 'اجتماعي' : 'Social', cls: 'bg-amber-100 text-amber-700' },
-      artistic: { label: isRTL ? 'فني' : 'Artistic', cls: 'bg-pink-100 text-pink-700' },
-      volunteer: { label: isRTL ? 'تطوعي' : 'Volunteer', cls: 'bg-teal-100 text-teal-700' },
-      other: { label: isRTL ? 'أخرى' : 'Other', cls: 'bg-gray-100 text-gray-700' },
+      sports: { label: t('sports'), cls: 'bg-green-100 text-green-700' },
+      cultural: { label: t('cultural'), cls: 'bg-blue-100 text-blue-700' },
+      scientific: { label: t('scientific'), cls: 'bg-purple-100 text-purple-700' },
+      social: { label: t('social'), cls: 'bg-amber-100 text-amber-700' },
+      artistic: { label: t('artistic'), cls: 'bg-pink-100 text-pink-700' },
+      volunteer: { label: t('volunteer'), cls: 'bg-teal-100 text-teal-700' },
+      other: { label: t('other'), cls: 'bg-gray-100 text-gray-700' },
     };
     const s = map[type] || map.other;
     return <Badge className={`${s.cls} border-0 text-xs`}>{s.label}</Badge>;
@@ -107,13 +108,13 @@ const StudentPortalDashboard = () => {
 
   const hakimMessages = [];
   if (dashboard?.attendance?.rate < 90) {
-    hakimMessages.push(isRTL ? 'حاول تحسين نسبة حضورك للحصول على نقاط إضافية.' : 'Try to improve your attendance to earn extra points.');
+    hakimMessages.push(t('tryToImproveYourAttendanceToEarnExtraPoints'));
   }
   if (points?.rank && points.rank <= 3) {
     hakimMessages.push(isRTL ? `أنت في المركز ${points.rank}! استمر بالتميز.` : `You're ranked #${points.rank}! Keep it up.`);
   }
   if (hakimMessages.length === 0) {
-    hakimMessages.push(isRTL ? 'أداؤك ممتاز! استمر في العمل الجاد.' : 'Great performance! Keep up the hard work.');
+    hakimMessages.push(t('greatPerformanceKeepUpTheHardWork'));
   }
 
   return (
@@ -129,7 +130,7 @@ const StudentPortalDashboard = () => {
                 <div>
                   <p className="text-emerald-100 text-sm">{formatHijriDate()}</p>
                   <h1 className="text-xl md:text-2xl font-bold font-cairo mt-1">
-                    {isRTL ? 'مرحباً' : 'Welcome'}, {dashboard?.student?.name?.split(' ')[0]}
+                    {t('welcome')}, {dashboard?.student?.name?.split(' ')[0]}
                   </h1>
                   <p className="text-emerald-100 flex items-center gap-2 mt-1 text-sm">
                     <MapPin className="h-4 w-4" />
@@ -140,11 +141,11 @@ const StudentPortalDashboard = () => {
               <div className="hidden md:flex gap-4">
                 <div className="text-center px-4 py-2 bg-white/10 rounded-xl backdrop-blur-sm">
                   <p className="text-2xl font-bold">{dashboard?.attendance?.rate}%</p>
-                  <p className="text-xs text-emerald-100">{isRTL ? 'الحضور' : 'Attendance'}</p>
+                  <p className="text-xs text-emerald-100">{t('attendance2')}</p>
                 </div>
                 <div className="text-center px-4 py-2 bg-white/10 rounded-xl backdrop-blur-sm">
                   <p className="text-2xl font-bold">{dashboard?.average_score}%</p>
-                  <p className="text-xs text-emerald-100">{isRTL ? 'المعدل' : 'Average'}</p>
+                  <p className="text-xs text-emerald-100">{t('average')}</p>
                 </div>
               </div>
             </div>
@@ -160,19 +161,19 @@ const StudentPortalDashboard = () => {
                   <Star className="h-6 w-6 text-white" />
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">{isRTL ? 'نقاطي' : 'My Score'}</p>
+                  <p className="text-xs text-muted-foreground">{t('myScore')}</p>
                   <p className="text-2xl font-bold text-amber-600">{points?.total_score || 0}</p>
                 </div>
               </div>
               <div className="flex items-center gap-4">
                 <div className="text-center">
-                  <p className="text-xs text-muted-foreground">{isRTL ? 'ترتيبي' : 'Rank'}</p>
+                  <p className="text-xs text-muted-foreground">{t('rank2')}</p>
                   <p className="text-lg font-bold text-amber-600">
                     {points?.rank || '-'} / {points?.class_size || '-'}
                   </p>
                 </div>
                 <div className="text-center">
-                  <p className="text-xs text-muted-foreground">{isRTL ? 'المستوى' : 'Level'}</p>
+                  <p className="text-xs text-muted-foreground">{t('level2')}</p>
                   <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-xs">
                     {isRTL ? points?.level_name : points?.level_name_en || `Lv.${points?.level || 1}`}
                   </Badge>
@@ -180,7 +181,7 @@ const StudentPortalDashboard = () => {
                 <Link to="/student/achievements">
                   <Button variant="ghost" size="sm" className="text-amber-600">
                     <Trophy className="h-4 w-4 me-1" />
-                    {isRTL ? 'الإنجازات' : 'Achievements'}
+                    {t('achievements')}
                   </Button>
                 </Link>
               </div>
@@ -193,28 +194,28 @@ const StudentPortalDashboard = () => {
             <CardContent className="p-3 text-center">
               <CheckCircle className="h-5 w-5 mx-auto mb-1 text-green-600" />
               <p className="text-lg font-bold text-green-600">{dashboard?.attendance?.rate}%</p>
-              <p className="text-[10px] text-muted-foreground">{isRTL ? 'الحضور' : 'Attendance'}</p>
+              <p className="text-[10px] text-muted-foreground">{t('attendance2')}</p>
             </CardContent>
           </Card>
           <Card className="rounded-xl border-0 shadow-sm">
             <CardContent className="p-3 text-center">
               <TrendingUp className="h-5 w-5 mx-auto mb-1 text-blue-600" />
               <p className="text-lg font-bold text-blue-600">{dashboard?.average_score}%</p>
-              <p className="text-[10px] text-muted-foreground">{isRTL ? 'المعدل' : 'Average'}</p>
+              <p className="text-[10px] text-muted-foreground">{t('average')}</p>
             </CardContent>
           </Card>
           <Card className="rounded-xl border-0 shadow-sm">
             <CardContent className="p-3 text-center">
               <Calendar className="h-5 w-5 mx-auto mb-1 text-amber-600" />
               <p className="text-lg font-bold text-amber-600">{dashboard?.attendance?.total_days}</p>
-              <p className="text-[10px] text-muted-foreground">{isRTL ? 'الأيام' : 'Days'}</p>
+              <p className="text-[10px] text-muted-foreground">{t('days2')}</p>
             </CardContent>
           </Card>
           <Card className="rounded-xl border-0 shadow-sm">
             <CardContent className="p-3 text-center">
               <Bell className="h-5 w-5 mx-auto mb-1 text-purple-600" />
               <p className="text-lg font-bold text-purple-600">{dashboard?.unread_notifications}</p>
-              <p className="text-[10px] text-muted-foreground">{isRTL ? 'إشعارات' : 'Notifications'}</p>
+              <p className="text-[10px] text-muted-foreground">{t('notifications2')}</p>
             </CardContent>
           </Card>
         </div>
@@ -229,7 +230,7 @@ const StudentPortalDashboard = () => {
                   {isRTL ? 'حصص اليوم' : "Today's Classes"}
                 </div>
                 <Link to="/student/schedule" className="text-xs text-emerald-600 hover:underline">
-                  {isRTL ? 'عرض الجدول' : 'Full Schedule'}
+                  {t('fullSchedule')}
                 </Link>
               </CardTitle>
             </CardHeader>
@@ -263,7 +264,7 @@ const StudentPortalDashboard = () => {
                 ) : (
                   <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                     <Calendar className="h-12 w-12 mb-3 opacity-30" />
-                    <p className="text-sm">{isRTL ? 'لا توجد حصص اليوم' : 'No classes today'}</p>
+                    <p className="text-sm">{t('noClassesToday')}</p>
                   </div>
                 )}
               </ScrollArea>
@@ -276,10 +277,10 @@ const StudentPortalDashboard = () => {
               <CardTitle className="flex items-center justify-between text-base">
                 <div className="flex items-center gap-2">
                   <Award className="h-5 w-5 text-purple-600" />
-                  {isRTL ? 'الأنشطة المشارك بها' : 'Activities'}
+                  {t('activities2')}
                 </div>
                 <span className="text-xs text-muted-foreground">
-                  {activityList.length} {isRTL ? 'نشاط' : 'total'}
+                  {activityList.length} {t('total4')}
                 </span>
               </CardTitle>
             </CardHeader>
@@ -311,7 +312,7 @@ const StudentPortalDashboard = () => {
                 ) : (
                   <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                     <Award className="h-12 w-12 mb-3 opacity-30" />
-                    <p className="text-sm">{isRTL ? 'لا توجد أنشطة حالياً' : 'No activities yet'}</p>
+                    <p className="text-sm">{t('noActivitiesYet')}</p>
                   </div>
                 )}
               </ScrollArea>
@@ -326,10 +327,10 @@ const StudentPortalDashboard = () => {
               <CardTitle className="flex items-center justify-between text-base">
                 <div className="flex items-center gap-2">
                   <Award className="h-5 w-5 text-blue-600" />
-                  {isRTL ? 'آخر الدرجات' : 'Recent Grades'}
+                  {t('recentGrades')}
                 </div>
                 <Link to="/student/grades" className="text-xs text-blue-600 hover:underline">
-                  {isRTL ? 'عرض الكل' : 'View All'}
+                  {t('viewAll')}
                 </Link>
               </CardTitle>
             </CardHeader>
@@ -389,13 +390,13 @@ const StudentPortalDashboard = () => {
               </div>
               <div className="mt-4 p-3 bg-white/60 rounded-xl">
                 <p className="text-xs text-muted-foreground mb-2">
-                  {isRTL ? 'يمكنك سؤال حكيم:' : 'Ask Hakim:'}
+                  {t('askHakim3')}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {[
-                    isRTL ? 'كيف أحسن مستواي؟' : 'How to improve?',
-                    isRTL ? 'ما أنشطتي؟' : 'My activities?',
-                    isRTL ? 'ما ترتيبي؟' : 'My rank?',
+                    t('howToImprove'),
+                    t('myActivities'),
+                    t('myRank'),
                   ].map((q, i) => (
                     <button
                       key={i}
@@ -416,20 +417,20 @@ const StudentPortalDashboard = () => {
             <CardTitle className="flex items-center justify-between text-base">
               <div className="flex items-center gap-2">
                 <CheckCircle className="h-5 w-5 text-green-600" />
-                {isRTL ? 'ملخص الحضور' : 'Attendance Summary'}
+                {t('attendanceSummary')}
               </div>
               <Link to="/student/attendance" className="text-xs text-green-600 hover:underline">
-                {isRTL ? 'التفاصيل' : 'Details'}
+                {t('details')}
               </Link>
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-4 gap-3">
               {[
-                { icon: CheckCircle, value: dashboard?.attendance?.present || 0, label: isRTL ? 'حاضر' : 'Present', color: 'green' },
-                { icon: AlertCircle, value: dashboard?.attendance?.absent || 0, label: isRTL ? 'غائب' : 'Absent', color: 'red' },
-                { icon: Clock, value: dashboard?.attendance?.late || 0, label: isRTL ? 'متأخر' : 'Late', color: 'amber' },
-                { icon: Calendar, value: dashboard?.attendance?.total_days || 0, label: isRTL ? 'إجمالي' : 'Total', color: 'blue' },
+                { icon: CheckCircle, value: dashboard?.attendance?.present || 0, label: t('present'), color: 'green' },
+                { icon: AlertCircle, value: dashboard?.attendance?.absent || 0, label: t('absent'), color: 'red' },
+                { icon: Clock, value: dashboard?.attendance?.late || 0, label: t('late'), color: 'amber' },
+                { icon: Calendar, value: dashboard?.attendance?.total_days || 0, label: t('total2'), color: 'blue' },
               ].map((item, idx) => (
                 <div key={idx} className={`text-center p-3 bg-${item.color}-50 rounded-xl`}>
                   <item.icon className={`h-6 w-6 mx-auto mb-1 text-${item.color}-600`} />

@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
@@ -25,6 +25,7 @@ import {
 const DAYS = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'];
 
 const StudentSchedulePage = () => {
+  const { t } = useTranslation();
   const { token, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
@@ -57,7 +58,7 @@ const StudentSchedulePage = () => {
       setStudentInfo(response.data.student_info);
     } catch (error) {
       console.error('Error fetching schedule:', error);
-      nassaqError(isRTL ? 'حدث خطأ في جلب الجدول' : 'Error fetching schedule');
+      nassaqError(t('errorFetchingSchedule'));
     } finally {
       setLoading(false);
     }
@@ -165,7 +166,7 @@ const StudentSchedulePage = () => {
                   ) : (
                     <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                       <Calendar className="h-12 w-12 mb-3 opacity-30" />
-                      <p>{isRTL ? 'لا توجد حصص في هذا اليوم' : 'No classes on this day'}</p>
+                      <p>{t('noClassesOnThisDay')}</p>
                     </div>
                   )}
                 </CardContent>

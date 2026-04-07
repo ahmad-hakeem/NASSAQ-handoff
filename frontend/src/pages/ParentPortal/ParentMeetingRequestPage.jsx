@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -29,6 +29,7 @@ const CONTACT_OPTIONS = [
 ];
 
 const ParentMeetingRequestPage = () => {
+  const { t } = useTranslation();
   const { token, user, api } = useAuth();
   const { isRTL } = useTheme();
   const [meetings, setMeetings] = useState([]);
@@ -60,7 +61,7 @@ const ParentMeetingRequestPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!preferredDate || !topic.trim()) {
-      toast.error(isRTL ? 'يرجى تعبئة التاريخ والموضوع' : 'Please fill date and topic');
+      toast.error(t('pleaseFillDateAndTopic'));
       return;
     }
     setSubmitting(true);
@@ -72,7 +73,7 @@ const ParentMeetingRequestPage = () => {
         details: details.trim(),
         contact_preference: contactPreference,
       });
-      toast.success(isRTL ? 'تم إرسال طلب الاجتماع بنجاح' : 'Meeting request submitted successfully');
+      toast.success(t('meetingRequestSubmittedSuccessfully'));
       setMeetings(prev => [res.data.meeting, ...prev]);
       setPreferredDate('');
       setPreferredTime('');
@@ -125,10 +126,10 @@ const ParentMeetingRequestPage = () => {
           <div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 font-cairo flex items-center gap-2">
               <CalendarCheck className="h-7 w-7 text-indigo-600" />
-              {isRTL ? 'طلب اجتماع' : 'Meeting Request'}
+              {t('meetingRequest')}
             </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              {isRTL ? 'أرسل طلب اجتماع مع إدارة المدرسة' : 'Request a meeting with school administration'}
+              {t('requestAMeetingWithSchoolAdministration')}
             </p>
           </div>
           <Button
@@ -138,9 +139,9 @@ const ParentMeetingRequestPage = () => {
             className="gap-1"
           >
             {showForm ? (
-              <>{isRTL ? 'طلباتي' : 'My Requests'} <History className="h-4 w-4" /></>
+              <>{t('myRequests')} <History className="h-4 w-4" /></>
             ) : (
-              <>{isRTL ? 'طلب جديد' : 'New Request'} <CalendarCheck className="h-4 w-4" /></>
+              <>{t('newRequest')} <CalendarCheck className="h-4 w-4" /></>
             )}
           </Button>
         </div>
@@ -150,7 +151,7 @@ const ParentMeetingRequestPage = () => {
             <div className="h-1.5 bg-gradient-to-r from-indigo-500 to-purple-500" />
             <CardHeader className="pb-2">
               <CardTitle className="text-lg font-cairo">
-                {isRTL ? 'نموذج طلب اجتماع' : 'Meeting Request Form'}
+                {t('meetingRequestForm')}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -158,7 +159,7 @@ const ParentMeetingRequestPage = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 block">
-                      {isRTL ? 'التاريخ المفضل *' : 'Preferred Date *'}
+                      {t('preferredDate')}
                     </label>
                     <Input
                       type="date"
@@ -170,7 +171,7 @@ const ParentMeetingRequestPage = () => {
                   </div>
                   <div>
                     <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 block">
-                      {isRTL ? 'الوقت المفضل' : 'Preferred Time'}
+                      {t('preferredTime')}
                     </label>
                     <Input
                       type="time"
@@ -182,31 +183,31 @@ const ParentMeetingRequestPage = () => {
 
                 <div>
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 block">
-                    {isRTL ? 'موضوع الاجتماع *' : 'Meeting Topic *'}
+                    {t('meetingTopic')}
                   </label>
                   <Input
                     value={topic}
                     onChange={(e) => setTopic(e.target.value)}
-                    placeholder={isRTL ? 'مثال: مناقشة المستوى الدراسي' : 'e.g., Discuss academic performance'}
+                    placeholder={t('egDiscussAcademicPerformance')}
                     required
                   />
                 </div>
 
                 <div>
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 block">
-                    {isRTL ? 'تفاصيل إضافية' : 'Additional Details'}
+                    {t('additionalDetails2')}
                   </label>
                   <textarea
                     value={details}
                     onChange={(e) => setDetails(e.target.value)}
-                    placeholder={isRTL ? 'أي تفاصيل إضافية تودّ إضافتها...' : 'Any additional details you want to share...'}
+                    placeholder={t('anyAdditionalDetailsYouWantToShare')}
                     className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-none"
                   />
                 </div>
 
                 <div>
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 block">
-                    {isRTL ? 'طريقة التواصل المفضلة' : 'Contact Preference'}
+                    {t('contactPreference')}
                   </label>
                   <div className="grid grid-cols-3 gap-2">
                     {CONTACT_OPTIONS.map(opt => {
@@ -243,7 +244,7 @@ const ParentMeetingRequestPage = () => {
                   ) : (
                     <>
                       <Send className="h-4 w-4 me-2" />
-                      {isRTL ? 'إرسال الطلب' : 'Submit Request'}
+                      {t('submitRequest')}
                     </>
                   )}
                 </Button>
@@ -255,7 +256,7 @@ const ParentMeetingRequestPage = () => {
         <div className="space-y-3">
           <h2 className="text-lg font-bold font-cairo text-gray-800 dark:text-gray-200 flex items-center gap-2">
             <History className="h-5 w-5 text-indigo-500" />
-            {isRTL ? 'طلباتي السابقة' : 'My Requests'}
+            {t('myRequests2')}
             {meetings.length > 0 && (
               <Badge variant="secondary" className="text-xs">{meetings.length}</Badge>
             )}
@@ -266,7 +267,7 @@ const ParentMeetingRequestPage = () => {
               <CardContent className="text-center py-10">
                 <CalendarCheck className="h-12 w-12 mx-auto mb-3 text-gray-300 dark:text-gray-600" />
                 <p className="text-gray-500 dark:text-gray-400 font-cairo">
-                  {isRTL ? 'لا توجد طلبات اجتماع بعد' : 'No meeting requests yet'}
+                  {t('noMeetingRequestsYet')}
                 </p>
               </CardContent>
             </Card>
@@ -314,13 +315,13 @@ const ParentMeetingRequestPage = () => {
                         {meeting.admin_notes && (
                           <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
                             <p className="text-xs text-blue-700 dark:text-blue-300">
-                              <span className="font-medium">{isRTL ? 'رد الإدارة: ' : 'Admin reply: '}</span>
+                              <span className="font-medium">{t('adminReply')}</span>
                               {meeting.admin_notes}
                             </p>
                           </div>
                         )}
                         <p className="text-[10px] text-gray-400 mt-1.5">
-                          {isRTL ? 'تاريخ الطلب: ' : 'Requested: '}{formatDate(meeting.created_at)}
+                          {t('requested')}{formatDate(meeting.created_at)}
                         </p>
                       </div>
                     </div>

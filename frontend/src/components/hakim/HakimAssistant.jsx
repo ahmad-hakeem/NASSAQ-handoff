@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import SectionErrorBoundary from '../SectionErrorBoundary';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -54,6 +54,7 @@ const HakimState = {
 };
 
 const MarkdownMessage = ({ content, onNavigate }) => {
+  const { t } = useTranslation();
   const components = useMemo(() => ({
     a: ({ href, children }) => {
       if (href && href.startsWith('/')) {
@@ -478,7 +479,7 @@ const HakimAssistantInner = () => {
                 value={input}
                 onChange={(e) => { setInput(e.target.value); setHakimState(e.target.value ? HakimState.LISTENING : HakimState.IDLE); }}
                 onFocus={handleUserInteraction}
-                placeholder={isRTL ? 'اسأل حكيم...' : 'Ask Hakim...'}
+                placeholder={t('askHakim')}
                 className="flex-1 rounded-xl text-[15px] h-12 border-border/50 focus:border-[#1B93A4] focus:ring-[#1B93A4]/20"
                 disabled={loading}
               />

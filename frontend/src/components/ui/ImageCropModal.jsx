@@ -12,7 +12,9 @@ import { Button } from './button';
 import { Slider } from './slider';
 import { Loader2, ZoomIn, ZoomOut, Upload, X, Check, ImagePlus } from 'lucide-react';
 
+import { useTranslation } from '../../contexts/ThemeContext';
 async function getCroppedImg(imageSrc, pixelCrop) {
+  const { t } = useTranslation();
   const image = new Image();
   image.crossOrigin = 'anonymous';
   await new Promise((resolve, reject) => {
@@ -80,11 +82,11 @@ export function ImageCropModal({ open, onOpenChange, onSave, isRTL = true }) {
     if (!file) return;
 
     if (!ALLOWED_TYPES.includes(file.type)) {
-      setError(isRTL ? 'صيغة الصورة غير مدعومة. الصيغ المدعومة: JPEG, PNG, WebP' : 'Unsupported format. Allowed: JPEG, PNG, WebP');
+      setError(t('unsupportedFormatAllowedJpegPngWebp'));
       return;
     }
     if (file.size > MAX_FILE_SIZE) {
-      setError(isRTL ? 'حجم الصورة كبير جداً (الحد الأقصى 5 ميجابايت)' : 'Image too large (max 5MB)');
+      setError(t('imageTooLargeMax5mb'));
       return;
     }
 
@@ -96,7 +98,7 @@ export function ImageCropModal({ open, onOpenChange, onSave, isRTL = true }) {
       setZoom(1);
     };
     reader.onerror = () => {
-      setError(isRTL ? 'فشل قراءة الصورة' : 'Failed to read image');
+      setError(t('failedToReadImage'));
     };
     reader.readAsDataURL(file);
   }, [isRTL]);
@@ -130,7 +132,7 @@ export function ImageCropModal({ open, onOpenChange, onSave, isRTL = true }) {
       resetState();
       onOpenChange(false);
     } catch (err) {
-      setError(isRTL ? 'فشل معالجة الصورة. يرجى المحاولة مرة أخرى' : 'Failed to process image. Please try again');
+      setError(t('failedToProcessImagePleaseTryAgain'));
     } finally {
       setSaving(false);
     }
@@ -158,10 +160,10 @@ export function ImageCropModal({ open, onOpenChange, onSave, isRTL = true }) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 font-cairo">
             <ImagePlus className="h-5 w-5 text-brand-navy" />
-            {isRTL ? 'تعديل الصورة الشخصية' : 'Edit Profile Image'}
+            {t('editProfileImage')}
           </DialogTitle>
           <DialogDescription className="font-tajawal">
-            {isRTL ? 'اختر صورة واقتصها بالشكل المناسب' : 'Select an image and crop it to fit'}
+            {t('selectAnImageAndCropItToFit')}
           </DialogDescription>
         </DialogHeader>
 
@@ -186,10 +188,10 @@ export function ImageCropModal({ open, onOpenChange, onSave, isRTL = true }) {
           >
             <Upload className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
             <p className="text-sm text-muted-foreground font-tajawal">
-              {isRTL ? 'اضغط لاختيار صورة' : 'Click to select an image'}
+              {t('clickToSelectAnImage')}
             </p>
             <p className="text-xs text-muted-foreground/70 mt-2 font-tajawal">
-              {isRTL ? 'JPEG, PNG, WebP — الحد الأقصى 5 ميجابايت' : 'JPEG, PNG, WebP — Max 5MB'}
+              {t('jpegPngWebpMax5mb')}
             </p>
           </div>
         ) : (
@@ -230,7 +232,7 @@ export function ImageCropModal({ open, onOpenChange, onSave, isRTL = true }) {
                 className="font-tajawal"
               >
                 <ImagePlus className="h-4 w-4" />
-                {isRTL ? 'تغيير الصورة' : 'Change Image'}
+                {t('changeImage')}
               </Button>
               <Button
                 variant="outline"
@@ -240,7 +242,7 @@ export function ImageCropModal({ open, onOpenChange, onSave, isRTL = true }) {
                 className="font-tajawal"
               >
                 <X className="h-4 w-4" />
-                {isRTL ? 'إلغاء' : 'Cancel'}
+                {t('cancel')}
               </Button>
               <Button
                 size="sm"
@@ -253,7 +255,7 @@ export function ImageCropModal({ open, onOpenChange, onSave, isRTL = true }) {
                 ) : (
                   <Check className="h-4 w-4" />
                 )}
-                {isRTL ? 'حفظ' : 'Save'}
+                {t('save')}
               </Button>
             </div>
           </>

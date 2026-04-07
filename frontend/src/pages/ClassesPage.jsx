@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { Sidebar } from '../components/layout/Sidebar';
 import { HakimAssistant } from '../components/hakim/HakimAssistant';
 import { Button } from '../components/ui/button';
@@ -58,6 +58,7 @@ import {
 import { Link } from 'react-router-dom';
 
 export const ClassesPage = () => {
+  const { t } = useTranslation();
   const { user, api } = useAuth();
   const { isRTL, toggleTheme, toggleLanguage, isDark } = useTheme();
   const [classes, setClasses] = useState([]);
@@ -115,7 +116,7 @@ export const ClassesPage = () => {
       }
     } catch (error) {
       console.error('Failed to fetch data:', error);
-      nassaqError(isRTL ? 'فشل تحميل البيانات' : 'Failed to load data');
+      nassaqError(t('failedToLoadData'));
     } finally {
       setLoading(false);
     }
@@ -144,14 +145,14 @@ export const ClassesPage = () => {
     const schoolId = isSchoolLevel ? userSchoolId : newClass.school_id;
     
     if (!newClass.name || !schoolId || !newClass.grade_level) {
-      nassaqError(isRTL ? 'يرجى ملء جميع الحقول المطلوبة' : 'Please fill all required fields');
+      nassaqError(t('pleaseFillAllRequiredFields'));
       return;
     }
 
     setSubmitting(true);
     try {
       const response = await api.post('/classes', { ...newClass, school_id: schoolId });
-      toast.success(isRTL ? 'تم إضافة الفصل بنجاح' : 'Class added successfully');
+      toast.success(t('classAddedSuccessfully'));
       setCreateDialogOpen(false);
       setNewClass({
         name: '',
@@ -164,7 +165,7 @@ export const ClassesPage = () => {
       });
       setClasses(prev => [...prev, response.data]);
     } catch (error) {
-      nassaqError(error.response?.data?.detail || (isRTL ? 'فشل إضافة الفصل' : 'Failed to add class'));
+      nassaqError(error.response?.data?.detail || (t('failedToAddClass')));
     } finally {
       setSubmitting(false);
     }
@@ -172,12 +173,12 @@ export const ClassesPage = () => {
 
   const handleDeleteClass = async (classId) => {
     nassaqConfirm(
-      isRTL ? 'هل أنت متأكد من حذف هذا الفصل؟ سيتم حذف جميع البيانات المرتبطة نهائياً.' : 'Are you sure you want to delete this class? All related data will be permanently removed.',
+      t('areYouSureYouWantToDeleteThisClassAllRelatedDataWi'),
       async () => {
         try {
           const res = await api.delete(`/classes/${classId}`);
           const cleanup = res.data?.cleanup;
-          let msg = isRTL ? 'تم حذف الفصل بنجاح' : 'Class deleted successfully';
+          let msg = t('classDeletedSuccessfully');
           if (cleanup) {
             const parts = Object.entries(cleanup).filter(([_, v]) => v > 0).map(([k, v]) => `${k}: ${v}`);
             if (parts.length > 0) msg += ` (${parts.join(', ')})`;
@@ -185,10 +186,10 @@ export const ClassesPage = () => {
           toast.success(msg);
           setClasses(prev => prev.filter(c => c.id !== classId));
         } catch (error) {
-          nassaqError(error.response?.data?.detail || (isRTL ? 'فشل حذف الفصل' : 'Failed to delete class'));
+          nassaqError(error.response?.data?.detail || (t('failedToDeleteClass')));
         }
       },
-      { title: isRTL ? 'تأكيد الحذف النهائي' : 'Confirm Permanent Delete', confirmText: isRTL ? 'نعم، احذف نهائياً' : 'Yes, Delete Permanently', cancelText: isRTL ? 'إلغاء' : 'Cancel' }
+      { title: t('confirmPermanentDelete'), confirmText: t('yesDeletePermanently'), cancelText: t('cancel') }
     );
   };
 
@@ -219,7 +220,7 @@ export const ClassesPage = () => {
               </Button>
               <div>
                 <h1 className="font-cairo text-2xl font-bold text-foreground">
-                  {isRTL ? 'إدارة الفصول' : 'Classes Management'}
+                  {t('classesManagement')}
                 </h1>
                 <p className="text-sm text-muted-foreground font-tajawal">
                   {isRTL ? `${filteredClasses.length} فصل` : `${filteredClasses.length} classes`}
@@ -244,7 +245,7 @@ export const ClassesPage = () => {
               <div className="relative flex-1 max-w-sm">
                 <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                 <Input
-                  placeholder={isRTL ? 'بحث عن فصل...' : 'Search classes...'}
+                  placeholder={t('searchClasses')}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="ps-10 rounded-xl"
@@ -256,10 +257,10 @@ export const ClassesPage = () => {
               {!isSchoolLevel && schools.length > 0 && (
                 <Select value={selectedSchool} onValueChange={setSelectedSchool}>
                   <SelectTrigger className="w-[200px] rounded-xl">
-                    <SelectValue placeholder={isRTL ? 'المدرسة' : 'School'} />
+                    <SelectValue placeholder={t('school')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">{isRTL ? 'جميع المدارس' : 'All Schools'}</SelectItem>
+                    <SelectItem value="all">{t('allSchools')}</SelectItem>
                     {schools.map(school => (
                       <SelectItem key={school.id} value={school.id}>{school.name}</SelectItem>
                     ))}
@@ -272,28 +273,28 @@ export const ClassesPage = () => {
               <DialogTrigger asChild>
                 <Button className="bg-brand-turquoise hover:bg-brand-turquoise-light rounded-xl" data-testid="add-class-btn">
                   <Plus className="h-5 w-5 me-2" />
-                  {isRTL ? 'إضافة فصل' : 'Add Class'}
+                  {t('addClass')}
                 </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-[500px]">
                 <DialogHeader>
                   <DialogTitle className="font-cairo">
-                    {isRTL ? 'إضافة فصل جديد' : 'Add New Class'}
+                    {t('addNewClass')}
                   </DialogTitle>
                   <DialogDescription>
-                    {isRTL ? 'أدخل بيانات الفصل الجديد' : 'Enter the new class details'}
+                    {t('enterTheNewClassDetails')}
                   </DialogDescription>
                 </DialogHeader>
                 
                 <div className="grid gap-4 py-4">
                   <div className="space-y-2">
-                    <Label>{isRTL ? 'المدرسة *' : 'School *'}</Label>
+                    <Label>{t('school2')}</Label>
                     <Select 
                       value={newClass.school_id} 
                       onValueChange={(value) => setNewClass({ ...newClass, school_id: value, homeroom_teacher_id: '' })}
                     >
                       <SelectTrigger className="rounded-xl" data-testid="class-school-select">
-                        <SelectValue placeholder={isRTL ? 'اختر المدرسة' : 'Select School'} />
+                        <SelectValue placeholder={t('selectSchool')} />
                       </SelectTrigger>
                       <SelectContent>
                         {schools.map(school => (
@@ -305,7 +306,7 @@ export const ClassesPage = () => {
                   
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label>{isRTL ? 'المرحلة الدراسية *' : 'Grade Level *'}</Label>
+                      <Label>{t('gradeLevel')}</Label>
                       <Select 
                         value={newClass.grade_level} 
                         onValueChange={(value) => setNewClass({ ...newClass, grade_level: value })}
@@ -321,13 +322,13 @@ export const ClassesPage = () => {
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label>{isRTL ? 'الشعبة' : 'Section'}</Label>
+                      <Label>{t('section')}</Label>
                       <Select 
                         value={newClass.section} 
                         onValueChange={(value) => setNewClass({ ...newClass, section: value })}
                       >
                         <SelectTrigger className="rounded-xl">
-                          <SelectValue placeholder={isRTL ? 'اختر الشعبة' : 'Select Section'} />
+                          <SelectValue placeholder={t('selectSection')} />
                         </SelectTrigger>
                         <SelectContent>
                           {sections.map(sec => (
@@ -339,18 +340,18 @@ export const ClassesPage = () => {
                   </div>
                   
                   <div className="space-y-2">
-                    <Label>{isRTL ? 'اسم الفصل' : 'Class Name'}</Label>
+                    <Label>{t('className')}</Label>
                     <Input
                       value={newClass.name}
                       onChange={(e) => setNewClass({ ...newClass, name: e.target.value })}
                       className="rounded-xl"
-                      placeholder={isRTL ? 'سيتم توليده تلقائياً' : 'Auto-generated'}
+                      placeholder={t('autogenerated')}
                     />
                   </div>
                   
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label>{isRTL ? 'السعة' : 'Capacity'}</Label>
+                      <Label>{t('capacity2')}</Label>
                       <Input
                         type="number"
                         value={newClass.capacity}
@@ -359,13 +360,13 @@ export const ClassesPage = () => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>{isRTL ? 'معلم الفصل' : 'Homeroom Teacher'}</Label>
+                      <Label>{t('homeroomTeacher')}</Label>
                       <Select 
                         value={newClass.homeroom_teacher_id} 
                         onValueChange={(value) => setNewClass({ ...newClass, homeroom_teacher_id: value })}
                       >
                         <SelectTrigger className="rounded-xl">
-                          <SelectValue placeholder={isRTL ? 'اختر المعلم' : 'Select Teacher'} />
+                          <SelectValue placeholder={t('selectTeacher')} />
                         </SelectTrigger>
                         <SelectContent>
                           {filteredTeachers.map(teacher => (
@@ -379,7 +380,7 @@ export const ClassesPage = () => {
                 
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setCreateDialogOpen(false)} className="rounded-xl">
-                    {isRTL ? 'إلغاء' : 'Cancel'}
+                    {t('cancel')}
                   </Button>
                   <Button 
                     onClick={handleCreateClass} 
@@ -388,9 +389,9 @@ export const ClassesPage = () => {
                     data-testid="create-class-btn"
                   >
                     {submitting ? (
-                      <><Loader2 className="h-4 w-4 animate-spin me-2" />{isRTL ? 'جاري الإضافة...' : 'Adding...'}</>
+                      <><Loader2 className="h-4 w-4 animate-spin me-2" />{t('adding')}</>
                     ) : (
-                      isRTL ? 'إضافة' : 'Add'
+                      t('add')
                     )}
                   </Button>
                 </DialogFooter>
@@ -409,12 +410,12 @@ export const ClassesPage = () => {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>{isRTL ? 'الفصل' : 'Class'}</TableHead>
+                        <TableHead>{t('class')}</TableHead>
                         <TableHead>{isRTL ? 'المرحلة' : 'Grade'}</TableHead>
-                        <TableHead>{isRTL ? 'المدرسة' : 'School'}</TableHead>
+                        <TableHead>{t('school')}</TableHead>
                         <TableHead>{isRTL ? 'معلم الفصل' : 'Homeroom'}</TableHead>
-                        <TableHead>{isRTL ? 'الطلاب' : 'Students'}</TableHead>
-                        <TableHead>{isRTL ? 'الحالة' : 'Status'}</TableHead>
+                        <TableHead>{t('students')}</TableHead>
+                        <TableHead>{t('status2')}</TableHead>
                         <TableHead className="w-12"></TableHead>
                       </TableRow>
                     </TableHeader>
@@ -423,7 +424,7 @@ export const ClassesPage = () => {
                         <TableRow>
                           <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
                             <FolderOpen className="h-12 w-12 mx-auto mb-4 opacity-20" />
-                            <p>{isRTL ? 'لا يوجد فصول' : 'No classes found'}</p>
+                            <p>{t('noClassesFound')}</p>
                           </TableCell>
                         </TableRow>
                       ) : (
@@ -466,7 +467,7 @@ export const ClassesPage = () => {
                             </TableCell>
                             <TableCell>
                               <Badge className={cls.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>
-                                {cls.is_active ? (isRTL ? 'نشط' : 'Active') : (isRTL ? 'غير نشط' : 'Inactive')}
+                                {cls.is_active ? (t('active')) : (t('inactive'))}
                               </Badge>
                             </TableCell>
                             <TableCell>
@@ -479,14 +480,14 @@ export const ClassesPage = () => {
                                 <DropdownMenuContent align="end">
                                   <DropdownMenuItem>
                                     <Edit className="h-4 w-4 me-2" />
-                                    {isRTL ? 'تعديل' : 'Edit'}
+                                    {t('edit')}
                                   </DropdownMenuItem>
                                   <DropdownMenuItem 
                                     className="text-red-600"
                                     onClick={() => handleDeleteClass(cls.id)}
                                   >
                                     <Trash2 className="h-4 w-4 me-2" />
-                                    {isRTL ? 'حذف' : 'Delete'}
+                                    {t('delete')}
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sidebar } from '../components/layout/Sidebar';
 import { PageHeader } from '../components/layout/PageHeader';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -295,11 +295,11 @@ const RULE_TYPES = {
 const INITIAL_RULES = [];
 
 export const RulesManagementPage = () => {
+  const { t } = useTranslation();
   const { isRTL = true, isDark } = useTheme();
   const navigate = useNavigate();
   const { nassaqError, nassaqWarning } = useNassaqAlert();
   const { api } = useAuth();
-  const t = translations[isRTL ? 'ar' : 'en'];
   
   // States
   const [rules, setRules] = useState([]);
@@ -320,7 +320,7 @@ export const RulesManagementPage = () => {
       setFilteredRules(data.rules || []);
     } catch (error) {
       console.error('Error fetching rules:', error);
-      nassaqError(isRTL ? 'فشل في تحميل القواعد' : 'Failed to load rules');
+      nassaqError(t('failedToLoadRules'));
     } finally {
       setLoading(false);
     }
@@ -411,7 +411,7 @@ export const RulesManagementPage = () => {
       fetchRules();
     } catch (error) {
       console.error('Error creating rule:', error);
-      nassaqError(isRTL ? 'فشل في إنشاء القاعدة' : 'Failed to create rule');
+      nassaqError(t('failedToCreateRule'));
     }
   };
   
@@ -425,7 +425,7 @@ export const RulesManagementPage = () => {
       fetchRules();
     } catch (error) {
       console.error('Error updating rule:', error);
-      nassaqError(isRTL ? 'فشل في تحديث القاعدة' : 'Failed to update rule');
+      nassaqError(t('failedToUpdateRule'));
     }
   };
   
@@ -438,7 +438,7 @@ export const RulesManagementPage = () => {
       fetchRules();
     } catch (error) {
       console.error('Error deleting rule:', error);
-      nassaqError(isRTL ? 'فشل في حذف القاعدة' : 'Failed to delete rule');
+      nassaqError(t('failedToDeleteRule'));
     }
   };
   
@@ -464,7 +464,7 @@ export const RulesManagementPage = () => {
       fetchRules();
     } catch (error) {
       console.error('Error duplicating rule:', error);
-      nassaqError(isRTL ? 'فشل في نسخ القاعدة' : 'Failed to duplicate rule');
+      nassaqError(t('failedToDuplicateRule'));
     }
   };
   
@@ -546,7 +546,7 @@ export const RulesManagementPage = () => {
   // Format value display
   const formatValue = (rule) => {
     if (rule.type === 'boolean') {
-      return rule.value ? (isRTL ? 'نعم' : 'Yes') : (isRTL ? 'لا' : 'No');
+      return rule.value ? (t('yes')) : (t('no'));
     }
     if (rule.type === 'percentage') {
       return `${rule.value}%`;
@@ -590,7 +590,7 @@ export const RulesManagementPage = () => {
                     link.href = URL.createObjectURL(blob);
                     link.download = `rules_export_${new Date().toISOString().split('T')[0]}.json`;
                     link.click();
-                    toast.success(isRTL ? 'تم تصدير القواعد بنجاح' : 'Rules exported successfully');
+                    toast.success(t('rulesExportedSuccessfully'));
                   }}
                 >
                   <Download className="h-4 w-4 me-2" />
@@ -672,7 +672,7 @@ export const RulesManagementPage = () => {
                   <SelectValue placeholder={t.ruleCategory} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">{isRTL ? 'جميع الفئات' : 'All Categories'}</SelectItem>
+                  <SelectItem value="all">{t('allCategories')}</SelectItem>
                   {Object.entries(RULE_CATEGORIES).map(([key, cat]) => (
                     <SelectItem key={key} value={key}>
                       {isRTL ? cat.title_ar : cat.title_en}
@@ -686,7 +686,7 @@ export const RulesManagementPage = () => {
                   <SelectValue placeholder={t.ruleStatus} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">{isRTL ? 'جميع الحالات' : 'All Status'}</SelectItem>
+                  <SelectItem value="all">{t('allStatus')}</SelectItem>
                   <SelectItem value="active">{t.active}</SelectItem>
                   <SelectItem value="draft">{t.draft}</SelectItem>
                   <SelectItem value="disabled">{t.disabled}</SelectItem>
@@ -695,7 +695,7 @@ export const RulesManagementPage = () => {
               
               <Button variant="outline" onClick={resetFilters} className="rounded-xl">
                 <RefreshCw className="h-4 w-4 me-2" />
-                {isRTL ? 'إعادة ضبط' : 'Reset'}
+                {t('reset')}
               </Button>
               
               <div className="flex items-center border rounded-xl overflow-hidden">
@@ -999,8 +999,8 @@ export const RulesManagementPage = () => {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="true">{isRTL ? 'نعم' : 'Yes'}</SelectItem>
-                        <SelectItem value="false">{isRTL ? 'لا' : 'No'}</SelectItem>
+                        <SelectItem value="true">{t('yes')}</SelectItem>
+                        <SelectItem value="false">{t('no')}</SelectItem>
                       </SelectContent>
                     </Select>
                   ) : (
@@ -1084,8 +1084,8 @@ export const RulesManagementPage = () => {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="true">{isRTL ? 'نعم' : 'Yes'}</SelectItem>
-                      <SelectItem value="false">{isRTL ? 'لا' : 'No'}</SelectItem>
+                      <SelectItem value="true">{t('yes')}</SelectItem>
+                      <SelectItem value="false">{t('no')}</SelectItem>
                     </SelectContent>
                   </Select>
                 ) : (

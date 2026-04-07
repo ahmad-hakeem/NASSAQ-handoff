@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sidebar } from '../components/layout/Sidebar';
 import { PageHeader } from '../components/layout/PageHeader';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
@@ -296,11 +296,11 @@ const REPORT_TYPES = [
 ];
 
 export const PlatformAnalyticsPage = () => {
+  const { t } = useTranslation();
   const { isRTL = true, isDark } = useTheme();
   const { api } = useAuth();
   const navigate = useNavigate();
   const { nassaqError, nassaqWarning } = useNassaqAlert();
-  const t = translations[isRTL ? 'ar' : 'en'];
   
   // States
   const [activeTab, setActiveTab] = useState('overview');
@@ -549,7 +549,7 @@ export const PlatformAnalyticsPage = () => {
   // Manual refresh handler
   const handleRefreshStats = () => {
     fetchLiveStats();
-    toast.success(isRTL ? 'جاري تحديث البيانات...' : 'Refreshing data...');
+    toast.success(t('refreshingData'));
   };
   
   // Format date
@@ -563,7 +563,7 @@ export const PlatformAnalyticsPage = () => {
   
   // Apply filters
   const handleApplyFilters = () => {
-    toast.success(isRTL ? 'تم تطبيق الفلاتر بنجاح' : 'Filters applied successfully');
+    toast.success(t('filtersAppliedSuccessfully'));
     setShowFiltersSheet(false);
   };
   
@@ -579,12 +579,12 @@ export const PlatformAnalyticsPage = () => {
       customDateFrom: '',
       customDateTo: '',
     });
-    toast.success(isRTL ? 'تم إعادة تعيين الفلاتر' : 'Filters reset');
+    toast.success(t('filtersReset'));
   };
   
   // Save filters
   const handleSaveFilters = () => {
-    toast.success(isRTL ? 'تم حفظ الفلاتر' : 'Filters saved');
+    toast.success(t('filtersSaved'));
   };
   
   const handleExport = async () => {
@@ -617,7 +617,7 @@ export const PlatformAnalyticsPage = () => {
       toast.success(isRTL ? `تم تحميل التقرير بصيغة ${exportFormat.toUpperCase()}` : `Report downloaded as ${exportFormat.toUpperCase()}`);
     } catch (err) {
       console.error('Export error:', err);
-      nassaqError(isRTL ? 'فشل تصدير التقرير' : 'Failed to export report');
+      nassaqError(t('failedToExportReport'));
     } finally {
       setLoading(false);
       setShowExportDialog(false);
@@ -643,9 +643,7 @@ export const PlatformAnalyticsPage = () => {
         total_students: stats.totalStudents,
         total_teachers: stats.totalTeachers,
       },
-      summary: isRTL 
-        ? 'تحليل شامل للأداء باستخدام الذكاء الاصطناعي — حكيم'
-        : 'Comprehensive AI-powered performance analysis — Hakim',
+      summary: t('comprehensiveAipoweredPerformanceAnalysisHakim'),
     };
     
     const blob = new Blob([JSON.stringify(aiSummary, null, 2)], { type: 'application/json' });
@@ -655,7 +653,7 @@ export const PlatformAnalyticsPage = () => {
     link.click();
     
     setLoading(false);
-    toast.success(isRTL ? 'تم تحميل ملخص حكيم' : 'Hakim AI Summary downloaded');
+    toast.success(t('hakimAiSummaryDownloaded'));
   };
   
   // Generate AI report
@@ -664,7 +662,7 @@ export const PlatformAnalyticsPage = () => {
     setGeneratingAI(true);
     setTimeout(() => {
       setGeneratingAI(false);
-      toast.success(isRTL ? 'تم إنشاء التقرير بنجاح' : 'Report generated successfully');
+      toast.success(t('reportGeneratedSuccessfully'));
       setShowAIBuilderDialog(false);
       setAIQuery('');
     }, 3000);
@@ -672,14 +670,14 @@ export const PlatformAnalyticsPage = () => {
   
   // Schedule report
   const handleScheduleReport = () => {
-    toast.success(isRTL ? 'تم جدولة التقرير بنجاح' : 'Report scheduled successfully');
+    toast.success(t('reportScheduledSuccessfully'));
     setShowScheduleDialog(false);
     setShowAddScheduledDialog(false);
   };
   
   // Share report
   const handleShareReport = () => {
-    toast.success(isRTL ? 'تم إرسال التقرير بنجاح' : 'Report shared successfully');
+    toast.success(t('reportSharedSuccessfully'));
     setShowShareDialog(false);
   };
   
@@ -813,12 +811,12 @@ export const PlatformAnalyticsPage = () => {
                   <div className="flex items-center gap-2">
                     <div className={`w-2 h-2 rounded-full ${isRefreshing ? 'bg-yellow-500 animate-pulse' : 'bg-green-500'}`} />
                     <span className="text-sm text-muted-foreground">
-                      {isRTL ? 'البيانات الحية' : 'Live Data'}
+                      {t('liveData')}
                     </span>
                   </div>
                   {lastRefreshTime && (
                     <span className="text-xs text-muted-foreground">
-                      {isRTL ? 'آخر تحديث:' : 'Last update:'} {lastRefreshTime.toLocaleTimeString(isRTL ? 'ar-SA' : 'en-US')}
+                      {t('lastUpdate')} {lastRefreshTime.toLocaleTimeString(isRTL ? 'ar-SA' : 'en-US')}
                     </span>
                   )}
                 </div>
@@ -830,7 +828,7 @@ export const PlatformAnalyticsPage = () => {
                   className="rounded-xl"
                 >
                   <RefreshCw className={`h-4 w-4 me-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-                  {isRTL ? 'تحديث' : 'Refresh'}
+                  {t('refresh')}
                 </Button>
               </div>
 
@@ -892,10 +890,10 @@ export const PlatformAnalyticsPage = () => {
                   <CardContent className="p-5">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-white/70 text-sm">{isRTL ? 'إجمالي الفصول' : 'Total Classes'}</p>
+                        <p className="text-white/70 text-sm">{t('totalClasses')}</p>
                         <p className="text-3xl font-bold">{stats.totalClasses.toLocaleString()}</p>
                         <p className="text-xs text-white/60 mt-1">
-                          {isRTL ? 'فصل دراسي' : 'classrooms'}
+                          {t('classrooms')}
                         </p>
                       </div>
                       <School className="h-10 w-10 text-white/30" />
@@ -911,7 +909,7 @@ export const PlatformAnalyticsPage = () => {
                         <p className="text-white/70 text-sm">{isRTL ? 'حصص اليوم' : 'Lessons Today'}</p>
                         <p className="text-3xl font-bold">{stats.totalLessonsToday.toLocaleString()}</p>
                         <p className="text-xs text-white/60 mt-1">
-                          {isRTL ? 'حصة دراسية' : 'sessions'}
+                          {t('sessions2')}
                         </p>
                       </div>
                       <BookOpen className="h-10 w-10 text-white/30" />
@@ -927,10 +925,10 @@ export const PlatformAnalyticsPage = () => {
                   <CardContent className="p-5">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-white/70 text-sm">{isRTL ? 'المستخدمين النشطين' : 'Active Users'}</p>
+                        <p className="text-white/70 text-sm">{t('activeUsers2')}</p>
                         <p className="text-3xl font-bold">{stats.activeUsersToday.toLocaleString()}</p>
                         <p className="text-xs text-white/60 mt-1">
-                          {isRTL ? 'مستخدم نشط اليوم' : 'active today'}
+                          {t('activeToday')}
                         </p>
                       </div>
                       <Activity className="h-10 w-10 text-white/30" />
@@ -943,11 +941,11 @@ export const PlatformAnalyticsPage = () => {
                   <CardContent className="p-5">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-muted-foreground text-sm">{isRTL ? 'حضور الطلاب' : 'Student Attendance'}</p>
+                        <p className="text-muted-foreground text-sm">{t('studentAttendance')}</p>
                         <p className="text-3xl font-bold text-green-600">{stats.studentAttendancePercentage}%</p>
                         <div className="flex items-center gap-2 mt-1">
-                          <span className="text-xs text-green-600">{isRTL ? 'حاضر' : 'Present'}: {stats.studentsPresent}</span>
-                          <span className="text-xs text-red-500">{isRTL ? 'غائب' : 'Absent'}: {stats.studentsAbsent}</span>
+                          <span className="text-xs text-green-600">{t('present')}: {stats.studentsPresent}</span>
+                          <span className="text-xs text-red-500">{t('absent')}: {stats.studentsAbsent}</span>
                         </div>
                       </div>
                       <div className="w-16 h-16 relative">
@@ -967,11 +965,11 @@ export const PlatformAnalyticsPage = () => {
                   <CardContent className="p-5">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-muted-foreground text-sm">{isRTL ? 'حضور المعلمين' : 'Teacher Attendance'}</p>
+                        <p className="text-muted-foreground text-sm">{t('teacherAttendance')}</p>
                         <p className="text-3xl font-bold text-blue-600">{stats.teacherAttendancePercentage}%</p>
                         <div className="flex items-center gap-2 mt-1">
-                          <span className="text-xs text-blue-600">{isRTL ? 'حاضر' : 'Present'}: {stats.teachersPresent}</span>
-                          <span className="text-xs text-red-500">{isRTL ? 'غائب' : 'Absent'}: {stats.teachersAbsent}</span>
+                          <span className="text-xs text-blue-600">{t('present')}: {stats.teachersPresent}</span>
+                          <span className="text-xs text-red-500">{t('absent')}: {stats.teachersAbsent}</span>
                         </div>
                       </div>
                       <div className="w-16 h-16 relative">
@@ -997,8 +995,8 @@ export const PlatformAnalyticsPage = () => {
                         </p>
                         <p className="text-xs text-muted-foreground mt-1">
                           {stats.waitingSessions > 0 
-                            ? (isRTL ? 'تحتاج تغطية' : 'Need coverage') 
-                            : (isRTL ? 'لا توجد حصص انتظار' : 'No waiting')}
+                            ? (t('needCoverage')) 
+                            : (t('noWaiting'))}
                         </p>
                       </div>
                       <div className={`w-12 h-12 rounded-full flex items-center justify-center ${stats.waitingSessions > 0 ? 'bg-yellow-100' : 'bg-gray-100'}`}>
@@ -1010,7 +1008,7 @@ export const PlatformAnalyticsPage = () => {
               </div>
               
               {/* Charts Row */}
-              <SectionErrorBoundary name="AnalyticsCharts" isRTL={isRTL} fallbackMessage={isRTL ? 'تعذّر تحميل الرسوم البيانية' : 'Failed to load analytics charts'}>
+              <SectionErrorBoundary name="AnalyticsCharts" isRTL={isRTL} fallbackMessage={t('failedToLoadAnalyticsCharts')}>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* School Distribution by City */}
                 <Card>
@@ -1074,7 +1072,7 @@ export const PlatformAnalyticsPage = () => {
                     ) : (
                       <div className="h-[300px] flex flex-col items-center justify-center text-muted-foreground gap-3">
                         <MapPin className="h-12 w-12 opacity-20" />
-                        <p className="text-sm">{isRTL ? 'لا توجد بيانات توزيع جغرافي متاحة' : 'No geographic distribution data available'}</p>
+                        <p className="text-sm">{t('noGeographicDistributionDataAvailable')}</p>
                       </div>
                     )}
                   </CardContent>
@@ -1139,7 +1137,7 @@ export const PlatformAnalyticsPage = () => {
                     ) : (
                       <div className="h-[300px] flex flex-col items-center justify-center text-muted-foreground gap-3">
                         <UserCheck className="h-12 w-12 opacity-20" />
-                        <p className="text-sm">{isRTL ? 'لا توجد بيانات حضور متاحة' : 'No attendance data available'}</p>
+                        <p className="text-sm">{t('noAttendanceDataAvailable2')}</p>
                       </div>
                     )}
                   </CardContent>
@@ -1182,7 +1180,7 @@ export const PlatformAnalyticsPage = () => {
                             stroke="#2563eb"
                             fillOpacity={1}
                             fill="url(#colorSchools)"
-                            name={isRTL ? 'المدارس' : 'Schools'}
+                            name={t('schools2')}
                           />
                           <Area
                             yAxisId="right"
@@ -1191,7 +1189,7 @@ export const PlatformAnalyticsPage = () => {
                             stroke="#16a34a"
                             fillOpacity={1}
                             fill="url(#colorStudents)"
-                            name={isRTL ? 'الطلاب' : 'Students'}
+                            name={t('students')}
                           />
                         </AreaChart>
                       </ResponsiveContainer>
@@ -1199,7 +1197,7 @@ export const PlatformAnalyticsPage = () => {
                   ) : (
                     <div className="h-[350px] flex flex-col items-center justify-center text-muted-foreground gap-3">
                       <TrendingUp className="h-12 w-12 opacity-20" />
-                      <p className="text-sm">{isRTL ? 'لا توجد بيانات نمو متاحة' : 'No growth trend data available'}</p>
+                      <p className="text-sm">{t('noGrowthTrendDataAvailable')}</p>
                     </div>
                   )}
                 </CardContent>
@@ -1302,7 +1300,7 @@ export const PlatformAnalyticsPage = () => {
                           <div>
                             <p className="font-medium">{isRTL ? report.name : report.name_en}</p>
                             <p className="text-sm text-muted-foreground">
-                              {t[report.frequency]} • {report.recipients} {isRTL ? 'مستلم' : 'recipients'}
+                              {t[report.frequency]} • {report.recipients} {t('recipients3')}
                             </p>
                           </div>
                         </div>
@@ -1325,9 +1323,9 @@ export const PlatformAnalyticsPage = () => {
                         <Brain className="h-8 w-8" />
                       </div>
                       <div>
-                        <h3 className="text-xl font-bold">{isRTL ? 'تحليل حكيم الذكي' : 'Hakim AI Analysis'}</h3>
+                        <h3 className="text-xl font-bold">{t('hakimAiAnalysis')}</h3>
                         <p className="text-white/80">
-                          {isRTL ? 'تحليل شامل لأداء المدرسة بالذكاء الاصطناعي' : 'AI-powered comprehensive school analysis'}
+                          {t('aipoweredComprehensiveSchoolAnalysis')}
                         </p>
                       </div>
                     </div>
@@ -1335,7 +1333,7 @@ export const PlatformAnalyticsPage = () => {
                       <Select value={selectedAnalysisSchool} onValueChange={setSelectedAnalysisSchool}>
                         <SelectTrigger className="w-[220px] rounded-xl bg-white/20 border-white/30 text-white">
                           <School className="h-4 w-4 me-2" />
-                          <SelectValue placeholder={isRTL ? 'اختر مدرسة' : 'Select school'} />
+                          <SelectValue placeholder={t('selectSchool2')} />
                         </SelectTrigger>
                         <SelectContent>
                           {schoolsList.map(s => (
@@ -1356,7 +1354,7 @@ export const PlatformAnalyticsPage = () => {
                         ) : (
                           <Sparkles className="h-4 w-4 me-2" />
                         )}
-                        {isRTL ? 'تحليل' : 'Analyze'}
+                        {t('analyze')}
                       </Button>
                       <Button 
                         variant="secondary" 
@@ -1376,7 +1374,7 @@ export const PlatformAnalyticsPage = () => {
                 <div className="flex items-center justify-center py-12">
                   <div className="text-center">
                     <Loader2 className="h-10 w-10 animate-spin text-brand-turquoise mx-auto mb-4" />
-                    <p className="text-muted-foreground">{isRTL ? 'جاري تحليل بيانات المدرسة...' : 'Analyzing school data...'}</p>
+                    <p className="text-muted-foreground">{t('analyzingSchoolData')}</p>
                   </div>
                 </div>
               )}
@@ -1389,7 +1387,7 @@ export const PlatformAnalyticsPage = () => {
                       <CardContent className="p-4 text-center">
                         <AlertTriangle className="h-8 w-8 mx-auto mb-2 text-red-600" />
                         <div className="text-3xl font-bold text-red-600">{hakimAnalysis.risk_counts?.critical || 0}</div>
-                        <div className="text-xs text-muted-foreground">{isRTL ? 'حرج' : 'Critical'}</div>
+                        <div className="text-xs text-muted-foreground">{t('critical')}</div>
                       </CardContent>
                     </Card>
                     <Card className="border-orange-200 bg-orange-50 dark:bg-orange-950/30">
@@ -1403,7 +1401,7 @@ export const PlatformAnalyticsPage = () => {
                       <CardContent className="p-4 text-center">
                         <Info className="h-8 w-8 mx-auto mb-2 text-yellow-600" />
                         <div className="text-3xl font-bold text-yellow-600">{hakimAnalysis.risk_counts?.medium || 0}</div>
-                        <div className="text-xs text-muted-foreground">{isRTL ? 'متوسط' : 'Medium'}</div>
+                        <div className="text-xs text-muted-foreground">{t('medium')}</div>
                       </CardContent>
                     </Card>
                     <Card className="border-green-200 bg-green-50 dark:bg-green-950/30">
@@ -1422,7 +1420,7 @@ export const PlatformAnalyticsPage = () => {
                       <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-lg">
                           <Activity className="h-5 w-5 text-brand-turquoise" />
-                          {isRTL ? 'صحة الفصول' : 'Class Health Rankings'}
+                          {t('classHealthRankings')}
                         </CardTitle>
                       </CardHeader>
                       <CardContent>
@@ -1456,7 +1454,7 @@ export const PlatformAnalyticsPage = () => {
                         ) : (
                           <div className="text-center py-8 text-muted-foreground">
                             <Activity className="h-10 w-10 mx-auto mb-2 opacity-30" />
-                            <p>{isRTL ? 'لا توجد بيانات فصول' : 'No class data available'}</p>
+                            <p>{t('noClassDataAvailable')}</p>
                           </div>
                         )}
                       </CardContent>
@@ -1467,7 +1465,7 @@ export const PlatformAnalyticsPage = () => {
                       <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-lg">
                           <Lightbulb className="h-5 w-5 text-amber-500" />
-                          {isRTL ? 'تنبيهات حكيم' : 'Hakim Alerts'}
+                          {t('hakimAlerts')}
                         </CardTitle>
                       </CardHeader>
                       <CardContent>
@@ -1494,10 +1492,10 @@ export const PlatformAnalyticsPage = () => {
                                   <div className="flex-1">
                                     <p className="text-sm font-medium">{insight.title_ar}</p>
                                     <Badge variant="outline" className="mt-1 text-xs">
-                                      {insight.category === 'student_risk' ? (isRTL ? 'مخاطر الطلاب' : 'Student Risk') :
-                                       insight.category === 'class_health' ? (isRTL ? 'صحة الفصل' : 'Class Health') :
+                                      {insight.category === 'student_risk' ? (t('studentRisk')) :
+                                       insight.category === 'class_health' ? (t('classHealth')) :
                                        insight.category === 'participation' ? (isRTL ? 'المشاركة' : 'Participation') :
-                                       insight.category === 'behaviour' ? (isRTL ? 'السلوك' : 'Behavior') :
+                                       insight.category === 'behaviour' ? (t('behavior')) :
                                        insight.category}
                                     </Badge>
                                   </div>
@@ -1508,7 +1506,7 @@ export const PlatformAnalyticsPage = () => {
                         ) : (
                           <div className="text-center py-8 text-muted-foreground">
                             <CheckCircle2 className="h-10 w-10 mx-auto mb-2 opacity-30" />
-                            <p>{isRTL ? 'لا توجد تنبيهات حالياً' : 'No alerts at this time'}</p>
+                            <p>{t('noAlertsAtThisTime')}</p>
                           </div>
                         )}
                       </CardContent>
@@ -1521,7 +1519,7 @@ export const PlatformAnalyticsPage = () => {
                       <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-lg text-red-700">
                           <AlertTriangle className="h-5 w-5" />
-                          {isRTL ? 'الطلاب المعرضون للخطر' : 'At-Risk Students'}
+                          {t('atriskStudents2')}
                           <Badge variant="destructive" className="ms-2">{hakimAnalysis.at_risk_students.length}</Badge>
                         </CardTitle>
                       </CardHeader>
@@ -1536,7 +1534,7 @@ export const PlatformAnalyticsPage = () => {
                               </div>
                               <div className="flex items-center gap-2">
                                 <Badge className={student.risk_category === 'critical' ? 'bg-red-600 text-white' : 'bg-orange-500 text-white'}>
-                                  {student.risk_category === 'critical' ? (isRTL ? 'حرج' : 'Critical') : (isRTL ? 'عالي' : 'High')}
+                                  {student.risk_category === 'critical' ? (t('critical')) : (t('high3'))}
                                 </Badge>
                                 <span className="text-sm font-bold text-red-600">{student.risk_score}%</span>
                               </div>
@@ -1549,7 +1547,7 @@ export const PlatformAnalyticsPage = () => {
 
                   {/* Analysis Meta */}
                   <div className="text-center text-xs text-muted-foreground">
-                    {isRTL ? 'آخر تحليل: ' : 'Last analyzed: '}
+                    {t('lastAnalyzed')}
                     {hakimAnalysis.analyzed_at ? new Date(hakimAnalysis.analyzed_at).toLocaleString(isRTL ? 'ar-SA' : 'en-US') : '-'}
                     {' • '}
                     {isRTL ? `${hakimAnalysis.students_analyzed || 0} طالب` : `${hakimAnalysis.students_analyzed || 0} students`}
@@ -1563,11 +1561,9 @@ export const PlatformAnalyticsPage = () => {
                 <Card className="border-dashed border-2">
                   <CardContent className="py-16 text-center">
                     <Brain className="h-16 w-16 mx-auto mb-4 text-muted-foreground/30" />
-                    <h3 className="text-lg font-bold mb-2">{isRTL ? 'اختر مدرسة لبدء التحليل' : 'Select a school to start analysis'}</h3>
+                    <h3 className="text-lg font-bold mb-2">{t('selectASchoolToStartAnalysis')}</h3>
                     <p className="text-muted-foreground max-w-md mx-auto">
-                      {isRTL 
-                        ? 'اختر مدرسة من القائمة أعلاه واضغط على "تحليل" لعرض رؤى حكيم الذكية'
-                        : 'Choose a school from the dropdown above and click "Analyze" to view Hakim AI insights'}
+                      {t('chooseASchoolFromTheDropdownAboveAndClickAnalyzeTo')}
                     </p>
                   </CardContent>
                 </Card>
@@ -1581,9 +1577,7 @@ export const PlatformAnalyticsPage = () => {
                     {t.aiReportBuilder}
                   </CardTitle>
                   <CardDescription>
-                    {isRTL 
-                      ? 'اكتب طلبك بالعربية وسيقوم الذكاء الاصطناعي بإنشاء التقرير'
-                      : 'Write your request and AI will generate the report'}
+                    {t('writeYourRequestAndAiWillGenerateTheReport')}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -1591,7 +1585,7 @@ export const PlatformAnalyticsPage = () => {
                     <Input
                       value={aiQuery}
                       onChange={(e) => setAIQuery(e.target.value)}
-                      placeholder={isRTL ? 'مثال: تحليل أداء المدارس خلال آخر 3 أشهر' : 'e.g., Analyze school performance in the last 3 months'}
+                      placeholder={t('egAnalyzeSchoolPerformanceInTheLast3Months')}
                       className="flex-1"
                     />
                     <Button 
@@ -1632,7 +1626,7 @@ export const PlatformAnalyticsPage = () => {
                       <CalendarClock className="h-7 w-7 text-purple-600" />
                     </div>
                     <h4 className="font-bold mb-1">{t.scheduleReport}</h4>
-                    <p className="text-sm text-muted-foreground">{isRTL ? 'يومي، أسبوعي، شهري' : 'Daily, Weekly, Monthly'}</p>
+                    <p className="text-sm text-muted-foreground">{t('dailyWeeklyMonthly')}</p>
                   </CardContent>
                 </Card>
                 
@@ -1643,7 +1637,7 @@ export const PlatformAnalyticsPage = () => {
                       <Share2 className="h-7 w-7 text-green-600" />
                     </div>
                     <h4 className="font-bold mb-1">{t.shareReport}</h4>
-                    <p className="text-sm text-muted-foreground">{isRTL ? 'بريد، رابط، فريق' : 'Email, Link, Team'}</p>
+                    <p className="text-sm text-muted-foreground">{t('emailLinkTeam')}</p>
                   </CardContent>
                 </Card>
                 
@@ -1654,7 +1648,7 @@ export const PlatformAnalyticsPage = () => {
                       <Brain className="h-7 w-7 text-pink-600" />
                     </div>
                     <h4 className="font-bold mb-1">{t.aiReportBuilder}</h4>
-                    <p className="text-sm text-muted-foreground">{isRTL ? 'إنشاء تقرير ذكي' : 'Generate Smart Report'}</p>
+                    <p className="text-sm text-muted-foreground">{t('generateSmartReport')}</p>
                   </CardContent>
                 </Card>
                 
@@ -1665,7 +1659,7 @@ export const PlatformAnalyticsPage = () => {
                       <Scale className="h-7 w-7 text-orange-600" />
                     </div>
                     <h4 className="font-bold mb-1">{t.compareSchools}</h4>
-                    <p className="text-sm text-muted-foreground">{isRTL ? 'مقارنة الأداء' : 'Compare Performance'}</p>
+                    <p className="text-sm text-muted-foreground">{t('comparePerformance')}</p>
                   </CardContent>
                 </Card>
                 
@@ -1676,7 +1670,7 @@ export const PlatformAnalyticsPage = () => {
                       <ArrowUpDown className="h-7 w-7 text-cyan-600" />
                     </div>
                     <h4 className="font-bold mb-1">{t.comparePeriods}</h4>
-                    <p className="text-sm text-muted-foreground">{isRTL ? 'مقارنة زمنية' : 'Time Comparison'}</p>
+                    <p className="text-sm text-muted-foreground">{t('timeComparison')}</p>
                   </CardContent>
                 </Card>
               </div>
@@ -1722,7 +1716,7 @@ export const PlatformAnalyticsPage = () => {
                       />
                     </div>
                     <div className="space-y-1">
-                      <Label className="text-xs">{isRTL ? 'إلى' : 'To'}</Label>
+                      <Label className="text-xs">{t('to')}</Label>
                       <Input
                         type="date"
                         value={filters.customDateTo}
@@ -1742,9 +1736,9 @@ export const PlatformAnalyticsPage = () => {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">{t.allSchools}</SelectItem>
-                    <SelectItem value="school1">{isRTL ? 'مدرسة النور' : 'Al Noor School'}</SelectItem>
-                    <SelectItem value="school2">{isRTL ? 'مدرسة الأمل' : 'Al Amal School'}</SelectItem>
-                    <SelectItem value="school3">{isRTL ? 'مدرسة التميز' : 'Excellence School'}</SelectItem>
+                    <SelectItem value="school1">{t('alNoorSchool')}</SelectItem>
+                    <SelectItem value="school2">{t('alAmalSchool')}</SelectItem>
+                    <SelectItem value="school3">{t('excellenceSchool')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1842,7 +1836,7 @@ export const PlatformAnalyticsPage = () => {
                 {t.exportReport}
               </DialogTitle>
               <DialogDescription>
-                {isRTL ? 'اختر صيغة التقرير للتحميل' : 'Choose report format to download'}
+                {t('chooseReportFormatToDownload')}
               </DialogDescription>
             </DialogHeader>
             <div className="py-4 space-y-4">
@@ -1890,7 +1884,7 @@ export const PlatformAnalyticsPage = () => {
                 <Input
                   value={scheduleForm.name}
                   onChange={(e) => setScheduleForm(prev => ({ ...prev, name: e.target.value }))}
-                  placeholder={isRTL ? 'اسم التقرير' : 'Report name'}
+                  placeholder={t('reportName')}
                 />
               </div>
               
@@ -1918,7 +1912,7 @@ export const PlatformAnalyticsPage = () => {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">{t.allSchools}</SelectItem>
-                    <SelectItem value="selected">{isRTL ? 'مدارس محددة' : 'Selected Schools'}</SelectItem>
+                    <SelectItem value="selected">{t('selectedSchools')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1942,7 +1936,7 @@ export const PlatformAnalyticsPage = () => {
                 <Input
                   value={scheduleForm.recipients}
                   onChange={(e) => setScheduleForm(prev => ({ ...prev, recipients: e.target.value }))}
-                  placeholder={isRTL ? 'البريد الإلكتروني (مفصول بفاصلة)' : 'Email addresses (comma separated)'}
+                  placeholder={t('emailAddressesCommaSeparated')}
                 />
               </div>
             </div>
@@ -1972,26 +1966,26 @@ export const PlatformAnalyticsPage = () => {
             </DialogHeader>
             <div className="py-4 space-y-4">
               <div className="space-y-2">
-                <Label>{isRTL ? 'طريقة المشاركة' : 'Share Method'}</Label>
+                <Label>{t('shareMethod')}</Label>
                 <div className="grid grid-cols-3 gap-3">
                   <Button variant="outline" className="h-20 flex-col rounded-xl">
                     <Users className="h-6 w-6 mb-2" />
-                    {isRTL ? 'فريق العمل' : 'Team'}
+                    {t('team')}
                   </Button>
                   <Button variant="outline" className="h-20 flex-col rounded-xl">
                     <Mail className="h-6 w-6 mb-2" />
-                    {isRTL ? 'بريد إلكتروني' : 'Email'}
+                    {t('email5')}
                   </Button>
                   <Button variant="outline" className="h-20 flex-col rounded-xl">
                     <LinkIcon className="h-6 w-6 mb-2" />
-                    {isRTL ? 'رابط مشاركة' : 'Link'}
+                    {t('link')}
                   </Button>
                 </div>
               </div>
               
               <div className="space-y-2">
                 <Label>{t.recipients}</Label>
-                <Input placeholder={isRTL ? 'أدخل البريد الإلكتروني' : 'Enter email address'} />
+                <Input placeholder={t('enterEmailAddress')} />
               </div>
             </div>
             <DialogFooter className="flex-row-reverse gap-2">
@@ -2015,27 +2009,23 @@ export const PlatformAnalyticsPage = () => {
                 {t.aiReportBuilder}
               </DialogTitle>
               <DialogDescription>
-                {isRTL 
-                  ? 'اكتب طلبك باللغة العربية وسيقوم الذكاء الاصطناعي بإنشاء التقرير المناسب'
-                  : 'Write your request and AI will generate the appropriate report'}
+                {t('writeYourRequestAndAiWillGenerateTheAppropriateRep')}
               </DialogDescription>
             </DialogHeader>
             <div className="py-4 space-y-4">
               <Textarea
                 value={aiQuery}
                 onChange={(e) => setAIQuery(e.target.value)}
-                placeholder={isRTL 
-                  ? 'مثال: أريد تحليل أداء المدارس في الرياض خلال آخر 3 أشهر مع مقارنة نسب الحضور'
-                  : 'e.g., I want to analyze Riyadh schools performance in the last 3 months with attendance comparison'}
+                placeholder={t('egIWantToAnalyzeRiyadhSchoolsPerformanceInTheLast3')}
                 rows={4}
               />
               
               <div className="p-3 bg-muted/30 rounded-xl">
-                <p className="text-sm font-medium mb-2">{isRTL ? 'أمثلة على الطلبات:' : 'Example requests:'}</p>
+                <p className="text-sm font-medium mb-2">{t('exampleRequests')}</p>
                 <ul className="text-sm text-muted-foreground space-y-1">
-                  <li>• {isRTL ? 'تحليل أداء الطلاب في الفصل الأول' : 'Analyze student performance in first semester'}</li>
-                  <li>• {isRTL ? 'مقارنة نسب الحضور بين المدارس' : 'Compare attendance rates between schools'}</li>
-                  <li>• {isRTL ? 'تقرير عن استخدام ميزات AI' : 'Report on AI features usage'}</li>
+                  <li>• {t('analyzeStudentPerformanceInFirstSemester')}</li>
+                  <li>• {t('compareAttendanceRatesBetweenSchools')}</li>
+                  <li>• {t('reportOnAiFeaturesUsage')}</li>
                 </ul>
               </div>
             </div>
@@ -2066,25 +2056,25 @@ export const PlatformAnalyticsPage = () => {
             </DialogHeader>
             <div className="py-4 space-y-4">
               <div className="space-y-2">
-                <Label>{isRTL ? 'اختر المدارس للمقارنة' : 'Select schools to compare'}</Label>
+                <Label>{t('selectSchoolsToCompare')}</Label>
                 <Select>
                   <SelectTrigger>
-                    <SelectValue placeholder={isRTL ? 'اختر المدرسة الأولى' : 'Select first school'} />
+                    <SelectValue placeholder={t('selectFirstSchool')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="school1">{isRTL ? 'مدرسة النور' : 'Al Noor School'}</SelectItem>
-                    <SelectItem value="school2">{isRTL ? 'مدرسة الأمل' : 'Al Amal School'}</SelectItem>
-                    <SelectItem value="school3">{isRTL ? 'مدرسة التميز' : 'Excellence School'}</SelectItem>
+                    <SelectItem value="school1">{t('alNoorSchool')}</SelectItem>
+                    <SelectItem value="school2">{t('alAmalSchool')}</SelectItem>
+                    <SelectItem value="school3">{t('excellenceSchool')}</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select>
                   <SelectTrigger>
-                    <SelectValue placeholder={isRTL ? 'اختر المدرسة الثانية' : 'Select second school'} />
+                    <SelectValue placeholder={t('selectSecondSchool')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="school1">{isRTL ? 'مدرسة النور' : 'Al Noor School'}</SelectItem>
-                    <SelectItem value="school2">{isRTL ? 'مدرسة الأمل' : 'Al Amal School'}</SelectItem>
-                    <SelectItem value="school3">{isRTL ? 'مدرسة التميز' : 'Excellence School'}</SelectItem>
+                    <SelectItem value="school1">{t('alNoorSchool')}</SelectItem>
+                    <SelectItem value="school2">{t('alAmalSchool')}</SelectItem>
+                    <SelectItem value="school3">{t('excellenceSchool')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -2095,7 +2085,7 @@ export const PlatformAnalyticsPage = () => {
               </Button>
               <Button className="bg-brand-navy">
                 <Scale className="h-4 w-4 me-2" />
-                {isRTL ? 'مقارنة' : 'Compare'}
+                {t('compare')}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -2113,28 +2103,28 @@ export const PlatformAnalyticsPage = () => {
             <div className="py-4 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>{isRTL ? 'الفترة الأولى' : 'First Period'}</Label>
+                  <Label>{t('firstPeriod')}</Label>
                   <Select>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="thisMonth">{t.thisMonth}</SelectItem>
-                      <SelectItem value="lastMonth">{isRTL ? 'الشهر الماضي' : 'Last Month'}</SelectItem>
+                      <SelectItem value="lastMonth">{t('lastMonth')}</SelectItem>
                       <SelectItem value="thisSemester">{t.thisSemester}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>{isRTL ? 'الفترة الثانية' : 'Second Period'}</Label>
+                  <Label>{t('secondPeriod')}</Label>
                   <Select>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="lastMonth">{isRTL ? 'الشهر الماضي' : 'Last Month'}</SelectItem>
-                      <SelectItem value="lastSemester">{isRTL ? 'الفصل الماضي' : 'Last Semester'}</SelectItem>
-                      <SelectItem value="lastYear">{isRTL ? 'العام الماضي' : 'Last Year'}</SelectItem>
+                      <SelectItem value="lastMonth">{t('lastMonth')}</SelectItem>
+                      <SelectItem value="lastSemester">{t('lastSemester')}</SelectItem>
+                      <SelectItem value="lastYear">{t('lastYear')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -2146,7 +2136,7 @@ export const PlatformAnalyticsPage = () => {
               </Button>
               <Button className="bg-brand-navy">
                 <ArrowUpDown className="h-4 w-4 me-2" />
-                {isRTL ? 'مقارنة' : 'Compare'}
+                {t('compare')}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -2171,21 +2161,19 @@ export const PlatformAnalyticsPage = () => {
                 
                 <div className="space-y-6">
                   <div className="p-4 bg-white rounded-lg shadow">
-                    <h3 className="font-bold mb-3">{isRTL ? 'ملخص التقرير' : 'Report Summary'}</h3>
+                    <h3 className="font-bold mb-3">{t('reportSummary')}</h3>
                     <p className="text-muted-foreground">
-                      {isRTL 
-                        ? 'هذا التقرير يعرض بيانات تحليلية شاملة للفترة المحددة. يتضمن إحصائيات مفصلة ورسوم بيانية توضيحية.'
-                        : 'This report presents comprehensive analytical data for the specified period. It includes detailed statistics and explanatory charts.'}
+                      {t('thisReportPresentsComprehensiveAnalyticalDataForTh')}
                     </p>
                   </div>
                   
                   <div className="grid grid-cols-2 gap-4">
                     <div className="p-4 bg-white rounded-lg shadow">
-                      <p className="text-sm text-muted-foreground mb-1">{isRTL ? 'إجمالي السجلات' : 'Total Records'}</p>
+                      <p className="text-sm text-muted-foreground mb-1">{t('totalRecords')}</p>
                       <p className="text-2xl font-bold">1,250</p>
                     </div>
                     <div className="p-4 bg-white rounded-lg shadow">
-                      <p className="text-sm text-muted-foreground mb-1">{isRTL ? 'نسبة الإنجاز' : 'Completion Rate'}</p>
+                      <p className="text-sm text-muted-foreground mb-1">{t('completionRate')}</p>
                       <p className="text-2xl font-bold">94.5%</p>
                     </div>
                   </div>

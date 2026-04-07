@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { Sidebar } from '../components/layout/Sidebar';
 import { HakimAssistant } from '../components/hakim/HakimAssistant';
 import { Button } from '../components/ui/button';
@@ -79,6 +79,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 
 export const PlatformSchoolsPage = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { user, api, enterSchoolContext } = useAuth();
   const { isRTL, toggleTheme, toggleLanguage, isDark } = useTheme();
@@ -114,7 +115,7 @@ export const PlatformSchoolsPage = () => {
       setSchools(response.data);
     } catch (error) {
       console.error('Failed to fetch schools:', error);
-      nassaqError(isRTL ? 'فشل تحميل المدارس' : 'Failed to load schools');
+      nassaqError(t('failedToLoadSchools'));
     } finally {
       setLoading(false);
     }
@@ -127,7 +128,7 @@ export const PlatformSchoolsPage = () => {
   const handleCreateSchool = async () => {
     try {
       const response = await api.post('/schools', newSchool);
-      toast.success(isRTL ? 'تم إنشاء المدرسة بنجاح' : 'School created successfully');
+      toast.success(t('schoolCreatedSuccessfully2'));
       setCreateDialogOpen(false);
       setNewSchool({
         name: '',
@@ -142,23 +143,23 @@ export const PlatformSchoolsPage = () => {
       });
       fetchSchools();
     } catch (error) {
-      nassaqError(error.response?.data?.detail || (isRTL ? 'فشل إنشاء المدرسة' : 'Failed to create school'));
+      nassaqError(error.response?.data?.detail || (t('failedToCreateSchool')));
     }
   };
 
   const handleStatusChange = async (schoolId, status) => {
     try {
       await api.put(`/schools/${schoolId}/status?status=${status}`);
-      toast.success(isRTL ? 'تم تحديث حالة المدرسة' : 'School status updated');
+      toast.success(t('schoolStatusUpdated'));
       fetchSchools();
     } catch (error) {
-      nassaqError(isRTL ? 'فشل تحديث الحالة' : 'Failed to update status');
+      nassaqError(t('failedToUpdateStatus'));
     }
   };
 
   const handleViewSchoolContext = (school) => {
     // Navigate to school context - Platform Admin can view but not edit
-    toast.info(isRTL ? 'جاري الدخول لسياق المدرسة...' : 'Entering school context...');
+    toast.info(t('enteringSchoolContext'));
     setSelectedSchool(school);
     setViewDialogOpen(true);
   };
@@ -166,7 +167,7 @@ export const PlatformSchoolsPage = () => {
   // Enter School Dashboard - Full context switch
   const handleEnterSchoolDashboard = (school) => {
     if (!school || !school.id) {
-      nassaqError(isRTL ? 'خطأ: بيانات المدرسة غير صالحة' : 'Error: Invalid school data');
+      nassaqError(t('errorInvalidSchoolData'));
       return;
     }
     
@@ -217,7 +218,7 @@ export const PlatformSchoolsPage = () => {
       fetchSchools();
     } catch (error) {
       console.error('Failed to toggle AI:', error);
-      nassaqError(isRTL ? 'فشل تعديل حالة الذكاء الاصطناعي' : 'Failed to toggle AI status');
+      nassaqError(t('failedToToggleAiStatus'));
     }
   };
 
@@ -234,18 +235,18 @@ export const PlatformSchoolsPage = () => {
       fetchSchools();
     } catch (error) {
       console.error('Failed to toggle status:', error);
-      nassaqError(isRTL ? 'فشل تعديل حالة المدرسة' : 'Failed to toggle school status');
+      nassaqError(t('failedToToggleSchoolStatus'));
     }
   };
 
   const getStatusBadge = (status) => {
     switch (status) {
       case 'active':
-        return <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">{isRTL ? 'نشطة' : 'Active'}</Badge>;
+        return <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">{t('active2')}</Badge>;
       case 'pending':
-        return <Badge className="bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">{isRTL ? 'معلقة' : 'Pending'}</Badge>;
+        return <Badge className="bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">{t('pending2')}</Badge>;
       case 'suspended':
-        return <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">{isRTL ? 'موقوفة' : 'Suspended'}</Badge>;
+        return <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">{t('suspended')}</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
@@ -269,10 +270,10 @@ export const PlatformSchoolsPage = () => {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="font-cairo text-2xl font-bold text-foreground">
-                {isRTL ? 'إدارة المدارس' : 'Schools Management'}
+                {t('schoolsManagement')}
               </h1>
               <p className="text-sm text-muted-foreground font-tajawal">
-                {isRTL ? 'إدارة جميع المدارس في المنصة' : 'Manage all schools on the platform'}
+                {t('manageAllSchoolsOnThePlatform')}
               </p>
             </div>
             
@@ -301,7 +302,7 @@ export const PlatformSchoolsPage = () => {
                   </div>
                   <div>
                     <p className="text-2xl font-bold">{stats.total}</p>
-                    <p className="text-xs text-muted-foreground">{isRTL ? 'إجمالي المدارس' : 'Total Schools'}</p>
+                    <p className="text-xs text-muted-foreground">{t('totalSchools')}</p>
                   </div>
                 </div>
               </CardContent>
@@ -315,7 +316,7 @@ export const PlatformSchoolsPage = () => {
                   </div>
                   <div>
                     <p className="text-2xl font-bold">{stats.active}</p>
-                    <p className="text-xs text-muted-foreground">{isRTL ? 'نشطة' : 'Active'}</p>
+                    <p className="text-xs text-muted-foreground">{t('active2')}</p>
                   </div>
                 </div>
               </CardContent>
@@ -329,7 +330,7 @@ export const PlatformSchoolsPage = () => {
                   </div>
                   <div>
                     <p className="text-2xl font-bold">{stats.pending}</p>
-                    <p className="text-xs text-muted-foreground">{isRTL ? 'معلقة' : 'Pending'}</p>
+                    <p className="text-xs text-muted-foreground">{t('pending2')}</p>
                   </div>
                 </div>
               </CardContent>
@@ -343,7 +344,7 @@ export const PlatformSchoolsPage = () => {
                   </div>
                   <div>
                     <p className="text-2xl font-bold">{stats.suspended}</p>
-                    <p className="text-xs text-muted-foreground">{isRTL ? 'موقوفة' : 'Suspended'}</p>
+                    <p className="text-xs text-muted-foreground">{t('suspended')}</p>
                   </div>
                 </div>
               </CardContent>
@@ -357,7 +358,7 @@ export const PlatformSchoolsPage = () => {
                   </div>
                   <div>
                     <p className="text-2xl font-bold">{stats.totalStudents.toLocaleString()}</p>
-                    <p className="text-xs text-muted-foreground">{isRTL ? 'إجمالي الطلاب' : 'Total Students'}</p>
+                    <p className="text-xs text-muted-foreground">{t('totalStudents')}</p>
                   </div>
                 </div>
               </CardContent>
@@ -371,7 +372,7 @@ export const PlatformSchoolsPage = () => {
                   </div>
                   <div>
                     <p className="text-2xl font-bold">{stats.totalTeachers.toLocaleString()}</p>
-                    <p className="text-xs text-muted-foreground">{isRTL ? 'إجمالي المعلمين' : 'Total Teachers'}</p>
+                    <p className="text-xs text-muted-foreground">{t('totalTeachers')}</p>
                   </div>
                 </div>
               </CardContent>
@@ -383,7 +384,7 @@ export const PlatformSchoolsPage = () => {
             <CardHeader>
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                  <CardTitle className="font-cairo">{isRTL ? 'قائمة المدارس' : 'Schools List'}</CardTitle>
+                  <CardTitle className="font-cairo">{t('schoolsList')}</CardTitle>
                   <CardDescription>{isRTL ? `${filteredSchools.length} مدرسة` : `${filteredSchools.length} schools`}</CardDescription>
                 </div>
                 
@@ -391,7 +392,7 @@ export const PlatformSchoolsPage = () => {
                   <div className="relative">
                     <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
-                      placeholder={isRTL ? 'بحث...' : 'Search...'}
+                      placeholder={t('search')}
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className="ps-9 w-[200px] rounded-xl"
@@ -402,13 +403,13 @@ export const PlatformSchoolsPage = () => {
                   <Select value={statusFilter} onValueChange={setStatusFilter}>
                     <SelectTrigger className="w-[140px] rounded-xl">
                       <Filter className="h-4 w-4 me-2" />
-                      <SelectValue placeholder={isRTL ? 'الحالة' : 'Status'} />
+                      <SelectValue placeholder={t('status2')} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">{isRTL ? 'الكل' : 'All'}</SelectItem>
-                      <SelectItem value="active">{isRTL ? 'نشطة' : 'Active'}</SelectItem>
-                      <SelectItem value="pending">{isRTL ? 'معلقة' : 'Pending'}</SelectItem>
-                      <SelectItem value="suspended">{isRTL ? 'موقوفة' : 'Suspended'}</SelectItem>
+                      <SelectItem value="all">{t('all')}</SelectItem>
+                      <SelectItem value="active">{t('active2')}</SelectItem>
+                      <SelectItem value="pending">{t('pending2')}</SelectItem>
+                      <SelectItem value="suspended">{t('suspended')}</SelectItem>
                     </SelectContent>
                   </Select>
                   
@@ -436,29 +437,29 @@ export const PlatformSchoolsPage = () => {
                     <DialogTrigger asChild>
                       <Button className="bg-brand-turquoise hover:bg-brand-turquoise-light rounded-xl" data-testid="add-school-btn">
                         <Plus className="h-5 w-5 me-2" />
-                        {isRTL ? 'إضافة مدرسة' : 'Add School'}
+                        {t('addSchool')}
                       </Button>
                     </DialogTrigger>
                     <DialogContent className="sm:max-w-[600px]">
                       <DialogHeader>
-                        <DialogTitle className="font-cairo">{isRTL ? 'إضافة مدرسة جديدة' : 'Add New School'}</DialogTitle>
-                        <DialogDescription>{isRTL ? 'أدخل بيانات المدرسة الجديدة' : 'Enter the new school details'}</DialogDescription>
+                        <DialogTitle className="font-cairo">{t('addNewSchool')}</DialogTitle>
+                        <DialogDescription>{t('enterTheNewSchoolDetails')}</DialogDescription>
                       </DialogHeader>
                       
                       <div className="grid gap-4 py-4">
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <Label>{isRTL ? 'اسم المدرسة (عربي)' : 'School Name (Arabic)'}</Label>
+                            <Label>{t('schoolNameArabic')}</Label>
                             <Input
                               value={newSchool.name}
                               onChange={(e) => setNewSchool({ ...newSchool, name: e.target.value })}
-                              placeholder={isRTL ? 'مدرسة...' : 'School...'}
+                              placeholder={t('school3')}
                               className="rounded-xl"
                               data-testid="school-name-input"
                             />
                           </div>
                           <div className="space-y-2">
-                            <Label>{isRTL ? 'اسم المدرسة (إنجليزي)' : 'School Name (English)'}</Label>
+                            <Label>{t('schoolNameEnglish2')}</Label>
                             <Input
                               value={newSchool.name_en}
                               onChange={(e) => setNewSchool({ ...newSchool, name_en: e.target.value })}
@@ -470,7 +471,7 @@ export const PlatformSchoolsPage = () => {
                         
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <Label>{isRTL ? 'رمز المدرسة' : 'School Code'}</Label>
+                            <Label>{t('schoolCode')}</Label>
                             <Input
                               value={newSchool.code}
                               onChange={(e) => setNewSchool({ ...newSchool, code: e.target.value })}
@@ -480,7 +481,7 @@ export const PlatformSchoolsPage = () => {
                             />
                           </div>
                           <div className="space-y-2">
-                            <Label>{isRTL ? 'البريد الإلكتروني' : 'Email'}</Label>
+                            <Label>{t('email2')}</Label>
                             <Input
                               type="email"
                               value={newSchool.email}
@@ -494,7 +495,7 @@ export const PlatformSchoolsPage = () => {
                         
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <Label>{isRTL ? 'الهاتف' : 'Phone'}</Label>
+                            <Label>{t('phone2')}</Label>
                             <Input
                               value={newSchool.phone}
                               onChange={(e) => setNewSchool({ ...newSchool, phone: e.target.value })}
@@ -503,11 +504,11 @@ export const PlatformSchoolsPage = () => {
                             />
                           </div>
                           <div className="space-y-2">
-                            <Label>{isRTL ? 'المدينة' : 'City'}</Label>
+                            <Label>{t('city')}</Label>
                             <Input
                               value={newSchool.city}
                               onChange={(e) => setNewSchool({ ...newSchool, city: e.target.value })}
-                              placeholder={isRTL ? 'الرياض' : 'Riyadh'}
+                              placeholder={t('riyadh')}
                               className="rounded-xl"
                             />
                           </div>
@@ -515,16 +516,16 @@ export const PlatformSchoolsPage = () => {
                         
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <Label>{isRTL ? 'المنطقة' : 'Region'}</Label>
+                            <Label>{t('region2')}</Label>
                             <Input
                               value={newSchool.region}
                               onChange={(e) => setNewSchool({ ...newSchool, region: e.target.value })}
-                              placeholder={isRTL ? 'منطقة الرياض' : 'Riyadh Region'}
+                              placeholder={t('riyadhRegion')}
                               className="rounded-xl"
                             />
                           </div>
                           <div className="space-y-2">
-                            <Label>{isRTL ? 'سعة الطلاب' : 'Student Capacity'}</Label>
+                            <Label>{t('studentCapacity')}</Label>
                             <Input
                               type="number"
                               value={newSchool.student_capacity}
@@ -535,11 +536,11 @@ export const PlatformSchoolsPage = () => {
                         </div>
                         
                         <div className="space-y-2">
-                          <Label>{isRTL ? 'العنوان' : 'Address'}</Label>
+                          <Label>{t('address')}</Label>
                           <Input
                             value={newSchool.address}
                             onChange={(e) => setNewSchool({ ...newSchool, address: e.target.value })}
-                            placeholder={isRTL ? 'العنوان الكامل...' : 'Full address...'}
+                            placeholder={t('fullAddress')}
                             className="rounded-xl"
                           />
                         </div>
@@ -547,10 +548,10 @@ export const PlatformSchoolsPage = () => {
                       
                       <DialogFooter>
                         <Button variant="outline" onClick={() => setCreateDialogOpen(false)} className="rounded-xl">
-                          {isRTL ? 'إلغاء' : 'Cancel'}
+                          {t('cancel')}
                         </Button>
                         <Button onClick={handleCreateSchool} className="bg-brand-navy rounded-xl" data-testid="create-school-btn">
-                          {isRTL ? 'إنشاء المدرسة' : 'Create School'}
+                          {t('createSchool2')}
                         </Button>
                       </DialogFooter>
                     </DialogContent>
@@ -565,11 +566,11 @@ export const PlatformSchoolsPage = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {loading ? (
                     <div className="col-span-full text-center py-8 text-muted-foreground">
-                      {isRTL ? 'جاري التحميل...' : 'Loading...'}
+                      {t('loading')}
                     </div>
                   ) : paginatedSchools.length === 0 ? (
                     <div className="col-span-full text-center py-8 text-muted-foreground">
-                      {isRTL ? 'لا توجد مدارس' : 'No schools found'}
+                      {t('noSchoolsFound')}
                     </div>
                   ) : (
                     paginatedSchools.map((school) => (
@@ -632,12 +633,12 @@ export const PlatformSchoolsPage = () => {
                               {school.status === 'suspended' ? (
                                 <>
                                   <PlayCircle className="h-4 w-4 me-2" />
-                                  {isRTL ? 'إلغاء التعليق' : 'Activate'}
+                                  {t('activate2')}
                                 </>
                               ) : (
                                 <>
                                   <PauseCircle className="h-4 w-4 me-2" />
-                                  {isRTL ? 'تعليق' : 'Suspend'}
+                                  {t('suspend')}
                                 </>
                               )}
                             </Button>
@@ -656,9 +657,9 @@ export const PlatformSchoolsPage = () => {
                             >
                               <Brain className="h-4 w-4 me-2" />
                               {school.ai_enabled ? (
-                                <>{isRTL ? 'AI مفعّل' : 'AI On'}</>
+                                <>{t('aiOn')}</>
                               ) : (
-                                <>{isRTL ? 'تفعيل AI' : 'Enable AI'}</>
+                                <>{t('enableAi')}</>
                               )}
                             </Button>
                           </div>
@@ -670,7 +671,7 @@ export const PlatformSchoolsPage = () => {
                             data-testid={`open-dashboard-${school.id}`}
                           >
                             <LogIn className="h-5 w-5 me-2" />
-                            {isRTL ? 'فتح لوحة التحكم' : 'Open Dashboard'}
+                            {t('openDashboard')}
                           </Button>
                         </CardContent>
                       </Card>
@@ -683,26 +684,26 @@ export const PlatformSchoolsPage = () => {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>{isRTL ? 'المدرسة' : 'School'}</TableHead>
-                      <TableHead>{isRTL ? 'الرمز' : 'Code'}</TableHead>
-                      <TableHead>{isRTL ? 'المدينة / المنطقة' : 'City / Region'}</TableHead>
-                      <TableHead>{isRTL ? 'الحالة' : 'Status'}</TableHead>
-                      <TableHead>{isRTL ? 'الطلاب' : 'Students'}</TableHead>
-                      <TableHead>{isRTL ? 'المعلمين' : 'Teachers'}</TableHead>
-                      <TableHead>{isRTL ? 'الإجراءات' : 'Actions'}</TableHead>
+                      <TableHead>{t('school')}</TableHead>
+                      <TableHead>{t('code')}</TableHead>
+                      <TableHead>{t('cityRegion')}</TableHead>
+                      <TableHead>{t('status2')}</TableHead>
+                      <TableHead>{t('students')}</TableHead>
+                      <TableHead>{t('teachers2')}</TableHead>
+                      <TableHead>{t('actions2')}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {loading ? (
                       <TableRow>
                         <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                          {isRTL ? 'جاري التحميل...' : 'Loading...'}
+                          {t('loading')}
                         </TableCell>
                       </TableRow>
                     ) : paginatedSchools.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                          {isRTL ? 'لا توجد مدارس' : 'No schools found'}
+                          {t('noSchoolsFound')}
                         </TableCell>
                       </TableRow>
                     ) : (
@@ -764,24 +765,24 @@ export const PlatformSchoolsPage = () => {
                                 <DropdownMenuContent align="end">
                                   <DropdownMenuItem onClick={() => handleEnterSchoolDashboard(school)}>
                                     <ExternalLink className="h-4 w-4 me-2" />
-                                    {isRTL ? 'الدخول للوحة التحكم' : 'Enter Dashboard'}
+                                    {t('enterDashboard')}
                                   </DropdownMenuItem>
                                   <DropdownMenuItem onClick={() => handleViewSchoolContext(school)}>
                                     <Eye className="h-4 w-4 me-2" />
-                                    {isRTL ? 'عرض البيانات' : 'View Details'}
+                                    {t('viewDetails2')}
                                   </DropdownMenuItem>
                                   <DropdownMenuItem onClick={() => { setSelectedSchool(school); setEditDialogOpen(true); }}>
                                     <Edit className="h-4 w-4 me-2" />
-                                    {isRTL ? 'تعديل' : 'Edit'}
+                                    {t('edit')}
                                   </DropdownMenuItem>
                                   <DropdownMenuSeparator />
                                   <DropdownMenuItem onClick={() => handleStatusChange(school.id, 'active')}>
                                     <CheckCircle className="h-4 w-4 me-2 text-green-600" />
-                                    {isRTL ? 'تفعيل' : 'Activate'}
+                                    {t('activate')}
                                   </DropdownMenuItem>
                                   <DropdownMenuItem onClick={() => handleStatusChange(school.id, 'suspended')}>
                                     <XCircle className="h-4 w-4 me-2 text-red-600" />
-                                    {isRTL ? 'إيقاف' : 'Suspend'}
+                                    {t('suspend2')}
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
@@ -836,7 +837,7 @@ export const PlatformSchoolsPage = () => {
           <DialogContent className="sm:max-w-[700px]">
             <DialogHeader>
               <DialogTitle className="font-cairo">{selectedSchool?.name}</DialogTitle>
-              <DialogDescription>{isRTL ? 'عرض بيانات المدرسة (للاطلاع فقط)' : 'View school data (read-only)'}</DialogDescription>
+              <DialogDescription>{t('viewSchoolDataReadonly')}</DialogDescription>
             </DialogHeader>
             
             {selectedSchool && (
@@ -883,9 +884,7 @@ export const PlatformSchoolsPage = () => {
                 
                 <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl p-4">
                   <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                    {isRTL 
-                      ? 'ملاحظة: كمدير للمنصة، يمكنك الاطلاع على بيانات المدرسة فقط. التعديل متاح لمدير المدرسة.'
-                      : 'Note: As Platform Admin, you can only view school data. Editing is available for School Principal.'}
+                    {t('noteAsPlatformAdminYouCanOnlyViewSchoolDataEditing')}
                   </p>
                 </div>
               </div>
@@ -893,7 +892,7 @@ export const PlatformSchoolsPage = () => {
             
             <DialogFooter>
               <Button variant="outline" onClick={() => setViewDialogOpen(false)} className="rounded-xl">
-                {isRTL ? 'إغلاق' : 'Close'}
+                {t('close')}
               </Button>
             </DialogFooter>
           </DialogContent>

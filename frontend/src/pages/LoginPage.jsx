@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -27,6 +27,7 @@ const BG_PATTERN = '/nassaq-pattern.png';
 const HAKIM_CHARACTER = '/hakim-poses/welcome.png';
 
 export const LoginPage = () => {
+  const { t } = useTranslation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -65,11 +66,11 @@ export const LoginPage = () => {
 
   const validateEmail = (value) => {
     if (!value) {
-      setEmailError(isRTL ? 'البريد الإلكتروني مطلوب' : 'Email is required');
+      setEmailError(t('emailIsRequired'));
       return false;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
-      setEmailError(isRTL ? 'البريد الإلكتروني غير صالح' : 'Invalid email format');
+      setEmailError(t('invalidEmailFormat2'));
       return false;
     }
     setEmailError('');
@@ -78,11 +79,11 @@ export const LoginPage = () => {
 
   const validatePassword = (value) => {
     if (!value) {
-      setPasswordError(isRTL ? 'كلمة المرور مطلوبة' : 'Password is required');
+      setPasswordError(t('passwordIsRequired'));
       return false;
     }
     if (value.length < 6) {
-      setPasswordError(isRTL ? 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' : 'Password must be at least 6 characters');
+      setPasswordError(t('passwordMustBeAtLeast6Characters'));
       return false;
     }
     setPasswordError('');
@@ -106,7 +107,7 @@ export const LoginPage = () => {
       const result = await login(email, password, rememberMe);
 
       if (result.success) {
-        toast.success(isRTL ? 'تم تسجيل الدخول بنجاح' : 'Login successful');
+        toast.success(t('loginSuccessful'));
 
         switch (result.user.role) {
           case 'platform_admin':
@@ -137,12 +138,12 @@ export const LoginPage = () => {
             navigate('/dashboard');
         }
       } else {
-        setError(result.error || (isRTL ? 'بيانات الدخول غير صحيحة' : 'Invalid credentials'));
-        nassaqError(result.error || (isRTL ? 'بيانات الدخول غير صحيحة' : 'Invalid credentials'));
+        setError(result.error || (t('invalidCredentials')));
+        nassaqError(result.error || (t('invalidCredentials')));
       }
     } catch (err) {
-      setError(isRTL ? 'حدث خطأ أثناء تسجيل الدخول' : 'An error occurred during login');
-      nassaqError(isRTL ? 'حدث خطأ أثناء تسجيل الدخول' : 'An error occurred during login');
+      setError(t('anErrorOccurredDuringLogin'));
+      nassaqError(t('anErrorOccurredDuringLogin'));
     } finally {
       setLoading(false);
     }
@@ -176,16 +177,14 @@ export const LoginPage = () => {
           />
 
           <h2 className="font-cairo text-4xl font-bold text-white mb-4">
-            {isRTL ? 'نَسَّق' : 'NASSAQ'}
+            {t('nassaq')}
           </h2>
           <p className="text-2xl text-brand-turquoise font-cairo font-semibold mb-8">
-            {isRTL ? 'من البيانات إلى القرار' : 'From Data to Decisions'}
+            {t('fromDataToDecisions')}
           </p>
 
           <p className="text-white/60 font-tajawal mb-10">
-            {isRTL
-              ? 'سجل دخولك للوصول إلى لوحة التحكم وإدارة مدرستك بذكاء'
-              : 'Sign in to access your dashboard and manage your school smartly'
+            {t('signInToAccessYourDashboardAndManageYourSchoolSmar')
             }
           </p>
 
@@ -195,14 +194,14 @@ export const LoginPage = () => {
               <div className="absolute inset-0 rounded-full bg-brand-turquoise/30 blur-md animate-pulse" />
               <img
                 src={HAKIM_CHARACTER}
-                alt={isRTL ? 'حكيم' : 'Hakim'}
+                alt={t('hakim')}
                 className="relative w-24 h-24 rounded-2xl object-contain border-2 border-brand-turquoise shadow-xl bg-gradient-to-br from-cyan-50 to-violet-50 p-1"
               />
             </div>
             <div className="text-start flex-1 min-h-[48px]">
               <div className="flex items-center gap-1.5 mb-1">
                 <Sparkles className="h-3.5 w-3.5 text-brand-turquoise" />
-                <span className="text-brand-turquoise font-bold font-cairo text-sm">{isRTL ? 'حكيم' : 'Hakim'}</span>
+                <span className="text-brand-turquoise font-bold font-cairo text-sm">{t('hakim')}</span>
               </div>
               <p className="text-white/80 text-sm font-tajawal leading-snug transition-all duration-500">
                 {hakimMessages[hakimMsg]}
@@ -224,7 +223,7 @@ export const LoginPage = () => {
             <Link to="/" className="flex items-center gap-2">
               <Home className="h-5 w-5" />
               <span className="font-tajawal">
-                {isRTL ? 'العودة للموقع' : 'Back to Website'}
+                {t('backToWebsite')}
               </span>
             </Link>
           </Button>
@@ -236,7 +235,7 @@ export const LoginPage = () => {
             data-testid="language-toggle-btn"
           >
             <Globe className="h-5 w-5 me-2" />
-            <span className="font-tajawal">{isRTL ? 'EN' : 'عربي'}</span>
+            <span className="font-tajawal">{t('key_awupdb')}</span>
           </Button>
         </div>
 
@@ -245,16 +244,14 @@ export const LoginPage = () => {
             <CardHeader className="text-center pb-2">
               {/* Mobile-only Hakim + Logo */}
               <div className="lg:hidden flex items-center justify-center gap-3 mb-4">
-                <img src={HAKIM_CHARACTER} alt={isRTL ? 'حكيم' : 'Hakim'} className="hakim-img w-16 h-16 rounded-2xl object-contain border-2 border-brand-turquoise bg-gradient-to-br from-cyan-50 to-violet-50 p-1" />
+                <img src={HAKIM_CHARACTER} alt={t('hakim')} className="hakim-img w-16 h-16 rounded-2xl object-contain border-2 border-brand-turquoise bg-gradient-to-br from-cyan-50 to-violet-50 p-1" />
                 <img src={LOGO_WHITE} alt="نَسَّق" className="h-10 rounded-xl bg-brand-navy p-1.5" />
               </div>
               <h1 className="font-cairo text-2xl font-bold text-foreground">
                 {isRTL ? 'تسجيل الدخول' : 'Sign In'}
               </h1>
               <p className="text-muted-foreground font-tajawal text-sm">
-                {isRTL
-                  ? 'أدخل بيانات حسابك للوصول إلى لوحة التحكم'
-                  : 'Enter your credentials to access your dashboard'}
+                {t('enterYourCredentialsToAccessYourDashboard')}
               </p>
             </CardHeader>
 
@@ -268,14 +265,14 @@ export const LoginPage = () => {
               <form onSubmit={handleSubmit} className="space-y-5">
                 <div className="space-y-2">
                   <Label htmlFor="email" className="font-tajawal">
-                    {isRTL ? 'البريد الإلكتروني' : 'Email'}
+                    {t('email2')}
                   </Label>
                   <div className="relative">
                     <Mail className="absolute start-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                     <Input
                       id="email"
                       type="email"
-                      placeholder={isRTL ? 'أدخل بريدك الإلكتروني' : 'Enter your email'}
+                      placeholder={t('enterYourEmail')}
                       value={email}
                       autoComplete="off"
                       onChange={(e) => {
@@ -296,14 +293,14 @@ export const LoginPage = () => {
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
                     <Label htmlFor="password" className="font-tajawal">
-                      {isRTL ? 'كلمة المرور' : 'Password'}
+                      {t('password')}
                     </Label>
                     <Link
                       to="/forgot-password"
                       className="text-sm text-brand-turquoise hover:underline font-tajawal"
                       data-testid="forgot-password-link"
                     >
-                      {isRTL ? 'نسيت كلمة المرور؟' : 'Forgot password?'}
+                      {t('forgotPassword')}
                     </Link>
                   </div>
                   <div className="relative">
@@ -312,7 +309,7 @@ export const LoginPage = () => {
                       ref={passwordRef}
                       id="password"
                       type={showPassword ? 'text' : 'password'}
-                      placeholder={isRTL ? 'أدخل كلمة المرور' : 'Enter your password'}
+                      placeholder={t('enterYourPassword')}
                       value={password}
                       autoComplete="off"
                       onChange={(e) => {
@@ -328,7 +325,7 @@ export const LoginPage = () => {
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
                       className="absolute end-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                      aria-label={isRTL ? 'إظهار/إخفاء كلمة المرور' : 'Toggle password visibility'}
+                      aria-label={t('togglePasswordVisibility')}
                       data-testid="toggle-password-btn"
                     >
                       {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
@@ -348,7 +345,7 @@ export const LoginPage = () => {
                     data-testid="remember-me-checkbox"
                   />
                   <Label htmlFor="rememberMe" className="font-tajawal text-sm cursor-pointer">
-                    {isRTL ? 'تذكرني' : 'Remember me'}
+                    {t('rememberMe')}
                   </Label>
                 </div>
 
@@ -361,7 +358,7 @@ export const LoginPage = () => {
                   {loading ? (
                     <span className="flex items-center gap-2">
                       <Loader2 className="h-5 w-5 animate-spin" />
-                      {isRTL ? 'جاري تسجيل الدخول...' : 'Signing in...'}
+                      {t('signingIn')}
                     </span>
                   ) : (
                     <span className="flex items-center gap-2">
@@ -374,13 +371,13 @@ export const LoginPage = () => {
 
               <div className="mt-6 text-center">
                 <p className="text-sm text-muted-foreground font-tajawal">
-                  {isRTL ? 'ليس لديك حساب؟' : "Don't have an account?"}{' '}
+                  {t('dontHaveAnAccount')}{' '}
                   <Link
                     to="/register"
                     className="text-brand-turquoise hover:underline font-medium"
                     data-testid="register-link"
                   >
-                    {isRTL ? 'تسجيل جديد' : 'Register'}
+                    {t('register')}
                   </Link>
                 </p>
               </div>

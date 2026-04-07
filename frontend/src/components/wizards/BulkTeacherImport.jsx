@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../../components/ui/card';
@@ -56,6 +56,7 @@ const REQUIRED_FIELDS = [
 
 // Step 1: Upload File
 const UploadStep = ({ onFileSelect, isRTL }) => {
+  const { t } = useTranslation();
   const onDrop = useCallback((acceptedFiles) => {
     if (acceptedFiles.length > 0) {
       onFileSelect(acceptedFiles[0]);
@@ -83,7 +84,7 @@ const UploadStep = ({ onFileSelect, isRTL }) => {
     link.href = URL.createObjectURL(blob);
     link.download = 'teachers_template.csv';
     link.click();
-    toast.success(isRTL ? 'تم تحميل القالب' : 'Template downloaded');
+    toast.success(t('templateDownloaded'));
   };
 
   return (
@@ -92,9 +93,9 @@ const UploadStep = ({ onFileSelect, isRTL }) => {
         <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
           <Upload className="h-8 w-8 text-blue-600" />
         </div>
-        <h3 className="text-xl font-bold font-cairo">{isRTL ? 'رفع ملف المعلمين' : 'Upload Teachers File'}</h3>
+        <h3 className="text-xl font-bold font-cairo">{t('uploadTeachersFile')}</h3>
         <p className="text-muted-foreground mt-2">
-          {isRTL ? 'قم برفع ملف Excel أو CSV يحتوي على بيانات المعلمين' : 'Upload an Excel or CSV file with teacher data'}
+          {t('uploadAnExcelOrCsvFileWithTeacherData')}
         </p>
       </div>
 
@@ -103,7 +104,7 @@ const UploadStep = ({ onFileSelect, isRTL }) => {
         <CardHeader className="pb-3">
           <CardTitle className="text-sm flex items-center gap-2">
             <FileText className="h-4 w-4" />
-            {isRTL ? 'البيانات المطلوبة' : 'Required Fields'}
+            {t('requiredFields')}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -135,12 +136,12 @@ const UploadStep = ({ onFileSelect, isRTL }) => {
         <FileSpreadsheet className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
         <p className="text-lg font-medium">
           {isDragActive 
-            ? (isRTL ? 'أفلت الملف هنا...' : 'Drop the file here...')
-            : (isRTL ? 'اسحب وأفلت الملف هنا أو انقر للاختيار' : 'Drag & drop file here or click to select')
+            ? (t('dropTheFileHere'))
+            : (t('dragDropFileHereOrClickToSelect'))
           }
         </p>
         <p className="text-sm text-muted-foreground mt-2">
-          {isRTL ? 'الصيغ المدعومة: Excel (.xlsx, .xls) أو CSV' : 'Supported: Excel (.xlsx, .xls) or CSV'}
+          {t('supportedExcelXlsxXlsOrCsv')}
         </p>
       </div>
 
@@ -148,7 +149,7 @@ const UploadStep = ({ onFileSelect, isRTL }) => {
       <div className="flex justify-center">
         <Button variant="outline" onClick={downloadTemplate} className="rounded-xl">
           <Download className="h-4 w-4 me-2" />
-          {isRTL ? 'تحميل قالب البيانات' : 'Download Template'}
+          {t('downloadTemplate')}
         </Button>
       </div>
     </div>
@@ -166,7 +167,7 @@ const PreviewStep = ({ data, errors, onFix, isRTL }) => {
         <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
           <Sparkles className="h-8 w-8 text-purple-600" />
         </div>
-        <h3 className="text-xl font-bold font-cairo">{isRTL ? 'تحليل البيانات' : 'Data Analysis'}</h3>
+        <h3 className="text-xl font-bold font-cairo">{t('dataAnalysis')}</h3>
       </div>
 
       {/* Summary Cards */}
@@ -175,21 +176,21 @@ const PreviewStep = ({ data, errors, onFix, isRTL }) => {
           <CardContent className="p-4 text-center">
             <Users className="h-8 w-8 mx-auto mb-2 text-blue-600" />
             <p className="text-2xl font-bold">{data.length}</p>
-            <p className="text-sm text-muted-foreground">{isRTL ? 'إجمالي السجلات' : 'Total Records'}</p>
+            <p className="text-sm text-muted-foreground">{t('totalRecords')}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
             <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-green-600" />
             <p className="text-2xl font-bold text-green-600">{validRows.length}</p>
-            <p className="text-sm text-muted-foreground">{isRTL ? 'صالحة' : 'Valid'}</p>
+            <p className="text-sm text-muted-foreground">{t('valid')}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
             <XCircle className="h-8 w-8 mx-auto mb-2 text-red-600" />
             <p className="text-2xl font-bold text-red-600">{invalidRows.length}</p>
-            <p className="text-sm text-muted-foreground">{isRTL ? 'بها أخطاء' : 'With Errors'}</p>
+            <p className="text-sm text-muted-foreground">{t('withErrors')}</p>
           </CardContent>
         </Card>
       </div>
@@ -200,7 +201,7 @@ const PreviewStep = ({ data, errors, onFix, isRTL }) => {
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2 text-red-600">
               <AlertTriangle className="h-4 w-4" />
-              {isRTL ? 'الأخطاء المكتشفة' : 'Detected Errors'}
+              {t('detectedErrors')}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -227,7 +228,7 @@ const PreviewStep = ({ data, errors, onFix, isRTL }) => {
         <CardHeader className="pb-3">
           <CardTitle className="text-sm flex items-center gap-2">
             <Eye className="h-4 w-4" />
-            {isRTL ? 'معاينة البيانات' : 'Data Preview'}
+            {t('dataPreview')}
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
@@ -236,11 +237,11 @@ const PreviewStep = ({ data, errors, onFix, isRTL }) => {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-12">#</TableHead>
-                  <TableHead>{isRTL ? 'الاسم' : 'Name'}</TableHead>
-                  <TableHead>{isRTL ? 'الهوية' : 'ID'}</TableHead>
-                  <TableHead>{isRTL ? 'البريد' : 'Email'}</TableHead>
-                  <TableHead>{isRTL ? 'المادة' : 'Subject'}</TableHead>
-                  <TableHead>{isRTL ? 'الحالة' : 'Status'}</TableHead>
+                  <TableHead>{t('name')}</TableHead>
+                  <TableHead>{t('id')}</TableHead>
+                  <TableHead>{t('email')}</TableHead>
+                  <TableHead>{t('subject')}</TableHead>
+                  <TableHead>{t('status2')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -257,12 +258,12 @@ const PreviewStep = ({ data, errors, onFix, isRTL }) => {
                         {hasError ? (
                           <Badge variant="destructive" className="text-xs">
                             <XCircle className="h-3 w-3 me-1" />
-                            {isRTL ? 'خطأ' : 'Error'}
+                            {t('error')}
                           </Badge>
                         ) : (
                           <Badge variant="default" className="bg-green-100 text-green-700 text-xs">
                             <CheckCircle2 className="h-3 w-3 me-1" />
-                            {isRTL ? 'صالح' : 'Valid'}
+                            {t('valid2')}
                           </Badge>
                         )}
                       </TableCell>
@@ -285,9 +286,9 @@ const ImportStep = ({ progress, total, created, failed, isRTL }) => (
       <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
         <Loader2 className="h-8 w-8 text-amber-600 animate-spin" />
       </div>
-      <h3 className="text-xl font-bold font-cairo">{isRTL ? 'جاري الاستيراد...' : 'Importing...'}</h3>
+      <h3 className="text-xl font-bold font-cairo">{t('importing')}</h3>
       <p className="text-muted-foreground mt-2">
-        {isRTL ? 'يرجى الانتظار حتى اكتمال العملية' : 'Please wait while we process your data'}
+        {t('pleaseWaitWhileWeProcessYourData')}
       </p>
     </div>
 
@@ -303,13 +304,13 @@ const ImportStep = ({ progress, total, created, failed, isRTL }) => (
       <Card>
         <CardContent className="p-4">
           <p className="text-2xl font-bold text-green-600">{created}</p>
-          <p className="text-sm text-muted-foreground">{isRTL ? 'تم إنشاؤهم' : 'Created'}</p>
+          <p className="text-sm text-muted-foreground">{t('created')}</p>
         </CardContent>
       </Card>
       <Card>
         <CardContent className="p-4">
           <p className="text-2xl font-bold text-red-600">{failed}</p>
-          <p className="text-sm text-muted-foreground">{isRTL ? 'فشل' : 'Failed'}</p>
+          <p className="text-sm text-muted-foreground">{t('failed')}</p>
         </CardContent>
       </Card>
     </div>
@@ -325,7 +326,7 @@ const ResultsStep = ({ results, isRTL, onClose }) => (
     
     <div>
       <h3 className="text-2xl font-bold font-cairo text-green-700">
-        {isRTL ? 'تم الاستيراد بنجاح!' : 'Import Complete!'}
+        {t('importComplete')}
       </h3>
       <p className="text-muted-foreground mt-2">
         {isRTL 
@@ -339,25 +340,25 @@ const ResultsStep = ({ results, isRTL, onClose }) => (
       <Card>
         <CardContent className="p-4 text-center">
           <p className="text-2xl font-bold">{results.total}</p>
-          <p className="text-xs text-muted-foreground">{isRTL ? 'الإجمالي' : 'Total'}</p>
+          <p className="text-xs text-muted-foreground">{t('total')}</p>
         </CardContent>
       </Card>
       <Card className="border-green-200">
         <CardContent className="p-4 text-center">
           <p className="text-2xl font-bold text-green-600">{results.created}</p>
-          <p className="text-xs text-muted-foreground">{isRTL ? 'تم إنشاؤهم' : 'Created'}</p>
+          <p className="text-xs text-muted-foreground">{t('created')}</p>
         </CardContent>
       </Card>
       <Card className="border-red-200">
         <CardContent className="p-4 text-center">
           <p className="text-2xl font-bold text-red-600">{results.failed}</p>
-          <p className="text-xs text-muted-foreground">{isRTL ? 'فشل' : 'Failed'}</p>
+          <p className="text-xs text-muted-foreground">{t('failed')}</p>
         </CardContent>
       </Card>
     </div>
 
     <Button onClick={onClose} className="bg-green-600 hover:bg-green-700">
-      {isRTL ? 'إغلاق' : 'Close'}
+      {t('close')}
     </Button>
   </div>
 );
@@ -394,7 +395,7 @@ export const BulkTeacherImport = ({ open, onClose }) => {
       // Show error - no mock data
       console.error('Error parsing file:', error);
       setParsedData([]);
-      setErrors([{ row: 0, field: 'file', message: isRTL ? 'فشل في قراءة الملف. يرجى التحقق من صيغة الملف.' : 'Failed to parse file. Please check file format.' }]);
+      setErrors([{ row: 0, field: 'file', message: t('failedToParseFilePleaseCheckFileFormat') }]);
       setStep(2);
     }
   };
@@ -445,12 +446,10 @@ export const BulkTeacherImport = ({ open, onClose }) => {
             <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
               <Upload className="h-5 w-5 text-blue-600" />
             </div>
-            {isRTL ? 'استيراد جماعي للمعلمين' : 'Bulk Teacher Import'}
+            {t('bulkTeacherImport')}
           </DialogTitle>
           <DialogDescription>
-            {isRTL 
-              ? 'قم برفع ملف Excel أو CSV لإنشاء حسابات المعلمين دفعة واحدة'
-              : 'Upload an Excel or CSV file to create multiple teacher accounts at once'
+            {t('uploadAnExcelOrCsvFileToCreateMultipleTeacherAccou')
             }
           </DialogDescription>
         </DialogHeader>
@@ -468,16 +467,16 @@ export const BulkTeacherImport = ({ open, onClose }) => {
               {step > 1 && (
                 <Button variant="outline" onClick={() => setStep(s => s - 1)} className="rounded-xl">
                   {isRTL ? <ArrowRight className="h-4 w-4 me-2" /> : <ArrowLeft className="h-4 w-4 me-2" />}
-                  {isRTL ? 'السابق' : 'Back'}
+                  {t('back')}
                 </Button>
               )}
             </div>
             <div className="flex gap-2">
-              <Button variant="ghost" onClick={handleClose}>{isRTL ? 'إلغاء' : 'Cancel'}</Button>
+              <Button variant="ghost" onClick={handleClose}>{t('cancel')}</Button>
               {step === 2 && (
                 <Button onClick={handleImport} className="bg-blue-600 hover:bg-blue-700 rounded-xl">
                   <Upload className="h-4 w-4 me-2" />
-                  {isRTL ? 'بدء الاستيراد' : 'Start Import'}
+                  {t('startImport')}
                 </Button>
               )}
             </div>

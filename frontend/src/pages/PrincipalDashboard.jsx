@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { Sidebar } from '../components/layout/Sidebar';
 import { HakimAssistant } from '../components/hakim/HakimAssistant';
 import { NotificationBell } from '../components/notifications/NotificationBell';
@@ -32,6 +32,7 @@ export default function PrincipalDashboard() {
   }, []);
   
   const handleExitImpersonation = () => {
+  const { t } = useTranslation();
     exitSchoolContext();
     if (exitTimeoutRef.current) clearTimeout(exitTimeoutRef.current);
     exitTimeoutRef.current = setTimeout(() => {
@@ -53,7 +54,7 @@ export default function PrincipalDashboard() {
               </div>
               <div className="flex flex-col min-w-0">
                 <span className="font-bold text-xs sm:text-sm">
-                  {isRTL ? 'أنت الآن تعاين مدرسة:' : 'You are now previewing:'}
+                  {t('youAreNowPreviewing')}
                 </span>
                 <span className="text-white/90 font-cairo text-sm sm:text-lg truncate">
                   {schoolContext.school_name}
@@ -67,8 +68,8 @@ export default function PrincipalDashboard() {
               data-testid="exit-impersonation-btn"
             >
               <ArrowLeft className={`h-3.5 w-3.5 sm:h-4 sm:w-4 me-1 sm:me-2 ${isRTL ? 'rotate-180' : ''}`} />
-              <span className="hidden sm:inline">{isRTL ? 'العودة للمنصة' : 'Back to Platform'}</span>
-              <span className="sm:hidden">{isRTL ? 'عودة' : 'Back'}</span>
+              <span className="hidden sm:inline">{t('backToPlatform')}</span>
+              <span className="sm:hidden">{t('back3')}</span>
             </Button>
           </div>
         )}

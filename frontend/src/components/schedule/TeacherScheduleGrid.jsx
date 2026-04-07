@@ -41,6 +41,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { useTranslation } from '../../contexts/ThemeContext';
 // Subject colors mapping
 const SUBJECT_COLORS = {
   'اللغة العربية': { bg: 'bg-emerald-100 dark:bg-emerald-900/30', border: 'border-emerald-300', text: 'text-emerald-700 dark:text-emerald-400' },
@@ -68,6 +69,7 @@ const DEFAULT_DAYS = [
 
 // Session Card Component - Compact version for grid cells
 const SessionCard = ({ session, isRTL, onDragStart, onDragEnd, onSessionClick, conflicts, isLocked }) => {
+  const { t } = useTranslation();
   const colors = SUBJECT_COLORS[session?.subject_name] || DEFAULT_COLOR;
   const hasConflict = conflicts?.some(c => c.session_id === session?.id);
   
@@ -122,7 +124,7 @@ const SessionCard = ({ session, isRTL, onDragStart, onDragEnd, onSessionClick, c
             <p className="font-bold">{session?.subject_name}</p>
             <p className="text-muted-foreground">{session?.class_name}</p>
             {session?.room && <p className="flex items-center gap-1"><MapPin className="h-3 w-3" />{session.room}</p>}
-            {hasConflict && <p className="text-red-500 flex items-center gap-1"><AlertTriangle className="h-3 w-3" />{isRTL ? 'يوجد تعارض' : 'Conflict detected'}</p>}
+            {hasConflict && <p className="text-red-500 flex items-center gap-1"><AlertTriangle className="h-3 w-3" />{t('conflictDetected')}</p>}
           </div>
         </TooltipContent>
       </Tooltip>
@@ -348,9 +350,7 @@ export const TeacherScheduleGrid = ({
     );
     
     if (existingSessionInSlot) {
-      nassaqWarning(isRTL 
-        ? 'يوجد تعارض! المعلم لديه حصة أخرى في هذا الوقت'
-        : 'Conflict! Teacher already has a session at this time'
+      nassaqWarning(t('conflictTeacherAlreadyHasASessionAtThisTime')
       );
       return;
     }
@@ -388,7 +388,7 @@ export const TeacherScheduleGrid = ({
           <div className="w-52 flex-shrink-0 p-3 border-e border-border font-medium text-sm sticky start-0 bg-muted/50 z-30">
             <div className="flex items-center gap-2">
               <User className="h-4 w-4 text-brand-navy" />
-              <span>{isRTL ? 'المعلم' : 'Teacher'}</span>
+              <span>{t('teacher2')}</span>
             </div>
             <p className="text-[10px] text-muted-foreground mt-1">
               {isRTL ? `${teachers.length} معلم` : `${teachers.length} teachers`}
@@ -409,7 +409,7 @@ export const TeacherScheduleGrid = ({
                       {isRTL ? day.ar : day.en}
                     </p>
                     <p className="text-[10px] text-muted-foreground">
-                      {effectiveTimeSlots.filter(s => !s.is_break).length} {isRTL ? 'حصص' : 'periods'}
+                      {effectiveTimeSlots.filter(s => !s.is_break).length} {t('periods2')}
                     </p>
                   </div>
                 </div>
@@ -424,7 +424,7 @@ export const TeacherScheduleGrid = ({
           <div className="w-52 flex-shrink-0 p-1 border-e border-border sticky start-0 bg-muted/30 z-10">
             <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
               <Clock className="h-3 w-3" />
-              {isRTL ? 'الحصص' : 'Periods'}
+              {t('periods3')}
             </div>
           </div>
           
@@ -447,7 +447,7 @@ export const TeacherScheduleGrid = ({
                       >
                         <p className="text-[9px] font-medium">
                           {slot.is_break 
-                            ? (isRTL ? 'فسحة' : 'Break')
+                            ? (t('break2'))
                             : (idx + 1)
                           }
                         </p>
@@ -488,7 +488,7 @@ export const TeacherScheduleGrid = ({
         ) : (
           <div className="p-8 text-center text-muted-foreground">
             <User className="h-12 w-12 mx-auto mb-4 opacity-20" />
-            <p>{isRTL ? 'لا يوجد معلمون للعرض' : 'No teachers to display'}</p>
+            <p>{t('noTeachersToDisplay')}</p>
           </div>
         )}
       </div>
@@ -498,25 +498,25 @@ export const TeacherScheduleGrid = ({
         <div className="flex flex-wrap items-center gap-4 text-xs">
           <div className="flex items-center gap-1">
             <div className="w-4 h-4 bg-brand-turquoise/20 border border-brand-turquoise rounded" />
-            <span className="text-muted-foreground">{isRTL ? 'حصة نشطة' : 'Active session'}</span>
+            <span className="text-muted-foreground">{t('activeSession')}</span>
           </div>
           <div className="flex items-center gap-1">
             <div className="w-4 h-4 border border-dashed border-muted-foreground/40 rounded" />
-            <span className="text-muted-foreground">{isRTL ? 'خانة فارغة' : 'Empty slot'}</span>
+            <span className="text-muted-foreground">{t('emptySlot')}</span>
           </div>
           <div className="flex items-center gap-1">
             <div className="w-4 h-4 bg-amber-50 border border-amber-200 rounded flex items-center justify-center">
               <Coffee className="h-2.5 w-2.5 text-amber-500" />
             </div>
-            <span className="text-muted-foreground">{isRTL ? 'فسحة' : 'Break'}</span>
+            <span className="text-muted-foreground">{t('break2')}</span>
           </div>
           <div className="flex items-center gap-1">
             <AlertTriangle className="h-3.5 w-3.5 text-red-500" />
-            <span className="text-muted-foreground">{isRTL ? 'تعارض' : 'Conflict'}</span>
+            <span className="text-muted-foreground">{t('conflict')}</span>
           </div>
           <div className="flex items-center gap-1">
             <Lock className="h-3.5 w-3.5 text-orange-500" />
-            <span className="text-muted-foreground">{isRTL ? 'مقفل' : 'Locked'}</span>
+            <span className="text-muted-foreground">{t('locked')}</span>
           </div>
         </div>
       </div>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
@@ -12,6 +12,7 @@ import {
 
 
 const ChildHomeworkPage = () => {
+  const { t } = useTranslation();
   const { childId } = useParams();
   const { token, api } = useAuth();
   const { isRTL } = useTheme();
@@ -48,10 +49,10 @@ const ChildHomeworkPage = () => {
 
   const getStatusInfo = (status) => {
     const map = {
-      pending: { label: isRTL ? 'لم يبدأ' : 'Not Started', cls: 'bg-gray-100 text-gray-700', icon: Clock },
-      submitted: { label: isRTL ? 'تم التسليم' : 'Submitted', cls: 'bg-green-100 text-green-700', icon: CheckCircle },
-      graded: { label: isRTL ? 'تم التصحيح' : 'Graded', cls: 'bg-blue-100 text-blue-700', icon: BookOpen },
-      late: { label: isRTL ? 'متأخر' : 'Late', cls: 'bg-red-100 text-red-700', icon: AlertCircle },
+      pending: { label: t('notStarted'), cls: 'bg-gray-100 text-gray-700', icon: Clock },
+      submitted: { label: t('submitted'), cls: 'bg-green-100 text-green-700', icon: CheckCircle },
+      graded: { label: t('graded2'), cls: 'bg-blue-100 text-blue-700', icon: BookOpen },
+      late: { label: t('late'), cls: 'bg-red-100 text-red-700', icon: AlertCircle },
     };
     return map[status] || map.pending;
   };
@@ -68,10 +69,10 @@ const ChildHomeworkPage = () => {
 
         <div className="grid grid-cols-4 gap-2">
           {[
-            { label: isRTL ? 'معلق' : 'Pending', value: stats.pending || 0, color: 'gray' },
-            { label: isRTL ? 'مسلّم' : 'Submitted', value: stats.submitted || 0, color: 'green' },
-            { label: isRTL ? 'مصحح' : 'Graded', value: stats.graded || 0, color: 'blue' },
-            { label: isRTL ? 'متأخر' : 'Late', value: stats.late || 0, color: 'red' },
+            { label: t('pending'), value: stats.pending || 0, color: 'gray' },
+            { label: t('submitted2'), value: stats.submitted || 0, color: 'green' },
+            { label: t('graded3'), value: stats.graded || 0, color: 'blue' },
+            { label: t('late'), value: stats.late || 0, color: 'red' },
           ].map((s, i) => (
             <Card key={i} className="rounded-xl border-0 shadow-sm">
               <CardContent className="p-3 text-center">
@@ -86,7 +87,7 @@ const ChildHomeworkPage = () => {
           <Card className="rounded-2xl border-0 shadow-sm">
             <CardContent className="py-12 text-center">
               <ClipboardList className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-              <p className="text-muted-foreground text-sm">{isRTL ? 'لا يوجد واجبات' : 'No homework found'}</p>
+              <p className="text-muted-foreground text-sm">{t('noHomeworkFound')}</p>
             </CardContent>
           </Card>
         ) : (
@@ -103,15 +104,15 @@ const ChildHomeworkPage = () => {
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
                       <div className="flex items-center gap-1">
                         <Calendar className="h-3 w-3" />
-                        <span>{isRTL ? 'التسليم:' : 'Due:'} {a.due_date?.slice(0, 10)}</span>
+                        <span>{t('due')} {a.due_date?.slice(0, 10)}</span>
                       </div>
                       {a.grade !== null && a.grade !== undefined && (
-                        <Badge variant="outline" className="text-xs">{isRTL ? 'الدرجة:' : 'Grade:'} {a.grade}</Badge>
+                        <Badge variant="outline" className="text-xs">{t('grade3')} {a.grade}</Badge>
                       )}
                     </div>
                     {a.submission_date && (
                       <p className="text-xs text-green-600 mt-1">
-                        {isRTL ? 'تم التسليم:' : 'Submitted:'} {a.submission_date.slice(0, 10)}
+                        {t('submitted3')} {a.submission_date.slice(0, 10)}
                       </p>
                     )}
                   </CardContent>

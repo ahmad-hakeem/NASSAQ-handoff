@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { Sidebar } from '../components/layout/Sidebar';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
@@ -23,6 +23,7 @@ import { NotificationBell } from '../components/notifications/NotificationBell';
 import AddStudentWizard from '../components/wizards/AddStudentWizard';
 
 const CartoonMaleAvatar = ({ name, size = 'md' }) => {
+  const { t } = useTranslation();
   const dims = size === 'lg' ? 56 : size === 'sm' ? 32 : 44;
   return (
     <svg width={dims} height={dims} viewBox="0 0 100 100" className="shrink-0">
@@ -128,18 +129,18 @@ const StudentCard = ({ student, isRTL, onView, onEdit, onDelete, onAction, viewM
           <Badge variant={student.is_active !== false ? 'default' : 'destructive'}
             className={`text-[10px] h-5 rounded-full border-0 ${student.is_active !== false ? t.badge : ''}`}>
             <span className={`w-1.5 h-1.5 rounded-full me-1 ${student.is_active !== false ? t.badgeDot : 'bg-red-500'}`} />
-            {student.is_active !== false ? (isRTL ? 'نشط' : 'Active') : (isRTL ? 'معلق' : 'Suspended')}
+            {student.is_active !== false ? (t('active')) : (isRTL ? 'معلق' : 'Suspended')}
           </Badge>
           <DropdownMenu>
             <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
               <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0"><MoreHorizontal className="h-4 w-4" /></Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48" onClick={(e) => e.stopPropagation()}>
-              <DropdownMenuItem onClick={() => onView(student)}><Eye className="h-3.5 w-3.5 me-2" />{isRTL ? 'عرض الملف الشخصي' : 'View Profile'}</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onEdit(student)}><Edit className="h-3.5 w-3.5 me-2" />{isRTL ? 'تعديل البيانات' : 'Edit Info'}</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onView(student)}><Eye className="h-3.5 w-3.5 me-2" />{t('viewProfile2')}</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onEdit(student)}><Edit className="h-3.5 w-3.5 me-2" />{t('editInfo')}</DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => onAction(student, 'reset-password')}><Key className="h-3.5 w-3.5 me-2" />{isRTL ? 'إعادة تعيين كلمة المرور' : 'Reset Password'}</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onDelete(student)} className="text-red-600"><Trash2 className="h-3.5 w-3.5 me-2" />{isRTL ? 'حذف' : 'Delete'}</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onAction(student, 'reset-password')}><Key className="h-3.5 w-3.5 me-2" />{t('resetPassword')}</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onDelete(student)} className="text-red-600"><Trash2 className="h-3.5 w-3.5 me-2" />{t('delete')}</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </CardContent>
@@ -189,16 +190,16 @@ const StudentCard = ({ student, isRTL, onView, onEdit, onDelete, onAction, viewM
               <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"><MoreHorizontal className="h-4 w-4" /></Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48" onClick={(e) => e.stopPropagation()}>
-              <DropdownMenuItem onClick={() => onView(student)}><Eye className="h-3.5 w-3.5 me-2" />{isRTL ? 'عرض الملف الشخصي' : 'View Profile'}</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onEdit(student)}><Edit className="h-3.5 w-3.5 me-2" />{isRTL ? 'تعديل البيانات' : 'Edit Info'}</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onView(student)}><Eye className="h-3.5 w-3.5 me-2" />{t('viewProfile2')}</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onEdit(student)}><Edit className="h-3.5 w-3.5 me-2" />{t('editInfo')}</DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => onAction(student, 'reset-password')}><Key className="h-3.5 w-3.5 me-2" />{isRTL ? 'إعادة تعيين كلمة المرور' : 'Reset Password'}</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onAction(student, 'reset-password')}><Key className="h-3.5 w-3.5 me-2" />{t('resetPassword')}</DropdownMenuItem>
               <DropdownMenuItem onClick={() => onAction(student, student.is_active !== false ? 'suspend' : 'activate')}>
                 {student.is_active !== false ? <UserX className="h-3.5 w-3.5 me-2" /> : <UserCheck className="h-3.5 w-3.5 me-2" />}
                 {student.is_active !== false ? (isRTL ? 'تعليق الحساب' : 'Suspend') : (isRTL ? 'تفعيل الحساب' : 'Activate')}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => onDelete(student)} className="text-red-600"><Trash2 className="h-3.5 w-3.5 me-2" />{isRTL ? 'حذف' : 'Delete'}</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onDelete(student)} className="text-red-600"><Trash2 className="h-3.5 w-3.5 me-2" />{t('delete')}</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -220,7 +221,7 @@ const StudentCard = ({ student, isRTL, onView, onEdit, onDelete, onAction, viewM
           <Badge variant={student.is_active !== false ? 'default' : 'destructive'}
             className={`text-[10px] h-5 rounded-full border-0 ${student.is_active !== false ? t.badge : ''}`}>
             <span className={`w-1.5 h-1.5 rounded-full me-1 ${student.is_active !== false ? t.badgeDot : 'bg-red-500'}`} />
-            {student.is_active !== false ? (isRTL ? 'نشط' : 'Active') : (isRTL ? 'معلق' : 'Suspended')}
+            {student.is_active !== false ? (t('active')) : (isRTL ? 'معلق' : 'Suspended')}
           </Badge>
           <ChevronRight className={`h-3.5 w-3.5 text-muted-foreground/30 group-hover:${t.accent} group-hover:translate-x-0.5 transition-all`} />
         </div>
@@ -270,7 +271,7 @@ export default function ClassDetailPage() {
       setGrades(Array.isArray(gradesRes.data) ? gradesRes.data : []);
     } catch (error) {
       console.error('Error fetching class data:', error);
-      nassaqError(isRTL ? 'خطأ في تحميل بيانات الفصل' : 'Error loading class data');
+      nassaqError(t('errorLoadingClassData'));
     } finally {
       setLoading(false);
     }
@@ -319,11 +320,11 @@ export default function ClassDetailPage() {
     if (!confirmed) return;
     try {
       await api.delete(`/students/${student.id}`, { headers });
-      toast.success(isRTL ? 'تم حذف الطالب' : 'Student deleted');
+      toast.success(t('studentDeleted'));
       fetchData();
     } catch (error) {
       const msg = error.response?.data?.detail;
-      nassaqError(typeof msg === 'string' ? msg : (isRTL ? 'فشلت عملية الحذف' : 'Delete failed'));
+      nassaqError(typeof msg === 'string' ? msg : (t('deleteFailed2')));
     }
   };
 
@@ -339,12 +340,12 @@ export default function ClassDetailPage() {
         }
         case 'suspend':
           await api.put(`/principal/student/${student.id}/status`, { status: 'suspended' });
-          toast.success(isRTL ? 'تم تعليق الحساب' : 'Account suspended');
+          toast.success(t('accountSuspended'));
           fetchData();
           break;
         case 'activate':
           await api.put(`/principal/student/${student.id}/status`, { status: 'active' });
-          toast.success(isRTL ? 'تم تفعيل الحساب' : 'Account activated');
+          toast.success(t('accountActivated'));
           fetchData();
           break;
         default: break;
@@ -368,19 +369,19 @@ export default function ClassDetailPage() {
       a.click();
       window.URL.revokeObjectURL(url);
       a.remove();
-      toast.success(isRTL ? 'تم تصدير قائمة الفصل' : 'Class list exported');
+      toast.success(t('classListExported'));
     } catch (e) {
       console.error('Error exporting class list:', e);
-      nassaqError(isRTL ? 'فشل التصدير' : 'Export failed');
+      nassaqError(t('exportFailed'));
     }
   };
 
   const BackArrow = isRTL ? ArrowRight : ArrowLeft;
 
   const subTabs = [
-    { key: 'all', label: isRTL ? 'جميع الطلاب' : 'All Students', icon: Users, count: filteredStudents.length },
-    { key: 'gifted', label: isRTL ? 'الطلاب الموهوبين' : 'Gifted Students', icon: Star, count: giftedStudents.length },
-    { key: 'other', label: isRTL ? 'الطلاب الآخرون' : 'Other Students', icon: GraduationCap, count: otherStudents.length },
+    { key: 'all', label: t('allStudents'), icon: Users, count: filteredStudents.length },
+    { key: 'gifted', label: t('giftedStudents'), icon: Star, count: giftedStudents.length },
+    { key: 'other', label: t('otherStudents'), icon: GraduationCap, count: otherStudents.length },
   ];
 
   if (loading) {
@@ -389,7 +390,7 @@ export default function ClassDetailPage() {
         <div className="min-h-screen flex items-center justify-center">
           <div className="text-center">
             <Loader2 className="h-10 w-10 animate-spin text-brand-turquoise mx-auto mb-3" />
-            <p className="text-sm text-muted-foreground">{isRTL ? 'جارٍ تحميل بيانات الفصل...' : 'Loading class data...'}</p>
+            <p className="text-sm text-muted-foreground">{t('loadingClassData')}</p>
           </div>
         </div>
       </Sidebar>
@@ -402,10 +403,10 @@ export default function ClassDetailPage() {
         <div className="min-h-screen flex items-center justify-center">
           <div className="text-center">
             <Building2 className="h-16 w-16 mx-auto text-muted-foreground/20 mb-4" />
-            <p className="text-lg font-semibold mb-2">{isRTL ? 'الفصل غير موجود' : 'Class not found'}</p>
+            <p className="text-lg font-semibold mb-2">{t('classNotFound')}</p>
             <Button variant="outline" onClick={() => navigate(managementPath)}>
               <BackArrow className="h-4 w-4 me-2" />
-              {isRTL ? 'العودة إلى إدارة المستخدمين' : 'Back to User Management'}
+              {t('backToUserManagement')}
             </Button>
           </div>
         </div>
@@ -427,7 +428,7 @@ export default function ClassDetailPage() {
               <div className="min-w-0">
                 <nav className="flex items-center gap-1.5 text-xs text-muted-foreground mb-0.5 flex-wrap">
                   <Link to={managementPath} className="hover:text-foreground transition-colors">
-                    {isRTL ? 'إدارة المستخدمين' : 'User Management'}
+                    {t('userManagement')}
                   </Link>
                   <ChevronRight className="h-3 w-3 shrink-0 rtl:rotate-180" />
                   <span className="text-foreground font-medium truncate">{classData.name}</span>
@@ -438,8 +439,8 @@ export default function ClassDetailPage() {
             <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
               <Button onClick={() => setShowStudentWizard(true)} className="bg-brand-turquoise hover:bg-brand-turquoise/90 rounded-xl h-9 sm:h-10 shadow-md text-xs sm:text-sm">
                 <UserPlus className="h-4 w-4 me-1 sm:me-1.5" />
-                <span className="hidden sm:inline">{isRTL ? 'إضافة طالب' : 'Add Student'}</span>
-                <span className="sm:hidden">{isRTL ? 'إضافة' : 'Add'}</span>
+                <span className="hidden sm:inline">{t('addStudent')}</span>
+                <span className="sm:hidden">{t('add')}</span>
               </Button>
               <Button variant="ghost" size="icon" className="h-9 w-9" onClick={toggleLanguage}><Globe className="h-5 w-5" /></Button>
               <Button variant="ghost" size="icon" className="h-9 w-9" onClick={toggleTheme}>{isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}</Button>
@@ -470,7 +471,7 @@ export default function ClassDetailPage() {
                     </div>
                     <div className="flex items-center gap-1.5">
                       <UserCheck className="h-3.5 w-3.5 shrink-0" />
-                      <span>{classData.homeroom_teacher_name || (isRTL ? 'لم يُعين معلم' : 'No teacher assigned')}</span>
+                      <span>{classData.homeroom_teacher_name || (t('noTeacherAssigned2'))}</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <Users className="h-3.5 w-3.5 shrink-0" />
@@ -491,7 +492,7 @@ export default function ClassDetailPage() {
                   </div>
                   <div className="w-20">
                     <div className={`text-[10px] font-medium text-center mb-1 ${capacityPct > 90 ? 'text-red-500' : capacityPct > 70 ? 'text-amber-500' : 'text-emerald-500'}`}>
-                      {Math.round(capacityPct)}% {isRTL ? 'ممتلئ' : 'full'}
+                      {Math.round(capacityPct)}% {t('full')}
                     </div>
                     <div className="w-full bg-muted rounded-full h-2">
                       <div className={`h-2 rounded-full transition-all duration-500 ${capacityPct > 90 ? 'bg-gradient-to-r from-red-400 to-red-500' : capacityPct > 70 ? 'bg-gradient-to-r from-amber-400 to-orange-500' : 'bg-gradient-to-r from-emerald-400 to-green-500'}`}
@@ -533,7 +534,7 @@ export default function ClassDetailPage() {
               <div className="relative flex-1 sm:w-64">
                 <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder={isRTL ? 'البحث عن طالب...' : 'Search students...'}
+                  placeholder={t('searchStudents')}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="ps-9 h-9 rounded-xl"
@@ -547,7 +548,7 @@ export default function ClassDetailPage() {
               </div>
               <Button variant="outline" size="sm" className="h-9 gap-1.5 text-xs rounded-xl" onClick={handleExportClassList}>
                 <Download className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">{isRTL ? 'تصدير' : 'Export'}</span>
+                <span className="hidden sm:inline">{t('export')}</span>
               </Button>
             </div>
           </div>
@@ -566,18 +567,18 @@ export default function ClassDetailPage() {
               <GraduationCap className="h-16 w-16 mx-auto text-muted-foreground/15 mb-4" />
               <p className="text-muted-foreground font-medium">
                 {searchQuery
-                  ? (isRTL ? 'لا توجد نتائج مطابقة' : 'No matching students')
-                  : (isRTL ? 'لا يوجد طلاب في هذا الفصل' : 'No students in this class')}
+                  ? (t('noMatchingStudents'))
+                  : (t('noStudentsInThisClass'))}
               </p>
               <p className="text-sm text-muted-foreground/60 mt-1">
                 {searchQuery
-                  ? (isRTL ? 'جرّب تغيير كلمة البحث' : 'Try a different search')
-                  : (isRTL ? 'أضف طلاباً جدد لهذا الفصل' : 'Add students to this class')}
+                  ? (t('tryADifferentSearch'))
+                  : (t('addStudentsToThisClass'))}
               </p>
               {!searchQuery && (
                 <Button variant="outline" className="mt-4" onClick={() => setShowStudentWizard(true)}>
                   <UserPlus className="h-4 w-4 me-2" />
-                  {isRTL ? 'إضافة طالب' : 'Add Student'}
+                  {t('addStudent')}
                 </Button>
               )}
             </Card>
@@ -603,7 +604,7 @@ export default function ClassDetailPage() {
         <AddStudentWizard
           open={showStudentWizard}
           onOpenChange={setShowStudentWizard}
-          onSuccess={() => { setShowStudentWizard(false); fetchData(); toast.success(isRTL ? 'تم إضافة الطالب' : 'Student added'); }}
+          onSuccess={() => { setShowStudentWizard(false); fetchData(); toast.success(t('studentAdded')); }}
           api={api}
           isRTL={isRTL}
           grades={grades}

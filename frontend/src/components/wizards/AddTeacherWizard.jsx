@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNassaqAlert } from '../ui/NassaqAlertDialog';
 import { Button } from '../../components/ui/button';
@@ -43,6 +43,7 @@ import {
 
 
 const StepProgress = ({ currentStep, steps, isRTL }) => {
+  const { t } = useTranslation();
   const totalSteps = steps.length;
   const progress = ((currentStep - 1) / (totalSteps - 1)) * 100;
 
@@ -175,18 +176,18 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
   const validateStep = (step) => {
     const newErrors = {};
     if (step === 1) {
-      if (!basicData.full_name_ar?.trim()) newErrors.full_name_ar = isRTL ? 'مطلوب' : 'Required';
-      if (!basicData.national_id || basicData.national_id.length !== 10) newErrors.national_id = isRTL ? '10 أرقام' : '10 digits';
-      if (!basicData.gender) newErrors.gender = isRTL ? 'مطلوب' : 'Required';
-      if (!basicData.phone?.trim()) newErrors.phone = isRTL ? 'مطلوب' : 'Required';
-      if (!basicData.email?.trim()) newErrors.email = isRTL ? 'مطلوب' : 'Required';
+      if (!basicData.full_name_ar?.trim()) newErrors.full_name_ar = t('required');
+      if (!basicData.national_id || basicData.national_id.length !== 10) newErrors.national_id = t('10Digits');
+      if (!basicData.gender) newErrors.gender = t('required');
+      if (!basicData.phone?.trim()) newErrors.phone = t('required');
+      if (!basicData.email?.trim()) newErrors.email = t('required');
     } else if (step === 2) {
-      if (!qualData.academic_degree) newErrors.academic_degree = isRTL ? 'مطلوب' : 'Required';
-      if (!qualData.teacher_rank) newErrors.teacher_rank = isRTL ? 'مطلوب' : 'Required';
+      if (!qualData.academic_degree) newErrors.academic_degree = t('required');
+      if (!qualData.teacher_rank) newErrors.teacher_rank = t('required');
     } else if (step === 3) {
-      if (!subjectData.subject_ids?.length) newErrors.subject_ids = isRTL ? 'اختر مادة واحدة على الأقل' : 'Select at least one';
-      if (!subjectData.grade_ids?.length) newErrors.grade_ids = isRTL ? 'اختر صف واحد على الأقل' : 'Select at least one';
-      if (!subjectData.primary_subject_id) newErrors.primary_subject_id = isRTL ? 'مطلوب' : 'Required';
+      if (!subjectData.subject_ids?.length) newErrors.subject_ids = t('selectAtLeastOne');
+      if (!subjectData.grade_ids?.length) newErrors.grade_ids = t('selectAtLeastOne2');
+      if (!subjectData.primary_subject_id) newErrors.primary_subject_id = t('required');
     }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -209,14 +210,14 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
       if (response.data.success) {
         setResult(response.data);
         setCurrentStep(6);
-        toast.success(isRTL ? 'تم إضافة المعلم بنجاح' : 'Teacher added successfully');
+        toast.success(t('teacherAddedSuccessfully'));
         if (onSuccess) onSuccess(response.data);
       } else {
-        nassaqError(response.data.error || (isRTL ? 'حدث خطأ' : 'Error occurred'));
+        nassaqError(response.data.error || (t('errorOccurred')));
       }
     } catch (error) {
       const detail = error.response?.data?.detail;
-      let errorMessage = isRTL ? 'خطأ' : 'Error';
+      let errorMessage = t('error');
       if (typeof detail === 'string') errorMessage = detail;
       else if (Array.isArray(detail)) errorMessage = detail.map(e => e.msg || e.message || JSON.stringify(e)).join(', ');
       else if (detail && typeof detail === 'object') errorMessage = detail.msg || detail.message || JSON.stringify(detail);
@@ -238,10 +239,10 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
 
   const steps = [
     { num: 1, title: isRTL ? 'البيانات' : 'Basic', icon: User },
-    { num: 2, title: isRTL ? 'المؤهلات' : 'Quals', icon: GraduationCap },
-    { num: 3, title: isRTL ? 'المواد' : 'Subjects', icon: BookOpen },
-    { num: 4, title: isRTL ? 'الجدول' : 'Schedule', icon: Calendar },
-    { num: 5, title: isRTL ? 'المراجعة' : 'Review', icon: FileText },
+    { num: 2, title: t('quals'), icon: GraduationCap },
+    { num: 3, title: t('subjects'), icon: BookOpen },
+    { num: 4, title: t('schedule'), icon: Calendar },
+    { num: 5, title: t('review2'), icon: FileText },
   ];
 
   const days = [
@@ -275,7 +276,7 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
 
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
-    toast.success(isRTL ? 'تم النسخ' : 'Copied!');
+    toast.success(t('copied2'));
   };
 
   const generateWelcomeMessage = () => {
@@ -301,9 +302,9 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
               <Briefcase className="h-5 w-5 text-white" />
             </div>
             <div>
-              <DialogTitle className="font-cairo text-lg text-white">{isRTL ? 'إضافة معلم جديد' : 'Add New Teacher'}</DialogTitle>
+              <DialogTitle className="font-cairo text-lg text-white">{t('addNewTeacher')}</DialogTitle>
               <DialogDescription className="text-white/70 text-xs">
-                {isRTL ? 'الخطوة' : 'Step'} {Math.min(currentStep, 5)} {isRTL ? 'من' : 'of'} 5
+                {t('step')} {Math.min(currentStep, 5)} {isRTL ? 'من' : 'of'} 5
               </DialogDescription>
             </div>
           </div>
@@ -317,18 +318,18 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
           <div className="flex-1 overflow-y-auto px-6 py-4">
             {currentStep === 1 && (
               <div className="space-y-5">
-                <SectionHeader icon={User} title={isRTL ? 'البيانات الأساسية' : 'Basic Information'} subtitle={isRTL ? 'أدخل بيانات المعلم الشخصية' : 'Enter teacher personal info'} color="green" />
+                <SectionHeader icon={User} title={t('basicInformation')} subtitle={t('enterTeacherPersonalInfo')} color="green" />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField label={isRTL ? 'الاسم الكامل (عربي)' : 'Full Name (Arabic)'} required error={errors.full_name_ar}>
+                  <FormField label={t('fullNameArabic')} required error={errors.full_name_ar}>
                     <Input value={basicData.full_name_ar || ''} onChange={(e) => setBasicData(p => ({ ...p, full_name_ar: e.target.value }))} className={`h-10 rounded-lg ${errors.full_name_ar ? 'border-red-500' : ''}`} data-testid="teacher-name-ar" />
                   </FormField>
-                  <FormField label={isRTL ? 'الاسم الكامل (إنجليزي)' : 'Full Name (English)'}>
+                  <FormField label={t('fullNameEnglish')}>
                     <Input value={basicData.full_name_en || ''} onChange={(e) => setBasicData(p => ({ ...p, full_name_en: e.target.value }))} dir="ltr" className="h-10 rounded-lg" data-testid="teacher-name-en" />
                   </FormField>
-                  <FormField label={isRTL ? 'رقم الهوية' : 'National ID'} required error={errors.national_id}>
+                  <FormField label={t('nationalId')} required error={errors.national_id}>
                     <Input value={basicData.national_id || ''} onChange={(e) => setBasicData(p => ({ ...p, national_id: e.target.value.replace(/\D/g, '').slice(0, 10) }))} className={`h-10 rounded-lg ${errors.national_id ? 'border-red-500' : ''}`} maxLength={10} dir="ltr" data-testid="teacher-national-id" />
                   </FormField>
-                  <FormField label={isRTL ? 'الجنس' : 'Gender'} required error={errors.gender}>
+                  <FormField label={t('gender')} required error={errors.gender}>
                     <div className="flex gap-2">
                       {[{ val: 'male', ar: 'ذكر', en: 'Male' }, { val: 'female', ar: 'أنثى', en: 'Female' }].map(g => (
                         <button key={g.val} type="button" onClick={() => setBasicData(p => ({ ...p, gender: g.val }))}
@@ -342,21 +343,21 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
                       ))}
                     </div>
                   </FormField>
-                  <FormField label={isRTL ? 'الجنسية' : 'Nationality'}>
+                  <FormField label={t('nationality')}>
                     <Select value={basicData.nationality || 'SA'} onValueChange={(val) => setBasicData(p => ({ ...p, nationality: val }))}>
-                      <SelectTrigger className="h-10 rounded-lg" data-testid="teacher-nationality"><SelectValue placeholder={isRTL ? 'اختر' : 'Select'} /></SelectTrigger>
+                      <SelectTrigger className="h-10 rounded-lg" data-testid="teacher-nationality"><SelectValue placeholder={t('select2')} /></SelectTrigger>
                       <SelectContent>
                         {options.nationalities?.map((n) => (<SelectItem key={n.id || n.code} value={n.id || n.code}>{isRTL ? (n.name || n.name_ar) : (n.name_en || n.name)}</SelectItem>))}
                       </SelectContent>
                     </Select>
                   </FormField>
-                  <FormField label={isRTL ? 'تاريخ الميلاد' : 'Date of Birth'}>
+                  <FormField label={t('dateOfBirth')}>
                     <Input type="date" value={basicData.date_of_birth || ''} onChange={(e) => setBasicData(p => ({ ...p, date_of_birth: e.target.value }))} className="h-10 rounded-lg" data-testid="teacher-dob" />
                   </FormField>
-                  <FormField label={isRTL ? 'رقم الجوال' : 'Phone'} required error={errors.phone}>
+                  <FormField label={t('phone5')} required error={errors.phone}>
                     <Input value={basicData.phone || ''} onChange={(e) => setBasicData(p => ({ ...p, phone: e.target.value }))} className={`h-10 rounded-lg ${errors.phone ? 'border-red-500' : ''}`} dir="ltr" data-testid="teacher-phone" placeholder="05xxxxxxxx" />
                   </FormField>
-                  <FormField label={isRTL ? 'البريد الإلكتروني' : 'Email'} required error={errors.email}>
+                  <FormField label={t('email2')} required error={errors.email}>
                     <Input type="email" value={basicData.email || ''} onChange={(e) => setBasicData(p => ({ ...p, email: e.target.value }))} className={`h-10 rounded-lg ${errors.email ? 'border-red-500' : ''}`} dir="ltr" data-testid="teacher-email" />
                   </FormField>
                 </div>
@@ -365,31 +366,31 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
 
             {currentStep === 2 && (
               <div className="space-y-5">
-                <SectionHeader icon={GraduationCap} title={isRTL ? 'المؤهلات العلمية' : 'Qualifications'} subtitle={isRTL ? 'أدخل بيانات المؤهل والخبرة' : 'Enter qualification and experience info'} color="blue" />
+                <SectionHeader icon={GraduationCap} title={t('qualifications')} subtitle={t('enterQualificationAndExperienceInfo')} color="blue" />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <FormField label={isRTL ? 'الدرجة العلمية' : 'Academic Degree'} required error={errors.academic_degree}>
                     <Select value={qualData.academic_degree || ''} onValueChange={(val) => setQualData(p => ({ ...p, academic_degree: val }))}>
-                      <SelectTrigger className={`h-10 rounded-lg ${errors.academic_degree ? 'border-red-500' : ''}`} data-testid="teacher-degree"><SelectValue placeholder={isRTL ? 'اختر الدرجة' : 'Select degree'} /></SelectTrigger>
+                      <SelectTrigger className={`h-10 rounded-lg ${errors.academic_degree ? 'border-red-500' : ''}`} data-testid="teacher-degree"><SelectValue placeholder={t('selectDegree')} /></SelectTrigger>
                       <SelectContent>
                         {options.degrees?.map((d) => (<SelectItem key={d.id || d.code} value={d.id || d.code}>{isRTL ? (d.name || d.name_ar) : (d.name_en || d.name)}</SelectItem>))}
                       </SelectContent>
                     </Select>
                   </FormField>
-                  <FormField label={isRTL ? 'التخصص' : 'Specialization'}>
-                    <Input value={qualData.specialization || ''} onChange={(e) => setQualData(p => ({ ...p, specialization: e.target.value }))} className="h-10 rounded-lg" placeholder={isRTL ? 'مثال: رياضيات' : 'e.g. Mathematics'} data-testid="teacher-specialization" />
+                  <FormField label={t('specialization')}>
+                    <Input value={qualData.specialization || ''} onChange={(e) => setQualData(p => ({ ...p, specialization: e.target.value }))} className="h-10 rounded-lg" placeholder={t('egMathematics')} data-testid="teacher-specialization" />
                   </FormField>
-                  <FormField label={isRTL ? 'الجامعة' : 'University'}>
+                  <FormField label={t('university')}>
                     <Input value={qualData.university || ''} onChange={(e) => setQualData(p => ({ ...p, university: e.target.value }))} className="h-10 rounded-lg" data-testid="teacher-university" />
                   </FormField>
-                  <FormField label={isRTL ? 'سنة التخرج' : 'Graduation Year'}>
+                  <FormField label={t('graduationYear')}>
                     <Input type="number" value={qualData.graduation_year || ''} onChange={(e) => setQualData(p => ({ ...p, graduation_year: parseInt(e.target.value) || '' }))} min="1970" max={new Date().getFullYear()} className="h-10 rounded-lg" data-testid="teacher-grad-year" />
                   </FormField>
                   <FormField label={isRTL ? 'سنوات الخبرة' : 'Years of Experience'} required error={errors.years_of_experience}>
                     <Input type="number" value={qualData.years_of_experience ?? ''} onChange={(e) => setQualData(p => ({ ...p, years_of_experience: parseInt(e.target.value) || 0 }))} min="0" className={`h-10 rounded-lg ${errors.years_of_experience ? 'border-red-500' : ''}`} data-testid="teacher-experience" />
                   </FormField>
-                  <FormField label={isRTL ? 'الرتبة الوظيفية' : 'Teacher Rank'} required error={errors.teacher_rank}>
+                  <FormField label={t('teacherRank')} required error={errors.teacher_rank}>
                     <Select value={qualData.teacher_rank || ''} onValueChange={(val) => setQualData(p => ({ ...p, teacher_rank: val }))}>
-                      <SelectTrigger className={`h-10 rounded-lg ${errors.teacher_rank ? 'border-red-500' : ''}`} data-testid="teacher-rank"><SelectValue placeholder={isRTL ? 'اختر الرتبة' : 'Select rank'} /></SelectTrigger>
+                      <SelectTrigger className={`h-10 rounded-lg ${errors.teacher_rank ? 'border-red-500' : ''}`} data-testid="teacher-rank"><SelectValue placeholder={t('selectRank')} /></SelectTrigger>
                       <SelectContent>
                         {options.ranks?.map((r) => (<SelectItem key={r.id || r.code} value={r.id || r.code}>{isRTL ? (r.name || r.name_ar) : (r.name_en || r.name)}</SelectItem>))}
                       </SelectContent>
@@ -401,11 +402,11 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
 
             {currentStep === 3 && (
               <div className="space-y-5">
-                <SectionHeader icon={BookOpen} title={isRTL ? 'المواد والصفوف' : 'Subjects & Grades'} subtitle={isRTL ? 'اختر المواد والصفوف التي يدرسها' : 'Select teaching subjects and grades'} color="purple" />
+                <SectionHeader icon={BookOpen} title={t('subjectsGrades')} subtitle={t('selectTeachingSubjectsAndGrades')} color="purple" />
 
                 <div className="space-y-4">
                   <div>
-                    <Label className="mb-2 block text-sm font-medium">{isRTL ? 'المواد التي يدرسها' : 'Subjects'} <span className="text-red-500">*</span></Label>
+                    <Label className="mb-2 block text-sm font-medium">{t('subjects2')} <span className="text-red-500">*</span></Label>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                       {options.subjects?.map((subject) => (
                         <button key={subject.id} type="button" onClick={() => toggleSubject(subject.id)}
@@ -421,9 +422,9 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
                     {errors.subject_ids && <p className="text-red-500 text-xs mt-1">{errors.subject_ids}</p>}
                   </div>
 
-                  <FormField label={isRTL ? 'المادة الأساسية' : 'Primary Subject'} required error={errors.primary_subject_id}>
+                  <FormField label={t('primarySubject')} required error={errors.primary_subject_id}>
                     <Select value={subjectData.primary_subject_id || ''} onValueChange={(val) => setSubjectData(p => ({ ...p, primary_subject_id: val }))}>
-                      <SelectTrigger className={`h-10 rounded-lg ${errors.primary_subject_id ? 'border-red-500' : ''}`} data-testid="teacher-primary-subject"><SelectValue placeholder={isRTL ? 'اختر المادة الأساسية' : 'Select primary subject'} /></SelectTrigger>
+                      <SelectTrigger className={`h-10 rounded-lg ${errors.primary_subject_id ? 'border-red-500' : ''}`} data-testid="teacher-primary-subject"><SelectValue placeholder={t('selectPrimarySubject')} /></SelectTrigger>
                       <SelectContent>
                         {options.subjects?.map((subject) => (<SelectItem key={subject.id} value={subject.id}>{isRTL ? (subject.name_ar || subject.name) : (subject.name_en || subject.name_ar || subject.name)}</SelectItem>))}
                       </SelectContent>
@@ -431,7 +432,7 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
                   </FormField>
 
                   <div>
-                    <Label className="mb-2 block text-sm font-medium">{isRTL ? 'الصفوف التي يدرسها' : 'Grades'} <span className="text-red-500">*</span></Label>
+                    <Label className="mb-2 block text-sm font-medium">{t('grades2')} <span className="text-red-500">*</span></Label>
                     <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
                       {options.grades?.map((grade) => (
                         <button key={grade.id} type="button" onClick={() => toggleGrade(grade.id)}
@@ -447,7 +448,7 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
                     {errors.grade_ids && <p className="text-red-500 text-xs mt-1">{errors.grade_ids}</p>}
                   </div>
 
-                  <FormField label={isRTL ? 'الحد الأقصى للحصص أسبوعياً' : 'Max Periods/Week'}>
+                  <FormField label={t('maxPeriodsweek')}>
                     <Input type="number" value={subjectData.max_periods_per_week || 24} onChange={(e) => setSubjectData(p => ({ ...p, max_periods_per_week: parseInt(e.target.value) || 24 }))} min="1" max="30" className="h-10 rounded-lg" data-testid="teacher-max-periods" />
                   </FormField>
                 </div>
@@ -456,11 +457,11 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
 
             {currentStep === 4 && (
               <div className="space-y-5">
-                <SectionHeader icon={Calendar} title={isRTL ? 'التفضيلات والجدول' : 'Schedule Preferences'} subtitle={isRTL ? 'نوع التعاقد وأيام العمل' : 'Contract type and work days'} color="amber" />
+                <SectionHeader icon={Calendar} title={t('schedulePreferences')} subtitle={t('contractTypeAndWorkDays')} color="amber" />
                 <div className="space-y-4">
-                  <FormField label={isRTL ? 'نوع التعاقد' : 'Contract Type'}>
+                  <FormField label={t('contractType')}>
                     <Select value={scheduleData.contract_type || 'permanent'} onValueChange={(val) => setScheduleData(p => ({ ...p, contract_type: val }))}>
-                      <SelectTrigger className="h-10 rounded-lg" data-testid="teacher-contract"><SelectValue placeholder={isRTL ? 'اختر' : 'Select'} /></SelectTrigger>
+                      <SelectTrigger className="h-10 rounded-lg" data-testid="teacher-contract"><SelectValue placeholder={t('select2')} /></SelectTrigger>
                       <SelectContent>
                         {options.contractTypes?.map((c) => (<SelectItem key={c.id || c.code} value={c.id || c.code}>{isRTL ? (c.name || c.name_ar) : (c.name_en || c.name)}</SelectItem>))}
                       </SelectContent>
@@ -468,7 +469,7 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
                   </FormField>
 
                   <div>
-                    <Label className="mb-2 block text-sm font-medium">{isRTL ? 'أيام العمل المتاحة' : 'Available Days'}</Label>
+                    <Label className="mb-2 block text-sm font-medium">{t('availableDays')}</Label>
                     <div className="grid grid-cols-5 gap-2">
                       {days.map((day) => (
                         <button key={day.id} type="button" onClick={() => toggleDay(day.id)}
@@ -488,7 +489,7 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
 
             {currentStep === 5 && (
               <div className="space-y-4">
-                <SectionHeader icon={FileText} title={isRTL ? 'مراجعة البيانات' : 'Review Information'} subtitle={isRTL ? 'تأكد من صحة جميع البيانات' : 'Verify all information is correct'} color="indigo" />
+                <SectionHeader icon={FileText} title={t('reviewInformation')} subtitle={t('verifyAllInformationIsCorrect')} color="indigo" />
 
                 <div className="rounded-xl border overflow-hidden">
                   <div className="px-4 py-2.5 bg-green-50 dark:bg-green-950/20 border-b flex items-center gap-2">
@@ -496,10 +497,10 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
                     <span className="font-semibold text-sm text-green-800 dark:text-green-300">{isRTL ? 'البيانات الأساسية' : 'Basic Info'}</span>
                   </div>
                   <div className="p-4 grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-                    <div><span className="text-muted-foreground text-xs">{isRTL ? 'الاسم' : 'Name'}</span><p className="font-medium">{basicData.full_name_ar}</p></div>
-                    <div><span className="text-muted-foreground text-xs">{isRTL ? 'الهوية' : 'ID'}</span><p className="font-medium" dir="ltr">{basicData.national_id}</p></div>
-                    <div><span className="text-muted-foreground text-xs">{isRTL ? 'البريد' : 'Email'}</span><p className="font-medium" dir="ltr">{basicData.email}</p></div>
-                    <div><span className="text-muted-foreground text-xs">{isRTL ? 'الجوال' : 'Phone'}</span><p className="font-medium" dir="ltr">{basicData.phone}</p></div>
+                    <div><span className="text-muted-foreground text-xs">{t('name')}</span><p className="font-medium">{basicData.full_name_ar}</p></div>
+                    <div><span className="text-muted-foreground text-xs">{t('id')}</span><p className="font-medium" dir="ltr">{basicData.national_id}</p></div>
+                    <div><span className="text-muted-foreground text-xs">{t('email')}</span><p className="font-medium" dir="ltr">{basicData.email}</p></div>
+                    <div><span className="text-muted-foreground text-xs">{t('phone')}</span><p className="font-medium" dir="ltr">{basicData.phone}</p></div>
                   </div>
                 </div>
 
@@ -509,16 +510,16 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
                     <span className="font-semibold text-sm text-blue-800 dark:text-blue-300">{isRTL ? 'المؤهلات' : 'Qualifications'}</span>
                   </div>
                   <div className="p-4 grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-                    <div><span className="text-muted-foreground text-xs">{isRTL ? 'الدرجة' : 'Degree'}</span><p className="font-medium">{qualData.academic_degree}</p></div>
-                    <div><span className="text-muted-foreground text-xs">{isRTL ? 'الخبرة' : 'Experience'}</span><p className="font-medium">{qualData.years_of_experience} {isRTL ? 'سنوات' : 'years'}</p></div>
-                    <div><span className="text-muted-foreground text-xs">{isRTL ? 'الرتبة' : 'Rank'}</span><p className="font-medium">{qualData.teacher_rank}</p></div>
+                    <div><span className="text-muted-foreground text-xs">{t('degree2')}</span><p className="font-medium">{qualData.academic_degree}</p></div>
+                    <div><span className="text-muted-foreground text-xs">{t('experience2')}</span><p className="font-medium">{qualData.years_of_experience} {t('years')}</p></div>
+                    <div><span className="text-muted-foreground text-xs">{t('rank')}</span><p className="font-medium">{qualData.teacher_rank}</p></div>
                   </div>
                 </div>
 
                 <div className="rounded-xl border overflow-hidden">
                   <div className="px-4 py-2.5 bg-violet-50 dark:bg-violet-950/20 border-b flex items-center gap-2">
                     <BookOpen className="h-4 w-4 text-violet-600" />
-                    <span className="font-semibold text-sm text-violet-800 dark:text-violet-300">{isRTL ? 'المواد والصفوف' : 'Subjects & Grades'}</span>
+                    <span className="font-semibold text-sm text-violet-800 dark:text-violet-300">{t('subjectsGrades')}</span>
                   </div>
                   <div className="p-4">
                     <div className="flex flex-wrap gap-1.5 mb-2">
@@ -538,13 +539,13 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
                   <div className="w-16 h-16 rounded-full bg-gradient-to-br from-emerald-400 to-green-600 mx-auto flex items-center justify-center mb-4 shadow-lg shadow-emerald-500/20">
                     <CheckCircle2 className="h-8 w-8 text-white" />
                   </div>
-                  <h2 className="text-xl font-bold text-emerald-600 font-cairo mb-1">{isRTL ? 'تم إضافة المعلم بنجاح!' : 'Teacher Added!'}</h2>
+                  <h2 className="text-xl font-bold text-emerald-600 font-cairo mb-1">{t('teacherAdded')}</h2>
                 </div>
 
                 <div className="p-4 rounded-xl border-2 border-emerald-200 bg-emerald-50/50 dark:bg-emerald-950/20">
                   <div className="flex items-center justify-between mb-3">
                     <div>
-                      <p className="text-xs text-muted-foreground">{isRTL ? 'رقم المعلم' : 'Teacher ID'}</p>
+                      <p className="text-xs text-muted-foreground">{t('teacherId')}</p>
                       <p className="text-lg font-bold font-mono text-emerald-800">{result.teacher_id}</p>
                     </div>
                     <Button variant="ghost" size="icon" onClick={() => copyToClipboard(result.teacher_id)} className="text-emerald-600">
@@ -553,13 +554,13 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
                   </div>
                   {result.user_account?.created && (
                     <div className="space-y-2 p-3 bg-white dark:bg-background rounded-lg text-sm">
-                      <p className="font-semibold text-xs text-emerald-800 dark:text-emerald-300">{isRTL ? 'بيانات الدخول' : 'Login Credentials'}</p>
+                      <p className="font-semibold text-xs text-emerald-800 dark:text-emerald-300">{t('loginCredentials2')}</p>
                       <div className="flex items-center justify-between">
-                        <span className="text-xs text-muted-foreground">{isRTL ? 'البريد:' : 'Email:'}</span>
+                        <span className="text-xs text-muted-foreground">{t('email3')}</span>
                         <code className="text-xs bg-muted px-2 py-0.5 rounded">{result.user_account.email}</code>
                       </div>
                       <div className="flex items-center justify-between">
-                        <span className="text-xs text-muted-foreground">{isRTL ? 'كلمة المرور:' : 'Password:'}</span>
+                        <span className="text-xs text-muted-foreground">{t('password2')}</span>
                         <div className="flex items-center gap-1">
                           <code className="text-xs bg-muted px-2 py-0.5 rounded">{result.user_account.temp_password}</code>
                           <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => copyToClipboard(result.user_account.temp_password)}>
@@ -577,12 +578,12 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
                   toast.success(isRTL ? 'تم نسخ رسالة الترحيب' : 'Welcome message copied!');
                 }}>
                   <Copy className="h-4 w-4 me-2" />
-                  {isRTL ? 'نسخ رسالة الترحيب' : 'Copy Welcome Message'}
+                  {t('copyWelcomeMessage')}
                 </Button>
 
                 <div className="flex justify-center gap-3 pt-2">
-                  <Button variant="outline" className="rounded-lg" onClick={() => handleCloseDialog(false)}>{isRTL ? 'إغلاق' : 'Close'}</Button>
-                  <Button className="rounded-lg bg-green-600 hover:bg-green-700" onClick={handleReset}>{isRTL ? 'إضافة معلم آخر' : 'Add Another'}</Button>
+                  <Button variant="outline" className="rounded-lg" onClick={() => handleCloseDialog(false)}>{t('close')}</Button>
+                  <Button className="rounded-lg bg-green-600 hover:bg-green-700" onClick={handleReset}>{t('addAnother2')}</Button>
                 </div>
               </div>
             )}
@@ -595,21 +596,21 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
               {currentStep > 1 && (
                 <Button variant="ghost" size="sm" onClick={handleBack} disabled={submitting} className="gap-1.5 rounded-lg h-9">
                   {isRTL ? <ArrowRight className="h-3.5 w-3.5" /> : <ArrowLeft className="h-3.5 w-3.5" />}
-                  {isRTL ? 'السابق' : 'Back'}
+                  {t('back')}
                 </Button>
               )}
             </div>
             <div className="flex gap-2">
-              <Button variant="ghost" size="sm" className="rounded-lg h-9" onClick={() => handleCloseDialog(false)} disabled={submitting}>{isRTL ? 'إلغاء' : 'Cancel'}</Button>
+              <Button variant="ghost" size="sm" className="rounded-lg h-9" onClick={() => handleCloseDialog(false)} disabled={submitting}>{t('cancel')}</Button>
               {currentStep < 5 ? (
                 <Button size="sm" onClick={handleNext} className="bg-green-600 hover:bg-green-700 gap-1.5 rounded-lg h-9 px-5">
-                  {isRTL ? 'التالي' : 'Next'}
+                  {t('next')}
                   {isRTL ? <ArrowLeft className="h-3.5 w-3.5" /> : <ArrowRight className="h-3.5 w-3.5" />}
                 </Button>
               ) : (
                 <Button size="sm" onClick={handleSubmit} disabled={submitting} className="bg-emerald-600 hover:bg-emerald-700 gap-1.5 rounded-lg h-9 px-5">
                   {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
-                  {isRTL ? 'تأكيد وحفظ' : 'Confirm & Save'}
+                  {t('confirmSave')}
                 </Button>
               )}
             </div>

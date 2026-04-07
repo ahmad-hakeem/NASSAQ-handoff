@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
@@ -16,6 +16,7 @@ import {
 
 
 const ParentChildrenPage = () => {
+  const { t } = useTranslation();
   const { token, user, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
@@ -54,9 +55,9 @@ const ParentChildrenPage = () => {
       <div className="p-4 space-y-4" data-testid="parent-children-page">
         <div className="flex items-center gap-2 mb-2">
           <Users className="h-6 w-6 text-indigo-600" />
-          <h1 className="text-xl font-bold font-cairo">{isRTL ? 'أبنائي' : 'My Children'}</h1>
+          <h1 className="text-xl font-bold font-cairo">{t('myChildren')}</h1>
           <Badge className="bg-indigo-100 text-indigo-700 border-0 ms-auto">
-            {children.length} {isRTL ? 'أبناء' : 'children'}
+            {children.length} {t('children')}
           </Badge>
         </div>
 
@@ -65,10 +66,10 @@ const ParentChildrenPage = () => {
             <CardContent className="py-16 text-center">
               <Users className="h-16 w-16 mx-auto mb-4 text-gray-300" />
               <h3 className="font-bold text-lg text-gray-700 mb-2">
-                {isRTL ? 'لا يوجد أبناء مسجلين' : 'No children enrolled'}
+                {t('noChildrenEnrolled')}
               </h3>
               <p className="text-muted-foreground text-sm">
-                {isRTL ? 'تواصل مع إدارة المدرسة لربط حسابك بأبنائك' : 'Contact school administration to link your account'}
+                {t('contactSchoolAdministrationToLinkYourAccount')}
               </p>
             </CardContent>
           </Card>
@@ -100,14 +101,14 @@ const ParentChildrenPage = () => {
                       <CheckCircle className="h-5 w-5 text-green-600" />
                       <div>
                         <p className="text-sm font-bold text-green-600">{child.attendance_rate}%</p>
-                        <p className="text-[10px] text-muted-foreground">{isRTL ? 'الحضور' : 'Attendance'}</p>
+                        <p className="text-[10px] text-muted-foreground">{t('attendance2')}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 p-3 bg-blue-50 rounded-xl">
                       <TrendingUp className="h-5 w-5 text-blue-600" />
                       <div>
                         <p className="text-sm font-bold text-blue-600">{child.average_score || 0}%</p>
-                        <p className="text-[10px] text-muted-foreground">{isRTL ? 'المعدل' : 'Average'}</p>
+                        <p className="text-[10px] text-muted-foreground">{t('average')}</p>
                       </div>
                     </div>
                   </div>
@@ -116,25 +117,25 @@ const ParentChildrenPage = () => {
                     <Link to={`/parent/child/${child.id}`}>
                       <Button variant="outline" size="sm" className="w-full text-xs h-9">
                         <GraduationCap className="h-3 w-3 me-1" />
-                        {isRTL ? 'التفاصيل' : 'Details'}
+                        {t('details')}
                       </Button>
                     </Link>
                     <Link to={`/parent/child/${child.id}/schedule`}>
                       <Button variant="outline" size="sm" className="w-full text-xs h-9">
                         <Calendar className="h-3 w-3 me-1" />
-                        {isRTL ? 'الجدول' : 'Schedule'}
+                        {t('schedule')}
                       </Button>
                     </Link>
                     <Link to={`/parent/child/${child.id}/homework`}>
                       <Button variant="outline" size="sm" className="w-full text-xs h-9">
                         <ClipboardList className="h-3 w-3 me-1" />
-                        {isRTL ? 'الواجبات' : 'Homework'}
+                        {t('homework')}
                       </Button>
                     </Link>
                     <Link to={`/parent/child/${child.id}/behaviour`}>
                       <Button variant="outline" size="sm" className="w-full text-xs h-9">
                         <Heart className="h-3 w-3 me-1" />
-                        {isRTL ? 'السلوك' : 'Behavior'}
+                        {t('behavior')}
                       </Button>
                     </Link>
                   </div>

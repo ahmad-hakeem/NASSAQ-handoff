@@ -18,9 +18,11 @@ import {
 } from 'lucide-react';
 import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 
+import { useTranslation } from '../../contexts/ThemeContext';
 const HAKIM_CHARACTER = '/hakim-poses/teacher-helper.png';
 
 const TeacherDayProgress = ({ isRTL }) => {
+  const { t } = useTranslation();
   const { api } = useAuth();
   const [now, setNow] = useState(new Date());
   const [dayStatus, setDayStatus] = useState(null);
@@ -67,7 +69,7 @@ const TeacherDayProgress = ({ isRTL }) => {
   }, [now, isRTL]);
 
   const periodLabel = isBreak
-    ? (isRTL ? 'استراحة' : 'Break')
+    ? (t('break'))
     : (isRTL ? `الحصة ${currentPeriod} من ${totalPeriods}` : `Period ${currentPeriod} of ${totalPeriods}`);
 
   return (
@@ -104,7 +106,7 @@ const TeacherDayProgress = ({ isRTL }) => {
                   )}
                 </div>
                 <div>
-                  <p className="text-[10px] sm:text-xs text-white/40 font-tajawal">{isBreak ? (isRTL ? 'الوقت الحالي' : 'Current') : (isRTL ? 'الحصة الحالية' : 'Current Period')}</p>
+                  <p className="text-[10px] sm:text-xs text-white/40 font-tajawal">{isBreak ? (t('current')) : (t('currentPeriod'))}</p>
                   <p className="text-sm sm:text-base font-bold font-cairo">{periodLabel}</p>
                 </div>
               </div>
@@ -115,8 +117,8 @@ const TeacherDayProgress = ({ isRTL }) => {
               </p>
               <p className="text-[9px] sm:text-[10px] text-white/40 font-tajawal">
                 {isSchoolTime
-                  ? (isRTL ? 'الدوام جارٍ' : 'School in session')
-                  : (isRTL ? 'خارج وقت الدوام' : 'Outside school hours')}
+                  ? (t('schoolInSession'))
+                  : (t('outsideSchoolHours'))}
               </p>
             </div>
           </div>
@@ -205,7 +207,7 @@ export default function TeacherMainDashboard() {
           type: a.type?.includes('attendance') ? 'attendance' :
                 a.type?.includes('assessment') ? 'assessment' : 'notification',
           message: a.message,
-          time: a.time ? new Date(a.time).toLocaleDateString(isRTL ? 'ar-SA' : 'en-US') : (isRTL ? 'مؤخراً' : 'Recently')
+          time: a.time ? new Date(a.time).toLocaleDateString(isRTL ? 'ar-SA' : 'en-US') : (t('recently'))
         })) || []);
       }
     } catch (error) {
@@ -267,7 +269,7 @@ export default function TeacherMainDashboard() {
     setRefreshing(true);
     await Promise.all([fetchTeacherData(), fetchMetrics()]);
     setRefreshing(false);
-    toast.success(isRTL ? 'تم تحديث البيانات' : 'Data refreshed');
+    toast.success(t('dataRefreshed'));
   };
 
   const currentLesson = stats.upcomingLessons.length > 0 ? stats.upcomingLessons[0] : null;
@@ -280,7 +282,7 @@ export default function TeacherMainDashboard() {
           <div className="relative">
             <div className="w-16 h-16 rounded-full border-4 border-brand-turquoise/20 border-t-brand-turquoise animate-spin" />
           </div>
-          <p className="text-sm text-muted-foreground font-tajawal">{isRTL ? 'جارٍ تحميل مركز القيادة...' : 'Loading Command Center...'}</p>
+          <p className="text-sm text-muted-foreground font-tajawal">{t('loadingCommandCenter')}</p>
         </div>
       </Sidebar>
     );
@@ -290,21 +292,21 @@ export default function TeacherMainDashboard() {
     {
       title: isRTL ? 'حصص اليوم' : "Today's Lessons",
       value: stats.todayLessons,
-      subtitle: isRTL ? 'المقرر لهذا اليوم' : 'Scheduled for today',
+      subtitle: t('scheduledForToday'),
       icon: CalendarDays,
       gradient: 'from-violet-500 to-violet-600',
       onClick: () => navigate('/teacher/schedule'),
     },
     {
-      title: isRTL ? 'فصولي' : 'My Classes',
+      title: t('myClasses'),
       value: stats.myClasses,
-      subtitle: isRTL ? 'الفصول المسندة' : 'Assigned classes',
+      subtitle: t('assignedClasses'),
       icon: BookOpen,
       gradient: 'from-blue-500 to-blue-600',
       onClick: () => navigate('/teacher/classes'),
     },
     {
-      title: isRTL ? 'طلابي' : 'My Students',
+      title: t('myStudents'),
       value: stats.myStudents,
       subtitle: isRTL ? 'إجمالي الطلاب' : 'Total students',
       icon: Users,
@@ -312,9 +314,9 @@ export default function TeacherMainDashboard() {
       onClick: () => navigate('/teacher/students'),
     },
     {
-      title: isRTL ? 'المهام المفتوحة' : 'Open Tasks',
+      title: t('openTasks'),
       value: stats.pendingAttendance,
-      subtitle: isRTL ? 'بانتظار الإكمال' : 'Awaiting completion',
+      subtitle: t('awaitingCompletion'),
       icon: AlertCircle,
       gradient: stats.pendingAttendance > 0 ? 'from-orange-500 to-orange-600' : 'from-slate-500 to-slate-600',
       onClick: () => navigate('/teacher/tasks'),
@@ -330,7 +332,7 @@ export default function TeacherMainDashboard() {
             <Button size="sm" variant="outline" onClick={handleRefresh} disabled={refreshing}
               className="rounded-xl border-border/50 hover:bg-muted gap-2 font-tajawal text-xs">
               <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-              {isRTL ? 'تحديث' : 'Refresh'}
+              {t('refresh')}
             </Button>
           </div>
 
@@ -360,12 +362,12 @@ export default function TeacherMainDashboard() {
                       {isRTL ? `أهلاً أستاذ ${user?.full_name || 'المعلم'}` : `Welcome, ${user?.full_name || 'Teacher'}`}
                     </h1>
                     <p className="text-brand-turquoise font-bold font-cairo text-sm sm:text-lg mt-0.5 truncate">
-                      {teacherSubject ? (isRTL ? `معلم ${teacherSubject}` : `${teacherSubject} Teacher`) : (isRTL ? 'معلم' : 'Teacher')}
+                      {teacherSubject ? (isRTL ? `معلم ${teacherSubject}` : `${teacherSubject} Teacher`) : (t('teacher'))}
                     </p>
                     <div className="flex items-center gap-2 mt-1.5 sm:mt-2">
                       <div className="flex items-center gap-1.5 text-white/40 text-xs sm:text-sm font-tajawal bg-white/5 rounded-lg px-2 sm:px-2.5 py-0.5 sm:py-1">
                         <School className="h-3 sm:h-3.5 w-3 sm:w-3.5 flex-shrink-0" />
-                        <span className="truncate max-w-[140px] sm:max-w-none">{schoolName || (isRTL ? 'المدرسة' : 'School')}</span>
+                        <span className="truncate max-w-[140px] sm:max-w-none">{schoolName || (t('school'))}</span>
                       </div>
                     </div>
                   </div>
@@ -377,7 +379,7 @@ export default function TeacherMainDashboard() {
                     onClick={() => navigate('/teacher/schedule')}
                   >
                     <Calendar className="h-4 sm:h-5 w-4 sm:w-5 me-1.5 sm:me-2" />
-                    {isRTL ? 'جدولي' : 'My Schedule'}
+                    {t('mySchedule')}
                   </Button>
                   <Button
                     variant="outline"
@@ -430,10 +432,10 @@ export default function TeacherMainDashboard() {
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-turquoise to-cyan-600 flex items-center justify-center shadow-lg shadow-brand-turquoise/20">
                     <Clock className="h-5 w-5 text-white" />
                   </div>
-                  {isRTL ? 'جدول اليوم' : "Today's Schedule"}
+                  {t('todaysSchedule')}
                 </CardTitle>
                 <Button variant="ghost" size="sm" className="rounded-xl font-cairo text-brand-turquoise hover:bg-brand-turquoise/10 gap-1" onClick={() => navigate('/teacher/schedule')}>
-                  {isRTL ? 'الجدول الكامل' : 'Full Schedule'}
+                  {t('fullSchedule2')}
                   <NavArrow className="h-4 w-4" />
                 </Button>
               </div>
@@ -451,7 +453,7 @@ export default function TeacherMainDashboard() {
                       </div>
                       <div className="min-w-0">
                         <Badge className="bg-brand-turquoise/15 text-brand-turquoise border-brand-turquoise/25 mb-1 sm:mb-1.5 font-cairo text-[10px] sm:text-xs">
-                          {isRTL ? 'الحصة الحالية / القادمة' : 'Current / Next Class'}
+                          {t('currentNextClass')}
                         </Badge>
                         <h3 className="text-base sm:text-lg font-bold font-cairo text-foreground truncate">{currentLesson.subject}</h3>
                         <p className="text-xs sm:text-sm text-muted-foreground font-tajawal flex items-center gap-1.5 sm:gap-2 mt-0.5">
@@ -505,7 +507,7 @@ export default function TeacherMainDashboard() {
                             ? 'bg-gradient-to-br from-brand-turquoise to-brand-navy text-white shadow-md'
                             : 'bg-muted text-muted-foreground'
                         }`}>
-                          <span className="text-[8px] sm:text-[9px] font-tajawal leading-none">{isRTL ? 'الحصة' : 'P'}</span>
+                          <span className="text-[8px] sm:text-[9px] font-tajawal leading-none">{t('p')}</span>
                           <span className="font-bold text-base sm:text-lg font-cairo leading-none">{lesson.period || (index + 1)}</span>
                         </div>
                         <div className="min-w-0">
@@ -519,7 +521,7 @@ export default function TeacherMainDashboard() {
                       <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
                         {index === 0 && (
                           <Badge className="bg-brand-turquoise/15 text-brand-turquoise border-brand-turquoise/25 font-cairo text-[10px] sm:text-xs hidden sm:inline-flex">
-                            {isRTL ? 'القادمة' : 'Next'}
+                            {t('next2')}
                           </Badge>
                         )}
                         <NavArrow className="h-4 w-4 text-muted-foreground/50 group-hover:text-brand-turquoise transition-colors" />
@@ -541,17 +543,17 @@ export default function TeacherMainDashboard() {
                       <TrendingUp className="h-5 w-5 text-white" />
                     </div>
                     <div>
-                      <h3 className="font-cairo font-bold text-foreground text-lg">{isRTL ? 'أدائي التدريسي' : 'Teaching Performance'}</h3>
+                      <h3 className="font-cairo font-bold text-foreground text-lg">{t('teachingPerformance')}</h3>
                       <p className="text-xs text-muted-foreground font-tajawal">{isRTL ? `بيانات من ${teachingMetrics.classCount} فصل` : `Data from ${teachingMetrics.classCount} classes`}</p>
                     </div>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-border/30">
                   {[
-                    { label: isRTL ? 'معدل الحضور' : 'Attendance Rate', value: teachingMetrics.avgAttendance, icon: CheckCircle2, color: 'text-emerald-600', bgIcon: 'from-emerald-500 to-emerald-600' },
-                    { label: isRTL ? 'معدل المشاركة' : 'Participation', value: teachingMetrics.avgParticipation, icon: Activity, color: 'text-blue-600', bgIcon: 'from-blue-500 to-blue-600' },
-                    { label: isRTL ? 'الأداء' : 'Performance', value: teachingMetrics.avgPerformance, icon: Target, color: 'text-purple-600', bgIcon: 'from-purple-500 to-purple-600' },
-                    { label: isRTL ? 'إجمالي الحصص' : 'Total Sessions', value: teachingMetrics.totalSessions, icon: Flame, color: 'text-amber-600', bgIcon: 'from-amber-500 to-amber-600', isCount: true },
+                    { label: t('attendanceRate2'), value: teachingMetrics.avgAttendance, icon: CheckCircle2, color: 'text-emerald-600', bgIcon: 'from-emerald-500 to-emerald-600' },
+                    { label: t('participation'), value: teachingMetrics.avgParticipation, icon: Activity, color: 'text-blue-600', bgIcon: 'from-blue-500 to-blue-600' },
+                    { label: t('performance3'), value: teachingMetrics.avgPerformance, icon: Target, color: 'text-purple-600', bgIcon: 'from-purple-500 to-purple-600' },
+                    { label: t('totalSessions'), value: teachingMetrics.totalSessions, icon: Flame, color: 'text-amber-600', bgIcon: 'from-amber-500 to-amber-600', isCount: true },
                   ].map(metric => (
                     <div key={metric.label} className="text-center p-3 sm:p-5 bg-background">
                       <div className={`w-9 h-9 sm:w-11 sm:h-11 mx-auto rounded-lg sm:rounded-xl bg-gradient-to-br ${metric.bgIcon} flex items-center justify-center mb-2 sm:mb-3 shadow-md`}>
@@ -577,14 +579,14 @@ export default function TeacherMainDashboard() {
                   <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-purple to-violet-600 flex items-center justify-center shadow-md">
                     <Bell className="h-4 w-4 text-white" />
                   </div>
-                  {isRTL ? 'آخر النشاطات' : 'Recent Activities'}
+                  {t('recentActivities')}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
                 {recentActivities.length === 0 ? (
                   <div className="text-center py-10 text-muted-foreground">
                     <Bell className="h-12 w-12 mx-auto mb-3 opacity-15" />
-                    <p className="font-tajawal">{isRTL ? 'لا توجد نشاطات حديثة' : 'No recent activities'}</p>
+                    <p className="font-tajawal">{t('noRecentActivities')}</p>
                   </div>
                 ) : (
                   recentActivities.map((activity, index) => (
@@ -609,7 +611,7 @@ export default function TeacherMainDashboard() {
                   ))
                 )}
                 <Button variant="ghost" className="w-full rounded-xl font-cairo text-brand-turquoise hover:bg-brand-turquoise/10 mt-2" onClick={() => navigate('/notifications')}>
-                  {isRTL ? 'عرض جميع الإشعارات' : 'View All Notifications'}
+                  {t('viewAllNotifications')}
                 </Button>
               </CardContent>
             </Card>
@@ -621,15 +623,15 @@ export default function TeacherMainDashboard() {
                     <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-turquoise to-cyan-600 flex items-center justify-center shadow-md">
                       <Zap className="h-4 w-4 text-white" />
                     </div>
-                    {isRTL ? 'إجراءات سريعة' : 'Quick Actions'}
+                    {t('quickActions')}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-2 gap-3">
                     {[
-                      { icon: ClipboardCheck, label: isRTL ? 'تسجيل الحضور' : 'Attendance', path: '/teacher/attendance', gradient: 'from-emerald-500 to-emerald-600' },
-                      { icon: FileText, label: isRTL ? 'التقييمات' : 'Assessments', path: '/teacher/assessments', gradient: 'from-blue-500 to-blue-600' },
-                      { icon: Star, label: isRTL ? 'السلوك' : 'Behavior', path: '/teacher/behavior', gradient: 'from-purple-500 to-purple-600' },
+                      { icon: ClipboardCheck, label: t('attendance3'), path: '/teacher/attendance', gradient: 'from-emerald-500 to-emerald-600' },
+                      { icon: FileText, label: t('assessments'), path: '/teacher/assessments', gradient: 'from-blue-500 to-blue-600' },
+                      { icon: Star, label: t('behavior'), path: '/teacher/behavior', gradient: 'from-purple-500 to-purple-600' },
                       { icon: MessageSquare, label: isRTL ? 'التواصل' : 'Communication', path: '/teacher/communication', gradient: 'from-amber-500 to-orange-500' },
                     ].map((action, index) => (
                       <button
@@ -653,26 +655,26 @@ export default function TeacherMainDashboard() {
                     <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center shadow-md">
                       <AlertCircle className="h-4 w-4 text-white" />
                     </div>
-                    {isRTL ? 'المهام المعلقة' : 'Pending Tasks'}
+                    {t('pendingTasks')}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="p-4 rounded-xl bg-orange-50 dark:bg-orange-950/20 border border-orange-200/50 dark:border-orange-800/30">
                     <div className="flex items-center justify-between mb-3">
-                      <span className="font-medium text-orange-800 dark:text-orange-300 font-tajawal text-sm">{isRTL ? 'حضور غير مسجل' : 'Unrecorded Attendance'}</span>
+                      <span className="font-medium text-orange-800 dark:text-orange-300 font-tajawal text-sm">{t('unrecordedAttendance2')}</span>
                       <Badge className="bg-orange-500 text-white font-cairo">{stats.pendingAttendance}</Badge>
                     </div>
                     <Button size="sm" className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white rounded-xl font-cairo shadow-md" onClick={() => navigate('/teacher/attendance')}>
-                      {isRTL ? 'تسجيل الآن' : 'Record Now'}
+                      {t('recordNow')}
                     </Button>
                   </div>
                   <div className="p-4 rounded-xl bg-blue-50 dark:bg-blue-950/20 border border-blue-200/50 dark:border-blue-800/30">
                     <div className="flex items-center justify-between mb-3">
-                      <span className="font-medium text-blue-800 dark:text-blue-300 font-tajawal text-sm">{isRTL ? 'تقييمات معلقة' : 'Pending Assessments'}</span>
+                      <span className="font-medium text-blue-800 dark:text-blue-300 font-tajawal text-sm">{t('pendingAssessments')}</span>
                       <Badge className="bg-blue-500 text-white font-cairo">{stats.pendingAssessments}</Badge>
                     </div>
                     <Button size="sm" variant="outline" className="w-full border-blue-300 text-blue-700 hover:bg-blue-50 rounded-xl font-cairo" onClick={() => navigate('/teacher/assessments')}>
-                      {isRTL ? 'إكمال التقييم' : 'Complete Assessment'}
+                      {t('completeAssessment')}
                     </Button>
                   </div>
                 </CardContent>
@@ -689,11 +691,11 @@ export default function TeacherMainDashboard() {
                   <style>{`@keyframes hakimRxFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }`}</style>
                   <div>
                     <CardTitle className="flex items-center gap-2 text-lg font-cairo">
-                      {isRTL ? 'رؤى حكيم الذكية' : 'Hakim AI Insights'}
+                      {t('hakimAiInsights')}
                       <Sparkles className="h-4 w-4 text-brand-purple animate-pulse" />
                     </CardTitle>
                     <CardDescription className="font-tajawal text-xs">
-                      {isRTL ? 'تحليل آلي لصحة فصولك وتنبيهات المخاطر' : 'Automated class health and risk alerts'}
+                      {t('automatedClassHealthAndRiskAlerts')}
                     </CardDescription>
                   </div>
                 </div>
@@ -702,7 +704,7 @@ export default function TeacherMainDashboard() {
                 {hakimLoading ? (
                   <div className="flex items-center justify-center py-8 gap-3">
                     <div className="w-8 h-8 rounded-full border-2 border-brand-purple/20 border-t-brand-purple animate-spin" />
-                    <span className="text-sm text-muted-foreground font-tajawal">{isRTL ? 'جاري التحليل...' : 'Analyzing...'}</span>
+                    <span className="text-sm text-muted-foreground font-tajawal">{t('analyzing')}</span>
                   </div>
                 ) : (
                   <div className="space-y-5">
@@ -743,7 +745,7 @@ export default function TeacherMainDashboard() {
                       <div>
                         <h4 className="text-sm font-bold text-muted-foreground mb-3 flex items-center gap-2 font-cairo">
                           <AlertCircle className="h-4 w-4 text-red-500" />
-                          {isRTL ? 'تنبيهات المخاطر' : 'Risk Alerts'}
+                          {t('riskAlerts')}
                         </h4>
                         <div className="space-y-2">
                           {riskAlerts.map((alert, idx) => (

@@ -22,6 +22,7 @@ import {
   GraduationCap, Building2, Filter
 } from 'lucide-react';
 
+import { useTranslation } from '../../contexts/ThemeContext';
 const MESSAGE_TYPES = [
   { value: 'general', label: 'عام', labelEn: 'General', icon: MessageSquare, color: 'bg-blue-500' },
   { value: 'urgent', label: 'عاجل', labelEn: 'Urgent', icon: AlertCircle, color: 'bg-red-500' },
@@ -94,7 +95,7 @@ export default function TeacherCommunicationPage() {
   useEffect(() => { if (selectedClass) fetchStudents(); }, [selectedClass, fetchStudents]);
 
   const handleSendMessage = async () => {
-    if (!newMessage.subject || !newMessage.body) { nassaqError(isRTL ? 'يرجى ملء جميع الحقول' : 'Please fill all fields'); return; }
+    if (!newMessage.subject || !newMessage.body) { nassaqError(t('pleaseFillAllFields')); return; }
     setSending(true);
     try {
       let recipientIds = [];
@@ -105,11 +106,12 @@ export default function TeacherCommunicationPage() {
       setShowComposeDialog(false);
       setNewMessage({ type: 'general', subject: '', body: '', recipients: 'all', selectedStudents: [], selectedParents: [] });
       fetchData();
-    } catch (error) { nassaqError(isRTL ? 'خطأ في إرسال الرسالة' : 'Error sending message'); }
+    } catch (error) { nassaqError(t('errorSendingMessage')); }
     finally { setSending(false); }
   };
 
   const toggleStudentSelection = (studentId, parentId) => {
+  const { t } = useTranslation();
     setNewMessage(prev => {
       const isSelected = prev.selectedStudents.includes(studentId);
       return { ...prev, selectedStudents: isSelected ? prev.selectedStudents.filter(id => id !== studentId) : [...prev.selectedStudents, studentId], selectedParents: isSelected ? prev.selectedParents.filter(id => id !== parentId) : [...prev.selectedParents, parentId] };
@@ -140,18 +142,18 @@ export default function TeacherCommunicationPage() {
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
               <h1 className="text-2xl font-bold text-brand-navy dark:text-brand-turquoise font-cairo">
-                {isRTL ? 'مركز التواصل' : 'Communication Center'}
+                {t('communicationCenter')}
               </h1>
-              <p className="text-sm text-muted-foreground">{isRTL ? 'إرسال واستقبال الرسائل والإشعارات' : 'Send and receive messages and notifications'}</p>
+              <p className="text-sm text-muted-foreground">{t('sendAndReceiveMessagesAndNotifications')}</p>
             </div>
             <div className="flex items-center gap-2">
               <Select value={selectedClass} onValueChange={setSelectedClass}>
-                <SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder={isRTL ? 'الفصل' : 'Class'} /></SelectTrigger>
+                <SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder={t('class')} /></SelectTrigger>
                 <SelectContent>{classes.map(cls => (<SelectItem key={cls.id} value={cls.id}>{cls.name}</SelectItem>))}</SelectContent>
               </Select>
               <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /></Button>
               <Button className="bg-brand-turquoise hover:bg-brand-turquoise/90" onClick={() => setShowComposeDialog(true)}>
-                <Plus className="h-4 w-4 me-1" /><span className="hidden sm:inline">{isRTL ? 'رسالة جديدة' : 'New Message'}</span><span className="sm:hidden">{isRTL ? 'جديدة' : 'New'}</span>
+                <Plus className="h-4 w-4 me-1" /><span className="hidden sm:inline">{t('newMessage')}</span><span className="sm:hidden">{isRTL ? 'جديدة' : 'New'}</span>
               </Button>
             </div>
           </div>
@@ -160,20 +162,20 @@ export default function TeacherCommunicationPage() {
         <div className="p-4 max-w-[1400px] mx-auto space-y-5">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="mb-4 bg-muted/50">
-              <TabsTrigger value="compose" className="gap-1.5"><Send className="h-3.5 w-3.5" />{isRTL ? 'إرسال سريع' : 'Quick Send'}</TabsTrigger>
+              <TabsTrigger value="compose" className="gap-1.5"><Send className="h-3.5 w-3.5" />{t('quickSend')}</TabsTrigger>
               <TabsTrigger value="inbox" className="gap-1.5">
-                <Inbox className="h-3.5 w-3.5" />{isRTL ? 'الوارد' : 'Inbox'}
+                <Inbox className="h-3.5 w-3.5" />{t('inbox2')}
                 {unreadInbox > 0 && <Badge className="bg-red-500 text-white text-[9px] px-1.5 h-4 border-0">{unreadInbox}</Badge>}
               </TabsTrigger>
               <TabsTrigger value="sent" className="gap-1.5">
-                <History className="h-3.5 w-3.5" />{isRTL ? 'المرسلة' : 'Sent'}
+                <History className="h-3.5 w-3.5" />{t('sent')}
                 {sentMessages.length > 0 && <Badge variant="secondary" className="text-[9px] px-1.5 h-4 border-0">{sentMessages.length}</Badge>}
               </TabsTrigger>
               <TabsTrigger value="notifications" className="gap-1.5">
-                <Bell className="h-3.5 w-3.5" />{isRTL ? 'الإشعارات' : 'Notifications'}
+                <Bell className="h-3.5 w-3.5" />{t('notifications')}
                 {notifications.length > 0 && <Badge className="bg-brand-turquoise text-white text-[9px] px-1.5 h-4 border-0">{notifications.length}</Badge>}
               </TabsTrigger>
-              <TabsTrigger value="contacts" className="gap-1.5"><Users className="h-3.5 w-3.5" />{isRTL ? 'جهات الاتصال' : 'Contacts'}</TabsTrigger>
+              <TabsTrigger value="contacts" className="gap-1.5"><Users className="h-3.5 w-3.5" />{t('contacts')}</TabsTrigger>
             </TabsList>
 
             <TabsContent value="compose">
@@ -191,9 +193,9 @@ export default function TeacherCommunicationPage() {
                   <div className="grid lg:grid-cols-3 gap-4">
                     <div className="lg:col-span-2">
                       <Card>
-                        <CardHeader className="pb-3"><CardTitle className="text-base font-cairo flex items-center gap-2"><MessageSquare className="h-4 w-4 text-brand-turquoise" />{isRTL ? 'آخر الرسائل المرسلة' : 'Recent Sent Messages'}</CardTitle></CardHeader>
+                        <CardHeader className="pb-3"><CardTitle className="text-base font-cairo flex items-center gap-2"><MessageSquare className="h-4 w-4 text-brand-turquoise" />{t('recentSentMessages')}</CardTitle></CardHeader>
                         <CardContent>
-                          {sentMessages.length === 0 ? (<div className="text-center py-8"><MessageSquare className="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" /><p className="text-sm text-muted-foreground font-cairo">{isRTL ? 'لم ترسل أي رسائل بعد' : 'No messages sent yet'}</p></div>) : (
+                          {sentMessages.length === 0 ? (<div className="text-center py-8"><MessageSquare className="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" /><p className="text-sm text-muted-foreground font-cairo">{t('noMessagesSentYet')}</p></div>) : (
                             <div className="space-y-2">{sentMessages.slice(0, 5).map((message, idx) => {
                               const typeConfig = MESSAGE_TYPES.find(t => t.value === message.type);
                               return (<div key={message.id || idx} className="p-3 rounded-lg border hover:bg-muted/30 transition-all">
@@ -206,8 +208,8 @@ export default function TeacherCommunicationPage() {
                       </Card>
                     </div>
                     <div className="space-y-3">
-                      <Card className="bg-gradient-to-br from-brand-turquoise/5 to-brand-navy/5 border-brand-turquoise/20"><CardContent className="p-4 text-center"><Send className="h-7 w-7 mx-auto mb-2 text-brand-turquoise" /><div className="text-2xl font-bold font-cairo text-brand-navy dark:text-brand-turquoise">{sentMessages.length}</div><div className="text-xs text-muted-foreground">{isRTL ? 'رسالة مرسلة' : 'Sent'}</div></CardContent></Card>
-                      <Card><CardContent className="p-4 text-center"><Inbox className="h-7 w-7 mx-auto mb-2 text-blue-600" /><div className="text-2xl font-bold font-cairo text-blue-600">{receivedMessages.length}</div><div className="text-xs text-muted-foreground">{isRTL ? 'رسالة واردة' : 'Received'}</div></CardContent></Card>
+                      <Card className="bg-gradient-to-br from-brand-turquoise/5 to-brand-navy/5 border-brand-turquoise/20"><CardContent className="p-4 text-center"><Send className="h-7 w-7 mx-auto mb-2 text-brand-turquoise" /><div className="text-2xl font-bold font-cairo text-brand-navy dark:text-brand-turquoise">{sentMessages.length}</div><div className="text-xs text-muted-foreground">{t('sent4')}</div></CardContent></Card>
+                      <Card><CardContent className="p-4 text-center"><Inbox className="h-7 w-7 mx-auto mb-2 text-blue-600" /><div className="text-2xl font-bold font-cairo text-blue-600">{receivedMessages.length}</div><div className="text-xs text-muted-foreground">{t('received2')}</div></CardContent></Card>
                       <Card><CardContent className="p-4 text-center"><Users className="h-7 w-7 mx-auto mb-2 text-green-600" /><div className="text-2xl font-bold font-cairo text-green-600">{students.length}</div><div className="text-xs text-muted-foreground">{isRTL ? 'ولي أمر' : 'Parents'}</div></CardContent></Card>
                     </div>
                   </div>
@@ -219,12 +221,12 @@ export default function TeacherCommunicationPage() {
               <Card>
                 <CardHeader className="pb-3">
                   <div className="flex items-center justify-between flex-wrap gap-3">
-                    <CardTitle className="text-base font-cairo flex items-center gap-2"><Inbox className="h-4 w-4 text-blue-500" />{isRTL ? 'الرسائل الواردة' : 'Inbox'}{unreadInbox > 0 && <Badge className="bg-red-500 text-white border-0">{unreadInbox} {isRTL ? 'جديدة' : 'new'}</Badge>}</CardTitle>
-                    <div className="relative"><Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder={isRTL ? 'بحث في الرسائل...' : 'Search messages...'} value={msgSearchQuery} onChange={(e) => setMsgSearchQuery(e.target.value)} className="ps-9 w-full sm:w-[200px] h-9" /></div>
+                    <CardTitle className="text-base font-cairo flex items-center gap-2"><Inbox className="h-4 w-4 text-blue-500" />{t('inbox3')}{unreadInbox > 0 && <Badge className="bg-red-500 text-white border-0">{unreadInbox} {t('new3')}</Badge>}</CardTitle>
+                    <div className="relative"><Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder={t('searchMessages')} value={msgSearchQuery} onChange={(e) => setMsgSearchQuery(e.target.value)} className="ps-9 w-full sm:w-[200px] h-9" /></div>
                   </div>
                 </CardHeader>
                 <CardContent>
-                  {filteredReceivedMessages.length === 0 ? (<div className="flex flex-col items-center py-10 text-center"><Inbox className="h-12 w-12 mb-3 text-muted-foreground/30" /><p className="text-muted-foreground font-cairo">{isRTL ? 'لا توجد رسائل واردة' : 'No received messages'}</p></div>) : (
+                  {filteredReceivedMessages.length === 0 ? (<div className="flex flex-col items-center py-10 text-center"><Inbox className="h-12 w-12 mb-3 text-muted-foreground/30" /><p className="text-muted-foreground font-cairo">{t('noReceivedMessages')}</p></div>) : (
                     <div className="space-y-2.5">{filteredReceivedMessages.map((message, idx) => {
                       const typeConfig = MESSAGE_TYPES.find(t => t.value === message.type);
                       const MIcon = typeConfig?.icon || MessageSquare;
@@ -242,17 +244,17 @@ export default function TeacherCommunicationPage() {
               <Card>
                 <CardHeader className="pb-3">
                   <div className="flex items-center justify-between flex-wrap gap-3">
-                    <CardTitle className="text-base font-cairo flex items-center gap-2"><History className="h-4 w-4 text-brand-turquoise" />{isRTL ? 'سجل الرسائل المرسلة' : 'Sent Message History'}</CardTitle>
-                    <div className="relative"><Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder={isRTL ? 'بحث...' : 'Search...'} value={msgSearchQuery} onChange={(e) => setMsgSearchQuery(e.target.value)} className="ps-9 w-full sm:w-[200px] h-9" /></div>
+                    <CardTitle className="text-base font-cairo flex items-center gap-2"><History className="h-4 w-4 text-brand-turquoise" />{t('sentMessageHistory')}</CardTitle>
+                    <div className="relative"><Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder={t('search')} value={msgSearchQuery} onChange={(e) => setMsgSearchQuery(e.target.value)} className="ps-9 w-full sm:w-[200px] h-9" /></div>
                   </div>
                 </CardHeader>
                 <CardContent>
-                  {filteredSentMessages.length === 0 ? (<div className="flex flex-col items-center py-10 text-center"><MessageSquare className="h-12 w-12 mb-3 text-muted-foreground/30" /><p className="text-muted-foreground font-cairo">{isRTL ? 'لا توجد رسائل مرسلة' : 'No sent messages'}</p></div>) : (
+                  {filteredSentMessages.length === 0 ? (<div className="flex flex-col items-center py-10 text-center"><MessageSquare className="h-12 w-12 mb-3 text-muted-foreground/30" /><p className="text-muted-foreground font-cairo">{t('noSentMessages')}</p></div>) : (
                     <div className="space-y-2.5">{filteredSentMessages.map((message, idx) => {
                       const typeConfig = MESSAGE_TYPES.find(t => t.value === message.type);
                       const MIcon = typeConfig?.icon || MessageSquare;
                       return (<div key={message.id || idx} className="p-4 rounded-xl border hover:border-brand-turquoise/30 hover:shadow-sm transition-all">
-                        <div className="flex items-start justify-between mb-2"><div className="flex items-center gap-2.5"><div className={`w-8 h-8 rounded-lg ${typeConfig?.color || 'bg-blue-500'} flex items-center justify-center shrink-0`}><MIcon className="h-4 w-4 text-white" /></div><div><span className="font-medium text-sm">{message.subject}</span><div className="flex items-center gap-2 mt-0.5"><Badge variant="secondary" className="text-[10px]">{typeConfig?.[isRTL ? 'label' : 'labelEn'] || message.type}</Badge><span className="text-[10px] text-muted-foreground flex items-center gap-1"><Users className="h-2.5 w-2.5" />{message.recipient_ids?.length || 0} {isRTL ? 'مستلم' : 'recipients'}</span></div></div></div><span className="text-[10px] text-muted-foreground flex items-center gap-1 shrink-0"><Clock className="h-3 w-3" />{message.created_at ? new Date(message.created_at).toLocaleDateString(isRTL ? 'ar-SA' : 'en-US', { dateStyle: 'medium' }) : ''}</span></div>
+                        <div className="flex items-start justify-between mb-2"><div className="flex items-center gap-2.5"><div className={`w-8 h-8 rounded-lg ${typeConfig?.color || 'bg-blue-500'} flex items-center justify-center shrink-0`}><MIcon className="h-4 w-4 text-white" /></div><div><span className="font-medium text-sm">{message.subject}</span><div className="flex items-center gap-2 mt-0.5"><Badge variant="secondary" className="text-[10px]">{typeConfig?.[isRTL ? 'label' : 'labelEn'] || message.type}</Badge><span className="text-[10px] text-muted-foreground flex items-center gap-1"><Users className="h-2.5 w-2.5" />{message.recipient_ids?.length || 0} {t('recipients3')}</span></div></div></div><span className="text-[10px] text-muted-foreground flex items-center gap-1 shrink-0"><Clock className="h-3 w-3" />{message.created_at ? new Date(message.created_at).toLocaleDateString(isRTL ? 'ar-SA' : 'en-US', { dateStyle: 'medium' }) : ''}</span></div>
                         <p className="text-xs text-muted-foreground line-clamp-2 ps-[42px]">{message.body}</p>
                       </div>);
                     })}</div>
@@ -263,9 +265,9 @@ export default function TeacherCommunicationPage() {
 
             <TabsContent value="notifications">
               <Card>
-                <CardHeader className="pb-3"><CardTitle className="text-base font-cairo flex items-center gap-2"><Bell className="h-4 w-4 text-brand-turquoise" />{isRTL ? 'آخر الإشعارات' : 'Recent Notifications'}</CardTitle></CardHeader>
+                <CardHeader className="pb-3"><CardTitle className="text-base font-cairo flex items-center gap-2"><Bell className="h-4 w-4 text-brand-turquoise" />{t('recentNotifications2')}</CardTitle></CardHeader>
                 <CardContent>
-                  {notifications.length === 0 ? (<div className="flex flex-col items-center py-10 text-center"><Inbox className="h-12 w-12 mb-3 text-muted-foreground/30" /><p className="text-muted-foreground font-cairo">{isRTL ? 'لا توجد إشعارات' : 'No notifications'}</p><p className="text-xs text-muted-foreground/60 mt-1">{isRTL ? 'ستظهر الإشعارات هنا عندما تصلك' : 'Notifications will appear here'}</p></div>) : (
+                  {notifications.length === 0 ? (<div className="flex flex-col items-center py-10 text-center"><Inbox className="h-12 w-12 mb-3 text-muted-foreground/30" /><p className="text-muted-foreground font-cairo">{t('noNotifications2')}</p><p className="text-xs text-muted-foreground/60 mt-1">{t('notificationsWillAppearHere')}</p></div>) : (
                     <div className="space-y-2">{notifications.map((notif, idx) => (
                       <div key={notif.id || idx} className={`p-3.5 rounded-xl border transition-all ${(notif.is_read || notif.read_status) ? 'bg-card' : 'bg-brand-turquoise/5 border-brand-turquoise/20'}`}>
                         <div className="flex items-start gap-3">
@@ -287,17 +289,17 @@ export default function TeacherCommunicationPage() {
               <Card>
                 <CardHeader className="pb-3">
                   <div className="flex items-center justify-between flex-wrap gap-3">
-                    <CardTitle className="text-base font-cairo flex items-center gap-2"><Users className="h-4 w-4 text-brand-turquoise" />{isRTL ? 'جهات الاتصال' : 'Contacts'}<Badge variant="secondary" className="font-cairo">{filteredStudents.length}</Badge></CardTitle>
-                    <div className="relative"><Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder={isRTL ? 'بحث...' : 'Search...'} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="ps-9 w-full sm:w-[200px] h-9" /></div>
+                    <CardTitle className="text-base font-cairo flex items-center gap-2"><Users className="h-4 w-4 text-brand-turquoise" />{t('contacts')}<Badge variant="secondary" className="font-cairo">{filteredStudents.length}</Badge></CardTitle>
+                    <div className="relative"><Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder={t('search')} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="ps-9 w-full sm:w-[200px] h-9" /></div>
                   </div>
                 </CardHeader>
                 <CardContent>
-                  {filteredStudents.length === 0 ? (<div className="text-center py-10 text-muted-foreground font-cairo">{isRTL ? 'لا يوجد جهات اتصال' : 'No contacts found'}</div>) : (
+                  {filteredStudents.length === 0 ? (<div className="text-center py-10 text-muted-foreground font-cairo">{t('noContactsFound')}</div>) : (
                     <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">{filteredStudents.map(student => (
                       <div key={student.id} className="p-3.5 rounded-xl border hover:border-brand-turquoise/30 hover:shadow-sm transition-all">
-                        <div className="flex items-center gap-3 mb-2.5"><Avatar className="h-9 w-9"><AvatarFallback className={`text-xs font-bold ${student.gender === 'male' ? 'bg-sky-100 text-sky-600' : 'bg-pink-100 text-pink-600'}`}>{student.full_name?.charAt(0) || '?'}</AvatarFallback></Avatar><div className="flex-1 min-w-0"><p className="font-medium text-sm truncate">{student.full_name}</p><p className="text-[10px] text-muted-foreground">{isRTL ? 'ولي الأمر' : 'Parent'}: {student.parent_name || '-'}</p></div></div>
+                        <div className="flex items-center gap-3 mb-2.5"><Avatar className="h-9 w-9"><AvatarFallback className={`text-xs font-bold ${student.gender === 'male' ? 'bg-sky-100 text-sky-600' : 'bg-pink-100 text-pink-600'}`}>{student.full_name?.charAt(0) || '?'}</AvatarFallback></Avatar><div className="flex-1 min-w-0"><p className="font-medium text-sm truncate">{student.full_name}</p><p className="text-[10px] text-muted-foreground">{t('parent')}: {student.parent_name || '-'}</p></div></div>
                         {student.parent_phone && (<div className="flex items-center gap-2 text-xs text-muted-foreground mb-2"><Phone className="h-3 w-3" /><span dir="ltr">{student.parent_phone}</span></div>)}
-                        <Button variant="outline" size="sm" className="w-full text-xs h-8 hover:border-brand-turquoise hover:text-brand-turquoise" onClick={() => { setNewMessage({ ...newMessage, recipients: 'selected', selectedStudents: [student.id], selectedParents: [student.parent_id] }); setShowComposeDialog(true); }}><Send className="h-3 w-3 me-1" />{isRTL ? 'إرسال رسالة' : 'Send Message'}</Button>
+                        <Button variant="outline" size="sm" className="w-full text-xs h-8 hover:border-brand-turquoise hover:text-brand-turquoise" onClick={() => { setNewMessage({ ...newMessage, recipients: 'selected', selectedStudents: [student.id], selectedParents: [student.parent_id] }); setShowComposeDialog(true); }}><Send className="h-3 w-3 me-1" />{t('sendMessage')}</Button>
                       </div>
                     ))}</div>
                   )}
@@ -309,21 +311,21 @@ export default function TeacherCommunicationPage() {
 
         <Dialog open={showComposeDialog} onOpenChange={setShowComposeDialog}>
           <DialogContent className="w-[95vw] max-w-lg">
-            <DialogHeader><DialogTitle className="font-cairo flex items-center gap-2"><div className="w-8 h-8 rounded-lg bg-brand-turquoise flex items-center justify-center"><Send className="h-4 w-4 text-white" /></div>{isRTL ? 'إرسال رسالة' : 'Send Message'}</DialogTitle></DialogHeader>
+            <DialogHeader><DialogTitle className="font-cairo flex items-center gap-2"><div className="w-8 h-8 rounded-lg bg-brand-turquoise flex items-center justify-center"><Send className="h-4 w-4 text-white" /></div>{t('sendMessage')}</DialogTitle></DialogHeader>
             <div className="space-y-4 py-2">
               <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5"><Label className="text-xs">{isRTL ? 'نوع الرسالة' : 'Type'}</Label><Select value={newMessage.type} onValueChange={(v) => setNewMessage({...newMessage, type: v})}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger><SelectContent>{MESSAGE_TYPES.map(t => (<SelectItem key={t.value} value={t.value}>{isRTL ? t.label : t.labelEn}</SelectItem>))}</SelectContent></Select></div>
-                <div className="space-y-1.5"><Label className="text-xs">{isRTL ? 'المستلمين' : 'Recipients'}</Label><Select value={newMessage.recipients} onValueChange={(v) => setNewMessage({...newMessage, recipients: v})}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{isRTL ? 'جميع أولياء الأمور' : 'All Parents'}</SelectItem><SelectItem value="selected">{isRTL ? 'محدد' : 'Selected'}</SelectItem></SelectContent></Select></div>
+                <div className="space-y-1.5"><Label className="text-xs">{t('type')}</Label><Select value={newMessage.type} onValueChange={(v) => setNewMessage({...newMessage, type: v})}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger><SelectContent>{MESSAGE_TYPES.map(t => (<SelectItem key={t.value} value={t.value}>{isRTL ? t.label : t.labelEn}</SelectItem>))}</SelectContent></Select></div>
+                <div className="space-y-1.5"><Label className="text-xs">{t('recipients4')}</Label><Select value={newMessage.recipients} onValueChange={(v) => setNewMessage({...newMessage, recipients: v})}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('allParents')}</SelectItem><SelectItem value="selected">{t('selected2')}</SelectItem></SelectContent></Select></div>
               </div>
-              {newMessage.recipients === 'selected' && (<div className="space-y-1.5"><Label className="text-xs">{isRTL ? 'اختر الطلاب' : 'Select Students'} ({newMessage.selectedStudents.length})</Label><div className="max-h-28 overflow-y-auto border rounded-lg p-2 space-y-1">{students.map(student => (<div key={student.id} className="flex items-center gap-2 p-1 rounded hover:bg-muted/50"><Checkbox checked={newMessage.selectedStudents.includes(student.id)} onCheckedChange={() => toggleStudentSelection(student.id, student.parent_id)} /><span className="text-sm">{student.full_name}</span></div>))}</div></div>)}
-              <div className="space-y-1.5"><Label className="text-xs">{isRTL ? 'عنوان الرسالة' : 'Subject'} *</Label><Input value={newMessage.subject} onChange={(e) => setNewMessage({...newMessage, subject: e.target.value})} placeholder={isRTL ? 'عنوان الرسالة...' : 'Message subject...'} className="h-9" /></div>
-              <div className="space-y-1.5"><Label className="text-xs">{isRTL ? 'نص الرسالة' : 'Message'} *</Label><Textarea value={newMessage.body} onChange={(e) => setNewMessage({...newMessage, body: e.target.value})} placeholder={isRTL ? 'اكتب رسالتك هنا...' : 'Write your message...'} rows={4} /></div>
+              {newMessage.recipients === 'selected' && (<div className="space-y-1.5"><Label className="text-xs">{t('selectStudents')} ({newMessage.selectedStudents.length})</Label><div className="max-h-28 overflow-y-auto border rounded-lg p-2 space-y-1">{students.map(student => (<div key={student.id} className="flex items-center gap-2 p-1 rounded hover:bg-muted/50"><Checkbox checked={newMessage.selectedStudents.includes(student.id)} onCheckedChange={() => toggleStudentSelection(student.id, student.parent_id)} /><span className="text-sm">{student.full_name}</span></div>))}</div></div>)}
+              <div className="space-y-1.5"><Label className="text-xs">{isRTL ? 'عنوان الرسالة' : 'Subject'} *</Label><Input value={newMessage.subject} onChange={(e) => setNewMessage({...newMessage, subject: e.target.value})} placeholder={t('messageSubject')} className="h-9" /></div>
+              <div className="space-y-1.5"><Label className="text-xs">{t('message')} *</Label><Textarea value={newMessage.body} onChange={(e) => setNewMessage({...newMessage, body: e.target.value})} placeholder={isRTL ? 'اكتب رسالتك هنا...' : 'Write your message...'} rows={4} /></div>
               {newMessage.recipients === 'all' && (<div className="p-2.5 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200/60"><p className="text-[11px] text-blue-600 dark:text-blue-400 flex items-center gap-1.5"><Users className="h-3 w-3 shrink-0" />{isRTL ? `سيتم إرسال الرسالة إلى ${students.length} ولي أمر` : `Message will be sent to ${students.length} parents`}</p></div>)}
             </div>
             <DialogFooter className="gap-2">
-              <Button variant="outline" onClick={() => setShowComposeDialog(false)} className="h-9">{isRTL ? 'إلغاء' : 'Cancel'}</Button>
+              <Button variant="outline" onClick={() => setShowComposeDialog(false)} className="h-9">{t('cancel')}</Button>
               <Button className="bg-brand-turquoise hover:bg-brand-turquoise/90 h-9" onClick={handleSendMessage} disabled={sending || !newMessage.subject || !newMessage.body}>
-                {sending && <Loader2 className="h-4 w-4 animate-spin me-2" />}<Send className="h-4 w-4 me-1" />{isRTL ? 'إرسال' : 'Send'}
+                {sending && <Loader2 className="h-4 w-4 animate-spin me-2" />}<Send className="h-4 w-4 me-1" />{t('send')}
               </Button>
             </DialogFooter>
           </DialogContent>

@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
@@ -32,6 +32,7 @@ const MONTHS = [
 ];
 
 const StudentAttendancePage = () => {
+  const { t } = useTranslation();
   const { token, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
@@ -54,7 +55,7 @@ const StudentAttendancePage = () => {
       setAttendanceData(response.data);
     } catch (error) {
       console.error('Error fetching attendance:', error);
-      nassaqError(isRTL ? 'حدث خطأ في جلب سجل الحضور' : 'Error fetching attendance');
+      nassaqError(t('errorFetchingAttendance'));
     } finally {
       setLoading(false);
     }
@@ -95,10 +96,10 @@ const StudentAttendancePage = () => {
 
   const getStatusLabel = (status) => {
     const labels = {
-      present: isRTL ? 'حاضر' : 'Present',
-      absent: isRTL ? 'غائب' : 'Absent',
-      late: isRTL ? 'متأخر' : 'Late',
-      excused: isRTL ? 'بعذر' : 'Excused'
+      present: t('present'),
+      absent: t('absent'),
+      late: t('late'),
+      excused: t('excused2')
     };
     return labels[status] || status;
   };
@@ -138,10 +139,10 @@ const StudentAttendancePage = () => {
                   <CheckCircle className="h-8 w-8 text-white" />
                 </div>
                 <div>
-                  <p className="text-green-100 text-sm">{isRTL ? 'نسبة الحضور' : 'Attendance Rate'}</p>
+                  <p className="text-green-100 text-sm">{t('attendanceRate')}</p>
                   <h1 className="text-3xl font-bold">{stats.attendance_rate || 0}%</h1>
                   <p className="text-sm text-green-100 mt-1">
-                    {stats.present || 0} {isRTL ? 'من' : 'of'} {stats.total_days || 0} {isRTL ? 'يوم' : 'days'}
+                    {stats.present || 0} {isRTL ? 'من' : 'of'} {stats.total_days || 0} {t('days')}
                   </p>
                 </div>
               </div>
@@ -160,7 +161,7 @@ const StudentAttendancePage = () => {
                 <CheckCircle className="h-5 w-5 text-green-600" />
               </div>
               <p className="text-xl font-bold text-green-600">{stats.present || 0}</p>
-              <p className="text-xs text-muted-foreground">{isRTL ? 'حاضر' : 'Present'}</p>
+              <p className="text-xs text-muted-foreground">{t('present')}</p>
             </CardContent>
           </Card>
 
@@ -170,7 +171,7 @@ const StudentAttendancePage = () => {
                 <XCircle className="h-5 w-5 text-red-600" />
               </div>
               <p className="text-xl font-bold text-red-600">{stats.absent || 0}</p>
-              <p className="text-xs text-muted-foreground">{isRTL ? 'غائب' : 'Absent'}</p>
+              <p className="text-xs text-muted-foreground">{t('absent')}</p>
             </CardContent>
           </Card>
 
@@ -180,7 +181,7 @@ const StudentAttendancePage = () => {
                 <Clock className="h-5 w-5 text-amber-600" />
               </div>
               <p className="text-xl font-bold text-amber-600">{stats.late || 0}</p>
-              <p className="text-xs text-muted-foreground">{isRTL ? 'متأخر' : 'Late'}</p>
+              <p className="text-xs text-muted-foreground">{t('late')}</p>
             </CardContent>
           </Card>
 
@@ -190,7 +191,7 @@ const StudentAttendancePage = () => {
                 <AlertCircle className="h-5 w-5 text-blue-600" />
               </div>
               <p className="text-xl font-bold text-blue-600">{stats.excused || 0}</p>
-              <p className="text-xs text-muted-foreground">{isRTL ? 'بعذر' : 'Excused'}</p>
+              <p className="text-xs text-muted-foreground">{t('excused2')}</p>
             </CardContent>
           </Card>
         </div>
@@ -201,7 +202,7 @@ const StudentAttendancePage = () => {
             <CardTitle className="flex items-center justify-between text-base">
               <div className="flex items-center gap-2">
                 <Calendar className="h-5 w-5 text-green-600" />
-                {isRTL ? 'سجل الحضور' : 'Attendance Records'}
+                {t('attendanceRecords')}
               </div>
               
               {/* Month Navigation */}
@@ -252,7 +253,7 @@ const StudentAttendancePage = () => {
                         </Badge>
                         {record.check_in_time && (
                           <p className="text-xs text-muted-foreground mt-1">
-                            {isRTL ? 'دخول:' : 'In:'} {record.check_in_time}
+                            {t('in')} {record.check_in_time}
                           </p>
                         )}
                       </div>
@@ -262,7 +263,7 @@ const StudentAttendancePage = () => {
               ) : (
                 <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                   <Calendar className="h-12 w-12 mb-3 opacity-30" />
-                  <p>{isRTL ? 'لا توجد سجلات لهذا الشهر' : 'No records for this month'}</p>
+                  <p>{t('noRecordsForThisMonth')}</p>
                 </div>
               )}
             </ScrollArea>

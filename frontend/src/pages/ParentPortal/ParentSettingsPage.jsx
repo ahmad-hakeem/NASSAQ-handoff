@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -24,6 +24,7 @@ const Toggle = ({ checked, onChange }) => (
 );
 
 const ParentSettingsPage = () => {
+  const { t } = useTranslation();
   const { token, user, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
@@ -56,9 +57,9 @@ const ParentSettingsPage = () => {
     setSaving(true);
     try {
       await api.put('/parent-portal/settings', settings);
-      toast.success(isRTL ? 'تم حفظ الإعدادات' : 'Settings saved');
+      toast.success(t('settingsSaved'));
     } catch (err) {
-      nassaqError(isRTL ? 'خطأ في الحفظ' : 'Error saving');
+      nassaqError(t('errorSaving'));
     } finally {
       setSaving(false);
     }
@@ -92,22 +93,22 @@ const ParentSettingsPage = () => {
       <div className="p-4 space-y-4" data-testid="parent-settings-page">
         <div className="flex items-center gap-2 mb-2">
           <Settings className="h-6 w-6 text-indigo-600" />
-          <h1 className="text-xl font-bold font-cairo">{isRTL ? 'الإعدادات' : 'Settings'}</h1>
+          <h1 className="text-xl font-bold font-cairo">{t('settings')}</h1>
         </div>
 
         <Card className="rounded-2xl border-0 shadow-sm">
           <CardContent className="p-4 space-y-4">
             <h2 className="font-bold text-base flex items-center gap-2">
               <Bell className="h-5 w-5 text-indigo-600" />
-              {isRTL ? 'تفضيلات الإشعارات' : 'Notification Preferences'}
+              {t('notificationPreferences')}
             </h2>
 
             {[
-              { key: 'email', label: isRTL ? 'إشعارات البريد الإلكتروني' : 'Email Notifications', icon: Mail },
-              { key: 'sms', label: isRTL ? 'إشعارات الرسائل القصيرة' : 'SMS Notifications', icon: MessageCircle },
-              { key: 'attendance_alerts', label: isRTL ? 'تنبيهات الحضور والغياب' : 'Attendance Alerts', icon: Shield },
-              { key: 'grade_alerts', label: isRTL ? 'تنبيهات الدرجات' : 'Grade Alerts', icon: Bell },
-              { key: 'behaviour_alerts', label: isRTL ? 'تنبيهات السلوك' : 'Behavior Alerts', icon: Bell },
+              { key: 'email', label: t('emailNotifications'), icon: Mail },
+              { key: 'sms', label: t('smsNotifications2'), icon: MessageCircle },
+              { key: 'attendance_alerts', label: t('attendanceAlerts2'), icon: Shield },
+              { key: 'grade_alerts', label: t('gradeAlerts'), icon: Bell },
+              { key: 'behaviour_alerts', label: t('behaviorAlerts'), icon: Bell },
             ].map(({ key, label, icon: Icon }) => (
               <div key={key} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
                 <div className="flex items-center gap-3">
@@ -124,7 +125,7 @@ const ParentSettingsPage = () => {
           <CardContent className="p-4 space-y-4">
             <h2 className="font-bold text-base flex items-center gap-2">
               <Globe className="h-5 w-5 text-indigo-600" />
-              {isRTL ? 'اللغة' : 'Language'}
+              {t('language')}
             </h2>
             <div className="flex gap-3">
               {[
@@ -153,8 +154,8 @@ const ParentSettingsPage = () => {
           className="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl h-12"
         >
           {saving
-            ? (isRTL ? 'جاري الحفظ...' : 'Saving...')
-            : (isRTL ? 'حفظ الإعدادات' : 'Save Settings')}
+            ? (t('saving'))
+            : (t('saveSettings'))}
         </Button>
       </div>
     </PortalLayout>

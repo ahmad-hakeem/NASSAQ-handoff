@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 
+import { useTranslation } from '../../contexts/ThemeContext';
 const DAYS = [
   { key: 'sunday', ar: 'الأحد', en: 'Sun', idx: 0 },
   { key: 'monday', ar: 'الاثنين', en: 'Mon', idx: 1 },
@@ -121,7 +122,7 @@ export default function TeacherSchedulePage() {
       setScheduleVersion(Date.now());
     } catch (error) {
       console.error('Error fetching schedule:', error);
-      nassaqError(isRTL ? 'خطأ في تحميل الجدول' : 'Error loading schedule');
+      nassaqError(t('errorLoadingSchedule'));
     } finally {
       setLoading(false);
     }
@@ -140,6 +141,7 @@ export default function TeacherSchedulePage() {
   }, [fetchSchedule]);
 
   const getSessionsForCell = (day, slotId, slotNumber, slotStartTime) => {
+  const { t } = useTranslation();
     return schedule.filter(s => {
       if (s.day_of_week !== day) return false;
       if (s.time_slot_id && s.time_slot_id === slotId) return true;
@@ -263,7 +265,7 @@ export default function TeacherSchedulePage() {
       printWindow.document.write(`
         <html dir="${isRTL ? 'rtl' : 'ltr'}">
         <head>
-          <title>${isRTL ? 'جدولي' : 'My Schedule'}</title>
+          <title>${t('mySchedule')}</title>
           <style>
             body { font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif; padding: 20px; direction: ${isRTL ? 'rtl' : 'ltr'}; }
             h1 { text-align: center; color: #1E3A5F; margin-bottom: 5px; }
@@ -276,17 +278,17 @@ export default function TeacherSchedulePage() {
           </style>
         </head>
         <body>
-          <h1>${isRTL ? 'جدولي الدراسي' : 'My Schedule'}</h1>
-          <p class="subtitle">${isRTL ? 'نَسَّق NASSAQ' : 'NASSAQ'} — ${new Date().toLocaleDateString(isRTL ? 'ar-SA' : 'en-US')}</p>
+          <h1>${t('mySchedule2')}</h1>
+          <p class="subtitle">${t('nassaq2')} — ${new Date().toLocaleDateString(isRTL ? 'ar-SA' : 'en-US')}</p>
           <table>
             <thead><tr>
               <th>${isRTL ? 'اليوم' : 'Day'}</th>
               <th>${isRTL ? 'الحصة' : 'Period'}</th>
-              <th>${isRTL ? 'المادة' : 'Subject'}</th>
-              <th>${isRTL ? 'الفصل' : 'Class'}</th>
-              <th>${isRTL ? 'القاعة' : 'Room'}</th>
-              <th>${isRTL ? 'البداية' : 'Start'}</th>
-              <th>${isRTL ? 'النهاية' : 'End'}</th>
+              <th>${t('subject')}</th>
+              <th>${t('class')}</th>
+              <th>${t('room2')}</th>
+              <th>${t('start')}</th>
+              <th>${t('end')}</th>
             </tr></thead>
             <tbody>${tableRows}</tbody>
           </table>
@@ -295,7 +297,7 @@ export default function TeacherSchedulePage() {
       printWindow.document.close();
       setTimeout(() => { printWindow.print(); }, 300);
     } else {
-      toast.success(isRTL ? 'يرجى السماح بالنوافذ المنبثقة للطباعة' : 'Please allow popups to print');
+      toast.success(t('pleaseAllowPopupsToPrint'));
     }
   };
 
@@ -307,7 +309,7 @@ export default function TeacherSchedulePage() {
     };
     const dayName = (key) => DAYS.find(d => d.key === key)?.[isRTL ? 'ar' : 'en'] || key;
     const rows = [
-      [isRTL ? 'اليوم' : 'Day', isRTL ? 'الحصة' : 'Period', isRTL ? 'المادة' : 'Subject', isRTL ? 'الفصل' : 'Class', isRTL ? 'القاعة' : 'Room', isRTL ? 'البداية' : 'Start', isRTL ? 'النهاية' : 'End'],
+      [isRTL ? 'اليوم' : 'Day', isRTL ? 'الحصة' : 'Period', t('subject'), t('class'), t('room2'), t('start'), t('end')],
       ...schedule.map(s => [
         dayName(s.day_of_week),
         s.slot_number || s.period_number || '',
@@ -331,7 +333,7 @@ export default function TeacherSchedulePage() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     }, 100);
-    toast.success(isRTL ? 'تم تصدير الجدول بنجاح' : 'Schedule exported');
+    toast.success(t('scheduleExported'));
   };
 
   const handleDatePick = (e) => {
@@ -344,7 +346,7 @@ export default function TeacherSchedulePage() {
         setSelectedDay(dayKey);
         setView('daily');
       } else {
-        toast.success(isRTL ? 'هذا اليوم عطلة نهاية الأسبوع' : 'This is a weekend day');
+        toast.success(t('thisIsAWeekendDay'));
       }
     }
   };
@@ -381,10 +383,10 @@ export default function TeacherSchedulePage() {
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
               <h1 className="text-2xl font-bold text-brand-navy dark:text-brand-turquoise font-cairo">
-                {isRTL ? 'جدولي' : 'My Schedule'}
+                {t('mySchedule')}
               </h1>
               <p className="text-sm text-muted-foreground">
-                {isRTL ? 'عرض وإدارة جدول حصصي' : 'View and manage my class schedule'}
+                {t('viewAndManageMyClassSchedule')}
               </p>
             </div>
             <div className="flex items-center gap-2 print:hidden">
@@ -396,15 +398,15 @@ export default function TeacherSchedulePage() {
               />
               <Button variant="outline" size="sm" onClick={fetchSchedule} disabled={loading}>
                 <RefreshCw className={`h-4 w-4 me-1 ${loading ? 'animate-spin' : ''}`} />
-                {isRTL ? 'تحديث' : 'Refresh'}
+                {t('refresh')}
               </Button>
               <Button variant="outline" size="sm" onClick={handlePrint}>
                 <Printer className="h-4 w-4 me-1" />
-                {isRTL ? 'طباعة' : 'Print'}
+                {t('print')}
               </Button>
               <Button variant="outline" size="sm" onClick={handleExport}>
                 <Download className="h-4 w-4 me-1" />
-                {isRTL ? 'تصدير' : 'Export'}
+                {t('export')}
               </Button>
             </div>
           </div>
@@ -415,10 +417,10 @@ export default function TeacherSchedulePage() {
             <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700 rounded-xl p-3 flex items-center justify-between print:hidden">
               <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300">
                 <AlertTriangle className="h-5 w-5" />
-                <span className="text-sm font-cairo font-bold">{isRTL ? 'تم تحديث الجدول الدراسي' : 'Schedule has been updated'}</span>
+                <span className="text-sm font-cairo font-bold">{t('scheduleHasBeenUpdated')}</span>
               </div>
               <Button size="sm" variant="outline" onClick={() => setScheduleChanged(false)}>
-                {isRTL ? 'حسنًا' : 'Dismiss'}
+                {t('dismiss')}
               </Button>
             </div>
           )}
@@ -465,7 +467,7 @@ export default function TeacherSchedulePage() {
                 <Card className="border-2 border-blue-300 dark:border-blue-600 bg-blue-50 dark:bg-blue-900/20">
                   <CardContent className="p-4">
                     <div className="flex items-center gap-2 mb-2">
-                      <Badge className="bg-blue-500 text-white">{isRTL ? 'الحصة القادمة' : 'Next Session'}</Badge>
+                      <Badge className="bg-blue-500 text-white">{t('nextSession')}</Badge>
                       {countdown && (
                         <span className="text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1">
                           <Timer className="h-3.5 w-3.5" />
@@ -491,8 +493,8 @@ export default function TeacherSchedulePage() {
                 <Calendar className="h-10 w-10 mx-auto mb-2 text-muted-foreground/40" />
                 <p className="text-muted-foreground font-cairo">
                   {isWeekend
-                    ? (isRTL ? 'اليوم عطلة نهاية الأسبوع' : 'Today is a weekend')
-                    : (isRTL ? 'لا يوجد حصص لهذا اليوم' : 'No sessions today')}
+                    ? (t('todayIsAWeekend'))
+                    : (t('noSessionsToday'))}
                 </p>
               </CardContent>
             </Card>
@@ -501,9 +503,9 @@ export default function TeacherSchedulePage() {
           <div className="flex items-center justify-between print:hidden">
             <Tabs value={view} onValueChange={setView}>
               <TabsList>
-                <TabsTrigger value="weekly">{isRTL ? 'أسبوعي' : 'Weekly'}</TabsTrigger>
-                <TabsTrigger value="daily">{isRTL ? 'يومي' : 'Daily'}</TabsTrigger>
-                <TabsTrigger value="monthly">{isRTL ? 'شهري' : 'Monthly'}</TabsTrigger>
+                <TabsTrigger value="weekly">{t('weekly')}</TabsTrigger>
+                <TabsTrigger value="daily">{t('daily2')}</TabsTrigger>
+                <TabsTrigger value="monthly">{t('monthly')}</TabsTrigger>
               </TabsList>
             </Tabs>
 
@@ -549,13 +551,13 @@ export default function TeacherSchedulePage() {
                   <thead className="bg-muted/50">
                     <tr>
                       {[
-                        isRTL ? 'أحد' : 'Sun',
-                        isRTL ? 'إثنين' : 'Mon',
-                        isRTL ? 'ثلاثاء' : 'Tue',
-                        isRTL ? 'أربعاء' : 'Wed',
-                        isRTL ? 'خميس' : 'Thu',
-                        isRTL ? 'جمعة' : 'Fri',
-                        isRTL ? 'سبت' : 'Sat',
+                        t('sun'),
+                        t('mon'),
+                        t('tue'),
+                        t('wed'),
+                        t('thu'),
+                        t('fri'),
+                        t('sat'),
                       ].map(d => (
                         <th key={d} className="p-2 text-center text-xs font-medium border-b">{d}</th>
                       ))}
@@ -596,7 +598,7 @@ export default function TeacherSchedulePage() {
             <Card>
               <CardContent className="text-center py-16">
                 <Calendar className="h-16 w-16 mx-auto mb-4 text-muted-foreground/30" />
-                <p className="text-muted-foreground">{isRTL ? 'لا يوجد جدول حالياً' : 'No schedule available'}</p>
+                <p className="text-muted-foreground">{t('noScheduleAvailable2')}</p>
               </CardContent>
             </Card>
           ) : (
@@ -620,7 +622,7 @@ export default function TeacherSchedulePage() {
                             {isRTL ? day.ar : day.en}
                           </span>
                           {day.key === todayKey && (
-                            <Badge variant="outline" className="ms-2 text-xs bg-brand-turquoise text-white">{isRTL ? 'اليوم' : 'Today'}</Badge>
+                            <Badge variant="outline" className="ms-2 text-xs bg-brand-turquoise text-white">{t('today2')}</Badge>
                           )}
                         </th>
                       ))}
@@ -660,10 +662,10 @@ export default function TeacherSchedulePage() {
                                         </div>
                                         {isCurrent && (
                                           <div className="flex items-center gap-2 mt-1.5">
-                                            <Badge className="bg-green-500 text-white text-[10px] animate-pulse">{isRTL ? 'الآن' : 'Now'}</Badge>
+                                            <Badge className="bg-green-500 text-white text-[10px] animate-pulse">{t('now')}</Badge>
                                             <Button size="sm" className="flex-1 h-7 text-xs bg-brand-navy hover:bg-brand-navy/90" onClick={(e) => { e.stopPropagation(); handleStartSession(session); }}>
                                               <Play className="h-3 w-3 me-1" />
-                                              {isRTL ? 'ابدأ' : 'Start'}
+                                              {t('start2')}
                                             </Button>
                                           </div>
                                         )}
@@ -676,7 +678,7 @@ export default function TeacherSchedulePage() {
                                 </div>
                               ) : (
                                 <div className="h-16 border-2 border-dashed border-muted-foreground/20 rounded-lg flex items-center justify-center text-muted-foreground/50 text-xs">
-                                  {isRTL ? 'فارغ' : 'Empty'}
+                                  {t('empty')}
                                 </div>
                               )}
                             </td>
@@ -694,25 +696,25 @@ export default function TeacherSchedulePage() {
             <Card>
               <CardContent className="p-4 text-center">
                 <div className="text-3xl font-bold text-brand-navy dark:text-brand-turquoise">{schedule.length}</div>
-                <div className="text-sm text-muted-foreground">{isRTL ? 'إجمالي الحصص' : 'Total Sessions'}</div>
+                <div className="text-sm text-muted-foreground">{t('totalSessions')}</div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
                 <div className="text-3xl font-bold text-brand-turquoise">{todaySessions.length}</div>
-                <div className="text-sm text-muted-foreground">{isRTL ? 'حصص اليوم' : "Today's Sessions"}</div>
+                <div className="text-sm text-muted-foreground">{t('todaysSessions')}</div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
                 <div className="text-3xl font-bold text-green-600">{[...new Set(schedule.map(s => s.class_id))].length}</div>
-                <div className="text-sm text-muted-foreground">{isRTL ? 'عدد الفصول' : 'Classes'}</div>
+                <div className="text-sm text-muted-foreground">{t('classes6')}</div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
                 <div className="text-3xl font-bold text-purple-600">{[...new Set(schedule.map(s => s.subject_name))].length}</div>
-                <div className="text-sm text-muted-foreground">{isRTL ? 'عدد المواد' : 'Subjects'}</div>
+                <div className="text-sm text-muted-foreground">{t('subjects6')}</div>
               </CardContent>
             </Card>
           </div>
@@ -721,7 +723,7 @@ export default function TeacherSchedulePage() {
         <Dialog open={showDetail} onOpenChange={setShowDetail}>
           <DialogContent className="max-w-md" dir={isRTL ? 'rtl' : 'ltr'}>
             <DialogHeader>
-              <DialogTitle className="font-cairo">{isRTL ? 'تفاصيل الحصة' : 'Session Details'}</DialogTitle>
+              <DialogTitle className="font-cairo">{t('sessionDetails')}</DialogTitle>
             </DialogHeader>
             {detailSession && (
               <div className="space-y-4">
@@ -733,15 +735,15 @@ export default function TeacherSchedulePage() {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-muted/50 rounded-lg p-3">
-                    <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1"><Users className="h-3 w-3" />{isRTL ? 'الفصل' : 'Class'}</div>
+                    <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1"><Users className="h-3 w-3" />{t('class')}</div>
                     <div className="font-medium text-sm">{detailSession.class_name}</div>
                   </div>
                   <div className="bg-muted/50 rounded-lg p-3">
-                    <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1"><Clock className="h-3 w-3" />{isRTL ? 'التوقيت' : 'Time'}</div>
+                    <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1"><Clock className="h-3 w-3" />{t('time2')}</div>
                     <div className="font-medium text-sm">{detailSession.start_time?.slice(0,5)} - {detailSession.end_time?.slice(0,5)}</div>
                   </div>
                   <div className="bg-muted/50 rounded-lg p-3">
-                    <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1"><MapPin className="h-3 w-3" />{isRTL ? 'القاعة' : 'Room'}</div>
+                    <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1"><MapPin className="h-3 w-3" />{t('room2')}</div>
                     <div className="font-medium text-sm">{detailSession.room_name || '—'}</div>
                   </div>
                   <div className="bg-muted/50 rounded-lg p-3">

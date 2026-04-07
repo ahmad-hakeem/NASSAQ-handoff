@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { Sidebar } from '../components/layout/Sidebar';
 import { HakimAssistant } from '../components/hakim/HakimAssistant';
 import { Button } from '../components/ui/button';
@@ -79,6 +79,7 @@ const roleLabels = {
 };
 
 export const PlatformUsersPage = () => {
+  const { t } = useTranslation();
   const { user, api } = useAuth();
   const { isRTL, toggleTheme, toggleLanguage, isDark } = useTheme();
   const [users, setUsers] = useState([]);
@@ -104,7 +105,7 @@ export const PlatformUsersPage = () => {
       setSchools(schoolsRes.data);
     } catch (error) {
       console.error('Failed to fetch data:', error);
-      nassaqError(isRTL ? 'فشل تحميل البيانات' : 'Failed to load data');
+      nassaqError(t('failedToLoadData'));
     } finally {
       setLoading(false);
     }
@@ -117,10 +118,10 @@ export const PlatformUsersPage = () => {
   const handleStatusChange = async (userId, isActive) => {
     try {
       await api.put(`/users/${userId}/status?is_active=${isActive}`);
-      toast.success(isRTL ? 'تم تحديث حالة المستخدم' : 'User status updated');
+      toast.success(t('userStatusUpdated'));
       fetchData();
     } catch (error) {
-      nassaqError(isRTL ? 'فشل تحديث الحالة' : 'Failed to update status');
+      nassaqError(t('failedToUpdateStatus'));
     }
   };
 
@@ -180,7 +181,7 @@ export const PlatformUsersPage = () => {
                 {isRTL ? 'إدارة المستخدمين' : 'Users Management'}
               </h1>
               <p className="text-sm text-muted-foreground font-tajawal">
-                {isRTL ? 'إدارة جميع مستخدمي المنصة' : 'Manage all platform users'}
+                {t('manageAllPlatformUsers')}
               </p>
             </div>
             
@@ -209,7 +210,7 @@ export const PlatformUsersPage = () => {
                   </div>
                   <div>
                     <p className="text-2xl font-bold">{stats.total}</p>
-                    <p className="text-xs text-muted-foreground">{isRTL ? 'إجمالي' : 'Total'}</p>
+                    <p className="text-xs text-muted-foreground">{t('total2')}</p>
                   </div>
                 </div>
               </CardContent>
@@ -223,7 +224,7 @@ export const PlatformUsersPage = () => {
                   </div>
                   <div>
                     <p className="text-2xl font-bold">{stats.active}</p>
-                    <p className="text-xs text-muted-foreground">{isRTL ? 'نشط' : 'Active'}</p>
+                    <p className="text-xs text-muted-foreground">{t('active')}</p>
                   </div>
                 </div>
               </CardContent>
@@ -237,7 +238,7 @@ export const PlatformUsersPage = () => {
                   </div>
                   <div>
                     <p className="text-2xl font-bold">{stats.inactive}</p>
-                    <p className="text-xs text-muted-foreground">{isRTL ? 'معطل' : 'Inactive'}</p>
+                    <p className="text-xs text-muted-foreground">{t('inactive2')}</p>
                   </div>
                 </div>
               </CardContent>
@@ -251,7 +252,7 @@ export const PlatformUsersPage = () => {
                   </div>
                   <div>
                     <p className="text-2xl font-bold">{stats.admins}</p>
-                    <p className="text-xs text-muted-foreground">{isRTL ? 'مدراء' : 'Admins'}</p>
+                    <p className="text-xs text-muted-foreground">{t('admins2')}</p>
                   </div>
                 </div>
               </CardContent>
@@ -265,7 +266,7 @@ export const PlatformUsersPage = () => {
                   </div>
                   <div>
                     <p className="text-2xl font-bold">{stats.principals}</p>
-                    <p className="text-xs text-muted-foreground">{isRTL ? 'مدراء مدارس' : 'Principals'}</p>
+                    <p className="text-xs text-muted-foreground">{t('principals')}</p>
                   </div>
                 </div>
               </CardContent>
@@ -279,7 +280,7 @@ export const PlatformUsersPage = () => {
                   </div>
                   <div>
                     <p className="text-2xl font-bold">{stats.teachers}</p>
-                    <p className="text-xs text-muted-foreground">{isRTL ? 'معلمين' : 'Teachers'}</p>
+                    <p className="text-xs text-muted-foreground">{t('teachers3')}</p>
                   </div>
                 </div>
               </CardContent>
@@ -293,7 +294,7 @@ export const PlatformUsersPage = () => {
                   </div>
                   <div>
                     <p className="text-2xl font-bold">{stats.students}</p>
-                    <p className="text-xs text-muted-foreground">{isRTL ? 'طلاب' : 'Students'}</p>
+                    <p className="text-xs text-muted-foreground">{t('students2')}</p>
                   </div>
                 </div>
               </CardContent>
@@ -305,7 +306,7 @@ export const PlatformUsersPage = () => {
             <CardHeader>
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                  <CardTitle className="font-cairo">{isRTL ? 'قائمة المستخدمين' : 'Users List'}</CardTitle>
+                  <CardTitle className="font-cairo">{t('usersList')}</CardTitle>
                   <CardDescription>{isRTL ? `${filteredUsers.length} مستخدم` : `${filteredUsers.length} users`}</CardDescription>
                 </div>
                 
@@ -313,7 +314,7 @@ export const PlatformUsersPage = () => {
                   <div className="relative">
                     <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
-                      placeholder={isRTL ? 'بحث...' : 'Search...'}
+                      placeholder={t('search')}
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className="ps-9 w-[200px] rounded-xl"
@@ -323,26 +324,26 @@ export const PlatformUsersPage = () => {
                   
                   <Select value={roleFilter} onValueChange={setRoleFilter}>
                     <SelectTrigger className="w-[150px] rounded-xl">
-                      <SelectValue placeholder={isRTL ? 'الدور' : 'Role'} />
+                      <SelectValue placeholder={t('role')} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">{isRTL ? 'جميع الأدوار' : 'All Roles'}</SelectItem>
-                      <SelectItem value="platform_admin">{isRTL ? 'مدير المنصة' : 'Platform Admin'}</SelectItem>
+                      <SelectItem value="all">{t('allRoles')}</SelectItem>
+                      <SelectItem value="platform_admin">{t('platformAdmin')}</SelectItem>
                       <SelectItem value="school_principal">{isRTL ? 'مدير المدرسة' : 'School Principal'}</SelectItem>
-                      <SelectItem value="teacher">{isRTL ? 'معلم' : 'Teacher'}</SelectItem>
-                      <SelectItem value="student">{isRTL ? 'طالب' : 'Student'}</SelectItem>
+                      <SelectItem value="teacher">{t('teacher')}</SelectItem>
+                      <SelectItem value="student">{t('student')}</SelectItem>
                       <SelectItem value="parent">{isRTL ? 'ولي أمر' : 'Parent'}</SelectItem>
                     </SelectContent>
                   </Select>
                   
                   <Select value={statusFilter} onValueChange={setStatusFilter}>
                     <SelectTrigger className="w-[130px] rounded-xl">
-                      <SelectValue placeholder={isRTL ? 'الحالة' : 'Status'} />
+                      <SelectValue placeholder={t('status2')} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">{isRTL ? 'الكل' : 'All'}</SelectItem>
-                      <SelectItem value="active">{isRTL ? 'نشط' : 'Active'}</SelectItem>
-                      <SelectItem value="inactive">{isRTL ? 'معطل' : 'Inactive'}</SelectItem>
+                      <SelectItem value="all">{t('all')}</SelectItem>
+                      <SelectItem value="active">{t('active')}</SelectItem>
+                      <SelectItem value="inactive">{t('inactive2')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -354,11 +355,11 @@ export const PlatformUsersPage = () => {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>{isRTL ? 'المستخدم' : 'User'}</TableHead>
-                      <TableHead>{isRTL ? 'البريد الإلكتروني' : 'Email'}</TableHead>
-                      <TableHead>{isRTL ? 'الدور' : 'Role'}</TableHead>
-                      <TableHead>{isRTL ? 'المدرسة' : 'School'}</TableHead>
-                      <TableHead>{isRTL ? 'الحالة' : 'Status'}</TableHead>
+                      <TableHead>{t('user')}</TableHead>
+                      <TableHead>{t('email2')}</TableHead>
+                      <TableHead>{t('role')}</TableHead>
+                      <TableHead>{t('school')}</TableHead>
+                      <TableHead>{t('status2')}</TableHead>
                       <TableHead className="w-12"></TableHead>
                     </TableRow>
                   </TableHeader>
@@ -366,13 +367,13 @@ export const PlatformUsersPage = () => {
                     {loading ? (
                       <TableRow>
                         <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                          {isRTL ? 'جاري التحميل...' : 'Loading...'}
+                          {t('loading')}
                         </TableCell>
                       </TableRow>
                     ) : paginatedUsers.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                          {isRTL ? 'لا يوجد مستخدمون' : 'No users found'}
+                          {t('noUsersFound')}
                         </TableCell>
                       </TableRow>
                     ) : (
@@ -417,11 +418,11 @@ export const PlatformUsersPage = () => {
                           <TableCell>
                             {u.is_active ? (
                               <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                                {isRTL ? 'نشط' : 'Active'}
+                                {t('active')}
                               </Badge>
                             ) : (
                               <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
-                                {isRTL ? 'معطل' : 'Inactive'}
+                                {t('inactive2')}
                               </Badge>
                             )}
                           </TableCell>
@@ -435,13 +436,13 @@ export const PlatformUsersPage = () => {
                               <DropdownMenuContent align="end">
                                 <DropdownMenuItem onClick={() => { setSelectedUser(u); setViewDialogOpen(true); }}>
                                   <Eye className="h-4 w-4 me-2" />
-                                  {isRTL ? 'عرض التفاصيل' : 'View Details'}
+                                  {t('viewDetails')}
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 {u.is_active ? (
                                   <DropdownMenuItem onClick={() => handleStatusChange(u.id, false)}>
                                     <UserX className="h-4 w-4 me-2 text-red-600" />
-                                    {isRTL ? 'تعطيل الحساب' : 'Deactivate'}
+                                    {t('deactivate')}
                                   </DropdownMenuItem>
                                 ) : (
                                   <DropdownMenuItem onClick={() => handleStatusChange(u.id, true)}>
@@ -449,9 +450,9 @@ export const PlatformUsersPage = () => {
                                     {isRTL ? 'تفعيل الحساب' : 'Activate'}
                                   </DropdownMenuItem>
                                 )}
-                                <DropdownMenuItem onClick={() => toast.info(isRTL ? 'قريباً...' : 'Coming soon...')}>
+                                <DropdownMenuItem onClick={() => toast.info(t('comingSoon'))}>
                                   <Key className="h-4 w-4 me-2" />
-                                  {isRTL ? 'إعادة تعيين كلمة المرور' : 'Reset Password'}
+                                  {t('resetPassword')}
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
@@ -503,7 +504,7 @@ export const PlatformUsersPage = () => {
         <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
           <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
-              <DialogTitle className="font-cairo">{isRTL ? 'تفاصيل المستخدم' : 'User Details'}</DialogTitle>
+              <DialogTitle className="font-cairo">{t('userDetails')}</DialogTitle>
             </DialogHeader>
             
             {selectedUser && (
@@ -542,11 +543,11 @@ export const PlatformUsersPage = () => {
                 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-muted rounded-xl p-3">
-                    <p className="text-sm text-muted-foreground">{isRTL ? 'الحالة' : 'Status'}</p>
+                    <p className="text-sm text-muted-foreground">{t('status2')}</p>
                     <p className="font-medium">
                       {selectedUser.is_active 
-                        ? (isRTL ? 'نشط' : 'Active')
-                        : (isRTL ? 'معطل' : 'Inactive')
+                        ? (t('active'))
+                        : (t('inactive2'))
                       }
                     </p>
                   </div>
@@ -562,7 +563,7 @@ export const PlatformUsersPage = () => {
             
             <DialogFooter>
               <Button variant="outline" onClick={() => setViewDialogOpen(false)} className="rounded-xl">
-                {isRTL ? 'إغلاق' : 'Close'}
+                {t('close')}
               </Button>
             </DialogFooter>
           </DialogContent>

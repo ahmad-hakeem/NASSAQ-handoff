@@ -26,6 +26,7 @@ import {
 import SessionsManageTab from './SessionsManageTab';
 
 
+import { useTranslation } from '../../contexts/ThemeContext';
 const DAY_AR = {
   sunday: 'الأحد', monday: 'الاثنين', tuesday: 'الثلاثاء',
   wednesday: 'الأربعاء', thursday: 'الخميس'
@@ -62,6 +63,7 @@ export default function TeacherClassesPage() {
   const teacherId = user?.teacher_id || user?.id;
 
   const handleTabChange = (tab) => {
+  const { t } = useTranslation();
     setSearchParams(tab === 'sessions' ? { tab: 'sessions' } : {});
   };
 
@@ -89,7 +91,7 @@ export default function TeacherClassesPage() {
       setClasses(enriched);
     } catch (error) {
       console.error('Error fetching classes:', error);
-      nassaqError(isRTL ? 'خطأ في تحميل الفصول' : 'Error loading classes');
+      nassaqError(t('errorLoadingClasses'));
     } finally {
       setLoading(false);
     }
@@ -142,7 +144,7 @@ export default function TeacherClassesPage() {
       return (
         <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 border-0 text-[10px]">
           <CheckCircle2 className="h-3 w-3 me-1" />
-          {isRTL ? 'نشط' : 'Active'}
+          {t('active')}
         </Badge>
       );
     }
@@ -150,13 +152,13 @@ export default function TeacherClassesPage() {
       return (
         <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 border-0 text-[10px]">
           <AlertTriangle className="h-3 w-3 me-1" />
-          {isRTL ? 'بدون حصة' : 'No session'}
+          {t('noSession')}
         </Badge>
       );
     }
     return (
       <Badge variant="secondary" className="text-[10px]">
-        {isRTL ? 'مسجل' : 'Enrolled'}
+        {t('enrolled2')}
       </Badge>
     );
   };
@@ -222,7 +224,7 @@ export default function TeacherClassesPage() {
 
           <div>
             <div className="flex items-center justify-between text-xs mb-1">
-              <span className="text-muted-foreground">{isRTL ? 'الحضور' : 'Attendance'}</span>
+              <span className="text-muted-foreground">{t('attendance2')}</span>
               <span className={`font-bold ${
                 cls.attendance_rate >= 90 ? 'text-emerald-600' :
                 cls.attendance_rate >= 80 ? 'text-amber-600' : 'text-red-500'
@@ -257,7 +259,7 @@ export default function TeacherClassesPage() {
               onClick={(e) => { e.stopPropagation(); navigate(`/teacher/class/${cls.id}`); }}
             >
               <Users className="h-3 w-3 me-1" />
-              {isRTL ? 'الطلاب' : 'Students'}
+              {t('students')}
             </Button>
             <Button
               variant="outline"
@@ -266,7 +268,7 @@ export default function TeacherClassesPage() {
               onClick={(e) => { e.stopPropagation(); navigate(`/teacher/attendance?class=${cls.id}`); }}
             >
               <ClipboardCheck className="h-3 w-3 me-1" />
-              {isRTL ? 'الحضور' : 'Attendance'}
+              {t('attendance2')}
             </Button>
             <Button
               variant="outline"
@@ -275,7 +277,7 @@ export default function TeacherClassesPage() {
               onClick={(e) => { e.stopPropagation(); navigate(`/teacher/reports?class=${cls.id}`); }}
             >
               <BarChart3 className="h-3 w-3 me-1" />
-              {isRTL ? 'تقارير' : 'Reports'}
+              {t('reports2')}
             </Button>
           </div>
         </CardContent>
@@ -357,10 +359,10 @@ export default function TeacherClassesPage() {
               <div>
                 <h1 className="text-2xl font-bold text-brand-navy dark:text-brand-turquoise font-cairo flex items-center gap-2">
                   <GraduationCap className="h-7 w-7" />
-                  {isRTL ? 'فصولي' : 'My Classes'}
+                  {t('myClasses')}
                 </h1>
                 <p className="text-sm text-muted-foreground mt-0.5 font-tajawal">
-                  {isRTL ? 'إدارة ومتابعة الفصول والحصص' : 'Manage and track your classes and sessions'}
+                  {t('manageAndTrackYourClassesAndSessions')}
                 </p>
               </div>
               {activeTab === 'classes' && (
@@ -368,7 +370,7 @@ export default function TeacherClassesPage() {
                   <div className="relative">
                     <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
-                      placeholder={isRTL ? 'بحث في الفصول أو المواد...' : 'Search classes or subjects...'}
+                      placeholder={t('searchClassesOrSubjects')}
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className="ps-9 w-full sm:w-[220px] h-9"
@@ -379,7 +381,7 @@ export default function TeacherClassesPage() {
                       <SelectValue placeholder={isRTL ? 'المرحلة' : 'Grade'} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">{isRTL ? 'جميع المراحل' : 'All Grades'}</SelectItem>
+                      <SelectItem value="all">{t('allGrades')}</SelectItem>
                       {grades.map(g => (
                         <SelectItem key={g} value={String(g)}>
                           {isRTL ? `الصف ${g}` : `Grade ${g}`}
@@ -423,7 +425,7 @@ export default function TeacherClassesPage() {
             >
               <span className="flex items-center gap-1.5">
                 <GraduationCap className="h-4 w-4" />
-                {isRTL ? 'فصولي' : 'My Classes'}
+                {t('myClasses')}
               </span>
               {activeTab === 'classes' && (
                 <span className="absolute bottom-0 inset-x-0 h-0.5 bg-brand-turquoise rounded-full" />
@@ -439,7 +441,7 @@ export default function TeacherClassesPage() {
             >
               <span className="flex items-center gap-1.5">
                 <ClipboardCheck className="h-4 w-4" />
-                {isRTL ? 'إدارة الحصص' : 'Session Management'}
+                {t('sessionManagement')}
               </span>
               {activeTab === 'sessions' && (
                 <span className="absolute bottom-0 inset-x-0 h-0.5 bg-brand-turquoise rounded-full" />
@@ -456,7 +458,7 @@ export default function TeacherClassesPage() {
           {!loading && stats && (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
               {[
-                { label: isRTL ? 'فصل' : 'Classes', value: stats.totalClasses, icon: GraduationCap, gradient: 'from-blue-500 to-blue-600', light: 'bg-blue-50 dark:bg-blue-900/20' },
+                { label: t('classes4'), value: stats.totalClasses, icon: GraduationCap, gradient: 'from-blue-500 to-blue-600', light: 'bg-blue-50 dark:bg-blue-900/20' },
                 { label: isRTL ? 'طالب' : 'Students', value: stats.totalStudents, icon: Users, gradient: 'from-emerald-500 to-emerald-600', light: 'bg-emerald-50 dark:bg-emerald-900/20' },
                 { label: isRTL ? 'مادة' : 'Subjects', value: stats.totalSubjects, icon: BookOpen, gradient: 'from-purple-500 to-purple-600', light: 'bg-purple-50 dark:bg-purple-900/20' },
                 { label: isRTL ? 'حصة/أسبوع' : 'Sessions/wk', value: stats.totalSessions, icon: Calendar, gradient: 'from-amber-500 to-amber-600', light: 'bg-amber-50 dark:bg-amber-900/20' },
@@ -480,7 +482,7 @@ export default function TeacherClassesPage() {
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
               <Loader2 className="h-10 w-10 animate-spin text-brand-turquoise" />
-              <p className="text-sm text-muted-foreground font-tajawal">{isRTL ? 'جارٍ تحميل الفصول...' : 'Loading classes...'}</p>
+              <p className="text-sm text-muted-foreground font-tajawal">{t('loadingClasses')}</p>
             </div>
           ) : filteredClasses.length === 0 ? (
             <Card className="border-dashed">
@@ -488,13 +490,13 @@ export default function TeacherClassesPage() {
                 <GraduationCap className="h-16 w-16 mx-auto mb-4 text-muted-foreground/20" />
                 <h3 className="font-bold text-lg mb-2 font-cairo">
                   {searchQuery || gradeFilter !== 'all'
-                    ? (isRTL ? 'لا توجد نتائج' : 'No results')
-                    : (isRTL ? 'لا توجد فصول' : 'No classes found')}
+                    ? (t('noResults'))
+                    : (t('noClassesFound2'))}
                 </h3>
                 <p className="text-muted-foreground text-sm font-tajawal">
                   {searchQuery || gradeFilter !== 'all'
-                    ? (isRTL ? 'جرب تغيير معايير البحث' : 'Try changing search criteria')
-                    : (isRTL ? 'لم يتم تعيين أي فصول لك بعد' : 'No classes assigned to you yet')}
+                    ? (t('tryChangingSearchCriteria'))
+                    : (t('noClassesAssignedToYouYet'))}
                 </p>
               </CardContent>
             </Card>
@@ -514,7 +516,7 @@ export default function TeacherClassesPage() {
                   <SelectContent>
                     <SelectItem value="grade">{isRTL ? 'المرحلة' : 'By Grade'}</SelectItem>
                     <SelectItem value="name">{isRTL ? 'الاسم' : 'By Name'}</SelectItem>
-                    <SelectItem value="students">{isRTL ? 'عدد الطلاب' : 'By Students'}</SelectItem>
+                    <SelectItem value="students">{t('byStudents')}</SelectItem>
                     <SelectItem value="attendance">{isRTL ? 'الحضور' : 'By Attendance'}</SelectItem>
                   </SelectContent>
                 </Select>
@@ -532,13 +534,13 @@ export default function TeacherClassesPage() {
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="bg-muted/50 text-muted-foreground">
-                          <th className="p-3 text-start font-medium">{isRTL ? 'الفصل' : 'Class'}</th>
-                          <th className="p-3 text-start font-medium">{isRTL ? 'المواد' : 'Subjects'}</th>
-                          <th className="p-3 text-center font-medium">{isRTL ? 'الطلاب' : 'Students'}</th>
-                          <th className="p-3 text-center font-medium">{isRTL ? 'الحضور' : 'Attendance'}</th>
-                          <th className="p-3 text-start font-medium">{isRTL ? 'الحصة القادمة' : 'Next Session'}</th>
-                          <th className="p-3 text-start font-medium">{isRTL ? 'الحالة' : 'Status'}</th>
-                          <th className="p-3 text-start font-medium">{isRTL ? 'إجراءات' : 'Actions'}</th>
+                          <th className="p-3 text-start font-medium">{t('class')}</th>
+                          <th className="p-3 text-start font-medium">{t('subjects')}</th>
+                          <th className="p-3 text-center font-medium">{t('students')}</th>
+                          <th className="p-3 text-center font-medium">{t('attendance2')}</th>
+                          <th className="p-3 text-start font-medium">{t('nextSession')}</th>
+                          <th className="p-3 text-start font-medium">{t('status2')}</th>
+                          <th className="p-3 text-start font-medium">{t('actions')}</th>
                         </tr>
                       </thead>
                       <tbody>

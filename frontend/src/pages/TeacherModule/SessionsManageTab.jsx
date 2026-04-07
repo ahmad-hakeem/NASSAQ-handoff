@@ -18,6 +18,7 @@ import {
   StickyNote, AlertTriangle
 } from 'lucide-react';
 
+import { useTranslation } from '../../contexts/ThemeContext';
 const STATUS_MAP = {
   completed: { label: 'مكتملة', labelEn: 'Completed', color: 'bg-green-100 text-green-700 border-green-200' },
   ended: { label: 'منتهية', labelEn: 'Ended', color: 'bg-green-100 text-green-700 border-green-200' },
@@ -129,6 +130,7 @@ export default function SessionsManageTab() {
   });
 
   const getStatusBadge = (status) => {
+  const { t } = useTranslation();
     const s = STATUS_MAP[status] || { label: status || 'مجدولة', labelEn: status || 'Scheduled', color: 'bg-gray-100 text-gray-700 border-gray-200' };
     return <Badge className={s.color}>{isRTL ? s.label : s.labelEn}</Badge>;
   };
@@ -164,11 +166,11 @@ export default function SessionsManageTab() {
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <p className="text-sm text-muted-foreground font-tajawal">
-          {isRTL ? 'استعراض وإدارة سجل الحصص الدراسية' : 'Review and manage teaching session records'}
+          {t('reviewAndManageTeachingSessionRecords')}
         </p>
         <Button onClick={fetchSessions} variant="outline" size="sm" disabled={loading}>
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-          <span className={isRTL ? 'mr-2' : 'ml-2'}>{isRTL ? 'تحديث' : 'Refresh'}</span>
+          <span className={isRTL ? 'mr-2' : 'ml-2'}>{t('refresh')}</span>
         </Button>
       </div>
 
@@ -177,28 +179,28 @@ export default function SessionsManageTab() {
           <CardContent className="p-3 text-center">
             <ClipboardList className="w-7 h-7 mx-auto text-blue-600 mb-1" />
             <div className="text-2xl font-bold text-blue-700 dark:text-blue-300">{stats.total}</div>
-            <div className="text-[10px] text-blue-600 dark:text-blue-400">{isRTL ? 'إجمالي الحصص' : 'Total Sessions'}</div>
+            <div className="text-[10px] text-blue-600 dark:text-blue-400">{t('totalSessions')}</div>
           </CardContent>
         </Card>
         <Card className="border-0 shadow-sm bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20">
           <CardContent className="p-3 text-center">
             <CheckCircle2 className="w-7 h-7 mx-auto text-green-600 mb-1" />
             <div className="text-2xl font-bold text-green-700 dark:text-green-300">{stats.completed}</div>
-            <div className="text-[10px] text-green-600 dark:text-green-400">{isRTL ? 'مكتملة' : 'Completed'}</div>
+            <div className="text-[10px] text-green-600 dark:text-green-400">{t('completed')}</div>
           </CardContent>
         </Card>
         <Card className="border-0 shadow-sm bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20">
           <CardContent className="p-3 text-center">
             <XCircle className="w-7 h-7 mx-auto text-red-600 mb-1" />
             <div className="text-2xl font-bold text-red-700 dark:text-red-300">{stats.cancelled}</div>
-            <div className="text-[10px] text-red-600 dark:text-red-400">{isRTL ? 'ملغاة' : 'Cancelled'}</div>
+            <div className="text-[10px] text-red-600 dark:text-red-400">{t('cancelled3')}</div>
           </CardContent>
         </Card>
         <Card className="border-0 shadow-sm bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20">
           <CardContent className="p-3 text-center">
             <Users className="w-7 h-7 mx-auto text-purple-600 mb-1" />
             <div className="text-2xl font-bold text-purple-700 dark:text-purple-300">{stats.avg_attendance}%</div>
-            <div className="text-[10px] text-purple-600 dark:text-purple-400">{isRTL ? 'متوسط الحضور' : 'Avg Attendance'}</div>
+            <div className="text-[10px] text-purple-600 dark:text-purple-400">{t('avgAttendance')}</div>
           </CardContent>
         </Card>
       </div>
@@ -209,7 +211,7 @@ export default function SessionsManageTab() {
             <div className="relative flex-1">
               <Search className={`absolute ${isRTL ? 'right-3' : 'left-3'} top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400`} />
               <Input
-                placeholder={isRTL ? 'البحث بالمادة أو الفصل أو الموضوع...' : 'Search by subject, class, or topic...'}
+                placeholder={t('searchBySubjectClassOrTopic')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className={`${isRTL ? 'pr-10' : 'pl-10'}`}
@@ -217,26 +219,26 @@ export default function SessionsManageTab() {
             </div>
             <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
               <SelectTrigger className="w-[160px]">
-                <SelectValue placeholder={isRTL ? 'الحالة' : 'Status'} />
+                <SelectValue placeholder={t('status2')} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">{isRTL ? 'الكل' : 'All'}</SelectItem>
-                <SelectItem value="completed">{isRTL ? 'مكتملة' : 'Completed'}</SelectItem>
-                <SelectItem value="ended">{isRTL ? 'منتهية' : 'Ended'}</SelectItem>
-                <SelectItem value="cancelled">{isRTL ? 'ملغاة' : 'Cancelled'}</SelectItem>
-                <SelectItem value="in_progress">{isRTL ? 'جارية' : 'Active'}</SelectItem>
-                <SelectItem value="auto_closed">{isRTL ? 'أُغلقت تلقائياً' : 'Auto Closed'}</SelectItem>
+                <SelectItem value="all">{t('all')}</SelectItem>
+                <SelectItem value="completed">{t('completed')}</SelectItem>
+                <SelectItem value="ended">{t('ended')}</SelectItem>
+                <SelectItem value="cancelled">{t('cancelled3')}</SelectItem>
+                <SelectItem value="in_progress">{t('active3')}</SelectItem>
+                <SelectItem value="auto_closed">{t('autoClosed')}</SelectItem>
               </SelectContent>
             </Select>
             <Select value={dateFilter} onValueChange={setDateFilter}>
               <SelectTrigger className="w-[160px]">
-                <SelectValue placeholder={isRTL ? 'الفترة' : 'Period'} />
+                <SelectValue placeholder={t('period')} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">{isRTL ? 'كل الفترات' : 'All Time'}</SelectItem>
-                <SelectItem value="today">{isRTL ? 'اليوم' : 'Today'}</SelectItem>
-                <SelectItem value="week">{isRTL ? 'هذا الأسبوع' : 'This Week'}</SelectItem>
-                <SelectItem value="month">{isRTL ? 'هذا الشهر' : 'This Month'}</SelectItem>
+                <SelectItem value="all">{t('allTime')}</SelectItem>
+                <SelectItem value="today">{t('today2')}</SelectItem>
+                <SelectItem value="week">{t('thisWeek2')}</SelectItem>
+                <SelectItem value="month">{t('thisMonth2')}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -252,12 +254,10 @@ export default function SessionsManageTab() {
           <CardContent className="p-12 text-center">
             <ClipboardList className="w-16 h-16 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
             <h3 className="text-lg font-medium text-gray-600 dark:text-gray-400">
-              {isRTL ? 'لا توجد حصص مسجلة' : 'No sessions recorded'}
+              {t('noSessionsRecorded')}
             </h3>
             <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">
-              {isRTL
-                ? 'ستظهر هنا سجلات الحصص بعد بدء استخدام نظام إدارة الحصص'
-                : 'Session records will appear here after you start using the session management system'}
+              {t('sessionRecordsWillAppearHereAfterYouStartUsingTheS')}
             </p>
             <Button className="mt-4" onClick={() => navigate('/teacher/schedule')}>
               <Calendar className="w-4 h-4" />
@@ -316,13 +316,13 @@ export default function SessionsManageTab() {
                         {session.duration_minutes > 0 && (
                           <span className="flex items-center gap-1">
                             <Timer className="w-3.5 h-3.5" />
-                            {session.duration_minutes} {isRTL ? 'د' : 'min'}
+                            {session.duration_minutes} {t('min')}
                           </span>
                         )}
                         {(session.interaction_count > 0 || session.questions_asked > 0) && (
                           <span className="flex items-center gap-1">
                             <Activity className="w-3.5 h-3.5" />
-                            {session.interaction_count || session.questions_asked} {isRTL ? 'تفاعل' : 'interactions'}
+                            {session.interaction_count || session.questions_asked} {t('interactions2')}
                           </span>
                         )}
                       </div>
@@ -338,7 +338,7 @@ export default function SessionsManageTab() {
                           {session.present_students ?? session.present_count ?? session.attendance_count ?? 0}
                           <span className="text-sm text-gray-400">/{session.total_students || '?'}</span>
                         </div>
-                        <div className="text-xs text-gray-400">{isRTL ? 'حضور' : 'Present'}</div>
+                        <div className="text-xs text-gray-400">{t('present3')}</div>
                       </div>
                     )}
                     <ChevronRight className={`w-5 h-5 text-gray-400 ${isRTL ? 'rotate-180' : ''}`} />
@@ -368,7 +368,7 @@ export default function SessionsManageTab() {
                 disabled={page >= totalPages}
                 onClick={() => setPage(p => p + 1)}
               >
-                {isRTL ? 'التالي' : 'Next'}
+                {t('next')}
                 <ChevronLeft className={`w-4 h-4 ${isRTL ? '' : 'rotate-180'}`} />
               </Button>
             </div>
@@ -379,7 +379,7 @@ export default function SessionsManageTab() {
       <Dialog open={showDetail} onOpenChange={setShowDetail}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto" dir={isRTL ? 'rtl' : 'ltr'}>
           <DialogHeader>
-            <DialogTitle>{isRTL ? 'تقرير الحصة' : 'Session Report'}</DialogTitle>
+            <DialogTitle>{t('sessionReport')}</DialogTitle>
           </DialogHeader>
           {selectedSession && (
             <div className="space-y-4">
@@ -398,23 +398,23 @@ export default function SessionsManageTab() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                  <div className="text-xs text-gray-500 mb-1">{isRTL ? 'التاريخ' : 'Date'}</div>
+                  <div className="text-xs text-gray-500 mb-1">{t('date')}</div>
                   <div className="font-medium text-sm">{formatDate(selectedSession.date || selectedSession.created_at)}</div>
                 </div>
                 <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                  <div className="text-xs text-gray-500 mb-1">{isRTL ? 'المدة' : 'Duration'}</div>
+                  <div className="text-xs text-gray-500 mb-1">{t('duration')}</div>
                   <div className="font-medium text-sm">
-                    {selectedSession.duration_minutes || 0} {isRTL ? 'دقيقة' : 'minutes'}
+                    {selectedSession.duration_minutes || 0} {t('minutes')}
                   </div>
                 </div>
                 <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                  <div className="text-xs text-gray-500 mb-1">{isRTL ? 'الحضور' : 'Attendance'}</div>
+                  <div className="text-xs text-gray-500 mb-1">{t('attendance2')}</div>
                   <div className="font-medium text-sm">
                     {selectedSession.present_students ?? selectedSession.present_count ?? 0} / {selectedSession.total_students || 0}
                   </div>
                 </div>
                 <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                  <div className="text-xs text-gray-500 mb-1">{isRTL ? 'التفاعلات' : 'Interactions'}</div>
+                  <div className="text-xs text-gray-500 mb-1">{t('interactions')}</div>
                   <div className="font-medium text-sm">{selectedSession.interaction_count || 0}</div>
                 </div>
               </div>
@@ -433,10 +433,10 @@ export default function SessionsManageTab() {
                       const posB = behaviours.reduce((sum, s) => sum + (s.behaviours?.filter(b => b.category === 'positive').length || 0), 0);
                       const negB = behaviours.reduce((sum, s) => sum + (s.behaviours?.filter(b => b.category === 'negative').length || 0), 0);
                       return [
-                        { label: isRTL ? 'صحيح' : 'Correct', value: rpt.correct_answers || 0, color: 'text-green-600', bg: 'bg-green-50', icon: '✅' },
+                        { label: t('correct'), value: rpt.correct_answers || 0, color: 'text-green-600', bg: 'bg-green-50', icon: '✅' },
                         { label: isRTL ? 'خطأ' : 'Wrong', value: wrongCount, color: 'text-red-600', bg: 'bg-red-50', icon: '❌' },
-                        { label: isRTL ? 'إيجابي' : 'Positive', value: posB, color: 'text-emerald-600', bg: 'bg-emerald-50', icon: '👍' },
-                        { label: isRTL ? 'سلبي' : 'Negative', value: negB, color: 'text-orange-600', bg: 'bg-orange-50', icon: '⚠️' },
+                        { label: t('positive'), value: posB, color: 'text-emerald-600', bg: 'bg-emerald-50', icon: '👍' },
+                        { label: t('negative'), value: negB, color: 'text-orange-600', bg: 'bg-orange-50', icon: '⚠️' },
                       ];
                     })().map(item => (
                       <div key={item.label} className={`${item.bg} rounded-lg p-2 text-center`}>
@@ -450,7 +450,7 @@ export default function SessionsManageTab() {
                   {sessionReport.summary.attendance_rate !== undefined && (
                     <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
                       <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-1.5">
-                        <span>{isRTL ? 'نسبة الحضور' : 'Attendance Rate'}</span>
+                        <span>{t('attendanceRate')}</span>
                         <span className="font-bold">{Math.round(sessionReport.summary.attendance_rate)}%</span>
                       </div>
                       <Progress value={sessionReport.summary.attendance_rate} className="h-2" />
@@ -468,7 +468,7 @@ export default function SessionsManageTab() {
                       <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3">
                         <h4 className="text-sm font-medium text-amber-700 dark:text-amber-300 mb-2 flex items-center gap-1.5">
                           <Award className="w-4 h-4" />
-                          {isRTL ? 'الأكثر تفاعلاً' : 'Top Participants'}
+                          {t('topParticipants')}
                         </h4>
                         {topStudents.map((p, i) => (
                           <div key={i} className="flex items-center justify-between py-1">
@@ -491,14 +491,14 @@ export default function SessionsManageTab() {
                       name: s.name,
                       reason: s.behaviours?.some(b => b.category === 'negative')
                         ? (isRTL ? 'سلوك سلبي' : 'Negative behaviour')
-                        : (isRTL ? 'إجابات خاطئة' : 'Wrong answers')
+                        : (t('wrongAnswers'))
                     }));
                     if (needsAtt.length === 0) return null;
                     return (
                       <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-3">
                         <h4 className="text-sm font-medium text-red-700 dark:text-red-300 mb-2 flex items-center gap-1.5">
                           <AlertTriangle className="w-4 h-4" />
-                          {isRTL ? 'يحتاج متابعة' : 'Needs Attention'}
+                          {t('needsAttention')}
                         </h4>
                         {needsAtt.map((s, i) => (
                           <div key={i} className="flex items-center justify-between py-1">
@@ -529,7 +529,7 @@ export default function SessionsManageTab() {
 
               {selectedSession.topic && (
                 <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                  <div className="text-xs text-blue-600 mb-1">{isRTL ? 'موضوع الحصة' : 'Session Topic'}</div>
+                  <div className="text-xs text-blue-600 mb-1">{t('sessionTopic')}</div>
                   <div className="text-sm font-medium text-blue-800 dark:text-blue-200">{selectedSession.topic}</div>
                 </div>
               )}
@@ -542,7 +542,7 @@ export default function SessionsManageTab() {
                     onClick={() => { setShowDetail(false); navigate(`/teacher/session/${selectedSession.id || selectedSession._id}`); }}
                   >
                     <Play className="w-4 h-4" />
-                    <span className={isRTL ? 'mr-2' : 'ml-2'}>{isRTL ? 'متابعة الحصة' : 'Continue Session'}</span>
+                    <span className={isRTL ? 'mr-2' : 'ml-2'}>{t('continueSession')}</span>
                   </Button>
                 )}
                 <Button
@@ -551,7 +551,7 @@ export default function SessionsManageTab() {
                   className="flex-1"
                   onClick={() => setShowDetail(false)}
                 >
-                  {isRTL ? 'إغلاق' : 'Close'}
+                  {t('close')}
                 </Button>
               </div>
             </div>

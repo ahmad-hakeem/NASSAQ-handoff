@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { Sidebar } from '../components/layout/Sidebar';
 import { HakimAssistant } from '../components/hakim/HakimAssistant';
 import { Button } from '../components/ui/button';
@@ -52,6 +52,7 @@ import {
 import { Link } from 'react-router-dom';
 
 export const TimeSlotsPage = () => {
+  const { t } = useTranslation();
   const { user, api } = useAuth();
   const { isRTL, toggleTheme, toggleLanguage, isDark } = useTheme();
   const [timeSlots, setTimeSlots] = useState([]);
@@ -94,7 +95,7 @@ export const TimeSlotsPage = () => {
       setTimeSlots(res.data.sort((a, b) => a.slot_number - b.slot_number));
     } catch (error) {
       console.error('Failed to fetch time slots:', error);
-      nassaqError(isRTL ? 'فشل تحميل الفترات الزمنية' : 'Failed to load time slots');
+      nassaqError(t('failedToLoadTimeSlots'));
     } finally {
       setLoading(false);
     }
@@ -112,7 +113,7 @@ export const TimeSlotsPage = () => {
 
   const handleCreateSlot = async () => {
     if (!newSlot.name || !selectedSchool) {
-      nassaqError(isRTL ? 'يرجى ملء جميع الحقول المطلوبة' : 'Please fill all required fields');
+      nassaqError(t('pleaseFillAllRequiredFields'));
       return;
     }
 
@@ -122,7 +123,7 @@ export const TimeSlotsPage = () => {
         ...newSlot,
         school_id: selectedSchool,
       });
-      toast.success(isRTL ? 'تم إضافة الفترة الزمنية بنجاح' : 'Time slot added successfully');
+      toast.success(t('timeSlotAddedSuccessfully'));
       setCreateDialogOpen(false);
       setNewSlot({
         name: '',
@@ -135,29 +136,29 @@ export const TimeSlotsPage = () => {
       });
       fetchTimeSlots();
     } catch (error) {
-      nassaqError(error.response?.data?.detail || (isRTL ? 'فشل إضافة الفترة' : 'Failed to add time slot'));
+      nassaqError(error.response?.data?.detail || (t('failedToAddTimeSlot')));
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleDeleteSlot = async (slotId) => {
-    if (!confirm(isRTL ? 'هل أنت متأكد من حذف هذه الفترة؟' : 'Are you sure you want to delete this time slot?')) {
+    if (!confirm(t('areYouSureYouWantToDeleteThisTimeSlot'))) {
       return;
     }
     
     try {
       await api.delete(`/time-slots/${slotId}`);
-      toast.success(isRTL ? 'تم حذف الفترة الزمنية' : 'Time slot deleted');
+      toast.success(t('timeSlotDeleted'));
       setTimeSlots(prev => prev.filter(s => s.id !== slotId));
     } catch (error) {
-      nassaqError(isRTL ? 'فشل حذف الفترة' : 'Failed to delete time slot');
+      nassaqError(t('failedToDeleteTimeSlot'));
     }
   };
 
   const handleSeedTimeSlots = async () => {
     if (!selectedSchool) {
-      nassaqError(isRTL ? 'يرجى اختيار المدرسة أولاً' : 'Please select a school first');
+      nassaqError(t('pleaseSelectASchoolFirst'));
       return;
     }
 
@@ -167,7 +168,7 @@ export const TimeSlotsPage = () => {
       toast.success(isRTL ? res.data.message : `Created ${res.data.count} time slots`);
       fetchTimeSlots();
     } catch (error) {
-      nassaqError(isRTL ? 'فشل إنشاء الفترات الافتراضية' : 'Failed to create default time slots');
+      nassaqError(t('failedToCreateDefaultTimeSlots'));
     } finally {
       setSeeding(false);
     }
@@ -177,7 +178,7 @@ export const TimeSlotsPage = () => {
     if (!time) return '';
     const [hours, minutes] = time.split(':');
     const hour = parseInt(hours);
-    const ampm = hour >= 12 ? (isRTL ? 'م' : 'PM') : (isRTL ? 'ص' : 'AM');
+    const ampm = hour >= 12 ? (t('pm')) : (t('am'));
     const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
     return `${displayHour}:${minutes} ${ampm}`;
   };
@@ -196,10 +197,10 @@ export const TimeSlotsPage = () => {
               </Button>
               <div>
                 <h1 className="font-cairo text-2xl font-bold text-foreground">
-                  {isRTL ? 'إدارة الفترات الزمنية' : 'Time Slots Management'}
+                  {t('timeSlotsManagement')}
                 </h1>
                 <p className="text-sm text-muted-foreground font-tajawal">
-                  {isRTL ? 'تحديد أوقات الحصص والاستراحات' : 'Define class periods and breaks'}
+                  {t('defineClassPeriodsAndBreaks')}
                 </p>
               </div>
             </div>
@@ -221,7 +222,7 @@ export const TimeSlotsPage = () => {
             <div className="flex gap-4 items-center">
               <Select value={selectedSchool} onValueChange={setSelectedSchool}>
                 <SelectTrigger className="w-[280px] rounded-xl" data-testid="school-select">
-                  <SelectValue placeholder={isRTL ? 'اختر المدرسة' : 'Select School'} />
+                  <SelectValue placeholder={t('selectSchool')} />
                 </SelectTrigger>
                 <SelectContent>
                   {schools.map(school => (
@@ -232,7 +233,7 @@ export const TimeSlotsPage = () => {
               
               <Badge variant="secondary" className="rounded-lg px-3 py-1">
                 <Clock className="h-4 w-4 me-1" />
-                {timeSlots.filter(s => !s.is_break).length} {isRTL ? 'حصة' : 'periods'}
+                {timeSlots.filter(s => !s.is_break).length} {t('periods')}
               </Badge>
             </div>
 
@@ -250,7 +251,7 @@ export const TimeSlotsPage = () => {
                   ) : (
                     <Sparkles className="h-5 w-5 me-2" />
                   )}
-                  {isRTL ? 'إنشاء فترات افتراضية' : 'Create Default Slots'}
+                  {t('createDefaultSlots')}
                 </Button>
               )}
               
@@ -264,27 +265,27 @@ export const TimeSlotsPage = () => {
                 <DialogContent className="sm:max-w-[500px]">
                   <DialogHeader>
                     <DialogTitle className="font-cairo">
-                      {isRTL ? 'إضافة فترة زمنية جديدة' : 'Add New Time Slot'}
+                      {t('addNewTimeSlot')}
                     </DialogTitle>
                     <DialogDescription>
-                      {isRTL ? 'حدد تفاصيل الفترة الزمنية' : 'Define the time slot details'}
+                      {t('defineTheTimeSlotDetails')}
                     </DialogDescription>
                   </DialogHeader>
                   
                   <div className="grid gap-4 py-4">
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label>{isRTL ? 'الاسم (عربي) *' : 'Name (Arabic) *'}</Label>
+                        <Label>{t('nameArabic2')}</Label>
                         <Input
                           value={newSlot.name}
                           onChange={(e) => setNewSlot({ ...newSlot, name: e.target.value })}
-                          placeholder={isRTL ? 'الحصة الأولى' : 'First Period'}
+                          placeholder={t('firstPeriod2')}
                           className="rounded-xl"
                           data-testid="slot-name-input"
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label>{isRTL ? 'الاسم (إنجليزي)' : 'Name (English)'}</Label>
+                        <Label>{t('nameEnglish')}</Label>
                         <Input
                           value={newSlot.name_en}
                           onChange={(e) => setNewSlot({ ...newSlot, name_en: e.target.value })}
@@ -296,7 +297,7 @@ export const TimeSlotsPage = () => {
                     
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label>{isRTL ? 'وقت البداية *' : 'Start Time *'}</Label>
+                        <Label>{t('startTime')}</Label>
                         <Input
                           type="time"
                           value={newSlot.start_time}
@@ -306,7 +307,7 @@ export const TimeSlotsPage = () => {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label>{isRTL ? 'وقت النهاية *' : 'End Time *'}</Label>
+                        <Label>{t('endTime')}</Label>
                         <Input
                           type="time"
                           value={newSlot.end_time}
@@ -319,7 +320,7 @@ export const TimeSlotsPage = () => {
                     
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label>{isRTL ? 'ترتيب الفترة' : 'Slot Order'}</Label>
+                        <Label>{t('slotOrder')}</Label>
                         <Input
                           type="number"
                           min={1}
@@ -329,7 +330,7 @@ export const TimeSlotsPage = () => {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label>{isRTL ? 'المدة (دقيقة)' : 'Duration (minutes)'}</Label>
+                        <Label>{t('durationMinutes')}</Label>
                         <Input
                           type="number"
                           min={1}
@@ -344,9 +345,9 @@ export const TimeSlotsPage = () => {
                       <div className="flex items-center gap-3">
                         <Coffee className="h-5 w-5 text-amber-500" />
                         <div>
-                          <Label className="font-medium">{isRTL ? 'فترة استراحة' : 'Break Period'}</Label>
+                          <Label className="font-medium">{t('breakPeriod')}</Label>
                           <p className="text-xs text-muted-foreground">
-                            {isRTL ? 'تحديد هذه الفترة كاستراحة' : 'Mark as break time'}
+                            {t('markAsBreakTime')}
                           </p>
                         </div>
                       </div>
@@ -360,7 +361,7 @@ export const TimeSlotsPage = () => {
                   
                   <DialogFooter>
                     <Button variant="outline" onClick={() => setCreateDialogOpen(false)} className="rounded-xl">
-                      {isRTL ? 'إلغاء' : 'Cancel'}
+                      {t('cancel')}
                     </Button>
                     <Button 
                       onClick={handleCreateSlot} 
@@ -369,9 +370,9 @@ export const TimeSlotsPage = () => {
                       data-testid="create-slot-btn"
                     >
                       {submitting ? (
-                        <><Loader2 className="h-4 w-4 animate-spin me-2" />{isRTL ? 'جاري الإضافة...' : 'Adding...'}</>
+                        <><Loader2 className="h-4 w-4 animate-spin me-2" />{t('adding')}</>
                       ) : (
-                        isRTL ? 'إضافة' : 'Add'
+                        t('add')
                       )}
                     </Button>
                   </DialogFooter>
@@ -385,7 +386,7 @@ export const TimeSlotsPage = () => {
             <CardHeader className="pb-4">
               <CardTitle className="font-cairo text-lg flex items-center gap-2">
                 <Clock className="h-5 w-5 text-brand-turquoise" />
-                {isRTL ? 'الفترات الزمنية' : 'Time Slots'}
+                {t('timeSlots')}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -397,11 +398,11 @@ export const TimeSlotsPage = () => {
                 <div className="text-center py-16">
                   <Clock className="h-16 w-16 mx-auto mb-4 text-muted-foreground/30" />
                   <p className="text-muted-foreground mb-4">
-                    {isRTL ? 'لا توجد فترات زمنية محددة' : 'No time slots defined'}
+                    {t('noTimeSlotsDefined')}
                   </p>
                   <Button onClick={handleSeedTimeSlots} disabled={seeding} variant="outline" className="rounded-xl">
                     {seeding ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : <Sparkles className="h-4 w-4 me-2" />}
-                    {isRTL ? 'إنشاء فترات افتراضية' : 'Create Default Slots'}
+                    {t('createDefaultSlots')}
                   </Button>
                 </div>
               ) : (
@@ -442,7 +443,7 @@ export const TimeSlotsPage = () => {
                       <div className="flex items-center gap-2">
                         {slot.is_break ? (
                           <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
-                            {isRTL ? 'استراحة' : 'Break'}
+                            {t('break')}
                           </Badge>
                         ) : (
                           <Badge className="bg-brand-turquoise/10 text-brand-turquoise">
@@ -477,24 +478,24 @@ export const TimeSlotsPage = () => {
                       <div className="text-3xl font-bold text-brand-navy dark:text-brand-turquoise">
                         {timeSlots.filter(s => !s.is_break).length}
                       </div>
-                      <div className="text-sm text-muted-foreground">{isRTL ? 'حصص دراسية' : 'Class Periods'}</div>
+                      <div className="text-sm text-muted-foreground">{t('classPeriods')}</div>
                     </div>
                     <div className="text-center">
                       <div className="text-3xl font-bold text-amber-500">
                         {timeSlots.filter(s => s.is_break).length}
                       </div>
-                      <div className="text-sm text-muted-foreground">{isRTL ? 'فترات استراحة' : 'Break Periods'}</div>
+                      <div className="text-sm text-muted-foreground">{t('breakPeriods')}</div>
                     </div>
                     <div className="text-center">
                       <div className="text-3xl font-bold text-brand-purple">
                         {timeSlots.reduce((acc, s) => acc + (s.is_break ? 0 : s.duration_minutes), 0)}
                       </div>
-                      <div className="text-sm text-muted-foreground">{isRTL ? 'دقيقة تعليمية' : 'Teaching Minutes'}</div>
+                      <div className="text-sm text-muted-foreground">{t('teachingMinutes')}</div>
                     </div>
                   </div>
                   <div className="text-end">
                     <p className="text-sm text-muted-foreground">
-                      {isRTL ? 'اليوم الدراسي' : 'School Day'}
+                      {t('schoolDay')}
                     </p>
                     <p className="font-medium">
                       {formatTime(timeSlots[0]?.start_time)} - {formatTime(timeSlots[timeSlots.length - 1]?.end_time)}

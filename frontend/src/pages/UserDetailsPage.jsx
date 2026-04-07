@@ -81,6 +81,7 @@ import {
 } from 'lucide-react';
 
 
+import { useTranslation } from '../contexts/ThemeContext';
 const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 
 // Role configurations
@@ -200,6 +201,7 @@ const ACTION_TRANSLATIONS = {
 
 // Generate random password
 const generatePassword = () => {
+  const { t } = useTranslation();
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%';
   let password = '';
   for (let i = 0; i < 12; i++) {
@@ -337,9 +339,9 @@ export default function UserDetailsPage() {
       setCopiedField(field);
       if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
       copyTimeoutRef.current = setTimeout(() => setCopiedField(null), 2000);
-      toast.success(isRTL ? 'تم النسخ بنجاح' : 'Copied successfully');
+      toast.success(t('copiedSuccessfully'));
     } catch (err) {
-      nassaqError(isRTL ? 'فشل النسخ' : 'Copy failed');
+      nassaqError(t('copyFailed'));
     }
   };
   

@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { Sidebar } from '../components/layout/Sidebar';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -28,6 +28,7 @@ import {
 
 
 export const StudentDashboard = () => {
+  const { t } = useTranslation();
   const { token, user, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
@@ -92,7 +93,7 @@ export const StudentDashboard = () => {
             </div>
             <div>
               <h1 className="text-2xl md:text-3xl font-bold font-cairo text-brand-navy dark:text-white">
-                {isRTL ? 'مرحباً' : 'Welcome'}, {dashboard?.student?.name}
+                {t('welcome')}, {dashboard?.student?.name}
               </h1>
               <p className="text-muted-foreground flex items-center gap-2">
                 <MapPin className="h-4 w-4" />
@@ -113,7 +114,7 @@ export const StudentDashboard = () => {
                 <CheckCircle className="h-6 w-6 text-green-500" />
               </div>
               <p className="text-2xl font-bold text-green-600">{dashboard?.attendance?.rate}%</p>
-              <p className="text-xs text-muted-foreground">{isRTL ? 'نسبة الحضور' : 'Attendance Rate'}</p>
+              <p className="text-xs text-muted-foreground">{t('attendanceRate')}</p>
             </CardContent>
           </Card>
 
@@ -133,7 +134,7 @@ export const StudentDashboard = () => {
                 <Calendar className="h-6 w-6 text-amber-500" />
               </div>
               <p className="text-2xl font-bold text-amber-600">{dashboard?.attendance?.total_days}</p>
-              <p className="text-xs text-muted-foreground">{isRTL ? 'أيام الدراسة' : 'School Days'}</p>
+              <p className="text-xs text-muted-foreground">{t('schoolDays')}</p>
             </CardContent>
           </Card>
 
@@ -143,7 +144,7 @@ export const StudentDashboard = () => {
                 <Bell className="h-6 w-6 text-purple-500" />
               </div>
               <p className="text-2xl font-bold text-purple-600">{dashboard?.unread_notifications}</p>
-              <p className="text-xs text-muted-foreground">{isRTL ? 'إشعارات جديدة' : 'New Notifications'}</p>
+              <p className="text-xs text-muted-foreground">{t('newNotifications')}</p>
             </CardContent>
           </Card>
         </div>
@@ -154,7 +155,7 @@ export const StudentDashboard = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
                 <Clock className="h-5 w-5 text-brand-turquoise" />
-                {isRTL ? 'جدول اليوم' : "Today's Schedule"}
+                {t('todaysSchedule')}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -182,7 +183,7 @@ export const StudentDashboard = () => {
                 ) : (
                   <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                     <Calendar className="h-12 w-12 mb-3 opacity-30" />
-                    <p>{isRTL ? 'لا توجد حصص اليوم' : 'No classes today'}</p>
+                    <p>{t('noClassesToday')}</p>
                   </div>
                 )}
               </ScrollArea>
@@ -194,7 +195,7 @@ export const StudentDashboard = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
                 <TrendingUp className="h-5 w-5 text-brand-purple" />
-                {isRTL ? 'آخر الدرجات' : 'Recent Grades'}
+                {t('recentGrades')}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -220,7 +221,7 @@ export const StudentDashboard = () => {
                 ) : (
                   <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                     <TrendingUp className="h-12 w-12 mb-3 opacity-30" />
-                    <p>{isRTL ? 'لا توجد درجات حتى الآن' : 'No grades yet'}</p>
+                    <p>{t('noGradesYet')}</p>
                   </div>
                 )}
               </ScrollArea>
@@ -232,7 +233,7 @@ export const StudentDashboard = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
                 <CheckCircle className="h-5 w-5 text-green-500" />
-                {isRTL ? 'ملخص الحضور' : 'Attendance Summary'}
+                {t('attendanceSummary')}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -240,22 +241,22 @@ export const StudentDashboard = () => {
                 <div className="text-center p-4 bg-green-500/10 rounded-xl">
                   <CheckCircle className="h-8 w-8 mx-auto mb-2 text-green-500" />
                   <p className="text-2xl font-bold text-green-600">{dashboard?.attendance?.present}</p>
-                  <p className="text-sm text-muted-foreground">{isRTL ? 'حاضر' : 'Present'}</p>
+                  <p className="text-sm text-muted-foreground">{t('present')}</p>
                 </div>
                 <div className="text-center p-4 bg-red-500/10 rounded-xl">
                   <XCircle className="h-8 w-8 mx-auto mb-2 text-red-500" />
                   <p className="text-2xl font-bold text-red-600">{dashboard?.attendance?.absent}</p>
-                  <p className="text-sm text-muted-foreground">{isRTL ? 'غائب' : 'Absent'}</p>
+                  <p className="text-sm text-muted-foreground">{t('absent')}</p>
                 </div>
                 <div className="text-center p-4 bg-amber-500/10 rounded-xl">
                   <AlertCircle className="h-8 w-8 mx-auto mb-2 text-amber-500" />
                   <p className="text-2xl font-bold text-amber-600">{dashboard?.attendance?.late}</p>
-                  <p className="text-sm text-muted-foreground">{isRTL ? 'متأخر' : 'Late'}</p>
+                  <p className="text-sm text-muted-foreground">{t('late')}</p>
                 </div>
                 <div className="text-center p-4 bg-blue-500/10 rounded-xl">
                   <Calendar className="h-8 w-8 mx-auto mb-2 text-blue-500" />
                   <p className="text-2xl font-bold text-blue-600">{dashboard?.attendance?.total_days}</p>
-                  <p className="text-sm text-muted-foreground">{isRTL ? 'إجمالي الأيام' : 'Total Days'}</p>
+                  <p className="text-sm text-muted-foreground">{t('totalDays')}</p>
                 </div>
               </div>
             </CardContent>

@@ -21,6 +21,7 @@ import {
 import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 import HakimPresence from '../../components/hakim/HakimPresence';
 
+import { useTranslation } from '../../contexts/ThemeContext';
 const DAY_AR = {
   sunday: 'الأحد', monday: 'الاثنين', tuesday: 'الثلاثاء',
   wednesday: 'الأربعاء', thursday: 'الخميس'
@@ -111,7 +112,7 @@ export default function TeacherClassDetailPage() {
       setSchedule(classSchedule);
     } catch (error) {
       console.error('Error loading class data:', error);
-      nassaqError(isRTL ? 'خطأ في تحميل بيانات الفصل' : 'Error loading class data');
+      nassaqError(t('errorLoadingClassData'));
     } finally {
       setLoading(false);
     }
@@ -130,6 +131,7 @@ export default function TeacherClassDetailPage() {
   }, [students, studentSearch]);
 
   const getGradeColor = (grade) => {
+  const { t } = useTranslation();
     if (grade >= 90) return 'text-emerald-600';
     if (grade >= 75) return 'text-blue-600';
     if (grade >= 60) return 'text-amber-600';
@@ -144,8 +146,8 @@ export default function TeacherClassDetailPage() {
   };
 
   const getAttendanceBadge = (rate) => {
-    if (rate >= 95) return { color: 'bg-emerald-100 text-emerald-700', label: isRTL ? 'ممتاز' : 'Excellent' };
-    if (rate >= 85) return { color: 'bg-blue-100 text-blue-700', label: isRTL ? 'جيد' : 'Good' };
+    if (rate >= 95) return { color: 'bg-emerald-100 text-emerald-700', label: t('excellent') };
+    if (rate >= 85) return { color: 'bg-blue-100 text-blue-700', label: t('good') };
     if (rate >= 75) return { color: 'bg-amber-100 text-amber-700', label: isRTL ? 'مقبول' : 'Fair' };
     return { color: 'bg-red-100 text-red-700', label: isRTL ? 'ضعيف' : 'Poor' };
   };
@@ -167,7 +169,7 @@ export default function TeacherClassDetailPage() {
                 </div>
                 <div>
                   <h1 className="text-xl font-bold text-brand-navy dark:text-brand-turquoise font-cairo">
-                    {classData?.name || (isRTL ? 'الفصل' : 'Class')}
+                    {classData?.name || (t('class'))}
                   </h1>
                   <p className="text-sm text-muted-foreground">
                     {classData?.grade_name || ''} • {classData?.student_count || 0} {isRTL ? 'طالب' : 'students'}
@@ -184,7 +186,7 @@ export default function TeacherClassDetailPage() {
                   onClick={() => navigate(`/teacher/attendance?class=${classId}`)}
                 >
                   <ClipboardCheck className="h-4 w-4 me-1" />
-                  {isRTL ? 'تسجيل الحضور' : 'Attendance'}
+                  {t('attendance3')}
                 </Button>
               </div>
             </div>
@@ -194,7 +196,7 @@ export default function TeacherClassDetailPage() {
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
             <Loader2 className="h-10 w-10 animate-spin text-brand-turquoise" />
-            <p className="text-sm text-muted-foreground font-tajawal">{isRTL ? 'جارٍ التحميل...' : 'Loading...'}</p>
+            <p className="text-sm text-muted-foreground font-tajawal">{t('loading2')}</p>
           </div>
         ) : (
           <div className="px-4 sm:px-6 py-4 space-y-4">
@@ -204,8 +206,8 @@ export default function TeacherClassDetailPage() {
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {[
-                { label: isRTL ? 'الطلاب' : 'Students', value: classData?.student_count || 0, icon: Users, gradient: 'from-blue-500 to-blue-600', light: 'bg-blue-50 dark:bg-blue-900/20' },
-                { label: isRTL ? 'الحضور' : 'Attendance', value: `${classData?.attendance_rate || 0}%`, icon: ClipboardCheck, gradient: 'from-emerald-500 to-emerald-600', light: 'bg-emerald-50 dark:bg-emerald-900/20' },
+                { label: t('students'), value: classData?.student_count || 0, icon: Users, gradient: 'from-blue-500 to-blue-600', light: 'bg-blue-50 dark:bg-blue-900/20' },
+                { label: t('attendance2'), value: `${classData?.attendance_rate || 0}%`, icon: ClipboardCheck, gradient: 'from-emerald-500 to-emerald-600', light: 'bg-emerald-50 dark:bg-emerald-900/20' },
                 { label: isRTL ? 'المشاركة' : 'Participation', value: `${classData?.participation_rate || 0}%`, icon: Activity, gradient: 'from-purple-500 to-purple-600', light: 'bg-purple-50 dark:bg-purple-900/20' },
                 { label: isRTL ? 'حصة/أسبوع' : 'Sessions/wk', value: classData?.weekly_periods || 0, icon: Calendar, gradient: 'from-amber-500 to-amber-600', light: 'bg-amber-50 dark:bg-amber-900/20' },
               ].map(({ label, value, icon: Icon, gradient, light }) => (
@@ -229,16 +231,16 @@ export default function TeacherClassDetailPage() {
               <TabsList className="w-full sm:w-auto">
                 <TabsTrigger value="students" className="flex-1 sm:flex-none">
                   <Users className="h-4 w-4 me-1.5" />
-                  {isRTL ? 'الطلاب' : 'Students'}
+                  {t('students')}
                   <Badge variant="secondary" className="ms-1.5 text-[10px] px-1.5">{students.length}</Badge>
                 </TabsTrigger>
                 <TabsTrigger value="schedule" className="flex-1 sm:flex-none">
                   <Calendar className="h-4 w-4 me-1.5" />
-                  {isRTL ? 'الجدول' : 'Schedule'}
+                  {t('schedule')}
                 </TabsTrigger>
                 <TabsTrigger value="stats" className="flex-1 sm:flex-none">
                   <BarChart3 className="h-4 w-4 me-1.5" />
-                  {isRTL ? 'الإحصائيات' : 'Statistics'}
+                  {t('statistics2')}
                 </TabsTrigger>
               </TabsList>
 
@@ -247,7 +249,7 @@ export default function TeacherClassDetailPage() {
                   <div className="relative flex-1">
                     <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
-                      placeholder={isRTL ? 'بحث بالاسم أو الرقم...' : 'Search by name or ID...'}
+                      placeholder={t('searchByNameOrId')}
                       value={studentSearch}
                       onChange={(e) => setStudentSearch(e.target.value)}
                       className="ps-9 h-9"
@@ -260,7 +262,7 @@ export default function TeacherClassDetailPage() {
                     <CardContent className="text-center py-12">
                       <Users className="h-12 w-12 mx-auto mb-3 text-muted-foreground/20" />
                       <p className="text-muted-foreground font-tajawal">
-                        {studentSearch ? (isRTL ? 'لا توجد نتائج' : 'No results') : (isRTL ? 'لا يوجد طلاب' : 'No students')}
+                        {studentSearch ? (t('noResults')) : (t('noStudents'))}
                       </p>
                     </CardContent>
                   </Card>
@@ -299,13 +301,13 @@ export default function TeacherClassDetailPage() {
                                 <div className={`font-bold ${getGradeColor(student.average_grade)}`}>
                                   {student.average_grade || '—'}
                                 </div>
-                                <div className="text-muted-foreground text-[10px]">{isRTL ? 'درجة' : 'Grade'}</div>
+                                <div className="text-muted-foreground text-[10px]">{t('grade4')}</div>
                               </div>
                               <div className={`p-1.5 rounded-lg ${student.behavior_points >= 0 ? 'bg-purple-50 dark:bg-purple-900/20' : 'bg-red-50 dark:bg-red-900/20'}`}>
                                 <div className={`font-bold ${student.behavior_points >= 0 ? 'text-purple-600' : 'text-red-500'}`}>
                                   {student.behavior_points || 0}
                                 </div>
-                                <div className="text-muted-foreground text-[10px]">{isRTL ? 'سلوك' : 'Behav.'}</div>
+                                <div className="text-muted-foreground text-[10px]">{t('behav')}</div>
                               </div>
                             </div>
                           </CardContent>
@@ -321,7 +323,7 @@ export default function TeacherClassDetailPage() {
                   <Card className="border-dashed">
                     <CardContent className="text-center py-12">
                       <Calendar className="h-12 w-12 mx-auto mb-3 text-muted-foreground/20" />
-                      <p className="text-muted-foreground font-tajawal">{isRTL ? 'لا يوجد جدول لهذا الفصل' : 'No schedule for this class'}</p>
+                      <p className="text-muted-foreground font-tajawal">{t('noScheduleForThisClass')}</p>
                     </CardContent>
                   </Card>
                 ) : (
@@ -359,7 +361,7 @@ export default function TeacherClassDetailPage() {
                                     </div>
                                   </div>
                                   <Badge variant="outline" className="text-xs">
-                                    {isRTL ? 'الحصة' : 'P'}{session.slot_number || session.period_number || idx + 1}
+                                    {t('p')}{session.slot_number || session.period_number || idx + 1}
                                   </Badge>
                                 </div>
                               ))}
@@ -378,15 +380,15 @@ export default function TeacherClassDetailPage() {
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm font-cairo flex items-center gap-2">
                         <Award className="h-4 w-4 text-amber-500" />
-                        {isRTL ? 'توزيع الدرجات' : 'Grade Distribution'}
+                        {t('gradeDistribution')}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3">
                       {[
-                        { label: isRTL ? 'ممتاز (90+)' : 'Excellent (90+)', color: 'text-emerald-600', bg: 'bg-emerald-500', filter: s => s.average_grade >= 90 },
-                        { label: isRTL ? 'جيد جداً (75-89)' : 'Very Good (75-89)', color: 'text-blue-600', bg: 'bg-blue-500', filter: s => s.average_grade >= 75 && s.average_grade < 90 },
-                        { label: isRTL ? 'جيد (60-74)' : 'Good (60-74)', color: 'text-amber-600', bg: 'bg-amber-500', filter: s => s.average_grade >= 60 && s.average_grade < 75 },
-                        { label: isRTL ? 'يحتاج تحسين (<60)' : 'Needs Work (<60)', color: 'text-red-500', bg: 'bg-red-500', filter: s => s.average_grade > 0 && s.average_grade < 60 },
+                        { label: t('excellent90'), color: 'text-emerald-600', bg: 'bg-emerald-500', filter: s => s.average_grade >= 90 },
+                        { label: t('veryGood7589'), color: 'text-blue-600', bg: 'bg-blue-500', filter: s => s.average_grade >= 75 && s.average_grade < 90 },
+                        { label: t('good6074'), color: 'text-amber-600', bg: 'bg-amber-500', filter: s => s.average_grade >= 60 && s.average_grade < 75 },
+                        { label: t('needsWork60'), color: 'text-red-500', bg: 'bg-red-500', filter: s => s.average_grade > 0 && s.average_grade < 60 },
                       ].map((tier, idx) => {
                         const count = students.filter(tier.filter).length;
                         const pct = students.length > 0 ? Math.round((count / students.length) * 100) : 0;
@@ -409,15 +411,15 @@ export default function TeacherClassDetailPage() {
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm font-cairo flex items-center gap-2">
                         <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                        {isRTL ? 'توزيع الحضور' : 'Attendance Distribution'}
+                        {t('attendanceDistribution')}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3">
                       {[
-                        { label: isRTL ? 'ممتاز (95%+)' : 'Excellent (95%+)', color: 'text-emerald-600', bg: 'bg-emerald-500', filter: s => s.attendance_rate >= 95 },
-                        { label: isRTL ? 'جيد (85-94%)' : 'Good (85-94%)', color: 'text-blue-600', bg: 'bg-blue-500', filter: s => s.attendance_rate >= 85 && s.attendance_rate < 95 },
-                        { label: isRTL ? 'مقبول (75-84%)' : 'Fair (75-84%)', color: 'text-amber-600', bg: 'bg-amber-500', filter: s => s.attendance_rate >= 75 && s.attendance_rate < 85 },
-                        { label: isRTL ? 'ضعيف (<75%)' : 'Poor (<75%)', color: 'text-red-500', bg: 'bg-red-500', filter: s => s.attendance_rate > 0 && s.attendance_rate < 75 },
+                        { label: t('excellent95'), color: 'text-emerald-600', bg: 'bg-emerald-500', filter: s => s.attendance_rate >= 95 },
+                        { label: t('good8594'), color: 'text-blue-600', bg: 'bg-blue-500', filter: s => s.attendance_rate >= 85 && s.attendance_rate < 95 },
+                        { label: t('fair7584'), color: 'text-amber-600', bg: 'bg-amber-500', filter: s => s.attendance_rate >= 75 && s.attendance_rate < 85 },
+                        { label: t('poor75'), color: 'text-red-500', bg: 'bg-red-500', filter: s => s.attendance_rate > 0 && s.attendance_rate < 75 },
                       ].map((tier, idx) => {
                         const count = students.filter(tier.filter).length;
                         const pct = students.length > 0 ? Math.round((count / students.length) * 100) : 0;
@@ -440,7 +442,7 @@ export default function TeacherClassDetailPage() {
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm font-cairo flex items-center gap-2">
                         <Star className="h-4 w-4 text-amber-500" />
-                        {isRTL ? 'المتفوقون' : 'Top Students'}
+                        {t('topStudents2')}
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
@@ -481,7 +483,7 @@ export default function TeacherClassDetailPage() {
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm font-cairo flex items-center gap-2">
                         <TrendingUp className="h-4 w-4 text-emerald-500" />
-                        {isRTL ? 'أعلى حضور' : 'Best Attendance'}
+                        {t('bestAttendance')}
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
@@ -523,7 +525,7 @@ export default function TeacherClassDetailPage() {
 
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-cairo">{isRTL ? 'إجراءات سريعة' : 'Quick Actions'}</CardTitle>
+                <CardTitle className="text-sm font-cairo">{t('quickActions')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -533,7 +535,7 @@ export default function TeacherClassDetailPage() {
                     onClick={() => navigate(`/teacher/attendance?class=${classId}`)}
                   >
                     <ClipboardCheck className="h-5 w-5 text-emerald-600" />
-                    <span className="text-xs font-tajawal">{isRTL ? 'تسجيل الحضور' : 'Attendance'}</span>
+                    <span className="text-xs font-tajawal">{t('attendance3')}</span>
                   </Button>
                   <Button
                     variant="outline"
@@ -541,7 +543,7 @@ export default function TeacherClassDetailPage() {
                     onClick={() => navigate(`/teacher/assessments?class=${classId}`)}
                   >
                     <FileText className="h-5 w-5 text-blue-600" />
-                    <span className="text-xs font-tajawal">{isRTL ? 'التقييمات' : 'Assessments'}</span>
+                    <span className="text-xs font-tajawal">{t('assessments')}</span>
                   </Button>
                   <Button
                     variant="outline"
@@ -549,7 +551,7 @@ export default function TeacherClassDetailPage() {
                     onClick={() => navigate(`/teacher/behavior?class=${classId}`)}
                   >
                     <Star className="h-5 w-5 text-purple-600" />
-                    <span className="text-xs font-tajawal">{isRTL ? 'السلوك' : 'Behavior'}</span>
+                    <span className="text-xs font-tajawal">{t('behavior')}</span>
                   </Button>
                   <Button
                     variant="outline"
@@ -557,7 +559,7 @@ export default function TeacherClassDetailPage() {
                     onClick={() => navigate(`/teacher/reports?class=${classId}`)}
                   >
                     <BarChart3 className="h-5 w-5 text-amber-600" />
-                    <span className="text-xs font-tajawal">{isRTL ? 'التقارير' : 'Reports'}</span>
+                    <span className="text-xs font-tajawal">{t('reports')}</span>
                   </Button>
                 </div>
               </CardContent>

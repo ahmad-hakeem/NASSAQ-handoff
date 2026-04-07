@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNassaqAlert } from '../ui/NassaqAlertDialog';
 import { Button } from '../../components/ui/button';
@@ -37,6 +37,7 @@ import {
 
 
 export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
+  const { t } = useTranslation();
   const { isRTL } = useTheme();
   const { token, api } = useAuth();
   const { nassaqWarning, nassaqError } = useNassaqAlert();
@@ -121,7 +122,7 @@ export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
 
   const handleSubmit = async () => {
     if (!data.title_ar?.trim() || !data.message_ar?.trim()) {
-      nassaqWarning(isRTL ? 'العنوان والرسالة مطلوبان' : 'Title and message required');
+      nassaqWarning(t('titleAndMessageRequired'));
       return;
     }
 
@@ -139,12 +140,12 @@ export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
       if (response.data.success) {
         setResult(response.data);
         setSuccess(true);
-        toast.success(isRTL ? 'تم إرسال الإشعار' : 'Notification sent');
+        toast.success(t('notificationSent'));
       } else {
         nassaqError(response.data.error);
       }
     } catch (error) {
-      nassaqError(error.response?.data?.detail || (isRTL ? 'حدث خطأ أثناء إرسال الإشعار' : 'Error sending notification'));
+      nassaqError(error.response?.data?.detail || (t('errorSendingNotification')));
     } finally {
       setSubmitting(false);
     }
@@ -207,16 +208,16 @@ export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
             </div>
             <div>
               <h3 className="text-2xl font-bold font-cairo text-green-700">
-                {isRTL ? 'تم إرسال الإشعار بنجاح!' : 'Notification Sent!'}
+                {t('notificationSent2')}
               </h3>
               <p className="text-lg mt-2 text-muted-foreground">
                 {isRTL ? `تم إرسال الإشعار إلى ${result.recipient_count} مستلم` : `Sent to ${result.recipient_count} recipients`}
               </p>
             </div>
             <div className="flex justify-center gap-3">
-              <Button variant="outline" onClick={handleClose}>{isRTL ? 'إغلاق' : 'Close'}</Button>
+              <Button variant="outline" onClick={handleClose}>{t('close')}</Button>
               <Button onClick={handleReset} className="bg-pink-600 hover:bg-pink-700">
-                {isRTL ? 'إرسال إشعار آخر' : 'Send Another'}
+                {t('sendAnother')}
               </Button>
             </div>
           </div>
@@ -225,7 +226,7 @@ export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
             {/* Recipient Type */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>{isRTL ? 'المستلمون' : 'Recipients'} <span className="text-red-500">*</span></Label>
+                <Label>{t('recipients')} <span className="text-red-500">*</span></Label>
                 <Select value={data.recipient_type} onValueChange={(val) => onChange('recipient_type', val)}>
                   <SelectTrigger data-testid="notif-recipient">
                     <SelectValue />
@@ -241,7 +242,7 @@ export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
               {needsFilter && (
                 <div className="space-y-2">
                   <Label>
-                    {data.recipient_type.includes('grade') ? (isRTL ? 'الصف' : 'Grade') : (isRTL ? 'الفصل' : 'Class')}
+                    {data.recipient_type.includes('grade') ? (t('grade')) : (t('class'))}
                   </Label>
                   <Select 
                     value={data.recipient_filter?.grade_id || data.recipient_filter?.class_id || ''} 
@@ -250,7 +251,7 @@ export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
                     )}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder={isRTL ? 'اختر' : 'Select'} />
+                      <SelectValue placeholder={t('select2')} />
                     </SelectTrigger>
                     <SelectContent>
                       {data.recipient_type.includes('grade') 
@@ -266,7 +267,7 @@ export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
             {/* Notification Type & Priority */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>{isRTL ? 'نوع الإشعار' : 'Type'}</Label>
+                <Label>{t('type3')}</Label>
                 <Select value={data.notification_type} onValueChange={(val) => onChange('notification_type', val)}>
                   <SelectTrigger data-testid="notif-type">
                     <SelectValue />
@@ -280,7 +281,7 @@ export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
               </div>
 
               <div className="space-y-2">
-                <Label>{isRTL ? 'الأولوية' : 'Priority'}</Label>
+                <Label>{t('priority')}</Label>
                 <Select value={data.priority} onValueChange={(val) => onChange('priority', val)}>
                   <SelectTrigger data-testid="notif-priority">
                     <SelectValue />
@@ -296,17 +297,17 @@ export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
 
             {/* Title */}
             <div className="space-y-2">
-              <Label>{isRTL ? 'العنوان (عربي)' : 'Title (Arabic)'} <span className="text-red-500">*</span></Label>
+              <Label>{t('titleArabic')} <span className="text-red-500">*</span></Label>
               <Input
                 value={data.title_ar}
                 onChange={(e) => onChange('title_ar', e.target.value)}
-                placeholder={isRTL ? 'عنوان الإشعار' : 'Notification title'}
+                placeholder={t('notificationTitle')}
                 data-testid="notif-title-ar"
               />
             </div>
 
             <div className="space-y-2">
-              <Label>{isRTL ? 'العنوان (إنجليزي)' : 'Title (English)'}</Label>
+              <Label>{t('titleEnglish')}</Label>
               <Input
                 value={data.title_en}
                 onChange={(e) => onChange('title_en', e.target.value)}
@@ -317,18 +318,18 @@ export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
 
             {/* Message */}
             <div className="space-y-2">
-              <Label>{isRTL ? 'الرسالة (عربي)' : 'Message (Arabic)'} <span className="text-red-500">*</span></Label>
+              <Label>{t('messageArabic')} <span className="text-red-500">*</span></Label>
               <Textarea
                 value={data.message_ar}
                 onChange={(e) => onChange('message_ar', e.target.value)}
-                placeholder={isRTL ? 'محتوى الإشعار...' : 'Notification content...'}
+                placeholder={t('notificationContent')}
                 rows={4}
                 data-testid="notif-message-ar"
               />
             </div>
 
             <div className="space-y-2">
-              <Label>{isRTL ? 'الرسالة (إنجليزي)' : 'Message (English)'}</Label>
+              <Label>{t('messageEnglish')}</Label>
               <Textarea
                 value={data.message_en}
                 onChange={(e) => onChange('message_en', e.target.value)}
@@ -341,7 +342,7 @@ export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
             {/* Delivery Options */}
             <Card className="bg-muted/30">
               <CardContent className="p-4">
-                <Label className="mb-3 block">{isRTL ? 'طريقة الإرسال' : 'Delivery Method'}</Label>
+                <Label className="mb-3 block">{t('deliveryMethod')}</Label>
                 <div className="flex flex-wrap gap-4">
                   <div className="flex items-center gap-2">
                     <Checkbox
@@ -349,7 +350,7 @@ export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
                       checked={data.send_push}
                       onCheckedChange={(checked) => onChange('send_push', checked)}
                     />
-                    <Label htmlFor="send_push" className="cursor-pointer">{isRTL ? 'إشعار فوري' : 'Push'}</Label>
+                    <Label htmlFor="send_push" className="cursor-pointer">{t('push')}</Label>
                   </div>
                   <div className="flex items-center gap-2">
                     <Checkbox
@@ -357,7 +358,7 @@ export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
                       checked={data.send_sms}
                       onCheckedChange={(checked) => onChange('send_sms', checked)}
                     />
-                    <Label htmlFor="send_sms" className="cursor-pointer">{isRTL ? 'رسالة SMS' : 'SMS'}</Label>
+                    <Label htmlFor="send_sms" className="cursor-pointer">{t('sms')}</Label>
                   </div>
                   <div className="flex items-center gap-2">
                     <Checkbox
@@ -365,7 +366,7 @@ export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
                       checked={data.send_email}
                       onCheckedChange={(checked) => onChange('send_email', checked)}
                     />
-                    <Label htmlFor="send_email" className="cursor-pointer">{isRTL ? 'بريد إلكتروني' : 'Email'}</Label>
+                    <Label htmlFor="send_email" className="cursor-pointer">{t('email5')}</Label>
                   </div>
                 </div>
               </CardContent>
@@ -375,14 +376,14 @@ export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
 
         {!loading && !success && (
           <DialogFooter className="flex justify-between gap-3 mt-4">
-            <Button variant="ghost" onClick={handleClose}>{isRTL ? 'إلغاء' : 'Cancel'}</Button>
+            <Button variant="ghost" onClick={handleClose}>{t('cancel')}</Button>
             <Button 
               onClick={handleSubmit} 
               disabled={submitting || !data.title_ar || !data.message_ar}
               className="bg-pink-600 hover:bg-pink-700"
             >
               {submitting ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : <Send className="h-4 w-4 me-2" />}
-              {isRTL ? 'إرسال الإشعار' : 'Send Notification'}
+              {t('sendNotification')}
             </Button>
           </DialogFooter>
         )}

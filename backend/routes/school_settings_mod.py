@@ -362,14 +362,19 @@ async def update_school_info_direct(
         raise HTTPException(status_code=404, detail="المدرسة غير موجودة")
 
     update_data = {k: v for k, v in data.model_dump().items() if v is not None}
-    # school code (license_number) is read-only — never allow changing it
     update_data.pop("license_number", None)
     update_data.pop("id", None)
-    # Keep name_ar and name in sync
     if "name_ar" in update_data and "name" not in update_data:
         update_data["name"] = update_data["name_ar"]
     elif "name" in update_data and "name_ar" not in update_data:
         update_data["name_ar"] = update_data["name"]
+
+    try:
+        from services.translation_service import translate_fields, is_available
+        if is_available():
+            update_data = await translate_fields(update_data, ["name"])
+    except Exception:
+        pass
 
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
     await gd_update_one(db.session, "schools", {"id": school_id}, update_data)

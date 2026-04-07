@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 
+import { useTranslation } from '../../contexts/ThemeContext';
 const ATTENDANCE_STATUS = {
   present: { label: 'حاضر', labelEn: 'Present', color: 'bg-green-100 text-green-700 border-green-300', icon: Check },
   absent: { label: 'غائب', labelEn: 'Absent', color: 'bg-red-100 text-red-700 border-red-300', icon: X },
@@ -102,7 +103,7 @@ export default function TeacherAttendanceManagePage() {
       
     } catch (error) {
       console.error('Error fetching students:', error);
-      nassaqError(isRTL ? 'خطأ في تحميل الطلاب' : 'Error loading students');
+      nassaqError(t('errorLoadingStudents'));
     } finally {
       setLoading(false);
     }
@@ -119,6 +120,7 @@ export default function TeacherAttendanceManagePage() {
   }, [selectedClass, selectedDate, fetchStudents]);
 
   const handleStatusChange = (studentId, status) => {
+  const { t } = useTranslation();
     setAttendance(prev => ({ ...prev, [studentId]: status }));
   };
 
@@ -145,12 +147,12 @@ export default function TeacherAttendanceManagePage() {
         records
       });
       
-      toast.success(isRTL ? 'تم حفظ الحضور بنجاح' : 'Attendance saved successfully');
+      toast.success(t('attendanceSavedSuccessfully'));
       setShowConfirmDialog(false);
       setNotes('');
     } catch (error) {
       console.error('Error saving attendance:', error);
-      nassaqError(isRTL ? 'خطأ في حفظ الحضور' : 'Error saving attendance');
+      nassaqError(t('errorSavingAttendance'));
     } finally {
       setSaving(false);
     }
@@ -170,16 +172,16 @@ export default function TeacherAttendanceManagePage() {
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
               <h1 className="text-2xl font-bold text-brand-navy dark:text-brand-turquoise font-cairo">
-                {isRTL ? 'تسجيل الحضور' : 'Attendance'}
+                {t('attendance3')}
               </h1>
               <p className="text-sm text-muted-foreground">
-                {isRTL ? 'تسجيل حضور وغياب الطلاب' : 'Record student attendance'}
+                {t('recordStudentAttendance')}
               </p>
             </div>
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" onClick={markAllPresent}>
                 <CheckCircle2 className="h-4 w-4 me-1" />
-                {isRTL ? 'تحديد الكل حاضر' : 'Mark All Present'}
+                {t('markAllPresent')}
               </Button>
               <Button 
                 className="bg-brand-turquoise hover:bg-brand-turquoise/90"
@@ -187,7 +189,7 @@ export default function TeacherAttendanceManagePage() {
                 disabled={students.length === 0}
               >
                 <Save className="h-4 w-4 me-1" />
-                {isRTL ? 'اعتماد الحضور' : 'Save Attendance'}
+                {t('saveAttendance2')}
               </Button>
             </div>
           </div>
@@ -197,10 +199,10 @@ export default function TeacherAttendanceManagePage() {
         <div className="p-4 border-b bg-muted/30">
           <div className="flex flex-wrap gap-4">
             <div className="flex items-center gap-2">
-              <label className="text-sm font-medium">{isRTL ? 'الفصل:' : 'Class:'}</label>
+              <label className="text-sm font-medium">{t('class3')}</label>
               <Select value={selectedClass} onValueChange={setSelectedClass}>
                 <SelectTrigger className="w-full sm:w-[200px]" data-testid="class-select">
-                  <SelectValue placeholder={isRTL ? 'اختر الفصل' : 'Select class'} />
+                  <SelectValue placeholder={t('selectClass')} />
                 </SelectTrigger>
                 <SelectContent>
                   {classes.map(cls => (
@@ -210,7 +212,7 @@ export default function TeacherAttendanceManagePage() {
               </Select>
             </div>
             <div className="flex items-center gap-2">
-              <label className="text-sm font-medium">{isRTL ? 'التاريخ:' : 'Date:'}</label>
+              <label className="text-sm font-medium">{t('date2')}</label>
               <input 
                 type="date" 
                 value={selectedDate}
@@ -227,15 +229,15 @@ export default function TeacherAttendanceManagePage() {
           <div className="grid grid-cols-3 gap-2">
             <div className="p-3 rounded-xl bg-gray-100 text-center">
               <div className="text-2xl font-bold">{stats.total}</div>
-              <div className="text-xs text-muted-foreground">{isRTL ? 'الإجمالي' : 'Total'}</div>
+              <div className="text-xs text-muted-foreground">{t('total')}</div>
             </div>
             <div className="p-3 rounded-xl bg-green-100 text-center">
               <div className="text-2xl font-bold text-green-700">{stats.present}</div>
-              <div className="text-xs text-green-600">{isRTL ? 'حاضر' : 'Present'}</div>
+              <div className="text-xs text-green-600">{t('present')}</div>
             </div>
             <div className="p-3 rounded-xl bg-red-100 text-center">
               <div className="text-2xl font-bold text-red-700">{stats.absent}</div>
-              <div className="text-xs text-red-600">{isRTL ? 'غائب' : 'Absent'}</div>
+              <div className="text-xs text-red-600">{t('absent')}</div>
             </div>
           </div>
         </div>
@@ -250,14 +252,14 @@ export default function TeacherAttendanceManagePage() {
             <Card>
               <CardContent className="text-center py-16">
                 <ClipboardCheck className="h-16 w-16 mx-auto mb-4 text-muted-foreground/30" />
-                <p className="text-muted-foreground">{isRTL ? 'اختر فصلاً لعرض الطلاب' : 'Select a class to view students'}</p>
+                <p className="text-muted-foreground">{t('selectAClassToViewStudents')}</p>
               </CardContent>
             </Card>
           ) : students.length === 0 ? (
             <Card>
               <CardContent className="text-center py-16">
                 <Users className="h-16 w-16 mx-auto mb-4 text-muted-foreground/30" />
-                <p className="text-muted-foreground">{isRTL ? 'لا يوجد طلاب في هذا الفصل' : 'No students in this class'}</p>
+                <p className="text-muted-foreground">{t('noStudentsInThisClass')}</p>
               </CardContent>
             </Card>
           ) : (
@@ -308,28 +310,28 @@ export default function TeacherAttendanceManagePage() {
               <div className="grid grid-cols-2 gap-2 text-center">
                 <div className="p-2 rounded bg-green-100">
                   <div className="font-bold text-green-700">{stats.present}</div>
-                  <div className="text-xs">{isRTL ? 'حاضر' : 'Present'}</div>
+                  <div className="text-xs">{t('present')}</div>
                 </div>
                 <div className="p-2 rounded bg-red-100">
                   <div className="font-bold text-red-700">{stats.absent}</div>
-                  <div className="text-xs">{isRTL ? 'غائب' : 'Absent'}</div>
+                  <div className="text-xs">{t('absent')}</div>
                 </div>
               </div>
               <div>
                 <label className="text-sm font-medium mb-2 block">
-                  {isRTL ? 'ملاحظات (اختياري)' : 'Notes (optional)'}
+                  {t('notesOptional')}
                 </label>
                 <Textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  placeholder={isRTL ? 'أضف ملاحظات...' : 'Add notes...'}
+                  placeholder={t('addNotes')}
                   rows={3}
                 />
               </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowConfirmDialog(false)}>
-                {isRTL ? 'إلغاء' : 'Cancel'}
+                {t('cancel')}
               </Button>
               <Button 
                 className="bg-brand-turquoise hover:bg-brand-turquoise/90"
@@ -337,7 +339,7 @@ export default function TeacherAttendanceManagePage() {
                 disabled={saving}
               >
                 {saving && <Loader2 className="h-4 w-4 animate-spin me-2" />}
-                {isRTL ? 'اعتماد' : 'Confirm'}
+                {t('confirm2')}
               </Button>
             </DialogFooter>
           </DialogContent>

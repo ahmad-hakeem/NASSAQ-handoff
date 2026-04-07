@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { Sidebar } from '../components/layout/Sidebar';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -23,6 +23,7 @@ import {
 
 
 export const StudentGrades = () => {
+  const { t } = useTranslation();
   const { token, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
@@ -52,9 +53,9 @@ export const StudentGrades = () => {
   };
 
   const getGradeLabel = (percentage) => {
-    if (percentage >= 90) return isRTL ? 'ممتاز' : 'Excellent';
-    if (percentage >= 75) return isRTL ? 'جيد جداً' : 'Very Good';
-    if (percentage >= 60) return isRTL ? 'جيد' : 'Good';
+    if (percentage >= 90) return t('excellent');
+    if (percentage >= 75) return t('veryGood');
+    if (percentage >= 60) return t('good');
     return isRTL ? 'يحتاج تحسين' : 'Needs Improvement';
   };
 
@@ -83,10 +84,10 @@ export const StudentGrades = () => {
           <div>
             <h1 className="text-2xl md:text-3xl font-bold font-cairo text-brand-navy dark:text-white flex items-center gap-3">
               <TrendingUp className="h-8 w-8 text-brand-turquoise" />
-              {isRTL ? 'درجاتي' : 'My Grades'}
+              {t('myGrades')}
             </h1>
             <p className="text-muted-foreground mt-1">
-              {isRTL ? 'عرض جميع الدرجات والتقييمات' : 'View all grades and assessments'}
+              {t('viewAllGradesAndAssessments')}
             </p>
           </div>
           
@@ -95,7 +96,7 @@ export const StudentGrades = () => {
               <SelectValue placeholder={isRTL ? 'اختر المادة' : 'Select Subject'} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">{isRTL ? 'جميع المواد' : 'All Subjects'}</SelectItem>
+              <SelectItem value="all">{t('allSubjects')}</SelectItem>
               {grades?.subjects?.map(s => (
                 <SelectItem key={s.subject} value={s.subject}>{s.subject}</SelectItem>
               ))}
@@ -116,21 +117,21 @@ export const StudentGrades = () => {
             <CardContent className="p-4 text-center">
               <BookOpen className="h-8 w-8 mx-auto mb-2 text-brand-purple" />
               <p className="text-2xl font-bold">{grades?.subjects?.length || 0}</p>
-              <p className="text-xs text-muted-foreground">{isRTL ? 'المواد' : 'Subjects'}</p>
+              <p className="text-xs text-muted-foreground">{t('subjects')}</p>
             </CardContent>
           </Card>
           <Card className="card-nassaq">
             <CardContent className="p-4 text-center">
               <BarChart3 className="h-8 w-8 mx-auto mb-2 text-amber-500" />
               <p className="text-2xl font-bold">{grades?.total_grades || 0}</p>
-              <p className="text-xs text-muted-foreground">{isRTL ? 'التقييمات' : 'Assessments'}</p>
+              <p className="text-xs text-muted-foreground">{t('assessments')}</p>
             </CardContent>
           </Card>
           <Card className="card-nassaq">
             <CardContent className="p-4 text-center">
               <Target className="h-8 w-8 mx-auto mb-2 text-green-500" />
               <p className="text-2xl font-bold">{getGradeLabel(grades?.overall_average || 0)}</p>
-              <p className="text-xs text-muted-foreground">{isRTL ? 'التقدير' : 'Grade'}</p>
+              <p className="text-xs text-muted-foreground">{t('grade6')}</p>
             </CardContent>
           </Card>
         </div>
@@ -179,7 +180,7 @@ export const StudentGrades = () => {
             <Card className="card-nassaq">
               <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                 <TrendingUp className="h-16 w-16 mb-4 opacity-30" />
-                <p className="text-lg">{isRTL ? 'لا توجد درجات حتى الآن' : 'No grades yet'}</p>
+                <p className="text-lg">{t('noGradesYet')}</p>
               </CardContent>
             </Card>
           )}

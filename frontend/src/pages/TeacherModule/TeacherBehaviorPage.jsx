@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 
+import { useTranslation } from '../../contexts/ThemeContext';
 const BEHAVIOR_TYPES = {
   positive: { label: 'إيجابي', labelEn: 'Positive', color: 'bg-green-100 text-green-700 border-green-300', icon: ThumbsUp },
   negative: { label: 'سلبي', labelEn: 'Negative', color: 'bg-red-100 text-red-700 border-red-300', icon: ThumbsDown },
@@ -112,7 +113,7 @@ export default function TeacherBehaviorPage() {
 
   const handleAddRecord = async () => {
     if (!selectedStudent) {
-      nassaqError(isRTL ? 'يرجى اختيار طالب' : 'Please select a student');
+      nassaqError(t('pleaseSelectAStudent'));
       return;
     }
 
@@ -131,12 +132,12 @@ export default function TeacherBehaviorPage() {
         date: new Date().toISOString().split('T')[0]
       });
 
-      toast.success(isRTL ? 'تم تسجيل الملاحظة السلوكية' : 'Behavior recorded');
+      toast.success(t('behaviorRecorded'));
       setShowAddDialog(false);
       setNewRecord({ type: 'positive', predefined_id: '', custom_note: '', points: 0 });
       fetchStudents();
     } catch (error) {
-      nassaqError(isRTL ? 'خطأ في التسجيل' : 'Error recording');
+      nassaqError(t('errorRecording'));
     } finally {
       setSaving(false);
     }
@@ -153,14 +154,15 @@ export default function TeacherBehaviorPage() {
         points: behavior.points,
         date: new Date().toISOString().split('T')[0]
       });
-      toast.success(isRTL ? 'تم التسجيل' : 'Recorded');
+      toast.success(t('recorded'));
       fetchStudents();
     } catch (error) {
-      nassaqError(isRTL ? 'خطأ' : 'Error');
+      nassaqError(t('error'));
     }
   };
 
   const getStudentPoints = (studentId) => {
+  const { t } = useTranslation();
     return records
       .filter(r => r.student_id === studentId)
       .reduce((sum, r) => sum + (r.points || 0), 0);
@@ -178,16 +180,16 @@ export default function TeacherBehaviorPage() {
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
               <h1 className="text-2xl font-bold text-brand-navy dark:text-brand-turquoise font-cairo">
-                {isRTL ? 'المتابعة السلوكية' : 'Behavior Tracking'}
+                {t('behaviorTracking')}
               </h1>
               <p className="text-sm text-muted-foreground">
-                {isRTL ? 'تسجيل ومتابعة سلوك الطلاب' : 'Track and record student behavior'}
+                {t('trackAndRecordStudentBehavior')}
               </p>
             </div>
             <div className="flex items-center gap-2">
               <Select value={selectedClass} onValueChange={setSelectedClass}>
                 <SelectTrigger className="w-[180px]" data-testid="class-select">
-                  <SelectValue placeholder={isRTL ? 'اختر الفصل' : 'Select class'} />
+                  <SelectValue placeholder={t('selectClass')} />
                 </SelectTrigger>
                 <SelectContent>
                   {classes.map(cls => (
@@ -207,13 +209,13 @@ export default function TeacherBehaviorPage() {
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="mb-4">
               <TabsTrigger value="record" data-testid="record-tab">
-                {isRTL ? 'تسجيل سريع' : 'Quick Record'}
+                {t('quickRecord')}
               </TabsTrigger>
               <TabsTrigger value="history" data-testid="history-tab">
-                {isRTL ? 'السجل' : 'History'}
+                {t('history')}
               </TabsTrigger>
               <TabsTrigger value="stats" data-testid="stats-tab">
-                {isRTL ? 'الإحصائيات' : 'Statistics'}
+                {t('statistics2')}
               </TabsTrigger>
             </TabsList>
 
@@ -310,7 +312,7 @@ export default function TeacherBehaviorPage() {
                               }}
                             >
                               <Plus className="h-3 w-3 me-1" />
-                              {isRTL ? 'ملاحظة مخصصة' : 'Custom Note'}
+                              {t('customNote')}
                             </Button>
                           </div>
                         </CardContent>
@@ -326,13 +328,13 @@ export default function TeacherBehaviorPage() {
               <Card>
                 <CardHeader>
                   <CardTitle className="text-lg font-cairo">
-                    {isRTL ? 'سجل الملاحظات السلوكية' : 'Behavior Records'}
+                    {t('behaviorRecords')}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   {records.length === 0 ? (
                     <div className="text-center py-8 text-muted-foreground">
-                      {isRTL ? 'لا توجد سجلات' : 'No records'}
+                      {t('noRecords')}
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -375,7 +377,7 @@ export default function TeacherBehaviorPage() {
                     <div className="text-2xl font-bold text-green-700">
                       {records.filter(r => r.type === 'positive').length}
                     </div>
-                    <div className="text-sm text-muted-foreground">{isRTL ? 'سلوك إيجابي' : 'Positive'}</div>
+                    <div className="text-sm text-muted-foreground">{t('positive2')}</div>
                   </CardContent>
                 </Card>
                 <Card className="bg-gradient-to-br from-red-50 to-white">
@@ -384,7 +386,7 @@ export default function TeacherBehaviorPage() {
                     <div className="text-2xl font-bold text-red-700">
                       {records.filter(r => r.type === 'negative').length}
                     </div>
-                    <div className="text-sm text-muted-foreground">{isRTL ? 'سلوك سلبي' : 'Negative'}</div>
+                    <div className="text-sm text-muted-foreground">{t('negative2')}</div>
                   </CardContent>
                 </Card>
                 <Card className="bg-gradient-to-br from-amber-50 to-white">
@@ -393,7 +395,7 @@ export default function TeacherBehaviorPage() {
                     <div className="text-2xl font-bold text-amber-700">
                       {records.filter(r => r.type === 'warning').length}
                     </div>
-                    <div className="text-sm text-muted-foreground">{isRTL ? 'تحذيرات' : 'Warnings'}</div>
+                    <div className="text-sm text-muted-foreground">{t('warnings')}</div>
                   </CardContent>
                 </Card>
                 <Card className="bg-gradient-to-br from-blue-50 to-white">
@@ -402,7 +404,7 @@ export default function TeacherBehaviorPage() {
                     <div className="text-2xl font-bold text-blue-700">
                       {records.reduce((sum, r) => sum + (r.points || 0), 0)}
                     </div>
-                    <div className="text-sm text-muted-foreground">{isRTL ? 'إجمالي النقاط' : 'Total Points'}</div>
+                    <div className="text-sm text-muted-foreground">{t('totalPoints2')}</div>
                   </CardContent>
                 </Card>
               </div>
@@ -412,7 +414,7 @@ export default function TeacherBehaviorPage() {
                 <CardHeader>
                   <CardTitle className="text-lg font-cairo flex items-center gap-2">
                     <Award className="h-5 w-5 text-amber-500" />
-                    {isRTL ? 'الطلاب الأكثر تميزاً' : 'Top Students'}
+                    {t('topStudents')}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -451,7 +453,7 @@ export default function TeacherBehaviorPage() {
           <DialogContent>
             <DialogHeader>
               <DialogTitle className="font-cairo">
-                {isRTL ? 'إضافة ملاحظة سلوكية' : 'Add Behavior Note'}
+                {t('addBehaviorNote')}
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-4 py-4">
@@ -467,7 +469,7 @@ export default function TeacherBehaviorPage() {
               )}
               
               <div className="space-y-2">
-                <Label>{isRTL ? 'نوع السلوك' : 'Behavior Type'}</Label>
+                <Label>{t('behaviorType')}</Label>
                 <Select value={newRecord.type} onValueChange={(v) => setNewRecord({...newRecord, type: v})}>
                   <SelectTrigger>
                     <SelectValue />
@@ -483,17 +485,17 @@ export default function TeacherBehaviorPage() {
               </div>
 
               <div className="space-y-2">
-                <Label>{isRTL ? 'الملاحظة' : 'Note'}</Label>
+                <Label>{t('note3')}</Label>
                 <Textarea
                   value={newRecord.custom_note}
                   onChange={(e) => setNewRecord({...newRecord, custom_note: e.target.value})}
-                  placeholder={isRTL ? 'اكتب الملاحظة...' : 'Write note...'}
+                  placeholder={t('writeNote')}
                   rows={3}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label>{isRTL ? 'النقاط' : 'Points'}</Label>
+                <Label>{t('points2')}</Label>
                 <Input
                   type="number"
                   value={newRecord.points}
@@ -503,11 +505,11 @@ export default function TeacherBehaviorPage() {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowAddDialog(false)}>
-                {isRTL ? 'إلغاء' : 'Cancel'}
+                {t('cancel')}
               </Button>
               <Button onClick={handleAddRecord} disabled={saving}>
                 {saving && <Loader2 className="h-4 w-4 animate-spin me-2" />}
-                {isRTL ? 'حفظ' : 'Save'}
+                {t('save')}
               </Button>
             </DialogFooter>
           </DialogContent>

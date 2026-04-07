@@ -48,6 +48,7 @@ import {
   Shield,
 } from 'lucide-react';
 
+import { useTranslation } from '../../contexts/ThemeContext';
 const STEPS = [
   { id: 1, title_ar: 'بيانات الطالب', title_en: 'Student Info', icon: GraduationCap, color: 'blue' },
   { id: 2, title_ar: 'ولي الأمر', title_en: 'Parent', icon: Users, color: 'green' },
@@ -69,6 +70,7 @@ const RELATIONSHIPS = [
 ];
 
 const StepProgress = ({ currentStep, steps, isRTL }) => {
+  const { t } = useTranslation();
   const totalSteps = steps.length - 1;
   const progress = ((currentStep - 1) / (totalSteps - 1)) * 100;
 
@@ -305,14 +307,14 @@ export default function AddStudentWizard({
         setCreatedParent(response.data.parent);
         setSiblings(response.data.siblings?.list || []);
         setStep(5);
-        toast.success(isRTL ? 'تم إنشاء الحساب بنجاح' : 'Account created successfully');
+        toast.success(t('accountCreatedSuccessfully'));
         if (onSuccess) onSuccess(response.data);
       } else {
-        nassaqError(isRTL ? 'فشل إنشاء الحساب' : 'Failed to create account');
+        nassaqError(t('failedToCreateAccount'));
       }
     } catch (error) {
       console.error('Error creating student:', error);
-      const errorMessage = error.response?.data?.detail || (isRTL ? 'حدث خطأ أثناء إنشاء الحساب' : 'Error creating account');
+      const errorMessage = error.response?.data?.detail || (t('errorCreatingAccount'));
       nassaqError(errorMessage);
     } finally {
       setIsSubmitting(false);
@@ -326,7 +328,7 @@ export default function AddStudentWizard({
     navigator.clipboard.writeText(message);
     setCopiedMessage(true);
     setTimeout(() => setCopiedMessage(false), 2000);
-    toast.success(isRTL ? 'تم نسخ رسالة الترحيب' : 'Welcome message copied');
+    toast.success(t('welcomeMessageCopied'));
   };
 
   const downloadQRCode = () => {
@@ -335,7 +337,7 @@ export default function AddStudentWizard({
     link.href = `data:image/png;base64,${createdStudent.qr_code}`;
     link.download = `student_${createdStudent.student_id}_qr.png`;
     link.click();
-    toast.success(isRTL ? 'تم تحميل رمز QR' : 'QR Code downloaded');
+    toast.success(t('qrCodeDownloaded'));
   };
 
   const resetForm = () => {
@@ -363,9 +365,9 @@ export default function AddStudentWizard({
               <GraduationCap className="h-5 w-5 text-white" />
             </div>
             <div>
-              <DialogTitle className="font-cairo text-lg text-white">{isRTL ? 'إضافة طالب جديد' : 'Add New Student'}</DialogTitle>
+              <DialogTitle className="font-cairo text-lg text-white">{t('addNewStudent')}</DialogTitle>
               <DialogDescription className="text-white/70 text-xs">
-                {isRTL ? 'الخطوة' : 'Step'} {Math.min(step, 4)} {isRTL ? 'من' : 'of'} 4
+                {t('step')} {Math.min(step, 4)} {isRTL ? 'من' : 'of'} 4
               </DialogDescription>
             </div>
           </div>
@@ -376,19 +378,19 @@ export default function AddStudentWizard({
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {step === 1 && (
             <div className="space-y-5">
-              <SectionHeader icon={GraduationCap} title={isRTL ? 'البيانات الأساسية للطالب' : 'Student Basic Information'} subtitle={isRTL ? 'أدخل بيانات الطالب الأساسية' : 'Enter the student basic info'} color="blue" />
+              <SectionHeader icon={GraduationCap} title={t('studentBasicInformation')} subtitle={t('enterTheStudentBasicInfo')} color="blue" />
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormField label={isRTL ? 'الاسم الكامل' : 'Full Name'} required>
+                <FormField label={t('fullName')} required>
                   <Input
                     value={studentData.full_name}
                     onChange={(e) => setStudentData({...studentData, full_name: e.target.value})}
-                    placeholder={isRTL ? 'أدخل اسم الطالب الكامل' : 'Enter full name'}
+                    placeholder={t('enterFullName')}
                     className="h-10 rounded-lg"
                   />
                 </FormField>
 
-                <FormField label={isRTL ? 'الجنس' : 'Gender'} required>
+                <FormField label={t('gender')} required>
                   <div className="flex gap-2">
                     {[
                       { val: 'male', ar: 'ذكر', en: 'Male', color: 'blue' },
@@ -410,15 +412,15 @@ export default function AddStudentWizard({
                   </div>
                 </FormField>
 
-                <FormField label={isRTL ? 'تاريخ الميلاد' : 'Date of Birth'} required>
+                <FormField label={t('dateOfBirth')} required>
                   <Input type="date" value={studentData.date_of_birth} onChange={(e) => setStudentData({...studentData, date_of_birth: e.target.value})} className="h-10 rounded-lg" />
                 </FormField>
 
-                <FormField label={isRTL ? 'رقم الهوية' : 'National ID'}>
+                <FormField label={t('nationalId')}>
                   <Input value={studentData.national_id} onChange={(e) => setStudentData({...studentData, national_id: e.target.value})} className="h-10 rounded-lg" dir="ltr" placeholder="10xxxxxxxxxx" />
                 </FormField>
 
-                <FormField label={isRTL ? 'البريد الإلكتروني' : 'Email'}>
+                <FormField label={t('email2')}>
                   <Input type="email" value={studentData.email} onChange={(e) => setStudentData({...studentData, email: e.target.value})} placeholder="student@example.com" className="h-10 rounded-lg" dir="ltr" />
                 </FormField>
               </div>
@@ -426,21 +428,21 @@ export default function AddStudentWizard({
               <div className="border-t pt-4 mt-2">
                 <p className="text-xs font-semibold text-muted-foreground mb-3 flex items-center gap-1.5">
                   <GraduationCap className="h-3.5 w-3.5" />
-                  {isRTL ? 'البيانات الدراسية' : 'Academic Information'}
+                  {t('academicInformation')}
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <FormField label={isRTL ? 'المرحلة التعليمية' : 'Education Level'} required>
+                  <FormField label={t('educationLevel')} required>
                     <Select value={studentData.education_level} onValueChange={(val) => setStudentData({...studentData, education_level: val})}>
-                      <SelectTrigger className="h-10 rounded-lg"><SelectValue placeholder={isRTL ? 'اختر المرحلة' : 'Select level'} /></SelectTrigger>
+                      <SelectTrigger className="h-10 rounded-lg"><SelectValue placeholder={t('selectLevel')} /></SelectTrigger>
                       <SelectContent>
                         {EDUCATION_LEVELS.map(level => (<SelectItem key={level.id} value={level.id}>{isRTL ? level.name_ar : level.name_en}</SelectItem>))}
                       </SelectContent>
                     </Select>
                   </FormField>
 
-                  <FormField label={isRTL ? 'الصف' : 'Grade'} required>
+                  <FormField label={t('grade')} required>
                     <Select value={studentData.grade_id} onValueChange={(val) => setStudentData({...studentData, grade_id: val})}>
-                      <SelectTrigger className="h-10 rounded-lg"><SelectValue placeholder={isRTL ? 'اختر الصف' : 'Select grade'} /></SelectTrigger>
+                      <SelectTrigger className="h-10 rounded-lg"><SelectValue placeholder={t('selectGrade')} /></SelectTrigger>
                       <SelectContent>
                         {grades.length > 0 ? grades.map(grade => (<SelectItem key={grade.id} value={grade.id}>{isRTL ? (grade.name_ar || grade.name) : (grade.name_en || grade.name)}</SelectItem>)) : (
                           <><SelectItem value="grade-1">الصف الأول</SelectItem><SelectItem value="grade-2">الصف الثاني</SelectItem><SelectItem value="grade-3">الصف الثالث</SelectItem><SelectItem value="grade-4">الصف الرابع</SelectItem><SelectItem value="grade-5">الصف الخامس</SelectItem><SelectItem value="grade-6">الصف السادس</SelectItem></>
@@ -449,9 +451,9 @@ export default function AddStudentWizard({
                     </Select>
                   </FormField>
 
-                  <FormField label={isRTL ? 'الفصل' : 'Class'}>
+                  <FormField label={t('class')}>
                     <Select value={studentData.class_id} onValueChange={(val) => setStudentData({...studentData, class_id: val})}>
-                      <SelectTrigger className="h-10 rounded-lg"><SelectValue placeholder={isRTL ? 'اختر الفصل' : 'Select class'} /></SelectTrigger>
+                      <SelectTrigger className="h-10 rounded-lg"><SelectValue placeholder={t('selectClass')} /></SelectTrigger>
                       <SelectContent>
                         {classes.length > 0 ? classes.map(cls => (<SelectItem key={cls.id} value={cls.id}>{cls.name}</SelectItem>)) : (
                           <><SelectItem value="class-a">شعبة أ</SelectItem><SelectItem value="class-b">شعبة ب</SelectItem></>
@@ -466,7 +468,7 @@ export default function AddStudentWizard({
 
           {step === 2 && (
             <div className="space-y-5">
-              <SectionHeader icon={Users} title={isRTL ? 'بيانات ولي الأمر' : 'Parent Information'} subtitle={isRTL ? 'أضف ولي أمر جديد أو اربط ولي أمر حالي' : 'Add new or link existing parent'} color="green" />
+              <SectionHeader icon={Users} title={isRTL ? 'بيانات ولي الأمر' : 'Parent Information'} subtitle={t('addNewOrLinkExistingParent')} color="green" />
 
               <div className="grid grid-cols-2 gap-2 p-1 bg-muted/50 rounded-xl">
                 <button
@@ -477,7 +479,7 @@ export default function AddStudentWizard({
                   onClick={() => { setParentMode('new'); setSelectedExistingParent(null); setParentSearchResults([]); setParentSearchQuery(''); }}
                 >
                   <UserPlus className="h-4 w-4" />
-                  {isRTL ? 'ولي أمر جديد' : 'New Parent'}
+                  {t('newParent')}
                 </button>
                 <button
                   type="button"
@@ -487,7 +489,7 @@ export default function AddStudentWizard({
                   onClick={() => { setParentMode('search'); setExistingParent(null); setLinkToExisting(false); }}
                 >
                   <Link2 className="h-4 w-4" />
-                  {isRTL ? 'ربط ولي أمر حالي' : 'Link Existing'}
+                  {t('linkExisting')}
                 </button>
               </div>
 
@@ -495,14 +497,14 @@ export default function AddStudentWizard({
                 <div className="space-y-4">
                   <div className="p-4 rounded-xl border border-blue-200 bg-blue-50/50 dark:bg-blue-950/20">
                     <p className="text-xs text-blue-600 dark:text-blue-400 mb-2.5">
-                      {isRTL ? 'ابحث عن ولي أمر مسجل مسبقاً لربط الطالب به' : 'Search for an existing parent to link this student'}
+                      {t('searchForAnExistingParentToLinkThisStudent')}
                     </p>
                     <div className="relative">
                       <Search className={`absolute ${isRTL ? 'right-3' : 'left-3'} top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground`} />
                       <Input
                         value={parentSearchQuery}
                         onChange={(e) => handleParentSearch(e.target.value)}
-                        placeholder={isRTL ? 'ابحث بالاسم أو رقم الهاتف...' : 'Search by name or phone...'}
+                        placeholder={t('searchByNameOrPhone')}
                         className={`h-10 rounded-lg ${isRTL ? 'pr-10' : 'pl-10'}`}
                         data-testid="parent-search-input"
                       />
@@ -530,7 +532,7 @@ export default function AddStudentWizard({
                               </div>
                             </div>
                             {parent.children_count > 0 && (
-                              <Badge variant="secondary" className="text-[10px]">{parent.children_count} {isRTL ? 'أبناء' : 'children'}</Badge>
+                              <Badge variant="secondary" className="text-[10px]">{parent.children_count} {t('children')}</Badge>
                             )}
                           </div>
                         </div>
@@ -541,7 +543,7 @@ export default function AddStudentWizard({
                   {parentSearchQuery.length >= 2 && !searchingParents && parentSearchResults.length === 0 && (
                     <div className="p-6 rounded-xl border border-dashed text-center text-muted-foreground">
                       <Search className="h-6 w-6 mx-auto mb-2 opacity-40" />
-                      <p className="text-sm">{isRTL ? 'لم يتم العثور على نتائج' : 'No results found'}</p>
+                      <p className="text-sm">{t('noResultsFound')}</p>
                     </div>
                   )}
 
@@ -550,7 +552,7 @@ export default function AddStudentWizard({
                       <div className="flex items-start gap-3">
                         <UserCheck className="h-5 w-5 text-emerald-600 mt-0.5" />
                         <div className="flex-1">
-                          <p className="font-semibold text-sm text-emerald-800 dark:text-emerald-300">{isRTL ? 'تم اختيار ولي الأمر' : 'Parent Selected'}</p>
+                          <p className="font-semibold text-sm text-emerald-800 dark:text-emerald-300">{t('parentSelected')}</p>
                           <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-1">{selectedExistingParent.full_name} - {selectedExistingParent.phone}</p>
                           {siblings.length > 0 && (
                             <div className="flex flex-wrap gap-1.5 mt-2">
@@ -563,7 +565,7 @@ export default function AddStudentWizard({
                             setSiblings([]);
                             setLinkToExisting(false);
                           }}>
-                            {isRTL ? 'إلغاء الاختيار' : 'Clear Selection'}
+                            {t('clearSelection')}
                           </Button>
                         </div>
                       </div>
@@ -577,14 +579,14 @@ export default function AddStudentWizard({
                   <div className="flex items-start gap-3">
                     <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
                     <div className="flex-1">
-                      <p className="font-semibold text-sm text-amber-800">{isRTL ? 'تم العثور على ولي أمر مسجل!' : 'Existing parent found!'}</p>
+                      <p className="font-semibold text-sm text-amber-800">{t('existingParentFound')}</p>
                       <p className="text-xs text-amber-700 mt-1">{existingParent.full_name} - {existingParent.phone}</p>
                       {siblings.length > 0 && (
                         <div className="flex flex-wrap gap-1.5 mt-2">{siblings.map(s => (<Badge key={s.id} variant="secondary" className="text-[10px]">{s.name}</Badge>))}</div>
                       )}
                       <div className="flex gap-2 mt-3">
-                        <Button size="sm" variant={linkToExisting ? "default" : "outline"} onClick={() => setLinkToExisting(true)} className="h-7 text-xs rounded-lg">{isRTL ? 'نعم، ربط' : 'Yes, link'}</Button>
-                        <Button size="sm" variant={!linkToExisting ? "default" : "outline"} onClick={() => setLinkToExisting(false)} className="h-7 text-xs rounded-lg">{isRTL ? 'لا، إنشاء جديد' : 'No, create new'}</Button>
+                        <Button size="sm" variant={linkToExisting ? "default" : "outline"} onClick={() => setLinkToExisting(true)} className="h-7 text-xs rounded-lg">{t('yesLink')}</Button>
+                        <Button size="sm" variant={!linkToExisting ? "default" : "outline"} onClick={() => setLinkToExisting(false)} className="h-7 text-xs rounded-lg">{t('noCreateNew')}</Button>
                       </div>
                     </div>
                   </div>
@@ -596,22 +598,22 @@ export default function AddStudentWizard({
                   <FormField label={isRTL ? 'اسم ولي الأمر' : 'Parent Name'} required>
                     <Input value={parentData.full_name} onChange={(e) => setParentData({...parentData, full_name: e.target.value})} className="h-10 rounded-lg" />
                   </FormField>
-                  <FormField label={isRTL ? 'صلة القرابة' : 'Relationship'} required>
+                  <FormField label={t('relationship')} required>
                     <Select value={parentData.relationship} onValueChange={(val) => setParentData({...parentData, relationship: val})}>
                       <SelectTrigger className="h-10 rounded-lg"><SelectValue /></SelectTrigger>
                       <SelectContent>{RELATIONSHIPS.map(rel => (<SelectItem key={rel.id} value={rel.id}>{isRTL ? rel.name_ar : rel.name_en}</SelectItem>))}</SelectContent>
                     </Select>
                   </FormField>
-                  <FormField label={isRTL ? 'رقم الهاتف' : 'Phone'} required>
+                  <FormField label={t('phone3')} required>
                     <Input value={parentData.phone} onChange={(e) => setParentData({...parentData, phone: e.target.value})} onBlur={checkParentExists} placeholder="05xxxxxxxx" className="h-10 rounded-lg" dir="ltr" />
                   </FormField>
-                  <FormField label={isRTL ? 'البريد الإلكتروني' : 'Email'}>
+                  <FormField label={t('email2')}>
                     <Input type="email" value={parentData.email} onChange={(e) => setParentData({...parentData, email: e.target.value})} onBlur={checkParentExists} className="h-10 rounded-lg" dir="ltr" />
                   </FormField>
-                  <FormField label={isRTL ? 'رقم الهوية' : 'National ID'}>
+                  <FormField label={t('nationalId')}>
                     <Input value={parentData.national_id} onChange={(e) => setParentData({...parentData, national_id: e.target.value})} onBlur={checkParentExists} className="h-10 rounded-lg" dir="ltr" />
                   </FormField>
-                  <FormField label={isRTL ? 'العنوان' : 'Address'}>
+                  <FormField label={t('address')}>
                     <Input value={parentData.address} onChange={(e) => setParentData({...parentData, address: e.target.value})} className="h-10 rounded-lg" />
                   </FormField>
                 </div>
@@ -621,25 +623,25 @@ export default function AddStudentWizard({
 
           {step === 3 && (
             <div className="space-y-5">
-              <SectionHeader icon={Heart} title={isRTL ? 'البيانات الصحية' : 'Health Information'} subtitle={isRTL ? 'جميع الحقول اختيارية' : 'All fields are optional'} color="rose" />
+              <SectionHeader icon={Heart} title={t('healthInformation')} subtitle={t('allFieldsAreOptional')} color="rose" />
               <div className="p-3 rounded-lg bg-rose-50/50 dark:bg-rose-950/10 border border-rose-200/50 text-xs text-rose-600 dark:text-rose-400 flex items-center gap-2">
                 <Shield className="h-3.5 w-3.5 shrink-0" />
-                {isRTL ? 'هذه البيانات سرية وتُستخدم فقط للأغراض الصحية بالمدرسة' : 'This information is confidential and used only for school health purposes'}
+                {t('thisInformationIsConfidentialAndUsedOnlyForSchoolH')}
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="md:col-span-2">
-                  <FormField label={isRTL ? 'الحالة الصحية العامة' : 'General Health Status'}>
-                    <Textarea value={healthData.health_status} onChange={(e) => setHealthData({...healthData, health_status: e.target.value})} className="rounded-lg resize-none" rows={2} placeholder={isRTL ? 'مثال: حالة صحية جيدة' : 'e.g., Good health condition'} />
+                  <FormField label={t('generalHealthStatus')}>
+                    <Textarea value={healthData.health_status} onChange={(e) => setHealthData({...healthData, health_status: e.target.value})} className="rounded-lg resize-none" rows={2} placeholder={t('egGoodHealthCondition')} />
                   </FormField>
                 </div>
-                <FormField label={isRTL ? 'الحساسيات' : 'Allergies'}>
-                  <Input value={healthData.allergies} onChange={(e) => setHealthData({...healthData, allergies: e.target.value})} className="h-10 rounded-lg" placeholder={isRTL ? 'افصل بفاصلة' : 'Separate with commas'} />
+                <FormField label={t('allergies2')}>
+                  <Input value={healthData.allergies} onChange={(e) => setHealthData({...healthData, allergies: e.target.value})} className="h-10 rounded-lg" placeholder={t('separateWithCommas')} />
                 </FormField>
-                <FormField label={isRTL ? 'الأدوية' : 'Medications'}>
-                  <Input value={healthData.medications} onChange={(e) => setHealthData({...healthData, medications: e.target.value})} className="h-10 rounded-lg" placeholder={isRTL ? 'افصل بفاصلة' : 'Separate with commas'} />
+                <FormField label={t('medications')}>
+                  <Input value={healthData.medications} onChange={(e) => setHealthData({...healthData, medications: e.target.value})} className="h-10 rounded-lg" placeholder={t('separateWithCommas')} />
                 </FormField>
                 <div className="md:col-span-2">
-                  <FormField label={isRTL ? 'الاحتياجات الخاصة' : 'Special Needs'}>
+                  <FormField label={t('specialNeeds')}>
                     <Textarea value={healthData.special_needs} onChange={(e) => setHealthData({...healthData, special_needs: e.target.value})} className="rounded-lg resize-none" rows={2} />
                   </FormField>
                 </div>
@@ -649,31 +651,31 @@ export default function AddStudentWizard({
 
           {step === 4 && (
             <div className="space-y-4">
-              <SectionHeader icon={FileText} title={isRTL ? 'مراجعة البيانات قبل الحفظ' : 'Review Before Saving'} subtitle={isRTL ? 'تأكد من صحة جميع البيانات' : 'Verify all information is correct'} color="amber" />
+              <SectionHeader icon={FileText} title={t('reviewBeforeSaving')} subtitle={t('verifyAllInformationIsCorrect')} color="amber" />
 
               <div className="rounded-xl border overflow-hidden">
                 <div className="px-4 py-2.5 bg-blue-50 dark:bg-blue-950/20 border-b flex items-center gap-2">
                   <GraduationCap className="h-4 w-4 text-blue-600" />
-                  <span className="font-semibold text-sm text-blue-800 dark:text-blue-300">{isRTL ? 'بيانات الطالب' : 'Student'}</span>
+                  <span className="font-semibold text-sm text-blue-800 dark:text-blue-300">{t('student2')}</span>
                 </div>
                 <div className="p-4 grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-                  <div><span className="text-muted-foreground text-xs">{isRTL ? 'الاسم' : 'Name'}</span><p className="font-medium">{studentData.full_name}</p></div>
-                  <div><span className="text-muted-foreground text-xs">{isRTL ? 'الجنس' : 'Gender'}</span><p className="font-medium">{studentData.gender === 'male' ? (isRTL ? 'ذكر' : 'Male') : (isRTL ? 'أنثى' : 'Female')}</p></div>
+                  <div><span className="text-muted-foreground text-xs">{t('name')}</span><p className="font-medium">{studentData.full_name}</p></div>
+                  <div><span className="text-muted-foreground text-xs">{t('gender')}</span><p className="font-medium">{studentData.gender === 'male' ? (t('male')) : (t('female'))}</p></div>
                   <div><span className="text-muted-foreground text-xs">{isRTL ? 'تاريخ الميلاد' : 'DOB'}</span><p className="font-medium">{studentData.date_of_birth}</p></div>
-                  {studentData.education_level && <div><span className="text-muted-foreground text-xs">{isRTL ? 'المرحلة' : 'Level'}</span><p className="font-medium">{EDUCATION_LEVELS.find(l => l.id === studentData.education_level)?.[isRTL ? 'name_ar' : 'name_en']}</p></div>}
+                  {studentData.education_level && <div><span className="text-muted-foreground text-xs">{t('level')}</span><p className="font-medium">{EDUCATION_LEVELS.find(l => l.id === studentData.education_level)?.[isRTL ? 'name_ar' : 'name_en']}</p></div>}
                 </div>
               </div>
 
               <div className="rounded-xl border overflow-hidden">
                 <div className="px-4 py-2.5 bg-green-50 dark:bg-green-950/20 border-b flex items-center gap-2">
                   <Users className="h-4 w-4 text-green-600" />
-                  <span className="font-semibold text-sm text-green-800 dark:text-green-300">{isRTL ? 'ولي الأمر' : 'Parent'}</span>
-                  {(selectedExistingParent || linkToExisting) && <Badge className="text-[10px] bg-amber-100 text-amber-700">{isRTL ? 'حساب حالي' : 'Existing'}</Badge>}
+                  <span className="font-semibold text-sm text-green-800 dark:text-green-300">{t('parent')}</span>
+                  {(selectedExistingParent || linkToExisting) && <Badge className="text-[10px] bg-amber-100 text-amber-700">{t('existing')}</Badge>}
                 </div>
                 <div className="p-4 grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-                  <div><span className="text-muted-foreground text-xs">{isRTL ? 'الاسم' : 'Name'}</span><p className="font-medium">{parentData.full_name}</p></div>
-                  <div><span className="text-muted-foreground text-xs">{isRTL ? 'الهاتف' : 'Phone'}</span><p className="font-medium" dir="ltr">{parentData.phone}</p></div>
-                  <div><span className="text-muted-foreground text-xs">{isRTL ? 'الصلة' : 'Relation'}</span><p className="font-medium">{RELATIONSHIPS.find(r => r.id === parentData.relationship)?.[isRTL ? 'name_ar' : 'name_en']}</p></div>
+                  <div><span className="text-muted-foreground text-xs">{t('name')}</span><p className="font-medium">{parentData.full_name}</p></div>
+                  <div><span className="text-muted-foreground text-xs">{t('phone2')}</span><p className="font-medium" dir="ltr">{parentData.phone}</p></div>
+                  <div><span className="text-muted-foreground text-xs">{t('relation')}</span><p className="font-medium">{RELATIONSHIPS.find(r => r.id === parentData.relationship)?.[isRTL ? 'name_ar' : 'name_en']}</p></div>
                 </div>
               </div>
 
@@ -684,9 +686,9 @@ export default function AddStudentWizard({
                     <span className="font-semibold text-sm text-rose-800 dark:text-rose-300">{isRTL ? 'البيانات الصحية' : 'Health'}</span>
                   </div>
                   <div className="p-4 text-sm space-y-1">
-                    {healthData.health_status && <p><span className="text-muted-foreground">{isRTL ? 'الحالة:' : 'Status:'}</span> {healthData.health_status}</p>}
-                    {healthData.allergies && <p><span className="text-muted-foreground">{isRTL ? 'حساسيات:' : 'Allergies:'}</span> {healthData.allergies}</p>}
-                    {healthData.medications && <p><span className="text-muted-foreground">{isRTL ? 'أدوية:' : 'Medications:'}</span> {healthData.medications}</p>}
+                    {healthData.health_status && <p><span className="text-muted-foreground">{t('status')}</span> {healthData.health_status}</p>}
+                    {healthData.allergies && <p><span className="text-muted-foreground">{t('allergies3')}</span> {healthData.allergies}</p>}
+                    {healthData.medications && <p><span className="text-muted-foreground">{t('medications2')}</span> {healthData.medications}</p>}
                   </div>
                 </div>
               )}
@@ -699,8 +701,8 @@ export default function AddStudentWizard({
                 <div className="w-16 h-16 rounded-full bg-gradient-to-br from-emerald-400 to-green-600 mx-auto flex items-center justify-center mb-4 shadow-lg shadow-emerald-500/20">
                   <CheckCircle2 className="h-8 w-8 text-white" />
                 </div>
-                <h2 className="text-xl font-bold text-emerald-600 font-cairo mb-1">{isRTL ? 'تم إنشاء الحساب بنجاح!' : 'Account Created!'}</h2>
-                <p className="text-sm text-muted-foreground">{isRTL ? 'تم إنشاء حساب الطالب وولي الأمر' : 'Student and parent accounts created'}</p>
+                <h2 className="text-xl font-bold text-emerald-600 font-cairo mb-1">{t('accountCreated')}</h2>
+                <p className="text-sm text-muted-foreground">{t('studentAndParentAccountsCreated')}</p>
               </div>
 
               <div className="p-4 rounded-xl border-2 border-emerald-200 bg-emerald-50/50 dark:bg-emerald-950/20">
@@ -724,8 +726,8 @@ export default function AddStudentWizard({
                       </Button>
                     </div>
                     <div className="grid grid-cols-2 gap-2 text-xs p-2 bg-white dark:bg-background rounded-lg">
-                      <div><span className="text-muted-foreground">{isRTL ? 'البريد:' : 'Email:'}</span><p className="font-mono">{createdStudent.email}</p></div>
-                      <div><span className="text-muted-foreground">{isRTL ? 'كلمة المرور:' : 'Password:'}</span><p className="font-mono">{createdStudent.temp_password}</p></div>
+                      <div><span className="text-muted-foreground">{t('email3')}</span><p className="font-mono">{createdStudent.email}</p></div>
+                      <div><span className="text-muted-foreground">{t('password2')}</span><p className="font-mono">{createdStudent.temp_password}</p></div>
                     </div>
                   </div>
                 </div>
@@ -737,17 +739,17 @@ export default function AddStudentWizard({
                     <Users className="h-3.5 w-3.5" />
                     {isRTL ? 'بيانات ولي الأمر' : 'Parent Account'}
                     {createdParent.is_new ? (
-                      <Badge className="text-[9px] h-4 bg-emerald-100 text-emerald-700 border-0">{isRTL ? 'حساب جديد' : 'New'}</Badge>
+                      <Badge className="text-[9px] h-4 bg-emerald-100 text-emerald-700 border-0">{t('new2')}</Badge>
                     ) : (
-                      <Badge className="text-[9px] h-4 bg-amber-100 text-amber-700 border-0">{isRTL ? 'حساب حالي' : 'Existing'}</Badge>
+                      <Badge className="text-[9px] h-4 bg-amber-100 text-amber-700 border-0">{t('existing')}</Badge>
                     )}
                   </p>
                   <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div><span className="text-muted-foreground">{isRTL ? 'الاسم:' : 'Name:'}</span><p className="font-medium">{createdParent.full_name}</p></div>
-                    <div><span className="text-muted-foreground">{isRTL ? 'الهاتف:' : 'Phone:'}</span><p className="font-mono" dir="ltr">{createdParent.phone}</p></div>
-                    {createdParent.email && <div><span className="text-muted-foreground">{isRTL ? 'البريد:' : 'Email:'}</span><p className="font-mono" dir="ltr">{createdParent.email}</p></div>}
+                    <div><span className="text-muted-foreground">{t('name2')}</span><p className="font-medium">{createdParent.full_name}</p></div>
+                    <div><span className="text-muted-foreground">{t('phone4')}</span><p className="font-mono" dir="ltr">{createdParent.phone}</p></div>
+                    {createdParent.email && <div><span className="text-muted-foreground">{t('email3')}</span><p className="font-mono" dir="ltr">{createdParent.email}</p></div>}
                     {createdParent.is_new && createdParent.temp_password && (
-                      <div><span className="text-muted-foreground">{isRTL ? 'كلمة المرور:' : 'Password:'}</span><p className="font-mono">{createdParent.temp_password}</p></div>
+                      <div><span className="text-muted-foreground">{t('password2')}</span><p className="font-mono">{createdParent.temp_password}</p></div>
                     )}
                   </div>
                 </div>
@@ -756,13 +758,13 @@ export default function AddStudentWizard({
               <div className="flex gap-2">
                 <Button variant="outline" className="flex-1 h-10 rounded-lg" onClick={copyWelcomeMessage}>
                   {copiedMessage ? <CheckCircle2 className="h-4 w-4 me-2 text-emerald-500" /> : <Copy className="h-4 w-4 me-2" />}
-                  {isRTL ? 'نسخ رسالة الترحيب' : 'Copy Welcome Message'}
+                  {t('copyWelcomeMessage')}
                 </Button>
               </div>
 
               <div className="flex justify-center gap-3 pt-2">
-                <Button variant="outline" className="rounded-lg" onClick={() => onOpenChange(false)}>{isRTL ? 'إغلاق' : 'Close'}</Button>
-                <Button className="rounded-lg bg-brand-navy hover:bg-brand-navy/90" onClick={resetForm}>{isRTL ? 'إضافة طالب آخر' : 'Add Another'}</Button>
+                <Button variant="outline" className="rounded-lg" onClick={() => onOpenChange(false)}>{t('close')}</Button>
+                <Button className="rounded-lg bg-brand-navy hover:bg-brand-navy/90" onClick={resetForm}>{t('addAnother')}</Button>
               </div>
             </div>
           )}
@@ -774,21 +776,21 @@ export default function AddStudentWizard({
               {step > 1 && (
                 <Button variant="ghost" size="sm" onClick={prevStep} className="gap-1.5 rounded-lg h-9">
                   {isRTL ? <ArrowRight className="h-3.5 w-3.5" /> : <ArrowLeft className="h-3.5 w-3.5" />}
-                  {isRTL ? 'السابق' : 'Back'}
+                  {t('back')}
                 </Button>
               )}
             </div>
             <div className="flex gap-2">
-              <Button variant="ghost" size="sm" className="rounded-lg h-9" onClick={() => onOpenChange(false)}>{isRTL ? 'إلغاء' : 'Cancel'}</Button>
+              <Button variant="ghost" size="sm" className="rounded-lg h-9" onClick={() => onOpenChange(false)}>{t('cancel')}</Button>
               {step < 4 ? (
                 <Button size="sm" onClick={nextStep} disabled={!isStepValid()} className="bg-brand-navy hover:bg-brand-navy/90 gap-1.5 rounded-lg h-9 px-5">
-                  {isRTL ? 'التالي' : 'Next'}
+                  {t('next')}
                   {isRTL ? <ArrowLeft className="h-3.5 w-3.5" /> : <ArrowRight className="h-3.5 w-3.5" />}
                 </Button>
               ) : (
                 <Button size="sm" onClick={handleSubmit} disabled={isSubmitting} className="bg-emerald-600 hover:bg-emerald-700 gap-1.5 rounded-lg h-9 px-5">
                   {isSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
-                  {isRTL ? 'تأكيد وحفظ' : 'Confirm & Save'}
+                  {t('confirmSave')}
                 </Button>
               )}
             </div>

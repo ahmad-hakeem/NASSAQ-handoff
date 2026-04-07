@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 
+import { useTranslation } from '../../contexts/ThemeContext';
 const RESOURCE_TYPES = [
   { value: 'document', label: 'مستند', labelEn: 'Document', icon: FileText },
   { value: 'video', label: 'فيديو', labelEn: 'Video', icon: Video },
@@ -82,7 +83,7 @@ export default function TeacherResourcesPage() {
 
   const handleAddResource = async () => {
     if (!newResource.title) {
-      nassaqError(isRTL ? 'يرجى إدخال عنوان المصدر' : 'Please enter resource title');
+      nassaqError(t('pleaseEnterResourceTitle'));
       return;
     }
 
@@ -94,7 +95,7 @@ export default function TeacherResourcesPage() {
         created_at: new Date().toISOString()
       });
 
-      toast.success(isRTL ? 'تمت إضافة المصدر بنجاح' : 'Resource added successfully');
+      toast.success(t('resourceAddedSuccessfully'));
       setShowAddDialog(false);
       setNewResource({
         title: '',
@@ -106,23 +107,23 @@ export default function TeacherResourcesPage() {
       });
       fetchData();
     } catch (error) {
-      nassaqError(isRTL ? 'خطأ في إضافة المصدر' : 'Error adding resource');
+      nassaqError(t('errorAddingResource'));
     } finally {
       setSaving(false);
     }
   };
 
   const deleteResource = async (resourceId) => {
-    if (!confirm(isRTL ? 'هل أنت متأكد من حذف هذا المصدر؟' : 'Are you sure you want to delete this resource?')) {
+    if (!confirm(t('areYouSureYouWantToDeleteThisResource'))) {
       return;
     }
 
     try {
       await api.delete(`/resources/${resourceId}`);
-      toast.success(isRTL ? 'تم حذف المصدر' : 'Resource deleted');
+      toast.success(t('resourceDeleted'));
       fetchData();
     } catch (error) {
-      nassaqError(isRTL ? 'خطأ في الحذف' : 'Error deleting');
+      nassaqError(t('errorDeleting'));
     }
   };
 
@@ -137,6 +138,7 @@ export default function TeacherResourcesPage() {
   });
 
   const getResourceIcon = (type) => {
+  const { t } = useTranslation();
     const resourceType = RESOURCE_TYPES.find(t => t.value === type);
     return resourceType?.icon || File;
   };
@@ -159,10 +161,10 @@ export default function TeacherResourcesPage() {
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
               <h1 className="text-2xl font-bold text-brand-navy dark:text-brand-turquoise font-cairo">
-                {isRTL ? 'المصادر التعليمية' : 'Educational Resources'}
+                {t('educationalResources')}
               </h1>
               <p className="text-sm text-muted-foreground">
-                {isRTL ? 'إدارة ومشاركة المصادر التعليمية' : 'Manage and share educational resources'}
+                {t('manageAndShareEducationalResources')}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -174,7 +176,7 @@ export default function TeacherResourcesPage() {
                 onClick={() => setShowAddDialog(true)}
               >
                 <Plus className="h-4 w-4 me-1" />
-                {isRTL ? 'إضافة مصدر' : 'Add Resource'}
+                {t('addResource')}
               </Button>
             </div>
           </div>
@@ -186,7 +188,7 @@ export default function TeacherResourcesPage() {
             <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder={isRTL ? 'بحث في المصادر...' : 'Search resources...'}
+                placeholder={t('searchResources')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="ps-9"
@@ -194,10 +196,10 @@ export default function TeacherResourcesPage() {
             </div>
             <Select value={selectedClass} onValueChange={setSelectedClass}>
               <SelectTrigger className="w-full sm:w-[150px]">
-                <SelectValue placeholder={isRTL ? 'جميع الفصول' : 'All Classes'} />
+                <SelectValue placeholder={t('allClasses')} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">{isRTL ? 'جميع الفصول' : 'All Classes'}</SelectItem>
+                <SelectItem value="">{t('allClasses')}</SelectItem>
                 {classes.map(cls => (
                   <SelectItem key={cls.id} value={cls.id}>{cls.name}</SelectItem>
                 ))}
@@ -205,10 +207,10 @@ export default function TeacherResourcesPage() {
             </Select>
             <Select value={selectedSubject} onValueChange={setSelectedSubject}>
               <SelectTrigger className="w-full sm:w-[150px]">
-                <SelectValue placeholder={isRTL ? 'جميع المواد' : 'All Subjects'} />
+                <SelectValue placeholder={t('allSubjects')} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">{isRTL ? 'جميع المواد' : 'All Subjects'}</SelectItem>
+                <SelectItem value="">{t('allSubjects')}</SelectItem>
                 {subjects.map(sub => (
                   <SelectItem key={sub.id} value={sub.id}>{sub.name}</SelectItem>
                 ))}
@@ -221,7 +223,7 @@ export default function TeacherResourcesPage() {
         <div className="p-4">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="mb-4">
-              <TabsTrigger value="all">{isRTL ? 'الكل' : 'All'}</TabsTrigger>
+              <TabsTrigger value="all">{t('all')}</TabsTrigger>
               {RESOURCE_TYPES.map(type => (
                 <TabsTrigger key={type.value} value={type.value}>
                   <type.icon className="h-4 w-4 me-1" />
@@ -239,13 +241,13 @@ export default function TeacherResourcesPage() {
             <Card>
               <CardContent className="text-center py-16">
                 <FolderOpen className="h-16 w-16 mx-auto mb-4 text-muted-foreground/30" />
-                <h3 className="font-bold mb-2">{isRTL ? 'لا توجد مصادر' : 'No resources'}</h3>
+                <h3 className="font-bold mb-2">{t('noResources')}</h3>
                 <p className="text-muted-foreground mb-4">
-                  {isRTL ? 'ابدأ بإضافة مصادر تعليمية' : 'Start by adding educational resources'}
+                  {t('startByAddingEducationalResources')}
                 </p>
                 <Button onClick={() => setShowAddDialog(true)}>
                   <Plus className="h-4 w-4 me-1" />
-                  {isRTL ? 'إضافة مصدر' : 'Add Resource'}
+                  {t('addResource')}
                 </Button>
               </CardContent>
             </Card>
@@ -296,7 +298,7 @@ export default function TeacherResourcesPage() {
                             onClick={() => window.open(resource.url, '_blank')}
                           >
                             <Eye className="h-3.5 w-3.5 me-1" />
-                            {isRTL ? 'عرض' : 'View'}
+                            {t('view2')}
                           </Button>
                         )}
                         <Button 
@@ -321,7 +323,7 @@ export default function TeacherResourcesPage() {
                 <CardContent className="p-4 text-center">
                   <FolderOpen className="h-6 w-6 mx-auto mb-1 text-brand-navy" />
                   <div className="text-xl font-bold">{resources.length}</div>
-                  <div className="text-xs text-muted-foreground">{isRTL ? 'إجمالي المصادر' : 'Total'}</div>
+                  <div className="text-xs text-muted-foreground">{t('total5')}</div>
                 </CardContent>
               </Card>
               {RESOURCE_TYPES.slice(0, 4).map(type => (
@@ -343,21 +345,21 @@ export default function TeacherResourcesPage() {
         <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
           <DialogContent className="w-[95vw] max-w-lg">
             <DialogHeader>
-              <DialogTitle className="font-cairo">{isRTL ? 'إضافة مصدر جديد' : 'Add New Resource'}</DialogTitle>
+              <DialogTitle className="font-cairo">{t('addNewResource')}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label>{isRTL ? 'عنوان المصدر' : 'Resource Title'} *</Label>
+                <Label>{t('resourceTitle')} *</Label>
                 <Input
                   value={newResource.title}
                   onChange={(e) => setNewResource({...newResource, title: e.target.value})}
-                  placeholder={isRTL ? 'مثال: ملخص الفصل الأول' : 'e.g., Chapter 1 Summary'}
+                  placeholder={t('egChapter1Summary')}
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>{isRTL ? 'نوع المصدر' : 'Resource Type'}</Label>
+                  <Label>{t('resourceType')}</Label>
                   <Select 
                     value={newResource.type} 
                     onValueChange={(v) => setNewResource({...newResource, type: v})}
@@ -375,13 +377,13 @@ export default function TeacherResourcesPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>{isRTL ? 'المادة' : 'Subject'}</Label>
+                  <Label>{t('subject')}</Label>
                   <Select 
                     value={newResource.subject_id} 
                     onValueChange={(v) => setNewResource({...newResource, subject_id: v})}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder={isRTL ? 'اختر' : 'Select'} />
+                      <SelectValue placeholder={t('select2')} />
                     </SelectTrigger>
                     <SelectContent>
                       {subjects.map(sub => (
@@ -393,7 +395,7 @@ export default function TeacherResourcesPage() {
               </div>
 
               <div className="space-y-2">
-                <Label>{isRTL ? 'الرابط / URL' : 'Link / URL'}</Label>
+                <Label>{t('linkUrl')}</Label>
                 <Input
                   value={newResource.url}
                   onChange={(e) => setNewResource({...newResource, url: e.target.value})}
@@ -403,22 +405,22 @@ export default function TeacherResourcesPage() {
               </div>
 
               <div className="space-y-2">
-                <Label>{isRTL ? 'الوصف' : 'Description'}</Label>
+                <Label>{t('description')}</Label>
                 <Textarea
                   value={newResource.description}
                   onChange={(e) => setNewResource({...newResource, description: e.target.value})}
-                  placeholder={isRTL ? 'وصف المصدر...' : 'Resource description...'}
+                  placeholder={t('resourceDescription')}
                   rows={3}
                 />
               </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowAddDialog(false)}>
-                {isRTL ? 'إلغاء' : 'Cancel'}
+                {t('cancel')}
               </Button>
               <Button onClick={handleAddResource} disabled={saving}>
                 {saving && <Loader2 className="h-4 w-4 animate-spin me-2" />}
-                {isRTL ? 'إضافة' : 'Add'}
+                {t('add')}
               </Button>
             </DialogFooter>
           </DialogContent>

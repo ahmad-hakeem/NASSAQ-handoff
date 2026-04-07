@@ -17,7 +17,9 @@ import {
 import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 import { formatHijriDate } from '../../utils/hijriDate';
 
+import { useTranslation } from '../../contexts/ThemeContext';
 const getTimeUntilLesson = (lessonTime) => {
+  const { t } = useTranslation();
   if (!lessonTime) return null;
   const now = new Date();
   const [hours, minutes] = lessonTime.split(':').map(Number);
@@ -59,11 +61,11 @@ export default function TeacherHomePage() {
       if (dashboardRes?.data) {
         const data = dashboardRes.data;
         setTeacherInfo({
-          name: data.teacher?.full_name || data.teacher?.name || user?.full_name || (isRTL ? 'معلم' : 'Teacher'),
+          name: data.teacher?.full_name || data.teacher?.name || user?.full_name || (t('teacher')),
           rank: data.teacher?.rank || '',
           qualification: data.teacher?.qualification || '',
           specialization: data.teacher?.specialization || '',
-          school: data.school_name || (isRTL ? 'المدرسة' : 'School'),
+          school: data.school_name || (t('school')),
           schoolCity: data.school_city || '',
           schoolType: data.school_type || '',
           stage: data.school_stage || '',
@@ -90,14 +92,14 @@ export default function TeacherHomePage() {
         setTodayLessons(lessons);
       } else {
         setTeacherInfo({
-          name: user?.full_name || (isRTL ? 'معلم' : 'Teacher'),
-          school: isRTL ? 'المدرسة' : 'School',
+          name: user?.full_name || (t('teacher')),
+          school: t('school'),
           stage: isRTL ? 'المرحلة' : 'Stage'
         });
       }
     } catch (error) {
       console.error('Error fetching teacher data:', error);
-      nassaqError(isRTL ? 'خطأ في تحميل البيانات' : 'Error loading data');
+      nassaqError(t('errorLoadingData'));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -138,11 +140,11 @@ export default function TeacherHomePage() {
   const handleEndActiveSession = async (activeSessionId) => {
     try {
       await api.post(`/session/${activeSessionId}/end`);
-      toast.success(isRTL ? 'تم إنهاء الحصة السابقة' : 'Previous session ended');
+      toast.success(t('previousSessionEnded'));
       await fetchTeacherData();
     } catch (e) {
       console.error('Error ending session:', e);
-      nassaqError(isRTL ? 'خطأ في إنهاء الحصة' : 'Error ending session');
+      nassaqError(t('errorEndingSession'));
     }
   };
 
@@ -243,9 +245,9 @@ export default function TeacherHomePage() {
 
                   <div className="grid grid-cols-4 gap-2 mt-3">
                     {[
-                      { icon: BookOpen, value: loading ? '-' : stats.classesCount, label: isRTL ? 'فصول' : 'Classes' },
-                      { icon: Users, value: loading ? '-' : stats.studentsCount, label: isRTL ? 'طلاب' : 'Students' },
-                      { icon: Briefcase, value: loading ? '-' : (teacherInfo?.subjectsCount || 0), label: isRTL ? 'مواد' : 'Subjects' },
+                      { icon: BookOpen, value: loading ? '-' : stats.classesCount, label: t('classes5') },
+                      { icon: Users, value: loading ? '-' : stats.studentsCount, label: t('students2') },
+                      { icon: Briefcase, value: loading ? '-' : (teacherInfo?.subjectsCount || 0), label: t('subjects5') },
                       { icon: Calendar, value: loading ? '-' : (teacherInfo?.weeklySessions || 0), label: isRTL ? 'حصة/أسبوع' : 'Wk Sessions' },
                     ].map((item, i) => (
                       <div key={i} className="text-center p-2.5 rounded-xl bg-white/5 border border-white/5">
@@ -271,9 +273,9 @@ export default function TeacherHomePage() {
           {classMetrics && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {[
-                { label: isRTL ? 'الحضور' : 'Attendance', value: `${classMetrics.avgAttendance}%`, icon: CheckCircle2, gradient: 'from-emerald-500 to-emerald-600' },
+                { label: t('attendance2'), value: `${classMetrics.avgAttendance}%`, icon: CheckCircle2, gradient: 'from-emerald-500 to-emerald-600' },
                 { label: isRTL ? 'المشاركة' : 'Participation', value: `${classMetrics.avgParticipation}%`, icon: Activity, gradient: 'from-blue-500 to-blue-600' },
-                { label: isRTL ? 'الأداء' : 'Performance', value: `${classMetrics.avgPerformance}%`, icon: Target, gradient: 'from-purple-500 to-purple-600' },
+                { label: t('performance3'), value: `${classMetrics.avgPerformance}%`, icon: Target, gradient: 'from-purple-500 to-purple-600' },
                 { label: isRTL ? 'الحصص' : 'Sessions', value: classMetrics.totalSessions, icon: Flame, gradient: 'from-amber-500 to-amber-600' },
               ].map(m => (
                 <div key={m.label} className="bg-background rounded-xl p-3 text-center border border-border/50 shadow-sm">
@@ -362,7 +364,7 @@ export default function TeacherHomePage() {
                           data-testid={`start-class-btn-${lesson.id}`}
                         >
                           <Play className="h-5 w-5 me-2" />
-                          {isRTL ? 'ابدأ الحصة' : 'Start Class'}
+                          {t('startClass')}
                         </Button>
 
                         {!isFirstLesson && index > 0 && (
@@ -371,7 +373,7 @@ export default function TeacherHomePage() {
                             className="w-full mt-2 font-cairo text-white/60 hover:text-white hover:bg-white/10"
                             onClick={() => navigate('/teacher/schedule')}
                           >
-                            {isRTL ? 'إدارة الدرس' : 'Manage Lesson'}
+                            {t('manageLesson')}
                           </Button>
                         )}
                       </div>
@@ -387,7 +389,7 @@ export default function TeacherHomePage() {
             {[
               { icon: BookOpen, label: isRTL ? 'فصولي' : 'Classes', path: '/teacher/classes', gradient: 'from-blue-500 to-blue-600' },
               { icon: Users, label: isRTL ? 'طلابي' : 'Students', path: '/teacher/students', gradient: 'from-emerald-500 to-emerald-600' },
-              { icon: BarChart3, label: isRTL ? 'التقارير' : 'Reports', path: '/teacher/reports', gradient: 'from-purple-500 to-purple-600' },
+              { icon: BarChart3, label: t('reports'), path: '/teacher/reports', gradient: 'from-purple-500 to-purple-600' },
               { icon: Award, label: isRTL ? 'إنجازاتي' : 'Achievements', path: '/teacher/achievements', gradient: 'from-amber-500 to-amber-600' },
             ].map(nav => (
               <button

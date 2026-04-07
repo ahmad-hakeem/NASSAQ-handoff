@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sidebar } from '../components/layout/Sidebar';
 import { PageHeader } from '../components/layout/PageHeader';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -315,11 +315,11 @@ const INITIAL_ACTIVE_SESSIONS = [];
 const INITIAL_VERSION_HISTORY = [];
 
 export const PlatformSettingsPage = () => {
+  const { t } = useTranslation();
   const { isRTL = true, isDark, toggleTheme, toggleLanguage } = useTheme();
   const { user, logout, token, refreshUser, api } = useAuth();
   const navigate = useNavigate();
   const { nassaqError, nassaqWarning } = useNassaqAlert();
-  const t = translations[isRTL ? 'ar' : 'en'];
   
   // States
   const [activeTab, setActiveTab] = useState('account');
@@ -654,7 +654,7 @@ export const PlatformSettingsPage = () => {
       setTimeout(() => setCopiedField(null), 2000);
       toast.success(isRTL ? 'تم النسخ' : 'Copied');
     } catch (err) {
-      nassaqError(isRTL ? 'فشل النسخ' : 'Copy failed');
+      nassaqError(t('copyFailed'));
     }
   };
   
@@ -681,7 +681,7 @@ export const PlatformSettingsPage = () => {
       await fetchSettings();
     } catch (error) {
       console.error('Error saving general settings:', error);
-      nassaqError(error.response?.data?.detail || (isRTL ? 'فشل في حفظ الإعدادات' : 'Save failed'));
+      nassaqError(error.response?.data?.detail || (t('saveFailed2')));
     } finally {
       setLoading(false);
     }
@@ -689,7 +689,7 @@ export const PlatformSettingsPage = () => {
   
   // Save brand settings (disabled as per requirements)
   const handleSaveBrandSettings = async () => {
-    toast.info(isRTL ? 'تم إلغاء قسم الهوية البصرية' : 'Brand identity section disabled');
+    toast.info(t('brandIdentitySectionDisabled'));
   };
   
   // Save contact settings using new API
@@ -713,7 +713,7 @@ export const PlatformSettingsPage = () => {
       await fetchSettings();
     } catch (error) {
       console.error('Error saving contact settings:', error);
-      nassaqError(error.response?.data?.detail || (isRTL ? 'فشل في حفظ الإعدادات' : 'Save failed'));
+      nassaqError(error.response?.data?.detail || (t('saveFailed2')));
     } finally {
       setLoading(false);
     }
@@ -736,7 +736,7 @@ export const PlatformSettingsPage = () => {
       await fetchSettings();
     } catch (error) {
       console.error('Error saving security settings:', error);
-      nassaqError(error.response?.data?.detail || (isRTL ? 'فشل في حفظ الإعدادات' : 'Save failed'));
+      nassaqError(error.response?.data?.detail || (t('saveFailed2')));
     } finally {
       setLoading(false);
     }
@@ -744,7 +744,7 @@ export const PlatformSettingsPage = () => {
   
   const handleSaveAccountSettings = async () => {
     if (!accountData.name?.trim()) {
-      nassaqError(isRTL ? 'الاسم مطلوب' : 'Name is required');
+      nassaqError(t('nameIsRequired'));
       return;
     }
     setLoading(true);
@@ -760,7 +760,7 @@ export const PlatformSettingsPage = () => {
       await fetchSettings();
     } catch (error) {
       console.error('Error saving account settings:', error);
-      nassaqError(error.response?.data?.detail || (isRTL ? 'فشل في حفظ الإعدادات' : 'Save failed'));
+      nassaqError(error.response?.data?.detail || (t('saveFailed2')));
     } finally {
       setLoading(false);
     }
@@ -772,11 +772,11 @@ export const PlatformSettingsPage = () => {
     if (!file) return;
     const maxSize = 5 * 1024 * 1024;
     if (file.size > maxSize) {
-      nassaqError(isRTL ? 'حجم الصورة يجب أن لا يتجاوز 5 ميجابايت' : 'Image must be under 5MB');
+      nassaqError(t('imageMustBeUnder5mb'));
       return;
     }
     if (!file.type.startsWith('image/')) {
-      nassaqError(isRTL ? 'يرجى اختيار ملف صورة' : 'Please select an image file');
+      nassaqError(t('pleaseSelectAnImageFile'));
       return;
     }
     setLoading(true);
@@ -788,7 +788,7 @@ export const PlatformSettingsPage = () => {
       });
       if (response.data?.profile_picture) {
         setAccountData(prev => ({ ...prev, profilePicture: response.data.profile_picture }));
-        toast.success(isRTL ? 'تم رفع الصورة بنجاح' : 'Picture uploaded successfully');
+        toast.success(t('pictureUploadedSuccessfully'));
         if (refreshUser) await refreshUser();
       }
     } catch (error) {
@@ -809,11 +809,11 @@ export const PlatformSettingsPage = () => {
       });
       if (response.data?.version_number) {
         setTermsData(prev => ({ ...prev, version: `${response.data.version_number}.0` }));
-        toast.success(isRTL ? 'تم حفظ إصدار جديد من الشروط' : 'New terms version saved');
+        toast.success(t('newTermsVersionSaved'));
       }
     } catch (error) {
       console.error('Error saving terms:', error);
-      nassaqError(isRTL ? 'فشل حفظ الشروط' : 'Failed to save terms');
+      nassaqError(t('failedToSaveTerms'));
     } finally {
       setLoading(false);
     }
@@ -828,11 +828,11 @@ export const PlatformSettingsPage = () => {
       });
       if (response.data?.version_number) {
         setPrivacyData(prev => ({ ...prev, version: `${response.data.version_number}.0` }));
-        toast.success(isRTL ? 'تم حفظ إصدار جديد من سياسة الخصوصية' : 'New privacy version saved');
+        toast.success(t('newPrivacyVersionSaved'));
       }
     } catch (error) {
       console.error('Error saving privacy:', error);
-      nassaqError(isRTL ? 'فشل حفظ سياسة الخصوصية' : 'Failed to save privacy');
+      nassaqError(t('failedToSavePrivacy'));
     } finally {
       setLoading(false);
     }
@@ -870,7 +870,7 @@ export const PlatformSettingsPage = () => {
   // Change password
   const handleChangePassword = async () => {
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      nassaqError(isRTL ? 'كلمات المرور غير متطابقة' : 'Passwords do not match');
+      nassaqError(t('passwordsDoNotMatch3'));
       return;
     }
     setLoading(true);
@@ -879,12 +879,12 @@ export const PlatformSettingsPage = () => {
         current_password: passwordForm.currentPassword,
         new_password: passwordForm.newPassword,
       });
-      toast.success(isRTL ? 'تم تغيير كلمة المرور بنجاح' : 'Password changed successfully');
+      toast.success(t('passwordChangedSuccessfully'));
       setShowPasswordDialog(false);
       setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
     } catch (error) {
       console.error('Error changing password:', error);
-      nassaqError(isRTL ? 'فشل تغيير كلمة المرور' : 'Failed to change password');
+      nassaqError(t('failedToChangePassword'));
     } finally {
       setLoading(false);
     }
@@ -894,9 +894,9 @@ export const PlatformSettingsPage = () => {
   const handleEndSession = async (sessionId) => {
     try {
       await api.delete(`/settings/sessions/${sessionId}`);
-      toast.success(isRTL ? 'تم إنهاء الجلسة' : 'Session ended');
+      toast.success(t('sessionEnded'));
     } catch (error) {
-      nassaqError(isRTL ? 'فشل إنهاء الجلسة' : 'Failed to end session');
+      nassaqError(t('failedToEndSession'));
     }
   };
   
@@ -904,15 +904,15 @@ export const PlatformSettingsPage = () => {
   const handleEndAllSessions = async () => {
     try {
       await api.post('/settings/sessions/end-all', {});
-      toast.success(isRTL ? 'تم إنهاء جميع الجلسات الأخرى' : 'All other sessions ended');
+      toast.success(t('allOtherSessionsEnded'));
     } catch (error) {
-      nassaqError(isRTL ? 'فشل إنهاء الجلسات' : 'Failed to end sessions');
+      nassaqError(t('failedToEndSessions'));
     }
   };
   
   // Logout
   const handleLogout = (type) => {
-    toast.success(isRTL ? 'تم تسجيل الخروج' : 'Logged out');
+    toast.success(t('loggedOut'));
     setShowLogoutDialog(false);
     if (logout) logout();
     navigate('/login');
@@ -942,11 +942,11 @@ export const PlatformSettingsPage = () => {
         lastUpdated: new Date().toISOString(),
       }));
       
-      toast.success(isRTL ? 'تم نشر النسخة الجديدة' : 'New version published');
+      toast.success(t('newVersionPublished'));
       setShowPublishDialog(false);
     } catch (error) {
       console.error('Error publishing version:', error);
-      nassaqError(isRTL ? 'فشل نشر النسخة' : 'Failed to publish version');
+      nassaqError(t('failedToPublishVersion'));
     } finally {
       setLoading(false);
     }
@@ -960,7 +960,7 @@ export const PlatformSettingsPage = () => {
       setShowVersionHistoryDialog(true);
     } catch (error) {
       console.error('Error loading version history:', error);
-      nassaqError(isRTL ? 'فشل تحميل سجل الإصدارات' : 'Failed to load version history');
+      nassaqError(t('failedToLoadVersionHistory'));
     }
   };
   
@@ -994,7 +994,7 @@ export const PlatformSettingsPage = () => {
                   ) : (
                     <Save className="h-4 w-4 me-2" />
                   )}
-                  {loading ? t.saving : hasUnsavedChanges ? (isRTL ? 'حفظ التغييرات ●' : '● Save Changes') : t.saveChanges}
+                  {loading ? t.saving : hasUnsavedChanges ? (t('saveChanges3')) : t.saveChanges}
                 </Button>
               </div>
             </div>
@@ -1017,7 +1017,7 @@ export const PlatformSettingsPage = () => {
                           key={tab.id}
                           onClick={() => {
                             if (hasUnsavedChanges) {
-                              nassaqWarning(isRTL ? 'لديك تغييرات غير محفوظة. هل تريد المتابعة؟' : 'You have unsaved changes. Continue?', {
+                              nassaqWarning(t('youHaveUnsavedChangesContinue'), {
                                 onConfirm: () => setActiveTab(tab.id),
                               });
                             } else {
@@ -1076,7 +1076,7 @@ export const PlatformSettingsPage = () => {
                         className={`rounded-xl whitespace-nowrap ${activeTab === tab.id ? 'bg-brand-navy' : ''}`}
                         onClick={() => {
                           if (hasUnsavedChanges) {
-                            nassaqWarning(isRTL ? 'لديك تغييرات غير محفوظة. هل تريد المتابعة؟' : 'You have unsaved changes. Continue?', {
+                            nassaqWarning(t('youHaveUnsavedChangesContinue'), {
                               onConfirm: () => setActiveTab(tab.id),
                             });
                           } else {
@@ -1102,7 +1102,7 @@ export const PlatformSettingsPage = () => {
                         {t.accountSettings}
                       </CardTitle>
                       <CardDescription>
-                        {isRTL ? 'إدارة معلومات حسابك الشخصي' : 'Manage your personal account information'}
+                        {t('manageYourPersonalAccountInformation')}
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6">
@@ -1150,10 +1150,10 @@ export const PlatformSettingsPage = () => {
                                   try {
                                     await api.delete('/settings/account/profile-picture');
                                     setAccountData(prev => ({ ...prev, profilePicture: null }));
-                                    toast.success(isRTL ? 'تم حذف الصورة' : 'Picture removed');
+                                    toast.success(t('pictureRemoved'));
                                     if (refreshUser) await refreshUser();
                                   } catch (err) {
-                                    nassaqError(isRTL ? 'فشل حذف الصورة' : 'Failed to remove picture');
+                                    nassaqError(t('failedToRemovePicture'));
                                   } finally {
                                     setLoading(false);
                                   }
@@ -1165,7 +1165,7 @@ export const PlatformSettingsPage = () => {
                             )}
                           </div>
                           <p className="text-xs text-muted-foreground mt-1">
-                            {isRTL ? 'PNG, JPG أو WebP — بحد أقصى 5 ميجابايت' : 'PNG, JPG or WebP — max 5MB'}
+                            {t('pngJpgOrWebpMax5mb')}
                           </p>
                         </div>
                       </div>
@@ -1230,13 +1230,13 @@ export const PlatformSettingsPage = () => {
                           <div>
                             <h4 className="font-medium">{t.changePassword}</h4>
                             <p className="text-sm text-muted-foreground">
-                              {isRTL ? 'تغيير كلمة مرور حسابك' : 'Change your account password'}
+                              {t('changeYourAccountPassword')}
                             </p>
                           </div>
                         </div>
                         <Button variant="outline" className="rounded-xl" onClick={() => setShowPasswordDialog(true)}>
                           <Edit className="h-4 w-4 me-2" />
-                          {isRTL ? 'تغيير' : 'Change'}
+                          {t('change')}
                         </Button>
                       </div>
                     </CardContent>
@@ -1316,7 +1316,7 @@ export const PlatformSettingsPage = () => {
                             <SelectContent>
                               <SelectItem value="hijri">{t.hijri}</SelectItem>
                               <SelectItem value="gregorian">{t.gregorian}</SelectItem>
-                              <SelectItem value="both">{isRTL ? 'هجري وميلادي' : 'Both'}</SelectItem>
+                              <SelectItem value="both">{t('both')}</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -1330,9 +1330,9 @@ export const PlatformSettingsPage = () => {
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="Asia/Riyadh">{isRTL ? 'الرياض' : 'Riyadh'} (GMT+3)</SelectItem>
-                              <SelectItem value="Asia/Dubai">{isRTL ? 'دبي' : 'Dubai'} (GMT+4)</SelectItem>
-                              <SelectItem value="Africa/Cairo">{isRTL ? 'القاهرة' : 'Cairo'} (GMT+2)</SelectItem>
+                              <SelectItem value="Asia/Riyadh">{t('riyadh')} (GMT+3)</SelectItem>
+                              <SelectItem value="Asia/Dubai">{t('dubai')} (GMT+4)</SelectItem>
+                              <SelectItem value="Africa/Cairo">{t('cairo')} (GMT+2)</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -1487,7 +1487,7 @@ export const PlatformSettingsPage = () => {
                       
                       {/* Colors */}
                       <div>
-                        <h4 className="font-medium mb-4">{isRTL ? 'الألوان' : 'Colors'}</h4>
+                        <h4 className="font-medium mb-4">{t('colors')}</h4>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                           <div className="space-y-2">
                             <Label>{t.primaryColor}</Label>
@@ -1520,7 +1520,7 @@ export const PlatformSettingsPage = () => {
                             </div>
                           </div>
                           <div className="space-y-2">
-                            <Label>{isRTL ? 'لون التمييز' : 'Accent Color'}</Label>
+                            <Label>{t('accentColor')}</Label>
                             <div className="flex items-center gap-3">
                               <div 
                                 className="w-12 h-12 rounded-xl shadow-inner cursor-pointer"
@@ -1551,7 +1551,7 @@ export const PlatformSettingsPage = () => {
                         {t.termsConditions}
                       </CardTitle>
                       <CardDescription>
-                        {isRTL ? 'إدارة الشروط والأحكام الخاصة بالمنصة' : 'Manage platform terms and conditions'}
+                        {t('managePlatformTermsAndConditions')}
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6">
@@ -1603,7 +1603,7 @@ export const PlatformSettingsPage = () => {
                         {t.privacyPolicy}
                       </CardTitle>
                       <CardDescription>
-                        {isRTL ? 'إدارة سياسة الخصوصية الخاصة بالمنصة' : 'Manage platform privacy policy'}
+                        {t('managePlatformPrivacyPolicy')}
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6">
@@ -1841,7 +1841,7 @@ export const PlatformSettingsPage = () => {
                           {t.activeSessions}
                         </CardTitle>
                         <CardDescription>
-                          {isRTL ? 'جلساتك النشطة على الأجهزة المختلفة' : 'Your active sessions on different devices'}
+                          {t('yourActiveSessionsOnDifferentDevices')}
                         </CardDescription>
                       </div>
                       <Button variant="outline" className="rounded-xl" onClick={handleEndAllSessions}>
@@ -1853,7 +1853,7 @@ export const PlatformSettingsPage = () => {
                         {activeSessions.length === 0 ? (
                           <div className="text-center py-8 text-muted-foreground">
                             <Monitor className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                            <p>{isRTL ? 'لا توجد جلسات نشطة' : 'No active sessions'}</p>
+                            <p>{t('noActiveSessions')}</p>
                           </div>
                         ) : (
                           activeSessions.map(session => (
@@ -1874,7 +1874,7 @@ export const PlatformSettingsPage = () => {
                                   <p className="font-medium">{session.device}</p>
                                   {session.current && (
                                     <Badge className="bg-green-500">
-                                      {isRTL ? 'الجلسة الحالية' : 'Current'}
+                                      {t('current4')}
                                     </Badge>
                                   )}
                                 </div>
@@ -1923,7 +1923,7 @@ export const PlatformSettingsPage = () => {
                           <div>
                             <h4 className="font-medium">{t.twoFactorAuth}</h4>
                             <p className="text-sm text-muted-foreground">
-                              {isRTL ? 'طبقة حماية إضافية لحسابك' : 'Extra layer of security for your account'}
+                              {t('extraLayerOfSecurityForYourAccount')}
                             </p>
                           </div>
                         </div>
@@ -1979,25 +1979,25 @@ export const PlatformSettingsPage = () => {
                         <h4 className="font-medium mb-4">{t.passwordPolicy}</h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl">
-                            <span>{isRTL ? 'الحد الأدنى للطول' : 'Minimum Length'}</span>
-                            <Badge variant="outline">{securitySettings.passwordMinLength} {isRTL ? 'أحرف' : 'chars'}</Badge>
+                            <span>{t('minimumLength')}</span>
+                            <Badge variant="outline">{securitySettings.passwordMinLength} {t('chars')}</Badge>
                           </div>
                           <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl">
-                            <span>{isRTL ? 'أحرف كبيرة' : 'Uppercase'}</span>
+                            <span>{t('uppercase')}</span>
                             <Switch
                               checked={securitySettings.passwordRequireUppercase}
                               onCheckedChange={(v) => setSecuritySettings({ ...securitySettings, passwordRequireUppercase: v })}
                             />
                           </div>
                           <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl">
-                            <span>{isRTL ? 'أرقام' : 'Numbers'}</span>
+                            <span>{t('numbers')}</span>
                             <Switch
                               checked={securitySettings.passwordRequireNumbers}
                               onCheckedChange={(v) => setSecuritySettings({ ...securitySettings, passwordRequireNumbers: v })}
                             />
                           </div>
                           <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl">
-                            <span>{isRTL ? 'رموز خاصة' : 'Special Chars'}</span>
+                            <span>{t('specialChars')}</span>
                             <Switch
                               checked={securitySettings.passwordRequireSpecial}
                               onCheckedChange={(v) => setSecuritySettings({ ...securitySettings, passwordRequireSpecial: v })}
@@ -2080,7 +2080,7 @@ export const PlatformSettingsPage = () => {
                 {t.confirmLogout}
               </AlertDialogTitle>
               <AlertDialogDescription>
-                {isRTL ? 'اختر طريقة تسجيل الخروج' : 'Choose logout method'}
+                {t('chooseLogoutMethod')}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <div className="py-4 space-y-3">
@@ -2124,7 +2124,7 @@ export const PlatformSettingsPage = () => {
                 {t.switchUser}
               </DialogTitle>
               <DialogDescription>
-                {isRTL ? 'الدخول مؤقتاً إلى حساب مستخدم آخر' : 'Temporarily access another user account'}
+                {t('temporarilyAccessAnotherUserAccount')}
               </DialogDescription>
             </DialogHeader>
             <div className="py-4">
@@ -2132,12 +2132,12 @@ export const PlatformSettingsPage = () => {
                 <Label>{t.selectUser}</Label>
                 <Select>
                   <SelectTrigger className="rounded-xl">
-                    <SelectValue placeholder={isRTL ? 'اختر المستخدم...' : 'Select user...'} />
+                    <SelectValue placeholder={t('selectUser')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="user1">{isRTL ? 'أحمد محمد (مدير مدرسة)' : 'Ahmed Mohammed (School Admin)'}</SelectItem>
-                    <SelectItem value="user2">{isRTL ? 'سارة أحمد (معلمة)' : 'Sara Ahmed (Teacher)'}</SelectItem>
-                    <SelectItem value="user3">{isRTL ? 'محمد علي (ولي أمر)' : 'Mohammed Ali (Parent)'}</SelectItem>
+                    <SelectItem value="user1">{t('ahmedMohammedSchoolAdmin')}</SelectItem>
+                    <SelectItem value="user2">{t('saraAhmedTeacher')}</SelectItem>
+                    <SelectItem value="user3">{t('mohammedAliParent')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -2147,12 +2147,10 @@ export const PlatformSettingsPage = () => {
                   <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5" />
                   <div>
                     <p className="text-sm text-yellow-800 font-medium">
-                      {isRTL ? 'تنبيه مهم' : 'Important Notice'}
+                      {t('importantNotice')}
                     </p>
                     <p className="text-sm text-yellow-700 mt-1">
-                      {isRTL 
-                        ? 'سيتم تسجيل هذا الإجراء في سجل النظام. استخدم هذه الميزة بحذر.'
-                        : 'This action will be logged. Use this feature carefully.'}
+                      {t('thisActionWillBeLoggedUseThisFeatureCarefully')}
                     </p>
                   </div>
                 </div>
@@ -2174,22 +2172,20 @@ export const PlatformSettingsPage = () => {
             <DialogHeader>
               <DialogTitle>{t.publishVersion}</DialogTitle>
               <DialogDescription>
-                {isRTL ? 'نشر نسخة جديدة من الشروط أو السياسة' : 'Publish a new version of terms or policy'}
+                {t('publishANewVersionOfTermsOrPolicy')}
               </DialogDescription>
             </DialogHeader>
             <div className="py-4 space-y-4">
               <div className="flex items-center gap-4 p-4 bg-muted/30 rounded-xl">
                 <Info className="h-5 w-5 text-blue-600" />
                 <p className="text-sm">
-                  {isRTL 
-                    ? 'سيتم أرشفة النسخة الحالية وتفعيل النسخة الجديدة'
-                    : 'Current version will be archived and new version will be activated'}
+                  {t('currentVersionWillBeArchivedAndNewVersionWillBeAct')}
                 </p>
               </div>
               <div className="space-y-2">
-                <Label>{isRTL ? 'ملاحظات التغيير' : 'Change Notes'}</Label>
+                <Label>{t('changeNotes')}</Label>
                 <Textarea 
-                  placeholder={isRTL ? 'وصف التغييرات في هذه النسخة...' : 'Describe changes in this version...'}
+                  placeholder={t('describeChangesInThisVersion')}
                   rows={3}
                   className="rounded-xl"
                 />
@@ -2219,7 +2215,7 @@ export const PlatformSettingsPage = () => {
                 {versionHistory.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
                     <History className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                    <p>{isRTL ? 'لا يوجد سجل إصدارات' : 'No version history'}</p>
+                    <p>{t('noVersionHistory')}</p>
                   </div>
                 ) : (
                   versionHistory.map((version, idx) => (

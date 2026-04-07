@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { Sidebar } from '../components/layout/Sidebar';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -125,6 +125,7 @@ function ExamScheduleTab({ periods, setPeriods, isRTL, apiClasses, apiTeachers }
   const toggleExpand = (id) => setExpanded(p => ({ ...p, [id]: !p[id] }));
 
   const addPeriod = () => {
+  const { t } = useTranslation();
     const idx = periods.length;
     const title = idx < 5 ? `الفترة ${ORDINALS[idx]}` : `الفترة ${idx + 1}`;
     setPeriods([...periods, { id: uid(), title, subjects: [] }]);
@@ -133,7 +134,7 @@ function ExamScheduleTab({ periods, setPeriods, isRTL, apiClasses, apiTeachers }
 
   const deletePeriod = (pid) => {
     setPeriods(periods.filter(p => p.id !== pid));
-    toast.success(isRTL ? 'تم حذف الفترة' : 'Period deleted');
+    toast.success(t('periodDeleted'));
   };
 
   const startEditPeriod = (e, period) => {
@@ -145,7 +146,7 @@ function ExamScheduleTab({ periods, setPeriods, isRTL, apiClasses, apiTeachers }
   const savePeriodTitle = () => {
     if (editingPeriodTitle.trim()) {
       setPeriods(periods.map(p => p.id === editingPeriodId ? { ...p, title: editingPeriodTitle.trim() } : p));
-      toast.success(isRTL ? 'تم تحديث اسم الفترة' : 'Period name updated');
+      toast.success(t('periodNameUpdated'));
     }
     setEditingPeriodId(null);
   };
@@ -180,7 +181,7 @@ function ExamScheduleTab({ periods, setPeriods, isRTL, apiClasses, apiTeachers }
 
   const saveSubject = () => {
     if (!subForm.name.trim()) {
-      nassaqError(isRTL ? 'يرجى إدخال اسم المادة' : 'Please enter subject name');
+      nassaqError(t('pleaseEnterSubjectName'));
       return;
     }
     if (editSubjectId) {
@@ -188,13 +189,13 @@ function ExamScheduleTab({ periods, setPeriods, isRTL, apiClasses, apiTeachers }
         if (p.id !== targetPeriodId) return p;
         return { ...p, subjects: p.subjects.map(s => s.id === editSubjectId ? { ...s, ...subForm } : s) };
       }));
-      toast.success(isRTL ? 'تم تحديث المادة' : 'Subject updated');
+      toast.success(t('subjectUpdated'));
     } else {
       setPeriods(periods.map(p => {
         if (p.id !== targetPeriodId) return p;
         return { ...p, subjects: [...p.subjects, { id: uid(), ...subForm }] };
       }));
-      toast.success(isRTL ? 'تمت إضافة المادة' : 'Subject added');
+      toast.success(t('subjectAdded'));
     }
     setAddSubjectOpen(false);
   };
@@ -204,7 +205,7 @@ function ExamScheduleTab({ periods, setPeriods, isRTL, apiClasses, apiTeachers }
       if (p.id !== pid) return p;
       return { ...p, subjects: p.subjects.filter(s => s.id !== sid) };
     }));
-    toast.success(isRTL ? 'تم حذف المادة' : 'Subject deleted');
+    toast.success(t('subjectDeleted'));
   };
 
   return (
@@ -212,10 +213,10 @@ function ExamScheduleTab({ periods, setPeriods, isRTL, apiClasses, apiTeachers }
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2">
           <Calendar className="h-5 w-5 text-indigo-500" />
-          {isRTL ? 'جدول الاختبارات' : 'Exam Schedule'}
+          {t('examSchedule')}
         </h3>
         <Button onClick={addPeriod} className="bg-indigo-600 hover:bg-indigo-700" data-testid="button-add-period">
-          <Plus className="h-4 w-4 me-1" />{isRTL ? 'إضافة فترة' : 'Add Period'}
+          <Plus className="h-4 w-4 me-1" />{t('addPeriod')}
         </Button>
       </div>
 
@@ -241,12 +242,12 @@ function ExamScheduleTab({ periods, setPeriods, isRTL, apiClasses, apiTeachers }
                 <span className="font-bold">{period.title}</span>
               )}
               <Badge variant="secondary" className="bg-white/20 text-white text-[10px]">
-                {period.subjects.length} {isRTL ? 'مادة' : 'subjects'}
+                {period.subjects.length} {t('subjects4')}
               </Badge>
             </div>
             <div className="flex items-center gap-0.5">
               <Button variant="ghost" size="icon" className="h-7 w-7 text-white/80 hover:text-white hover:bg-white/10"
-                onClick={(e) => startEditPeriod(e, period)} title={isRTL ? 'تعديل' : 'Edit'}>
+                onClick={(e) => startEditPeriod(e, period)} title={t('edit')}>
                 <Pencil className="h-4 w-4" />
               </Button>
               <Button variant="ghost" size="icon" className="h-7 w-7 text-white/80 hover:text-white hover:bg-white/10"
@@ -260,21 +261,21 @@ function ExamScheduleTab({ periods, setPeriods, isRTL, apiClasses, apiTeachers }
             <CardContent className="p-4">
               <div className="flex justify-end mb-3">
                 <Button size="sm" variant="outline" onClick={() => openAddSubject(period.id)} data-testid={`button-add-subject-${period.id}`}>
-                  <Plus className="h-3.5 w-3.5 me-1" />{isRTL ? 'إضافة مادة' : 'Add Subject'}
+                  <Plus className="h-3.5 w-3.5 me-1" />{t('addSubject')}
                 </Button>
               </div>
               {period.subjects.length === 0 ? (
-                <p className="text-center text-sm text-muted-foreground py-6">{isRTL ? 'لا توجد مواد مضافة بعد' : 'No subjects added yet'}</p>
+                <p className="text-center text-sm text-muted-foreground py-6">{t('noSubjectsAddedYet')}</p>
               ) : (
                 <div className="overflow-x-auto rounded-lg border">
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-gray-50 dark:bg-gray-800">
-                        <TableHead className="font-bold">{isRTL ? 'المادة' : 'Subject'}</TableHead>
-                        <TableHead className="font-bold">{isRTL ? 'التاريخ' : 'Date'}</TableHead>
-                        <TableHead className="font-bold">{isRTL ? 'الوقت' : 'Time'}</TableHead>
-                        <TableHead className="font-bold">{isRTL ? 'الفصول' : 'Classes'}</TableHead>
-                        <TableHead className="font-bold">{isRTL ? 'الملاحظون' : 'Observers'}</TableHead>
+                        <TableHead className="font-bold">{t('subject')}</TableHead>
+                        <TableHead className="font-bold">{t('date')}</TableHead>
+                        <TableHead className="font-bold">{t('time')}</TableHead>
+                        <TableHead className="font-bold">{t('classes2')}</TableHead>
+                        <TableHead className="font-bold">{t('observers')}</TableHead>
                         <TableHead className="w-10"></TableHead>
                       </TableRow>
                     </TableHeader>
@@ -320,28 +321,28 @@ function ExamScheduleTab({ periods, setPeriods, isRTL, apiClasses, apiTeachers }
       <Dialog open={addSubjectOpen} onOpenChange={setAddSubjectOpen}>
         <DialogContent className="sm:max-w-[600px] max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editSubjectId ? (isRTL ? 'تعديل مادة اختبار' : 'Edit Exam Subject') : (isRTL ? 'إضافة مادة اختبار' : 'Add Exam Subject')}</DialogTitle>
-            <DialogDescription>{isRTL ? 'أدخل تفاصيل المادة والتاريخ والفصول والملاحظين' : 'Enter subject details, date, classes and observers'}</DialogDescription>
+            <DialogTitle>{editSubjectId ? (t('editExamSubject')) : (t('addExamSubject'))}</DialogTitle>
+            <DialogDescription>{t('enterSubjectDetailsDateClassesAndObservers')}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label>{isRTL ? 'اسم المادة' : 'Subject Name'}</Label>
+              <Label>{t('subjectName')}</Label>
               <Input value={subForm.name} onChange={e => setSubForm(f => ({ ...f, name: e.target.value }))}
-                placeholder={isRTL ? 'مثال: الرياضيات' : 'e.g. Mathematics'} data-testid="input-subject-name" />
+                placeholder={t('egMathematics2')} data-testid="input-subject-name" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>{isRTL ? 'التاريخ' : 'Date'}</Label>
+                <Label>{t('date')}</Label>
                 <Input type="date" value={subForm.date} onChange={e => setSubForm(f => ({ ...f, date: e.target.value }))} data-testid="input-subject-date" />
               </div>
               <div>
-                <Label>{isRTL ? 'الوقت' : 'Time'}</Label>
+                <Label>{t('time')}</Label>
                 <Input value={subForm.time} onChange={e => setSubForm(f => ({ ...f, time: e.target.value }))}
                   placeholder="08:00 - 10:00" data-testid="input-subject-time" />
               </div>
             </div>
             <div>
-              <Label className="mb-2 block font-bold">{isRTL ? 'الفصول المشاركة' : 'Participating Classes'}</Label>
+              <Label className="mb-2 block font-bold">{t('participatingClasses')}</Label>
               <div className="grid grid-cols-3 gap-2">
                 {classOptions.map(cls => (
                   <label key={cls} className="flex items-center gap-2 p-2 rounded-lg border hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer text-sm">
@@ -352,7 +353,7 @@ function ExamScheduleTab({ periods, setPeriods, isRTL, apiClasses, apiTeachers }
               </div>
             </div>
             <div>
-              <Label className="mb-2 block font-bold">{isRTL ? 'الملاحظون (المراقبون)' : 'Observers'}</Label>
+              <Label className="mb-2 block font-bold">{t('observers2')}</Label>
               <div className="grid grid-cols-2 gap-2">
                 {teacherOptions.map(t => (
                   <label key={t} className="flex items-center gap-2 p-2 rounded-lg border hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer text-sm">
@@ -364,9 +365,9 @@ function ExamScheduleTab({ periods, setPeriods, isRTL, apiClasses, apiTeachers }
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAddSubjectOpen(false)}>{isRTL ? 'إلغاء' : 'Cancel'}</Button>
+            <Button variant="outline" onClick={() => setAddSubjectOpen(false)}>{t('cancel')}</Button>
             <Button onClick={saveSubject} className="bg-indigo-600 hover:bg-indigo-700" data-testid="button-save-subject">
-              {editSubjectId ? (isRTL ? 'حفظ التعديلات' : 'Save Changes') : (isRTL ? 'إضافة' : 'Add')}
+              {editSubjectId ? (t('saveChanges')) : (t('add'))}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -429,7 +430,7 @@ function CommitteesTab({ committees, setCommittees, isRTL, apiClasses, apiTeache
         cancelledSeats: committee.cancelledSeats,
       });
     } catch (e) {
-      nassaqError(e.response?.data?.detail || (isRTL ? 'فشل الحفظ' : 'Save failed'));
+      nassaqError(e.response?.data?.detail || (t('saveFailed')));
     }
   };
 
@@ -468,7 +469,7 @@ function CommitteesTab({ committees, setCommittees, isRTL, apiClasses, apiTeache
         toast.success(isRTL ? `تمت إضافة ${name}` : `Added ${name}`);
       } else {
         if (comForm.classes.length === 0) {
-          nassaqError(isRTL ? 'اختر فصلاً واحداً على الأقل' : 'Select at least one class');
+          nassaqError(t('selectAtLeastOneClass'));
           setSaving(false);
           return;
         }
@@ -494,7 +495,7 @@ function CommitteesTab({ committees, setCommittees, isRTL, apiClasses, apiTeache
       }
       setAddOpen(false);
     } catch (e) {
-      nassaqError(e.response?.data?.detail || (isRTL ? 'فشل إنشاء اللجنة' : 'Failed to create committee'));
+      nassaqError(e.response?.data?.detail || (t('failedToCreateCommittee')));
     } finally {
       setSaving(false);
     }
@@ -505,9 +506,9 @@ function CommitteesTab({ committees, setCommittees, isRTL, apiClasses, apiTeache
       await api.delete(`/exam-committees/${cid}`);
       setCommittees(prev => prev.filter(c => c.id !== cid));
       if (selectedId === cid) setSelectedId(committees.find(c => c.id !== cid)?.id || null);
-      toast.success(isRTL ? 'تم حذف اللجنة' : 'Committee deleted');
+      toast.success(t('committeeDeleted'));
     } catch (e) {
-      nassaqError(e.response?.data?.detail || (isRTL ? 'فشل الحذف' : 'Delete failed'));
+      nassaqError(e.response?.data?.detail || (t('deleteFailed')));
     }
   };
 
@@ -517,7 +518,7 @@ function CommitteesTab({ committees, setCommittees, isRTL, apiClasses, apiTeache
 
   const doCopy = async () => {
     if (!copySource || copyClasses.length === 0) {
-      nassaqError(isRTL ? 'اختر فصلاً واحداً على الأقل' : 'Select at least one class');
+      nassaqError(t('selectAtLeastOneClass'));
       return;
     }
     const capacity = copySource.rows * copySource.cols;
@@ -534,9 +535,9 @@ function CommitteesTab({ committees, setCommittees, isRTL, apiClasses, apiTeache
         setSelectedId(saved.id);
       }
       setCopyOpen(false);
-      toast.success(isRTL ? 'تم نسخ اللجنة' : 'Committee copied');
+      toast.success(t('committeeCopied'));
     } catch (e) {
-      nassaqError(e.response?.data?.detail || (isRTL ? 'فشل النسخ' : 'Copy failed'));
+      nassaqError(e.response?.data?.detail || (t('copyFailed')));
     }
   };
 
@@ -549,7 +550,7 @@ function CommitteesTab({ committees, setCommittees, isRTL, apiClasses, apiTeache
     const updatedCom = updated.find(c => c.id === selected.id);
     if (updatedCom) await saveCommitteeToServer(updatedCom);
     setImportOpen(false);
-    toast.success(isRTL ? 'تم استيراد بيانات الطلاب' : 'Students imported');
+    toast.success(t('studentsImported'));
   };
 
   const computeStats = (com) => {
@@ -566,7 +567,7 @@ function CommitteesTab({ committees, setCommittees, isRTL, apiClasses, apiTeache
   };
 
   const renderGrid = () => {
-    if (!selected) return <div className="flex items-center justify-center h-64 text-muted-foreground">{isRTL ? 'اختر لجنة لعرض مخطط الجلوس' : 'Select a committee to view seating layout'}</div>;
+    if (!selected) return <div className="flex items-center justify-center h-64 text-muted-foreground">{t('selectACommitteeToViewSeatingLayout')}</div>;
     const activeSeats = getActiveSeats(selected);
     const seatMap = {};
     activeSeats.forEach((seat, idx) => {
@@ -581,15 +582,15 @@ function CommitteesTab({ committees, setCommittees, isRTL, apiClasses, apiTeache
           <h4 className="font-bold text-sm">{selected.name} — {selected.location}</h4>
           <div className="flex gap-2">
             <Button size="sm" variant="outline" onClick={() => setImportOpen(true)} data-testid="button-import">
-              <Upload className="h-3.5 w-3.5 me-1" />{isRTL ? 'استيراد' : 'Import'}
+              <Upload className="h-3.5 w-3.5 me-1" />{t('import')}
             </Button>
             <Button size="sm" variant="outline" onClick={() => openReport(selected)} data-testid="button-report">
-              <FileText className="h-3.5 w-3.5 me-1" />{isRTL ? 'تقرير' : 'Report'}
+              <FileText className="h-3.5 w-3.5 me-1" />{t('report')}
             </Button>
           </div>
         </div>
         <div className="bg-gray-800 text-white text-center py-1.5 rounded-t-lg text-sm font-bold">
-          {isRTL ? 'السبورة' : 'Whiteboard'}
+          {t('whiteboard')}
         </div>
         <div className="grid gap-1.5 p-3 bg-gray-50 dark:bg-gray-900 rounded-b-lg border" style={{ gridTemplateColumns: `repeat(${selected.cols}, 1fr)` }}>
           {Array.from({ length: selected.rows }).map((_, row) =>
@@ -616,18 +617,18 @@ function CommitteesTab({ committees, setCommittees, isRTL, apiClasses, apiTeache
                       <Badge className="mt-1 text-[9px] bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400">{student.seatNumber}</Badge>
                     </>
                   ) : (
-                    <span className="text-muted-foreground">{isRTL ? 'فارغ' : 'Empty'}</span>
+                    <span className="text-muted-foreground">{t('empty')}</span>
                   )}
                 </div>
               );
             })
           )}
         </div>
-        <p className="text-[11px] text-muted-foreground text-center">{isRTL ? 'اضغط على أي مقعد لإلغائه أو إعادة تفعيله' : 'Click any seat to cancel or restore it'}</p>
+        <p className="text-[11px] text-muted-foreground text-center">{t('clickAnySeatToCancelOrRestoreIt')}</p>
         <div className="flex justify-center gap-4 text-[11px]">
-          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded border bg-white dark:bg-gray-800"></span> {isRTL ? 'مشغول' : 'Occupied'}</span>
-          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded border-2 border-dashed bg-gray-100"></span> {isRTL ? 'فارغ' : 'Empty'}</span>
-          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-200"></span> {isRTL ? 'ملغى' : 'Cancelled'}</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded border bg-white dark:bg-gray-800"></span> {t('occupied')}</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded border-2 border-dashed bg-gray-100"></span> {t('empty')}</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-200"></span> {t('cancelled')}</span>
         </div>
       </div>
     );
@@ -638,11 +639,11 @@ function CommitteesTab({ committees, setCommittees, isRTL, apiClasses, apiTeache
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2">
           <Users className="h-5 w-5 text-indigo-500" />
-          {isRTL ? 'اللجان' : 'Committees'}
+          {t('committees')}
         </h3>
         <Button onClick={() => { setComForm({ name: '', location: '', rows: 5, cols: 6, classes: [] }); setAddMode('single'); setAddOpen(true); }}
           className="bg-indigo-600 hover:bg-indigo-700" data-testid="button-add-committee">
-          <Plus className="h-4 w-4 me-1" />{isRTL ? 'إضافة لجنة' : 'Add Committee'}
+          <Plus className="h-4 w-4 me-1" />{t('addCommittee')}
         </Button>
       </div>
 
@@ -670,10 +671,10 @@ function CommitteesTab({ committees, setCommittees, isRTL, apiClasses, apiTeache
                     </div>
                   </div>
                   <div className="flex gap-0.5 shrink-0">
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); openCopy(com); }} title={isRTL ? 'نسخ' : 'Copy'}>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); openCopy(com); }} title={t('copy')}>
                       <Copy className="h-3.5 w-3.5" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); openStats(com); }} title={isRTL ? 'إحصائيات' : 'Statistics'}>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); openStats(com); }} title={t('statistics')}>
                       <BarChart3 className="h-3.5 w-3.5" />
                     </Button>
                     <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-700" onClick={(e) => { e.stopPropagation(); deleteCommittee(com.id); }}>
@@ -685,7 +686,7 @@ function CommitteesTab({ committees, setCommittees, isRTL, apiClasses, apiTeache
             </Card>
           ))}
           {committees.length === 0 && (
-            <p className="text-center text-sm text-muted-foreground py-8">{isRTL ? 'لا توجد لجان بعد' : 'No committees yet'}</p>
+            <p className="text-center text-sm text-muted-foreground py-8">{t('noCommitteesYet')}</p>
           )}
         </div>
         <div className="lg:col-span-8">
@@ -698,50 +699,50 @@ function CommitteesTab({ committees, setCommittees, isRTL, apiClasses, apiTeache
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="sm:max-w-[550px] max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{isRTL ? 'إضافة لجنة' : 'Add Committee'}</DialogTitle>
-            <DialogDescription>{isRTL ? 'أنشئ لجنة واحدة أو عدة لجان من نمط' : 'Create a single committee or multiple from a template'}</DialogDescription>
+            <DialogTitle>{t('addCommittee')}</DialogTitle>
+            <DialogDescription>{t('createASingleCommitteeOrMultipleFromATemplate')}</DialogDescription>
           </DialogHeader>
           <div className="flex gap-2 mb-4">
             <Button variant={addMode === 'single' ? 'default' : 'outline'} size="sm" onClick={() => setAddMode('single')} className={addMode === 'single' ? 'bg-indigo-600' : ''}>
-              {isRTL ? 'لجنة واحدة' : 'Single'}
+              {t('single')}
             </Button>
             <Button variant={addMode === 'template' ? 'default' : 'outline'} size="sm" onClick={() => setAddMode('template')} className={addMode === 'template' ? 'bg-indigo-600' : ''}>
-              {isRTL ? 'إنشاء من نمط' : 'From Template'}
+              {t('fromTemplate')}
             </Button>
           </div>
           <div className="space-y-4">
             {addMode === 'single' && (
               <>
                 <div>
-                  <Label>{isRTL ? 'اسم اللجنة' : 'Committee Name'}</Label>
+                  <Label>{t('committeeName')}</Label>
                   <Input value={comForm.name} onChange={e => setComForm(f => ({ ...f, name: e.target.value }))} placeholder={`لجنة ${committees.length + 1}`} data-testid="input-committee-name" />
                 </div>
                 <div>
-                  <Label>{isRTL ? 'الموقع' : 'Location'}</Label>
-                  <Input value={comForm.location} onChange={e => setComForm(f => ({ ...f, location: e.target.value }))} placeholder={isRTL ? 'مثال: قاعة B' : 'e.g. Hall B'} data-testid="input-committee-location" />
+                  <Label>{t('location')}</Label>
+                  <Input value={comForm.location} onChange={e => setComForm(f => ({ ...f, location: e.target.value }))} placeholder={t('egHallB')} data-testid="input-committee-location" />
                 </div>
               </>
             )}
             {addMode === 'template' && (
               <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 text-sm text-blue-700 dark:text-blue-400">
-                {isRTL ? 'سيتم تسمية اللجان تلقائياً (لجنة 2، لجنة 3...) وتعيين مواقعها (قاعة B، قاعة C...)' : 'Committees will be auto-named and located'}
+                {t('committeesWillBeAutonamedAndLocated')}
               </div>
             )}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>{isRTL ? 'عدد الصفوف' : 'Rows'}</Label>
+                <Label>{t('rows')}</Label>
                 <Input type="number" min={1} max={20} value={comForm.rows} onChange={e => setComForm(f => ({ ...f, rows: Math.max(1, parseInt(e.target.value) || 1) }))} data-testid="input-rows" />
               </div>
               <div>
-                <Label>{isRTL ? 'عدد الأعمدة' : 'Columns'}</Label>
+                <Label>{t('columns')}</Label>
                 <Input type="number" min={1} max={20} value={comForm.cols} onChange={e => setComForm(f => ({ ...f, cols: Math.max(1, parseInt(e.target.value) || 1) }))} data-testid="input-cols" />
               </div>
             </div>
             <div className="text-center p-2 bg-indigo-50 dark:bg-indigo-950/20 rounded-lg text-sm font-medium text-indigo-700 dark:text-indigo-400">
-              {isRTL ? 'السعة:' : 'Capacity:'} {comForm.rows * comForm.cols} {isRTL ? 'مقعد · الترتيب عمودي أبجدي تلقائي' : 'seats · column-first alphabetical order'}
+              {t('capacity3')} {comForm.rows * comForm.cols} {t('seatsColumnfirstAlphabeticalOrder')}
             </div>
             <div>
-              <Label className="mb-2 block font-bold">{isRTL ? 'الفصول' : 'Classes'}</Label>
+              <Label className="mb-2 block font-bold">{t('classes2')}</Label>
               <div className="grid grid-cols-3 gap-2">
                 {classOptions.map(cls => (
                   <label key={cls} className="flex items-center gap-2 p-2 rounded-lg border hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer text-sm">
@@ -760,10 +761,10 @@ function CommitteesTab({ committees, setCommittees, isRTL, apiClasses, apiTeache
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAddOpen(false)}>{isRTL ? 'إلغاء' : 'Cancel'}</Button>
+            <Button variant="outline" onClick={() => setAddOpen(false)}>{t('cancel')}</Button>
             <Button onClick={addCommittee} disabled={saving} className="bg-indigo-600 hover:bg-indigo-700" data-testid="button-create-committee">
               {saving ? <Loader2 className="h-4 w-4 animate-spin me-1" /> : null}
-              {addMode === 'template' && comForm.classes.length > 0 ? (isRTL ? `إنشاء ${comForm.classes.length} لجنة` : `Create ${comForm.classes.length}`) : (isRTL ? 'إضافة' : 'Add')}
+              {addMode === 'template' && comForm.classes.length > 0 ? (isRTL ? `إنشاء ${comForm.classes.length} لجنة` : `Create ${comForm.classes.length}`) : (t('add'))}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -772,7 +773,7 @@ function CommitteesTab({ committees, setCommittees, isRTL, apiClasses, apiTeache
       <Dialog open={statsOpen} onOpenChange={setStatsOpen}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle>{isRTL ? 'إحصائيات اللجنة' : 'Committee Statistics'}</DialogTitle>
+            <DialogTitle>{t('committeeStatistics')}</DialogTitle>
             {statsCommittee && <DialogDescription>{statsCommittee.name} — {statsCommittee.location}</DialogDescription>}
           </DialogHeader>
           {statsCommittee && (() => {
@@ -782,24 +783,24 @@ function CommitteesTab({ committees, setCommittees, isRTL, apiClasses, apiTeache
                 <div className="grid grid-cols-2 gap-3">
                   <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-950/20 border border-blue-200 text-center">
                     <p className="text-2xl font-bold text-blue-600">{s.total}</p>
-                    <p className="text-xs text-blue-500">{isRTL ? 'إجمالي المقاعد' : 'Total Seats'}</p>
+                    <p className="text-xs text-blue-500">{t('totalSeats')}</p>
                   </div>
                   <div className="p-3 rounded-xl bg-green-50 dark:bg-green-950/20 border border-green-200 text-center">
                     <p className="text-2xl font-bold text-green-600">{s.occupied}</p>
-                    <p className="text-xs text-green-500">{isRTL ? 'مقاعد مشغولة' : 'Occupied'}</p>
+                    <p className="text-xs text-green-500">{t('occupied2')}</p>
                   </div>
                   <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 text-center">
                     <p className="text-2xl font-bold text-gray-600">{s.empty}</p>
-                    <p className="text-xs text-gray-500">{isRTL ? 'مقاعد فارغة' : 'Empty'}</p>
+                    <p className="text-xs text-gray-500">{t('empty2')}</p>
                   </div>
                   <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/20 border border-red-200 text-center">
                     <p className="text-2xl font-bold text-red-600">{s.cancelled}</p>
-                    <p className="text-xs text-red-500">{isRTL ? 'مقاعد ملغاة' : 'Cancelled'}</p>
+                    <p className="text-xs text-red-500">{t('cancelled2')}</p>
                   </div>
                 </div>
                 <div className="p-3 rounded-xl bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-200">
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="font-medium text-indigo-700">{isRTL ? 'نسبة الإشغال' : 'Occupancy'}</span>
+                    <span className="font-medium text-indigo-700">{t('occupancy')}</span>
                     <span className="font-bold text-indigo-700">{s.pct}%</span>
                   </div>
                   <div className="w-full bg-indigo-200 rounded-full h-2.5">
@@ -808,7 +809,7 @@ function CommitteesTab({ committees, setCommittees, isRTL, apiClasses, apiTeache
                 </div>
                 {Object.keys(s.classDistribution).length > 0 && (
                   <div>
-                    <h5 className="font-bold text-sm mb-2">{isRTL ? 'توزيع الفصول' : 'Class Distribution'}</h5>
+                    <h5 className="font-bold text-sm mb-2">{t('classDistribution')}</h5>
                     <div className="space-y-1.5">
                       {Object.entries(s.classDistribution).map(([cls, count]) => (
                         <div key={cls} className="flex items-center justify-between text-sm">
@@ -828,17 +829,17 @@ function CommitteesTab({ committees, setCommittees, isRTL, apiClasses, apiTeache
       <Dialog open={reportOpen} onOpenChange={setReportOpen}>
         <DialogContent className="sm:max-w-[700px] max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{isRTL ? 'تقرير اللجنة' : 'Committee Report'}</DialogTitle>
+            <DialogTitle>{t('committeeReport')}</DialogTitle>
           </DialogHeader>
           {reportCommittee && (
             <div className="space-y-4" id="committee-report-content">
               <div className="p-4 rounded-xl bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-200">
                 <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div><span className="font-bold">{isRTL ? 'اسم اللجنة:' : 'Name:'}</span> {reportCommittee.name}</div>
-                  <div><span className="font-bold">{isRTL ? 'الموقع:' : 'Location:'}</span> {reportCommittee.location}</div>
-                  <div><span className="font-bold">{isRTL ? 'المخطط:' : 'Layout:'}</span> {reportCommittee.rows}×{reportCommittee.cols}</div>
-                  <div><span className="font-bold">{isRTL ? 'عدد الطلاب:' : 'Students:'}</span> {reportCommittee.students.length}</div>
-                  <div className="col-span-2"><span className="font-bold">{isRTL ? 'الفصول:' : 'Classes:'}</span> {reportCommittee.classes.join('، ')}</div>
+                  <div><span className="font-bold">{t('name3')}</span> {reportCommittee.name}</div>
+                  <div><span className="font-bold">{t('location2')}</span> {reportCommittee.location}</div>
+                  <div><span className="font-bold">{t('layout')}</span> {reportCommittee.rows}×{reportCommittee.cols}</div>
+                  <div><span className="font-bold">{t('students3')}</span> {reportCommittee.students.length}</div>
+                  <div className="col-span-2"><span className="font-bold">{t('classes3')}</span> {reportCommittee.classes.join('، ')}</div>
                 </div>
               </div>
               <div className="overflow-x-auto rounded-lg border">
@@ -846,10 +847,10 @@ function CommitteesTab({ committees, setCommittees, isRTL, apiClasses, apiTeache
                   <TableHeader>
                     <TableRow className="bg-gray-50 dark:bg-gray-800">
                       <TableHead className="w-12 font-bold">#</TableHead>
-                      <TableHead className="font-bold">{isRTL ? 'الاسم' : 'Name'}</TableHead>
-                      <TableHead className="font-bold">{isRTL ? 'رقم الهوية' : 'National ID'}</TableHead>
-                      <TableHead className="font-bold">{isRTL ? 'رقم الجلوس' : 'Seat #'}</TableHead>
-                      <TableHead className="font-bold">{isRTL ? 'الصف' : 'Grade'}</TableHead>
+                      <TableHead className="font-bold">{t('name')}</TableHead>
+                      <TableHead className="font-bold">{t('nationalId')}</TableHead>
+                      <TableHead className="font-bold">{t('seat')}</TableHead>
+                      <TableHead className="font-bold">{t('grade')}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -867,7 +868,7 @@ function CommitteesTab({ committees, setCommittees, isRTL, apiClasses, apiTeache
               </div>
               <div className="flex justify-end">
                 <Button onClick={() => window.print()} className="bg-indigo-600 hover:bg-indigo-700">
-                  <Printer className="h-4 w-4 me-1" />{isRTL ? 'طباعة التقرير' : 'Print Report'}
+                  <Printer className="h-4 w-4 me-1" />{t('printReport')}
                 </Button>
               </div>
             </div>
@@ -878,11 +879,11 @@ function CommitteesTab({ committees, setCommittees, isRTL, apiClasses, apiTeache
       <Dialog open={copyOpen} onOpenChange={setCopyOpen}>
         <DialogContent className="sm:max-w-[450px]">
           <DialogHeader>
-            <DialogTitle>{isRTL ? 'نسخ اللجنة' : 'Copy Committee'}</DialogTitle>
+            <DialogTitle>{t('copyCommittee')}</DialogTitle>
             {copySource && <DialogDescription>{isRTL ? `نسخ مخطط ${copySource.name} مع فصول جديدة` : `Copy layout of ${copySource.name} with new classes`}</DialogDescription>}
           </DialogHeader>
           <div>
-            <Label className="mb-2 block font-bold">{isRTL ? 'اختر الفصول الجديدة' : 'Select New Classes'}</Label>
+            <Label className="mb-2 block font-bold">{t('selectNewClasses')}</Label>
             <div className="grid grid-cols-3 gap-2">
               {classOptions.map(cls => (
                 <label key={cls} className="flex items-center gap-2 p-2 rounded-lg border hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer text-sm">
@@ -893,8 +894,8 @@ function CommitteesTab({ committees, setCommittees, isRTL, apiClasses, apiTeache
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCopyOpen(false)}>{isRTL ? 'إلغاء' : 'Cancel'}</Button>
-            <Button onClick={doCopy} className="bg-indigo-600 hover:bg-indigo-700">{isRTL ? 'نسخ' : 'Copy'}</Button>
+            <Button variant="outline" onClick={() => setCopyOpen(false)}>{t('cancel')}</Button>
+            <Button onClick={doCopy} className="bg-indigo-600 hover:bg-indigo-700">{t('copy')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -902,16 +903,16 @@ function CommitteesTab({ committees, setCommittees, isRTL, apiClasses, apiTeache
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
         <DialogContent className="sm:max-w-[450px]">
           <DialogHeader>
-            <DialogTitle>{isRTL ? 'استيراد الطلاب' : 'Import Students'}</DialogTitle>
-            <DialogDescription>{isRTL ? 'قم بتحميل ملف أو استخدم بيانات تجريبية' : 'Upload a file or use sample data'}</DialogDescription>
+            <DialogTitle>{t('importStudents')}</DialogTitle>
+            <DialogDescription>{t('uploadAFileOrUseSampleData')}</DialogDescription>
           </DialogHeader>
           <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-8 text-center">
             <Upload className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
-            <p className="text-sm text-muted-foreground mb-1">{isRTL ? 'اسحب وأفلت الملف هنا' : 'Drag and drop file here'}</p>
-            <p className="text-xs text-muted-foreground">{isRTL ? 'يدعم: Excel, PDF, صور' : 'Supports: Excel, PDF, Images'}</p>
+            <p className="text-sm text-muted-foreground mb-1">{t('dragAndDropFileHere')}</p>
+            <p className="text-xs text-muted-foreground">{t('supportsExcelPdfImages')}</p>
           </div>
           <Button variant="outline" onClick={importStudents} className="w-full" data-testid="button-import-sample">
-            <RefreshCw className="h-4 w-4 me-1" />{isRTL ? 'استيراد طلاب من النظام' : 'Import Students from System'}
+            <RefreshCw className="h-4 w-4 me-1" />{t('importStudentsFromSystem')}
           </Button>
         </DialogContent>
       </Dialog>
@@ -995,7 +996,7 @@ function SeatingCardsTab({ committees, isRTL, api }) {
     saveSettings(updated, cardWidth, cardHeight);
     setAddFieldOpen(false);
     setNewFieldLabel('');
-    toast.success(isRTL ? 'تمت إضافة الخانة' : 'Field added');
+    toast.success(t('fieldAdded'));
   };
 
   const getStudentValue = (student, field) => {
@@ -1008,14 +1009,14 @@ function SeatingCardsTab({ committees, isRTL, api }) {
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2">
           <FileText className="h-5 w-5 text-indigo-500" />
-          {isRTL ? 'كروت الجلوس' : 'Seating Cards'}
+          {t('seatingCards')}
         </h3>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => { setNewFieldLabel(''); setAddFieldOpen(true); }} data-testid="button-add-field">
-            <Plus className="h-3.5 w-3.5 me-1" />{isRTL ? 'إضافة خانة' : 'Add Field'}
+            <Plus className="h-3.5 w-3.5 me-1" />{t('addField')}
           </Button>
           <Button size="sm" onClick={() => window.print()} className="bg-indigo-600 hover:bg-indigo-700" data-testid="button-print-cards">
-            <Printer className="h-3.5 w-3.5 me-1" />{isRTL ? 'طباعة الكروت' : 'Print Cards'}
+            <Printer className="h-3.5 w-3.5 me-1" />{t('printCards')}
           </Button>
         </div>
       </div>
@@ -1023,7 +1024,7 @@ function SeatingCardsTab({ committees, isRTL, api }) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card className="border-gray-200 dark:border-gray-700">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-bold">{isRTL ? 'الخانات' : 'Fields'}</CardTitle>
+            <CardTitle className="text-sm font-bold">{t('fields')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             {fields.map(field => (
@@ -1044,17 +1045,17 @@ function SeatingCardsTab({ committees, isRTL, api }) {
 
         <Card className="border-gray-200 dark:border-gray-700">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-bold">{isRTL ? 'المقاسات' : 'Dimensions'}</CardTitle>
+            <CardTitle className="text-sm font-bold">{t('dimensions')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-xs">{isRTL ? 'عرض الكرت (px)' : 'Card Width (px)'}</Label>
+                <Label className="text-xs">{t('cardWidthPx')}</Label>
                 <Input type="number" min={200} max={500} value={cardWidth}
                   onChange={e => { const v = Math.min(500, Math.max(200, parseInt(e.target.value) || 200)); setCardWidth(v); saveSettings(fields, v, cardHeight); }} data-testid="input-card-width" />
               </div>
               <div>
-                <Label className="text-xs">{isRTL ? 'ارتفاع الكرت (px)' : 'Card Height (px)'}</Label>
+                <Label className="text-xs">{t('cardHeightPx')}</Label>
                 <Input type="number" min={120} max={400} value={cardHeight}
                   onChange={e => { const v = Math.min(400, Math.max(120, parseInt(e.target.value) || 120)); setCardHeight(v); saveSettings(fields, cardWidth, v); }} data-testid="input-card-height" />
               </div>
@@ -1073,17 +1074,17 @@ function SeatingCardsTab({ committees, isRTL, api }) {
               ))}
             </div>
             <p className="text-[11px] text-muted-foreground bg-blue-50 dark:bg-blue-950/20 p-2 rounded">
-              {isRTL ? 'المقاسات تنطبق على جميع كروت الطباعة' : 'Dimensions apply to all print cards'}
+              {t('dimensionsApplyToAllPrintCards')}
             </p>
           </CardContent>
         </Card>
       </div>
 
       <div>
-        <Label className="mb-2 block text-sm font-bold">{isRTL ? 'اختر اللجنة' : 'Select Committee'}</Label>
+        <Label className="mb-2 block text-sm font-bold">{t('selectCommittee')}</Label>
         <Select value={selectedComId} onValueChange={setSelectedComId} data-testid="select-committee">
           <SelectTrigger className="w-full md:w-80">
-            <SelectValue placeholder={isRTL ? 'اختر لجنة لعرض الكروت' : 'Select a committee to view cards'} />
+            <SelectValue placeholder={t('selectACommitteeToViewCards')} />
           </SelectTrigger>
           <SelectContent>
             {committees.map(com => (
@@ -1100,7 +1101,7 @@ function SeatingCardsTab({ committees, isRTL, api }) {
               className="border rounded-xl overflow-hidden shadow-sm bg-white dark:bg-gray-900 print:break-inside-avoid"
               style={{ width: cardWidth, minHeight: cardHeight }}>
               <div className="bg-gradient-to-r from-indigo-600 to-violet-600 text-white px-3 py-2">
-                <p className="text-[10px] font-medium opacity-80">{isRTL ? 'بطاقة جلوس اختبارات' : 'Exam Seating Card'}</p>
+                <p className="text-[10px] font-medium opacity-80">{t('examSeatingCard')}</p>
                 <p className="text-xs font-bold">{selectedCom.name} — {selectedCom.location}</p>
               </div>
               <div className="p-3 space-y-1.5">
@@ -1119,16 +1120,16 @@ function SeatingCardsTab({ committees, isRTL, api }) {
       <Dialog open={addFieldOpen} onOpenChange={setAddFieldOpen}>
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader>
-            <DialogTitle>{isRTL ? 'إضافة خانة جديدة' : 'Add New Field'}</DialogTitle>
+            <DialogTitle>{t('addNewField')}</DialogTitle>
           </DialogHeader>
           <div>
-            <Label>{isRTL ? 'اسم الخانة' : 'Field Label'}</Label>
+            <Label>{t('fieldLabel')}</Label>
             <Input value={newFieldLabel} onChange={e => setNewFieldLabel(e.target.value)}
-              placeholder={isRTL ? 'مثال: القسم' : 'e.g. Section'} data-testid="input-field-label" />
+              placeholder={t('egSection')} data-testid="input-field-label" />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAddFieldOpen(false)}>{isRTL ? 'إلغاء' : 'Cancel'}</Button>
-            <Button onClick={addField} className="bg-indigo-600 hover:bg-indigo-700">{isRTL ? 'إضافة' : 'Add'}</Button>
+            <Button variant="outline" onClick={() => setAddFieldOpen(false)}>{t('cancel')}</Button>
+            <Button onClick={addField} className="bg-indigo-600 hover:bg-indigo-700">{t('add')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1186,7 +1187,7 @@ export const AssessmentPage = () => {
               {isRTL ? 'إدارة الاختبارات والتقييمات' : 'Exams & Assessments Management'}
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              {isRTL ? 'تنظيم الاختبارات والفترات واللجان وكروت الجلوس' : 'Organize exams, periods, committees and seating cards'}
+              {t('organizeExamsPeriodsCommitteesAndSeatingCards')}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -1203,25 +1204,25 @@ export const AssessmentPage = () => {
           <Card className="border-indigo-200 dark:border-indigo-800 bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-950/30 dark:to-indigo-900/20">
             <CardContent className="p-3 text-center">
               <p className="text-2xl font-bold text-indigo-600">{periods.length}</p>
-              <p className="text-xs text-indigo-500">{isRTL ? 'فترات اختبار' : 'Exam Periods'}</p>
+              <p className="text-xs text-indigo-500">{t('examPeriods')}</p>
             </CardContent>
           </Card>
           <Card className="border-purple-200 dark:border-purple-800 bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950/30 dark:to-purple-900/20">
             <CardContent className="p-3 text-center">
               <p className="text-2xl font-bold text-purple-600">{totalSubjects}</p>
-              <p className="text-xs text-purple-500">{isRTL ? 'مادة مجدولة' : 'Scheduled Subjects'}</p>
+              <p className="text-xs text-purple-500">{t('scheduledSubjects')}</p>
             </CardContent>
           </Card>
           <Card className="border-teal-200 dark:border-teal-800 bg-gradient-to-br from-teal-50 to-teal-100 dark:from-teal-950/30 dark:to-teal-900/20">
             <CardContent className="p-3 text-center">
               <p className="text-2xl font-bold text-teal-600">{committees.length}</p>
-              <p className="text-xs text-teal-500">{isRTL ? 'لجان اختبار' : 'Exam Committees'}</p>
+              <p className="text-xs text-teal-500">{t('examCommittees')}</p>
             </CardContent>
           </Card>
           <Card className="border-amber-200 dark:border-amber-800 bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-950/30 dark:to-amber-900/20">
             <CardContent className="p-3 text-center">
               <p className="text-2xl font-bold text-amber-600">{totalStudentsInCommittees}</p>
-              <p className="text-xs text-amber-500">{isRTL ? 'طالب في اللجان' : 'Students in Committees'}</p>
+              <p className="text-xs text-amber-500">{t('studentsInCommittees')}</p>
             </CardContent>
           </Card>
         </div>
@@ -1230,15 +1231,15 @@ export const AssessmentPage = () => {
           <TabsList className="w-full grid grid-cols-3 h-12 bg-white dark:bg-gray-900 border shadow-sm rounded-xl mb-4">
             <TabsTrigger value="schedule" className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white rounded-lg text-sm font-bold" data-testid="tab-schedule">
               <Calendar className="h-4 w-4 me-1.5" />
-              {isRTL ? 'جدول الاختبارات' : 'Exam Schedule'}
+              {t('examSchedule')}
             </TabsTrigger>
             <TabsTrigger value="committees" className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white rounded-lg text-sm font-bold" data-testid="tab-committees">
               <Users className="h-4 w-4 me-1.5" />
-              {isRTL ? 'اللجان' : 'Committees'}
+              {t('committees')}
             </TabsTrigger>
             <TabsTrigger value="cards" className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white rounded-lg text-sm font-bold" data-testid="tab-cards">
               <FileText className="h-4 w-4 me-1.5" />
-              {isRTL ? 'كروت الجلوس' : 'Seating Cards'}
+              {t('seatingCards')}
             </TabsTrigger>
           </TabsList>
 

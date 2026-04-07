@@ -10,6 +10,7 @@ import { Eye, EyeOff, Lock, Shield, CheckCircle2, XCircle, AlertTriangle } from 
 import { useAuth } from '../contexts/AuthContext';
 
 
+import { useTranslation } from '../contexts/ThemeContext';
 export default function ForcePasswordChange() {
   const navigate = useNavigate();
   const { user, logout, api } = useAuth();
@@ -39,33 +40,28 @@ export default function ForcePasswordChange() {
   const isRTL = true; // Arabic interface
   
   const validatePassword = () => {
+  const { t } = useTranslation();
     const newErrors = {};
     
     if (!formData.currentPassword) {
-      newErrors.currentPassword = isRTL ? 'كلمة المرور الحالية مطلوبة' : 'Current password is required';
+      newErrors.currentPassword = t('currentPasswordIsRequired');
     }
     
     if (!formData.newPassword) {
-      newErrors.newPassword = isRTL ? 'كلمة المرور الجديدة مطلوبة' : 'New password is required';
+      newErrors.newPassword = t('newPasswordIsRequired');
     } else {
       const failedRules = passwordRules.filter(rule => !rule.check(formData.newPassword));
       if (failedRules.length > 0) {
-        newErrors.newPassword = isRTL 
-          ? 'كلمة المرور لا تستوفي جميع الشروط'
-          : 'Password does not meet all requirements';
+        newErrors.newPassword = t('passwordDoesNotMeetAllRequirements');
       }
     }
     
     if (formData.newPassword === formData.currentPassword) {
-      newErrors.newPassword = isRTL 
-        ? 'كلمة المرور الجديدة يجب أن تكون مختلفة عن الحالية'
-        : 'New password must be different from current';
+      newErrors.newPassword = t('newPasswordMustBeDifferentFromCurrent');
     }
     
     if (formData.newPassword !== formData.confirmPassword) {
-      newErrors.confirmPassword = isRTL 
-        ? 'كلمتا المرور غير متطابقتين'
-        : 'Passwords do not match';
+      newErrors.confirmPassword = t('passwordsDoNotMatch');
     }
     
     setErrors(newErrors);
@@ -87,7 +83,7 @@ export default function ForcePasswordChange() {
         new_password: formData.newPassword,
       });
       
-      toast.success(isRTL ? 'تم تغيير كلمة المرور بنجاح!' : 'Password changed successfully!');
+      toast.success(t('passwordChangedSuccessfully2'));
       
       // Redirect based on user role
       setTimeout(() => {
@@ -103,10 +99,10 @@ export default function ForcePasswordChange() {
     } catch (error) {
       console.error('Password change error:', error);
       if (error.response?.status === 400) {
-        nassaqError(isRTL ? 'كلمة المرور الحالية غير صحيحة' : 'Current password is incorrect');
-        setErrors({ currentPassword: isRTL ? 'كلمة المرور الحالية غير صحيحة' : 'Current password is incorrect' });
+        nassaqError(t('currentPasswordIsIncorrect'));
+        setErrors({ currentPassword: t('currentPasswordIsIncorrect') });
       } else {
-        nassaqError(isRTL ? 'حدث خطأ أثناء تغيير كلمة المرور' : 'Error changing password');
+        nassaqError(t('errorChangingPassword'));
       }
     } finally {
       setIsSubmitting(false);
@@ -127,12 +123,10 @@ export default function ForcePasswordChange() {
             <AlertTriangle className="h-8 w-8 text-yellow-600" />
           </div>
           <CardTitle className="font-cairo text-2xl text-brand-navy">
-            {isRTL ? 'تغيير كلمة المرور مطلوب' : 'Password Change Required'}
+            {t('passwordChangeRequired')}
           </CardTitle>
           <CardDescription className="text-base">
-            {isRTL 
-              ? 'يجب تغيير كلمة المرور المؤقتة قبل الاستمرار'
-              : 'You must change your temporary password before continuing'}
+            {t('youMustChangeYourTemporaryPasswordBeforeContinuing')}
           </CardDescription>
         </CardHeader>
         
@@ -142,7 +136,7 @@ export default function ForcePasswordChange() {
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
                 <Lock className="h-4 w-4" />
-                {isRTL ? 'كلمة المرور الحالية' : 'Current Password'}
+                {t('currentPassword')}
               </Label>
               <div className="relative">
                 <Input
@@ -150,7 +144,7 @@ export default function ForcePasswordChange() {
                   value={formData.currentPassword}
                   onChange={(e) => setFormData({ ...formData, currentPassword: e.target.value })}
                   className={`rounded-xl pe-10 ${errors.currentPassword ? 'border-red-500' : ''}`}
-                  placeholder={isRTL ? 'أدخل كلمة المرور الحالية' : 'Enter current password'}
+                  placeholder={t('enterCurrentPassword')}
                   dir="ltr"
                 />
                 <Button
@@ -175,7 +169,7 @@ export default function ForcePasswordChange() {
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
                 <Shield className="h-4 w-4" />
-                {isRTL ? 'كلمة المرور الجديدة' : 'New Password'}
+                {t('newPassword')}
               </Label>
               <div className="relative">
                 <Input
@@ -183,7 +177,7 @@ export default function ForcePasswordChange() {
                   value={formData.newPassword}
                   onChange={(e) => setFormData({ ...formData, newPassword: e.target.value })}
                   className={`rounded-xl pe-10 ${errors.newPassword ? 'border-red-500' : ''}`}
-                  placeholder={isRTL ? 'أدخل كلمة المرور الجديدة' : 'Enter new password'}
+                  placeholder={t('enterNewPassword')}
                   dir="ltr"
                 />
                 <Button
@@ -206,7 +200,7 @@ export default function ForcePasswordChange() {
               {/* Password Rules */}
               <div className="p-3 bg-muted/50 rounded-xl space-y-1.5 mt-2">
                 <p className="text-xs font-medium text-muted-foreground mb-2">
-                  {isRTL ? 'متطلبات كلمة المرور:' : 'Password requirements:'}
+                  {t('passwordRequirements')}
                 </p>
                 {passwordRules.map((rule) => {
                   const passed = rule.check(formData.newPassword);
@@ -228,7 +222,7 @@ export default function ForcePasswordChange() {
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
                 <Lock className="h-4 w-4" />
-                {isRTL ? 'تأكيد كلمة المرور الجديدة' : 'Confirm New Password'}
+                {t('confirmNewPassword')}
               </Label>
               <div className="relative">
                 <Input
@@ -236,7 +230,7 @@ export default function ForcePasswordChange() {
                   value={formData.confirmPassword}
                   onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
                   className={`rounded-xl pe-10 ${errors.confirmPassword ? 'border-red-500' : ''}`}
-                  placeholder={isRTL ? 'أعد إدخال كلمة المرور الجديدة' : 'Re-enter new password'}
+                  placeholder={t('reenterNewPassword')}
                   dir="ltr"
                 />
                 <Button
@@ -258,7 +252,7 @@ export default function ForcePasswordChange() {
               {formData.confirmPassword && formData.newPassword === formData.confirmPassword && (
                 <p className="text-sm text-green-600 flex items-center gap-1">
                   <CheckCircle2 className="h-3 w-3" />
-                  {isRTL ? 'كلمتا المرور متطابقتان' : 'Passwords match'}
+                  {t('passwordsMatch')}
                 </p>
               )}
             </div>
@@ -272,12 +266,12 @@ export default function ForcePasswordChange() {
               {isSubmitting ? (
                 <>
                   <div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full me-2" />
-                  {isRTL ? 'جاري التغيير...' : 'Changing...'}
+                  {t('changing')}
                 </>
               ) : (
                 <>
                   <Shield className="h-5 w-5 me-2" />
-                  {isRTL ? 'تغيير كلمة المرور' : 'Change Password'}
+                  {t('changePassword')}
                 </>
               )}
             </Button>
@@ -289,7 +283,7 @@ export default function ForcePasswordChange() {
                 onClick={handleLogout}
                 className="text-sm text-muted-foreground hover:text-brand-navy underline"
               >
-                {isRTL ? 'تسجيل الخروج' : 'Logout'}
+                {t('logout')}
               </button>
             </div>
           </form>

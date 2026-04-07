@@ -1,39 +1,36 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import arLocale from '../locales/ar.json';
+import enLocale from '../locales/en.json';
 
 const ThemeContext = createContext(null);
 
-// Helper function to apply language direction to DOM
+const locales = { ar: arLocale, en: enLocale };
+
 const applyLanguageDirection = (lang) => {
   const root = window.document.documentElement;
   const body = window.document.body;
   const dir = lang === 'ar' ? 'rtl' : 'ltr';
-  
-  // Apply to HTML element
+
   root.dir = dir;
   root.lang = lang;
   root.setAttribute('data-language', lang);
   root.setAttribute('data-direction', dir);
-  
-  // Apply to body element
+
   body.dir = dir;
   body.setAttribute('data-language', lang);
   body.setAttribute('data-direction', dir);
-  
-  // Update CSS custom properties
+
   root.style.setProperty('--direction', dir);
   root.style.setProperty('--text-align', lang === 'ar' ? 'right' : 'left');
   root.style.setProperty('--text-align-opposite', lang === 'ar' ? 'left' : 'right');
-  
-  // Store in localStorage
+
   localStorage.setItem('nassaq_language', lang);
-  
-  // Update document title
+
   document.title = 'NASSAQ | نَسَّق';
-  
+
   return dir;
 };
 
-// Helper function to apply theme to DOM
 const applyTheme = (theme) => {
   const root = window.document.documentElement;
   root.classList.remove('light', 'dark');
@@ -43,7 +40,6 @@ const applyTheme = (theme) => {
 };
 
 export const ThemeProvider = ({ children }) => {
-  // Initialize state from localStorage
   const [theme, setTheme] = useState(() => {
     const stored = localStorage.getItem('nassaq_theme');
     return stored || 'light';
@@ -54,23 +50,20 @@ export const ThemeProvider = ({ children }) => {
     return stored || 'ar';
   });
 
-  // Force re-render counter to ensure all components update
   const [, setForceUpdate] = useState(0);
 
-  // Apply theme and language on mount and changes
   useEffect(() => {
     applyTheme(theme);
     applyLanguageDirection(language);
   }, [theme, language]);
 
-  // Apply on initial mount
   useEffect(() => {
     const storedLang = localStorage.getItem('nassaq_language') || 'ar';
     const storedTheme = localStorage.getItem('nassaq_theme') || 'light';
-    
+
     applyTheme(storedTheme);
     applyLanguageDirection(storedLang);
-    
+
     setTheme(storedTheme);
     setLanguage(storedLang);
   }, []);
@@ -106,13 +99,11 @@ export const ThemeProvider = ({ children }) => {
     setLanguage((prev) => {
       const newLang = prev === 'ar' ? 'en' : 'ar';
       applyLanguageDirection(newLang);
-      // Force re-render of all consuming components
       setForceUpdate(n => n + 1);
       return newLang;
     });
   }, []);
 
-  // Memoize the context value to prevent unnecessary re-renders
   const value = useMemo(() => ({
     theme,
     setTheme,
@@ -136,128 +127,28 @@ export const useTheme = () => {
   return context;
 };
 
-// Translation helper
-export const translations = {
-  ar: {
-    // Navigation
-    home: 'الرئيسية',
-    features: 'المميزات',
-    pricing: 'الأسعار',
-    contact: 'تواصل معنا',
-    login: 'تسجيل الدخول',
-    register: 'إنشاء حساب',
-    logout: 'تسجيل الخروج',
-    dashboard: 'لوحة التحكم',
-    
-    // Landing Page
-    heroTitle: 'نظام إدارة المدارس الذكي',
-    heroSubtitle: 'منصة متكاملة مدعومة بالذكاء الاصطناعي لإدارة العملية التعليمية بكفاءة عالية',
-    getStarted: 'ابدأ الآن',
-    learnMore: 'اعرف المزيد',
-    
-    // Features
-    aiAssistant: 'المساعد الذكي',
-    aiAssistantDesc: 'حكيم - مساعدك الذكي لتحليل البيانات وتقديم التوصيات',
-    schoolManagement: 'إدارة المدارس',
-    schoolManagementDesc: 'إدارة شاملة للمدارس والفصول والمواد الدراسية',
-    userManagement: 'إدارة المستخدمين',
-    userManagementDesc: 'إدارة المعلمين والطلاب وأولياء الأمور بسهولة',
-    analytics: 'التحليلات',
-    analyticsDesc: 'تقارير وإحصائيات تفصيلية لمتابعة الأداء',
-    
-    // Auth
-    email: 'البريد الإلكتروني',
-    password: 'كلمة المرور',
-    fullName: 'الاسم الكامل',
-    forgotPassword: 'نسيت كلمة المرور؟',
-    noAccount: 'ليس لديك حساب؟',
-    hasAccount: 'لديك حساب بالفعل؟',
-    
-    // Dashboard
-    overview: 'نظرة عامة',
-    schools: 'المدارس',
-    users: 'المستخدمين',
-    settings: 'الإعدادات',
-    totalSchools: 'إجمالي المدارس',
-    totalStudents: 'إجمالي الطلاب',
-    totalTeachers: 'إجمالي المعلمين',
-    activeSchools: 'المدارس النشطة',
-    
-    // Common
-    save: 'حفظ',
-    cancel: 'إلغاء',
-    edit: 'تعديل',
-    delete: 'حذف',
-    add: 'إضافة',
-    search: 'بحث',
-    loading: 'جاري التحميل...',
-    error: 'حدث خطأ',
-    success: 'تم بنجاح',
-  },
-  en: {
-    // Navigation
-    home: 'Home',
-    features: 'Features',
-    pricing: 'Pricing',
-    contact: 'Contact',
-    login: 'Login',
-    register: 'Register',
-    logout: 'Logout',
-    dashboard: 'Dashboard',
-    
-    // Landing Page
-    heroTitle: 'Smart School Management System',
-    heroSubtitle: 'AI-powered integrated platform for efficient educational management',
-    getStarted: 'Get Started',
-    learnMore: 'Learn More',
-    
-    // Features
-    aiAssistant: 'AI Assistant',
-    aiAssistantDesc: 'Hakim - Your intelligent assistant for data analysis and recommendations',
-    schoolManagement: 'School Management',
-    schoolManagementDesc: 'Comprehensive management of schools, classes, and subjects',
-    userManagement: 'User Management',
-    userManagementDesc: 'Easily manage teachers, students, and parents',
-    analytics: 'Analytics',
-    analyticsDesc: 'Detailed reports and statistics to track performance',
-    
-    // Auth
-    email: 'Email',
-    password: 'Password',
-    fullName: 'Full Name',
-    forgotPassword: 'Forgot Password?',
-    noAccount: "Don't have an account?",
-    hasAccount: 'Already have an account?',
-    
-    // Dashboard
-    overview: 'Overview',
-    schools: 'Schools',
-    users: 'Users',
-    settings: 'Settings',
-    totalSchools: 'Total Schools',
-    totalStudents: 'Total Students',
-    totalTeachers: 'Total Teachers',
-    activeSchools: 'Active Schools',
-    
-    // Common
-    save: 'Save',
-    cancel: 'Cancel',
-    edit: 'Edit',
-    delete: 'Delete',
-    add: 'Add',
-    search: 'Search',
-    loading: 'Loading...',
-    error: 'An error occurred',
-    success: 'Success',
-  },
-};
-
 export const useTranslation = () => {
   const { language } = useTheme();
-  
-  const t = (key) => {
-    return translations[language]?.[key] || translations.ar[key] || key;
-  };
-  
-  return { t, language };
+
+  const t = useCallback((key, params) => {
+    let text = locales[language]?.[key] || locales.ar[key] || key;
+    if (params) {
+      Object.entries(params).forEach(([k, v]) => {
+        text = text.replace(new RegExp(`\\{${k}\\}`, 'g'), v);
+      });
+    }
+    return text;
+  }, [language]);
+
+  const localizedValue = useCallback((item, field) => {
+    if (!item) return '';
+    if (language === 'en') {
+      return item[`${field}_en`] || item[`${field}_ar`] || item[field] || '';
+    }
+    return item[`${field}_ar`] || item[field] || item[`${field}_en`] || '';
+  }, [language]);
+
+  return { t, language, localizedValue };
 };
+
+export const translations = locales;

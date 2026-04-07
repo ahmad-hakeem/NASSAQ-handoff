@@ -143,7 +143,7 @@ export const Sidebar = ({ children }) => {
           return;
         }
 
-        toast.success(response.data.message || (isRTL ? 'تم تبديل الدور بنجاح' : 'Role switched successfully'));
+        toast.success(response.data.message || (t('roleSwitchedSuccessfully')));
         setShowRoleSwitcher(false);
 
         const redirectTo = response.data.redirect_to || '/';
@@ -151,7 +151,7 @@ export const Sidebar = ({ children }) => {
       }
     } catch (error) {
       console.error('Error switching role:', error);
-      nassaqError(isRTL ? 'حدث خطأ في تبديل الدور' : 'Error switching role');
+      nassaqError(t('errorSwitchingRole'));
     } finally {
       setSwitchingRole(false);
     }
@@ -171,7 +171,7 @@ export const Sidebar = ({ children }) => {
           return;
         }
 
-        toast.success(response.data.message || (isRTL ? 'تمت العودة للدور الأصلي' : 'Returned to original role'));
+        toast.success(response.data.message || (t('returnedToOriginalRole')));
         setShowRoleSwitcher(false);
 
         const redirectTo = response.data.redirect_to || '/admin';
@@ -179,7 +179,7 @@ export const Sidebar = ({ children }) => {
       }
     } catch (error) {
       console.error('Error returning to original role:', error);
-      nassaqError(isRTL ? 'حدث خطأ في العودة للدور الأصلي' : 'Error returning to original role');
+      nassaqError(t('errorReturningToOriginalRole'));
     } finally {
       setSwitchingRole(false);
     }
@@ -187,7 +187,7 @@ export const Sidebar = ({ children }) => {
 
   const handleLogout = () => {
     nassaqWarning(
-      isRTL ? 'هل أنت متأكد أنك تريد تسجيل الخروج؟' : 'Are you sure you want to log out?',
+      t('areYouSureYouWantToLogOut'),
       {
         onConfirm: async () => {
           setLoggingOut(true);
@@ -221,61 +221,61 @@ export const Sidebar = ({ children }) => {
     const platformAdminItems = [
       {
         icon: LayoutDashboard,
-        label: isRTL ? 'مركز القيادة' : 'Control Dashboard',
+        label: t('controlDashboard'),
         href: '/admin',
         roles: ['platform_admin'],
       },
       {
         icon: Building2,
-        label: isRTL ? 'إدارة المدارس' : 'Schools Management',
+        label: t('schoolsManagement'),
         href: '/admin/schools',
         roles: ['platform_admin'],
       },
       {
         icon: Users,
-        label: isRTL ? 'إدارة المستخدمين' : 'Users Management',
+        label: t('usersManagement'),
         href: '/admin/users',
         roles: ['platform_admin'],
       },
       {
         icon: Activity,
-        label: isRTL ? 'مراقبة النظام' : 'System Monitoring',
+        label: t('systemMonitoring'),
         href: '/admin/monitoring',
         roles: ['platform_admin'],
       },
       {
         icon: BarChart3,
-        label: isRTL ? 'التقارير والتحليلات' : 'Analytics & Reports',
+        label: t('analyticsReports'),
         href: '/admin/analytics',
         roles: ['platform_admin'],
       },
       {
         icon: Link2,
-        label: isRTL ? 'التكاملات' : 'Integrations',
+        label: t('integrations'),
         href: '/admin/integrations',
         roles: ['platform_admin'],
       },
       {
         icon: Shield,
-        label: isRTL ? 'مركز الأمان' : 'Security Center',
+        label: t('securityCenter'),
         href: '/admin/security',
         roles: ['platform_admin'],
       },
       {
         icon: FileText,
-        label: isRTL ? 'سجلات التدقيق' : 'Audit Logs',
+        label: t('auditLogs'),
         href: '/admin/audit',
         roles: ['platform_admin', 'platform_security_officer', 'platform_data_analyst'],
       },
       {
         icon: MessageSquare,
-        label: isRTL ? 'التواصل والإشعارات' : 'Communication & Notifications',
+        label: t('communicationNotifications'),
         href: '/admin/communication',
         roles: ['platform_admin'],
       },
       {
         icon: Lightbulb,
-        label: isRTL ? 'مركز ذكاء المنتج' : 'Product Hub',
+        label: t('productHub'),
         href: '/admin/product-hub',
         roles: ['platform_admin'],
       },
@@ -290,34 +290,34 @@ export const Sidebar = ({ children }) => {
       // 1. Dashboard Overview
       {
         icon: LayoutDashboard,
-        label: isRTL ? 'مركز القيادة' : 'Command Center',
+        label: t('commandCenter2'),
         href: '/principal',
         roles: SCHOOL_ROLES,
       },
       // 2. Schedule Management
       {
         icon: Calendar,
-        label: isRTL ? 'الجدول المدرسي' : 'School Schedule',
+        label: t('schoolSchedule'),
         href: '/principal/timetable',
         roles: SCHOOL_ROLES,
       },
       // 3. Users & Classes Management
       {
         icon: Users,
-        label: isRTL ? 'إدارة المستخدمين والفصول' : 'Users & Classes',
+        label: t('usersClasses'),
         href: '/admin/users-management',
         roles: SCHOOL_ROLES,
         subItems: [
           {
-            label: isRTL ? 'المعلمون' : 'Teachers',
+            label: t('teachers'),
             href: '/admin/teachers',
           },
           {
-            label: isRTL ? 'الطلاب' : 'Students',
+            label: t('students'),
             href: '/admin/students',
           },
           {
-            label: isRTL ? 'الفصول' : 'Classes',
+            label: t('classes2'),
             href: '/admin/classes',
           },
         ],
@@ -325,21 +325,21 @@ export const Sidebar = ({ children }) => {
       // 4. Attendance Management
       {
         icon: CalendarCheck,
-        label: isRTL ? 'إدارة حضور المعلمين والاداريين' : 'Staff Attendance',
+        label: t('staffAttendance'),
         href: '/admin/teacher-attendance',
         roles: SCHOOL_ROLES,
       },
       // 5. Assessments & Grades Management
       {
         icon: ClipboardList,
-        label: isRTL ? 'إدارة الاختبارات والتقييمات' : 'Exams & Assessments',
+        label: t('examsAssessments'),
         href: '/admin/assessments',
         roles: SCHOOL_ROLES,
       },
       // 6. School Settings
       {
         icon: Settings,
-        label: isRTL ? 'إعدادات المدرسة' : 'School Settings',
+        label: t('schoolSettings'),
         href: '/school/settings',
         roles: SCHOOL_PRINCIPAL_ROLES,
       },
@@ -347,28 +347,28 @@ export const Sidebar = ({ children }) => {
       // 7. Communication & Notifications
       {
         icon: Bell,
-        label: isRTL ? 'مركز التواصل والإشعارات' : 'Communication Center',
+        label: t('communicationCenter'),
         href: '/principal/communication',
         roles: SCHOOL_ROLES,
       },
       // 8. Reports & Analytics
       {
         icon: BarChart3,
-        label: isRTL ? 'التقارير والتحليلات' : 'Reports & Analytics',
+        label: t('reportsAndAnalytics'),
         href: '/principal/reports',
         roles: SCHOOL_ROLES,
       },
       // 9. AI Insights
       {
         icon: Network,
-        label: isRTL ? 'رؤى الذكاء الاصطناعي' : 'AI Insights',
+        label: t('aiInsights'),
         href: '/principal/ai-insights',
         roles: SCHOOL_PRINCIPAL_ROLES,
       },
       // 10. Account Settings
       {
         icon: UserCog,
-        label: isRTL ? 'إعدادات الحساب' : 'Account Settings',
+        label: t('accountSettings'),
         href: '/account/settings',
         roles: SCHOOL_ROLES,
       },
@@ -378,55 +378,55 @@ export const Sidebar = ({ children }) => {
     const teacherItems = [
       {
         icon: Home,
-        label: isRTL ? 'اللوحة الرئيسية' : 'Dashboard',
+        label: t('dashboard'),
         href: '/teacher',
         roles: ['teacher'],
       },
       {
         icon: Calendar,
-        label: isRTL ? 'جدولي' : 'My Schedule',
+        label: t('mySchedule'),
         href: '/teacher/schedule',
         roles: ['teacher'],
       },
       {
         icon: BookOpen,
-        label: isRTL ? 'فصولي' : 'My Classes',
+        label: t('myClasses'),
         href: '/teacher/classes',
         roles: ['teacher'],
       },
       {
         icon: Users,
-        label: isRTL ? 'طلابي' : 'My Students',
+        label: t('myStudents'),
         href: '/teacher/students',
         roles: ['teacher'],
       },
       {
         icon: Award,
-        label: isRTL ? 'إنجازاتي' : 'My Achievements',
+        label: t('myAchievements'),
         href: '/teacher/achievements',
         roles: ['teacher'],
       },
       {
         icon: BarChart3,
-        label: isRTL ? 'التقارير والتحليلات' : 'Reports & Analytics',
+        label: t('reportsAndAnalytics'),
         href: '/teacher/reports',
         roles: ['teacher'],
       },
       {
         icon: MessageSquare,
-        label: isRTL ? 'مركز التواصل' : 'Communication Center',
+        label: t('communicationCenter'),
         href: '/teacher/communication',
         roles: ['teacher'],
       },
       {
         icon: Bell,
-        label: isRTL ? 'مركز الإشعارات' : 'Notifications Center',
+        label: t('notificationsCenter'),
         href: '/notifications',
         roles: ['teacher'],
       },
       {
         icon: Settings,
-        label: isRTL ? 'الملف الشخصي والإعدادات' : 'Profile & Settings',
+        label: t('profileSettings'),
         href: '/teacher/settings',
         roles: ['teacher'],
       },
@@ -479,7 +479,7 @@ export const Sidebar = ({ children }) => {
                 onClick={() => setShowRoleSwitcher(true)}
                 className="text-white/70 hover:text-white hover:bg-white/10"
                 data-testid="sidebar-role-switch-btn"
-                title={isRTL ? 'تبديل الأدوار' : 'Switch Role'}
+                title={t('switchRole')}
               >
                 <ArrowLeftRight className="h-5 w-5" />
               </Button>
@@ -493,7 +493,7 @@ export const Sidebar = ({ children }) => {
                   location.pathname === '/settings' ? 'bg-white/15 text-white' : ''
                 }`}
                 data-testid="sidebar-settings-btn"
-                title={isRTL ? 'إعدادات النظام' : 'System Settings'}
+                title={t('systemSettings')}
               >
                 <Settings className="h-5 w-5" />
               </Button>
@@ -582,7 +582,7 @@ export const Sidebar = ({ children }) => {
               <div className="flex items-center gap-2 text-brand-turquoise text-xs">
                 <ArrowLeftRight className="h-3 w-3" />
                 <span className="font-medium">
-                  {isRTL ? 'دور مُبدّل' : 'Switched Role'}
+                  {t('switchedRole')}
                 </span>
               </div>
               <p className="text-[10px] text-white/70 mt-1">
@@ -595,7 +595,7 @@ export const Sidebar = ({ children }) => {
               <div className="flex items-center gap-2 text-amber-200 text-xs">
                 <Shield className="h-3 w-3" />
                 <span className="font-medium">
-                  {isRTL ? 'وضع المعاينة' : 'Preview Mode'}
+                  {t('previewMode')}
                 </span>
               </div>
               <p className="text-[10px] text-amber-100/80 truncate mt-1">
@@ -643,8 +643,8 @@ export const Sidebar = ({ children }) => {
               disabled={loggingOut}
               className="flex-shrink-0 text-red-300/70 hover:text-red-200 hover:bg-red-500/20 rounded-xl transition-colors"
               data-testid="logout-btn"
-              title={isRTL ? 'تسجيل الخروج' : 'Logout'}
-              aria-label={isRTL ? 'تسجيل الخروج' : 'Logout'}
+              title={t('logout')}
+              aria-label={t('logout')}
             >
               {loggingOut ? (
                 <RefreshCw className="h-5 w-5 animate-spin" />
@@ -660,7 +660,7 @@ export const Sidebar = ({ children }) => {
         <div className="p-3 border-t border-white/10 space-y-2">
           {isSwitchedRole && (
             <div className="w-full flex justify-center">
-              <div className="w-3 h-3 rounded-full bg-brand-turquoise animate-pulse" title={isRTL ? 'دور مُبدّل' : 'Switched Role'} />
+              <div className="w-3 h-3 rounded-full bg-brand-turquoise animate-pulse" title={t('switchedRole')} />
             </div>
           )}
           <div className="w-full flex justify-center">
@@ -678,8 +678,8 @@ export const Sidebar = ({ children }) => {
             onClick={handleLogout}
             disabled={loggingOut}
             className="w-full text-red-300/70 hover:text-red-200 hover:bg-red-500/20"
-            title={isRTL ? 'تسجيل الخروج' : 'Logout'}
-            aria-label={isRTL ? 'تسجيل الخروج' : 'Logout'}
+            title={t('logout')}
+            aria-label={t('logout')}
             data-testid="logout-btn-collapsed"
           >
             {loggingOut ? (
@@ -697,7 +697,7 @@ export const Sidebar = ({ children }) => {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ArrowLeftRight className="h-5 w-5 text-brand-turquoise" />
-              {isRTL ? 'تبديل الدور' : 'Switch Role'}
+              {t('switchRole2')}
             </DialogTitle>
           </DialogHeader>
           
@@ -752,12 +752,12 @@ export const Sidebar = ({ children }) => {
                     <div className="flex items-center gap-2">
                       {role.is_current && (
                         <Badge variant="secondary" className="bg-brand-turquoise/20 text-brand-turquoise">
-                          {isRTL ? 'الحالي' : 'Current'}
+                          {t('current2')}
                         </Badge>
                       )}
                       {role.is_preview && (
                         <Badge variant="outline" className="text-amber-500 border-amber-500">
-                          {isRTL ? 'معاينة' : 'Preview'}
+                          {t('preview')}
                         </Badge>
                       )}
                     </div>
@@ -775,7 +775,7 @@ export const Sidebar = ({ children }) => {
               className="w-full mt-4 border-brand-turquoise/50 text-brand-turquoise hover:bg-brand-turquoise/10"
             >
               <RefreshCw className={`h-4 w-4 me-2 ${switchingRole ? 'animate-spin' : ''}`} />
-              {isRTL ? 'العودة للدور الأصلي' : 'Return to Original Role'}
+              {t('returnToOriginalRole')}
             </Button>
           )}
         </DialogContent>

@@ -27,7 +27,9 @@ import {
 } from './ProfileComponents';
 import { Download } from 'lucide-react';
 
+import { useTranslation } from '../../contexts/ThemeContext';
 export function OverviewTab({ hook }) {
+  const { t } = useTranslation();
   const {
     isRTL, student, classNameFromState, classDetail,
     attendanceRate, loadingAttendance, homeworkRate, loadingHomework,
@@ -35,7 +37,7 @@ export function OverviewTab({ hook }) {
     setFormData, setEditProfileOpen, setActiveTab,
   } = hook;
 
-  const relationshipMap = { father: isRTL ? 'أب' : 'Father', mother: isRTL ? 'أم' : 'Mother', guardian: isRTL ? 'ولي أمر' : 'Guardian', brother: isRTL ? 'أخ' : 'Brother', sister: isRTL ? 'أخت' : 'Sister', uncle: isRTL ? 'عم / خال' : 'Uncle', other: isRTL ? 'أخرى' : 'Other' };
+  const relationshipMap = { father: t('father'), mother: t('mother'), guardian: isRTL ? 'ولي أمر' : 'Guardian', brother: t('brother'), sister: t('sister'), uncle: t('uncle'), other: t('other') };
 
   return (
     <TabsContent value="overview" className="mt-6 space-y-4">
@@ -44,14 +46,14 @@ export function OverviewTab({ hook }) {
           <div className="flex items-center justify-between mb-2">
             <h3 className="font-bold text-sm font-cairo flex items-center gap-2">
               <CheckCircle className="h-4 w-4 text-brand-turquoise" />
-              {isRTL ? 'اكتمال الملف الشخصي' : 'Profile Completeness'}
+              {t('profileCompleteness')}
             </h3>
             <span className={`text-sm font-bold font-cairo tabular-nums ${profileCompleteness.percent === 100 ? 'text-green-600' : profileCompleteness.percent >= 70 ? 'text-brand-turquoise' : 'text-amber-600'}`}>{profileCompleteness.percent}%</span>
           </div>
           <Progress value={profileCompleteness.percent} className={`h-2.5 ${profileCompleteness.percent === 100 ? '[&>div]:bg-green-500' : profileCompleteness.percent >= 70 ? '[&>div]:bg-brand-turquoise' : '[&>div]:bg-amber-500'}`} />
           {profileCompleteness.missing.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-2.5">
-              <span className="text-[11px] text-muted-foreground font-cairo">{isRTL ? 'ناقص:' : 'Missing:'}</span>
+              <span className="text-[11px] text-muted-foreground font-cairo">{t('missing')}</span>
               {profileCompleteness.missing.slice(0, 4).map(f => (
                 <Badge key={f.key} variant="outline" className="text-[10px] px-1.5 py-0 h-5 cursor-pointer hover:bg-brand-turquoise/10 border-dashed" onClick={() => { setFormData({ ...student }); setEditProfileOpen(true); }}>
                   {isRTL ? f.ar : f.en}
@@ -75,14 +77,14 @@ export function OverviewTab({ hook }) {
               {isRTL ? 'البيانات الشخصية' : 'Personal Info'}
             </h3>
             <div className="grid grid-cols-2 gap-4">
-              <DataField label={isRTL ? 'الاسم الكامل' : 'Full Name'} value={student.full_name} />
-              <DataField label={isRTL ? 'رقم الهوية' : 'National ID'} value={student.national_id} icon={User} />
-              <DataField label={isRTL ? 'البريد الإلكتروني' : 'Email'} value={student.email} icon={User} />
-              <DataField label={isRTL ? 'الهاتف' : 'Phone'} value={student.phone} icon={User} />
-              <DataField label={isRTL ? 'الجنس' : 'Gender'} value={student.gender === 'male' ? (isRTL ? 'ذكر' : 'Male') : student.gender === 'female' ? (isRTL ? 'أنثى' : 'Female') : null} />
-              <DataField label={isRTL ? 'تاريخ الميلاد' : 'Date of Birth'} value={student.date_of_birth} icon={Calendar} />
-              <DataField label={isRTL ? 'الجنسية' : 'Nationality'} value={student.nationality} icon={User} />
-              <DataField label={isRTL ? 'تاريخ التسجيل' : 'Enrollment Date'} value={student.enrollment_date} icon={Calendar} />
+              <DataField label={t('fullName')} value={student.full_name} />
+              <DataField label={t('nationalId')} value={student.national_id} icon={User} />
+              <DataField label={t('email2')} value={student.email} icon={User} />
+              <DataField label={t('phone2')} value={student.phone} icon={User} />
+              <DataField label={t('gender')} value={student.gender === 'male' ? (t('male')) : student.gender === 'female' ? (t('female')) : null} />
+              <DataField label={t('dateOfBirth')} value={student.date_of_birth} icon={Calendar} />
+              <DataField label={t('nationality')} value={student.nationality} icon={User} />
+              <DataField label={t('enrollmentDate')} value={student.enrollment_date} icon={Calendar} />
             </div>
           </CardContent>
         </Card>
@@ -91,31 +93,31 @@ export function OverviewTab({ hook }) {
           <CardContent className="p-5">
             <h3 className="font-bold text-sm font-cairo flex items-center gap-2 mb-4">
               <Heart className="h-4 w-4 text-rose-500" />
-              {isRTL ? 'ولي الأمر والطوارئ' : 'Guardian & Emergency'}
+              {t('guardianEmergency')}
             </h3>
             {student.parent_name ? (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
-                  <DataField label={isRTL ? 'الاسم' : 'Name'} value={student.parent_name} />
-                  <DataField label={isRTL ? 'صلة القرابة' : 'Relationship'} value={relationshipMap[student.parent_relationship] || student.parent_relationship} />
-                  <DataField label={isRTL ? 'الهاتف' : 'Phone'} value={student.parent_phone} icon={User} />
-                  <DataField label={isRTL ? 'البريد' : 'Email'} value={student.parent_email} icon={User} />
+                  <DataField label={t('name')} value={student.parent_name} />
+                  <DataField label={t('relationship')} value={relationshipMap[student.parent_relationship] || student.parent_relationship} />
+                  <DataField label={t('phone2')} value={student.parent_phone} icon={User} />
+                  <DataField label={t('email')} value={student.parent_email} icon={User} />
                 </div>
                 {(student.emergency_contact || student.emergency_phone) && (
                   <div className="border-t pt-3">
                     <p className="text-[11px] text-muted-foreground font-cairo mb-2 flex items-center gap-1">
                       <AlertTriangle className="h-3 w-3 text-amber-500" />
-                      {isRTL ? 'جهة اتصال الطوارئ' : 'Emergency Contact'}
+                      {t('emergencyContact')}
                     </p>
                     <div className="grid grid-cols-2 gap-4">
-                      <DataField label={isRTL ? 'الاسم' : 'Name'} value={student.emergency_contact} />
-                      <DataField label={isRTL ? 'الهاتف' : 'Phone'} value={student.emergency_phone} icon={User} />
+                      <DataField label={t('name')} value={student.emergency_contact} />
+                      <DataField label={t('phone2')} value={student.emergency_phone} icon={User} />
                     </div>
                   </div>
                 )}
               </div>
             ) : (
-              <EmptyState icon={Heart} message={isRTL ? 'لم يتم إضافة بيانات ولي الأمر' : 'No guardian info added'} actionLabel={isRTL ? 'إضافة بيانات' : 'Add Info'} onAction={() => { setFormData({ ...student }); setEditProfileOpen(true); }} />
+              <EmptyState icon={Heart} message={t('noGuardianInfoAdded')} actionLabel={t('addInfo')} onAction={() => { setFormData({ ...student }); setEditProfileOpen(true); }} />
             )}
           </CardContent>
         </Card>
@@ -124,29 +126,29 @@ export function OverviewTab({ hook }) {
           <CardContent className="p-5">
             <h3 className="font-bold text-sm font-cairo flex items-center gap-2 mb-4">
               <GraduationCap className="h-4 w-4 text-brand-navy" />
-              {isRTL ? 'لمحة أكاديمية' : 'Academic Snapshot'}
+              {t('academicSnapshot')}
             </h3>
             <div className="grid grid-cols-2 gap-4">
               <DataField label={isRTL ? 'الصف' : 'Class'} value={student.class_name || classNameFromState} icon={BookOpen} />
-              <DataField label={isRTL ? 'معلم الفصل' : 'Homeroom Teacher'} value={classDetail?.homeroom_teacher_name} icon={User} />
+              <DataField label={t('homeroomTeacher')} value={classDetail?.homeroom_teacher_name} icon={User} />
               <div className="col-span-2 grid grid-cols-3 gap-3 pt-1">
                 <div className="text-center p-2.5 bg-green-50 dark:bg-green-950/20 rounded-lg">
                   <p className={`text-xl font-bold font-cairo ${attendanceRate !== null ? (attendanceRate >= 80 ? 'text-green-600' : attendanceRate >= 60 ? 'text-amber-600' : 'text-red-600') : 'text-muted-foreground'}`}>
                     {loadingAttendance ? '...' : attendanceRate !== null ? `${attendanceRate}%` : '—'}
                   </p>
-                  <p className="text-[10px] text-muted-foreground font-cairo">{isRTL ? 'الحضور' : 'Attendance'}</p>
+                  <p className="text-[10px] text-muted-foreground font-cairo">{t('attendance2')}</p>
                 </div>
                 <div className="text-center p-2.5 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
                   <p className={`text-xl font-bold font-cairo ${homeworkRate ? (homeworkRate.rate >= 80 ? 'text-green-600' : homeworkRate.rate >= 50 ? 'text-amber-600' : 'text-red-600') : 'text-muted-foreground'}`}>
                     {loadingHomework ? '...' : homeworkRate ? `${homeworkRate.rate}%` : '—'}
                   </p>
-                  <p className="text-[10px] text-muted-foreground font-cairo">{isRTL ? 'الأكاديمي' : 'Academic'}</p>
+                  <p className="text-[10px] text-muted-foreground font-cairo">{t('academic2')}</p>
                 </div>
                 <div className="text-center p-2.5 bg-purple-50 dark:bg-purple-950/20 rounded-lg">
                   <p className="text-xl font-bold font-cairo text-brand-navy">
                     {loadingBehaviour ? '...' : behaviourSummary ? (behaviourSummary.total_points || 0) : '—'}
                   </p>
-                  <p className="text-[10px] text-muted-foreground font-cairo">{isRTL ? 'السلوك' : 'Behavior'}</p>
+                  <p className="text-[10px] text-muted-foreground font-cairo">{t('behavior')}</p>
                 </div>
               </div>
             </div>
@@ -157,35 +159,35 @@ export function OverviewTab({ hook }) {
           <CardContent className="p-5">
             <h3 className="font-bold text-sm font-cairo flex items-center gap-2 mb-4">
               <Stethoscope className="h-4 w-4 text-rose-500" />
-              {isRTL ? 'الصحة والملاحظات' : 'Health & Notes'}
+              {t('healthNotes')}
             </h3>
             {student.health_info && Object.keys(student.health_info).length > 0 ? (
               <div className="space-y-3">
-                {student.health_info.blood_type && <DataField label={isRTL ? 'فصيلة الدم' : 'Blood Type'} value={student.health_info.blood_type} />}
+                {student.health_info.blood_type && <DataField label={t('bloodType')} value={student.health_info.blood_type} />}
                 {student.health_info.has_chronic_conditions && student.health_info.chronic_conditions && (
-                  <div><p className="text-[11px] text-muted-foreground font-cairo mb-1">{isRTL ? 'أمراض مزمنة' : 'Chronic Conditions'}</p><p className="text-sm font-cairo">{student.health_info.chronic_conditions}</p></div>
+                  <div><p className="text-[11px] text-muted-foreground font-cairo mb-1">{t('chronicConditions')}</p><p className="text-sm font-cairo">{student.health_info.chronic_conditions}</p></div>
                 )}
                 {student.health_info.has_allergies && student.health_info.allergies && (
-                  <div><p className="text-[11px] text-muted-foreground font-cairo mb-1">{isRTL ? 'حساسية' : 'Allergies'}</p><p className="text-sm font-cairo">{student.health_info.allergies}</p></div>
+                  <div><p className="text-[11px] text-muted-foreground font-cairo mb-1">{t('allergies')}</p><p className="text-sm font-cairo">{student.health_info.allergies}</p></div>
                 )}
                 {student.health_info.has_disabilities && student.health_info.disabilities && (
-                  <div><p className="text-[11px] text-muted-foreground font-cairo mb-1">{isRTL ? 'إعاقات' : 'Disabilities'}</p><p className="text-sm font-cairo">{student.health_info.disabilities}</p></div>
+                  <div><p className="text-[11px] text-muted-foreground font-cairo mb-1">{t('disabilities')}</p><p className="text-sm font-cairo">{student.health_info.disabilities}</p></div>
                 )}
                 {student.health_info.requires_special_care && student.health_info.special_care_notes && (
                   <div className="p-2 bg-amber-50 dark:bg-amber-950/20 rounded-lg border border-amber-200 dark:border-amber-800/30">
-                    <p className="text-[11px] text-amber-600 font-cairo mb-1 flex items-center gap-1"><AlertTriangle className="h-3 w-3" />{isRTL ? 'ملاحظات رعاية خاصة' : 'Special Care Notes'}</p>
+                    <p className="text-[11px] text-amber-600 font-cairo mb-1 flex items-center gap-1"><AlertTriangle className="h-3 w-3" />{t('specialCareNotes')}</p>
                     <p className="text-sm font-cairo">{student.health_info.special_care_notes}</p>
                   </div>
                 )}
                 {student.health_info.emergency_medical_notes && (
                   <div className="p-2 bg-red-50 dark:bg-red-950/20 rounded-lg border border-red-200 dark:border-red-800/30">
-                    <p className="text-[11px] text-red-600 font-cairo mb-1 flex items-center gap-1"><Heart className="h-3 w-3" />{isRTL ? 'ملاحظات طبية طارئة' : 'Emergency Medical Notes'}</p>
+                    <p className="text-[11px] text-red-600 font-cairo mb-1 flex items-center gap-1"><Heart className="h-3 w-3" />{t('emergencyMedicalNotes')}</p>
                     <p className="text-sm font-cairo">{student.health_info.emergency_medical_notes}</p>
                   </div>
                 )}
               </div>
             ) : (
-              <EmptyState icon={Stethoscope} message={isRTL ? 'لا توجد بيانات صحية مسجلة' : 'No health info recorded'} actionLabel={isRTL ? 'إضافة بيانات' : 'Add Info'} onAction={() => { setFormData({ ...student }); setEditProfileOpen(true); }} />
+              <EmptyState icon={Stethoscope} message={t('noHealthInfoRecorded')} actionLabel={t('addInfo')} onAction={() => { setFormData({ ...student }); setEditProfileOpen(true); }} />
             )}
           </CardContent>
         </Card>
@@ -197,10 +199,10 @@ export function OverviewTab({ hook }) {
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-bold text-sm font-cairo flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-brand-turquoise" />
-                {isRTL ? 'المواهب' : 'Talents'}
+                {t('talents')}
               </h3>
               <Button variant="ghost" size="sm" className="text-xs text-brand-turquoise" onClick={() => setActiveTab('talents')}>
-                {isRTL ? 'عرض الكل' : 'View All'} <ChevronRight className="h-3 w-3 ms-1" />
+                {t('viewAll')} <ChevronRight className="h-3 w-3 ms-1" />
               </Button>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -236,7 +238,7 @@ export function AcademicTab({ hook }) {
         <CardContent className="p-6 space-y-4">
           <h3 className="font-bold text-base font-cairo flex items-center gap-2">
             <Activity className="h-5 w-5 text-brand-turquoise" />
-            {isRTL ? 'ملخص الحضور' : 'Attendance Summary'}
+            {t('attendanceSummary')}
           </h3>
           {loadingAttendance ? (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}</div>
@@ -244,10 +246,10 @@ export function AcademicTab({ hook }) {
             <div className="space-y-4">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {[
-                  { label: isRTL ? 'حاضر' : 'Present', value: attendanceSummary.present_count ?? attendanceSummary.present ?? 0, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-950/20' },
-                  { label: isRTL ? 'غائب' : 'Absent', value: attendanceSummary.absent_count ?? attendanceSummary.absent ?? 0, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/20' },
-                  { label: isRTL ? 'متأخر' : 'Late', value: attendanceSummary.late_count ?? attendanceSummary.late ?? 0, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/20' },
-                  { label: isRTL ? 'بعذر' : 'Excused', value: attendanceSummary.excused_count ?? attendanceSummary.excused ?? 0, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/20' },
+                  { label: t('present'), value: attendanceSummary.present_count ?? attendanceSummary.present ?? 0, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-950/20' },
+                  { label: t('absent'), value: attendanceSummary.absent_count ?? attendanceSummary.absent ?? 0, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/20' },
+                  { label: t('late'), value: attendanceSummary.late_count ?? attendanceSummary.late ?? 0, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/20' },
+                  { label: t('excused2'), value: attendanceSummary.excused_count ?? attendanceSummary.excused ?? 0, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/20' },
                 ].map((item, i) => (
                   <div key={i} className={`text-center p-4 rounded-xl ${item.bg}`}>
                     <p className={`text-2xl font-bold font-cairo ${item.color}`}>{item.value}</p>
@@ -259,7 +261,7 @@ export function AcademicTab({ hook }) {
                 <div className="space-y-2 pt-2"><Skeleton className="h-4 w-32" /><Skeleton className="h-48 w-full rounded-xl" /></div>
               ) : attendanceChartData.length > 0 ? (
                 <div>
-                  <h4 className="text-sm font-medium font-cairo mb-2">{isRTL ? 'الحضور الشهري' : 'Monthly Attendance'}</h4>
+                  <h4 className="text-sm font-medium font-cairo mb-2">{t('monthlyAttendance')}</h4>
                   <div className="h-52">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={attendanceChartData} barGap={2}>
@@ -267,10 +269,10 @@ export function AcademicTab({ hook }) {
                         <XAxis dataKey="month" tick={{ fontSize: 11 }} tickFormatter={v => v.substring(5)} />
                         <YAxis tick={{ fontSize: 11 }} />
                         <RechartsTooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} />
-                        <Bar dataKey="present" name={isRTL ? 'حاضر' : 'Present'} fill="#22c55e" radius={[3, 3, 0, 0]} />
-                        <Bar dataKey="absent" name={isRTL ? 'غائب' : 'Absent'} fill="#ef4444" radius={[3, 3, 0, 0]} />
-                        <Bar dataKey="late" name={isRTL ? 'متأخر' : 'Late'} fill="#f59e0b" radius={[3, 3, 0, 0]} />
-                        <Bar dataKey="excused" name={isRTL ? 'بعذر' : 'Excused'} fill="#3b82f6" radius={[3, 3, 0, 0]} />
+                        <Bar dataKey="present" name={t('present')} fill="#22c55e" radius={[3, 3, 0, 0]} />
+                        <Bar dataKey="absent" name={t('absent')} fill="#ef4444" radius={[3, 3, 0, 0]} />
+                        <Bar dataKey="late" name={t('late')} fill="#f59e0b" radius={[3, 3, 0, 0]} />
+                        <Bar dataKey="excused" name={t('excused2')} fill="#3b82f6" radius={[3, 3, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -278,7 +280,7 @@ export function AcademicTab({ hook }) {
               ) : null}
             </div>
           ) : (
-            <EmptyState icon={Calendar} message={isRTL ? 'لا توجد بيانات حضور' : 'No attendance data available'} />
+            <EmptyState icon={Calendar} message={t('noAttendanceDataAvailable')} />
           )}
         </CardContent>
       </Card>
@@ -287,7 +289,7 @@ export function AcademicTab({ hook }) {
         <CardContent className="p-6 space-y-4">
           <h3 className="font-bold text-base font-cairo flex items-center gap-2">
             <CheckCircle className="h-5 w-5 text-indigo-500" />
-            {isRTL ? 'الأداء الأكاديمي والدرجات' : 'Grades & Academic Performance'}
+            {t('gradesAcademicPerformance')}
           </h3>
           {loadingHomework || loadingGrades ? (
             <div className="space-y-3">
@@ -308,11 +310,11 @@ export function AcademicTab({ hook }) {
                   <div className="grid grid-cols-2 gap-3">
                     <div className="text-center p-3 bg-green-50 dark:bg-green-950/20 rounded-xl">
                       <p className="text-xl font-bold font-cairo text-green-600">{homeworkRate.completed}</p>
-                      <p className="text-xs text-muted-foreground mt-1">{isRTL ? 'درجات مسجلة' : 'Graded'}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{t('graded')}</p>
                     </div>
                     <div className="text-center p-3 bg-gray-50 dark:bg-gray-800/30 rounded-xl">
                       <p className="text-xl font-bold font-cairo text-gray-600">{homeworkRate.total}</p>
-                      <p className="text-xs text-muted-foreground mt-1">{isRTL ? 'إجمالي التقييمات' : 'Total Assessments'}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{t('totalAssessments')}</p>
                     </div>
                   </div>
                 </div>
@@ -321,16 +323,16 @@ export function AcademicTab({ hook }) {
                 <div>
                   <h4 className="text-sm font-medium font-cairo mb-3 flex items-center gap-2">
                     <BookOpen className="h-4 w-4 text-brand-navy" />
-                    {isRTL ? 'الدرجات حسب المادة' : 'Grades by Subject'}
+                    {t('gradesBySubject')}
                   </h4>
                   <div className="rounded-lg border overflow-hidden">
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="bg-muted/50">
-                            <th className="text-start p-3 font-medium font-cairo">{isRTL ? 'المادة' : 'Subject'}</th>
+                            <th className="text-start p-3 font-medium font-cairo">{t('subject')}</th>
                             <th className="text-center p-3 font-medium font-cairo">{isRTL ? 'الدرجة' : 'Score'}</th>
-                            <th className="text-center p-3 font-medium font-cairo">{isRTL ? 'من' : 'Out of'}</th>
+                            <th className="text-center p-3 font-medium font-cairo">{t('outOf')}</th>
                             <th className="text-center p-3 font-medium font-cairo">%</th>
                           </tr>
                         </thead>
@@ -379,7 +381,7 @@ export function AcademicTab({ hook }) {
                 </div>
               )}
               {!homeworkRate && subjectGrades.length === 0 && (
-                <EmptyState icon={BarChart3} message={isRTL ? 'لا توجد درجات مسجلة بعد' : 'No grades recorded yet'} />
+                <EmptyState icon={BarChart3} message={t('noGradesRecordedYet')} />
               )}
             </div>
           )}
@@ -391,10 +393,10 @@ export function AcademicTab({ hook }) {
           <div className="flex items-center justify-between">
             <h3 className="font-bold text-base font-cairo flex items-center gap-2">
               <Brain className="h-5 w-5 text-brand-purple" />
-              {isRTL ? 'التحليل الذكي' : 'AI Analysis'}
+              {t('aiAnalysis2')}
             </h3>
             <Button variant="ghost" size="sm" onClick={fetchRiskData} className="text-xs">
-              <Activity className="h-3.5 w-3.5 me-1" /> {isRTL ? 'تحديث' : 'Refresh'}
+              <Activity className="h-3.5 w-3.5 me-1" /> {t('refresh')}
             </Button>
           </div>
           {loadingRisk ? (
@@ -406,7 +408,7 @@ export function AcademicTab({ hook }) {
             <>
               <div className="bg-gradient-to-br from-brand-navy/5 to-brand-purple/5 dark:from-brand-navy/20 dark:to-brand-purple/10 p-4 rounded-xl">
                 <div className="flex items-center justify-between mb-3">
-                  <h4 className="font-bold text-sm font-cairo">{isRTL ? 'مؤشر الأداء العام' : 'Overall Performance'}</h4>
+                  <h4 className="font-bold text-sm font-cairo">{t('overallPerformance')}</h4>
                   <Badge className={getRiskColor(riskData.risk_category)}>{getRiskLabel(riskData.risk_category)}</Badge>
                 </div>
                 <div className="flex items-center gap-3">
@@ -436,7 +438,7 @@ export function AcademicTab({ hook }) {
               </div>
               {riskData.factors?.length > 0 && (
                 <div className="space-y-2">
-                  <h4 className="text-sm font-medium flex items-center gap-2"><Target className="h-4 w-4 text-brand-turquoise" /> {isRTL ? 'نقاط الملاحظة' : 'Key Observations'}</h4>
+                  <h4 className="text-sm font-medium flex items-center gap-2"><Target className="h-4 w-4 text-brand-turquoise" /> {t('keyObservations')}</h4>
                   {riskData.factors.map((f, i) => (
                     <div key={i} className="flex items-start gap-2 text-sm p-2.5 bg-amber-50/60 dark:bg-amber-950/10 rounded-lg border border-amber-100 dark:border-amber-800/20">
                       <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
@@ -447,7 +449,7 @@ export function AcademicTab({ hook }) {
               )}
             </>
           ) : (
-            <EmptyState icon={Brain} message={isRTL ? 'لا تتوفر بيانات تحليلية حالياً' : 'No analytics available yet'} />
+            <EmptyState icon={Brain} message={t('noAnalyticsAvailableYet')} />
           )}
         </CardContent>
       </Card>
@@ -471,18 +473,18 @@ export function TalentsTab({ hook }) {
           <div className="flex items-center justify-between">
             <h3 className="font-bold text-base font-cairo flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-brand-turquoise" />
-              {isRTL ? 'المواهب والمهارات' : 'Talents & Skills'}
+              {t('talentsSkills')}
             </h3>
             {student?.is_gifted && (
               <Badge className="bg-gradient-to-r from-yellow-400 to-amber-500 text-white border-0 px-3 py-1 font-cairo">
                 <Trophy className="h-3.5 w-3.5 me-1" />
-                {isRTL ? 'طالب موهوب' : 'Gifted Student'}
+                {t('giftedStudent')}
               </Badge>
             )}
           </div>
 
           <div>
-            <Label className="text-sm font-cairo mb-3 block text-muted-foreground">{isRTL ? 'المواهب الحالية' : 'Current Talents'}</Label>
+            <Label className="text-sm font-cairo mb-3 block text-muted-foreground">{t('currentTalents')}</Label>
             {(student?.talents?.length > 0) ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                 {student.talents.map(t => {
@@ -500,12 +502,12 @@ export function TalentsTab({ hook }) {
                 })}
               </div>
             ) : (
-              <EmptyState icon={Sparkles} message={isRTL ? 'لم يتم تحديد مواهب بعد' : 'No talents selected yet'} />
+              <EmptyState icon={Sparkles} message={t('noTalentsSelectedYet')} />
             )}
           </div>
 
           <div>
-            <Label className="text-sm font-cairo mb-3 block text-muted-foreground">{isRTL ? 'إضافة موهبة' : 'Add Talent'}</Label>
+            <Label className="text-sm font-cairo mb-3 block text-muted-foreground">{t('addTalent')}</Label>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
               {TALENT_OPTIONS.filter(o => !(student?.talents || []).includes(o.value)).map(opt => (
                 <Button key={opt.value} variant="outline" size="sm" disabled={savingTalent} onClick={() => handleAddTalent(opt.value)}
@@ -519,7 +521,7 @@ export function TalentsTab({ hook }) {
 
           {globalTalents.length > 0 && (
             <div>
-              <Label className="text-sm font-cairo mb-3 block text-muted-foreground">{isRTL ? 'مواهب المدرسة' : 'School Talents'}</Label>
+              <Label className="text-sm font-cairo mb-3 block text-muted-foreground">{t('schoolTalents')}</Label>
               <div className="flex flex-wrap gap-2">
                 {globalTalents.filter(gt => !(student?.talents || []).includes(gt.value) && !TALENT_OPTIONS.some(o => o.value === gt.value)).map(gt => (
                   <Button key={gt.id} variant="outline" size="sm" disabled={savingTalent} onClick={() => handleAddTalent(gt.value)} className="text-xs font-cairo gap-1.5">
@@ -531,10 +533,10 @@ export function TalentsTab({ hook }) {
           )}
 
           <div>
-            <Label className="text-sm font-cairo mb-2 block text-muted-foreground">{isRTL ? 'إضافة موهبة مخصصة' : 'Add Custom Talent'}</Label>
+            <Label className="text-sm font-cairo mb-2 block text-muted-foreground">{t('addCustomTalent')}</Label>
             <div className="flex gap-2">
               <Input value={customTalentName} onChange={e => setCustomTalentName(e.target.value)}
-                placeholder={isRTL ? 'اكتب اسم الموهبة...' : 'Type talent name...'} className="flex-1 text-sm font-cairo"
+                placeholder={t('typeTalentName')} className="flex-1 text-sm font-cairo"
                 onKeyDown={e => e.key === 'Enter' && handleAddCustomTalent()} />
               <Button size="sm" disabled={addingCustomTalent || !customTalentName.trim()} onClick={handleAddCustomTalent} className="bg-brand-turquoise hover:bg-brand-turquoise/90 text-white">
                 {addingCustomTalent ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
@@ -552,7 +554,7 @@ export function TalentsTab({ hook }) {
         <CardContent className="p-6">
           <h3 className="font-bold text-base font-cairo flex items-center gap-2 mb-4">
             <Target className="h-5 w-5 text-brand-purple" />
-            {isRTL ? 'خريطة المهارات' : 'Skills Radar'}
+            {t('skillsRadar')}
           </h3>
           {(student?.talents?.length > 0) ? (
             <div className="h-72">
@@ -561,12 +563,12 @@ export function TalentsTab({ hook }) {
                   <PolarGrid strokeDasharray="3 3" />
                   <PolarAngleAxis dataKey="dimension" tick={{ fontSize: 11, fontFamily: 'Cairo' }} />
                   <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fontSize: 9 }} />
-                  <Radar name={isRTL ? 'المهارات' : 'Skills'} dataKey="value" stroke="#46C1BE" fill="#46C1BE" fillOpacity={0.3} strokeWidth={2} />
+                  <Radar name={t('skills')} dataKey="value" stroke="#46C1BE" fill="#46C1BE" fillOpacity={0.3} strokeWidth={2} />
                 </RadarChart>
               </ResponsiveContainer>
             </div>
           ) : (
-            <EmptyState icon={Target} message={isRTL ? 'أضف مواهب لعرض خريطة المهارات' : 'Add talents to see skills radar'} />
+            <EmptyState icon={Target} message={t('addTalentsToSeeSkillsRadar')} />
           )}
         </CardContent>
       </Card>
@@ -576,10 +578,10 @@ export function TalentsTab({ hook }) {
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-bold text-base font-cairo flex items-center gap-2">
               <Rocket className="h-5 w-5 text-brand-purple" />
-              {isRTL ? 'مؤشرات المسار المهني' : 'Career Affinity Indicators'}
+              {t('careerAffinityIndicators')}
             </h3>
             <Badge variant="outline" className="text-[10px] border-dashed text-muted-foreground">
-              {isRTL ? 'مؤشرات أولية' : 'Early Indicators'}
+              {t('earlyIndicators')}
             </Badge>
           </div>
           {(student?.talents?.length > 0) ? (
@@ -594,11 +596,11 @@ export function TalentsTab({ hook }) {
               </div>
               <p className="text-[11px] text-muted-foreground font-cairo flex items-center gap-1.5 mt-2 p-2 bg-muted/30 rounded-lg">
                 <Brain className="h-3.5 w-3.5 text-brand-purple shrink-0" />
-                {isRTL ? 'مؤشرات أولية — ليست نهائية. هذا القسم سيعمل بالذكاء الاصطناعي في إصدار مستقبلي.' : 'Early Indicators — Not Final. This section will be AI-powered in a future version.'}
+                {t('earlyIndicatorsNotFinalThisSectionWillBeAipoweredI')}
               </p>
             </div>
           ) : (
-            <EmptyState icon={Rocket} message={isRTL ? 'أضف مواهب لعرض مؤشرات المسار المهني' : 'Add talents to see career affinity'} />
+            <EmptyState icon={Rocket} message={t('addTalentsToSeeCareerAffinity')} />
           )}
         </CardContent>
       </Card>
@@ -622,9 +624,9 @@ export function BehaviourTab({ hook }) {
       {behaviourSummary && (
         <div className="grid grid-cols-3 gap-3">
           {[
-            { icon: ThumbsUp, value: behaviourSummary.positive_count || 0, label: isRTL ? 'إيجابي' : 'Positive', color: 'text-green-500', bg: 'bg-green-50 dark:bg-green-950/20', border: 'border-green-200 dark:border-green-800' },
-            { icon: ThumbsDown, value: behaviourSummary.negative_count || 0, label: isRTL ? 'سلبي' : 'Negative', color: 'text-red-500', bg: 'bg-red-50 dark:bg-red-950/20', border: 'border-red-200 dark:border-red-800' },
-            { icon: MessageSquare, value: behaviourSummary.total_records || behaviourRecords.length, label: isRTL ? 'إجمالي السجلات' : 'Total Records', color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-950/20', border: 'border-blue-200 dark:border-blue-800' },
+            { icon: ThumbsUp, value: behaviourSummary.positive_count || 0, label: t('positive'), color: 'text-green-500', bg: 'bg-green-50 dark:bg-green-950/20', border: 'border-green-200 dark:border-green-800' },
+            { icon: ThumbsDown, value: behaviourSummary.negative_count || 0, label: t('negative'), color: 'text-red-500', bg: 'bg-red-50 dark:bg-red-950/20', border: 'border-red-200 dark:border-red-800' },
+            { icon: MessageSquare, value: behaviourSummary.total_records || behaviourRecords.length, label: t('totalRecords'), color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-950/20', border: 'border-blue-200 dark:border-blue-800' },
           ].map((s, i) => (
             <Card key={i} className={`${s.border} ${s.bg}`}>
               <CardContent className="p-4 text-center">
@@ -642,7 +644,7 @@ export function BehaviourTab({ hook }) {
           <CardContent className="p-6">
             <h3 className="font-bold text-base font-cairo flex items-center gap-2 mb-4">
               <BarChart3 className="h-5 w-5 text-brand-navy" />
-              {isRTL ? 'اتجاه السلوك الشهري' : 'Monthly Behavior Trend'}
+              {t('monthlyBehaviorTrend')}
             </h3>
             <div className="h-52">
               <ResponsiveContainer width="100%" height="100%">
@@ -651,8 +653,8 @@ export function BehaviourTab({ hook }) {
                   <XAxis dataKey="month" tick={{ fontSize: 11 }} tickFormatter={v => v.substring(5)} />
                   <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
                   <RechartsTooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} />
-                  <Bar dataKey="positive" name={isRTL ? 'إيجابي' : 'Positive'} fill="#22c55e" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="negative" name={isRTL ? 'سلبي' : 'Negative'} fill="#ef4444" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="positive" name={t('positive')} fill="#22c55e" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="negative" name={t('negative')} fill="#ef4444" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -665,17 +667,17 @@ export function BehaviourTab({ hook }) {
           <div className="flex items-center justify-between">
             <h3 className="font-bold text-base font-cairo flex items-center gap-2">
               <Activity className="h-5 w-5 text-brand-navy" />
-              {isRTL ? 'سجل السلوك' : 'Behavior Log'}
+              {t('behaviorLog')}
             </h3>
             <Button size="sm" onClick={() => openBehaviourModal()} className="bg-brand-navy hover:bg-brand-navy/90 text-white gap-1 font-cairo">
-              <Plus className="h-4 w-4" /> {isRTL ? 'إضافة سجل' : 'Add Record'}
+              <Plus className="h-4 w-4" /> {t('addRecord')}
             </Button>
           </div>
 
           {loadingBehaviour ? (
             <div className="space-y-3">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}</div>
           ) : behaviourRecords.length === 0 ? (
-            <EmptyState icon={Activity} message={isRTL ? 'لا توجد سجلات سلوكية بعد' : 'No behavior records yet'} actionLabel={isRTL ? 'إضافة سجل' : 'Add Record'} onAction={() => openBehaviourModal()} />
+            <EmptyState icon={Activity} message={t('noBehaviorRecordsYet')} actionLabel={t('addRecord')} onAction={() => openBehaviourModal()} />
           ) : (
             <>
               <div className="space-y-3">
@@ -743,10 +745,10 @@ export function BehaviourTab({ hook }) {
         <CardContent className="p-6 space-y-4">
           <h3 className="font-bold text-base font-cairo flex items-center gap-2">
             <Heart className="h-5 w-5 text-rose-500" />
-            {isRTL ? 'السمات الشخصية' : 'Character Traits'}
+            {t('characterTraits')}
           </h3>
           <p className="text-xs text-muted-foreground font-cairo">
-            {isRTL ? 'سمات إيجابية يضيفها المعلمون لوصف شخصية الطالب' : 'Positive personality tags added by teachers to describe the student'}
+            {t('positivePersonalityTagsAddedByTeachersToDescribeTh')}
           </p>
 
           {(student?.character_traits?.length > 0) ? (
@@ -762,11 +764,11 @@ export function BehaviourTab({ hook }) {
               ))}
             </div>
           ) : (
-            <EmptyState icon={Heart} message={isRTL ? 'لم يتم إضافة سمات شخصية بعد' : 'No character traits added yet'} />
+            <EmptyState icon={Heart} message={t('noCharacterTraitsAddedYet')} />
           )}
 
           <div>
-            <Label className="text-sm font-cairo mb-2 block text-muted-foreground">{isRTL ? 'إضافة سمة' : 'Add Trait'}</Label>
+            <Label className="text-sm font-cairo mb-2 block text-muted-foreground">{t('addTrait')}</Label>
             <div className="flex flex-wrap gap-1.5 mb-3">
               {CHARACTER_TRAIT_OPTIONS
                 .filter(opt => !(student?.character_traits || []).includes(isRTL ? opt.ar : opt.en))
@@ -780,7 +782,7 @@ export function BehaviourTab({ hook }) {
             </div>
             <div className="flex gap-2">
               <Input value={newCharacterTrait} onChange={e => setNewCharacterTrait(e.target.value)}
-                placeholder={isRTL ? 'أو اكتب سمة مخصصة...' : 'Or type a custom trait...'}
+                placeholder={t('orTypeACustomTrait')}
                 className="flex-1 text-sm font-cairo"
                 onKeyDown={e => e.key === 'Enter' && handleAddCharacterTrait(newCharacterTrait)} />
               <Button size="sm" disabled={savingCharacterTrait || !newCharacterTrait.trim()}
@@ -812,7 +814,7 @@ export function ActivitiesTab({ hook }) {
           <div className="flex items-center justify-between mb-2">
             <h3 className="font-bold text-sm font-cairo flex items-center gap-2">
               <Zap className="h-4 w-4 text-brand-turquoise" />
-              {isRTL ? 'مؤشر المشاركة اللاصفية' : 'Extracurricular Involvement'}
+              {t('extracurricularInvolvement')}
             </h3>
             <Badge className={`${involvementScore.color} text-white border-0 text-xs font-cairo`}>{involvementScore.label}</Badge>
           </div>
@@ -828,18 +830,18 @@ export function ActivitiesTab({ hook }) {
           <div className="flex items-center justify-between">
             <h3 className="font-bold text-base font-cairo flex items-center gap-2">
               <Medal className="h-5 w-5 text-brand-navy" />
-              {isRTL ? 'الأنشطة' : 'Activities'}
+              {t('activities')}
             </h3>
             {(user?.role === 'school_admin' || user?.role === 'admin' || user?.role === 'super_admin' || isTeacher) && (
               <Button size="sm" onClick={() => openActivityModal()} className="bg-brand-navy hover:bg-brand-navy/90 text-white gap-1 font-cairo">
-                <Plus className="h-4 w-4" /> {isRTL ? 'إضافة نشاط' : 'Add Activity'}
+                <Plus className="h-4 w-4" /> {t('addActivity')}
               </Button>
             )}
           </div>
           {loadingActivities ? (
             <div className="space-y-3">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}</div>
           ) : activities.length === 0 ? (
-            <EmptyState icon={Medal} message={isRTL ? 'لا توجد أنشطة مسجلة بعد' : 'No activities recorded yet'} actionLabel={isRTL ? 'إضافة نشاط' : 'Add Activity'} onAction={() => openActivityModal()} />
+            <EmptyState icon={Medal} message={t('noActivitiesRecordedYet')} actionLabel={t('addActivity')} onAction={() => openActivityModal()} />
           ) : (
             <div className="space-y-2">
               {activities.map(act => {
@@ -876,18 +878,18 @@ export function ActivitiesTab({ hook }) {
           <div className="flex items-center justify-between">
             <h3 className="font-bold text-base font-cairo flex items-center gap-2">
               <Trophy className="h-5 w-5 text-amber-500" />
-              {isRTL ? 'الشهادات والجوائز' : 'Certificates & Awards'}
+              {t('certificatesAwards')}
             </h3>
             {(user?.role === 'school_admin' || user?.role === 'admin' || user?.role === 'super_admin' || isTeacher) && (
               <Button size="sm" onClick={() => openCertificateModal()} className="bg-amber-500 hover:bg-amber-600 text-white gap-1 font-cairo">
-                <Plus className="h-4 w-4" /> {isRTL ? 'إضافة شهادة' : 'Add Certificate'}
+                <Plus className="h-4 w-4" /> {t('addCertificate')}
               </Button>
             )}
           </div>
           {loadingActivities ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{[...Array(2)].map((_, i) => <Skeleton key={i} className="h-32 rounded-xl" />)}</div>
           ) : certificates.length === 0 ? (
-            <EmptyState icon={Trophy} message={isRTL ? 'لا توجد شهادات أو جوائز بعد' : 'No certificates or awards yet'} actionLabel={isRTL ? 'إضافة شهادة' : 'Add Certificate'} onAction={() => openCertificateModal()} />
+            <EmptyState icon={Trophy} message={t('noCertificatesOrAwardsYet')} actionLabel={t('addCertificate')} onAction={() => openCertificateModal()} />
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {certificates.map(cert => (
@@ -935,7 +937,7 @@ export function PlansTab({ hook }) {
       <div className="relative my-2">
         <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-dashed border-brand-purple/20" /></div>
         <div className="relative flex justify-center">
-          <span className="bg-background px-3 text-xs text-brand-purple font-cairo font-medium">{isRTL ? 'خطط حكيم الذكية' : 'Hakim AI Plans'}</span>
+          <span className="bg-background px-3 text-xs text-brand-purple font-cairo font-medium">{t('hakimAiPlans')}</span>
         </div>
       </div>
 
@@ -949,7 +951,7 @@ export function PlansTab({ hook }) {
         <Button variant="outline" className="w-full gap-2 border-brand-navy/20 text-brand-navy hover:bg-brand-navy/5"
           onClick={() => openExportModal('both')} disabled={exportingPlan}>
           {exportingPlan ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-          {isRTL ? 'تصدير الخطتين معاً' : 'Export Both Plans'}
+          {t('exportBothPlans')}
         </Button>
       )}
 
@@ -957,12 +959,12 @@ export function PlansTab({ hook }) {
         <CardContent className="p-6 space-y-3">
           <h3 className="font-bold text-base font-cairo flex items-center gap-2">
             <Clock className="h-5 w-5 text-brand-purple" />
-            {isRTL ? 'سجل الخطط السابقة' : 'Plan History Log'}
+            {t('planHistoryLog')}
           </h3>
           {loadingPlanHistory ? (
             <div className="space-y-2">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-14 rounded-xl" />)}</div>
           ) : planHistory.length === 0 ? (
-            <EmptyState icon={Clock} message={isRTL ? 'لا يوجد سجل خطط سابقة بعد' : 'No plan history yet'} />
+            <EmptyState icon={Clock} message={t('noPlanHistoryYet')} />
           ) : (
             <div className="space-y-2">
               {planHistory.map((entry, i) => {
@@ -975,9 +977,9 @@ export function PlansTab({ hook }) {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        {hasRemedial && <Badge variant="outline" className="text-[10px] border-rose-200 text-rose-600 dark:border-rose-800 dark:text-rose-400">{isRTL ? 'علاجية' : 'Remedial'}</Badge>}
-                        {hasEnrichment && <Badge variant="outline" className="text-[10px] border-emerald-200 text-emerald-600 dark:border-emerald-800 dark:text-emerald-400">{isRTL ? 'إثرائية' : 'Enrichment'}</Badge>}
-                        <Badge variant="outline" className="text-[10px]">{entry.plan_source === 'ai' ? 'AI' : isRTL ? 'افتراضي' : 'Fallback'}</Badge>
+                        {hasRemedial && <Badge variant="outline" className="text-[10px] border-rose-200 text-rose-600 dark:border-rose-800 dark:text-rose-400">{t('remedial')}</Badge>}
+                        {hasEnrichment && <Badge variant="outline" className="text-[10px] border-emerald-200 text-emerald-600 dark:border-emerald-800 dark:text-emerald-400">{t('enrichment')}</Badge>}
+                        <Badge variant="outline" className="text-[10px]">{entry.plan_source === 'ai' ? 'AI' : t('fallback')}</Badge>
                       </div>
                       <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                         <span className="flex items-center gap-1"><Calendar className="h-3 w-3" />{entry.generated_at?.split('T')[0]}</span>
@@ -1003,14 +1005,14 @@ export function LongitudinalTab({ hook }) {
       {loadingLongitudinal ? (
         <div className="space-y-4">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-32 rounded-xl" />)}</div>
       ) : !longitudinalData ? (
-        <Card><CardContent className="p-6"><EmptyState icon={ScrollText} message={isRTL ? 'لا توجد بيانات تراكمية' : 'No longitudinal data available'} /></CardContent></Card>
+        <Card><CardContent className="p-6"><EmptyState icon={ScrollText} message={t('noLongitudinalDataAvailable')} /></CardContent></Card>
       ) : (
         <>
           <Card className="border-0 shadow-md dark:bg-gray-900/50">
             <CardContent className="p-6">
               <h3 className="font-bold text-lg font-cairo flex items-center gap-2 mb-6">
                 <Layers className="h-5 w-5 text-brand-navy" />
-                {isRTL ? 'المسيرة الدراسية' : 'Student Journey Timeline'}
+                {t('studentJourneyTimeline')}
               </h3>
               <div className="relative">
                 <div className={`absolute ${isRTL ? 'right-4' : 'left-4'} top-0 bottom-0 w-0.5 bg-gradient-to-b from-brand-navy via-brand-turquoise to-brand-purple`} />
@@ -1027,25 +1029,25 @@ export function LongitudinalTab({ hook }) {
                               {entry.class_name && <span className="text-xs text-muted-foreground font-cairo">{entry.class_name}</span>}
                             </div>
                             {idx === (longitudinalData.timeline || []).length - 1 && (
-                              <Badge className="bg-brand-turquoise/10 text-brand-turquoise border-brand-turquoise/20 text-xs">{isRTL ? 'الحالي' : 'Current'}</Badge>
+                              <Badge className="bg-brand-turquoise/10 text-brand-turquoise border-brand-turquoise/20 text-xs">{t('current2')}</Badge>
                             )}
                           </div>
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                             <div className="text-center p-2 rounded-lg bg-blue-50 dark:bg-blue-950/20">
                               <div className="text-lg font-bold text-blue-600">{entry.attendance_rate}%</div>
-                              <div className="text-[10px] text-muted-foreground font-cairo">{isRTL ? 'الحضور' : 'Attendance'}</div>
+                              <div className="text-[10px] text-muted-foreground font-cairo">{t('attendance2')}</div>
                             </div>
                             <div className="text-center p-2 rounded-lg bg-purple-50 dark:bg-purple-950/20">
                               <div className="text-lg font-bold text-purple-600">{entry.academic_average}%</div>
-                              <div className="text-[10px] text-muted-foreground font-cairo">{isRTL ? 'المعدل' : 'Average'}</div>
+                              <div className="text-[10px] text-muted-foreground font-cairo">{t('average')}</div>
                             </div>
                             <div className="text-center p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/20">
                               <div className="text-lg font-bold text-emerald-600">{entry.behaviour_positive}</div>
-                              <div className="text-[10px] text-muted-foreground font-cairo">{isRTL ? 'سلوك إيجابي' : 'Positive'}</div>
+                              <div className="text-[10px] text-muted-foreground font-cairo">{t('positive2')}</div>
                             </div>
                             <div className="text-center p-2 rounded-lg bg-rose-50 dark:bg-rose-950/20">
                               <div className="text-lg font-bold text-rose-600">{entry.behaviour_negative}</div>
-                              <div className="text-[10px] text-muted-foreground font-cairo">{isRTL ? 'سلوك سلبي' : 'Negative'}</div>
+                              <div className="text-[10px] text-muted-foreground font-cairo">{t('negative2')}</div>
                             </div>
                           </div>
                           {entry.top_talents?.length > 0 && (
@@ -1079,7 +1081,7 @@ export function LongitudinalTab({ hook }) {
               <CardContent className="p-6">
                 <h3 className="font-bold text-lg font-cairo flex items-center gap-2 mb-4">
                   <TrendingUp className="h-5 w-5 text-brand-turquoise" />
-                  {isRTL ? 'تطور المهارات' : 'Skill Growth Tracker'}
+                  {t('skillGrowthTracker')}
                 </h3>
                 <div className="h-72">
                   <ResponsiveContainer width="100%" height="100%">
@@ -1116,12 +1118,10 @@ export function LongitudinalTab({ hook }) {
             <CardContent className="p-6">
               <h3 className="font-bold text-lg font-cairo flex items-center gap-2 mb-2">
                 <Target className="h-5 w-5 text-brand-purple" />
-                {isRTL ? 'مؤشرات الاستعداد' : 'Readiness Indicators'}
+                {t('readinessIndicators')}
               </h3>
               <p className="text-xs text-muted-foreground font-cairo mb-5 bg-amber-50 dark:bg-amber-950/20 p-2 rounded-lg border border-amber-200 dark:border-amber-800">
-                {isRTL
-                  ? 'هذه المؤشرات مبنية على البيانات التراكمية وستكون مدعومة بالذكاء الاصطناعي في إصدار مستقبلي من نَسَّق.'
-                  : 'These indicators are based on cumulative data and will be AI-powered in a future version of NASSAQ.'}
+                {t('theseIndicatorsAreBasedOnCumulativeDataAndWillBeAi')}
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {[
@@ -1154,10 +1154,10 @@ export function LongitudinalTab({ hook }) {
             <CardContent className="p-6">
               <h3 className="font-bold text-lg font-cairo flex items-center gap-2 mb-2">
                 <Briefcase className="h-5 w-5 text-brand-navy" />
-                {isRTL ? 'المجالات المهنية المقترحة' : 'Career Clusters'}
+                {t('careerClusters')}
               </h3>
               <p className="text-xs text-muted-foreground font-cairo mb-5 bg-blue-50 dark:bg-blue-950/20 p-2 rounded-lg border border-blue-200 dark:border-blue-800">
-                {isRTL ? 'مؤشرات مبكرة للميول المهنية — تتحسن مع تراكم البيانات' : 'Early career affinity indicators — data builds over time'}
+                {t('earlyCareerAffinityIndicatorsDataBuildsOverTime')}
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {(longitudinalData.career_clusters || []).map((cluster, idx) => {
@@ -1184,9 +1184,7 @@ export function LongitudinalTab({ hook }) {
             <div className="relative z-10">
               <Sparkles className="h-8 w-8 text-brand-turquoise mx-auto mb-3" />
               <p className="text-white/90 font-cairo text-sm leading-relaxed max-w-2xl mx-auto">
-                {isRTL
-                  ? 'كل نقطة بيانات يتم تسجيلها اليوم تبني مستقبل هذا الطالب. السجل التراكمي في نَسَّق سيدعم توصيات مهنية مدعومة بالذكاء الاصطناعي في المستقبل.'
-                  : "Every data point recorded today is building this student's future. NASSAQ's longitudinal record will power AI-driven career recommendations in the future."}
+                {t('everyDataPointRecordedTodayIsBuildingThisStudentsF')}
               </p>
             </div>
           </div>

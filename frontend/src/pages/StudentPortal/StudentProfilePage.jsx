@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
@@ -14,6 +14,7 @@ import {
 
 
 const StudentProfilePage = () => {
+  const { t } = useTranslation();
   const { token, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);
@@ -92,7 +93,7 @@ const StudentProfilePage = () => {
                 <Star className="h-5 w-5 text-amber-600" />
               </div>
               <p className="text-xl font-bold text-amber-600">{stats.total_points || 0}</p>
-              <p className="text-xs text-muted-foreground">{isRTL ? 'مجموع النقاط' : 'Total Points'}</p>
+              <p className="text-xs text-muted-foreground">{t('totalPoints')}</p>
             </CardContent>
           </Card>
 
@@ -112,7 +113,7 @@ const StudentProfilePage = () => {
                 <TrendingUp className="h-5 w-5 text-blue-600" />
               </div>
               <p className="text-xl font-bold text-blue-600">{stats.average_score}%</p>
-              <p className="text-xs text-muted-foreground">{isRTL ? 'المعدل العام' : 'Average'}</p>
+              <p className="text-xs text-muted-foreground">{t('average2')}</p>
             </CardContent>
           </Card>
 
@@ -122,7 +123,7 @@ const StudentProfilePage = () => {
                 <Award className="h-5 w-5 text-purple-600" />
               </div>
               <p className="text-xl font-bold text-purple-600">{stats.total_grades}</p>
-              <p className="text-xs text-muted-foreground">{isRTL ? 'التقييمات' : 'Assessments'}</p>
+              <p className="text-xs text-muted-foreground">{t('assessments')}</p>
             </CardContent>
           </Card>
         </div>
@@ -131,7 +132,7 @@ const StudentProfilePage = () => {
           <CardContent className="p-4 space-y-4">
             <h2 className="font-bold text-lg font-cairo flex items-center gap-2">
               <User className="h-5 w-5 text-emerald-600" />
-              {isRTL ? 'المعلومات الشخصية' : 'Personal Information'}
+              {t('personalInformation2')}
             </h2>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -139,7 +140,7 @@ const StudentProfilePage = () => {
                 <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
                   <Hash className="h-5 w-5 text-gray-400" />
                   <div>
-                    <p className="text-xs text-muted-foreground">{isRTL ? 'رقم الهوية' : 'National ID'}</p>
+                    <p className="text-xs text-muted-foreground">{t('nationalId')}</p>
                     <p className="font-medium text-sm">{student.national_id}</p>
                   </div>
                 </div>
@@ -149,7 +150,7 @@ const StudentProfilePage = () => {
                 <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
                   <Mail className="h-5 w-5 text-gray-400" />
                   <div>
-                    <p className="text-xs text-muted-foreground">{isRTL ? 'البريد الإلكتروني' : 'Email'}</p>
+                    <p className="text-xs text-muted-foreground">{t('email2')}</p>
                     <p className="font-medium text-sm">{student.email}</p>
                   </div>
                 </div>
@@ -159,7 +160,7 @@ const StudentProfilePage = () => {
                 <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
                   <Phone className="h-5 w-5 text-gray-400" />
                   <div>
-                    <p className="text-xs text-muted-foreground">{isRTL ? 'الجوال' : 'Phone'}</p>
+                    <p className="text-xs text-muted-foreground">{t('phone')}</p>
                     <p className="font-medium text-sm">{student.phone}</p>
                   </div>
                 </div>
@@ -169,7 +170,7 @@ const StudentProfilePage = () => {
                 <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
                   <Calendar className="h-5 w-5 text-gray-400" />
                   <div>
-                    <p className="text-xs text-muted-foreground">{isRTL ? 'تاريخ الميلاد' : 'Date of Birth'}</p>
+                    <p className="text-xs text-muted-foreground">{t('dateOfBirth')}</p>
                     <p className="font-medium text-sm">{student.birth_date}</p>
                   </div>
                 </div>
@@ -179,9 +180,9 @@ const StudentProfilePage = () => {
                 <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
                   <User className="h-5 w-5 text-gray-400" />
                   <div>
-                    <p className="text-xs text-muted-foreground">{isRTL ? 'الجنس' : 'Gender'}</p>
+                    <p className="text-xs text-muted-foreground">{t('gender')}</p>
                     <p className="font-medium text-sm">
-                      {student.gender === 'male' ? (isRTL ? 'ذكر' : 'Male') : (isRTL ? 'أنثى' : 'Female')}
+                      {student.gender === 'male' ? (t('male')) : (t('female'))}
                     </p>
                   </div>
                 </div>
@@ -191,7 +192,7 @@ const StudentProfilePage = () => {
                 <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
                   <Calendar className="h-5 w-5 text-gray-400" />
                   <div>
-                    <p className="text-xs text-muted-foreground">{isRTL ? 'تاريخ التسجيل' : 'Enrollment Date'}</p>
+                    <p className="text-xs text-muted-foreground">{t('enrollmentDate')}</p>
                     <p className="font-medium text-sm">{student.enrollment_date}</p>
                   </div>
                 </div>
@@ -230,13 +231,13 @@ const StudentProfilePage = () => {
                           activity.type === 'volunteer' ? 'bg-teal-100 text-teal-700' :
                           'bg-gray-100 text-gray-700'
                         }`}>
-                          {activity.type === 'sports' ? (isRTL ? 'رياضي' : 'Sports') :
-                           activity.type === 'cultural' ? (isRTL ? 'ثقافي' : 'Cultural') :
-                           activity.type === 'scientific' ? (isRTL ? 'علمي' : 'Scientific') :
-                           activity.type === 'social' ? (isRTL ? 'اجتماعي' : 'Social') :
-                           activity.type === 'artistic' ? (isRTL ? 'فني' : 'Artistic') :
-                           activity.type === 'volunteer' ? (isRTL ? 'تطوعي' : 'Volunteer') :
-                           (isRTL ? 'أخرى' : 'Other')}
+                          {activity.type === 'sports' ? (t('sports')) :
+                           activity.type === 'cultural' ? (t('cultural')) :
+                           activity.type === 'scientific' ? (t('scientific')) :
+                           activity.type === 'social' ? (t('social')) :
+                           activity.type === 'artistic' ? (t('artistic')) :
+                           activity.type === 'volunteer' ? (t('volunteer')) :
+                           (t('other'))}
                         </Badge>
                       </div>
                     </div>
@@ -246,7 +247,7 @@ const StudentProfilePage = () => {
             ) : (
               <div className="text-center py-6 text-muted-foreground">
                 <Activity className="h-10 w-10 mx-auto mb-2 opacity-30" />
-                <p className="text-sm">{isRTL ? 'لا توجد أنشطة مسجلة' : 'No activities recorded'}</p>
+                <p className="text-sm">{t('noActivitiesRecorded')}</p>
               </div>
             )}
           </CardContent>
@@ -256,12 +257,12 @@ const StudentProfilePage = () => {
           <CardContent className="p-4 space-y-3">
             <h2 className="font-bold text-lg font-cairo flex items-center gap-2">
               <GraduationCap className="h-5 w-5 text-emerald-600" />
-              {isRTL ? 'المعلومات الأكاديمية' : 'Academic Information'}
+              {t('academicInformation2')}
             </h2>
 
             <div className="space-y-3">
               <div className="flex items-center justify-between p-3 bg-green-50 rounded-xl">
-                <span className="text-sm font-medium">{isRTL ? 'نسبة الحضور' : 'Attendance Rate'}</span>
+                <span className="text-sm font-medium">{t('attendanceRate')}</span>
                 <span className="font-bold text-green-600">{stats.attendance_rate}%</span>
               </div>
               <Progress value={stats.attendance_rate} className="h-2" />
@@ -273,7 +274,7 @@ const StudentProfilePage = () => {
               <Progress value={stats.average_score} className="h-2" />
 
               <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-                <span className="text-sm font-medium">{isRTL ? 'عدد الطلاب في الفصل' : 'Class Size'}</span>
+                <span className="text-sm font-medium">{t('classSize')}</span>
                 <span className="font-bold">{stats.class_size}</span>
               </div>
             </div>

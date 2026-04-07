@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { Sidebar } from '../components/layout/Sidebar';
 import { HakimAssistant } from '../components/hakim/HakimAssistant';
 import { Button } from '../components/ui/button';
@@ -62,6 +62,7 @@ import { ScrollArea } from '../components/ui/scroll-area';
 const sampleNotifications = [];
 
 export const PlatformNotificationsPage = () => {
+  const { t } = useTranslation();
   const { user, api } = useAuth();
   const { isRTL, toggleTheme, toggleLanguage, isDark } = useTheme();
   const [notifications, setNotifications] = useState([]);
@@ -111,10 +112,10 @@ export const PlatformNotificationsPage = () => {
 
   const getTypeBadge = (type) => {
     const types = {
-      system: { label: isRTL ? 'نظام' : 'System', color: 'bg-brand-navy' },
-      alert: { label: isRTL ? 'تنبيه' : 'Alert', color: 'bg-red-500' },
-      info: { label: isRTL ? 'معلومات' : 'Info', color: 'bg-blue-500' },
-      reminder: { label: isRTL ? 'تذكير' : 'Reminder', color: 'bg-yellow-500' },
+      system: { label: t('system2'), color: 'bg-brand-navy' },
+      alert: { label: t('alert'), color: 'bg-red-500' },
+      info: { label: t('info2'), color: 'bg-blue-500' },
+      reminder: { label: t('reminder'), color: 'bg-yellow-500' },
     };
     const typeInfo = types[type] || { label: type, color: 'bg-gray-500' };
     return <Badge className={`${typeInfo.color} text-white`}>{typeInfo.label}</Badge>;
@@ -123,11 +124,11 @@ export const PlatformNotificationsPage = () => {
   const getStatusBadge = (status) => {
     switch (status) {
       case 'sent':
-        return <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">{isRTL ? 'مرسل' : 'Sent'}</Badge>;
+        return <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">{t('sent3')}</Badge>;
       case 'pending':
-        return <Badge className="bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">{isRTL ? 'قيد المعالجة' : 'Pending'}</Badge>;
+        return <Badge className="bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">{t('pending3')}</Badge>;
       case 'failed':
-        return <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">{isRTL ? 'فشل' : 'Failed'}</Badge>;
+        return <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">{t('failed')}</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
@@ -135,13 +136,13 @@ export const PlatformNotificationsPage = () => {
 
   const getRecipientLabel = (recipient) => {
     const recipients = {
-      all: isRTL ? 'الجميع' : 'Everyone',
-      admins: isRTL ? 'المدراء' : 'Admins',
-      platform_admin: isRTL ? 'مدير المنصة' : 'Platform Admin',
-      schools: isRTL ? 'المدارس' : 'Schools',
-      teachers: isRTL ? 'المعلمين' : 'Teachers',
-      students: isRTL ? 'الطلاب' : 'Students',
-      parents: isRTL ? 'أولياء الأمور' : 'Parents',
+      all: t('everyone'),
+      admins: t('admins'),
+      platform_admin: t('platformAdmin'),
+      schools: t('schools2'),
+      teachers: t('teachers2'),
+      students: t('students'),
+      parents: t('parents'),
     };
     return recipients[recipient] || recipient;
   };
@@ -172,7 +173,7 @@ export const PlatformNotificationsPage = () => {
   };
 
   const handleSendNotification = () => {
-    toast.info(isRTL ? 'قريباً - إرسال إشعار جديد' : 'Coming soon - Send new notification');
+    toast.info(t('comingSoonSendNewNotification'));
   };
 
   return (
@@ -183,10 +184,10 @@ export const PlatformNotificationsPage = () => {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="font-cairo text-2xl font-bold text-foreground">
-                {isRTL ? 'الإشعارات' : 'Notifications'}
+                {t('notifications')}
               </h1>
               <p className="text-sm text-muted-foreground font-tajawal">
-                {isRTL ? 'إدارة إشعارات المنصة' : 'Manage platform notifications'}
+                {t('managePlatformNotifications')}
               </p>
             </div>
             
@@ -215,7 +216,7 @@ export const PlatformNotificationsPage = () => {
                   </div>
                   <div>
                     <p className="text-2xl font-bold">{stats.total}</p>
-                    <p className="text-xs text-muted-foreground">{isRTL ? 'إجمالي الإشعارات' : 'Total'}</p>
+                    <p className="text-xs text-muted-foreground">{t('total3')}</p>
                   </div>
                 </div>
               </CardContent>
@@ -229,7 +230,7 @@ export const PlatformNotificationsPage = () => {
                   </div>
                   <div>
                     <p className="text-2xl font-bold">{stats.sent}</p>
-                    <p className="text-xs text-muted-foreground">{isRTL ? 'مرسلة' : 'Sent'}</p>
+                    <p className="text-xs text-muted-foreground">{t('sent2')}</p>
                   </div>
                 </div>
               </CardContent>
@@ -243,7 +244,7 @@ export const PlatformNotificationsPage = () => {
                   </div>
                   <div>
                     <p className="text-2xl font-bold">{stats.pending}</p>
-                    <p className="text-xs text-muted-foreground">{isRTL ? 'قيد المعالجة' : 'Pending'}</p>
+                    <p className="text-xs text-muted-foreground">{t('pending3')}</p>
                   </div>
                 </div>
               </CardContent>
@@ -257,7 +258,7 @@ export const PlatformNotificationsPage = () => {
                   </div>
                   <div>
                     <p className="text-2xl font-bold">{stats.failed}</p>
-                    <p className="text-xs text-muted-foreground">{isRTL ? 'فشلت' : 'Failed'}</p>
+                    <p className="text-xs text-muted-foreground">{t('failed2')}</p>
                   </div>
                 </div>
               </CardContent>
@@ -270,14 +271,14 @@ export const PlatformNotificationsPage = () => {
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                   <CardTitle className="font-cairo">{isRTL ? 'سجل الإشعارات' : 'Notifications Log'}</CardTitle>
-                  <CardDescription>{isRTL ? 'جميع الإشعارات المرسلة من المنصة' : 'All notifications sent from the platform'}</CardDescription>
+                  <CardDescription>{t('allNotificationsSentFromThePlatform')}</CardDescription>
                 </div>
                 
                 <div className="flex items-center gap-3 flex-wrap">
                   <div className="relative">
                     <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
-                      placeholder={isRTL ? 'بحث...' : 'Search...'}
+                      placeholder={t('search')}
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className="ps-9 w-[180px] rounded-xl"
@@ -286,26 +287,26 @@ export const PlatformNotificationsPage = () => {
                   
                   <Select value={typeFilter} onValueChange={setTypeFilter}>
                     <SelectTrigger className="w-[130px] rounded-xl">
-                      <SelectValue placeholder={isRTL ? 'النوع' : 'Type'} />
+                      <SelectValue placeholder={t('type4')} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">{isRTL ? 'الكل' : 'All'}</SelectItem>
-                      <SelectItem value="system">{isRTL ? 'نظام' : 'System'}</SelectItem>
-                      <SelectItem value="alert">{isRTL ? 'تنبيه' : 'Alert'}</SelectItem>
-                      <SelectItem value="info">{isRTL ? 'معلومات' : 'Info'}</SelectItem>
-                      <SelectItem value="reminder">{isRTL ? 'تذكير' : 'Reminder'}</SelectItem>
+                      <SelectItem value="all">{t('all')}</SelectItem>
+                      <SelectItem value="system">{t('system2')}</SelectItem>
+                      <SelectItem value="alert">{t('alert')}</SelectItem>
+                      <SelectItem value="info">{t('info2')}</SelectItem>
+                      <SelectItem value="reminder">{t('reminder')}</SelectItem>
                     </SelectContent>
                   </Select>
                   
                   <Select value={statusFilter} onValueChange={setStatusFilter}>
                     <SelectTrigger className="w-[130px] rounded-xl">
-                      <SelectValue placeholder={isRTL ? 'الحالة' : 'Status'} />
+                      <SelectValue placeholder={t('status2')} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">{isRTL ? 'الكل' : 'All'}</SelectItem>
-                      <SelectItem value="sent">{isRTL ? 'مرسل' : 'Sent'}</SelectItem>
-                      <SelectItem value="pending">{isRTL ? 'قيد المعالجة' : 'Pending'}</SelectItem>
-                      <SelectItem value="failed">{isRTL ? 'فشل' : 'Failed'}</SelectItem>
+                      <SelectItem value="all">{t('all')}</SelectItem>
+                      <SelectItem value="sent">{t('sent3')}</SelectItem>
+                      <SelectItem value="pending">{t('pending3')}</SelectItem>
+                      <SelectItem value="failed">{t('failed')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -317,11 +318,11 @@ export const PlatformNotificationsPage = () => {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>{isRTL ? 'النوع' : 'Type'}</TableHead>
+                      <TableHead>{t('type4')}</TableHead>
                       <TableHead>{isRTL ? 'العنوان' : 'Title'}</TableHead>
-                      <TableHead>{isRTL ? 'المستلم' : 'Recipient'}</TableHead>
-                      <TableHead>{isRTL ? 'الحالة' : 'Status'}</TableHead>
-                      <TableHead>{isRTL ? 'التاريخ' : 'Date'}</TableHead>
+                      <TableHead>{t('recipient')}</TableHead>
+                      <TableHead>{t('status2')}</TableHead>
+                      <TableHead>{t('date')}</TableHead>
                       <TableHead className="w-12"></TableHead>
                     </TableRow>
                   </TableHeader>
@@ -416,12 +417,10 @@ export const PlatformNotificationsPage = () => {
                 <Info className="h-5 w-5 text-blue-500 mt-0.5" />
                 <div>
                   <p className="font-medium text-blue-800 dark:text-blue-200">
-                    {isRTL ? 'ملاحظة' : 'Note'}
+                    {t('note')}
                   </p>
                   <p className="text-sm text-blue-700 dark:text-blue-300">
-                    {isRTL 
-                      ? 'هذه الصفحة تعرض سجل الإشعارات المرسلة من المنصة. محرك الإشعارات الكامل سيتم تطويره في المرحلة القادمة.'
-                      : 'This page displays the log of notifications sent from the platform. The full notification engine will be developed in the next phase.'
+                    {t('thisPageDisplaysTheLogOfNotificationsSentFromThePl')
                     }
                   </p>
                 </div>
@@ -436,7 +435,7 @@ export const PlatformNotificationsPage = () => {
             <DialogHeader>
               <DialogTitle className="font-cairo flex items-center gap-2">
                 {selectedNotification && getTypeIcon(selectedNotification.type)}
-                {isRTL ? 'تفاصيل الإشعار' : 'Notification Details'}
+                {t('notificationDetails')}
               </DialogTitle>
             </DialogHeader>
             
@@ -458,11 +457,11 @@ export const PlatformNotificationsPage = () => {
                 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-muted rounded-xl p-3">
-                    <p className="text-sm text-muted-foreground">{isRTL ? 'المستلم' : 'Recipient'}</p>
+                    <p className="text-sm text-muted-foreground">{t('recipient')}</p>
                     <p className="font-medium">{getRecipientLabel(selectedNotification.recipient)}</p>
                   </div>
                   <div className="bg-muted rounded-xl p-3">
-                    <p className="text-sm text-muted-foreground">{isRTL ? 'التاريخ' : 'Date'}</p>
+                    <p className="text-sm text-muted-foreground">{t('date')}</p>
                     <p className="font-medium">
                       {new Date(selectedNotification.created_at).toLocaleString(isRTL ? 'ar-SA' : 'en-US')}
                     </p>
@@ -473,7 +472,7 @@ export const PlatformNotificationsPage = () => {
             
             <DialogFooter>
               <Button variant="outline" onClick={() => setViewDialogOpen(false)} className="rounded-xl">
-                {isRTL ? 'إغلاق' : 'Close'}
+                {t('close')}
               </Button>
             </DialogFooter>
           </DialogContent>

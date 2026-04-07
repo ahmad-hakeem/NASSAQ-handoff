@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 
 export const LiveSessionsMonitor = ({ open, onClose, onOpenChange }) => {
+  const { t } = useTranslation();
   const { isRTL } = useTheme();
   const { api } = useAuth();
   
@@ -89,11 +90,11 @@ export const LiveSessionsMonitor = ({ open, onClose, onOpenChange }) => {
               <div className="w-10 h-10 bg-cyan-100 rounded-xl flex items-center justify-center">
                 <Eye className="h-5 w-5 text-cyan-600" />
               </div>
-              {isRTL ? 'الحصص الجارية' : 'Live Sessions'}
+              {t('liveSessions')}
             </div>
             <Button variant="outline" size="sm" onClick={fetchSessions} disabled={loading}>
               <RefreshCw className={`h-4 w-4 me-2 ${loading ? 'animate-spin' : ''}`} />
-              {isRTL ? 'تحديث' : 'Refresh'}
+              {t('refresh')}
             </Button>
           </DialogTitle>
         </DialogHeader>
@@ -109,7 +110,7 @@ export const LiveSessionsMonitor = ({ open, onClose, onOpenChange }) => {
               </div>
             </div>
             <div className="text-end">
-              <p className="text-sm text-muted-foreground font-tajawal">{isRTL ? 'حصص جارية' : 'Active Sessions'}</p>
+              <p className="text-sm text-muted-foreground font-tajawal">{t('activeSessions')}</p>
               <p className="text-3xl font-bold text-cyan-700">{sessions.length}</p>
             </div>
           </div>
@@ -118,7 +119,7 @@ export const LiveSessionsMonitor = ({ open, onClose, onOpenChange }) => {
           <div>
             <h3 className="font-bold font-cairo mb-4 flex items-center gap-2">
               <Activity className="h-5 w-5 text-green-600" />
-              {isRTL ? 'الحصص الجارية الآن' : 'Currently Active'}
+              {t('currentlyActive')}
             </h3>
             
             {loading ? (
@@ -130,7 +131,7 @@ export const LiveSessionsMonitor = ({ open, onClose, onOpenChange }) => {
                 <CardContent className="py-8 text-center">
                   <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
                   <p className="text-muted-foreground font-tajawal">
-                    {isRTL ? 'لا توجد حصص جارية حالياً' : 'No active sessions right now'}
+                    {t('noActiveSessionsRightNow')}
                   </p>
                 </CardContent>
               </Card>
@@ -168,14 +169,14 @@ export const LiveSessionsMonitor = ({ open, onClose, onOpenChange }) => {
           <div>
             <h3 className="font-bold font-cairo mb-4 flex items-center gap-2">
               <Clock className="h-5 w-5 text-blue-600" />
-              {isRTL ? 'جدول اليوم الكامل' : "Today's Full Schedule"}
+              {t('todaysFullSchedule')}
             </h3>
             
             {todaySchedule.length === 0 ? (
               <Card className="bg-muted/30">
                 <CardContent className="py-6 text-center">
                   <p className="text-muted-foreground font-tajawal">
-                    {isRTL ? 'لا يوجد جدول لهذا اليوم' : 'No schedule for today'}
+                    {t('noScheduleForToday')}
                   </p>
                 </CardContent>
               </Card>

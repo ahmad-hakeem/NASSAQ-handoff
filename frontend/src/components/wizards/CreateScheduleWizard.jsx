@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNassaqAlert } from '../ui/NassaqAlertDialog';
 import { Button } from '../../components/ui/button';
@@ -36,6 +36,7 @@ import {
 
 
 export const CreateScheduleWizard = ({ open, onClose, onOpenChange }) => {
+  const { t } = useTranslation();
   const { isRTL } = useTheme();
   const { token, api } = useAuth();
   const { nassaqWarning, nassaqError } = useNassaqAlert();
@@ -134,7 +135,7 @@ export const CreateScheduleWizard = ({ open, onClose, onOpenChange }) => {
 
   const handleSubmit = async () => {
     if (!data.name_ar || !data.class_id) {
-      nassaqWarning(isRTL ? 'أدخل اسم الجدول واختر الفصل' : 'Enter schedule name and select class');
+      nassaqWarning(t('enterScheduleNameAndSelectClass'));
       return;
     }
 
@@ -153,7 +154,7 @@ export const CreateScheduleWizard = ({ open, onClose, onOpenChange }) => {
         }));
 
       if (days.length === 0) {
-        nassaqWarning(isRTL ? 'أضف حصة واحدة على الأقل' : 'Add at least one period');
+        nassaqWarning(t('addAtLeastOnePeriod'));
         setSubmitting(false);
         return;
       }
@@ -168,10 +169,10 @@ export const CreateScheduleWizard = ({ open, onClose, onOpenChange }) => {
       if (response.data.success) {
         setResult(response.data);
         setSuccess(true);
-        toast.success(isRTL ? 'تم إنشاء الجدول' : 'Schedule created');
+        toast.success(t('scheduleCreated'));
       }
     } catch (error) {
-      nassaqError(error.response?.data?.detail || (isRTL ? 'حدث خطأ أثناء إنشاء الجدول' : 'Error creating schedule'));
+      nassaqError(error.response?.data?.detail || (t('errorCreatingSchedule')));
     } finally {
       setSubmitting(false);
     }
@@ -200,7 +201,7 @@ export const CreateScheduleWizard = ({ open, onClose, onOpenChange }) => {
             <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center">
               <Calendar className="h-5 w-5 text-amber-600" />
             </div>
-            {isRTL ? 'إنشاء جدول مدرسي' : 'Create Schedule'}
+            {t('createSchedule')}
           </DialogTitle>
         </DialogHeader>
 
@@ -214,12 +215,12 @@ export const CreateScheduleWizard = ({ open, onClose, onOpenChange }) => {
               <CheckCircle2 className="h-10 w-10 text-green-600" />
             </div>
             <div>
-              <h3 className="text-2xl font-bold font-cairo text-green-700">{isRTL ? 'تم إنشاء الجدول!' : 'Schedule Created!'}</h3>
+              <h3 className="text-2xl font-bold font-cairo text-green-700">{t('scheduleCreated2')}</h3>
               <p className="text-lg mt-2 font-mono">{result.schedule_id}</p>
             </div>
             <div className="flex justify-center gap-3">
-              <Button variant="outline" onClick={handleClose}>{isRTL ? 'إغلاق' : 'Close'}</Button>
-              <Button onClick={handleReset} className="bg-amber-600 hover:bg-amber-700">{isRTL ? 'إنشاء جدول آخر' : 'Create Another'}</Button>
+              <Button variant="outline" onClick={handleClose}>{t('close')}</Button>
+              <Button onClick={handleReset} className="bg-amber-600 hover:bg-amber-700">{t('createAnother2')}</Button>
             </div>
           </div>
         ) : (
@@ -227,19 +228,19 @@ export const CreateScheduleWizard = ({ open, onClose, onOpenChange }) => {
             {/* Basic Info */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
-                <Label>{isRTL ? 'اسم الجدول' : 'Schedule Name'} <span className="text-red-500">*</span></Label>
+                <Label>{t('scheduleName')} <span className="text-red-500">*</span></Label>
                 <Input
                   value={data.name_ar}
                   onChange={(e) => setData(p => ({ ...p, name_ar: e.target.value }))}
-                  placeholder={isRTL ? 'جدول الصف الأول أ' : 'Grade 1-A Schedule'}
+                  placeholder={t('grade1aSchedule')}
                   data-testid="schedule-name"
                 />
               </div>
               <div className="space-y-2">
-                <Label>{isRTL ? 'الصف' : 'Grade'}</Label>
+                <Label>{t('grade')}</Label>
                 <Select value={data.grade_id} onValueChange={(val) => setData(p => ({ ...p, grade_id: val }))}>
                   <SelectTrigger data-testid="schedule-grade">
-                    <SelectValue placeholder={isRTL ? 'اختر' : 'Select'} />
+                    <SelectValue placeholder={t('select2')} />
                   </SelectTrigger>
                   <SelectContent>
                     {options.grades.map((g) => (
@@ -249,10 +250,10 @@ export const CreateScheduleWizard = ({ open, onClose, onOpenChange }) => {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>{isRTL ? 'الفصل' : 'Class'} <span className="text-red-500">*</span></Label>
+                <Label>{t('class')} <span className="text-red-500">*</span></Label>
                 <Select value={data.class_id} onValueChange={(val) => setData(p => ({ ...p, class_id: val }))}>
                   <SelectTrigger data-testid="schedule-class">
-                    <SelectValue placeholder={isRTL ? 'اختر' : 'Select'} />
+                    <SelectValue placeholder={t('select2')} />
                   </SelectTrigger>
                   <SelectContent>
                     {options.classes.map((c) => (
@@ -265,7 +266,7 @@ export const CreateScheduleWizard = ({ open, onClose, onOpenChange }) => {
 
             {/* Schedule Grid */}
             <div className="space-y-4">
-              <h4 className="font-bold font-cairo">{isRTL ? 'جدول الحصص' : 'Schedule Grid'}</h4>
+              <h4 className="font-bold font-cairo">{t('scheduleGrid')}</h4>
               
               {['sunday', 'monday', 'tuesday', 'wednesday', 'thursday'].map((day) => (
                 <Card key={day} className="overflow-hidden">
@@ -281,7 +282,7 @@ export const CreateScheduleWizard = ({ open, onClose, onOpenChange }) => {
                   <CardContent className="py-3">
                     {schedule[day]?.length === 0 ? (
                       <p className="text-center text-muted-foreground text-sm py-2">
-                        {isRTL ? 'لا توجد حصص' : 'No periods'}
+                        {t('noPeriods')}
                       </p>
                     ) : (
                       <div className="space-y-2">
@@ -291,7 +292,7 @@ export const CreateScheduleWizard = ({ open, onClose, onOpenChange }) => {
                             
                             <Select value={period.subject_id} onValueChange={(val) => updatePeriod(day, idx, 'subject_id', val)}>
                               <SelectTrigger className="flex-1 h-8">
-                                <SelectValue placeholder={isRTL ? 'المادة' : 'Subject'} />
+                                <SelectValue placeholder={t('subject')} />
                               </SelectTrigger>
                               <SelectContent>
                                 {options.subjects.map((s) => (
@@ -302,7 +303,7 @@ export const CreateScheduleWizard = ({ open, onClose, onOpenChange }) => {
                             
                             <Select value={period.teacher_id} onValueChange={(val) => updatePeriod(day, idx, 'teacher_id', val)}>
                               <SelectTrigger className="flex-1 h-8">
-                                <SelectValue placeholder={isRTL ? 'المعلم' : 'Teacher'} />
+                                <SelectValue placeholder={t('teacher2')} />
                               </SelectTrigger>
                               <SelectContent>
                                 {options.teachers.map((t) => (
@@ -341,10 +342,10 @@ export const CreateScheduleWizard = ({ open, onClose, onOpenChange }) => {
 
         {!loading && !success && (
           <DialogFooter className="flex justify-between gap-3 mt-4">
-            <Button variant="ghost" onClick={handleClose}>{isRTL ? 'إلغاء' : 'Cancel'}</Button>
+            <Button variant="ghost" onClick={handleClose}>{t('cancel')}</Button>
             <Button onClick={handleSubmit} disabled={submitting} className="bg-amber-600 hover:bg-amber-700">
               {submitting ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : <CheckCircle2 className="h-4 w-4 me-2" />}
-              {isRTL ? 'إنشاء الجدول' : 'Create Schedule'}
+              {t('createSchedule2')}
             </Button>
           </DialogFooter>
         )}

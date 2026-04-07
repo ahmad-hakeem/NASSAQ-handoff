@@ -14,7 +14,9 @@ import {
 import { Sidebar } from '../components/layout/Sidebar';
 import { formatHijriOnly, formatGregorianArabic } from '../utils/hijriDate';
 
+import { useTranslation } from '../contexts/ThemeContext';
 export default function TeacherDashboard() {
+  const { t } = useTranslation();
   const { user, api, isRTL } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -94,23 +96,23 @@ export default function TeacherDashboard() {
 
   const quickActions = [
     { icon: ClipboardCheck, label: isRTL ? 'تسجيل الحضور' : 'Take Attendance', path: '/admin/attendance', color: 'bg-green-500' },
-    { icon: FileText, label: isRTL ? 'إضافة تقييم' : 'Add Assessment', path: '/admin/assessments', color: 'bg-blue-500' },
-    { icon: Calendar, label: isRTL ? 'جدولي' : 'My Schedule', path: '/admin/schedule', color: 'bg-purple-500' },
-    { icon: Bell, label: isRTL ? 'الإشعارات' : 'Notifications', path: '/notifications', color: 'bg-orange-500' },
+    { icon: FileText, label: t('addAssessment'), path: '/admin/assessments', color: 'bg-blue-500' },
+    { icon: Calendar, label: t('mySchedule'), path: '/admin/schedule', color: 'bg-purple-500' },
+    { icon: Bell, label: t('notifications'), path: '/notifications', color: 'bg-orange-500' },
   ];
 
   const statsCards = [
     { 
       icon: BookOpen, 
-      label: isRTL ? 'صفوفي' : 'My Classes', 
+      label: t('myClasses2'), 
       value: stats.myClasses, 
       color: 'text-blue-600', 
       bgColor: 'bg-blue-100',
-      description: isRTL ? 'الصفوف المسندة إليك' : 'Classes assigned to you'
+      description: t('classesAssignedToYou')
     },
     { 
       icon: Users, 
-      label: isRTL ? 'طلابي' : 'My Students', 
+      label: t('myStudents'), 
       value: stats.myStudents, 
       color: 'text-green-600', 
       bgColor: 'bg-green-100',
@@ -122,15 +124,15 @@ export default function TeacherDashboard() {
       value: stats.todayLessons, 
       color: 'text-purple-600', 
       bgColor: 'bg-purple-100',
-      description: isRTL ? 'الحصص المتبقية اليوم' : 'Remaining lessons today'
+      description: t('remainingLessonsToday')
     },
     { 
       icon: AlertCircle, 
-      label: isRTL ? 'حضور معلق' : 'Pending Attendance', 
+      label: t('pendingAttendance'), 
       value: stats.pendingAttendance, 
       color: 'text-orange-600', 
       bgColor: 'bg-orange-100',
-      description: isRTL ? 'يحتاج تسجيل' : 'Needs recording'
+      description: t('needsRecording')
     },
   ];
 
@@ -162,15 +164,15 @@ export default function TeacherDashboard() {
                     </h1>
                     <p className="text-sm text-muted-foreground font-medium flex items-center gap-2">
                       <GraduationCap className="h-4 w-4" />
-                      {isRTL ? 'لوحة المعلم' : 'Teacher Dashboard'}
+                      {t('teacherDashboard')}
                     </p>
                   </div>
                 </div>
 
                 {/* Semester Info */}
                 <div className="text-center px-6 py-2 bg-brand-turquoise/10 rounded-xl border border-brand-turquoise/20">
-                  <p className="text-xs text-muted-foreground font-medium">{isRTL ? 'الفصل الدراسي' : 'Semester'}</p>
-                  <p className="font-cairo font-bold text-brand-turquoise text-lg">{isRTL ? 'الثاني 1446-1447' : '2nd 1446-1447'}</p>
+                  <p className="text-xs text-muted-foreground font-medium">{t('semester')}</p>
+                  <p className="font-cairo font-bold text-brand-turquoise text-lg">{t('2nd14461447')}</p>
                 </div>
 
                 {/* Date */}
@@ -238,10 +240,10 @@ export default function TeacherDashboard() {
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <Clock className="h-5 w-5 text-brand-turquoise" />
-                  {isRTL ? 'جدول اليوم' : "Today's Schedule"}
+                  {t('todaysSchedule')}
                 </CardTitle>
                 <CardDescription>
-                  {isRTL ? 'حصصك المتبقية لهذا اليوم' : 'Your remaining lessons for today'}
+                  {t('yourRemainingLessonsForToday')}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -271,7 +273,7 @@ export default function TeacherDashboard() {
                   </div>
                 ))}
                 <Button variant="outline" className="w-full mt-2" onClick={() => navigate('/admin/schedule')}>
-                  {isRTL ? 'عرض الجدول الكامل' : 'View Full Schedule'}
+                  {t('viewFullSchedule')}
                 </Button>
               </CardContent>
             </Card>
@@ -281,10 +283,10 @@ export default function TeacherDashboard() {
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <Bell className="h-5 w-5 text-brand-purple" />
-                  {isRTL ? 'آخر النشاطات' : 'Recent Activities'}
+                  {t('recentActivities')}
                 </CardTitle>
                 <CardDescription>
-                  {isRTL ? 'أحدث الأنشطة والتحديثات' : 'Latest activities and updates'}
+                  {t('latestActivitiesAndUpdates')}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -309,7 +311,7 @@ export default function TeacherDashboard() {
                   </div>
                 ))}
                 <Button variant="outline" className="w-full mt-2" onClick={() => navigate('/notifications')}>
-                  {isRTL ? 'عرض جميع الإشعارات' : 'View All Notifications'}
+                  {t('viewAllNotifications')}
                 </Button>
               </CardContent>
             </Card>
@@ -321,36 +323,36 @@ export default function TeacherDashboard() {
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-lg">
                 <AlertCircle className="h-5 w-5 text-orange-500" />
-                {isRTL ? 'المهام المعلقة' : 'Pending Tasks'}
+                {t('pendingTasks')}
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="p-4 rounded-lg bg-orange-50 border border-orange-200">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="font-medium text-orange-800">{isRTL ? 'حضور غير مسجل' : 'Unrecorded Attendance'}</span>
+                    <span className="font-medium text-orange-800">{t('unrecordedAttendance2')}</span>
                     <Badge variant="destructive">{stats.pendingAttendance}</Badge>
                   </div>
                   <Button size="sm" className="w-full" onClick={() => navigate('/admin/attendance')}>
-                    {isRTL ? 'تسجيل الآن' : 'Record Now'}
+                    {t('recordNow')}
                   </Button>
                 </div>
                 <div className="p-4 rounded-lg bg-blue-50 border border-blue-200">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="font-medium text-blue-800">{isRTL ? 'تقييمات معلقة' : 'Pending Assessments'}</span>
+                    <span className="font-medium text-blue-800">{t('pendingAssessments')}</span>
                     <Badge className="bg-blue-500">{stats.pendingAssessments}</Badge>
                   </div>
                   <Button size="sm" variant="outline" className="w-full" onClick={() => navigate('/admin/assessments')}>
-                    {isRTL ? 'إكمال التقييم' : 'Complete Assessment'}
+                    {t('completeAssessment')}
                   </Button>
                 </div>
                 <div className="p-4 rounded-lg bg-green-50 border border-green-200">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="font-medium text-green-800">{isRTL ? 'تقارير للمراجعة' : 'Reports to Review'}</span>
+                    <span className="font-medium text-green-800">{t('reportsToReview')}</span>
                     <Badge className="bg-green-500">0</Badge>
                   </div>
                   <Button size="sm" variant="outline" className="w-full" disabled>
-                    {isRTL ? 'لا توجد تقارير' : 'No Reports'}
+                    {t('noReports')}
                   </Button>
                 </div>
               </div>

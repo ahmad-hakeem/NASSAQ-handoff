@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { Sidebar } from '../components/layout/Sidebar';
 import { HakimAssistant } from '../components/hakim/HakimAssistant';
 import { Button } from '../components/ui/button';
@@ -37,6 +37,7 @@ const NeuralBackground = () => (
 );
 
 const AnimatedGauge = ({ score, size = 180, label }) => {
+  const { t } = useTranslation();
   const [animatedScore, setAnimatedScore] = useState(0);
   const radius = (size - 24) / 2;
   const circumference = 2 * Math.PI * radius;
@@ -150,7 +151,7 @@ const AlertsTimeline = ({ alerts, isRTL, onNavigate }) => {
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-md shadow-amber-500/20">
               <Zap className="h-4.5 w-4.5 text-white" />
             </div>
-            {isRTL ? 'التنبيهات الذكية' : 'Smart Alerts'}
+            {t('smartAlerts')}
           </CardTitle>
           {alerts.length > 0 && (
             <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 border-0 font-cairo text-xs px-2.5">{alerts.length}</Badge>
@@ -163,8 +164,8 @@ const AlertsTimeline = ({ alerts, isRTL, onNavigate }) => {
             <div className="w-16 h-16 rounded-2xl bg-emerald-100/80 dark:bg-emerald-900/30 flex items-center justify-center mb-4 shadow-sm">
               <CheckCircle className="h-8 w-8 text-emerald-500" />
             </div>
-            <p className="text-sm font-cairo font-bold text-foreground">{isRTL ? 'كل شيء يسير بسلاسة' : 'Everything running smoothly'}</p>
-            <p className="text-xs text-muted-foreground/60 font-tajawal mt-1 max-w-[200px]">{isRTL ? 'سيقوم حكيم بإعلامك عند اكتشاف أنماط مهمة' : 'Hakim will notify you when patterns are detected'}</p>
+            <p className="text-sm font-cairo font-bold text-foreground">{t('everythingRunningSmoothly')}</p>
+            <p className="text-xs text-muted-foreground/60 font-tajawal mt-1 max-w-[200px]">{t('hakimWillNotifyYouWhenPatternsAreDetected')}</p>
           </div>
         ) : (
           <div className="relative space-y-0">
@@ -195,7 +196,7 @@ const AlertsTimeline = ({ alerts, isRTL, onNavigate }) => {
                         <button onClick={() => onNavigate(alertRoute)}
                           className="flex items-center gap-1 text-[11px] font-cairo font-bold text-brand-turquoise hover:text-brand-purple transition-colors">
                           <ExternalLink className="h-3 w-3" />
-                          {isRTL ? 'انتقل' : 'Go'}
+                          {t('go')}
                         </button>
                       )}
                     </div>
@@ -225,7 +226,7 @@ const PredictionsPanel = ({ predictions, isRTL }) => {
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-md shadow-violet-500/20">
               <Radar className="h-4.5 w-4.5 text-white" />
             </div>
-            {isRTL ? 'التوقعات والتنبؤات' : 'Predictions & Forecasts'}
+            {t('predictionsForecasts')}
           </CardTitle>
           {predictions.length > 0 && (
             <Badge className="bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400 border-0 font-cairo text-xs px-2.5">{predictions.length}</Badge>
@@ -238,8 +239,8 @@ const PredictionsPanel = ({ predictions, isRTL }) => {
             <div className="w-16 h-16 rounded-2xl bg-violet-100/60 dark:bg-violet-900/20 flex items-center justify-center mb-4 shadow-sm">
               <TrendingUp className="h-8 w-8 text-violet-400/60" />
             </div>
-            <p className="text-sm font-cairo font-bold text-foreground">{isRTL ? 'لا توجد توقعات حالياً' : 'No predictions yet'}</p>
-            <p className="text-xs text-muted-foreground/60 font-tajawal mt-1">{isRTL ? 'يحتاج حكيم لمزيد من البيانات' : 'Hakim needs more data'}</p>
+            <p className="text-sm font-cairo font-bold text-foreground">{t('noPredictionsYet')}</p>
+            <p className="text-xs text-muted-foreground/60 font-tajawal mt-1">{t('hakimNeedsMoreData')}</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -248,7 +249,7 @@ const PredictionsPanel = ({ predictions, isRTL }) => {
               const confidence = pred.confidence || 0;
               const reasonText = pred.reason
                 ? (isRTL ? pred.reason.ar || pred.reason : pred.reason.en || pred.reason)
-                : (isRTL ? 'بناءً على تحليل أنماط البيانات' : 'Based on data pattern analysis');
+                : (t('basedOnDataPatternAnalysis'));
 
               return (
                 <div key={pred.id || i} className={`p-4 rounded-xl border border-border/50 ${colors.bg} transition-all duration-300 hover:shadow-md hover:-translate-y-0.5`}>
@@ -257,8 +258,8 @@ const PredictionsPanel = ({ predictions, isRTL }) => {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <Badge className={`text-[10px] ${colors.badge} border-0`}>
-                          {pred.impact === 'positive' ? (isRTL ? 'إيجابي' : 'Positive') :
-                            pred.impact === 'high' ? (isRTL ? 'يتطلب تدخل' : 'Needs Action') :
+                          {pred.impact === 'positive' ? (t('positive')) :
+                            pred.impact === 'high' ? (t('needsAction')) :
                               (isRTL ? 'متوسط' : 'Moderate')}
                         </Badge>
                       </div>
@@ -286,9 +287,9 @@ const PredictionsPanel = ({ predictions, isRTL }) => {
 
 const RecommendationsPanel = ({ recommendations, isRTL }) => {
   const priorityConfig = {
-    high: { color: 'from-red-500 to-rose-500', accent: 'bg-red-500', label: isRTL ? 'عالية' : 'High', icon: Flame },
-    medium: { color: 'from-amber-500 to-yellow-500', accent: 'bg-amber-500', label: isRTL ? 'متوسطة' : 'Medium', icon: Star },
-    low: { color: 'from-emerald-500 to-teal-500', accent: 'bg-emerald-500', label: isRTL ? 'منخفضة' : 'Low', icon: Lightbulb },
+    high: { color: 'from-red-500 to-rose-500', accent: 'bg-red-500', label: t('high2'), icon: Flame },
+    medium: { color: 'from-amber-500 to-yellow-500', accent: 'bg-amber-500', label: t('medium2'), icon: Star },
+    low: { color: 'from-emerald-500 to-teal-500', accent: 'bg-emerald-500', label: t('low2'), icon: Lightbulb },
   };
 
   return (
@@ -299,7 +300,7 @@ const RecommendationsPanel = ({ recommendations, isRTL }) => {
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shadow-md shadow-emerald-500/20">
               <Target className="h-4.5 w-4.5 text-white" />
             </div>
-            {isRTL ? 'توصيات ذكية' : 'Smart Recommendations'}
+            {t('smartRecommendations')}
           </CardTitle>
           {recommendations.length > 0 && (
             <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400 border-0 font-cairo text-xs px-2.5">{recommendations.length}</Badge>
@@ -312,7 +313,7 @@ const RecommendationsPanel = ({ recommendations, isRTL }) => {
             <div className="w-16 h-16 rounded-2xl bg-emerald-100/60 dark:bg-emerald-900/20 flex items-center justify-center mb-4 shadow-sm">
               <Lightbulb className="h-8 w-8 text-emerald-400/60" />
             </div>
-            <p className="text-sm font-cairo font-bold text-foreground">{isRTL ? 'لا توجد توصيات حالياً' : 'No recommendations yet'}</p>
+            <p className="text-sm font-cairo font-bold text-foreground">{t('noRecommendationsYet')}</p>
           </div>
         ) : (
           <div className="space-y-2.5">
@@ -359,9 +360,9 @@ const RecommendationsPanel = ({ recommendations, isRTL }) => {
 
 const RiskStudentsPanel = ({ students, isRTL, onNavigate }) => {
   const getRiskConfig = (level) => {
-    if (level >= 70) return { color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/30', ring: '#EF4444', badge: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400', label: isRTL ? 'خطر مرتفع' : 'High Risk' };
-    if (level >= 50) return { color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/30', ring: '#F59E0B', badge: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400', label: isRTL ? 'خطر متوسط' : 'Moderate' };
-    return { color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-950/30', ring: '#10B981', badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400', label: isRTL ? 'خطر منخفض' : 'Low Risk' };
+    if (level >= 70) return { color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/30', ring: '#EF4444', badge: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400', label: t('highRisk') };
+    if (level >= 50) return { color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/30', ring: '#F59E0B', badge: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400', label: t('moderate') };
+    return { color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-950/30', ring: '#10B981', badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400', label: t('lowRisk') };
   };
 
   return (
@@ -372,7 +373,7 @@ const RiskStudentsPanel = ({ students, isRTL, onNavigate }) => {
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-rose-500 to-red-500 flex items-center justify-center shadow-md shadow-red-500/20">
               <HeartPulse className="h-4.5 w-4.5 text-white" />
             </div>
-            {isRTL ? 'رادار المخاطر الطلابية' : 'Student Risk Radar'}
+            {t('studentRiskRadar')}
           </CardTitle>
           {students.length > 0 && (
             <div className="flex items-center gap-1.5">
@@ -392,8 +393,8 @@ const RiskStudentsPanel = ({ students, isRTL, onNavigate }) => {
             <div className="w-16 h-16 rounded-2xl bg-emerald-100/80 dark:bg-emerald-900/30 flex items-center justify-center mb-4 shadow-sm">
               <Shield className="h-8 w-8 text-emerald-500" />
             </div>
-            <p className="text-sm font-cairo font-bold text-foreground">{isRTL ? 'لا يوجد طلاب في خطر' : 'No at-risk students'}</p>
-            <p className="text-xs text-muted-foreground/60 font-tajawal mt-1">{isRTL ? 'جميع الطلاب يسيرون بشكل جيد' : 'All students performing well'}</p>
+            <p className="text-sm font-cairo font-bold text-foreground">{t('noAtriskStudents')}</p>
+            <p className="text-xs text-muted-foreground/60 font-tajawal mt-1">{t('allStudentsPerformingWell')}</p>
           </div>
         ) : (
           <div className="space-y-2">
@@ -552,7 +553,7 @@ export const AIInsightsPage = () => {
   const handleRefresh = async () => {
     setRefreshing(true);
     await fetchData();
-    toast.success(isRTL ? 'تم تحديث رؤى الذكاء الاصطناعي' : 'AI insights refreshed');
+    toast.success(t('aiInsightsRefreshed'));
     setRefreshing(false);
   };
 
@@ -584,8 +585,8 @@ export const AIInsightsPage = () => {
             </div>
           </div>
           <div className="text-center">
-            <p className="font-cairo font-bold text-foreground">{isRTL ? 'حكيم يحلل البيانات...' : 'Hakim is analyzing data...'}</p>
-            <p className="text-xs text-muted-foreground font-tajawal mt-1">{isRTL ? 'جاري استخراج الأنماط والرؤى' : 'Extracting patterns and insights'}</p>
+            <p className="font-cairo font-bold text-foreground">{t('hakimIsAnalyzingData')}</p>
+            <p className="text-xs text-muted-foreground font-tajawal mt-1">{t('extractingPatternsAndInsights')}</p>
           </div>
         </div>
       </Sidebar>
@@ -593,11 +594,11 @@ export const AIInsightsPage = () => {
   }
 
   const tabs = [
-    { id: 'overview', label: isRTL ? 'نظرة عامة' : 'Overview', icon: LayoutGrid, count: null },
-    { id: 'alerts', label: isRTL ? 'التنبيهات' : 'Alerts', icon: Zap, count: alerts.length },
-    { id: 'predictions', label: isRTL ? 'التوقعات' : 'Predictions', icon: TrendingUp, count: predictions.length },
-    { id: 'recommendations', label: isRTL ? 'التوصيات' : 'Recommendations', icon: Target, count: recommendations.length },
-    { id: 'risks', label: isRTL ? 'المخاطر' : 'Risks', icon: Shield, count: studentRisks.length },
+    { id: 'overview', label: t('overview'), icon: LayoutGrid, count: null },
+    { id: 'alerts', label: t('alerts'), icon: Zap, count: alerts.length },
+    { id: 'predictions', label: t('predictions'), icon: TrendingUp, count: predictions.length },
+    { id: 'recommendations', label: t('recommendations2'), icon: Target, count: recommendations.length },
+    { id: 'risks', label: t('risks'), icon: Shield, count: studentRisks.length },
   ];
 
   return (
@@ -617,7 +618,7 @@ export const AIInsightsPage = () => {
                   <Sparkles className="h-4 w-4 text-brand-gold" />
                 </h1>
                 <p className="text-xs text-muted-foreground font-tajawal">
-                  {isRTL ? 'تحليلات عميقة وتوقعات ذكية' : 'Deep analytics & AI predictions'}
+                  {t('deepAnalyticsAiPredictions')}
                 </p>
               </div>
             </div>
@@ -625,7 +626,7 @@ export const AIInsightsPage = () => {
             <div className="flex items-center gap-2">
               <Button variant="outline" onClick={handleRefresh} disabled={refreshing} className="rounded-xl gap-2 h-9">
                 {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                <span className="hidden sm:inline text-xs">{isRTL ? 'تحديث' : 'Refresh'}</span>
+                <span className="hidden sm:inline text-xs">{t('refresh')}</span>
               </Button>
               <Button variant="ghost" size="icon" onClick={toggleLanguage} className="rounded-xl h-9 w-9">
                 <Globe className="h-4 w-4" />
@@ -662,18 +663,16 @@ export const AIInsightsPage = () => {
                         <img src={HAKIM_AVATAR} alt="حكيم" className="hakim-img w-full h-full object-contain" />
                       </div>
                       <span className="text-[11px] font-tajawal text-white font-medium">
-                        {isRTL ? 'تحليل مدعوم بحكيم AI' : 'Powered by Hakim AI'}
+                        {t('poweredByHakimAi')}
                       </span>
                       <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                     </div>
 
                     <h2 className="text-2xl lg:text-3xl font-bold font-cairo text-white mb-2 leading-tight">
-                      {isRTL ? 'مؤشر الأداء الذكي' : 'Smart Performance Index'}
+                      {t('smartPerformanceIndex')}
                     </h2>
                     <p className="text-sm text-white font-tajawal max-w-md leading-relaxed">
-                      {isRTL
-                        ? 'تقييم شامل لأداء المدرسة بناءً على تحليل الذكاء الاصطناعي'
-                        : 'Comprehensive school performance based on AI analysis'}
+                      {t('comprehensiveSchoolPerformanceBasedOnAiAnalysis')}
                     </p>
 
                     <div className="flex items-center gap-3 mt-5 justify-center lg:justify-start">
@@ -690,7 +689,7 @@ export const AIInsightsPage = () => {
                           {insights.trend_value}%
                         </span>
                         <span className="text-[10px] text-white font-tajawal">
-                          {isRTL ? 'مقارنة بالشهر الماضي' : 'vs last month'}
+                          {t('vsLastMonth')}
                         </span>
                       </div>
                     </div>
@@ -700,13 +699,13 @@ export const AIInsightsPage = () => {
                     <AnimatedGauge
                       score={insights.overall_score}
                       size={200}
-                      label={isRTL ? 'من ١٠٠' : 'out of 100'}
+                      label={t('outOf100')}
                     />
                   </div>
 
                   <div className="hidden lg:flex flex-col gap-4">
-                    <HealthRing label={isRTL ? 'الحضور' : 'Attendance'} value={metrics.attendance_rate || 0} color="#46C1BE" icon={Activity} isRTL={isRTL} />
-                    <HealthRing label={isRTL ? 'المشاركة' : 'Engagement'} value={metrics.engagement_rate || metrics.attendance_rate || 0} color="#615090" icon={Users} isRTL={isRTL} />
+                    <HealthRing label={t('attendance2')} value={metrics.attendance_rate || 0} color="#46C1BE" icon={Activity} isRTL={isRTL} />
+                    <HealthRing label={t('engagement')} value={metrics.engagement_rate || metrics.attendance_rate || 0} color="#615090" icon={Users} isRTL={isRTL} />
                   </div>
                 </div>
               </div>
@@ -717,36 +716,36 @@ export const AIInsightsPage = () => {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <VisualMetricCard
               icon={Users}
-              label={isRTL ? 'إجمالي الطلاب' : 'Total Students'}
+              label={t('totalStudents')}
               value={metrics.total_students || 0}
-              subLabel={isRTL ? 'مسجّل في النظام' : 'Enrolled'}
+              subLabel={t('enrolled')}
               gradient="from-brand-turquoise to-teal-600"
               onClick={() => navigate('/admin/users-management')}
               delay={100}
             />
             <VisualMetricCard
               icon={GraduationCap}
-              label={isRTL ? 'إجمالي المعلمين' : 'Total Teachers'}
+              label={t('totalTeachers')}
               value={metrics.total_teachers || 0}
-              subLabel={`${metrics.student_teacher_ratio || 0}:1 ${isRTL ? 'طالب/معلم' : 'ratio'}`}
+              subLabel={`${metrics.student_teacher_ratio || 0}:1 ${t('ratio')}`}
               gradient="from-brand-purple to-violet-600"
               onClick={() => navigate('/admin/users-management?filter=teachers')}
               delay={200}
             />
             <VisualMetricCard
               icon={Activity}
-              label={isRTL ? 'نسبة الحضور' : 'Attendance Rate'}
+              label={t('attendanceRate')}
               value={`${metrics.attendance_rate || 0}%`}
-              subLabel={isRTL ? 'اليوم' : 'Today'}
+              subLabel={t('today2')}
               gradient="from-brand-navy-light to-brand-navy"
               onClick={() => navigate('/admin/attendance')}
               delay={300}
             />
             <VisualMetricCard
               icon={Shield}
-              label={isRTL ? 'طلاب في خطر' : 'At-Risk Students'}
+              label={t('atriskStudents')}
               value={studentRisks.length}
-              subLabel={highRiskCount > 0 ? `${highRiskCount} ${isRTL ? 'خطر مرتفع' : 'critical'}` : (isRTL ? 'آمن' : 'Safe')}
+              subLabel={highRiskCount > 0 ? `${highRiskCount} ${isRTL ? 'خطر مرتفع' : 'critical'}` : (t('safe'))}
               gradient="from-rose-500 to-red-600"
               onClick={() => setActiveTab('risks')}
               delay={400}
@@ -771,7 +770,7 @@ export const AIInsightsPage = () => {
                       : `${totalIssues} items need your attention — ${alerts.length} alerts and ${highRiskCount} high-risk students`}
                   </p>
                   <Button variant="outline" size="sm" onClick={() => setActiveTab('alerts')} className="rounded-lg text-xs border-amber-300 text-amber-700 hover:bg-amber-100">
-                    {isRTL ? 'عرض التفاصيل' : 'View Details'}
+                    {t('viewDetails')}
                   </Button>
                 </>
               ) : (
@@ -780,7 +779,7 @@ export const AIInsightsPage = () => {
                     <CheckCircle className="h-4 w-4 text-emerald-600" />
                   </div>
                   <p className="text-sm font-tajawal text-emerald-800 dark:text-emerald-300 flex-1">
-                    {isRTL ? 'جميع المؤشرات طبيعية — لا توجد مشكلات تحتاج تدخل فوري' : 'All indicators normal — no issues need immediate attention'}
+                    {t('allIndicatorsNormalNoIssuesNeedImmediateAttention')}
                   </p>
                 </>
               )}
@@ -871,13 +870,13 @@ export const AIInsightsPage = () => {
               <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground/40 font-tajawal">
                 <Cpu className="h-3 w-3" />
                 <span>
-                  {isRTL ? 'آخر تحديث: ' : 'Last updated: '}
+                  {t('lastUpdated')}
                   {insights.last_updated
                     ? new Date(insights.last_updated).toLocaleString(isRTL ? 'ar-SA' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' })
-                    : (isRTL ? 'غير متاح' : 'N/A')}
+                    : (t('na'))}
                 </span>
                 <span className="text-brand-turquoise">•</span>
-                <span>{isRTL ? 'مدعوم بمحرك حكيم' : 'Powered by Hakim Engine'}</span>
+                <span>{t('poweredByHakimEngine')}</span>
               </div>
             </div>
           </div>

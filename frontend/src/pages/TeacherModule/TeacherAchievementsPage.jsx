@@ -14,6 +14,7 @@ import {
   Sparkles, Shield, GraduationCap, ThumbsUp, Clock
 } from 'lucide-react';
 
+import { useTranslation } from '../../contexts/ThemeContext';
 const BADGE_META = {
   sessions_10: { icon: BookOpen, title_ar: 'بداية التدريس', title_en: 'Teaching Start', desc_ar: 'أكمل 10 حصص دراسية', desc_en: 'Complete 10 sessions', gradient: 'from-blue-500 to-blue-600', bg: 'bg-blue-100 dark:bg-blue-900/40', text: 'text-blue-700 dark:text-blue-300' },
   sessions_50: { icon: Flame, title_ar: 'معلم نشط', title_en: 'Active Teacher', desc_ar: 'أكمل 50 حصة', desc_en: 'Complete 50 sessions', gradient: 'from-orange-500 to-red-500', bg: 'bg-orange-100 dark:bg-orange-900/40', text: 'text-orange-700 dark:text-orange-300' },
@@ -56,13 +57,14 @@ export default function TeacherAchievementsPage() {
   const totalCount = data?.total_badges || 0;
   const levelPercent = totalCount > 0 ? Math.round((earnedCount / totalCount) * 100) : 0;
 
-  const levelTitle = earnedCount >= 9 ? (isRTL ? 'معلم أسطوري' : 'Legendary Teacher')
+  const levelTitle = earnedCount >= 9 ? (t('legendaryTeacher'))
     : earnedCount >= 6 ? (isRTL ? 'معلم خبير' : 'Expert Teacher')
-    : earnedCount >= 3 ? (isRTL ? 'معلم متقدم' : 'Advanced Teacher')
-    : earnedCount >= 1 ? (isRTL ? 'معلم مبتدئ' : 'Beginner Teacher')
-    : (isRTL ? 'ابدأ رحلتك' : 'Start Your Journey');
+    : earnedCount >= 3 ? (t('advancedTeacher'))
+    : earnedCount >= 1 ? (t('beginnerTeacher'))
+    : (t('startYourJourney'));
 
   const renderBadgeCard = (badge, isEarned) => {
+  const { t } = useTranslation();
     const meta = BADGE_META[badge.id] || {};
     const Icon = meta.icon || Award;
     return (
@@ -80,7 +82,7 @@ export default function TeacherAchievementsPage() {
               {isEarned && (
                 <Badge className="bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 border-0 text-[10px] px-1.5 h-5">
                   <CheckCircle2 className="w-3 h-3 me-0.5" />
-                  {isRTL ? 'مكتسب' : 'Earned'}
+                  {t('earned')}
                 </Badge>
               )}
             </div>
@@ -107,15 +109,15 @@ export default function TeacherAchievementsPage() {
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
               <h1 className="text-2xl font-bold text-brand-navy dark:text-brand-turquoise font-cairo">
-                {isRTL ? 'إنجازاتي' : 'My Achievements'}
+                {t('myAchievements')}
               </h1>
               <p className="text-sm text-muted-foreground">
-                {isRTL ? 'تتبع إنجازاتك التعليمية وتقدمك المهني' : 'Track your teaching achievements and professional progress'}
+                {t('trackYourTeachingAchievementsAndProfessionalProgre')}
               </p>
             </div>
             <Button onClick={fetchData} variant="outline" size="sm" disabled={loading}>
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-              <span className="ms-2">{isRTL ? 'تحديث' : 'Refresh'}</span>
+              <span className="ms-2">{t('refresh')}</span>
             </Button>
           </div>
         </div>
@@ -124,13 +126,13 @@ export default function TeacherAchievementsPage() {
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
               <Loader2 className="h-8 w-8 animate-spin text-amber-500" />
-              <p className="text-sm text-muted-foreground font-tajawal">{isRTL ? 'جاري تحميل الإنجازات...' : 'Loading achievements...'}</p>
+              <p className="text-sm text-muted-foreground font-tajawal">{t('loadingAchievements')}</p>
             </div>
           ) : !data ? (
             <Card>
               <CardContent className="text-center py-16">
                 <Trophy className="h-16 w-16 mx-auto mb-4 text-muted-foreground/30" />
-                <p className="text-muted-foreground font-cairo">{isRTL ? 'لا توجد بيانات' : 'No data available'}</p>
+                <p className="text-muted-foreground font-cairo">{t('noDataAvailable')}</p>
               </CardContent>
             </Card>
           ) : (
@@ -163,10 +165,10 @@ export default function TeacherAchievementsPage() {
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-5 gap-3">
                 {[
                   { label: isRTL ? 'الحصص' : 'Sessions', value: m.total_sessions, icon: BookOpen, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/30' },
-                  { label: isRTL ? 'الطلاب' : 'Students', value: m.total_students, icon: Users, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-950/30' },
-                  { label: isRTL ? 'الفصول' : 'Classes', value: m.total_classes, icon: BookOpen, color: 'text-indigo-600', bg: 'bg-indigo-50 dark:bg-indigo-950/30' },
-                  { label: isRTL ? 'الحضور' : 'Attendance', value: `${m.attendance_rate}%`, icon: ClipboardCheck, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-950/30' },
-                  { label: isRTL ? 'الأداء' : 'Performance', value: `${m.avg_performance}%`, icon: Target, color: 'text-cyan-600', bg: 'bg-cyan-50 dark:bg-cyan-950/30' },
+                  { label: t('students'), value: m.total_students, icon: Users, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-950/30' },
+                  { label: t('classes2'), value: m.total_classes, icon: BookOpen, color: 'text-indigo-600', bg: 'bg-indigo-50 dark:bg-indigo-950/30' },
+                  { label: t('attendance2'), value: `${m.attendance_rate}%`, icon: ClipboardCheck, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-950/30' },
+                  { label: t('performance3'), value: `${m.avg_performance}%`, icon: Target, color: 'text-cyan-600', bg: 'bg-cyan-50 dark:bg-cyan-950/30' },
                 ].map((stat, i) => (
                   <Card key={i} className="overflow-hidden">
                     <CardContent className={`p-3 text-center ${stat.bg}`}>
@@ -182,16 +184,16 @@ export default function TeacherAchievementsPage() {
                 <TabsList className="mb-4 bg-muted/50">
                   <TabsTrigger value="badges" className="gap-1.5">
                     <Award className="h-3.5 w-3.5" />
-                    {isRTL ? 'الشارات' : 'Badges'}
+                    {t('badges')}
                     <Badge className="bg-amber-500 text-white text-[9px] px-1.5 h-4 border-0">{earnedCount}/{totalCount}</Badge>
                   </TabsTrigger>
                   <TabsTrigger value="stats" className="gap-1.5">
                     <BarChart3 className="h-3.5 w-3.5" />
-                    {isRTL ? 'الإحصائيات' : 'Statistics'}
+                    {t('statistics2')}
                   </TabsTrigger>
                   <TabsTrigger value="timeline" className="gap-1.5">
                     <Clock className="h-3.5 w-3.5" />
-                    {isRTL ? 'النشاط الشهري' : 'Monthly Activity'}
+                    {t('monthlyActivity')}
                   </TabsTrigger>
                 </TabsList>
 
@@ -201,7 +203,7 @@ export default function TeacherAchievementsPage() {
                       <div>
                         <h2 className="text-base font-semibold mb-3 flex items-center gap-2 font-cairo">
                           <CheckCircle2 className="w-5 h-5 text-green-500" />
-                          {isRTL ? 'الإنجازات المكتسبة' : 'Earned Achievements'}
+                          {t('earnedAchievements')}
                           <Badge className="bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 border-0">{data.earned_badges.length}</Badge>
                         </h2>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -214,7 +216,7 @@ export default function TeacherAchievementsPage() {
                       <div>
                         <h2 className="text-base font-semibold mb-3 flex items-center gap-2 font-cairo">
                           <Target className="w-5 h-5 text-amber-500" />
-                          {isRTL ? 'قيد التحقيق' : 'In Progress'}
+                          {t('inProgress')}
                         </h2>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           {data.in_progress_badges.map(b => renderBadgeCard(b, false))}
@@ -226,8 +228,8 @@ export default function TeacherAchievementsPage() {
                       <Card>
                         <CardContent className="p-10 text-center">
                           <Sparkles className="w-14 h-14 mx-auto text-amber-400 mb-4" />
-                          <h3 className="font-bold text-lg font-cairo mb-2">{isRTL ? 'ابدأ رحلتك التعليمية!' : 'Start Your Teaching Journey!'}</h3>
-                          <p className="text-sm text-muted-foreground">{isRTL ? 'سجل أول إنجاز لك من خلال تنفيذ الحصص والتفاعل مع طلابك' : 'Earn your first achievement by conducting sessions and engaging with students'}</p>
+                          <h3 className="font-bold text-lg font-cairo mb-2">{t('startYourTeachingJourney')}</h3>
+                          <p className="text-sm text-muted-foreground">{t('earnYourFirstAchievementByConductingSessionsAndEng')}</p>
                         </CardContent>
                       </Card>
                     )}
@@ -240,16 +242,16 @@ export default function TeacherAchievementsPage() {
                       <CardHeader className="pb-3">
                         <CardTitle className="text-base font-cairo flex items-center gap-2">
                           <Activity className="h-4 w-4 text-brand-turquoise" />
-                          {isRTL ? 'مؤشرات الأداء التفصيلية' : 'Detailed Performance Metrics'}
+                          {t('detailedPerformanceMetrics')}
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-3">
                         {[
-                          { label: isRTL ? 'الحصص المنفذة' : 'Sessions Completed', value: m.total_sessions, max: 100, color: 'bg-blue-500' },
-                          { label: isRTL ? 'نسبة الانتظام' : 'Regularity Rate', value: m.regularity_rate, max: 100, suffix: '%', color: 'bg-emerald-500' },
-                          { label: isRTL ? 'نسبة الحضور' : 'Attendance Rate', value: m.attendance_rate, max: 100, suffix: '%', color: 'bg-green-500' },
-                          { label: isRTL ? 'نسبة المشاركة' : 'Participation Rate', value: m.participation_rate, max: 100, suffix: '%', color: 'bg-pink-500' },
-                          { label: isRTL ? 'متوسط أداء الطلاب' : 'Avg Performance', value: m.avg_performance, max: 100, suffix: '%', color: 'bg-cyan-500' },
+                          { label: t('sessionsCompleted'), value: m.total_sessions, max: 100, color: 'bg-blue-500' },
+                          { label: t('regularityRate'), value: m.regularity_rate, max: 100, suffix: '%', color: 'bg-emerald-500' },
+                          { label: t('attendanceRate'), value: m.attendance_rate, max: 100, suffix: '%', color: 'bg-green-500' },
+                          { label: t('participationRate'), value: m.participation_rate, max: 100, suffix: '%', color: 'bg-pink-500' },
+                          { label: t('avgPerformance'), value: m.avg_performance, max: 100, suffix: '%', color: 'bg-cyan-500' },
                         ].map((item, i) => (
                           <div key={i}>
                             <div className="flex justify-between text-sm mb-1">
@@ -268,15 +270,15 @@ export default function TeacherAchievementsPage() {
                       <CardHeader className="pb-3">
                         <CardTitle className="text-base font-cairo flex items-center gap-2">
                           <BarChart3 className="h-4 w-4 text-amber-500" />
-                          {isRTL ? 'إحصائيات إضافية' : 'Additional Stats'}
+                          {t('additionalStats')}
                         </CardTitle>
                       </CardHeader>
                       <CardContent>
                         <div className="grid grid-cols-2 gap-3">
                           {[
-                            { label: isRTL ? 'التقييمات' : 'Assessments', value: m.total_assessments, icon: GraduationCap, color: 'text-violet-600', bg: 'bg-violet-50 dark:bg-violet-950/30' },
-                            { label: isRTL ? 'سلوك إيجابي' : 'Positive', value: m.positive_behavior, icon: ThumbsUp, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-950/30' },
-                            { label: isRTL ? 'سلوك سلبي' : 'Negative', value: m.negative_behavior, icon: TrendingUp, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/30' },
+                            { label: t('assessments'), value: m.total_assessments, icon: GraduationCap, color: 'text-violet-600', bg: 'bg-violet-50 dark:bg-violet-950/30' },
+                            { label: t('positive2'), value: m.positive_behavior, icon: ThumbsUp, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-950/30' },
+                            { label: t('negative2'), value: m.negative_behavior, icon: TrendingUp, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/30' },
                             { label: isRTL ? 'الملاحظات' : 'Records', value: m.total_behavior_records, icon: ClipboardCheck, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/30' },
                           ].map((s, i) => (
                             <div key={i} className={`p-3 rounded-xl text-center ${s.bg}`}>
@@ -291,14 +293,14 @@ export default function TeacherAchievementsPage() {
                           <div className="mt-4 p-3 rounded-xl border bg-gradient-to-r from-brand-turquoise/5 to-brand-navy/5 border-brand-turquoise/20">
                             <h4 className="text-xs font-semibold font-cairo mb-2 flex items-center gap-1.5">
                               <TrendingUp className="w-3.5 h-3.5 text-brand-turquoise" />
-                              {isRTL ? 'مقارنة مع المدرسة' : 'School Comparison'}
+                              {t('schoolComparison')}
                             </h4>
                             <div className="flex justify-between text-xs">
-                              <span className="text-muted-foreground">{isRTL ? 'متوسط الحصص للمعلمين' : 'Avg sessions/teacher'}</span>
+                              <span className="text-muted-foreground">{t('avgSessionsteacher')}</span>
                               <span className="font-bold font-cairo">{data.school_comparison.avg_sessions}</span>
                             </div>
                             <div className="flex justify-between text-xs mt-1">
-                              <span className="text-muted-foreground">{isRTL ? 'حصصك أنت' : 'Your sessions'}</span>
+                              <span className="text-muted-foreground">{t('yourSessions')}</span>
                               <span className={`font-bold font-cairo ${m.total_sessions >= (data.school_comparison.avg_sessions || 0) ? 'text-green-600' : 'text-amber-600'}`}>{m.total_sessions}</span>
                             </div>
                           </div>
@@ -313,14 +315,14 @@ export default function TeacherAchievementsPage() {
                     <CardHeader className="pb-3">
                       <CardTitle className="text-base font-cairo flex items-center gap-2">
                         <Calendar className="h-4 w-4 text-brand-turquoise" />
-                        {isRTL ? 'النشاط الشهري (حصص مكتملة)' : 'Monthly Activity (Completed Sessions)'}
+                        {t('monthlyActivityCompletedSessions')}
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
                       {Object.keys(data.monthly_sessions || {}).length === 0 ? (
                         <div className="text-center py-10">
                           <Calendar className="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" />
-                          <p className="text-sm text-muted-foreground font-cairo">{isRTL ? 'لا توجد بيانات نشاط بعد' : 'No activity data yet'}</p>
+                          <p className="text-sm text-muted-foreground font-cairo">{t('noActivityDataYet')}</p>
                         </div>
                       ) : (
                         <div className="space-y-4">

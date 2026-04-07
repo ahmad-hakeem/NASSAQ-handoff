@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { Footer } from '../components/layout/Footer';
 import { HakimAssistant } from '../components/hakim/HakimAssistant';
 import { Button } from '../components/ui/button';
@@ -103,6 +103,7 @@ function AnimatedCounter({ target, duration = 2000, suffix = '' }) {
           hasAnimated.current = true;
           const startTime = Date.now();
           const animate = () => {
+  const { t } = useTranslation();
             const elapsed = Date.now() - startTime;
             const progress = Math.min(elapsed / duration, 1);
             const eased = 1 - Math.pow(1 - progress, 3);
@@ -466,17 +467,17 @@ export const LandingPage = () => {
               <img src={LOGO_WHITE} alt="نَسَّق" className="h-9 lg:h-10 w-auto rounded-xl" />
             </Link>
             <div className="flex items-center gap-1 sm:gap-2">
-              <Button variant="ghost" size="icon" onClick={toggleLanguage} className="text-white/70 hover:text-white hover:bg-white/10 rounded-xl h-9 w-9 sm:h-10 sm:w-10" data-testid="language-toggle" aria-label={isRTL ? 'Switch to English' : 'التبديل إلى العربية'}>
+              <Button variant="ghost" size="icon" onClick={toggleLanguage} className="text-white/70 hover:text-white hover:bg-white/10 rounded-xl h-9 w-9 sm:h-10 sm:w-10" data-testid="language-toggle" aria-label={t('key_xlsw4h')}>
                 <Globe className="h-4 w-4" />
               </Button>
               <Button variant="ghost" size="icon" onClick={toggleTheme} className="text-white/70 hover:text-white hover:bg-white/10 rounded-xl h-9 w-9 sm:h-10 sm:w-10" data-testid="theme-toggle" aria-label={isDark ? 'Light mode' : 'Dark mode'}>
                 {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
               </Button>
               <Button variant="ghost" asChild className="text-white/80 hover:text-white hover:bg-white/10 rounded-xl text-xs sm:text-sm px-2.5 sm:px-3 h-9 sm:h-10" data-testid="login-link">
-                <Link to="/login">{isRTL ? 'تسجيل الدخول' : 'Login'}</Link>
+                <Link to="/login">{t('login')}</Link>
               </Button>
               <Button asChild className="bg-brand-turquoise hover:bg-brand-turquoise-light text-white rounded-xl text-xs sm:text-sm px-3 sm:px-5 h-9 sm:h-10 shadow-lg shadow-brand-turquoise/20" data-testid="register-link">
-                <Link to="/register">{isRTL ? 'إنشاء حساب' : 'Register'}</Link>
+                <Link to="/register">{t('register2')}</Link>
               </Button>
             </div>
           </div>
@@ -511,27 +512,25 @@ export const LandingPage = () => {
             <div className={`space-y-8 ${isRTL ? 'lg:order-1' : 'lg:order-1'}`}>
               <div className="inline-flex items-center gap-2 bg-brand-turquoise/10 border border-brand-turquoise/20 rounded-full px-4 py-2 backdrop-blur-sm">
                 <Sparkles className="h-4 w-4 text-brand-turquoise animate-pulse" />
-                <span className="text-brand-turquoise/90 text-sm font-tajawal">{isRTL ? 'منصة تعليمية ذكية مدعومة بالذكاء الاصطناعي' : 'AI-Powered Smart Education Platform'}</span>
+                <span className="text-brand-turquoise/90 text-sm font-tajawal">{t('aipoweredSmartEducationPlatform')}</span>
               </div>
 
               <div>
                 <h1 className="text-5xl md:text-6xl lg:text-7xl font-cairo font-black text-white mb-4 leading-tight" data-testid="platform-name">
-                  {isRTL ? 'نَسَّق' : 'NASSAQ'}
+                  {t('nassaq')}
                 </h1>
                 <p className="text-3xl md:text-4xl text-brand-turquoise font-cairo font-bold mb-4">
-                  {isRTL ? 'من البيانات إلى القرار' : 'From Data to Decisions'}
+                  {t('fromDataToDecisions')}
                 </p>
                 <p className="text-lg text-white/60 font-tajawal leading-relaxed max-w-lg">
-                  {isRTL
-                    ? 'منصة ذكاء العمليات التعليمية - تحوّل البيانات إلى قرارات تعليمية فعّالة'
-                    : 'Education Operations Intelligence Platform - From Data to Decision'
+                  {t('educationOperationsIntelligencePlatformFromDataToD')
                   }
                 </p>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" data-testid="traction-section">
                 {[
-                  { icon: Building2, value: platformStats.schools, label: isRTL ? 'مدرسة' : 'Schools' },
+                  { icon: Building2, value: platformStats.schools, label: t('schools3') },
                   { icon: GraduationCap, value: platformStats.students, label: isRTL ? 'طالب' : 'Students' },
                   { icon: Users, value: platformStats.parents, label: isRTL ? 'ولي أمر' : 'Parents' },
                   { icon: UserCheck, value: platformStats.teachers, label: isRTL ? 'معلم' : 'Teachers' },
@@ -549,21 +548,21 @@ export const LandingPage = () => {
               <div className="flex flex-col sm:flex-row gap-3">
                 <Button asChild size="lg" className="bg-gradient-to-r from-brand-turquoise to-cyan-500 hover:from-brand-turquoise-light hover:to-cyan-400 text-white rounded-2xl h-12 sm:h-14 px-6 sm:px-8 text-base sm:text-lg font-cairo shadow-xl shadow-brand-turquoise/25 hover:shadow-2xl hover:shadow-brand-turquoise/35 transition-all hover:scale-[1.02]" data-testid="hero-cta-btn">
                   <Link to="/login" className="flex items-center gap-2">
-                    {isRTL ? 'الدخول إلى المنصة' : 'Enter the Platform'}
+                    {t('enterThePlatform')}
                     {isRTL ? <ArrowLeft className="h-5 w-5" /> : <ArrowRight className="h-5 w-5" />}
                   </Link>
                 </Button>
                 <Button asChild variant="outline" size="lg" className="border-white/20 text-white hover:bg-white/10 rounded-2xl h-12 sm:h-14 px-5 sm:px-6 text-base sm:text-lg font-cairo backdrop-blur-sm" data-testid="teacher-register-cta">
                   <Link to="/teacher-register" className="flex items-center gap-2">
                     <UserCheck className="h-5 w-5" />
-                    {isRTL ? 'انضم كمعلم' : 'Join as Teacher'}
+                    {t('joinAsTeacher')}
                   </Link>
                 </Button>
               </div>
 
               <div className="inline-flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-4 py-2">
                 <Bell className="h-4 w-4 text-brand-turquoise animate-pulse" />
-                <span className="text-white/60 font-tajawal text-sm">{isRTL ? 'دعم فني متواصل 24/7' : '24/7 Technical Support'}</span>
+                <span className="text-white/60 font-tajawal text-sm">{t('247TechnicalSupport')}</span>
               </div>
             </div>
 
@@ -572,7 +571,7 @@ export const LandingPage = () => {
                 <div className="relative z-10 w-72 lg:w-96 mb-[-40px]" style={{ aspectRatio: '1/1.2' }}>
                   <img
                     src={heroHakim.currentSrc}
-                    alt={isRTL ? 'حكيم' : 'Hakim'}
+                    alt={t('hakim')}
                     className="hakim-img absolute inset-0 w-full h-full object-contain"
                     data-testid="hakim-avatar"
                   />
@@ -582,7 +581,7 @@ export const LandingPage = () => {
                   <div className="relative bg-white/10 backdrop-blur-md border border-white/15 rounded-2xl px-6 py-5 shadow-2xl">
                     <div className="absolute -top-3 start-6 bg-brand-turquoise text-white text-xs font-cairo font-bold px-3 py-1 rounded-full shadow-lg flex items-center gap-1.5">
                       <Brain className="h-3.5 w-3.5" />
-                      {isRTL ? 'حكيم' : 'Hakim'}
+                      {t('hakim')}
                     </div>
                     <p className="text-white/90 text-base font-tajawal leading-relaxed min-h-[72px]">
                       {typedHakimText}
@@ -594,7 +593,7 @@ export const LandingPage = () => {
 
               <div className="flex items-center gap-3">
                 <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-white/40 text-xs font-tajawal">{isRTL ? 'حكيم متصل الآن' : 'Hakim is online'}</span>
+                <span className="text-white/40 text-xs font-tajawal">{t('hakimIsOnline')}</span>
               </div>
             </div>
           </div>
@@ -620,13 +619,13 @@ export const LandingPage = () => {
           <div className="text-center mb-16">
             <div className="inline-flex items-center gap-2.5 bg-gradient-to-r from-brand-turquoise/15 to-brand-turquoise/5 border border-brand-turquoise/25 rounded-full px-5 py-2.5 mb-6 backdrop-blur-sm animate-pulse-glow">
               <Zap className="h-4 w-4 text-brand-turquoise animate-pulse" />
-              <span className="text-brand-turquoise text-sm font-tajawal font-medium">{isRTL ? 'رحلة التحول الذكي' : 'Smart Transformation Journey'}</span>
+              <span className="text-brand-turquoise text-sm font-tajawal font-medium">{t('smartTransformationJourney')}</span>
             </div>
             <h2 className="font-cairo text-3xl md:text-5xl lg:text-[3.5rem] font-black text-foreground mb-5 leading-tight">
-              {isRTL ? 'رحلة المدرسة نحو النظام الذكي' : "The School's Journey to Smart Systems"}
+              {t('theSchoolsJourneyToSmartSystems')}
             </h2>
             <p className="text-lg md:text-xl text-muted-foreground font-tajawal max-w-2xl mx-auto leading-relaxed">
-              {isRTL ? 'من البيانات المبعثرة إلى قرارات تعليمية واضحة' : 'From scattered data to clear educational decisions'}
+              {t('fromScatteredDataToClearEducationalDecisions')}
             </p>
           </div>
 
@@ -719,14 +718,14 @@ export const LandingPage = () => {
               {/* Hakim Quote */}
               <div className="flex items-start gap-3">
                 <div className="relative flex-shrink-0">
-                  <img src="/hakim-poses/explaining-concept.png" alt={isRTL ? 'حكيم' : 'Hakim'} className="hakim-img w-20 h-20 rounded-2xl object-contain border-2 border-brand-purple/40 shadow-xl bg-gradient-to-br from-violet-50 to-cyan-50 p-1" />
+                  <img src="/hakim-poses/explaining-concept.png" alt={t('hakim')} className="hakim-img w-20 h-20 rounded-2xl object-contain border-2 border-brand-purple/40 shadow-xl bg-gradient-to-br from-violet-50 to-cyan-50 p-1" />
                   <div className="absolute -bottom-1 -end-1 w-5 h-5 rounded-md bg-brand-purple flex items-center justify-center border border-card">
                     <Brain className="h-2.5 w-2.5 text-white" />
                   </div>
                 </div>
                 <div className="flex-1 relative bg-gradient-to-br from-white to-gray-50 dark:from-white/95 dark:to-gray-100/90 border border-brand-purple/20 rounded-2xl p-5 shadow-lg">
                   <div className="absolute -top-2.5 start-4 bg-gradient-to-r from-brand-purple to-violet-600 text-white text-[10px] font-cairo font-bold px-3 py-0.5 rounded-full shadow-md">
-                    {isRTL ? 'حكيم' : 'Hakim'}
+                    {t('hakim')}
                   </div>
                   <p className="text-gray-700 text-sm leading-relaxed font-tajawal mt-1">
                     {journeySteps[activeJourneyStep].hakimSays}
@@ -751,7 +750,7 @@ export const LandingPage = () => {
               <div className="flex items-center justify-center gap-2 bg-gradient-to-r from-brand-turquoise/5 to-brand-purple/5 border border-brand-turquoise/15 rounded-xl px-4 py-3">
                 <Brain className="h-4 w-4 text-brand-turquoise animate-pulse" />
                 <span className="text-xs font-tajawal text-muted-foreground">
-                  {isRTL ? 'مدعوم بالذكاء الاصطناعي' : 'AI-Powered Intelligence'}
+                  {t('aipoweredIntelligence')}
                 </span>
                 <Sparkles className="h-3.5 w-3.5 text-brand-purple animate-pulse" style={{ animationDelay: '0.5s' }} />
               </div>
@@ -789,14 +788,14 @@ export const LandingPage = () => {
           <div className="text-center mb-16">
             <div className="inline-flex items-center gap-2.5 bg-gradient-to-r from-brand-purple/25 to-brand-turquoise/15 border border-brand-purple/30 rounded-full px-5 py-2.5 mb-6 backdrop-blur-sm">
               <Brain className="h-4 w-4 text-brand-turquoise animate-pulse" />
-              <span className="text-white/80 text-sm font-tajawal font-medium">{isRTL ? 'الذكاء الاصطناعي' : 'Artificial Intelligence'}</span>
+              <span className="text-white/80 text-sm font-tajawal font-medium">{t('artificialIntelligence')}</span>
               <Sparkles className="h-3.5 w-3.5 text-brand-purple animate-pulse" style={{ animationDelay: '0.5s' }} />
             </div>
             <h2 className="font-cairo text-3xl md:text-5xl lg:text-[3.5rem] font-black text-white mb-5 leading-tight">
-              {isRTL ? 'الذكاء خلف نَسَّق' : 'The Intelligence Behind NASSAQ'}
+              {t('theIntelligenceBehindNassaq')}
             </h2>
             <p className="text-white/40 text-lg md:text-xl font-tajawal max-w-2xl mx-auto leading-relaxed">
-              {isRTL ? 'الذكاء الاصطناعي هو العمود الفقري للنظام' : 'AI is the backbone of the system'}
+              {t('aiIsTheBackboneOfTheSystem')}
             </p>
           </div>
 
@@ -857,10 +856,10 @@ export const LandingPage = () => {
                   {/* Hakim Quote */}
                   <div className="flex items-start gap-3 bg-gradient-to-br from-white/95 to-gray-50/95 rounded-xl p-4 shadow-lg border border-white/20">
                     <div className="relative flex-shrink-0">
-                      <img src="/hakim-poses/ai-thinking.png" alt={isRTL ? 'حكيم' : 'Hakim'} className="hakim-img w-16 h-16 rounded-xl object-contain border-2 border-brand-turquoise/40 shadow-md bg-gradient-to-br from-cyan-50 to-violet-50 p-1" />
+                      <img src="/hakim-poses/ai-thinking.png" alt={t('hakim')} className="hakim-img w-16 h-16 rounded-xl object-contain border-2 border-brand-turquoise/40 shadow-md bg-gradient-to-br from-cyan-50 to-violet-50 p-1" />
                     </div>
                     <p className="text-gray-700 text-sm font-tajawal leading-relaxed">
-                      <span className="text-brand-turquoise font-bold font-cairo">{isRTL ? 'حكيم: ' : 'Hakim: '}</span>
+                      <span className="text-brand-turquoise font-bold font-cairo">{t('hakim2')}</span>
                       {aiCapabilities[activeAIStep].hakimSays}
                     </p>
                   </div>
@@ -897,8 +896,8 @@ export const LandingPage = () => {
                       <Layers className="h-5 w-5 text-white" />
                     </div>
                     <div>
-                      <h4 className="text-white font-cairo font-bold">{isRTL ? 'طبقات التحليل' : 'Analysis Layers'}</h4>
-                      <p className="text-white/30 text-xs font-tajawal">{isRTL ? 'تحليل متعدد الأبعاد' : 'Multi-dimensional analysis'}</p>
+                      <h4 className="text-white font-cairo font-bold">{t('analysisLayers')}</h4>
+                      <p className="text-white/30 text-xs font-tajawal">{t('multidimensionalAnalysis')}</p>
                     </div>
                   </div>
                   <div className="space-y-4">
@@ -933,7 +932,7 @@ export const LandingPage = () => {
                 className="w-full flex items-center justify-center gap-3 bg-gradient-to-r from-brand-turquoise to-cyan-500 hover:from-brand-turquoise-light hover:to-cyan-400 text-white rounded-2xl px-6 py-4 font-cairo font-bold text-lg shadow-xl shadow-brand-turquoise/25 hover:shadow-2xl hover:shadow-brand-turquoise/40 transition-all active:scale-[0.98] hover:scale-[1.02] animate-pulse-glow"
               >
                 <Brain className="h-5 w-5" />
-                {isRTL ? 'اسأل حكيم' : 'Ask Hakim'}
+                {t('askHakim2')}
                 <Sparkles className="h-4 w-4 animate-pulse" />
               </button>
             </div>
@@ -955,13 +954,13 @@ export const LandingPage = () => {
           <div className="text-center mb-16">
             <div className="inline-flex items-center gap-2.5 bg-gradient-to-r from-brand-purple/15 to-brand-turquoise/10 border border-brand-purple/25 rounded-full px-5 py-2.5 mb-6 backdrop-blur-sm">
               <Shield className="h-4 w-4 text-brand-purple animate-pulse" />
-              <span className="text-brand-purple text-sm font-tajawal font-medium">{isRTL ? 'نظام بيئي متكامل' : 'Complete Ecosystem'}</span>
+              <span className="text-brand-purple text-sm font-tajawal font-medium">{t('completeEcosystem')}</span>
             </div>
             <h2 className="font-cairo text-3xl md:text-5xl lg:text-[3.5rem] font-black text-foreground mb-5 leading-tight">
-              {isRTL ? 'منصة واحدة. نظام بيئي تعليمي واحد.' : 'One Platform. One Educational Ecosystem.'}
+              {t('onePlatformOneEducationalEcosystem')}
             </h2>
             <p className="text-muted-foreground text-lg md:text-xl font-tajawal max-w-2xl mx-auto leading-relaxed">
-              {isRTL ? 'نَسَّق يخدم جميع أطراف العملية التعليمية' : 'NASSAQ serves all parties in the educational process'}
+              {t('nassaqServesAllPartiesInTheEducationalProcess')}
             </p>
           </div>
 
@@ -991,7 +990,7 @@ export const LandingPage = () => {
                 {activeEcosystemRole === i && (
                   <div className="mt-2 flex items-center gap-1.5">
                     <div className="w-1.5 h-1.5 rounded-full bg-brand-turquoise animate-pulse" />
-                    <span className="text-[10px] text-brand-turquoise font-tajawal">{isRTL ? 'نشط' : 'Active'}</span>
+                    <span className="text-[10px] text-brand-turquoise font-tajawal">{t('active')}</span>
                   </div>
                 )}
               </button>
@@ -1028,14 +1027,14 @@ export const LandingPage = () => {
 
                 <div className="flex items-start gap-3">
                   <div className="relative flex-shrink-0">
-                    <img src="/hakim-poses/giving-instructions.png" alt={isRTL ? 'حكيم' : 'Hakim'} className="hakim-img w-16 h-16 rounded-xl object-contain border-2 border-brand-purple/40 shadow-lg bg-gradient-to-br from-violet-50 to-cyan-50 p-1" />
+                    <img src="/hakim-poses/giving-instructions.png" alt={t('hakim')} className="hakim-img w-16 h-16 rounded-xl object-contain border-2 border-brand-purple/40 shadow-lg bg-gradient-to-br from-violet-50 to-cyan-50 p-1" />
                     <div className="absolute -bottom-1 -end-1 w-5 h-5 rounded-md bg-brand-purple flex items-center justify-center border border-card">
                       <Brain className="h-2.5 w-2.5 text-white" />
                     </div>
                   </div>
                   <div className="flex-1 bg-gradient-to-br from-white to-gray-50 dark:from-white/95 dark:to-gray-100/90 rounded-xl p-4 shadow-md border border-brand-purple/15">
                     <p className="text-gray-700 text-sm font-tajawal leading-relaxed">
-                      <span className="text-brand-purple font-bold font-cairo">{isRTL ? 'حكيم: ' : 'Hakim: '}</span>
+                      <span className="text-brand-purple font-bold font-cairo">{t('hakim2')}</span>
                       {ecosystemRoles[activeEcosystemRole].hakimSays}
                     </p>
                   </div>
@@ -1106,27 +1105,23 @@ export const LandingPage = () => {
 
         <div className="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="font-cairo text-4xl md:text-6xl font-black text-white mb-10">
-            {isRTL ? 'جاهزون للبدء؟' : 'Ready to Start?'}
+            {t('readyToStart')}
           </h2>
 
           <div className="grid md:grid-cols-2 gap-5 mb-12">
             <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 text-start hover:bg-white/10 hover:border-brand-turquoise/30 transition-all hover:scale-[1.02] group">
               <Building2 className="h-10 w-10 text-brand-turquoise mb-4 group-hover:scale-110 transition-transform" />
-              <h3 className="font-cairo text-xl font-bold text-white mb-2">{isRTL ? 'إذا كنت مدرسة' : 'If you are a school'}</h3>
+              <h3 className="font-cairo text-xl font-bold text-white mb-2">{t('ifYouAreASchool')}</h3>
               <p className="text-white/50 text-sm font-tajawal">
-                {isRTL
-                  ? 'اجعل مدرستك أكثر تنظيمًا ووضوحًا مع منصة نَسَّق.'
-                  : 'Make your school more organized and clear with NASSAQ platform.'
+                {t('makeYourSchoolMoreOrganizedAndClearWithNassaqPlatf')
                 }
               </p>
             </div>
             <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 text-start hover:bg-white/10 hover:border-brand-turquoise/30 transition-all hover:scale-[1.02] group">
               <UserCheck className="h-10 w-10 text-brand-turquoise mb-4 group-hover:scale-110 transition-transform" />
-              <h3 className="font-cairo text-xl font-bold text-white mb-2">{isRTL ? 'إذا كنت معلمًا' : 'If you are a teacher'}</h3>
+              <h3 className="font-cairo text-xl font-bold text-white mb-2">{t('ifYouAreATeacher')}</h3>
               <p className="text-white/50 text-sm font-tajawal">
-                {isRTL
-                  ? 'ابدأ تنظيم حصصك الآن واجعل إدارة الفصل أكثر سهولة وذكاءً.'
-                  : 'Start organizing your classes now and make classroom management easier and smarter.'
+                {t('startOrganizingYourClassesNowAndMakeClassroomManag')
                 }
               </p>
             </div>
@@ -1135,14 +1130,12 @@ export const LandingPage = () => {
           <div className="flex items-center justify-center gap-5 mb-12">
             <div className="relative flex-shrink-0">
               <div className="absolute -inset-2 rounded-full bg-brand-turquoise/20 blur-xl animate-pulse" />
-              <img src="/hakim-poses/motivating.png" alt={isRTL ? 'حكيم' : 'Hakim'} className="hakim-img relative w-24 h-24 rounded-2xl object-contain border-2 border-brand-turquoise shadow-xl flex-shrink-0 bg-gradient-to-br from-cyan-50 to-violet-50 p-1" />
+              <img src="/hakim-poses/motivating.png" alt={t('hakim')} className="hakim-img relative w-24 h-24 rounded-2xl object-contain border-2 border-brand-turquoise shadow-xl flex-shrink-0 bg-gradient-to-br from-cyan-50 to-violet-50 p-1" />
             </div>
             <div className="bg-white/10 backdrop-blur-sm border border-white/15 rounded-2xl px-6 py-4 max-w-lg text-start">
               <p className="text-white/90 font-tajawal text-base leading-relaxed">
-                <span className="text-brand-turquoise font-bold font-cairo">{isRTL ? 'حكيم: ' : 'Hakim: '}</span>
-                {isRTL
-                  ? 'التعليم الجيد يبدأ بقرار جيد… والقرار الجيد يبدأ ببيانات واضحة.'
-                  : 'Good education starts with good decisions... and good decisions start with clear data.'
+                <span className="text-brand-turquoise font-bold font-cairo">{t('hakim2')}</span>
+                {t('goodEducationStartsWithGoodDecisionsAndGoodDecisio')
                 }
               </p>
             </div>
@@ -1150,7 +1143,7 @@ export const LandingPage = () => {
 
           <Button asChild size="lg" className="bg-gradient-to-r from-brand-turquoise to-cyan-500 hover:from-brand-turquoise-light hover:to-cyan-400 text-white rounded-2xl h-16 px-14 text-xl font-cairo font-bold shadow-2xl shadow-brand-turquoise/30 hover:shadow-2xl hover:shadow-brand-turquoise/40 transition-all hover:scale-[1.03]" data-testid="cta-register-btn">
             <Link to="/register" className="flex items-center gap-3">
-              {isRTL ? 'سجل الآن' : 'Register Now'}
+              {t('registerNow')}
               {isRTL ? <ArrowLeft className="h-6 w-6" /> : <ArrowRight className="h-6 w-6" />}
             </Link>
           </Button>

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { Sidebar } from '../components/layout/Sidebar';
 import { NotificationBell } from '../components/notifications/NotificationBell';
 import { Button } from '../components/ui/button';
@@ -78,6 +78,7 @@ const HealthIndicator = ({ label, status, detail }) => (
 );
 
 export const AdminDashboard = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { api, user } = useAuth();
   const { isRTL, isDark } = useTheme();
@@ -116,7 +117,7 @@ export const AdminDashboard = () => {
 
       generateHakimInsights(cc, schoolsRes.status === 'fulfilled' ? schoolsRes.value.data?.schools : []);
 
-      if (showToast) toast.success(isRTL ? 'تم تحديث البيانات' : 'Data refreshed');
+      if (showToast) toast.success(t('dataRefreshed'));
     } catch (error) {
       console.error('Dashboard fetch error:', error);
     } finally {
@@ -144,7 +145,7 @@ export const AdminDashboard = () => {
       insights.push({ type: 'info', text: isRTL ? `${cc.active_users_today} مستخدم نشط اليوم` : `${cc.active_users_today} active users today` });
     }
     if (insights.length === 0) {
-      insights.push({ type: 'success', text: isRTL ? 'النظام يعمل بشكل طبيعي. لا توجد تنبيهات حالياً' : 'System running normally. No alerts.' });
+      insights.push({ type: 'success', text: t('systemRunningNormallyNoAlerts') });
     }
     setHakimInsights(insights);
   };
@@ -158,7 +159,7 @@ export const AdminDashboard = () => {
           <div className="text-center space-y-4">
             <Loader2 className="h-12 w-12 animate-spin text-brand-turquoise mx-auto" />
             <p className="text-lg font-cairo text-slate-600 dark:text-slate-400">
-              {isRTL ? 'جاري تحميل مركز القيادة...' : 'Loading Command Center...'}
+              {t('loadingCommandCenter2')}
             </p>
           </div>
         </div>
@@ -169,41 +170,41 @@ export const AdminDashboard = () => {
   const s = stats || {};
 
   const primaryKPIs = [
-    { icon: School, iconColor: 'bg-brand-navy', title: isRTL ? 'المدارس المسجلة' : 'Schools', value: s.registered_schools || 0, subtitle: isRTL ? `${s.active_schools || 0} نشطة` : `${s.active_schools || 0} active`, onClick: () => navigate('/admin/schools') },
+    { icon: School, iconColor: 'bg-brand-navy', title: t('schools'), value: s.registered_schools || 0, subtitle: isRTL ? `${s.active_schools || 0} نشطة` : `${s.active_schools || 0} active`, onClick: () => navigate('/admin/schools') },
     { icon: GraduationCap, iconColor: 'bg-blue-600', title: isRTL ? 'إجمالي الطلاب' : 'Students', value: (s.registered_students || 0).toLocaleString(), subtitle: isRTL ? `${s.students_present_today || 0} حاضر اليوم` : `${s.students_present_today || 0} present today`, onClick: () => navigate('/admin/schools') },
     { icon: UserCheck, iconColor: 'bg-brand-purple', title: isRTL ? 'إجمالي المعلمين' : 'Teachers', value: s.teachers_in_schools || 0, subtitle: isRTL ? `${s.teachers_present_today || 0} حاضر اليوم` : `${s.teachers_present_today || 0} present today`, onClick: () => navigate('/admin/users') },
-    { icon: Users, iconColor: 'bg-emerald-600', title: isRTL ? 'أولياء الأمور' : 'Parents', value: s.total_parents || 0, onClick: () => navigate('/admin/users') },
-    { icon: Layers, iconColor: 'bg-indigo-600', title: isRTL ? 'الفصول الدراسية' : 'Classes', value: s.total_classes || 0, onClick: () => navigate('/admin/schools') },
-    { icon: BookOpen, iconColor: 'bg-cyan-600', title: isRTL ? 'المواد الدراسية' : 'Subjects', value: s.total_subjects || 0, onClick: () => navigate('/admin/schools') },
+    { icon: Users, iconColor: 'bg-emerald-600', title: t('parents'), value: s.total_parents || 0, onClick: () => navigate('/admin/users') },
+    { icon: Layers, iconColor: 'bg-indigo-600', title: t('classes'), value: s.total_classes || 0, onClick: () => navigate('/admin/schools') },
+    { icon: BookOpen, iconColor: 'bg-cyan-600', title: t('subjects3'), value: s.total_subjects || 0, onClick: () => navigate('/admin/schools') },
   ];
 
   const operationalKPIs = [
-    { icon: Play, iconColor: 'bg-emerald-600', title: isRTL ? 'الحصص اليوم' : 'Sessions Today', value: s.sessions_today || 0, subtitle: isRTL ? `${s.active_sessions_now || 0} جارية الآن` : `${s.active_sessions_now || 0} active now` },
-    { icon: Activity, iconColor: 'bg-green-600', title: isRTL ? 'حضور الطلاب' : 'Student Attendance', value: `${s.student_attendance_rate || 0}%`, trend: s.student_attendance_rate > 85 ? 'up' : 'down', trendValue: s.student_attendance_rate > 85 ? (isRTL ? 'جيد' : 'Good') : (isRTL ? 'منخفض' : 'Low') },
-    { icon: Activity, iconColor: 'bg-blue-600', title: isRTL ? 'حضور المعلمين' : 'Teacher Attendance', value: `${s.teacher_attendance_rate || 0}%`, trend: s.teacher_attendance_rate > 90 ? 'up' : 'down', trendValue: s.teacher_attendance_rate > 90 ? (isRTL ? 'ممتاز' : 'Excellent') : (isRTL ? 'منخفض' : 'Low') },
-    { icon: Bell, iconColor: 'bg-amber-600', title: isRTL ? 'الإشعارات اليوم' : 'Notifications Today', value: s.notifications_sent_today || 0 },
-    { icon: User, iconColor: 'bg-teal-600', title: isRTL ? 'المستخدمون النشطون' : 'Active Users', value: s.active_users_today || 0 },
-    { icon: ClipboardList, iconColor: 'bg-orange-600', title: isRTL ? 'السلوكيات المسجلة' : 'Behaviour Records', value: s.behaviour_records_today || 0 },
+    { icon: Play, iconColor: 'bg-emerald-600', title: t('sessionsToday'), value: s.sessions_today || 0, subtitle: isRTL ? `${s.active_sessions_now || 0} جارية الآن` : `${s.active_sessions_now || 0} active now` },
+    { icon: Activity, iconColor: 'bg-green-600', title: t('studentAttendance'), value: `${s.student_attendance_rate || 0}%`, trend: s.student_attendance_rate > 85 ? 'up' : 'down', trendValue: s.student_attendance_rate > 85 ? (t('good')) : (t('low')) },
+    { icon: Activity, iconColor: 'bg-blue-600', title: t('teacherAttendance'), value: `${s.teacher_attendance_rate || 0}%`, trend: s.teacher_attendance_rate > 90 ? 'up' : 'down', trendValue: s.teacher_attendance_rate > 90 ? (t('excellent')) : (t('low')) },
+    { icon: Bell, iconColor: 'bg-amber-600', title: t('notificationsToday'), value: s.notifications_sent_today || 0 },
+    { icon: User, iconColor: 'bg-teal-600', title: t('activeUsers'), value: s.active_users_today || 0 },
+    { icon: ClipboardList, iconColor: 'bg-orange-600', title: t('behaviourRecords'), value: s.behaviour_records_today || 0 },
   ];
 
   const adminKPIs = [
-    { icon: Shield, iconColor: 'bg-violet-600', title: isRTL ? 'حسابات المنصة' : 'Platform Accounts', value: s.platform_accounts || 0, onClick: () => navigate('/admin/users') },
-    { icon: UserCog, iconColor: 'bg-rose-600', title: isRTL ? 'مدراء المدارس' : 'School Admins', value: s.total_school_admins || 0 },
-    { icon: Clock, iconColor: 'bg-amber-600', title: isRTL ? 'طلبات معلقة' : 'Pending Requests', value: s.pending_requests || 0, trend: s.pending_requests > 0 ? 'up' : null, trendValue: isRTL ? 'تحتاج مراجعة' : 'Needs review', onClick: () => navigate('/admin/users') },
-    { icon: Calendar, iconColor: 'bg-sky-600', title: isRTL ? 'الجداول المنشورة' : 'Published Timetables', value: s.published_timetables || 0 },
-    { icon: Sparkles, iconColor: 'bg-cyan-600', title: isRTL ? 'مدارس AI' : 'AI Schools', value: s.ai_enabled_schools || 0 },
-    { icon: LayoutDashboard, iconColor: 'bg-slate-600', title: isRTL ? 'إجمالي المستخدمين' : 'Total Users', value: s.total_users || 0 },
+    { icon: Shield, iconColor: 'bg-violet-600', title: t('platformAccounts'), value: s.platform_accounts || 0, onClick: () => navigate('/admin/users') },
+    { icon: UserCog, iconColor: 'bg-rose-600', title: t('schoolAdmins'), value: s.total_school_admins || 0 },
+    { icon: Clock, iconColor: 'bg-amber-600', title: t('pendingRequests'), value: s.pending_requests || 0, trend: s.pending_requests > 0 ? 'up' : null, trendValue: t('needsReview'), onClick: () => navigate('/admin/users') },
+    { icon: Calendar, iconColor: 'bg-sky-600', title: t('publishedTimetables'), value: s.published_timetables || 0 },
+    { icon: Sparkles, iconColor: 'bg-cyan-600', title: t('aiSchools'), value: s.ai_enabled_schools || 0 },
+    { icon: LayoutDashboard, iconColor: 'bg-slate-600', title: t('totalUsers'), value: s.total_users || 0 },
   ];
 
   const schoolsPieData = [
-    { name: isRTL ? 'نشطة' : 'Active', value: s.active_schools || 0, color: '#22c55e' },
-    { name: isRTL ? 'معلقة' : 'Pending', value: s.pending_schools || 0, color: '#f59e0b' },
-    { name: isRTL ? 'موقوفة' : 'Suspended', value: s.suspended_schools || 0, color: '#ef4444' },
+    { name: t('active2'), value: s.active_schools || 0, color: '#22c55e' },
+    { name: t('pending2'), value: s.pending_schools || 0, color: '#f59e0b' },
+    { name: t('suspended'), value: s.suspended_schools || 0, color: '#ef4444' },
   ].filter(d => d.value > 0);
 
   const attendanceBarData = [
-    { name: isRTL ? 'حاضرون' : 'Present', students: s.students_present_today || 0, teachers: s.teachers_present_today || 0 },
-    { name: isRTL ? 'غائبون' : 'Absent', students: s.students_absent_today || 0, teachers: s.teachers_absent_today || 0 },
+    { name: t('present2'), students: s.students_present_today || 0, teachers: s.teachers_present_today || 0 },
+    { name: t('absent2'), students: s.students_absent_today || 0, teachers: s.teachers_absent_today || 0 },
   ];
 
   const schoolsBarData = schoolsOverview.slice(0, 6).map(sc => ({
@@ -213,10 +214,10 @@ export const AdminDashboard = () => {
   }));
 
   const quickActions = [
-    { icon: Building2, label: isRTL ? 'إضافة مدرسة' : 'Add School', action: () => setShowAddSchoolWizard(true), color: 'bg-brand-navy hover:bg-brand-navy/90' },
+    { icon: Building2, label: t('addSchool'), action: () => setShowAddSchoolWizard(true), color: 'bg-brand-navy hover:bg-brand-navy/90' },
     { icon: Users, label: isRTL ? 'إدارة المستخدمين' : 'Manage Users', action: () => navigate('/admin/users'), color: 'bg-brand-purple hover:bg-brand-purple/90' },
-    { icon: BarChart3, label: isRTL ? 'التقارير' : 'Reports', action: () => navigate('/admin/reports'), color: 'bg-brand-turquoise hover:bg-brand-turquoise/90' },
-    { icon: Settings, label: isRTL ? 'الإعدادات' : 'Settings', action: () => navigate('/settings'), color: 'bg-slate-700 hover:bg-slate-600' },
+    { icon: BarChart3, label: t('reports'), action: () => navigate('/admin/reports'), color: 'bg-brand-turquoise hover:bg-brand-turquoise/90' },
+    { icon: Settings, label: t('settings'), action: () => navigate('/settings'), color: 'bg-slate-700 hover:bg-slate-600' },
   ];
 
   return (
@@ -238,7 +239,7 @@ export const AdminDashboard = () => {
                       {isRTL ? 'مركز القيادة' : 'Command Center'}
                     </h1>
                     <p className="text-white/70 text-sm font-tajawal">
-                      {isRTL ? 'نظرة شاملة على المنصة' : 'Platform Overview'}
+                      {t('platformOverview')}
                     </p>
                   </div>
                 </div>
@@ -252,7 +253,7 @@ export const AdminDashboard = () => {
                   <span className="text-white/30">|</span>
                   <span className="flex items-center gap-1.5">
                     <CircleDot className="h-3 w-3 text-emerald-400 animate-pulse" />
-                    {isRTL ? 'متصل' : 'Online'}
+                    {t('online')}
                   </span>
                 </div>
               </div>
@@ -265,7 +266,7 @@ export const AdminDashboard = () => {
                   disabled={refreshing}
                 >
                   <RefreshCw className={`h-4 w-4 me-1.5 ${refreshing ? 'animate-spin' : ''}`} />
-                  {isRTL ? 'تحديث' : 'Refresh'}
+                  {t('refresh')}
                 </Button>
                 <NotificationBell />
               </div>
@@ -274,9 +275,9 @@ export const AdminDashboard = () => {
             {/* Quick Stats Row */}
             <div className="relative mt-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
               {[
-                { label: isRTL ? 'المدارس' : 'Schools', value: s.registered_schools || 0, icon: School },
-                { label: isRTL ? 'الطلاب' : 'Students', value: (s.registered_students || 0).toLocaleString(), icon: GraduationCap },
-                { label: isRTL ? 'المعلمين' : 'Teachers', value: s.teachers_in_schools || 0, icon: UserCheck },
+                { label: t('schools2'), value: s.registered_schools || 0, icon: School },
+                { label: t('students'), value: (s.registered_students || 0).toLocaleString(), icon: GraduationCap },
+                { label: t('teachers2'), value: s.teachers_in_schools || 0, icon: UserCheck },
                 { label: isRTL ? 'الحصص اليوم' : 'Sessions', value: s.sessions_today || 0, icon: Play },
               ].map((item, i) => (
                 <div key={i} className="bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center">
@@ -311,11 +312,11 @@ export const AdminDashboard = () => {
                     <div className="w-24 h-24 rounded-2xl overflow-hidden shadow-lg border-2 border-violet-200 dark:border-violet-700 bg-gradient-to-br from-violet-50 to-cyan-50 dark:from-violet-900/30 dark:to-cyan-900/30 p-1">
                       <img src={HAKIM_AVATAR} alt="Hakim" className="hakim-img w-full h-full object-contain drop-shadow-md" style={{ animation: 'hakimRxFloat 4s ease-in-out infinite' }} />
                     </div>
-                    <span className="text-[10px] font-cairo font-bold text-brand-purple/60">{isRTL ? 'حكيم AI' : 'Hakim AI'}</span>
+                    <span className="text-[10px] font-cairo font-bold text-brand-purple/60">{t('hakimAi')}</span>
                   </div>
                   <div className="flex-1 space-y-2 min-w-0">
                     <p className="text-base font-bold text-brand-navy dark:text-brand-turquoise font-cairo">
-                      {isRTL ? 'ملاحظات حكيم' : 'Hakim Insights'}
+                      {t('hakimInsights')}
                     </p>
                     <div className="space-y-2">
                       {hakimInsights.map((insight, i) => (
@@ -342,7 +343,7 @@ export const AdminDashboard = () => {
           <div>
             <h2 className="text-lg font-bold text-slate-800 dark:text-white font-cairo mb-3 flex items-center gap-2">
               <BarChart3 className="h-5 w-5 text-brand-turquoise" />
-              {isRTL ? 'المؤشرات العامة' : 'General Metrics'}
+              {t('generalMetrics')}
             </h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               {primaryKPIs.map((kpi, i) => (
@@ -355,7 +356,7 @@ export const AdminDashboard = () => {
           <div>
             <h2 className="text-lg font-bold text-slate-800 dark:text-white font-cairo mb-3 flex items-center gap-2">
               <Activity className="h-5 w-5 text-emerald-500" />
-              {isRTL ? 'المؤشرات التشغيلية' : 'Operational Metrics'}
+              {t('operationalMetrics')}
             </h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               {operationalKPIs.map((kpi, i) => (
@@ -368,7 +369,7 @@ export const AdminDashboard = () => {
           <div>
             <h2 className="text-lg font-bold text-slate-800 dark:text-white font-cairo mb-3 flex items-center gap-2">
               <Shield className="h-5 w-5 text-violet-500" />
-              {isRTL ? 'المؤشرات الإدارية' : 'Administrative Metrics'}
+              {t('administrativeMetrics')}
             </h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               {adminKPIs.map((kpi, i) => (
@@ -384,7 +385,7 @@ export const AdminDashboard = () => {
               <CardHeader className="pb-2">
                 <CardTitle className="text-base font-cairo flex items-center gap-2">
                   <Building2 className="h-4 w-4 text-brand-navy" />
-                  {isRTL ? 'توزيع المدارس' : 'Schools Distribution'}
+                  {t('schoolsDistribution')}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -429,7 +430,7 @@ export const AdminDashboard = () => {
               <CardHeader className="pb-2">
                 <CardTitle className="text-base font-cairo flex items-center gap-2">
                   <CheckCircle className="h-4 w-4 text-emerald-500" />
-                  {isRTL ? 'الحضور اليوم' : 'Today\'s Attendance'}
+                  {t('todaysAttendance')}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -438,8 +439,8 @@ export const AdminDashboard = () => {
                     <XAxis dataKey="name" tick={{ fontSize: 12 }} />
                     <YAxis tick={{ fontSize: 11 }} />
                     <Tooltip />
-                    <Bar dataKey="students" fill="#3b82f6" radius={[4, 4, 0, 0]} name={isRTL ? 'طلاب' : 'Students'} />
-                    <Bar dataKey="teachers" fill="#8b5cf6" radius={[4, 4, 0, 0]} name={isRTL ? 'معلمين' : 'Teachers'} />
+                    <Bar dataKey="students" fill="#3b82f6" radius={[4, 4, 0, 0]} name={t('students2')} />
+                    <Bar dataKey="teachers" fill="#8b5cf6" radius={[4, 4, 0, 0]} name={t('teachers3')} />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -450,7 +451,7 @@ export const AdminDashboard = () => {
               <CardHeader className="pb-2">
                 <CardTitle className="text-base font-cairo flex items-center gap-2">
                   <School className="h-4 w-4 text-brand-purple" />
-                  {isRTL ? 'مقارنة المدارس' : 'Schools Comparison'}
+                  {t('schoolsComparison')}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -460,8 +461,8 @@ export const AdminDashboard = () => {
                       <XAxis type="number" tick={{ fontSize: 11 }} />
                       <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={80} />
                       <Tooltip />
-                      <Bar dataKey="students" fill="#3b82f6" radius={[0, 4, 4, 0]} name={isRTL ? 'طلاب' : 'Students'} />
-                      <Bar dataKey="teachers" fill="#22c55e" radius={[0, 4, 4, 0]} name={isRTL ? 'معلمين' : 'Teachers'} />
+                      <Bar dataKey="students" fill="#3b82f6" radius={[0, 4, 4, 0]} name={t('students2')} />
+                      <Bar dataKey="teachers" fill="#22c55e" radius={[0, 4, 4, 0]} name={t('teachers3')} />
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (
@@ -480,10 +481,10 @@ export const AdminDashboard = () => {
               <CardHeader className="pb-3 flex flex-row items-center justify-between">
                 <CardTitle className="text-base font-cairo flex items-center gap-2">
                   <Building2 className="h-4 w-4 text-brand-navy" />
-                  {isRTL ? 'نظرة سريعة على المدارس' : 'Schools Quick View'}
+                  {t('schoolsQuickView')}
                 </CardTitle>
                 <Button variant="ghost" size="sm" onClick={() => navigate('/admin/schools')} className="text-brand-turquoise hover:text-brand-turquoise/80">
-                  {isRTL ? 'عرض الكل' : 'View All'}
+                  {t('viewAll')}
                   <ChevronRight className="h-4 w-4 ms-1" />
                 </Button>
               </CardHeader>
@@ -492,12 +493,12 @@ export const AdminDashboard = () => {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-slate-100 dark:border-slate-800">
-                        <th className="text-start p-3 font-medium text-slate-500 dark:text-slate-400">{isRTL ? 'المدرسة' : 'School'}</th>
-                        <th className="text-center p-3 font-medium text-slate-500 dark:text-slate-400">{isRTL ? 'الطلاب' : 'Students'}</th>
-                        <th className="text-center p-3 font-medium text-slate-500 dark:text-slate-400">{isRTL ? 'المعلمين' : 'Teachers'}</th>
-                        <th className="text-center p-3 font-medium text-slate-500 dark:text-slate-400">{isRTL ? 'الفصول' : 'Classes'}</th>
-                        <th className="text-center p-3 font-medium text-slate-500 dark:text-slate-400">{isRTL ? 'الجاهزية' : 'Setup'}</th>
-                        <th className="text-center p-3 font-medium text-slate-500 dark:text-slate-400">{isRTL ? 'الحالة' : 'Status'}</th>
+                        <th className="text-start p-3 font-medium text-slate-500 dark:text-slate-400">{t('school')}</th>
+                        <th className="text-center p-3 font-medium text-slate-500 dark:text-slate-400">{t('students')}</th>
+                        <th className="text-center p-3 font-medium text-slate-500 dark:text-slate-400">{t('teachers2')}</th>
+                        <th className="text-center p-3 font-medium text-slate-500 dark:text-slate-400">{t('classes2')}</th>
+                        <th className="text-center p-3 font-medium text-slate-500 dark:text-slate-400">{t('setup')}</th>
+                        <th className="text-center p-3 font-medium text-slate-500 dark:text-slate-400">{t('status2')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -527,7 +528,7 @@ export const AdminDashboard = () => {
                           </td>
                           <td className="p-3 text-center">
                             <Badge className={`text-xs ${school.status === 'active' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-amber-100 text-amber-700'}`}>
-                              {school.status === 'active' ? (isRTL ? 'نشطة' : 'Active') : (isRTL ? 'معلقة' : 'Pending')}
+                              {school.status === 'active' ? (t('active2')) : (t('pending2'))}
                             </Badge>
                           </td>
                         </tr>
@@ -535,7 +536,7 @@ export const AdminDashboard = () => {
                       {schoolsOverview.length === 0 && (
                         <tr>
                           <td colSpan={6} className="p-8 text-center text-slate-400">
-                            {isRTL ? 'لا توجد مدارس مسجلة' : 'No schools registered'}
+                            {t('noSchoolsRegistered')}
                           </td>
                         </tr>
                       )}
@@ -550,17 +551,17 @@ export const AdminDashboard = () => {
               <CardHeader className="pb-3">
                 <CardTitle className="text-base font-cairo flex items-center gap-2">
                   <HeartPulse className="h-4 w-4 text-emerald-500" />
-                  {isRTL ? 'صحة النظام' : 'System Health'}
+                  {t('systemHealth')}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
                 <HealthIndicator
-                  label={isRTL ? 'قاعدة البيانات' : 'Database'}
+                  label={t('database')}
                   status={systemHealth?.database?.status || 'healthy'}
-                  detail={systemHealth?.database?.status === 'healthy' ? (isRTL ? 'يعمل' : 'Running') : (isRTL ? 'خطأ' : 'Error')}
+                  detail={systemHealth?.database?.status === 'healthy' ? (t('running')) : (t('error'))}
                 />
                 <HealthIndicator
-                  label={isRTL ? 'واجهات API' : 'API Services'}
+                  label={t('apiServices')}
                   status={systemHealth?.api?.status || 'healthy'}
                   detail={systemHealth?.api?.uptime || '99.9%'}
                 />
@@ -569,7 +570,7 @@ export const AdminDashboard = () => {
                     key={key}
                     label={key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
                     status={val}
-                    detail={val === 'active' ? (isRTL ? 'نشط' : 'Active') : val}
+                    detail={val === 'active' ? (t('active')) : val}
                   />
                 ))}
                 <div className="pt-2 border-t border-slate-100 dark:border-slate-800">

@@ -7,6 +7,7 @@ import {
   ChevronUp, ChevronDown, Plus, Stethoscope, Rocket
 } from 'lucide-react';
 
+import { useTranslation } from '../../contexts/ThemeContext';
 export const TALENT_OPTIONS = [
   { value: 'academically_gifted', ar: 'متفوق أكاديمياً', en: 'Academically Gifted', color: 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700' },
   { value: 'artistic', ar: 'فنان', en: 'Artistic', color: 'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-700' },
@@ -54,6 +55,7 @@ export const PLAN_CONFIG = {
 export const getTalentConfig = (value) => TALENT_OPTIONS.find(t => t.value === value) || { value, ar: value, en: value, color: 'bg-gray-100 text-gray-700 border-gray-200' };
 
 export const HakimPlanCard = ({ type, plan, isRTL, loading, onGenerate, onExport }) => {
+  const { t } = useTranslation();
   const [stepsOpen, setStepsOpen] = useState(true);
   const cfg = PLAN_CONFIG[type];
   const Icon = cfg.icon;
@@ -88,7 +90,7 @@ export const HakimPlanCard = ({ type, plan, isRTL, loading, onGenerate, onExport
               {loading && (
                 <div className="flex items-center gap-2 mt-3">
                   <Loader2 className="h-4 w-4 animate-spin text-brand-purple" />
-                  <span className="text-xs text-muted-foreground font-tajawal">{isRTL ? 'حكيم يحلل ويُعد الخطة...' : 'Hakim is preparing the plan...'}</span>
+                  <span className="text-xs text-muted-foreground font-tajawal">{t('hakimIsPreparingThePlan')}</span>
                 </div>
               )}
             </div>
@@ -101,18 +103,18 @@ export const HakimPlanCard = ({ type, plan, isRTL, loading, onGenerate, onExport
             className="w-full flex items-center justify-between px-4 py-2.5 border-t border-b border-border/30 bg-muted/20 hover:bg-muted/40 transition-colors">
             <div className="flex items-center gap-2">
               <span className="text-xs font-medium font-cairo">{plan.title || (isRTL ? cfg.title_ar : cfg.title_en)}</span>
-              {plan.steps && <span className="text-[10px] text-muted-foreground">({plan.steps.length} {isRTL ? 'خطوات' : 'steps'})</span>}
+              {plan.steps && <span className="text-[10px] text-muted-foreground">({plan.steps.length} {t('steps')})</span>}
             </div>
             <div className="flex items-center gap-1">
               {onExport && (
                 <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onExport(type); }}
                   className="h-6 px-2 text-[10px] gap-1 text-brand-turquoise hover:text-brand-turquoise">
-                  <Download className="h-3 w-3" /> {isRTL ? 'تصدير' : 'Export'}
+                  <Download className="h-3 w-3" /> {t('export')}
                 </Button>
               )}
               <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onGenerate(); }}
                 className="h-6 px-2 text-[10px] gap-1 text-brand-purple hover:text-brand-purple">
-                <Sparkles className="h-3 w-3" /> {isRTL ? 'إعادة' : 'Redo'}
+                <Sparkles className="h-3 w-3" /> {t('redo')}
               </Button>
               {stepsOpen ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
             </div>
@@ -139,7 +141,7 @@ export const HakimPlanCard = ({ type, plan, isRTL, loading, onGenerate, onExport
                 <div className="flex items-start gap-2 p-3 bg-blue-50/50 dark:bg-blue-950/10 rounded-xl border border-blue-100 dark:border-blue-800/20">
                   <Target className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
                   <div>
-                    <p className="text-xs font-medium text-blue-700 dark:text-blue-300 font-cairo">{isRTL ? 'النتيجة المتوقعة' : 'Expected Outcome'}</p>
+                    <p className="text-xs font-medium text-blue-700 dark:text-blue-300 font-cairo">{t('expectedOutcome')}</p>
                     <p className="text-xs text-blue-600/80 dark:text-blue-400/80 mt-0.5">{plan.expected_outcome}</p>
                   </div>
                 </div>

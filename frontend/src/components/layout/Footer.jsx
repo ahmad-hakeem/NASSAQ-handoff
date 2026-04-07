@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import { Mail, Phone, MapPin, Twitter, Linkedin, Facebook, Instagram, Youtube, Globe } from 'lucide-react';
 
 import { useAuth } from '../../contexts/AuthContext';
@@ -8,6 +8,7 @@ const LOGO_WHITE = 'https://customer-assets.emergentagent.com/job_f5ea20bb-5cf5-
 const BG_PATTERN = 'https://customer-assets.emergentagent.com/job_f5ea20bb-5cf5-462f-a7f0-958201e27f89/artifacts/1itjy61q_Nassaq%20Background.png';
 
 export const Footer = () => {
+  const { t } = useTranslation();
   const { isRTL } = useTheme();
   const { api } = useAuth();
   const [contactInfo, setContactInfo] = useState(null);
@@ -70,9 +71,7 @@ export const Footer = () => {
               <img src={LOGO_WHITE} alt="نَسَّق" className="h-12 w-auto rounded-xl" />
             </Link>
             <p className="text-white/70 text-sm leading-relaxed font-tajawal mb-6">
-              {isRTL
-                ? 'منصة متكاملة لإدارة المدارس مدعومة بالذكاء الاصطناعي، تقدم حلولاً ذكية للعملية التعليمية.'
-                : 'AI-powered integrated school management platform, delivering smart solutions for education.'}
+              {t('aipoweredIntegratedSchoolManagementPlatformDeliver')}
             </p>
             <div className="flex gap-3 flex-wrap">
               {/* X (Twitter) */}
@@ -140,7 +139,7 @@ export const Footer = () => {
           {/* Quick Links */}
           <div>
             <h4 className="font-cairo font-semibold text-lg mb-4">
-              {isRTL ? 'روابط سريعة' : 'Quick Links'}
+              {t('quickLinks')}
             </h4>
             <ul className="space-y-3">
               <li>
@@ -148,7 +147,7 @@ export const Footer = () => {
                   to="/login"
                   className="text-white/70 hover:text-brand-turquoise transition-colors text-sm font-tajawal"
                 >
-                  {isRTL ? 'تسجيل الدخول' : 'Login'}
+                  {t('login')}
                 </Link>
               </li>
               <li>
@@ -156,7 +155,7 @@ export const Footer = () => {
                   to="/register"
                   className="text-white/70 hover:text-brand-turquoise transition-colors text-sm font-tajawal"
                 >
-                  {isRTL ? 'تسجيل جديد' : 'Register'}
+                  {t('register')}
                 </Link>
               </li>
               <li>
@@ -164,7 +163,7 @@ export const Footer = () => {
                   href="#"
                   className="text-white/70 hover:text-brand-turquoise transition-colors text-sm font-tajawal"
                 >
-                  {isRTL ? 'سياسة الخصوصية' : 'Privacy Policy'}
+                  {t('privacyPolicy')}
                 </a>
               </li>
               <li>
@@ -172,7 +171,7 @@ export const Footer = () => {
                   href="#"
                   className="text-white/70 hover:text-brand-turquoise transition-colors text-sm font-tajawal"
                 >
-                  {isRTL ? 'الشروط والأحكام' : 'Terms of Service'}
+                  {t('termsOfService')}
                 </a>
               </li>
             </ul>
@@ -181,7 +180,7 @@ export const Footer = () => {
           {/* Contact Info */}
           <div>
             <h4 className="font-cairo font-semibold text-lg mb-4">
-              {isRTL ? 'تواصل معنا' : 'Contact Us'}
+              {t('contactUs')}
             </h4>
             <ul className="space-y-4">
               <li className="flex items-center gap-3 text-white/70 text-sm font-tajawal">
@@ -195,7 +194,7 @@ export const Footer = () => {
               <li className="flex items-start gap-3 text-white/70 text-sm font-tajawal">
                 <MapPin className="h-5 w-5 text-brand-turquoise flex-shrink-0 mt-0.5" />
                 <span data-testid="footer-address">
-                  {contactInfo?.address || (isRTL ? 'المملكة العربية السعودية' : 'Saudi Arabia')}
+                  {contactInfo?.address || (t('saudiArabia'))}
                 </span>
               </li>
               {contactInfo?.website && (

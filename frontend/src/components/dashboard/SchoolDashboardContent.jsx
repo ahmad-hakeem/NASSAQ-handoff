@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import { formatFullDate } from '../../utils/hijriDate';
 import SectionErrorBoundary from '../SectionErrorBoundary';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
@@ -54,6 +54,7 @@ import { CreateScheduleWizard } from '../wizards/CreateScheduleWizard';
 import { LiveSessionsMonitor } from '../wizards/LiveSessionsMonitor';
 
 const SchoolDayProgress = ({ isRTL }) => {
+  const { t } = useTranslation();
   const { api } = useAuth();
   const [now, setNow] = useState(new Date());
   const [dayStatus, setDayStatus] = useState(null);
@@ -102,7 +103,7 @@ const SchoolDayProgress = ({ isRTL }) => {
   }, [now, isRTL]);
 
   const periodLabel = isBreak
-    ? (isRTL ? 'استراحة' : 'Break')
+    ? (t('break'))
     : (isRTL ? `الحصة ${currentPeriod} من ${totalPeriods}` : `Period ${currentPeriod} of ${totalPeriods}`);
 
   return (
@@ -139,7 +140,7 @@ const SchoolDayProgress = ({ isRTL }) => {
                   )}
                 </div>
                 <div>
-                  <p className="text-xs text-white/95 font-tajawal">{isBreak ? (isRTL ? 'الوقت الحالي' : 'Current') : (isRTL ? 'الحصة الحالية' : 'Current Period')}</p>
+                  <p className="text-xs text-white/95 font-tajawal">{isBreak ? (t('current')) : (t('currentPeriod'))}</p>
                   <p className="text-lg font-bold font-cairo">{periodLabel}</p>
                 </div>
               </div>
@@ -151,8 +152,8 @@ const SchoolDayProgress = ({ isRTL }) => {
               </p>
               <p className="text-xs text-white/90 font-tajawal">
                 {isSchoolTime 
-                  ? (isRTL ? 'الدوام جارٍ' : 'School in session') 
-                  : (isRTL ? 'خارج وقت الدوام' : 'Outside school hours')}
+                  ? (t('schoolInSession')) 
+                  : (t('outsideSchoolHours'))}
               </p>
             </div>
           </div>
@@ -237,9 +238,9 @@ const AttendanceRadial = ({ data, isRTL }) => {
   const overallPercent = Math.round((overallPresent / Math.max(overallTotal, 1)) * 100);
 
   const getColor = (pct) => {
-    if (pct >= 90) return { ring: '#10b981', bg: 'rgba(16,185,129,0.15)', label: isRTL ? 'ممتاز' : 'Excellent', labelColor: 'text-emerald-600 dark:text-emerald-400' };
-    if (pct >= 75) return { ring: '#f59e0b', bg: 'rgba(245,158,11,0.15)', label: isRTL ? 'جيد' : 'Good', labelColor: 'text-amber-600 dark:text-amber-400' };
-    return { ring: '#ef4444', bg: 'rgba(239,68,68,0.15)', label: isRTL ? 'يحتاج متابعة' : 'Needs Attention', labelColor: 'text-red-600 dark:text-red-400' };
+    if (pct >= 90) return { ring: '#10b981', bg: 'rgba(16,185,129,0.15)', label: t('excellent'), labelColor: 'text-emerald-600 dark:text-emerald-400' };
+    if (pct >= 75) return { ring: '#f59e0b', bg: 'rgba(245,158,11,0.15)', label: t('good'), labelColor: 'text-amber-600 dark:text-amber-400' };
+    return { ring: '#ef4444', bg: 'rgba(239,68,68,0.15)', label: t('needsAttention'), labelColor: 'text-red-600 dark:text-red-400' };
   };
 
   const RadialRing = ({ percent, size = 130, strokeWidth = 12, color }) => {
@@ -279,12 +280,12 @@ const AttendanceRadial = ({ data, isRTL }) => {
 
   const categories = [
     { 
-      label: isRTL ? 'الطلاب' : 'Students', 
+      label: t('students'), 
       percent: studentPercent, present: studentPresent, absent: studentAbsent, 
       excused: studentExcused, late: studentLate, total: studentTotalRaw, icon: Users 
     },
     { 
-      label: isRTL ? 'المعلمون' : 'Teachers', 
+      label: t('teachers'), 
       percent: teacherPercent, present: teacherPresent, absent: teacherAbsent, 
       excused: teacherExcused, late: teacherLate, total: teacherTotalRaw, icon: GraduationCap 
     },
@@ -300,7 +301,7 @@ const AttendanceRadial = ({ data, isRTL }) => {
             <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-brand-turquoise to-brand-turquoise/70 flex items-center justify-center">
               <UserCheck className="h-4.5 w-4.5 text-white" />
             </div>
-            {isRTL ? 'لوحة الحضور' : 'Attendance Dashboard'}
+            {t('attendanceDashboard')}
           </CardTitle>
           <div className={`px-2.5 py-1 rounded-lg text-[11px] font-tajawal font-medium ${overallColor.labelColor} bg-current/5`}
             style={{ backgroundColor: `${overallColor.ring}15` }}>
@@ -330,11 +331,11 @@ const AttendanceRadial = ({ data, isRTL }) => {
                 </div>
 
                 <div className="space-y-2.5">
-                  <StatBar label={isRTL ? 'حاضر' : 'Present'} value={cat.present} total={cat.total} color="bg-emerald-500" icon={UserCheck} />
-                  <StatBar label={isRTL ? 'غائب' : 'Absent'} value={cat.absent} total={cat.total} color="bg-red-500" icon={UserX} />
-                  <StatBar label={isRTL ? 'مستأذن' : 'Excused'} value={cat.excused} total={cat.total} color="bg-amber-500" icon={Clock} />
+                  <StatBar label={t('present')} value={cat.present} total={cat.total} color="bg-emerald-500" icon={UserCheck} />
+                  <StatBar label={t('absent')} value={cat.absent} total={cat.total} color="bg-red-500" icon={UserX} />
+                  <StatBar label={t('excused')} value={cat.excused} total={cat.total} color="bg-amber-500" icon={Clock} />
                   {cat.late > 0 && (
-                    <StatBar label={isRTL ? 'متأخر' : 'Late'} value={cat.late} total={cat.total} color="bg-orange-500" icon={Timer} />
+                    <StatBar label={t('late')} value={cat.late} total={cat.total} color="bg-orange-500" icon={Timer} />
                   )}
                 </div>
               </div>
@@ -350,7 +351,7 @@ const AttendanceRadial = ({ data, isRTL }) => {
             </div>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-cairo font-semibold">{isRTL ? 'الحضور الإجمالي' : 'Overall Attendance'}</p>
+            <p className="text-sm font-cairo font-semibold">{t('overallAttendance')}</p>
             <p className="text-[11px] text-muted-foreground font-tajawal">
               {isRTL ? `${overallPresent} من ${overallTotal} حاضرون اليوم` : `${overallPresent} of ${overallTotal} present today`}
             </p>
@@ -369,7 +370,7 @@ const DailyOpsPanel = ({ data, isRTL, onNavigate }) => {
   const ops = data || {};
   const items = [
     {
-      label: isRTL ? 'الطلاب المتغيبون اليوم' : 'Absent Students Today',
+      label: t('absentStudentsToday'),
       count: ops.absentStudentsToday || 0,
       icon: UserX,
       color: 'bg-red-500',
@@ -377,11 +378,11 @@ const DailyOpsPanel = ({ data, isRTL, onNavigate }) => {
       bgLight: 'bg-red-50 dark:bg-red-950/30',
       ringColor: 'ring-red-500/20',
       path: '/admin/attendance',
-      actionLabel: isRTL ? 'عرض الغياب' : 'View',
+      actionLabel: t('view'),
       priority: 'critical',
     },
     {
-      label: isRTL ? 'حصص لم يُسجَّل حضورها' : 'Unrecorded Attendance',
+      label: t('unrecordedAttendance'),
       count: ops.unrecordedAttendance || 0,
       icon: ClipboardList,
       color: 'bg-amber-500',
@@ -389,11 +390,11 @@ const DailyOpsPanel = ({ data, isRTL, onNavigate }) => {
       bgLight: 'bg-amber-50 dark:bg-amber-950/30',
       ringColor: 'ring-amber-500/20',
       path: '/admin/attendance',
-      actionLabel: isRTL ? 'متابعة' : 'Follow Up',
+      actionLabel: t('followUp'),
       priority: 'high',
     },
     {
-      label: isRTL ? 'حصص بلا معلم' : 'Unassigned Sessions',
+      label: t('unassignedSessions'),
       count: ops.classesWithoutTeacher || 0,
       icon: AlertTriangle,
       color: 'bg-orange-500',
@@ -401,11 +402,11 @@ const DailyOpsPanel = ({ data, isRTL, onNavigate }) => {
       bgLight: 'bg-orange-50 dark:bg-orange-950/30',
       ringColor: 'ring-orange-500/20',
       path: '/school/schedule',
-      actionLabel: isRTL ? 'تعيين' : 'Assign',
+      actionLabel: t('assign'),
       priority: 'high',
     },
     {
-      label: isRTL ? 'تنبيهات أكاديمية' : 'Academic Alerts',
+      label: t('academicAlerts'),
       count: ops.academicAlerts || 0,
       icon: AlertCircle,
       color: 'bg-violet-500',
@@ -413,11 +414,11 @@ const DailyOpsPanel = ({ data, isRTL, onNavigate }) => {
       bgLight: 'bg-violet-50 dark:bg-violet-950/30',
       ringColor: 'ring-violet-500/20',
       path: '/principal/ai-insights',
-      actionLabel: isRTL ? 'مراجعة' : 'Review',
+      actionLabel: t('review'),
       priority: 'medium',
     },
     {
-      label: isRTL ? 'إشعارات جديدة' : 'New Notifications',
+      label: t('newNotifications'),
       count: ops.newNotifications || 0,
       icon: Send,
       color: 'bg-blue-500',
@@ -425,11 +426,11 @@ const DailyOpsPanel = ({ data, isRTL, onNavigate }) => {
       bgLight: 'bg-blue-50 dark:bg-blue-950/30',
       ringColor: 'ring-blue-500/20',
       path: '/notifications',
-      actionLabel: isRTL ? 'عرض' : 'View',
+      actionLabel: t('view2'),
       priority: 'low',
     },
     {
-      label: isRTL ? 'معلمون بغياب متكرر' : 'Frequent Teacher Absence',
+      label: t('frequentTeacherAbsence'),
       count: ops.teachersWithFrequentAbsence || 0,
       icon: UserCheck,
       color: 'bg-rose-500',
@@ -457,19 +458,19 @@ const DailyOpsPanel = ({ data, isRTL, onNavigate }) => {
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-violet-500 flex items-center justify-center shadow-sm shadow-blue-500/20">
               <LayoutDashboard className="h-4.5 w-4.5 text-white" />
             </div>
-            {isRTL ? 'العمليات اليومية' : 'Daily Operations'}
+            {t('dailyOperations')}
           </CardTitle>
           <div className="flex items-center gap-2">
             {criticalCount > 0 && (
               <Badge className="bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400 text-[10px] px-2 py-0.5 font-cairo border-0 animate-pulse">
-                {criticalCount} {isRTL ? 'عاجل' : 'urgent'}
+                {criticalCount} {t('urgent')}
               </Badge>
             )}
             {total > 0 ? (
               <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400 text-xs px-2.5 py-0.5 font-cairo border-0">{total}</Badge>
             ) : (
               <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400 text-xs px-2 py-0.5 font-cairo border-0">
-                <CheckCircle2 className="h-3 w-3 mr-1" />{isRTL ? 'مكتمل' : 'Clear'}
+                <CheckCircle2 className="h-3 w-3 mr-1" />{t('clear')}
               </Badge>
             )}
           </div>
@@ -481,8 +482,8 @@ const DailyOpsPanel = ({ data, isRTL, onNavigate }) => {
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-100 to-teal-100 dark:from-emerald-900/30 dark:to-teal-900/30 flex items-center justify-center mx-auto mb-3 shadow-sm">
               <CheckCircle2 className="h-8 w-8 text-emerald-500" />
             </div>
-            <p className="font-tajawal text-sm font-semibold text-emerald-600 dark:text-emerald-400">{isRTL ? 'لا توجد مهام معلّقة' : 'No pending tasks'}</p>
-            <p className="font-tajawal text-xs text-muted-foreground mt-1">{isRTL ? 'اليوم الدراسي يسير بسلاسة' : 'School day running smoothly'}</p>
+            <p className="font-tajawal text-sm font-semibold text-emerald-600 dark:text-emerald-400">{t('noPendingTasks')}</p>
+            <p className="font-tajawal text-xs text-muted-foreground mt-1">{t('schoolDayRunningSmoothly')}</p>
           </div>
         ) : (
           <div className="space-y-1.5">
@@ -502,10 +503,10 @@ const DailyOpsPanel = ({ data, isRTL, onNavigate }) => {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-tajawal font-medium truncate">{item.label}</p>
                     <p className="text-[10px] text-muted-foreground font-tajawal">
-                      {item.priority === 'critical' ? (isRTL ? 'يتطلب اهتمام فوري' : 'Immediate attention') :
-                       item.priority === 'high' ? (isRTL ? 'أولوية عالية' : 'High priority') :
-                       item.priority === 'medium' ? (isRTL ? 'متابعة مطلوبة' : 'Follow-up needed') :
-                       (isRTL ? 'إعلامي' : 'Informational')}
+                      {item.priority === 'critical' ? (t('immediateAttention')) :
+                       item.priority === 'high' ? (t('highPriority')) :
+                       item.priority === 'medium' ? (t('followupNeeded')) :
+                       (t('informational'))}
                     </p>
                   </div>
                   <div className={`min-w-[40px] h-10 rounded-xl ${item.bgLight} flex items-center justify-center ring-1 ${item.ringColor}`}>
@@ -535,7 +536,7 @@ const PerformanceSnapshot = ({ metrics, attendance, isRTL }) => {
 
   const stats = [
     { 
-      label: isRTL ? 'إجمالي الطلاب' : 'Total Students', 
+      label: t('totalStudents'), 
       value: totalStudents, 
       icon: Users, 
       gradient: 'from-blue-500 to-blue-600',
@@ -544,7 +545,7 @@ const PerformanceSnapshot = ({ metrics, attendance, isRTL }) => {
       changeType: m.totalStudents?.changeType 
     },
     { 
-      label: isRTL ? 'إجمالي المعلمين' : 'Total Teachers', 
+      label: t('totalTeachers'), 
       value: totalTeachers, 
       icon: GraduationCap, 
       gradient: 'from-emerald-500 to-emerald-600',
@@ -553,7 +554,7 @@ const PerformanceSnapshot = ({ metrics, attendance, isRTL }) => {
       changeType: m.totalTeachers?.changeType 
     },
     { 
-      label: isRTL ? 'الفصول الدراسية' : 'Classes', 
+      label: t('classes'), 
       value: totalClasses, 
       icon: School, 
       gradient: 'from-violet-500 to-violet-600',
@@ -562,7 +563,7 @@ const PerformanceSnapshot = ({ metrics, attendance, isRTL }) => {
       changeType: m.totalClasses?.changeType 
     },
     { 
-      label: isRTL ? 'حصص اليوم' : "Today's Sessions", 
+      label: t('todaysSessions'), 
       value: todaySessions, 
       icon: BookOpen, 
       gradient: 'from-amber-500 to-amber-600',
@@ -580,11 +581,11 @@ const PerformanceSnapshot = ({ metrics, attendance, isRTL }) => {
             <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-brand-navy to-brand-turquoise flex items-center justify-center">
               <BarChart3 className="h-4.5 w-4.5 text-white" />
             </div>
-            {isRTL ? 'لمحة عامة' : 'Overview Snapshot'}
+            {t('overviewSnapshot')}
           </CardTitle>
           <div className="flex items-center gap-1.5 text-[11px] font-tajawal text-muted-foreground">
             <CircleDot className="h-3 w-3 text-emerald-500 animate-pulse" />
-            {isRTL ? 'مباشر' : 'Live'}
+            {t('live')}
           </div>
         </div>
       </CardHeader>
@@ -622,7 +623,7 @@ const PerformanceSnapshot = ({ metrics, attendance, isRTL }) => {
 
         <div className="p-3.5 rounded-xl bg-gradient-to-r from-brand-navy/5 to-brand-turquoise/5 dark:from-brand-navy/20 dark:to-brand-turquoise/20 border border-brand-turquoise/10">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-cairo font-semibold">{isRTL ? 'معدل الحضور اليوم' : "Today's Attendance Rate"}</span>
+            <span className="text-sm font-cairo font-semibold">{t('todaysAttendanceRate')}</span>
             <span className={`text-lg font-bold font-cairo ${attendanceRate >= 90 ? 'text-emerald-600 dark:text-emerald-400' : attendanceRate >= 75 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'}`}>
               {attendanceRate}%
             </span>
@@ -639,12 +640,12 @@ const PerformanceSnapshot = ({ metrics, attendance, isRTL }) => {
 
 const StrategicNav = ({ onAction, isRTL, onNavigate }) => {
   const navItems = [
-    { id: 'users', label: isRTL ? 'إدارة المستخدمين' : 'User Management', icon: Users, path: '/admin/users-management', color: 'from-blue-500 to-blue-600' },
-    { id: 'schedule', label: isRTL ? 'الجدول الدراسي' : 'Timetable', icon: CalendarDays, path: '/school/schedule', color: 'from-emerald-500 to-emerald-600' },
-    { id: 'attendance', label: isRTL ? 'الحضور والغياب' : 'Attendance', icon: ClipboardList, path: '/admin/attendance', color: 'from-violet-500 to-violet-600' },
-    { id: 'reports', label: isRTL ? 'التقارير' : 'Reports', icon: BarChart3, path: '/principal/reports', color: 'from-amber-500 to-amber-600' },
-    { id: 'communication', label: isRTL ? 'مركز التواصل والإشعارات' : 'Communication', icon: Megaphone, path: '/principal/communication', color: 'from-pink-500 to-pink-600' },
-    { id: 'settings', label: isRTL ? 'إعدادات المدرسة' : 'School Settings', icon: Settings, path: '/school/settings', color: 'from-slate-500 to-slate-600' },
+    { id: 'users', label: t('userManagement'), icon: Users, path: '/admin/users-management', color: 'from-blue-500 to-blue-600' },
+    { id: 'schedule', label: t('timetable'), icon: CalendarDays, path: '/school/schedule', color: 'from-emerald-500 to-emerald-600' },
+    { id: 'attendance', label: t('attendance'), icon: ClipboardList, path: '/admin/attendance', color: 'from-violet-500 to-violet-600' },
+    { id: 'reports', label: t('reports'), icon: BarChart3, path: '/principal/reports', color: 'from-amber-500 to-amber-600' },
+    { id: 'communication', label: t('communication'), icon: Megaphone, path: '/principal/communication', color: 'from-pink-500 to-pink-600' },
+    { id: 'settings', label: t('schoolSettings'), icon: Settings, path: '/school/settings', color: 'from-slate-500 to-slate-600' },
   ];
 
   return (
@@ -652,7 +653,7 @@ const StrategicNav = ({ onAction, isRTL, onNavigate }) => {
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 font-cairo text-lg">
           <LayoutDashboard className="h-5 w-5 text-brand-turquoise" />
-          {isRTL ? 'التنقل السريع' : 'Quick Navigation'}
+          {t('quickNavigation')}
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -675,10 +676,10 @@ const StrategicNav = ({ onAction, isRTL, onNavigate }) => {
 
 const QuickAddBar = ({ onAction, isRTL }) => {
   const actions = [
-    { id: 'add-student', label: isRTL ? 'إضافة طالب' : 'Add Student', icon: UserPlus, color: 'text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 border-blue-200 dark:border-blue-800' },
-    { id: 'add-teacher', label: isRTL ? 'إضافة معلم' : 'Add Teacher', icon: GraduationCap, color: 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800' },
-    { id: 'create-class', label: isRTL ? 'إنشاء فصل' : 'Create Class', icon: School, color: 'text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/30 border-purple-200 dark:border-purple-800' },
-    { id: 'send-notification', label: isRTL ? 'إرسال إشعار' : 'Send Notice', icon: Send, color: 'text-pink-600 dark:text-pink-400 hover:bg-pink-50 dark:hover:bg-pink-950/30 border-pink-200 dark:border-pink-800' },
+    { id: 'add-student', label: t('addStudent'), icon: UserPlus, color: 'text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 border-blue-200 dark:border-blue-800' },
+    { id: 'add-teacher', label: t('addTeacher'), icon: GraduationCap, color: 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800' },
+    { id: 'create-class', label: t('createClass'), icon: School, color: 'text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/30 border-purple-200 dark:border-purple-800' },
+    { id: 'send-notification', label: t('sendNotice'), icon: Send, color: 'text-pink-600 dark:text-pink-400 hover:bg-pink-50 dark:hover:bg-pink-950/30 border-pink-200 dark:border-pink-800' },
   ];
 
   return (
@@ -800,7 +801,7 @@ export const SchoolDashboardContent = () => {
         <div className="relative">
           <div className="w-16 h-16 rounded-full border-4 border-brand-turquoise/20 border-t-brand-turquoise animate-spin" />
         </div>
-        <p className="text-sm text-muted-foreground font-tajawal">{isRTL ? 'جارٍ تحميل مركز القيادة...' : 'Loading Command Center...'}</p>
+        <p className="text-sm text-muted-foreground font-tajawal">{t('loadingCommandCenter')}</p>
       </div>
     );
   }
@@ -821,57 +822,57 @@ export const SchoolDashboardContent = () => {
             </div>
           )}
           <Button size="icon" variant="outline" onClick={() => fetchDashboardData(true)} disabled={refreshing}
-            className="rounded-xl h-8 w-8 border-border/50 hover:bg-muted" title={isRTL ? 'تحديث' : 'Refresh'}>
+            className="rounded-xl h-8 w-8 border-border/50 hover:bg-muted" title={t('refresh')}>
             <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
           </Button>
         </div>
       </div>
 
-      <SectionErrorBoundary name="SchoolDayProgress" isRTL={isRTL} fallbackMessage={isRTL ? 'تعذّر تحميل تقدّم اليوم الدراسي' : 'Failed to load school day progress'}>
+      <SectionErrorBoundary name="SchoolDayProgress" isRTL={isRTL} fallbackMessage={t('failedToLoadSchoolDayProgress')}>
         <SchoolDayProgress isRTL={isRTL} />
       </SectionErrorBoundary>
 
       <section data-testid="key-metrics-section">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <HeroMetric
-            title={isRTL ? 'إجمالي الطلاب' : 'Total Students'}
+            title={t('totalStudents')}
             value={m?.totalStudents?.value || 0}
             change={m?.totalStudents?.change}
             changeType={m?.totalStudents?.changeType}
-            subtitle={isRTL ? 'المسجلين في المدرسة' : 'Enrolled students'}
+            subtitle={t('enrolledStudents')}
             icon={Users}
             gradient="bg-gradient-to-br from-blue-500 to-blue-600 dark:from-blue-600 dark:to-blue-700"
             onClick={() => navigate('/admin/users-management')}
             isRTL={isRTL}
           />
           <HeroMetric
-            title={isRTL ? 'إجمالي المعلمين' : 'Total Teachers'}
+            title={t('totalTeachers')}
             value={m?.totalTeachers?.value || 0}
             change={m?.totalTeachers?.change}
             changeType={m?.totalTeachers?.changeType}
-            subtitle={isRTL ? 'الكادر التعليمي' : 'Teaching staff'}
+            subtitle={t('teachingStaff')}
             icon={GraduationCap}
             gradient="bg-gradient-to-br from-emerald-500 to-emerald-600 dark:from-emerald-600 dark:to-emerald-700"
             onClick={() => navigate('/admin/users-management')}
             isRTL={isRTL}
           />
           <HeroMetric
-            title={isRTL ? 'حصص اليوم' : "Today's Sessions"}
+            title={t('todaysSessions')}
             value={m?.todaySessions?.value || 0}
             change={m?.todaySessions?.change}
             changeType={m?.todaySessions?.changeType}
-            subtitle={isRTL ? 'الحصص المجدولة' : 'Scheduled sessions'}
+            subtitle={t('scheduledSessions')}
             icon={Clock}
             gradient="bg-gradient-to-br from-violet-500 to-violet-600 dark:from-violet-600 dark:to-violet-700"
             onClick={() => navigate('/school/schedule')}
             isRTL={isRTL}
           />
           <HeroMetric
-            title={isRTL ? 'حصص الانتظار' : 'Substitute Queue'}
+            title={t('substituteQueue')}
             value={m?.waitingSubstitute?.value || 0}
             change={m?.waitingSubstitute?.change}
             changeType={m?.waitingSubstitute?.changeType}
-            subtitle={isRTL ? 'بانتظار بديل' : 'Awaiting substitute'}
+            subtitle={t('awaitingSubstitute')}
             icon={Timer}
             gradient={`bg-gradient-to-br ${(m?.waitingSubstitute?.value || 0) > 0 ? 'from-red-500 to-red-600 dark:from-red-600 dark:to-red-700' : 'from-slate-500 to-slate-600 dark:from-slate-600 dark:to-slate-700'}`}
             onClick={() => setShowLiveSessionsMonitor(true)}
@@ -881,10 +882,10 @@ export const SchoolDashboardContent = () => {
       </section>
 
       <section className="grid lg:grid-cols-2 gap-5" data-testid="dashboard-kpi-section">
-        <SectionErrorBoundary name="AttendanceRadial" isRTL={isRTL} fallbackMessage={isRTL ? 'تعذّر تحميل بيانات الحضور' : 'Failed to load attendance data'}>
+        <SectionErrorBoundary name="AttendanceRadial" isRTL={isRTL} fallbackMessage={t('failedToLoadAttendanceData')}>
           <AttendanceRadial data={dashboardData?.attendance} isRTL={isRTL} />
         </SectionErrorBoundary>
-        <SectionErrorBoundary name="DailyOpsPanel" isRTL={isRTL} fallbackMessage={isRTL ? 'تعذّر تحميل لوحة العمليات' : 'Failed to load operations panel'}>
+        <SectionErrorBoundary name="DailyOpsPanel" isRTL={isRTL} fallbackMessage={t('failedToLoadOperationsPanel')}>
           <DailyOpsPanel data={dashboardData?.interventions} isRTL={isRTL} onNavigate={(path) => navigate(path)} />
         </SectionErrorBoundary>
       </section>

@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
+import { useTranslation } from '../../contexts/ThemeContext';
 const GENDER_COLORS = {
   male: { bg: 'bg-sky-600', ring: 'ring-sky-400', label: 'طلاب', icon: '👦', light: 'bg-sky-900/30' },
   female: { bg: 'bg-pink-600', ring: 'ring-pink-400', label: 'طالبات', icon: '👧', light: 'bg-pink-900/30' },
@@ -125,7 +126,7 @@ export default function SessionTeachPage() {
       const res = await api.get(`/session/${sessionId}`);
       if (res.data) {
         if (res.data.status === 'completed' || res.data.status === 'archived' || res.data.status === 'cancelled') {
-          toast.info(isRTL ? 'هذه الحصة منتهية، يرجى بدء حصة جديدة' : 'This session has ended, please start a new one');
+          toast.info(t('thisSessionHasEndedPleaseStartANewOne'));
           navigate('/teacher', { replace: true });
           return;
         }
@@ -232,6 +233,7 @@ export default function SessionTeachPage() {
       || sessionInfo?.planned_end_time || sessionInfo?.plannedEndTime;
     if (!endStr) return;
     const checkTime = () => {
+  const { t } = useTranslation();
       const remaining = (new Date(endStr).getTime() - Date.now()) / 60000;
       setRemainingMinutes(Math.ceil(remaining));
       if (remaining <= 0 && timeWarning !== 'ended') {
@@ -547,14 +549,14 @@ export default function SessionTeachPage() {
       const res = await api.post(`/session/${sessionId}/end`, body);
       setSummary(res.data);
       setReviewData(null);
-      toast.success(isRTL ? 'تم إنهاء الحصة بنجاح' : 'Session ended successfully');
+      toast.success(t('sessionEndedSuccessfully'));
     } catch (err) {
       const detail = err.response?.data?.detail || '';
       if (detail.includes('إنهاء') && detail.includes('مسبق')) {
-        toast.info(isRTL ? 'الحصة منتهية بالفعل' : 'Session already ended');
+        toast.info(t('sessionAlreadyEnded'));
         navigate('/teacher', { replace: true });
       } else {
-        nassaqError(detail || (isRTL ? 'خطأ في إنهاء الحصة' : 'Error ending session'));
+        nassaqError(detail || (t('errorEndingSession')));
       }
     } finally {
       setLoading(false);
@@ -1636,10 +1638,10 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
       a.download = `session-report-${data.date || 'report'}.csv`;
       a.click();
       URL.revokeObjectURL(url);
-      toast.success(isRTL ? 'تم تصدير التقرير بنجاح' : 'Report exported successfully');
+      toast.success(t('reportExportedSuccessfully'));
     } catch (e) {
       console.error('Error exporting report:', e);
-      toast.error(isRTL ? 'فشل تصدير التقرير' : 'Failed to export report');
+      toast.error(t('failedToExportReport'));
     } finally {
       setExporting(false);
     }

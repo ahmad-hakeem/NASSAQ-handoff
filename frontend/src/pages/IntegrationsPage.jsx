@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sidebar } from '../components/layout/Sidebar';
 import { PageHeader } from '../components/layout/PageHeader';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -274,7 +274,6 @@ export default function IntegrationsPage() {
   const navigate = useNavigate();
   const { token, api } = useAuth();
   const { nassaqError, nassaqWarning } = useNassaqAlert();
-  const t = translations[isRTL ? 'ar' : 'en'];
   
   // States - start with empty arrays, will be populated from API
   const [integrations, setIntegrations] = useState([]);
@@ -314,6 +313,7 @@ export default function IntegrationsPage() {
   
   // Format date
   const formatDateTime = (dateStr) => {
+  const { t } = useTranslation();
     if (!dateStr) return '-';
     return new Date(dateStr).toLocaleString(isRTL ? 'ar-SA' : 'en-US', {
       year: 'numeric',
@@ -411,7 +411,7 @@ export default function IntegrationsPage() {
       setTimeout(() => setCopiedField(null), 2000);
       toast.success(t.copied);
     } catch (err) {
-      nassaqError(isRTL ? 'فشل النسخ' : 'Copy failed');
+      nassaqError(t('copyFailed'));
     }
   };
   
@@ -445,9 +445,9 @@ ${baseUrl}/webhooks
     setTestingConnection(integration.id);
     try {
       await new Promise(resolve => setTimeout(resolve, 1500));
-      toast.success(isRTL ? 'تم الاتصال بنجاح' : 'Connection successful');
+      toast.success(t('connectionSuccessful'));
     } catch (error) {
-      nassaqError(isRTL ? 'فشل الاتصال' : 'Connection failed');
+      nassaqError(t('connectionFailed'));
     } finally {
       setTestingConnection(null);
     }
@@ -458,14 +458,14 @@ ${baseUrl}/webhooks
     setSyncing(integration.id);
     try {
       await new Promise(resolve => setTimeout(resolve, 2000));
-      toast.success(isRTL ? 'تمت المزامنة بنجاح' : 'Sync completed');
+      toast.success(t('syncCompleted'));
       setIntegrations(prev => prev.map(i => 
         i.id === integration.id 
           ? { ...i, last_sync: new Date().toISOString() }
           : i
       ));
     } catch (error) {
-      nassaqError(isRTL ? 'فشلت المزامنة' : 'Sync failed');
+      nassaqError(t('syncFailed'));
     } finally {
       setSyncing(null);
     }
@@ -479,8 +479,8 @@ ${baseUrl}/webhooks
         : i
     ));
     toast.success(integration.is_active 
-      ? (isRTL ? 'تم تعطيل التكامل' : 'Integration disabled')
-      : (isRTL ? 'تم تفعيل التكامل' : 'Integration enabled')
+      ? (t('integrationDisabled'))
+      : (t('integrationEnabled'))
     );
   };
   
@@ -499,7 +499,7 @@ ${baseUrl}/webhooks
     setApiKeys(prev => [...prev, newKey]);
     setShowNewKeyDialog(false);
     setNewKeyForm({ name: '', permissions: 'read_only' });
-    toast.success(isRTL ? 'تم إنشاء المفتاح بنجاح' : 'Key generated successfully');
+    toast.success(t('keyGeneratedSuccessfully'));
   };
   
   // Revoke API key
@@ -507,7 +507,7 @@ ${baseUrl}/webhooks
     setApiKeys(prev => prev.map(k => 
       k.id === keyId ? { ...k, is_active: false } : k
     ));
-    toast.success(isRTL ? 'تم إلغاء المفتاح' : 'Key revoked');
+    toast.success(t('keyRevoked'));
   };
   
   // Open details
@@ -739,7 +739,7 @@ ${baseUrl}/webhooks
                   </div>
                   <h3 className="text-lg font-medium mb-2">{t.noResults}</h3>
                   <p className="text-muted-foreground mb-4">
-                    {isRTL ? 'جرب تغيير معايير البحث أو الفلاتر' : 'Try changing search criteria or filters'}
+                    {t('tryChangingSearchCriteriaOrFilters')}
                   </p>
                   <Button variant="outline" onClick={clearFilters}>
                     {t.clearFilters}
@@ -902,11 +902,11 @@ ${baseUrl}/webhooks
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>{isRTL ? 'التكامل' : 'Integration'}</TableHead>
-                        <TableHead>{isRTL ? 'النوع' : 'Type'}</TableHead>
-                        <TableHead>{isRTL ? 'الحالة' : 'Status'}</TableHead>
+                        <TableHead>{t('integration')}</TableHead>
+                        <TableHead>{t('type4')}</TableHead>
+                        <TableHead>{t('status2')}</TableHead>
                         <TableHead>{t.lastSync}</TableHead>
-                        <TableHead>{isRTL ? 'الإجراءات' : 'Actions'}</TableHead>
+                        <TableHead>{t('actions2')}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -999,9 +999,7 @@ ${baseUrl}/webhooks
                     <div>
                       <h2 className="text-2xl font-bold mb-2">{t.nassaqApi}</h2>
                       <p className="text-white/70">
-                        {isRTL 
-                          ? 'إدارة واجهات البرمجة ومفاتيح الوصول الخاصة بمنصة نسق'
-                          : 'Manage NASSAQ platform API keys and access'}
+                        {t('manageNassaqPlatformApiKeysAndAccess')}
                       </p>
                     </div>
                     <div className="flex gap-3">
@@ -1035,7 +1033,7 @@ ${baseUrl}/webhooks
                       {t.apiKeys}
                     </CardTitle>
                     <CardDescription>
-                      {isRTL ? 'مفاتيح الوصول لواجهة برمجة التطبيقات' : 'API access keys'}
+                      {t('apiAccessKeys')}
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
@@ -1126,7 +1124,7 @@ ${baseUrl}/webhooks
                       {t.endpoints}
                     </CardTitle>
                     <CardDescription>
-                      {isRTL ? 'نقاط الاتصال المتاحة' : 'Available API endpoints'}
+                      {t('availableApiEndpoints')}
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -1210,7 +1208,7 @@ ${baseUrl}/webhooks
               <div className="space-y-6 py-6">
                 {/* Status */}
                 <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl">
-                  <span className="font-medium">{isRTL ? 'الحالة' : 'Status'}</span>
+                  <span className="font-medium">{t('status2')}</span>
                   <div className="flex items-center gap-2">
                     <Badge className={getStatusInfo(selectedIntegration.status).color}>
                       {getStatusInfo(selectedIntegration.status).label}
@@ -1226,12 +1224,12 @@ ${baseUrl}/webhooks
                 <div className="space-y-4">
                   <h4 className="font-medium flex items-center gap-2">
                     <Settings className="h-4 w-4" />
-                    {isRTL ? 'إعدادات الاتصال' : 'Connection Settings'}
+                    {t('connectionSettings')}
                   </h4>
                   
                   <div className="space-y-3">
                     <div className="space-y-2">
-                      <Label>{isRTL ? 'رابط API' : 'API URL'}</Label>
+                      <Label>{t('apiUrl')}</Label>
                       <div className="flex gap-2">
                         <Input value={selectedIntegration.api_base_url} readOnly dir="ltr" />
                         <Button
@@ -1273,7 +1271,7 @@ ${baseUrl}/webhooks
                 {/* Features */}
                 {selectedIntegration.features && (
                   <div className="space-y-3">
-                    <h4 className="font-medium">{isRTL ? 'الميزات المتاحة' : 'Available Features'}</h4>
+                    <h4 className="font-medium">{t('availableFeatures')}</h4>
                     <div className="flex flex-wrap gap-2">
                       {(isRTL ? selectedIntegration.features : selectedIntegration.features_en).map((feature, idx) => (
                         <Badge key={idx} variant="secondary">{feature}</Badge>
@@ -1331,7 +1329,7 @@ ${baseUrl}/webhooks
               {INITIAL_LOGS.length === 0 ? (
                 <div className="text-center text-muted-foreground py-12">
                   <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground/30" />
-                  <p>{isRTL ? 'لا توجد سجلات بعد' : 'No logs yet'}</p>
+                  <p>{t('noLogsYet')}</p>
                 </div>
               ) : (
                 INITIAL_LOGS.map(log => (
@@ -1353,8 +1351,8 @@ ${baseUrl}/webhooks
                         <Clock className="h-4 w-4 text-yellow-600" />
                       )}
                       <span className="font-medium text-sm">
-                        {log.action === 'sync' ? (isRTL ? 'مزامنة' : 'Sync') :
-                         log.action === 'test' ? (isRTL ? 'اختبار' : 'Test') :
+                        {log.action === 'sync' ? (t('sync')) :
+                         log.action === 'test' ? (t('test')) :
                          log.action === 'webhook' ? 'Webhook' : log.action}
                       </span>
                     </div>
@@ -1381,7 +1379,7 @@ ${baseUrl}/webhooks
                 {t.shareTemplate}
               </DialogTitle>
               <DialogDescription>
-                {isRTL ? 'نموذج جاهز لمشاركة بيانات التكامل' : 'Ready template for sharing integration data'}
+                {t('readyTemplateForSharingIntegrationData')}
               </DialogDescription>
             </DialogHeader>
             <div className="py-4">
@@ -1422,11 +1420,11 @@ ${baseUrl}/webhooks
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label>{isRTL ? 'اسم المفتاح' : 'Key Name'}</Label>
+                <Label>{t('keyName')}</Label>
                 <Input
                   value={newKeyForm.name}
                   onChange={(e) => setNewKeyForm({ ...newKeyForm, name: e.target.value })}
-                  placeholder={isRTL ? 'مثال: مفتاح الإنتاج' : 'e.g., Production Key'}
+                  placeholder={t('egProductionKey')}
                 />
               </div>
               
@@ -1471,14 +1469,14 @@ ${baseUrl}/webhooks
             <div className="space-y-4 py-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>{isRTL ? 'الاسم (عربي)' : 'Name (Arabic)'}</Label>
+                  <Label>{t('nameArabic')}</Label>
                   <Input
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>{isRTL ? 'الاسم (إنجليزي)' : 'Name (English)'}</Label>
+                  <Label>{t('nameEnglish')}</Label>
                   <Input
                     value={formData.name_en}
                     onChange={(e) => setFormData({ ...formData, name_en: e.target.value })}
@@ -1488,7 +1486,7 @@ ${baseUrl}/webhooks
               </div>
               
               <div className="space-y-2">
-                <Label>{isRTL ? 'نوع التكامل' : 'Integration Type'}</Label>
+                <Label>{t('integrationType')}</Label>
                 <Select value={formData.type} onValueChange={(v) => setFormData({ ...formData, type: v })}>
                   <SelectTrigger>
                     <SelectValue />
@@ -1504,7 +1502,7 @@ ${baseUrl}/webhooks
               </div>
               
               <div className="space-y-2">
-                <Label>{isRTL ? 'الوصف' : 'Description'}</Label>
+                <Label>{t('description')}</Label>
                 <Textarea
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
@@ -1513,7 +1511,7 @@ ${baseUrl}/webhooks
               </div>
               
               <div className="space-y-2">
-                <Label>{isRTL ? 'رابط API' : 'API URL'}</Label>
+                <Label>{t('apiUrl')}</Label>
                 <Input
                   value={formData.api_base_url}
                   onChange={(e) => setFormData({ ...formData, api_base_url: e.target.value })}

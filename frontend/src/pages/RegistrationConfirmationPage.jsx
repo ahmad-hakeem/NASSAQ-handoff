@@ -1,5 +1,5 @@
 import { useLocation, Link, Navigate } from 'react-router-dom';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import {
@@ -18,6 +18,7 @@ const LOGO_WHITE = 'https://customer-assets.emergentagent.com/job_f5ea20bb-5cf5-
 const BG_PATTERN = 'https://customer-assets.emergentagent.com/job_f5ea20bb-5cf5-462f-a7f0-958201e27f89/artifacts/1itjy61q_Nassaq%20Background.png';
 
 export default function RegistrationConfirmationPage() {
+  const { t } = useTranslation();
   const { isRTL, toggleLanguage } = useTheme();
   const location = useLocation();
   const data = location.state;
@@ -46,10 +47,10 @@ export default function RegistrationConfirmationPage() {
             className="h-32 lg:h-40 w-auto mx-auto mb-8 rounded-3xl"
           />
           <h2 className="font-cairo text-4xl font-bold text-white mb-4">
-            {isRTL ? 'نَسَّق' : 'NASSAQ'}
+            {t('nassaq')}
           </h2>
           <p className="text-2xl text-brand-turquoise font-cairo font-semibold">
-            {isRTL ? 'من البيانات إلى القرار' : 'From Data to Decisions'}
+            {t('fromDataToDecisions')}
           </p>
         </div>
       </div>
@@ -64,7 +65,7 @@ export default function RegistrationConfirmationPage() {
             <Link to="/" className="flex items-center gap-2">
               <Home className="h-5 w-5" />
               <span className="font-tajawal">
-                {isRTL ? 'العودة للموقع' : 'Back to Website'}
+                {t('backToWebsite')}
               </span>
             </Link>
           </Button>
@@ -75,7 +76,7 @@ export default function RegistrationConfirmationPage() {
             className="rounded-xl border-border/50"
           >
             <Globe className="h-5 w-5 me-2" />
-            <span className="font-tajawal">{isRTL ? 'EN' : 'عربي'}</span>
+            <span className="font-tajawal">{t('key_awupdb')}</span>
           </Button>
         </div>
 
@@ -87,18 +88,16 @@ export default function RegistrationConfirmationPage() {
               </div>
 
               <h1 className="font-cairo text-2xl font-bold text-foreground mb-3">
-                {isRTL ? 'تم إرسال طلبك بنجاح!' : 'Request Submitted Successfully!'}
+                {t('requestSubmittedSuccessfully')}
               </h1>
 
               <p className="text-muted-foreground font-tajawal mb-8 leading-relaxed max-w-sm mx-auto">
-                {isRTL 
-                  ? 'تم استلام طلب التسجيل وهو الآن قيد المراجعة من قبل إدارة المنصة. سيتم إشعارك بالنتيجة قريباً.'
-                  : 'Your registration request has been received and is now under review by platform administration. You will be notified of the result soon.'}
+                {t('yourRegistrationRequestHasBeenReceivedAndIsNowUnde')}
               </p>
 
               <div className="bg-muted/50 rounded-2xl p-5 text-start space-y-3 mb-8">
                 <h3 className="font-cairo font-bold text-sm text-foreground mb-3">
-                  {isRTL ? 'تفاصيل الطلب' : 'Request Details'}
+                  {t('requestDetails')}
                 </h3>
 
                 <div className="flex items-center gap-3 text-sm">
@@ -107,7 +106,7 @@ export default function RegistrationConfirmationPage() {
                   </div>
                   <div>
                     <span className="text-muted-foreground font-tajawal">{isRTL ? 'نوع الحساب' : 'Type'}: </span>
-                    <span className="font-medium font-tajawal">{isSchool ? (isRTL ? 'مدرسة جديدة' : 'New School') : (isRTL ? 'معلم / معلمة' : 'Teacher')}</span>
+                    <span className="font-medium font-tajawal">{isSchool ? (t('newSchool')) : (t('teacher3'))}</span>
                   </div>
                 </div>
 
@@ -116,7 +115,7 @@ export default function RegistrationConfirmationPage() {
                     <Mail className="h-4 w-4 text-brand-turquoise" />
                   </div>
                   <div>
-                    <span className="text-muted-foreground font-tajawal">{isRTL ? 'الاسم' : 'Name'}: </span>
+                    <span className="text-muted-foreground font-tajawal">{t('name')}: </span>
                     <span className="font-medium font-tajawal">{data.fullName}</span>
                   </div>
                 </div>
@@ -127,7 +126,7 @@ export default function RegistrationConfirmationPage() {
                       <Mail className="h-4 w-4 text-blue-500" />
                     </div>
                     <div>
-                      <span className="text-muted-foreground font-tajawal">{isRTL ? 'البريد' : 'Email'}: </span>
+                      <span className="text-muted-foreground font-tajawal">{t('email')}: </span>
                       <span className="font-medium font-tajawal" dir="ltr">{data.email}</span>
                     </div>
                   </div>
@@ -138,7 +137,7 @@ export default function RegistrationConfirmationPage() {
                     <Phone className="h-4 w-4 text-green-500" />
                   </div>
                   <div>
-                    <span className="text-muted-foreground font-tajawal">{isRTL ? 'الهاتف' : 'Phone'}: </span>
+                    <span className="text-muted-foreground font-tajawal">{t('phone2')}: </span>
                     <span className="font-medium font-tajawal" dir="ltr">{data.phone}</span>
                   </div>
                 </div>
@@ -149,7 +148,7 @@ export default function RegistrationConfirmationPage() {
                       <Building2 className="h-4 w-4 text-purple-500" />
                     </div>
                     <div>
-                      <span className="text-muted-foreground font-tajawal">{isRTL ? 'المدرسة' : 'School'}: </span>
+                      <span className="text-muted-foreground font-tajawal">{t('school')}: </span>
                       <span className="font-medium font-tajawal">{data.schoolName}</span>
                     </div>
                   </div>
@@ -160,21 +159,21 @@ export default function RegistrationConfirmationPage() {
                 <div className="flex items-center gap-2 justify-center mb-2">
                   <Clock className="h-4 w-4 text-brand-turquoise" />
                   <span className="text-sm font-bold text-brand-turquoise font-cairo">
-                    {isRTL ? 'الخطوات القادمة' : 'Next Steps'}
+                    {t('nextSteps')}
                   </span>
                 </div>
                 <ul className="text-sm text-foreground font-tajawal space-y-2 text-start">
                   <li className="flex items-start gap-2">
                     <span className="text-brand-turquoise font-bold mt-0.5">1.</span>
-                    <span>{isRTL ? 'سيقوم فريق نَسَّق بمراجعة طلبك خلال 24 ساعة' : 'NASSAQ team will review your request within 24 hours'}</span>
+                    <span>{t('nassaqTeamWillReviewYourRequestWithin24Hours')}</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-brand-turquoise font-bold mt-0.5">2.</span>
-                    <span>{isRTL ? 'ستتلقى إشعاراً بالبريد الإلكتروني عند الموافقة' : 'You will receive an email notification upon approval'}</span>
+                    <span>{t('youWillReceiveAnEmailNotificationUponApproval')}</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-brand-turquoise font-bold mt-0.5">3.</span>
-                    <span>{isRTL ? 'سيتم إرسال بيانات الدخول الخاصة بك' : 'Your login credentials will be sent to you'}</span>
+                    <span>{t('yourLoginCredentialsWillBeSentToYou')}</span>
                   </li>
                 </ul>
               </div>
@@ -185,7 +184,7 @@ export default function RegistrationConfirmationPage() {
               >
                 <Link to="/login" className="flex items-center justify-center gap-2">
                   <ArrowLeft className="h-4 w-4" />
-                  {isRTL ? 'العودة لتسجيل الدخول' : 'Back to Login'}
+                  {t('backToLogin')}
                 </Link>
               </Button>
             </CardContent>

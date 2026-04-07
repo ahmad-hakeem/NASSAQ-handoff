@@ -31,6 +31,7 @@ import {
   Link2, Archive, Server, Database, Key, School, LayoutDashboard
 } from 'lucide-react';
 
+import { useTranslation } from '../../contexts/ThemeContext';
 // =============================================================
 // مناطق ومدن المملكة العربية السعودية
 // =============================================================
@@ -443,6 +444,7 @@ const TESTING_ACCOUNT_PERMISSIONS = [
 
 // دالة للحصول على الصلاحيات حسب الدور
 const getPermissionsByRole = (roleId) => {
+  const { t } = useTranslation();
   switch (roleId) {
     case 'platform_admin':
       return PLATFORM_ADMIN_PERMISSIONS;
@@ -638,7 +640,7 @@ export default function CreateUserWizard({ open, onOpenChange, onSuccess, api, i
       }
     } catch (error) {
       console.error('Error creating user:', error);
-      const errorMessage = error.response?.data?.detail || error.message || (isRTL ? 'حدث خطأ أثناء إنشاء الحساب' : 'Error creating account');
+      const errorMessage = error.response?.data?.detail || error.message || (t('errorCreatingAccount'));
       nassaqError(errorMessage);
     } finally {
       setIsSubmitting(false);
@@ -651,7 +653,7 @@ export default function CreateUserWizard({ open, onOpenChange, onSuccess, api, i
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-    toast.success(isRTL ? 'تم نسخ بيانات الدخول' : 'Credentials copied');
+    toast.success(t('credentialsCopied'));
   };
   
   // نسخ رسالة الترحيب
@@ -681,7 +683,7 @@ ${loginUrl}
     navigator.clipboard.writeText(message);
     setCopiedMessage(true);
     setTimeout(() => setCopiedMessage(false), 2000);
-    toast.success(isRTL ? 'تم نسخ رسالة الترحيب' : 'Welcome message copied');
+    toast.success(t('welcomeMessageCopied'));
   };
   
   const selectedRole = AVAILABLE_ROLES.find(r => r.id === formData.role);
@@ -695,10 +697,10 @@ ${loginUrl}
             <div className="w-10 h-10 rounded-xl bg-brand-navy flex items-center justify-center">
               <UserPlus className="h-5 w-5 text-white" />
             </div>
-            {isRTL ? 'إنشاء حساب مستخدم جديد' : 'Create New User Account'}
+            {t('createNewUserAccount')}
           </DialogTitle>
           <DialogDescription>
-            {isRTL ? 'اتبع الخطوات لإنشاء حساب جديد' : 'Follow the steps to create a new account'}
+            {t('followTheStepsToCreateANewAccount')}
           </DialogDescription>
           
           {/* Progress Steps */}
@@ -721,11 +723,11 @@ ${loginUrl}
           
           {/* Step Labels */}
           <div className="flex justify-between mt-2 text-xs text-muted-foreground px-1">
-            <span className={step === 1 ? 'text-brand-navy font-medium' : ''}>{isRTL ? 'الدور' : 'Role'}</span>
+            <span className={step === 1 ? 'text-brand-navy font-medium' : ''}>{t('role')}</span>
             <span className={step === 2 ? 'text-brand-navy font-medium' : ''}>{isRTL ? 'البيانات' : 'Data'}</span>
-            <span className={step === 3 ? 'text-brand-navy font-medium' : ''}>{isRTL ? 'الصلاحيات' : 'Permissions'}</span>
-            <span className={step === 4 ? 'text-brand-navy font-medium' : ''}>{isRTL ? 'كلمة المرور' : 'Password'}</span>
-            <span className={step === 5 ? 'text-brand-navy font-medium' : ''}>{isRTL ? 'تأكيد' : 'Confirm'}</span>
+            <span className={step === 3 ? 'text-brand-navy font-medium' : ''}>{t('permissions')}</span>
+            <span className={step === 4 ? 'text-brand-navy font-medium' : ''}>{t('password')}</span>
+            <span className={step === 5 ? 'text-brand-navy font-medium' : ''}>{t('confirm')}</span>
           </div>
         </DialogHeader>
         
@@ -740,7 +742,7 @@ ${loginUrl}
               <div className="space-y-4">
                 <h3 className="font-cairo font-bold text-lg mb-4 flex items-center gap-2">
                   <Shield className="h-5 w-5 text-brand-navy" />
-                  {isRTL ? 'اختر نوع الحساب' : 'Select Account Type'}
+                  {t('selectAccountType')}
                 </h3>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -786,7 +788,7 @@ ${loginUrl}
               <div className="space-y-6">
                 <h3 className="font-cairo font-bold text-lg mb-4 flex items-center gap-2">
                   <User className="h-5 w-5 text-brand-navy" />
-                  {isRTL ? 'البيانات الأساسية للمستخدم' : 'User Basic Information'}
+                  {t('userBasicInformation')}
                 </h3>
                 
                 {/* الدور المختار */}
@@ -797,7 +799,7 @@ ${loginUrl}
                     </div>
                     <div>
                       <p className="text-sm font-medium">{isRTL ? selectedRole.name : selectedRole.name_en}</p>
-                      <p className="text-xs text-muted-foreground">{isRTL ? 'الدور المختار' : 'Selected Role'}</p>
+                      <p className="text-xs text-muted-foreground">{t('selectedRole')}</p>
                     </div>
                   </div>
                 )}
@@ -807,12 +809,12 @@ ${loginUrl}
                   <div className="space-y-2">
                     <Label className="flex items-center gap-2">
                       <User className="h-4 w-4" />
-                      {isRTL ? 'الاسم الكامل *' : 'Full Name *'}
+                      {t('fullName2')}
                     </Label>
                     <Input
                       value={formData.full_name}
                       onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                      placeholder={isRTL ? 'أدخل الاسم الكامل' : 'Enter full name'}
+                      placeholder={t('enterFullName2')}
                       className="rounded-xl"
                       data-testid="user-fullname-input"
                     />
@@ -822,7 +824,7 @@ ${loginUrl}
                   <div className="space-y-2">
                     <Label className="flex items-center gap-2">
                       <Mail className="h-4 w-4" />
-                      {isRTL ? 'البريد الإلكتروني *' : 'Email *'}
+                      {t('email4')}
                     </Label>
                     <Input
                       type="email"
@@ -856,11 +858,11 @@ ${loginUrl}
                   <div className="space-y-2">
                     <Label className="flex items-center gap-2">
                       <MapPin className="h-4 w-4" />
-                      {isRTL ? 'المنطقة *' : 'Region *'}
+                      {t('region')}
                     </Label>
                     <Select value={formData.region} onValueChange={(v) => setFormData({ ...formData, region: v })}>
                       <SelectTrigger className="rounded-xl">
-                        <SelectValue placeholder={isRTL ? 'اختر المنطقة' : 'Select region'} />
+                        <SelectValue placeholder={t('selectRegion')} />
                       </SelectTrigger>
                       <SelectContent>
                         {SAUDI_REGIONS.map((region) => (
@@ -876,7 +878,7 @@ ${loginUrl}
                   <div className="space-y-2">
                     <Label className="flex items-center gap-2">
                       <Building2 className="h-4 w-4" />
-                      {isRTL ? 'المدينة *' : 'City *'}
+                      {t('city3')}
                     </Label>
                     <Select 
                       value={formData.city} 
@@ -901,7 +903,7 @@ ${loginUrl}
                     <div className="space-y-2">
                       <Label className="flex items-center gap-2">
                         <GraduationCap className="h-4 w-4" />
-                        {isRTL ? 'الإدارة التعليمية' : 'Educational Department'}
+                        {t('educationalDepartment')}
                       </Label>
                       <Select 
                         value={formData.educational_department} 
@@ -909,7 +911,7 @@ ${loginUrl}
                         disabled={!formData.region}
                       >
                         <SelectTrigger className="rounded-xl">
-                          <SelectValue placeholder={isRTL ? 'اختر الإدارة التعليمية' : 'Select department'} />
+                          <SelectValue placeholder={t('selectDepartment')} />
                         </SelectTrigger>
                         <SelectContent>
                           {availableEducationalDepts.map((dept) => (
@@ -929,12 +931,12 @@ ${loginUrl}
                     <div className="space-y-2">
                       <Label className="flex items-center gap-2">
                         <School className="h-4 w-4" />
-                        {isRTL ? 'اسم المدرسة (عربي)' : 'School Name (Arabic)'}
+                        {t('schoolNameArabic')}
                       </Label>
                       <Input
                         value={formData.school_name_ar}
                         onChange={(e) => setFormData({ ...formData, school_name_ar: e.target.value })}
-                        placeholder={isRTL ? 'أدخل اسم المدرسة بالعربي' : 'Enter school name in Arabic'}
+                        placeholder={t('enterSchoolNameInArabic')}
                         className="rounded-xl"
                         data-testid="school-name-ar-input"
                       />
@@ -943,7 +945,7 @@ ${loginUrl}
                     <div className="space-y-2">
                       <Label className="flex items-center gap-2">
                         <School className="h-4 w-4" />
-                        {isRTL ? 'اسم المدرسة (English)' : 'School Name (English)'}
+                        {t('schoolNameEnglish')}
                       </Label>
                       <Input
                         value={formData.school_name_en}
@@ -967,10 +969,10 @@ ${loginUrl}
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-cairo font-bold text-lg flex items-center gap-2">
                     <Shield className="h-5 w-5 text-brand-navy" />
-                    {isRTL ? 'تحديد الصلاحيات' : 'Configure Permissions'}
+                    {t('configurePermissions')}
                   </h3>
                   <Badge variant="outline" className="text-sm">
-                    {selectedPermissions.length} {isRTL ? 'صلاحية محددة' : 'permissions selected'}
+                    {selectedPermissions.length} {t('permissionsSelected')}
                   </Badge>
                 </div>
                 
@@ -979,12 +981,10 @@ ${loginUrl}
                   <AlertTriangle className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
                   <div>
                     <p className="font-medium text-blue-800">
-                      {isRTL ? 'الصلاحيات الافتراضية' : 'Default Permissions'}
+                      {t('defaultPermissions')}
                     </p>
                     <p className="text-blue-600">
-                      {isRTL 
-                        ? 'تم تحميل الصلاحيات الافتراضية للدور المختار. يمكنك إضافة أو إزالة الصلاحيات حسب الحاجة.'
-                        : 'Default permissions for the selected role have been loaded. You can add or remove permissions as needed.'}
+                      {t('defaultPermissionsForTheSelectedRoleHaveBeenLoaded')}
                     </p>
                   </div>
                 </div>
@@ -1005,7 +1005,7 @@ ${loginUrl}
                                 : `${selectedRole?.name_en || 'Role'} Permissions`}
                             </p>
                             <p className="text-xs text-muted-foreground">
-                              {selectedPermissions.length} / {getPermissionsByRole(formData.role).length} {isRTL ? 'محددة' : 'selected'}
+                              {selectedPermissions.length} / {getPermissionsByRole(formData.role).length} {t('selected')}
                             </p>
                           </div>
                         </div>
@@ -1026,7 +1026,7 @@ ${loginUrl}
                         >
                           {selectedPermissions.length === getPermissionsByRole(formData.role).length 
                             ? (isRTL ? 'إلغاء الكل' : 'Deselect All')
-                            : (isRTL ? 'تحديد الكل' : 'Select All')
+                            : (t('selectAll'))
                           }
                         </Button>
                       </div>
@@ -1068,9 +1068,7 @@ ${loginUrl}
                   <div className="p-6 bg-muted/30 rounded-xl text-center">
                     <Shield className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
                     <p className="text-muted-foreground">
-                      {isRTL 
-                        ? 'الرجاء اختيار دور أولاً لعرض الصلاحيات'
-                        : 'Please select a role first to view permissions'}
+                      {t('pleaseSelectARoleFirstToViewPermissions')}
                     </p>
                   </div>
                 )}
@@ -1084,7 +1082,7 @@ ${loginUrl}
               <div className="space-y-6">
                 <h3 className="font-cairo font-bold text-lg mb-4 flex items-center gap-2">
                   <Lock className="h-5 w-5 text-brand-navy" />
-                  {isRTL ? 'كلمة المرور المؤقتة' : 'Temporary Password'}
+                  {t('temporaryPassword')}
                 </h3>
                 
                 {/* ملخص المستخدم */}
@@ -1109,7 +1107,7 @@ ${loginUrl}
                 
                 {/* كلمة المرور */}
                 <div className="space-y-3">
-                  <Label>{isRTL ? 'كلمة المرور المؤقتة' : 'Temporary Password'}</Label>
+                  <Label>{t('temporaryPassword')}</Label>
                   <div className="flex items-center gap-2">
                     <div className="relative flex-1">
                       <Input
@@ -1134,13 +1132,11 @@ ${loginUrl}
                       className="rounded-xl"
                     >
                       <Settings className="h-4 w-4 me-2" />
-                      {isRTL ? 'توليد جديدة' : 'Regenerate'}
+                      {t('regenerate')}
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {isRTL 
-                      ? 'سيُطلب من المستخدم تغيير كلمة المرور عند تسجيل الدخول لأول مرة'
-                      : 'User will be required to change password on first login'}
+                    {t('userWillBeRequiredToChangePasswordOnFirstLogin')}
                   </p>
                 </div>
                 
@@ -1150,10 +1146,10 @@ ${loginUrl}
                     <Shield className="h-6 w-6 text-green-600" />
                     <div>
                       <p className="font-medium text-green-800">
-                        {selectedPermissions.length} {isRTL ? 'صلاحية' : 'permissions'}
+                        {selectedPermissions.length} {t('permissions2')}
                       </p>
                       <p className="text-sm text-green-600">
-                        {isRTL ? 'سيتم منحها للمستخدم' : 'will be granted to the user'}
+                        {t('willBeGrantedToTheUser')}
                       </p>
                     </div>
                   </div>
@@ -1176,9 +1172,7 @@ ${loginUrl}
                     {isRTL ? 'تم إنشاء الحساب بنجاح!' : 'Account Created Successfully!'}
                   </h3>
                   <p className="text-muted-foreground mt-2">
-                    {isRTL 
-                      ? 'يمكنك الآن إرسال بيانات الدخول للمستخدم'
-                      : 'You can now send login credentials to the user'}
+                    {t('youCanNowSendLoginCredentialsToTheUser')}
                   </p>
                 </div>
                 
@@ -1187,12 +1181,12 @@ ${loginUrl}
                   <CardContent className="p-4 space-y-3">
                     <div className="flex items-center gap-2 mb-3">
                       <Key className="h-5 w-5" />
-                      <span className="font-cairo font-medium">{isRTL ? 'بيانات تسجيل الدخول' : 'Login Credentials'}</span>
+                      <span className="font-cairo font-medium">{t('loginCredentials3')}</span>
                     </div>
                     
                     <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
                       <div>
-                        <p className="text-xs text-muted-foreground">{isRTL ? 'البريد الإلكتروني' : 'Email'}</p>
+                        <p className="text-xs text-muted-foreground">{t('email2')}</p>
                         <p className="font-mono text-sm">{formData.email}</p>
                       </div>
                     </div>
@@ -1209,11 +1203,11 @@ ${loginUrl}
                     <div className="flex gap-2 pt-2">
                       <Button onClick={copyCredentials} variant="outline" className="flex-1 rounded-xl">
                         {copied ? <Check className="h-4 w-4 me-2" /> : <Copy className="h-4 w-4 me-2" />}
-                        {isRTL ? 'نسخ البيانات' : 'Copy Credentials'}
+                        {t('copyCredentials')}
                       </Button>
                       <Button onClick={copyWelcomeMessage} className="flex-1 bg-brand-navy rounded-xl">
                         {copiedMessage ? <Check className="h-4 w-4 me-2" /> : <Send className="h-4 w-4 me-2" />}
-                        {isRTL ? 'نسخ رسالة الترحيب' : 'Copy Welcome Message'}
+                        {t('copyWelcomeMessage')}
                       </Button>
                     </div>
                   </CardContent>
@@ -1242,7 +1236,7 @@ ${loginUrl}
                 disabled={!isStepValid()}
                 className="bg-brand-navy rounded-xl min-w-[100px]"
               >
-                {isRTL ? 'التالي' : 'Next'}
+                {t('next')}
                 <ChevronLeft className="h-4 w-4 ms-2 rtl:rotate-180" />
               </Button>
             )}
@@ -1256,12 +1250,12 @@ ${loginUrl}
                 {isSubmitting ? (
                   <>
                     <Settings className="h-4 w-4 me-2 animate-spin" />
-                    {isRTL ? 'جاري الإنشاء...' : 'Creating...'}
+                    {t('creating')}
                   </>
                 ) : (
                   <>
                     <CheckCircle2 className="h-4 w-4 me-2" />
-                    {isRTL ? 'إنشاء الحساب' : 'Create Account'}
+                    {t('createAccount')}
                   </>
                 )}
               </Button>
@@ -1272,7 +1266,7 @@ ${loginUrl}
                 onClick={() => onOpenChange(false)}
                 className="bg-brand-navy rounded-xl min-w-[100px]"
               >
-                {isRTL ? 'إغلاق' : 'Close'}
+                {t('close')}
               </Button>
             )}
           </div>

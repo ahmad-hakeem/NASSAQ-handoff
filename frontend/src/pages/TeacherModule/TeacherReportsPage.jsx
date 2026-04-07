@@ -19,6 +19,7 @@ import {
   UserCheck, AlertCircle, Sparkles
 } from 'lucide-react';
 
+import { useTranslation } from '../../contexts/ThemeContext';
 export default function TeacherReportsPage() {
   const { user, api, isRTL } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -78,6 +79,7 @@ export default function TeacherReportsPage() {
       const classMetrics = (metricsRes?.data && typeof metricsRes.data === 'object') ? (metricsRes.data[selectedClass] || {}) : {};
 
       const filterByTime = (items, dateField = 'created_at') => {
+  const { t } = useTranslation();
         if (timePeriod === 'all') return items;
         const now = new Date();
         const cutoff = new Date();
@@ -198,7 +200,7 @@ export default function TeacherReportsPage() {
       });
     } catch (error) {
       console.error('Error:', error);
-      nassaqError(isRTL ? 'خطأ في تحميل التقارير' : 'Error loading reports');
+      nassaqError(t('errorLoadingReports'));
     } finally {
       setLoading(false);
     }
@@ -217,12 +219,12 @@ export default function TeacherReportsPage() {
   const handleExport = async (fmt) => {
     setExporting(fmt);
     try {
-      toast.info(isRTL ? 'جاري تحضير التقرير...' : 'Preparing report...');
+      toast.info(t('preparingReport'));
       const response = await api.get(`/export/report/teacher_activity?format=${fmt}`, { responseType: 'blob' });
       const url = URL.createObjectURL(response.data);
       const a = document.createElement('a');
       a.href = url; a.download = `teacher_activity.${fmt}`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-      toast.success(isRTL ? 'تم تصدير التقرير بنجاح' : 'Report exported successfully');
+      toast.success(t('reportExportedSuccessfully'));
     } catch (err) {
       console.error('Export error:', err);
       nassaqError(isRTL ? 'فشل تصدير التقرير' : 'Export failed');
@@ -242,22 +244,22 @@ export default function TeacherReportsPage() {
                 {isRTL ? 'التقارير والتحليلات' : 'Reports & Analytics'}
               </h1>
               <p className="text-sm text-muted-foreground">
-                {selectedClassName ? (isRTL ? `تقارير: ${selectedClassName}` : `Reports: ${selectedClassName}`) : (isRTL ? 'اختر فصلاً لعرض التقارير' : 'Select a class')}
+                {selectedClassName ? (isRTL ? `تقارير: ${selectedClassName}` : `Reports: ${selectedClassName}`) : (t('selectAClass'))}
               </p>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <Select value={selectedClass} onValueChange={setSelectedClass}>
-                <SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder={isRTL ? 'الفصل' : 'Class'} /></SelectTrigger>
+                <SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder={t('class')} /></SelectTrigger>
                 <SelectContent>{classes.map(cls => (<SelectItem key={cls.id} value={cls.id}>{cls.name}</SelectItem>))}</SelectContent>
               </Select>
               <Select value={timePeriod} onValueChange={setTimePeriod}>
                 <SelectTrigger className="w-full sm:w-[130px]"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">{isRTL ? 'كل الفترات' : 'All Time'}</SelectItem>
-                  <SelectItem value="today">{isRTL ? 'اليوم' : 'Today'}</SelectItem>
-                  <SelectItem value="week">{isRTL ? 'الأسبوع' : 'This Week'}</SelectItem>
-                  <SelectItem value="month">{isRTL ? 'الشهر' : 'This Month'}</SelectItem>
-                  <SelectItem value="semester">{isRTL ? 'الفصل الدراسي' : 'Semester'}</SelectItem>
+                  <SelectItem value="all">{t('allTime')}</SelectItem>
+                  <SelectItem value="today">{t('today2')}</SelectItem>
+                  <SelectItem value="week">{t('thisWeek')}</SelectItem>
+                  <SelectItem value="month">{t('thisMonth')}</SelectItem>
+                  <SelectItem value="semester">{t('semester')}</SelectItem>
                 </SelectContent>
               </Select>
               <Button variant="outline" size="sm" onClick={fetchReportData} disabled={loading}><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /></Button>
@@ -276,22 +278,22 @@ export default function TeacherReportsPage() {
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
               <Loader2 className="h-8 w-8 animate-spin text-brand-turquoise" />
-              <p className="text-sm text-muted-foreground font-tajawal">{isRTL ? 'جاري تحميل التقارير...' : 'Loading reports...'}</p>
+              <p className="text-sm text-muted-foreground font-tajawal">{t('loadingReports')}</p>
             </div>
           ) : !rd ? (
-            <Card><CardContent className="text-center py-16"><BarChart3 className="h-16 w-16 mx-auto mb-4 text-muted-foreground/30" /><p className="text-muted-foreground font-cairo">{isRTL ? 'اختر فصلاً' : 'Select a class'}</p></CardContent></Card>
+            <Card><CardContent className="text-center py-16"><BarChart3 className="h-16 w-16 mx-auto mb-4 text-muted-foreground/30" /><p className="text-muted-foreground font-cairo">{t('selectAClass2')}</p></CardContent></Card>
           ) : (
             <>
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
                 {[
-                  { label: isRTL ? 'الطلاب' : 'Students', value: rd.summary.totalStudents, icon: Users, color: 'text-brand-navy', bg: 'bg-blue-50 dark:bg-blue-950/30' },
-                  { label: isRTL ? 'الحضور' : 'Attendance', value: `${rd.summary.attendanceRate}%`, icon: ClipboardCheck, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-950/30' },
+                  { label: t('students'), value: rd.summary.totalStudents, icon: Users, color: 'text-brand-navy', bg: 'bg-blue-50 dark:bg-blue-950/30' },
+                  { label: t('attendance2'), value: `${rd.summary.attendanceRate}%`, icon: ClipboardCheck, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-950/30' },
                   { label: isRTL ? 'المعدل' : 'Avg Grade', value: rd.summary.avgGrade || '-', icon: FileText, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/30' },
                   { label: isRTL ? 'المشاركة' : 'Participation', value: `${rd.summary.participationRate}%`, icon: Activity, color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-950/30' },
                   { label: isRTL ? 'الحصص' : 'Sessions', value: rd.summary.totalSessions, icon: Flame, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/30' },
-                  { label: isRTL ? 'إيجابي' : 'Positive', value: rd.summary.positiveBehavior, icon: TrendingUp, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-950/30' },
-                  { label: isRTL ? 'سلبي' : 'Negative', value: rd.summary.negativeBehavior, icon: TrendingDown, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/30' },
-                  { label: isRTL ? 'التقييمات' : 'Assessments', value: rd.summary.assessmentsCount, icon: BookOpen, color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-950/30' },
+                  { label: t('positive'), value: rd.summary.positiveBehavior, icon: TrendingUp, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-950/30' },
+                  { label: t('negative'), value: rd.summary.negativeBehavior, icon: TrendingDown, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/30' },
+                  { label: t('assessments'), value: rd.summary.assessmentsCount, icon: BookOpen, color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-950/30' },
                 ].map(stat => (
                   <Card key={stat.label} className="overflow-hidden"><CardContent className={`p-3 text-center ${stat.bg}`}>
                     <stat.icon className={`h-5 w-5 mx-auto mb-1.5 ${stat.color}`} />
@@ -303,27 +305,27 @@ export default function TeacherReportsPage() {
 
               <Tabs value={activeTab} onValueChange={setActiveTab}>
                 <TabsList className="mb-4 bg-muted/50 flex-wrap">
-                  <TabsTrigger value="overview" className="gap-1.5"><BarChart3 className="h-3.5 w-3.5" />{isRTL ? 'نظرة عامة' : 'Overview'}</TabsTrigger>
-                  <TabsTrigger value="attendance" className="gap-1.5"><ClipboardCheck className="h-3.5 w-3.5" />{isRTL ? 'الحضور' : 'Attendance'}</TabsTrigger>
-                  <TabsTrigger value="behavior" className="gap-1.5"><Shield className="h-3.5 w-3.5" />{isRTL ? 'السلوك' : 'Behavior'}</TabsTrigger>
-                  <TabsTrigger value="grades" className="gap-1.5"><Star className="h-3.5 w-3.5" />{isRTL ? 'الدرجات' : 'Grades'}</TabsTrigger>
+                  <TabsTrigger value="overview" className="gap-1.5"><BarChart3 className="h-3.5 w-3.5" />{t('overview')}</TabsTrigger>
+                  <TabsTrigger value="attendance" className="gap-1.5"><ClipboardCheck className="h-3.5 w-3.5" />{t('attendance2')}</TabsTrigger>
+                  <TabsTrigger value="behavior" className="gap-1.5"><Shield className="h-3.5 w-3.5" />{t('behavior')}</TabsTrigger>
+                  <TabsTrigger value="grades" className="gap-1.5"><Star className="h-3.5 w-3.5" />{t('grades')}</TabsTrigger>
                   <TabsTrigger value="attention" className="gap-1.5">
-                    <AlertTriangle className="h-3.5 w-3.5" />{isRTL ? 'يحتاج متابعة' : 'Needs Attention'}
+                    <AlertTriangle className="h-3.5 w-3.5" />{t('needsAttention')}
                     {rd.needsAttention.length > 0 && <Badge className="bg-amber-500 text-white text-[9px] px-1.5 h-4 border-0">{rd.needsAttention.length}</Badge>}
                   </TabsTrigger>
-                  <TabsTrigger value="trend" className="gap-1.5"><TrendingUp className="h-3.5 w-3.5" />{isRTL ? 'الاتجاه' : 'Trends'}</TabsTrigger>
+                  <TabsTrigger value="trend" className="gap-1.5"><TrendingUp className="h-3.5 w-3.5" />{t('trends')}</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="overview">
                   <div className="grid md:grid-cols-2 gap-4">
                     <Card>
-                      <CardHeader className="pb-3"><CardTitle className="text-base font-cairo flex items-center gap-2"><BarChart3 className="h-4 w-4 text-brand-turquoise" />{isRTL ? 'توزيع الدرجات' : 'Grade Distribution'}</CardTitle></CardHeader>
+                      <CardHeader className="pb-3"><CardTitle className="text-base font-cairo flex items-center gap-2"><BarChart3 className="h-4 w-4 text-brand-turquoise" />{t('gradeDistribution')}</CardTitle></CardHeader>
                       <CardContent className="space-y-3">
                         {[
-                          { label: isRTL ? 'ممتاز (90+)' : 'Excellent (90+)', count: rd.gradeDistribution.excellent, color: 'bg-green-500', textColor: 'text-green-600' },
-                          { label: isRTL ? 'جيد جداً (75-89)' : 'Very Good (75-89)', count: rd.gradeDistribution.veryGood, color: 'bg-blue-500', textColor: 'text-blue-600' },
-                          { label: isRTL ? 'جيد (60-74)' : 'Good (60-74)', count: rd.gradeDistribution.good, color: 'bg-amber-500', textColor: 'text-amber-600' },
-                          { label: isRTL ? 'يحتاج تحسين (<60)' : 'Needs Work (<60)', count: rd.gradeDistribution.needsWork, color: 'bg-red-500', textColor: 'text-red-600' },
+                          { label: t('excellent90'), count: rd.gradeDistribution.excellent, color: 'bg-green-500', textColor: 'text-green-600' },
+                          { label: t('veryGood7589'), count: rd.gradeDistribution.veryGood, color: 'bg-blue-500', textColor: 'text-blue-600' },
+                          { label: t('good6074'), count: rd.gradeDistribution.good, color: 'bg-amber-500', textColor: 'text-amber-600' },
+                          { label: t('needsWork60'), count: rd.gradeDistribution.needsWork, color: 'bg-red-500', textColor: 'text-red-600' },
                         ].map(tier => {
                           const pct = rd.summary.totalStudents > 0 ? (tier.count / rd.summary.totalStudents) * 100 : 0;
                           return (<div key={tier.label}><div className="flex justify-between text-sm mb-1"><span className={`${tier.textColor} font-medium text-xs`}>{tier.label}</span><span className="text-xs font-bold font-cairo">{tier.count} ({Math.round(pct)}%)</span></div><div className="h-2.5 bg-muted/30 rounded-full overflow-hidden"><div className={`h-full ${tier.color} rounded-full transition-all duration-700`} style={{ width: `${pct}%` }} /></div></div>);
@@ -353,32 +355,32 @@ export default function TeacherReportsPage() {
                 <TabsContent value="attendance">
                   <div className="grid md:grid-cols-2 gap-4">
                     <Card>
-                      <CardHeader className="pb-3"><CardTitle className="text-base font-cairo flex items-center gap-2"><ClipboardCheck className="h-4 w-4 text-green-500" />{isRTL ? 'ملخص الحضور' : 'Attendance Summary'}</CardTitle></CardHeader>
+                      <CardHeader className="pb-3"><CardTitle className="text-base font-cairo flex items-center gap-2"><ClipboardCheck className="h-4 w-4 text-green-500" />{t('attendanceSummary')}</CardTitle></CardHeader>
                       <CardContent className="space-y-4">
                         <div className="grid grid-cols-3 gap-3 text-center">
-                          <div className="p-3 rounded-xl bg-green-50 dark:bg-green-950/30"><div className="text-2xl font-bold font-cairo text-green-600">{rd.summary.presentCount}</div><div className="text-[10px] text-muted-foreground">{isRTL ? 'حاضر' : 'Present'}</div></div>
-                          <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/30"><div className="text-2xl font-bold font-cairo text-red-600">{rd.summary.absentCount}</div><div className="text-[10px] text-muted-foreground">{isRTL ? 'غائب' : 'Absent'}</div></div>
-                          <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30"><div className="text-2xl font-bold font-cairo text-amber-600">{rd.summary.lateCount}</div><div className="text-[10px] text-muted-foreground">{isRTL ? 'متأخر' : 'Late'}</div></div>
+                          <div className="p-3 rounded-xl bg-green-50 dark:bg-green-950/30"><div className="text-2xl font-bold font-cairo text-green-600">{rd.summary.presentCount}</div><div className="text-[10px] text-muted-foreground">{t('present')}</div></div>
+                          <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/30"><div className="text-2xl font-bold font-cairo text-red-600">{rd.summary.absentCount}</div><div className="text-[10px] text-muted-foreground">{t('absent')}</div></div>
+                          <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30"><div className="text-2xl font-bold font-cairo text-amber-600">{rd.summary.lateCount}</div><div className="text-[10px] text-muted-foreground">{t('late')}</div></div>
                         </div>
-                        <div><div className="flex justify-between text-sm mb-1"><span className="text-muted-foreground text-xs">{isRTL ? 'نسبة الحضور العامة' : 'Overall Attendance'}</span><span className="font-bold font-cairo text-xs">{rd.summary.attendanceRate}%</span></div><Progress value={rd.summary.attendanceRate} className="h-2.5" /></div>
+                        <div><div className="flex justify-between text-sm mb-1"><span className="text-muted-foreground text-xs">{t('overallAttendance3')}</span><span className="font-bold font-cairo text-xs">{rd.summary.attendanceRate}%</span></div><Progress value={rd.summary.attendanceRate} className="h-2.5" /></div>
                       </CardContent>
                     </Card>
                     <div className="space-y-4">
                       <Card>
-                        <CardHeader className="pb-2"><CardTitle className="text-sm font-cairo flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-red-500" />{isRTL ? 'الأكثر غياباً' : 'Most Absent'}</CardTitle></CardHeader>
+                        <CardHeader className="pb-2"><CardTitle className="text-sm font-cairo flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-red-500" />{t('mostAbsent')}</CardTitle></CardHeader>
                         <CardContent>
-                          {rd.mostAbsent.length === 0 ? <p className="text-xs text-muted-foreground text-center py-4">{isRTL ? 'لا يوجد غياب' : 'No absences'}</p> : (
+                          {rd.mostAbsent.length === 0 ? <p className="text-xs text-muted-foreground text-center py-4">{t('noAbsences')}</p> : (
                             <div className="space-y-1.5">{rd.mostAbsent.map((s, i) => (
                               <div key={s.id || i} className="flex items-center justify-between p-2 rounded-lg bg-red-50/50 dark:bg-red-950/10">
                                 <span className="text-xs font-medium truncate">{s.full_name}</span>
-                                <Badge className="bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 border-0 text-[10px]">{s.absentCount} {isRTL ? 'غياب' : 'absent'}</Badge>
+                                <Badge className="bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 border-0 text-[10px]">{s.absentCount} {t('absent3')}</Badge>
                               </div>
                             ))}</div>
                           )}
                         </CardContent>
                       </Card>
                       <Card>
-                        <CardHeader className="pb-2"><CardTitle className="text-sm font-cairo flex items-center gap-2"><UserCheck className="h-4 w-4 text-green-500" />{isRTL ? 'الأكثر التزاماً' : 'Most Present'}</CardTitle></CardHeader>
+                        <CardHeader className="pb-2"><CardTitle className="text-sm font-cairo flex items-center gap-2"><UserCheck className="h-4 w-4 text-green-500" />{t('mostPresent')}</CardTitle></CardHeader>
                         <CardContent>
                           {rd.mostPresent.length === 0 ? <p className="text-xs text-muted-foreground text-center py-4">{isRTL ? 'لا توجد بيانات' : 'No data'}</p> : (
                             <div className="space-y-1.5">{rd.mostPresent.slice(0, 3).map((s, i) => (
@@ -397,15 +399,15 @@ export default function TeacherReportsPage() {
                 <TabsContent value="behavior">
                   <div className="grid md:grid-cols-2 gap-4">
                     <Card>
-                      <CardHeader className="pb-3"><CardTitle className="text-base font-cairo flex items-center gap-2"><Shield className="h-4 w-4 text-purple-500" />{isRTL ? 'ملخص السلوك' : 'Behavior Summary'}</CardTitle></CardHeader>
+                      <CardHeader className="pb-3"><CardTitle className="text-base font-cairo flex items-center gap-2"><Shield className="h-4 w-4 text-purple-500" />{t('behaviorSummary')}</CardTitle></CardHeader>
                       <CardContent className="space-y-4">
                         <div className="grid grid-cols-2 gap-3 text-center">
-                          <div className="p-4 rounded-xl bg-green-50 dark:bg-green-950/30"><ThumbsUp className="w-6 h-6 mx-auto mb-1 text-green-600" /><div className="text-2xl font-bold font-cairo text-green-600">{rd.summary.positiveBehavior}</div><div className="text-[10px] text-muted-foreground">{isRTL ? 'إيجابي' : 'Positive'}</div></div>
-                          <div className="p-4 rounded-xl bg-red-50 dark:bg-red-950/30"><ThumbsDown className="w-6 h-6 mx-auto mb-1 text-red-600" /><div className="text-2xl font-bold font-cairo text-red-600">{rd.summary.negativeBehavior}</div><div className="text-[10px] text-muted-foreground">{isRTL ? 'سلبي' : 'Negative'}</div></div>
+                          <div className="p-4 rounded-xl bg-green-50 dark:bg-green-950/30"><ThumbsUp className="w-6 h-6 mx-auto mb-1 text-green-600" /><div className="text-2xl font-bold font-cairo text-green-600">{rd.summary.positiveBehavior}</div><div className="text-[10px] text-muted-foreground">{t('positive')}</div></div>
+                          <div className="p-4 rounded-xl bg-red-50 dark:bg-red-950/30"><ThumbsDown className="w-6 h-6 mx-auto mb-1 text-red-600" /><div className="text-2xl font-bold font-cairo text-red-600">{rd.summary.negativeBehavior}</div><div className="text-[10px] text-muted-foreground">{t('negative')}</div></div>
                         </div>
                         {Object.keys(rd.behaviorTypes).length > 0 && (
                           <div>
-                            <h4 className="text-xs font-semibold font-cairo mb-2">{isRTL ? 'أنواع السلوكيات' : 'Behavior Types'}</h4>
+                            <h4 className="text-xs font-semibold font-cairo mb-2">{t('behaviorTypes')}</h4>
                             <div className="space-y-1.5">{Object.entries(rd.behaviorTypes).sort(([, a], [, b]) => b - a).slice(0, 5).map(([type, count]) => (
                               <div key={type} className="flex items-center justify-between p-2 rounded-lg bg-muted/30">
                                 <span className="text-xs capitalize">{type}</span>
@@ -417,9 +419,9 @@ export default function TeacherReportsPage() {
                       </CardContent>
                     </Card>
                     <Card>
-                      <CardHeader className="pb-3"><CardTitle className="text-base font-cairo flex items-center gap-2"><AlertCircle className="h-4 w-4 text-amber-500" />{isRTL ? 'طلاب يحتاجون متابعة سلوكية' : 'Behavior Watch List'}</CardTitle></CardHeader>
+                      <CardHeader className="pb-3"><CardTitle className="text-base font-cairo flex items-center gap-2"><AlertCircle className="h-4 w-4 text-amber-500" />{t('behaviorWatchList')}</CardTitle></CardHeader>
                       <CardContent>
-                        {Object.keys(rd.studentBehavior).length === 0 ? (<div className="text-center py-8 text-sm text-muted-foreground">{isRTL ? 'لا توجد سجلات سلوك' : 'No behavior records'}</div>) : (
+                        {Object.keys(rd.studentBehavior).length === 0 ? (<div className="text-center py-8 text-sm text-muted-foreground">{t('noBehaviorRecords2')}</div>) : (
                           <div className="space-y-2">{Object.entries(rd.studentBehavior).filter(([, b]) => b.negative >= 2).sort(([, a], [, b]) => b.negative - a.negative).slice(0, 5).map(([sid, b]) => {
                             const student = rd.topPerformers.find(s => s.id === sid) || { full_name: sid };
                             return (<div key={sid} className="flex items-center justify-between p-2.5 rounded-lg border border-amber-200/60 dark:border-amber-800/30 bg-amber-50/50 dark:bg-amber-950/10">
@@ -436,10 +438,10 @@ export default function TeacherReportsPage() {
                 <TabsContent value="grades">
                   <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
                     {[
-                      { label: isRTL ? 'ممتاز' : 'Excellent', labelEn: '90+', count: rd.gradeDistribution.excellent, icon: Star, gradient: 'from-green-500 to-emerald-600', bg: 'bg-green-50 dark:bg-green-950/30' },
-                      { label: isRTL ? 'جيد جداً' : 'Very Good', labelEn: '75-89', count: rd.gradeDistribution.veryGood, icon: GraduationCap, gradient: 'from-blue-500 to-indigo-600', bg: 'bg-blue-50 dark:bg-blue-950/30' },
-                      { label: isRTL ? 'جيد' : 'Good', labelEn: '60-74', count: rd.gradeDistribution.good, icon: FileText, gradient: 'from-amber-500 to-yellow-600', bg: 'bg-amber-50 dark:bg-amber-950/30' },
-                      { label: isRTL ? 'يحتاج تحسين' : 'Needs Work', labelEn: '<60', count: rd.gradeDistribution.needsWork, icon: AlertTriangle, gradient: 'from-red-500 to-rose-600', bg: 'bg-red-50 dark:bg-red-950/30' },
+                      { label: t('excellent'), labelEn: '90+', count: rd.gradeDistribution.excellent, icon: Star, gradient: 'from-green-500 to-emerald-600', bg: 'bg-green-50 dark:bg-green-950/30' },
+                      { label: t('veryGood'), labelEn: '75-89', count: rd.gradeDistribution.veryGood, icon: GraduationCap, gradient: 'from-blue-500 to-indigo-600', bg: 'bg-blue-50 dark:bg-blue-950/30' },
+                      { label: t('good'), labelEn: '60-74', count: rd.gradeDistribution.good, icon: FileText, gradient: 'from-amber-500 to-yellow-600', bg: 'bg-amber-50 dark:bg-amber-950/30' },
+                      { label: t('needsWork'), labelEn: '<60', count: rd.gradeDistribution.needsWork, icon: AlertTriangle, gradient: 'from-red-500 to-rose-600', bg: 'bg-red-50 dark:bg-red-950/30' },
                     ].map(tier => (
                       <Card key={tier.label} className={`overflow-hidden ${tier.bg}`}><CardContent className="p-5 text-center">
                         <div className={`w-12 h-12 mx-auto mb-3 rounded-xl bg-gradient-to-br ${tier.gradient} flex items-center justify-center shadow-sm`}><tier.icon className="h-6 w-6 text-white" /></div>
@@ -452,7 +454,7 @@ export default function TeacherReportsPage() {
 
                 <TabsContent value="attention">
                   <Card>
-                    <CardHeader className="pb-3"><CardTitle className="text-base font-cairo flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-amber-500" />{isRTL ? 'طلاب يحتاجون متابعة' : 'Students Needing Attention'}</CardTitle></CardHeader>
+                    <CardHeader className="pb-3"><CardTitle className="text-base font-cairo flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-amber-500" />{t('studentsNeedingAttention')}</CardTitle></CardHeader>
                     <CardContent>
                       {rd.needsAttention.length === 0 ? (
                         <div className="flex flex-col items-center py-10 text-center">
@@ -466,10 +468,10 @@ export default function TeacherReportsPage() {
                               <div className="flex items-center gap-3">
                                 <Avatar className="h-8 w-8"><AvatarFallback className={`text-xs font-bold ${student.issues.length >= 2 ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600'}`}>{student.full_name?.charAt(0) || '?'}</AvatarFallback></Avatar>
                                 <div>
-                                  <span className="font-medium text-sm">{student.full_name || `${isRTL ? 'طالب' : 'Student'} ${idx + 1}`}</span>
+                                  <span className="font-medium text-sm">{student.full_name || `${t('student')} ${idx + 1}`}</span>
                                   <div className="flex gap-2 text-[10px] text-muted-foreground mt-0.5">
                                     {student.attRate !== null && <span>{isRTL ? 'حضور' : 'Att'}: {student.attRate}%</span>}
-                                    {student.gradeAvg !== null && <span>{isRTL ? 'معدل' : 'Avg'}: {student.gradeAvg}%</span>}
+                                    {student.gradeAvg !== null && <span>{t('avg')}: {student.gradeAvg}%</span>}
                                   </div>
                                 </div>
                               </div>
@@ -488,10 +490,10 @@ export default function TeacherReportsPage() {
 
                 <TabsContent value="trend">
                   <Card>
-                    <CardHeader className="pb-3"><CardTitle className="text-base font-cairo flex items-center gap-2"><TrendingUp className="h-4 w-4 text-brand-turquoise" />{isRTL ? 'اتجاه الحضور (آخر 7 أيام)' : 'Attendance Trend (Last 7 Days)'}</CardTitle></CardHeader>
+                    <CardHeader className="pb-3"><CardTitle className="text-base font-cairo flex items-center gap-2"><TrendingUp className="h-4 w-4 text-brand-turquoise" />{t('attendanceTrendLast7Days')}</CardTitle></CardHeader>
                     <CardContent>
                       {rd.weeklyTrend.length === 0 ? (
-                        <div className="flex flex-col items-center py-10 text-center"><Calendar className="h-10 w-10 text-muted-foreground/30 mb-3" /><p className="text-sm text-muted-foreground font-cairo">{isRTL ? 'لا توجد بيانات حضور كافية' : 'Not enough attendance data'}</p></div>
+                        <div className="flex flex-col items-center py-10 text-center"><Calendar className="h-10 w-10 text-muted-foreground/30 mb-3" /><p className="text-sm text-muted-foreground font-cairo">{t('notEnoughAttendanceData')}</p></div>
                       ) : (
                         <div className="space-y-4">
                           <div className="flex items-end gap-2 h-40">{rd.weeklyTrend.map((day, i) => {

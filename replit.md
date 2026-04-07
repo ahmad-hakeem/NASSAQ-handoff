@@ -47,6 +47,18 @@ Every task must follow these principles before delivery:
 - Regression test on connected parts after any change
 - Discover and fix issues before delivery, not after user encounters them
 
+### Internationalization (i18n) System — Task #60
+- **Architecture**: JSON locale files (`frontend/src/locales/ar.json`, `en.json`) with 2600+ translation keys
+- **Hook**: `useTranslation()` from `contexts/ThemeContext.js` — returns `{ t, language, localizedValue }`
+- **`t(key, params)`**: Static UI text translation. Supports parameter interpolation with `{param}` syntax — e.g., `t('sentToRecipients', { count: 5 })`
+- **`localizedValue(item, field)`**: Dynamic data localization — returns `item.name_ar` or `item.name_en` based on current language, with fallback chain
+- **Backend TranslationService**: `backend/services/translation_service.py` — OpenAI-powered ar↔en auto-translation on save. Integrated into school info and subject routes.
+- **Functions**: `translate_text(text, source, target)`, `translate_fields(data, fields)`, `detect_language(text)`
+- **Conversion**: 4300+ `isRTL ? 'عربي' : 'English'` ternaries converted to `t('key')` calls across 109 files
+- **Remaining `isRTL` uses**: Legitimate CSS direction (`'rtl'`/`'ltr'`, `'left'`/`'right'`), icon swaps (`ArrowLeft`/`ArrowRight`), dynamic data display (`item.name_ar`/`item.name_en`), template literals with variables
+- **Adding new translations**: Add key to both `ar.json` and `en.json`, use `t('key')` in JSX
+- **Old `translations` export**: Still available from `ThemeContext.js` as `translations` (aliased to `locales`) for backward compatibility
+
 ### Alert & Warning System
 - All warning/error/confirm dialogs use `NassaqAlertDialog` component (`frontend/src/components/ui/NassaqAlertDialog.jsx`)
 - `NassaqAlertProvider` wraps the app in `App.js` — all components can use `useNassaqAlert()` hook

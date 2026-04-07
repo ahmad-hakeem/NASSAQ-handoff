@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
 import { Sidebar } from '../components/layout/Sidebar';
 import { HakimAssistant } from '../components/hakim/HakimAssistant';
@@ -91,6 +91,7 @@ const statusConfig = {
 };
 
 export const TeacherAttendancePage = () => {
+  const { t } = useTranslation();
   const { user, api } = useAuth();
   const { isRTL, toggleTheme, toggleLanguage, isDark } = useTheme();
   const { nassaqWarning, nassaqError } = useNassaqAlert();
@@ -143,7 +144,7 @@ export const TeacherAttendancePage = () => {
       }
     } catch (error) {
       console.error('Failed to fetch teachers:', error);
-      nassaqError(isRTL ? 'فشل تحميل بيانات المعلمين' : 'Failed to load teachers data');
+      nassaqError(t('failedToLoadTeachersData'));
     } finally {
       setLoading(false);
     }
@@ -187,7 +188,7 @@ export const TeacherAttendancePage = () => {
       }));
 
     if (records.length === 0) {
-      nassaqWarning(isRTL ? 'لا يوجد سجلات حضور للحفظ' : 'No attendance records to save');
+      nassaqWarning(t('noAttendanceRecordsToSave'));
       return;
     }
 
@@ -224,7 +225,7 @@ export const TeacherAttendancePage = () => {
     } catch (error) {
       console.error('Failed to save attendance:', error);
       const detail = error.response?.data?.detail;
-      nassaqError(detail || (isRTL ? 'فشل حفظ الحضور' : 'Failed to save attendance'));
+      nassaqError(detail || (t('failedToSaveAttendance')));
     } finally {
       setSaving(false);
     }
@@ -292,9 +293,7 @@ export const TeacherAttendancePage = () => {
                 {isRTL ? 'إدارة حضور المعلمين والاداريين' : 'Staff Attendance Management'}
               </h1>
               <p className="text-sm text-muted-foreground font-tajawal">
-                {isRTL 
-                  ? 'متابعة وتسجيل حضور المعلمين والاداريين داخل المدرسة' 
-                  : 'Track and manage staff attendance in the school'}
+                {t('trackAndManageStaffAttendanceInTheSchool')}
               </p>
             </div>
             
@@ -322,12 +321,10 @@ export const TeacherAttendancePage = () => {
                 </div>
                 <div>
                   <h3 className="font-semibold text-brand-turquoise mb-1">
-                    {isRTL ? 'حضور المعلمين والاداريين' : 'Staff Attendance'}
+                    {t('staffAttendance2')}
                   </h3>
                   <p className="text-sm text-muted-foreground">
-                    {isRTL 
-                      ? 'هذه الصفحة مخصصة لمتابعة وإدارة حضور المعلمين والاداريين داخل المدرسة، وتشمل تسجيل الحضور والغياب والتأخر، ومتابعة التزام الكادر التعليمي والإداري بساعات العمل الرسمية.'
-                      : 'This page is dedicated to tracking and managing staff attendance within the school, including recording presence, absence, and tardiness, and monitoring compliance with official working hours.'}
+                    {t('thisPageIsDedicatedToTrackingAndManagingStaffAtten')}
                   </p>
                 </div>
               </div>
@@ -343,7 +340,7 @@ export const TeacherAttendancePage = () => {
               </TabsTrigger>
               <TabsTrigger value="summary" className="rounded-xl">
                 <BarChart3 className="h-4 w-4 me-2" />
-                {isRTL ? 'التقارير' : 'Reports'}
+                {t('reports')}
               </TabsTrigger>
             </TabsList>
 
@@ -354,7 +351,7 @@ export const TeacherAttendancePage = () => {
                 <CardContent className="p-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label>{isRTL ? 'التاريخ' : 'Date'}</Label>
+                      <Label>{t('date')}</Label>
                       <Input
                         type="date"
                         value={selectedDate}
@@ -365,12 +362,12 @@ export const TeacherAttendancePage = () => {
                     </div>
                     
                     <div className="space-y-2">
-                      <Label>{isRTL ? 'بحث' : 'Search'}</Label>
+                      <Label>{t('search2')}</Label>
                       <Input
                         type="text"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        placeholder={isRTL ? 'بحث بالاسم أو التخصص...' : 'Search by name or specialization...'}
+                        placeholder={t('searchByNameOrSpecialization')}
                         className="rounded-xl"
                         data-testid="search-teachers-input"
                       />
@@ -389,7 +386,7 @@ export const TeacherAttendancePage = () => {
                       </div>
                       <div>
                         <p className="text-2xl font-bold">{stats.total}</p>
-                        <p className="text-xs text-muted-foreground">{isRTL ? 'إجمالي المعلمين' : 'Total Teachers'}</p>
+                        <p className="text-xs text-muted-foreground">{t('totalTeachers')}</p>
                       </div>
                     </div>
                   </CardContent>
@@ -403,7 +400,7 @@ export const TeacherAttendancePage = () => {
                       </div>
                       <div>
                         <p className="text-2xl font-bold">{stats.present}</p>
-                        <p className="text-xs text-muted-foreground">{isRTL ? 'حاضر' : 'Present'}</p>
+                        <p className="text-xs text-muted-foreground">{t('present')}</p>
                       </div>
                     </div>
                   </CardContent>
@@ -417,7 +414,7 @@ export const TeacherAttendancePage = () => {
                       </div>
                       <div>
                         <p className="text-2xl font-bold">{stats.absent}</p>
-                        <p className="text-xs text-muted-foreground">{isRTL ? 'غائب' : 'Absent'}</p>
+                        <p className="text-xs text-muted-foreground">{t('absent')}</p>
                       </div>
                     </div>
                   </CardContent>
@@ -431,7 +428,7 @@ export const TeacherAttendancePage = () => {
                       </div>
                       <div>
                         <p className="text-2xl font-bold">{stats.late}</p>
-                        <p className="text-xs text-muted-foreground">{isRTL ? 'متأخر' : 'Late'}</p>
+                        <p className="text-xs text-muted-foreground">{t('late')}</p>
                       </div>
                     </div>
                   </CardContent>
@@ -445,7 +442,7 @@ export const TeacherAttendancePage = () => {
                       </div>
                       <div>
                         <p className="text-2xl font-bold">{stats.excused}</p>
-                        <p className="text-xs text-muted-foreground">{isRTL ? 'بعذر' : 'Excused'}</p>
+                        <p className="text-xs text-muted-foreground">{t('excused2')}</p>
                       </div>
                     </div>
                   </CardContent>
@@ -458,7 +455,7 @@ export const TeacherAttendancePage = () => {
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-medium">
-                        {isRTL ? 'نسبة حضور المعلمين' : 'Teacher Attendance Rate'}
+                        {t('teacherAttendanceRate')}
                       </span>
                       <span className="text-sm font-bold text-brand-turquoise">{attendanceRate}%</span>
                     </div>
@@ -476,9 +473,9 @@ export const TeacherAttendancePage = () => {
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div>
-                      <CardTitle className="font-cairo">{isRTL ? 'قائمة المعلمين' : 'Teacher List'}</CardTitle>
+                      <CardTitle className="font-cairo">{t('teacherList')}</CardTitle>
                       <CardDescription>
-                        {isRTL ? 'اضغط على الحالة لتغييرها' : 'Click status to change it'}
+                        {t('clickStatusToChangeIt')}
                       </CardDescription>
                     </div>
                     <div className="flex gap-2">
@@ -489,7 +486,7 @@ export const TeacherAttendancePage = () => {
                         data-testid="mark-all-present-btn"
                       >
                         <CheckCircle className="h-4 w-4 me-2" />
-                        {isRTL ? 'الكل حاضر' : 'All Present'}
+                        {t('allPresent')}
                       </Button>
                       <Button 
                         onClick={handleSaveAttendance}
@@ -498,7 +495,7 @@ export const TeacherAttendancePage = () => {
                         data-testid="save-attendance-btn"
                       >
                         <Save className="h-4 w-4 me-2" />
-                        {saving ? (isRTL ? 'جاري الحفظ...' : 'Saving...') : (isRTL ? 'حفظ الحضور' : 'Save Attendance')}
+                        {saving ? (t('saving')) : (t('saveAttendance'))}
                       </Button>
                     </div>
                   </div>
@@ -507,11 +504,11 @@ export const TeacherAttendancePage = () => {
                 <CardContent>
                   {loading ? (
                     <div className="text-center py-8 text-muted-foreground">
-                      {isRTL ? 'جاري التحميل...' : 'Loading...'}
+                      {t('loading')}
                     </div>
                   ) : filteredTeachers.length === 0 ? (
                     <div className="text-center py-8 text-muted-foreground">
-                      {isRTL ? 'لا يوجد معلمين' : 'No teachers found'}
+                      {t('noTeachersFound')}
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -583,8 +580,8 @@ export const TeacherAttendancePage = () => {
                               >
                                 <FileText className="h-3 w-3 me-1" />
                                 {attendanceRecords[teacher.id]?.notes 
-                                  ? (isRTL ? 'تعديل الملاحظة' : 'Edit Note')
-                                  : (isRTL ? 'إضافة ملاحظة' : 'Add Note')
+                                  ? (t('editNote'))
+                                  : (t('addNote'))
                                 }
                               </Button>
                             </CardContent>
@@ -604,29 +601,29 @@ export const TeacherAttendancePage = () => {
                   {/* Overall Summary */}
                   <Card className="card-nassaq">
                     <CardHeader>
-                      <CardTitle className="font-cairo">{isRTL ? 'ملخص حضور المعلمين' : 'Teacher Attendance Summary'}</CardTitle>
+                      <CardTitle className="font-cairo">{t('teacherAttendanceSummary')}</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                         <div className="text-center p-4 bg-muted rounded-xl">
                           <p className="text-3xl font-bold text-brand-turquoise">{summaryReport.overall.attendance_rate}%</p>
-                          <p className="text-sm text-muted-foreground">{isRTL ? 'معدل الحضور' : 'Attendance Rate'}</p>
+                          <p className="text-sm text-muted-foreground">{t('attendanceRate2')}</p>
                         </div>
                         <div className="text-center p-4 bg-muted rounded-xl">
                           <p className="text-3xl font-bold">{summaryReport.overall.total_records}</p>
-                          <p className="text-sm text-muted-foreground">{isRTL ? 'إجمالي السجلات' : 'Total Records'}</p>
+                          <p className="text-sm text-muted-foreground">{t('totalRecords')}</p>
                         </div>
                         <div className="text-center p-4 bg-green-100 dark:bg-green-900/30 rounded-xl">
                           <p className="text-3xl font-bold text-green-600">{summaryReport.overall.present}</p>
-                          <p className="text-sm text-muted-foreground">{isRTL ? 'حاضر' : 'Present'}</p>
+                          <p className="text-sm text-muted-foreground">{t('present')}</p>
                         </div>
                         <div className="text-center p-4 bg-red-100 dark:bg-red-900/30 rounded-xl">
                           <p className="text-3xl font-bold text-red-600">{summaryReport.overall.absent}</p>
-                          <p className="text-sm text-muted-foreground">{isRTL ? 'غائب' : 'Absent'}</p>
+                          <p className="text-sm text-muted-foreground">{t('absent')}</p>
                         </div>
                         <div className="text-center p-4 bg-yellow-100 dark:bg-yellow-900/30 rounded-xl">
                           <p className="text-3xl font-bold text-yellow-600">{summaryReport.overall.late}</p>
-                          <p className="text-sm text-muted-foreground">{isRTL ? 'متأخر' : 'Late'}</p>
+                          <p className="text-sm text-muted-foreground">{t('late')}</p>
                         </div>
                       </div>
                     </CardContent>
@@ -634,7 +631,7 @@ export const TeacherAttendancePage = () => {
                 </>
               ) : (
                 <div className="text-center py-8 text-muted-foreground">
-                  {isRTL ? 'جاري تحميل التقارير...' : 'Loading reports...'}
+                  {t('loadingReports')}
                 </div>
               )}
             </TabsContent>
@@ -645,23 +642,23 @@ export const TeacherAttendancePage = () => {
         <Dialog open={notesDialog.open} onOpenChange={(open) => setNotesDialog({ open, teacherId: notesDialog.teacherId })}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle className="font-cairo">{isRTL ? 'ملاحظات الحضور' : 'Attendance Notes'}</DialogTitle>
+              <DialogTitle className="font-cairo">{t('attendanceNotes')}</DialogTitle>
               <DialogDescription>
-                {isRTL ? 'أضف ملاحظة حول حضور المعلم' : 'Add a note about teacher attendance'}
+                {t('addANoteAboutTeacherAttendance')}
               </DialogDescription>
             </DialogHeader>
             <Textarea
               value={noteText}
               onChange={(e) => setNoteText(e.target.value)}
-              placeholder={isRTL ? 'اكتب ملاحظتك هنا...' : 'Write your note here...'}
+              placeholder={t('writeYourNoteHere')}
               className="min-h-[100px] rounded-xl"
             />
             <DialogFooter>
               <Button variant="outline" onClick={() => setNotesDialog({ open: false, teacherId: null })} className="rounded-xl">
-                {isRTL ? 'إلغاء' : 'Cancel'}
+                {t('cancel')}
               </Button>
               <Button onClick={handleNotesSave} className="bg-brand-navy rounded-xl">
-                {isRTL ? 'حفظ' : 'Save'}
+                {t('save')}
               </Button>
             </DialogFooter>
           </DialogContent>

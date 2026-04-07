@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import { Badge } from '../../components/ui/badge';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
@@ -87,7 +87,7 @@ export default function SessionStartPage() {
     const sessionStatus = res.data?.session_status;
     const teachingStatuses = ['teaching_in_progress', 'interaction_running', 'session_review'];
     if (res.data?.resumed && teachingStatuses.includes(sessionStatus)) {
-      toast.info(isRTL ? 'استكمال الحصة الجارية' : 'Resuming session');
+      toast.info(t('resumingSession'));
       navigate('/teacher/session/teach', {
         state: {
           sessionId: sid,
@@ -112,9 +112,9 @@ export default function SessionStartPage() {
     }
     setStep('attendance');
     if (res.data?.resumed) {
-      toast.info(isRTL ? 'استكمال الحصة الجارية' : 'Resuming session');
+      toast.info(t('resumingSession'));
     } else {
-      toast.success(isRTL ? 'تم بدء الحصة' : 'Session started');
+      toast.success(t('sessionStarted'));
     }
     return true;
   };
@@ -135,18 +135,18 @@ export default function SessionStartPage() {
       const msg = err.response?.data?.detail || '';
       const isSessionConflict = status === 400 || status === 409 || msg.includes('إنهاء') || msg.includes('مسبق') || msg.includes('جارية');
       if (isSessionConflict) {
-        toast.info(isRTL ? 'يتم إنشاء حصة جديدة...' : 'Creating new session...');
+        toast.info(t('creatingNewSession'));
         try {
           const retryRes = await api.post('/session/start', { ...payload, force_new: true });
           if (await handleSessionResult(retryRes, true)) return;
         } catch (retryErr) {
           const retryMsg = retryErr.response?.data?.detail || msg;
-          nassaqError(retryMsg || (isRTL ? 'خطأ في بدء الحصة' : 'Error starting session'));
+          nassaqError(retryMsg || (t('errorStartingSession')));
         }
       } else if (status === 403) {
-        nassaqError(msg || (isRTL ? 'ليس لديك صلاحية لبدء هذه الحصة' : 'No permission to start this session'));
+        nassaqError(msg || (t('noPermissionToStartThisSession')));
       } else {
-        nassaqError(msg || (isRTL ? 'خطأ في بدء الحصة' : 'Error starting session'));
+        nassaqError(msg || (t('errorStartingSession')));
       }
       navigate('/teacher/home');
     } finally {
@@ -197,6 +197,7 @@ export default function SessionStartPage() {
       const startTime = Date.now();
       const duration = 2200;
       const animate = () => {
+  const { t } = useTranslation();
         const elapsed = Date.now() - startTime;
         const progress = Math.min(elapsed / duration, 1);
         setTransitionProgress(progress);
@@ -445,7 +446,7 @@ export default function SessionStartPage() {
               <GenderSection
                 students={isRTL ? females : males}
                 gender={isRTL ? 'female' : 'male'}
-                label={isRTL ? 'طالبات' : 'طلاب'}
+                label={t('key_mf5bvm')}
                 theme={theme}
                 t={t}
                 isDark={isDark}

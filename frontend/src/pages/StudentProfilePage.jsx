@@ -20,6 +20,7 @@ import { OverviewTab, AcademicTab, TalentsTab, BehaviourTab, ActivitiesTab, Plan
 import { EditProfileModal, BehaviourModal, ExportPlanModal, ActivityModal, CertificateModal, FullProfileExportModal } from '../components/student-profile/StudentModals';
 import { useStudentProfile } from '../hooks/useStudentProfile';
 
+import { useTranslation } from '../contexts/ThemeContext';
 const TABS = [
   { value: 'overview', label_ar: 'نظرة عامة', label_en: 'Overview', icon: Eye },
   { value: 'academic', label_ar: 'الأداء الأكاديمي', label_en: 'Academic', icon: BarChart3 },
@@ -31,6 +32,7 @@ const TABS = [
 ];
 
 export default function StudentProfilePage() {
+  const { t } = useTranslation();
   const hook = useStudentProfile();
   const {
     isRTL, isDark, toggleTheme, toggleLanguage, navigate,
@@ -90,9 +92,9 @@ export default function StudentProfilePage() {
         <div className="flex-1 flex items-center justify-center">
           <Card className="p-8 text-center max-w-md">
             <User className="h-12 w-12 mx-auto text-muted-foreground/30 mb-3" />
-            <p className="text-muted-foreground">{isRTL ? 'لم يتم العثور على الطالب' : 'Student not found'}</p>
+            <p className="text-muted-foreground">{t('studentNotFound')}</p>
             <Button variant="outline" className="mt-4" onClick={handleBack}>
-              <BackArrow className="h-4 w-4 me-2" /> {isRTL ? 'العودة' : 'Go Back'}
+              <BackArrow className="h-4 w-4 me-2" /> {t('goBack')}
             </Button>
           </Card>
         </div>
@@ -112,7 +114,7 @@ export default function StudentProfilePage() {
               </Button>
               <nav className="flex items-center gap-1 text-xs text-muted-foreground">
                 <button onClick={() => navigate(`${rolePrefix}/users-management?filter=students`)} className="hover:text-foreground transition-colors font-cairo">
-                  {isRTL ? 'إدارة المستخدمين' : 'User Management'}
+                  {t('userManagement')}
                 </button>
                 {resolvedClassName && (
                   <>
@@ -175,26 +177,26 @@ export default function StudentProfilePage() {
                         </Badge>
                       )}
                       <Badge variant={student.is_active !== false ? 'default' : 'destructive'} className={`text-xs px-2.5 py-1 ${student.is_active !== false ? 'bg-emerald-500/20 text-emerald-200 border-emerald-400/30' : ''}`}>
-                        {student.is_active !== false ? (isRTL ? 'نشط' : 'Active') : (isRTL ? 'معلق' : 'Suspended')}
+                        {student.is_active !== false ? (t('active')) : (isRTL ? 'معلق' : 'Suspended')}
                       </Badge>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2 mt-4 flex-wrap">
                     <Button size="sm" variant="secondary" className="gap-1.5 text-xs bg-white/10 hover:bg-white/20 text-white border-white/20 backdrop-blur-sm" onClick={() => { setFormData({ ...student }); setEditProfileOpen(true); }}>
-                      <Edit className="h-3.5 w-3.5" /> {isRTL ? 'تعديل الملف' : 'Edit Profile'}
+                      <Edit className="h-3.5 w-3.5" /> {t('editProfile')}
                     </Button>
                     <Button size="sm" variant="secondary" className="gap-1.5 text-xs bg-white/10 hover:bg-white/20 text-white border-white/20 backdrop-blur-sm" onClick={() => setProfileExportModalOpen(true)}>
-                      <Download className="h-3.5 w-3.5" /> {isRTL ? 'تصدير الملف الشامل' : 'Export Full Profile'}
+                      <Download className="h-3.5 w-3.5" /> {t('exportFullProfile')}
                     </Button>
                     {(remedialPlan || enrichmentPlan) && (
                       <Button size="sm" variant="secondary" className="gap-1.5 text-xs bg-white/10 hover:bg-white/20 text-white border-white/20 backdrop-blur-sm" onClick={() => openExportModal('both')}>
-                        <Download className="h-3.5 w-3.5" /> {isRTL ? 'تصدير الخطة' : 'Export Plan'}
+                        <Download className="h-3.5 w-3.5" /> {t('exportPlan')}
                       </Button>
                     )}
                     {student.parent_phone && (
                       <Button size="sm" variant="secondary" className="gap-1.5 text-xs bg-white/10 hover:bg-white/20 text-white border-white/20 backdrop-blur-sm" onClick={() => window.open(`https://wa.me/${student.parent_phone.replace(/\D/g, '')}`, '_blank')}>
-                        <Send className="h-3.5 w-3.5" /> {isRTL ? 'مراسلة ولي الأمر' : 'Message Parent'}
+                        <Send className="h-3.5 w-3.5" /> {t('messageParent')}
                       </Button>
                     )}
                     {!isTeacher && (
@@ -206,7 +208,7 @@ export default function StudentProfilePage() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align={isRTL ? 'start' : 'end'} className="w-52">
                           <DropdownMenuItem onClick={() => handleAction('reset-password')} className="gap-2 font-cairo text-sm">
-                            <Key className="h-4 w-4 text-blue-500" /> {isRTL ? 'إعادة تعيين كلمة المرور' : 'Reset Password'}
+                            <Key className="h-4 w-4 text-blue-500" /> {t('resetPassword')}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleAction(student.is_active !== false ? 'suspend' : 'activate')} className="gap-2 font-cairo text-sm">
                             {student.is_active !== false
@@ -216,7 +218,7 @@ export default function StudentProfilePage() {
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem onClick={() => handleAction('delete')} className="gap-2 font-cairo text-sm text-red-600 focus:text-red-600">
-                            <Trash2 className="h-4 w-4" /> {isRTL ? 'حذف الحساب' : 'Delete Account'}
+                            <Trash2 className="h-4 w-4" /> {t('deleteAccount')}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -227,10 +229,10 @@ export default function StudentProfilePage() {
 
               <div className="grid grid-cols-5 gap-2 md:gap-3 mt-6">
                 <StatCard icon={Calendar} value={attendanceRate != null ? `${attendanceRate}%` : null} label={isRTL ? 'نسبة الحضور' : 'Attendance'} color="text-emerald-300" bg="bg-white/10 backdrop-blur-sm" loading={loadingAttendance} />
-                <StatCard icon={CheckCircle} value={homeworkRate ? `${homeworkRate.rate}%` : null} label={isRTL ? 'معدل الأداء' : 'Performance'} color="text-blue-300" bg="bg-white/10 backdrop-blur-sm" loading={loadingHomework} />
-                <StatCard icon={Sparkles} value={student.talents?.length || 0} label={isRTL ? 'المواهب' : 'Talents'} color="text-purple-300" bg="bg-white/10 backdrop-blur-sm" loading={false} />
-                <StatCard icon={Trophy} value={0} label={isRTL ? 'الأنشطة' : 'Activities'} color="text-amber-300" bg="bg-white/10 backdrop-blur-sm" loading={false} />
-                <StatCard icon={ThumbsUp} value={positiveBehaviourCount} label={isRTL ? 'سلوك إيجابي' : 'Positive'} color="text-green-300" bg="bg-white/10 backdrop-blur-sm" loading={loadingBehaviour} />
+                <StatCard icon={CheckCircle} value={homeworkRate ? `${homeworkRate.rate}%` : null} label={t('performance2')} color="text-blue-300" bg="bg-white/10 backdrop-blur-sm" loading={loadingHomework} />
+                <StatCard icon={Sparkles} value={student.talents?.length || 0} label={t('talents')} color="text-purple-300" bg="bg-white/10 backdrop-blur-sm" loading={false} />
+                <StatCard icon={Trophy} value={0} label={t('activities')} color="text-amber-300" bg="bg-white/10 backdrop-blur-sm" loading={false} />
+                <StatCard icon={ThumbsUp} value={positiveBehaviourCount} label={t('positive2')} color="text-green-300" bg="bg-white/10 backdrop-blur-sm" loading={loadingBehaviour} />
               </div>
             </div>
           </div>

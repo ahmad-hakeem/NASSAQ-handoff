@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { Sidebar } from '../components/layout/Sidebar';
 import { HakimAssistant } from '../components/hakim/HakimAssistant';
 import { Button } from '../components/ui/button';
@@ -85,6 +85,7 @@ const RANK_CONFIG = {
 };
 
 export const TeacherAssignmentsPage = () => {
+  const { t } = useTranslation();
   const { user, api } = useAuth();
   const { isRTL, toggleTheme, toggleLanguage, isDark } = useTheme();
   const [assignments, setAssignments] = useState([]);
@@ -151,7 +152,7 @@ export const TeacherAssignmentsPage = () => {
       setTeacherWorkloads(workloads);
     } catch (error) {
       console.error('Failed to fetch data:', error);
-      nassaqError(isRTL ? 'فشل تحميل البيانات' : 'Failed to load data');
+      nassaqError(t('failedToLoadData'));
     } finally {
       setLoading(false);
     }
@@ -169,7 +170,7 @@ export const TeacherAssignmentsPage = () => {
 
   const handleCreateAssignment = async () => {
     if (!newAssignment.teacher_id || !newAssignment.class_id || !newAssignment.subject_id) {
-      nassaqError(isRTL ? 'يرجى اختيار المعلم والفصل والمادة' : 'Please select teacher, class and subject');
+      nassaqError(t('pleaseSelectTeacherClassAndSubject'));
       return;
     }
 
@@ -177,7 +178,7 @@ export const TeacherAssignmentsPage = () => {
       a => a.teacher_id === newAssignment.teacher_id && a.subject_id === newAssignment.subject_id
     );
     if (existingAssignment) {
-      nassaqWarning(isRTL ? 'هذه المادة مسندة بالفعل لهذا المعلم. لا يمكن تكرار نفس الإسناد.' : 'This subject is already assigned to this teacher.');
+      nassaqWarning(t('thisSubjectIsAlreadyAssignedToThisTeacher'));
       return;
     }
 
@@ -187,7 +188,7 @@ export const TeacherAssignmentsPage = () => {
         ...newAssignment,
         school_id: selectedSchool,
       });
-      toast.success(isRTL ? 'تم إضافة الإسناد بنجاح' : 'Assignment added successfully');
+      toast.success(t('assignmentAddedSuccessfully'));
       setCreateDialogOpen(false);
       setNewAssignment({
         teacher_id: '',
@@ -200,7 +201,7 @@ export const TeacherAssignmentsPage = () => {
       fetchData();
     } catch (error) {
       const detail = error.response?.data?.detail;
-      const msg = typeof detail === 'string' ? detail : Array.isArray(detail) ? detail.map(d => d.msg || JSON.stringify(d)).join(', ') : (isRTL ? 'فشل إضافة الإسناد' : 'Failed to add assignment');
+      const msg = typeof detail === 'string' ? detail : Array.isArray(detail) ? detail.map(d => d.msg || JSON.stringify(d)).join(', ') : (t('failedToAddAssignment'));
       nassaqError(msg);
     } finally {
       setSubmitting(false);
@@ -209,14 +210,14 @@ export const TeacherAssignmentsPage = () => {
 
   const handleDeleteAssignment = async (assignmentId) => {
     nassaqConfirm(
-      isRTL ? 'هل أنت متأكد من حذف هذا الإسناد؟' : 'Are you sure you want to delete this assignment?',
+      t('areYouSureYouWantToDeleteThisAssignment'),
       async () => {
         try {
           await api.delete(`/teacher-assignments/${assignmentId}`);
-          toast.success(isRTL ? 'تم حذف الإسناد' : 'Assignment deleted');
+          toast.success(t('assignmentDeleted'));
           setAssignments(prev => prev.filter(a => a.id !== assignmentId));
         } catch (error) {
-          nassaqError(isRTL ? 'فشل حذف الإسناد' : 'Failed to delete assignment');
+          nassaqError(t('failedToDeleteAssignment'));
         }
       }
     );
@@ -225,10 +226,10 @@ export const TeacherAssignmentsPage = () => {
   const handleUpdateRank = async (teacherId, newRank) => {
     try {
       await api.put(`/teachers/${teacherId}/rank?rank=${newRank}`);
-      toast.success(isRTL ? 'تم تحديث رتبة المعلم' : 'Teacher rank updated');
+      toast.success(t('teacherRankUpdated'));
       fetchData();
     } catch (error) {
-      nassaqError(isRTL ? 'فشل تحديث الرتبة' : 'Failed to update rank');
+      nassaqError(t('failedToUpdateRank'));
     }
   };
 
@@ -284,10 +285,10 @@ export const TeacherAssignmentsPage = () => {
               </Button>
               <div>
                 <h1 className="font-cairo text-2xl font-bold text-foreground">
-                  {isRTL ? 'إسناد المعلمين' : 'Teacher Assignments'}
+                  {t('teacherAssignments')}
                 </h1>
                 <p className="text-sm text-muted-foreground font-tajawal">
-                  {isRTL ? 'ربط المعلمين بالفصول والمواد الدراسية' : 'Assign teachers to classes and subjects'}
+                  {t('assignTeachersToClassesAndSubjects')}
                 </p>
               </div>
             </div>
@@ -309,7 +310,7 @@ export const TeacherAssignmentsPage = () => {
             <div className="flex gap-4 items-center flex-1">
               <Select value={selectedSchool} onValueChange={setSelectedSchool}>
                 <SelectTrigger className="w-[280px] rounded-xl" data-testid="school-select">
-                  <SelectValue placeholder={isRTL ? 'اختر المدرسة' : 'Select School'} />
+                  <SelectValue placeholder={t('selectSchool')} />
                 </SelectTrigger>
                 <SelectContent>
                   {schools.map(school => (
@@ -321,7 +322,7 @@ export const TeacherAssignmentsPage = () => {
               <div className="relative flex-1 max-w-sm">
                 <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                 <Input
-                  placeholder={isRTL ? 'بحث...' : 'Search...'}
+                  placeholder={t('search')}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="ps-10 rounded-xl"
@@ -334,28 +335,28 @@ export const TeacherAssignmentsPage = () => {
               <DialogTrigger asChild>
                 <Button className="bg-brand-turquoise hover:bg-brand-turquoise-light rounded-xl" data-testid="add-assignment-btn">
                   <Plus className="h-5 w-5 me-2" />
-                  {isRTL ? 'إضافة إسناد' : 'Add Assignment'}
+                  {t('addAssignment')}
                 </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-[500px]">
                 <DialogHeader>
                   <DialogTitle className="font-cairo">
-                    {isRTL ? 'إسناد معلم لفصل ومادة' : 'Assign Teacher to Class & Subject'}
+                    {t('assignTeacherToClassSubject')}
                   </DialogTitle>
                   <DialogDescription>
-                    {isRTL ? 'اختر المعلم والفصل والمادة المطلوبة' : 'Select the teacher, class and subject'}
+                    {t('selectTheTeacherClassAndSubject')}
                   </DialogDescription>
                 </DialogHeader>
                 
                 <div className="grid gap-4 py-4">
                   <div className="space-y-2">
-                    <Label>{isRTL ? 'المعلم *' : 'Teacher *'}</Label>
+                    <Label>{t('teacher5')}</Label>
                     <Select 
                       value={newAssignment.teacher_id} 
                       onValueChange={(value) => setNewAssignment({ ...newAssignment, teacher_id: value })}
                     >
                       <SelectTrigger className="rounded-xl" data-testid="teacher-select">
-                        <SelectValue placeholder={isRTL ? 'اختر المعلم' : 'Select Teacher'} />
+                        <SelectValue placeholder={t('selectTeacher')} />
                       </SelectTrigger>
                       <SelectContent>
                         {teachers.map(teacher => (
@@ -371,7 +372,7 @@ export const TeacherAssignmentsPage = () => {
                   </div>
                   
                   <div className="space-y-2">
-                    <Label>{isRTL ? 'الفصل *' : 'Class *'}</Label>
+                    <Label>{t('class2')}</Label>
                     <Select 
                       value={newAssignment.class_id} 
                       onValueChange={(value) => setNewAssignment({ ...newAssignment, class_id: value })}
@@ -393,7 +394,7 @@ export const TeacherAssignmentsPage = () => {
                   </div>
                   
                   <div className="space-y-2">
-                    <Label>{isRTL ? 'المادة *' : 'Subject *'}</Label>
+                    <Label>{t('subject2')}</Label>
                     <Select 
                       value={newAssignment.subject_id} 
                       onValueChange={(value) => setNewAssignment({ ...newAssignment, subject_id: value })}
@@ -416,7 +417,7 @@ export const TeacherAssignmentsPage = () => {
                   
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label>{isRTL ? 'النصاب الأسبوعي' : 'Weekly Sessions'}</Label>
+                      <Label>{t('weeklySessions')}</Label>
                       <Input
                         type="number"
                         min={1}
@@ -428,7 +429,7 @@ export const TeacherAssignmentsPage = () => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>{isRTL ? 'الفصل الدراسي' : 'Semester'}</Label>
+                      <Label>{t('semester')}</Label>
                       <Select 
                         value={String(newAssignment.semester)} 
                         onValueChange={(value) => setNewAssignment({ ...newAssignment, semester: parseInt(value) })}
@@ -437,8 +438,8 @@ export const TeacherAssignmentsPage = () => {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="1">{isRTL ? 'الفصل الأول' : 'Semester 1'}</SelectItem>
-                          <SelectItem value="2">{isRTL ? 'الفصل الثاني' : 'Semester 2'}</SelectItem>
+                          <SelectItem value="1">{t('semester1')}</SelectItem>
+                          <SelectItem value="2">{t('semester2')}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -447,7 +448,7 @@ export const TeacherAssignmentsPage = () => {
                 
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setCreateDialogOpen(false)} className="rounded-xl">
-                    {isRTL ? 'إلغاء' : 'Cancel'}
+                    {t('cancel')}
                   </Button>
                   <Button 
                     onClick={handleCreateAssignment} 
@@ -456,9 +457,9 @@ export const TeacherAssignmentsPage = () => {
                     data-testid="create-assignment-btn"
                   >
                     {submitting ? (
-                      <><Loader2 className="h-4 w-4 animate-spin me-2" />{isRTL ? 'جاري الإضافة...' : 'Adding...'}</>
+                      <><Loader2 className="h-4 w-4 animate-spin me-2" />{t('adding')}</>
                     ) : (
-                      isRTL ? 'إضافة' : 'Add'
+                      t('add')
                     )}
                   </Button>
                 </DialogFooter>
@@ -486,7 +487,7 @@ export const TeacherAssignmentsPage = () => {
                 </div>
                 <div>
                   <p className="text-2xl font-bold">{classes.length}</p>
-                  <p className="text-sm text-muted-foreground">{isRTL ? 'فصل' : 'Classes'}</p>
+                  <p className="text-sm text-muted-foreground">{t('classes4')}</p>
                 </div>
               </CardContent>
             </Card>
@@ -508,7 +509,7 @@ export const TeacherAssignmentsPage = () => {
                 </div>
                 <div>
                   <p className="text-2xl font-bold">{assignments.length}</p>
-                  <p className="text-sm text-muted-foreground">{isRTL ? 'إسناد' : 'Assignments'}</p>
+                  <p className="text-sm text-muted-foreground">{t('assignments2')}</p>
                 </div>
               </CardContent>
             </Card>
@@ -524,7 +525,7 @@ export const TeacherAssignmentsPage = () => {
               <CardContent className="text-center py-16">
                 <UserCheck className="h-16 w-16 mx-auto mb-4 text-muted-foreground/30" />
                 <p className="text-muted-foreground mb-4">
-                  {isRTL ? 'لا توجد إسنادات' : 'No assignments found'}
+                  {t('noAssignmentsFound')}
                 </p>
               </CardContent>
             </Card>
@@ -568,7 +569,7 @@ export const TeacherAssignmentsPage = () => {
                                     </Select>
                                   </TooltipTrigger>
                                   <TooltipContent>
-                                    <p>{isRTL ? 'انقر لتغيير الرتبة' : 'Click to change rank'}</p>
+                                    <p>{t('clickToChangeRank')}</p>
                                   </TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>
@@ -584,7 +585,7 @@ export const TeacherAssignmentsPage = () => {
                         {workloadStatus && (
                           <div className="w-48">
                             <div className="flex items-center justify-between text-xs mb-1">
-                              <span className="text-muted-foreground">{isRTL ? 'النصاب' : 'Workload'}</span>
+                              <span className="text-muted-foreground">{t('workload')}</span>
                               <span className={`font-medium ${workloadStatus.isOverloaded ? 'text-red-500' : workloadStatus.isUnderloaded ? 'text-amber-500' : 'text-green-500'}`}>
                                 {workloadStatus.total} / {workloadStatus.max}
                               </span>
@@ -596,7 +597,7 @@ export const TeacherAssignmentsPage = () => {
                             {workloadStatus.isOverloaded && (
                               <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
                                 <AlertTriangle className="h-3 w-3" />
-                                {isRTL ? 'تجاوز النصاب!' : 'Overloaded!'}
+                                {t('overloaded')}
                               </p>
                             )}
                           </div>
@@ -607,10 +608,10 @@ export const TeacherAssignmentsPage = () => {
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            <TableHead className="ps-4">{isRTL ? 'الفصل' : 'Class'}</TableHead>
-                            <TableHead>{isRTL ? 'المادة' : 'Subject'}</TableHead>
-                            <TableHead>{isRTL ? 'النصاب الأسبوعي' : 'Weekly Sessions'}</TableHead>
-                            <TableHead>{isRTL ? 'الفصل الدراسي' : 'Semester'}</TableHead>
+                            <TableHead className="ps-4">{t('class')}</TableHead>
+                            <TableHead>{t('subject')}</TableHead>
+                            <TableHead>{t('weeklySessions')}</TableHead>
+                            <TableHead>{t('semester')}</TableHead>
                             <TableHead className="w-12"></TableHead>
                           </TableRow>
                         </TableHeader>

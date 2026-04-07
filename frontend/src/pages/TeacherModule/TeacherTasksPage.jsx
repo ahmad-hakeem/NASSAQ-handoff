@@ -11,7 +11,9 @@ import {
 } from 'lucide-react';
 import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 
+import { useTranslation } from '../../contexts/ThemeContext';
 export default function TeacherTasksPage() {
+  const { t } = useTranslation();
   const { user, api, isRTL } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -62,10 +64,10 @@ export default function TeacherTasksPage() {
               </div>
               <div>
                 <h1 className="text-lg font-bold font-cairo text-foreground">
-                  {isRTL ? 'المهام المفتوحة' : 'Open Tasks'}
+                  {t('openTasks')}
                 </h1>
                 <p className="text-xs text-muted-foreground font-tajawal">
-                  {isRTL ? 'المهام المطلوب إنجازها اليوم' : "Today's pending tasks"}
+                  {t('todaysPendingTasks')}
                 </p>
               </div>
             </div>
@@ -73,12 +75,12 @@ export default function TeacherTasksPage() {
               <Button size="sm" variant="outline" onClick={loadTasks} disabled={loading}
                 className="rounded-xl border-border/50 hover:bg-muted gap-2 font-tajawal text-xs">
                 <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-                {isRTL ? 'تحديث' : 'Refresh'}
+                {t('refresh')}
               </Button>
               <Button size="sm" variant="ghost" onClick={() => navigate('/teacher')}
                 className="rounded-xl gap-1 font-tajawal text-xs">
                 <ArrowLeft className="h-3.5 w-3.5" />
-                {isRTL ? 'الرئيسية' : 'Home'}
+                {t('home')}
               </Button>
             </div>
           </div>
@@ -119,7 +121,7 @@ export default function TeacherTasksPage() {
                           className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white rounded-xl font-cairo text-xs shadow-sm"
                           onClick={() => navigate(`/teacher/attendance?class=${cls.id}`)}>
                           <ClipboardCheck className="h-3.5 w-3.5 me-1" />
-                          {isRTL ? 'تسجيل' : 'Record'}
+                          {t('record')}
                         </Button>
                       </div>
                     ))}
@@ -133,7 +135,7 @@ export default function TeacherTasksPage() {
                     <div className="p-1.5 rounded-lg bg-blue-100 dark:bg-blue-900/30">
                       <FileText className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                     </div>
-                    {isRTL ? 'التقييمات والاختبارات' : 'Assessments & Tests'}
+                    {t('assessmentsTests')}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -144,17 +146,17 @@ export default function TeacherTasksPage() {
                       </div>
                       <div>
                         <p className="text-sm font-medium font-cairo text-foreground">
-                          {isRTL ? 'إدارة التقييمات' : 'Manage Assessments'}
+                          {t('manageAssessments')}
                         </p>
                         <p className="text-xs text-muted-foreground font-tajawal">
-                          {isRTL ? 'إنشاء ومتابعة التقييمات' : 'Create and manage assessments'}
+                          {t('createAndManageAssessments')}
                         </p>
                       </div>
                     </div>
                     <Button size="sm" variant="outline"
                       className="border-blue-300 text-blue-700 hover:bg-blue-50 rounded-xl font-cairo text-xs"
                       onClick={() => navigate('/teacher/assessments')}>
-                      {isRTL ? 'فتح' : 'Open'}
+                      {t('open')}
                     </Button>
                   </div>
                 </CardContent>
@@ -167,7 +169,7 @@ export default function TeacherTasksPage() {
                       <div className="p-1.5 rounded-lg bg-green-100 dark:bg-green-900/30">
                         <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
                       </div>
-                      {isRTL ? 'مكتمل اليوم' : 'Completed Today'}
+                      {t('completedToday')}
                       <Badge className="bg-green-500 text-white text-[10px] font-cairo ms-auto">{completedClasses.length}</Badge>
                     </CardTitle>
                   </CardHeader>
@@ -181,7 +183,7 @@ export default function TeacherTasksPage() {
                           <div>
                             <p className="text-sm font-medium font-cairo text-foreground">{cls.name}</p>
                             <p className="text-xs text-green-600 dark:text-green-400 font-tajawal">
-                              {isRTL ? 'تم تسجيل الحضور' : 'Attendance recorded'}
+                              {t('attendanceRecorded')}
                             </p>
                           </div>
                         </div>
@@ -199,7 +201,7 @@ export default function TeacherTasksPage() {
                 <div className="text-center py-16">
                   <CheckCircle2 className="h-12 w-12 text-green-400 mx-auto mb-3" />
                   <p className="text-muted-foreground font-tajawal">
-                    {isRTL ? 'لا توجد مهام معلقة حالياً' : 'No pending tasks right now'}
+                    {t('noPendingTasksRightNow')}
                   </p>
                 </div>
               )}

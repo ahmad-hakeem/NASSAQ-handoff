@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { Sidebar } from '../components/layout/Sidebar';
 import { HakimAssistant } from '../components/hakim/HakimAssistant';
 import { Button } from '../components/ui/button';
@@ -103,6 +103,7 @@ const priorityConfig = {
 };
 
 export const CommunicationNotificationsPage = () => {
+  const { t } = useTranslation();
   const { user, api } = useAuth();
   const { isRTL, toggleTheme, toggleLanguage, isDark } = useTheme();
   const navigate = useNavigate();
@@ -144,10 +145,10 @@ export const CommunicationNotificationsPage = () => {
   };
 
   const audienceGroups = [
-    { id: 'all', name: isRTL ? 'الجميع' : 'Everyone', count: audienceCounts.all, icon: Users },
-    { id: 'schools', name: isRTL ? 'المدارس' : 'Schools', count: audienceCounts.schools, icon: Building2 },
-    { id: 'teachers', name: isRTL ? 'المعلمين' : 'Teachers', count: audienceCounts.teachers, icon: UserCheck },
-    { id: 'students', name: isRTL ? 'الطلاب' : 'Students', count: audienceCounts.students, icon: GraduationCap },
+    { id: 'all', name: t('everyone'), count: audienceCounts.all, icon: Users },
+    { id: 'schools', name: t('schools2'), count: audienceCounts.schools, icon: Building2 },
+    { id: 'teachers', name: t('teachers2'), count: audienceCounts.teachers, icon: UserCheck },
+    { id: 'students', name: t('students'), count: audienceCounts.students, icon: GraduationCap },
   ];
 
   // Fetch notifications
@@ -237,9 +238,9 @@ export const CommunicationNotificationsPage = () => {
       setNotifications(prev => 
         prev.map(n => n.id === notificationId ? { ...n, read_status: true } : n)
       );
-      toast.success(isRTL ? 'تم تحديد الإشعار كمقروء' : 'Marked as read');
+      toast.success(t('markedAsRead'));
     } catch (error) {
-      nassaqError(isRTL ? 'فشل تحديد الإشعار' : 'Failed to mark as read');
+      nassaqError(t('failedToMarkAsRead'));
     }
   };
 
@@ -247,9 +248,9 @@ export const CommunicationNotificationsPage = () => {
     try {
       await api.put('/notifications/mark-all-read');
       setNotifications(prev => prev.map(n => ({ ...n, read_status: true })));
-      toast.success(isRTL ? 'تم تحديد جميع الإشعارات كمقروءة' : 'All marked as read');
+      toast.success(t('allMarkedAsRead'));
     } catch (error) {
-      nassaqError(isRTL ? 'فشل تحديد الإشعارات' : 'Failed to mark all as read');
+      nassaqError(t('failedToMarkAllAsRead'));
     }
   };
 
@@ -257,9 +258,9 @@ export const CommunicationNotificationsPage = () => {
     try {
       await api.delete(`/notifications/${notificationId}`);
       setNotifications(prev => prev.filter(n => n.id !== notificationId));
-      toast.success(isRTL ? 'تم حذف الإشعار' : 'Notification deleted');
+      toast.success(t('notificationDeleted'));
     } catch (error) {
-      nassaqError(isRTL ? 'فشل حذف الإشعار' : 'Failed to delete notification');
+      nassaqError(t('failedToDeleteNotification'));
     }
   };
 
@@ -274,7 +275,7 @@ export const CommunicationNotificationsPage = () => {
 
   const handleSendMessage = async () => {
     if (!messageTitle.trim() || !newMessage.trim()) {
-      nassaqError(isRTL ? 'يرجى ملء جميع الحقول' : 'Please fill all fields');
+      nassaqError(t('pleaseFillAllFields'));
       return;
     }
     
@@ -302,7 +303,7 @@ export const CommunicationNotificationsPage = () => {
       }
     } catch (error) {
       console.error('Error sending message:', error);
-      nassaqError(isRTL ? 'فشل إرسال الرسالة' : 'Failed to send message');
+      nassaqError(t('failedToSendMessage'));
     } finally {
       setSendingMessage(false);
     }
@@ -335,13 +336,13 @@ export const CommunicationNotificationsPage = () => {
             <div>
               <h1 className="font-cairo text-2xl font-bold text-foreground flex items-center gap-2">
                 <MessageSquare className="h-7 w-7 text-brand-turquoise" />
-                {isRTL ? 'التواصل والإشعارات' : 'Communication & Notifications'}
+                {t('communicationNotifications')}
                 {unreadCount > 0 && (
                   <Badge className="bg-red-500 text-white">{unreadCount}</Badge>
                 )}
               </h1>
               <p className="text-sm text-muted-foreground font-tajawal">
-                {isRTL ? 'مركز موحد لإدارة التواصل والإشعارات' : 'Unified center for communication and notifications'}
+                {t('unifiedCenterForCommunicationAndNotifications')}
               </p>
             </div>
             
@@ -358,7 +359,7 @@ export const CommunicationNotificationsPage = () => {
                 className="rounded-xl"
               >
                 <RefreshCw className="h-4 w-4 me-2" />
-                {isRTL ? 'تحديث' : 'Refresh'}
+                {t('refresh')}
               </Button>
             </div>
           </div>
@@ -375,7 +376,7 @@ export const CommunicationNotificationsPage = () => {
                   </div>
                   <div>
                     <p className="text-2xl font-bold">{analytics?.total_notifications || notifications.length}</p>
-                    <p className="text-xs text-muted-foreground">{isRTL ? 'الإشعارات' : 'Notifications'}</p>
+                    <p className="text-xs text-muted-foreground">{t('notifications')}</p>
                   </div>
                 </div>
               </CardContent>
@@ -389,7 +390,7 @@ export const CommunicationNotificationsPage = () => {
                   </div>
                   <div>
                     <p className="text-2xl font-bold">{unreadCount}</p>
-                    <p className="text-xs text-muted-foreground">{isRTL ? 'غير مقروء' : 'Unread'}</p>
+                    <p className="text-xs text-muted-foreground">{t('unread2')}</p>
                   </div>
                 </div>
               </CardContent>
@@ -417,7 +418,7 @@ export const CommunicationNotificationsPage = () => {
                   </div>
                   <div>
                     <p className="text-2xl font-bold">{messageStats.received}</p>
-                    <p className="text-xs text-muted-foreground">{isRTL ? 'الرسائل المستلمة' : 'Received'}</p>
+                    <p className="text-xs text-muted-foreground">{t('received')}</p>
                   </div>
                 </div>
               </CardContent>
@@ -431,7 +432,7 @@ export const CommunicationNotificationsPage = () => {
                   </div>
                   <div>
                     <p className="text-2xl font-bold">{messageStats.pending}</p>
-                    <p className="text-xs text-muted-foreground">{isRTL ? 'مجدولة' : 'Scheduled'}</p>
+                    <p className="text-xs text-muted-foreground">{t('scheduled2')}</p>
                   </div>
                 </div>
               </CardContent>
@@ -443,7 +444,7 @@ export const CommunicationNotificationsPage = () => {
             <TabsList className="grid w-full max-w-md grid-cols-2 rounded-xl">
               <TabsTrigger value="notifications" className="rounded-xl flex items-center gap-2">
                 <Bell className="h-4 w-4" />
-                {isRTL ? 'الإشعارات' : 'Notifications'}
+                {t('notifications')}
                 {unreadCount > 0 && (
                   <Badge className="bg-red-500 text-white text-xs h-5 w-5 flex items-center justify-center p-0 rounded-full">
                     {unreadCount}
@@ -465,15 +466,15 @@ export const CommunicationNotificationsPage = () => {
                     <div className="flex flex-wrap gap-4 items-center">
                       <div className="flex items-center gap-2">
                         <Filter className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-sm font-medium">{isRTL ? 'تصفية:' : 'Filter:'}</span>
+                        <span className="text-sm font-medium">{t('filter')}</span>
                       </div>
                       
                       <Select value={filterType} onValueChange={setFilterType}>
                         <SelectTrigger className="w-40 rounded-xl">
-                          <SelectValue placeholder={isRTL ? 'النوع' : 'Type'} />
+                          <SelectValue placeholder={t('type4')} />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="all">{isRTL ? 'جميع الأنواع' : 'All Types'}</SelectItem>
+                          <SelectItem value="all">{t('allTypes')}</SelectItem>
                           {Object.entries(notificationTypeConfig).map(([key, config]) => (
                             <SelectItem key={key} value={key}>
                               {isRTL ? config.label.ar : config.label.en}
@@ -484,12 +485,12 @@ export const CommunicationNotificationsPage = () => {
                       
                       <Select value={filterRead} onValueChange={setFilterRead}>
                         <SelectTrigger className="w-40 rounded-xl">
-                          <SelectValue placeholder={isRTL ? 'الحالة' : 'Status'} />
+                          <SelectValue placeholder={t('status2')} />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="all">{isRTL ? 'الكل' : 'All'}</SelectItem>
-                          <SelectItem value="unread">{isRTL ? 'غير مقروء' : 'Unread'}</SelectItem>
-                          <SelectItem value="read">{isRTL ? 'مقروء' : 'Read'}</SelectItem>
+                          <SelectItem value="all">{t('all')}</SelectItem>
+                          <SelectItem value="unread">{t('unread2')}</SelectItem>
+                          <SelectItem value="read">{t('read2')}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -501,7 +502,7 @@ export const CommunicationNotificationsPage = () => {
                         data-testid="mark-all-read-btn"
                       >
                         <CheckCheck className="h-4 w-4 me-2" />
-                        {isRTL ? 'تحديد الكل كمقروء' : 'Mark All Read'}
+                        {t('markAllRead2')}
                       </Button>
                     )}
                   </div>
@@ -511,7 +512,7 @@ export const CommunicationNotificationsPage = () => {
               {/* Notifications List */}
               <Card className="card-nassaq">
                 <CardHeader>
-                  <CardTitle className="font-cairo">{isRTL ? 'سجل الإشعارات' : 'Notification Log'}</CardTitle>
+                  <CardTitle className="font-cairo">{t('notificationLog')}</CardTitle>
                   <CardDescription>
                     {isRTL ? `${notifications.length} إشعار` : `${notifications.length} notifications`}
                   </CardDescription>
@@ -521,13 +522,13 @@ export const CommunicationNotificationsPage = () => {
                   <ScrollArea className="h-[500px]">
                     {loading ? (
                       <div className="text-center py-8 text-muted-foreground">
-                        {isRTL ? 'جاري التحميل...' : 'Loading...'}
+                        {t('loading')}
                       </div>
                     ) : notifications.length === 0 ? (
                       <div className="text-center py-12">
                         <BellOff className="h-16 w-16 mx-auto text-muted-foreground/50 mb-4" />
                         <p className="text-muted-foreground">
-                          {isRTL ? 'لا يوجد إشعارات' : 'No notifications'}
+                          {t('noNotifications')}
                         </p>
                       </div>
                     ) : (
@@ -628,16 +629,16 @@ export const CommunicationNotificationsPage = () => {
                   <CardHeader>
                     <CardTitle className="font-cairo flex items-center gap-2">
                       <Send className="h-5 w-5 text-brand-turquoise" />
-                      {isRTL ? 'إنشاء رسالة جديدة' : 'Compose New Message'}
+                      {t('composeNewMessage')}
                     </CardTitle>
                     <CardDescription>
-                      {isRTL ? 'أرسل رسائل جماعية للمدارس والمستخدمين' : 'Send broadcast messages to schools and users'}
+                      {t('sendBroadcastMessagesToSchoolsAndUsers')}
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div>
                       <label className="text-sm font-medium mb-2 block">
-                        {isRTL ? 'الجمهور المستهدف' : 'Target Audience'}
+                        {t('targetAudience')}
                       </label>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                         {audienceGroups.map((group) => (
@@ -661,10 +662,10 @@ export const CommunicationNotificationsPage = () => {
 
                     <div>
                       <label className="text-sm font-medium mb-2 block">
-                        {isRTL ? 'عنوان الرسالة' : 'Message Title'}
+                        {t('messageTitle')}
                       </label>
                       <Input 
-                        placeholder={isRTL ? 'أدخل عنوان الرسالة...' : 'Enter message title...'} 
+                        placeholder={t('enterMessageTitle')} 
                         className="rounded-xl"
                         value={messageTitle}
                         onChange={(e) => setMessageTitle(e.target.value)}
@@ -676,7 +677,7 @@ export const CommunicationNotificationsPage = () => {
                         {isRTL ? 'نص الرسالة' : 'Message Content'}
                       </label>
                       <Textarea 
-                        placeholder={isRTL ? 'اكتب رسالتك هنا...' : 'Write your message here...'} 
+                        placeholder={t('writeYourMessageHere')} 
                         className="rounded-xl min-h-[150px]"
                         value={newMessage}
                         onChange={(e) => setNewMessage(e.target.value)}
@@ -686,7 +687,7 @@ export const CommunicationNotificationsPage = () => {
                     <div className="flex justify-end gap-3 pt-4">
                       <Button variant="outline" className="rounded-xl">
                         <Clock className="h-4 w-4 me-2" />
-                        {isRTL ? 'جدولة' : 'Schedule'}
+                        {t('schedule2')}
                       </Button>
                       <Button 
                         className="rounded-xl bg-brand-navy hover:bg-brand-navy/90"
@@ -698,7 +699,7 @@ export const CommunicationNotificationsPage = () => {
                         ) : (
                           <Send className="h-4 w-4 me-2" />
                         )}
-                        {isRTL ? 'إرسال الآن' : 'Send Now'}
+                        {t('sendNow')}
                       </Button>
                     </div>
                   </CardContent>
@@ -709,7 +710,7 @@ export const CommunicationNotificationsPage = () => {
                   <CardHeader>
                     <CardTitle className="font-cairo text-lg flex items-center gap-2">
                       <Mail className="h-5 w-5 text-brand-purple" />
-                      {isRTL ? 'الرسائل الأخيرة' : 'Recent Messages'}
+                      {t('recentMessages2')}
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -719,7 +720,7 @@ export const CommunicationNotificationsPage = () => {
                         {scheduledMessages.length > 0 && (
                           <div className="mb-4">
                             <p className="text-xs text-muted-foreground mb-2 font-semibold">
-                              {isRTL ? 'الرسائل المجدولة' : 'Scheduled Messages'}
+                              {t('scheduledMessages')}
                             </p>
                             {scheduledMessages.map((msg) => (
                               <div key={msg.id} className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl mb-2">
@@ -727,7 +728,7 @@ export const CommunicationNotificationsPage = () => {
                                   <p className="text-sm font-medium line-clamp-1">{msg.title}</p>
                                   <Badge variant="secondary" className="text-xs bg-amber-500/20 text-amber-600">
                                     <Clock className="h-3 w-3 me-1" />
-                                    {isRTL ? 'مجدولة' : 'Scheduled'}
+                                    {t('scheduled2')}
                                   </Badge>
                                 </div>
                                 <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
@@ -735,9 +736,9 @@ export const CommunicationNotificationsPage = () => {
                                 </p>
                                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                                   <span>
-                                    {msg.target_audience === 'all' ? (isRTL ? 'الجميع' : 'Everyone') :
-                                     msg.target_audience === 'teachers' ? (isRTL ? 'المعلمين' : 'Teachers') :
-                                     msg.target_audience === 'students' ? (isRTL ? 'الطلاب' : 'Students') :
+                                    {msg.target_audience === 'all' ? (t('everyone')) :
+                                     msg.target_audience === 'teachers' ? (t('teachers2')) :
+                                     msg.target_audience === 'students' ? (t('students')) :
                                      msg.target_audience}
                                   </span>
                                   <span>{new Date(msg.scheduled_at).toLocaleDateString(isRTL ? 'ar-SA' : 'en-US')}</span>
@@ -755,15 +756,15 @@ export const CommunicationNotificationsPage = () => {
                                 <p className="text-sm font-medium line-clamp-1">{msg.title}</p>
                                 <Badge variant="default" className="text-xs bg-green-500/20 text-green-600">
                                   <Check className="h-3 w-3 me-1" />
-                                  {isRTL ? 'مرسلة' : 'Sent'}
+                                  {t('sent2')}
                                 </Badge>
                               </div>
                               <p className="text-xs text-muted-foreground line-clamp-2 mb-2">{msg.message}</p>
                               <div className="flex items-center justify-between text-xs text-muted-foreground">
                                 <span>
-                                  {msg.target_audience === 'all' ? (isRTL ? 'الجميع' : 'Everyone') :
-                                   msg.target_audience === 'teachers' ? (isRTL ? 'المعلمين' : 'Teachers') :
-                                   msg.target_audience === 'students' ? (isRTL ? 'الطلاب' : 'Students') :
+                                  {msg.target_audience === 'all' ? (t('everyone')) :
+                                   msg.target_audience === 'teachers' ? (t('teachers2')) :
+                                   msg.target_audience === 'students' ? (t('students')) :
                                    msg.target_audience}
                                 </span>
                                 <span>{msg.sent_at ? new Date(msg.sent_at).toLocaleDateString(isRTL ? 'ar-SA' : 'en-US') : ''}</span>
@@ -773,7 +774,7 @@ export const CommunicationNotificationsPage = () => {
                         ) : (
                           <div className="text-center py-8 text-muted-foreground">
                             <Mail className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                            <p className="text-sm">{isRTL ? 'لا توجد رسائل مرسلة' : 'No sent messages'}</p>
+                            <p className="text-sm">{t('noSentMessages')}</p>
                           </div>
                         )}
                       </div>
