@@ -110,6 +110,13 @@ def _resolve_json_path(model_cls, field_path: str):
     return expr
 
 def _build_filter_conditions(model_cls, filters: dict):
+    """Translate Mongo-style filter dict to SQLAlchemy WHERE conditions.
+
+    Supported operators: $or, $and, $expr ($ne/$eq field comparisons),
+    $gt/$gte/$lt/$lte/$ne/$in/$nin/$exists/$regex on JSONB fields.
+    Dot-path keys resolve to nested JSONB paths.  Comparisons use
+    JSONB .astext (lexical) — numeric comparisons need explicit casts.
+    """
     conds = []
     if not filters:
         return conds
@@ -618,6 +625,14 @@ def _apply_group(docs, group_stage):
     return result
 
 async def _gd_aggregate(session, collection: str, pipeline: list) -> List[dict]:
+    """Mongo-compat aggregate pipeline emulation over gd_find.
+
+    Supported stages: $match, $group, $sort, $limit, $count, $addFields,
+    $project, $unwind.  Fetches up to 50k docs from SQL then processes
+    in Python.  Operators are text-based (JSONB .astext) so comparisons
+    use lexical ordering — callers needing numeric/date-native ordering
+    should cast values in route code.
+    """
     initial_match = {}
     first_stage = pipeline[0] if pipeline else {}
     if "$match" in first_stage:
