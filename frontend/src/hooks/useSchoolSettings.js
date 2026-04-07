@@ -229,6 +229,8 @@ export function useSchoolSettings() {
         phone: schoolInfo.phone || '',
         email: schoolInfo.email || '',
         principal_name: schoolInfo.principal_name || '',
+        principal_mobile: schoolInfo.principal_mobile || '',
+        educational_pathway: schoolInfo.educational_pathway || '',
       });
     }
   }, [schoolInfo]);

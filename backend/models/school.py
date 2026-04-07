@@ -42,6 +42,8 @@ class SchoolCreate(BaseModel):
     principal_name: Optional[str] = None
     principal_email: Optional[EmailStr] = None
     principal_phone: Optional[str] = None
+    principal_mobile: Optional[str] = None
+    educational_pathway: Optional[str] = None
 
 
 class SchoolResponse(BaseModel):
@@ -78,3 +80,5 @@ class SchoolUpdate(BaseModel):
     calendar_system: Optional[str] = None
     school_type: Optional[str] = None
     stage: Optional[str] = None
+    principal_mobile: Optional[str] = None
+    educational_pathway: Optional[str] = None

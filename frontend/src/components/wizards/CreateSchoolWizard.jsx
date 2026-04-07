@@ -59,19 +59,20 @@ const SCHOOL_TYPES = [
 
 // Educational stages
 const EDUCATIONAL_STAGES = [
-  { value: 'nursery', label: 'الحضانة', label_en: 'Nursery' },
-  { value: 'kindergarten', label: 'رياض الأطفال', label_en: 'Kindergarten' },
-  { value: 'primary', label: 'الابتدائية', label_en: 'Primary' },
-  { value: 'intermediate', label: 'المتوسطة', label_en: 'Intermediate' },
-  { value: 'secondary', label: 'الثانوية العامة', label_en: 'Secondary' },
-  { value: 'continuous', label: 'التعليم المستمر', label_en: 'Continuous Education' },
-  { value: 'special_needs', label: 'ذوي الإعاقة', label_en: 'Special Needs' },
-  { value: 'scientific_institutes', label: 'المعاهد العلمية', label_en: 'Scientific Institutes' },
-  { value: 'gifted', label: 'المطبقة لبرامج الموهوبين', label_en: 'Gifted Programs' },
-  { value: 'arts', label: 'المطبقة لمبادرة الفنون', label_en: 'Arts Initiative' },
-  { value: 'chinese', label: 'المطبقة للغة الصينية', label_en: 'Chinese Language' },
-  { value: 'hadith', label: 'دار الحديث المكية / المدنية', label_en: 'Dar Al-Hadith' },
-  { value: 'different_curriculum', label: 'مدارس بمنهج مختلف', label_en: 'Different Curriculum' },
+  { value: 'primary', label: 'ابتدائية', label_en: 'Primary' },
+  { value: 'intermediate', label: 'متوسطة', label_en: 'Intermediate' },
+  { value: 'secondary_general', label: 'ثانوية عامة', label_en: 'Secondary General' },
+  { value: 'secondary_pathways', label: 'ثانوية مسارات', label_en: 'Secondary Pathways' },
+  { value: 'school_complex', label: 'مجمع مدارس', label_en: 'School Complex' },
+];
+
+// Educational pathways (for secondary_pathways stage)
+const EDUCATIONAL_PATHWAYS = [
+  { value: 'general', label: 'المسار العام', label_en: 'General Pathway' },
+  { value: 'cs_engineering', label: 'مسار علوم الحاسب والهندسة', label_en: 'CS & Engineering Pathway' },
+  { value: 'health_life', label: 'مسار الصحة والحياة', label_en: 'Health & Life Pathway' },
+  { value: 'business', label: 'مسار إدارة الأعمال', label_en: 'Business Administration Pathway' },
+  { value: 'sharia', label: 'المسار الشرعي', label_en: 'Sharia Pathway' },
 ];
 
 // Calendar systems
@@ -114,7 +115,11 @@ export default function CreateSchoolWizard({ open, onOpenChange, onSuccess, api,
     logoPreview: null,
     country: 'SA',
     city: '',
+    region: '',
     address: '',
+    email: '',
+    principal_name: '',
+    principal_mobile: '',
   });
   
   // Step 2: Operating Settings
@@ -123,6 +128,7 @@ export default function CreateSchoolWizard({ open, onOpenChange, onSuccess, api,
     calendarSystem: 'hijri_gregorian',
     schoolType: 'public',
     educationalStage: 'primary',
+    educationalPathway: '',
     assessmentSystem: 'standard',
   });
   
@@ -167,6 +173,10 @@ export default function CreateSchoolWizard({ open, onOpenChange, onSuccess, api,
     if (!schoolData.country) newErrors.country = t('countryIsRequired');
     if (!schoolData.city) newErrors.city = t('cityIsRequired');
     if (!schoolData.address.trim()) newErrors.address = t('addressIsRequired');
+    if (!(schoolData.principal_mobile || '').trim()) newErrors.principal_mobile = t('principalMobileIsRequired');
+    if (schoolData.principal_mobile && !/^05\d{8}$/.test(schoolData.principal_mobile.replace(/\s/g, ''))) {
+      newErrors.principal_mobile = t('invalidPhoneMustStartWith0510Digits');
+    }
     setErrors(newErrors);
     const errorKeys = Object.keys(newErrors);
     if (errorKeys.length > 0) {
@@ -238,14 +248,18 @@ export default function CreateSchoolWizard({ open, onOpenChange, onSuccess, api,
         name: schoolData.name || (t('draftSchool')),
         country: schoolData.country || 'SA',
         city: schoolData.city || '',
+        region: schoolData.region || '',
         address: schoolData.address || '',
+        email: schoolData.email || '',
         language: settingsData.defaultLanguage,
         calendar_system: settingsData.calendarSystem,
         school_type: settingsData.schoolType,
         stage: settingsData.educationalStage,
-        principal_name: principalData.fullName || '',
+        educational_pathway: settingsData.educationalStage === 'secondary_pathways' ? settingsData.educationalPathway : '',
+        principal_name: schoolData.principal_name || principalData.fullName || '',
         principal_email: principalData.email || '',
         principal_phone: principalData.primaryPhone || '',
+        principal_mobile: schoolData.principal_mobile || '',
         status: 'setup',
       };
       
@@ -272,6 +286,7 @@ export default function CreateSchoolWizard({ open, onOpenChange, onSuccess, api,
       calendarSystem: 'hijri_gregorian',
       schoolType: 'public',
       educationalStage: 'primary',
+      educationalPathway: '',
       assessmentSystem: 'standard',
     });
     toast.info(t('settingsResetToDefault'));
@@ -294,14 +309,18 @@ export default function CreateSchoolWizard({ open, onOpenChange, onSuccess, api,
         name: schoolData.name,
         country: schoolData.country,
         city: schoolData.city,
+        region: schoolData.region,
         address: schoolData.address,
+        email: schoolData.email,
         language: settingsData.defaultLanguage,
         calendar_system: settingsData.calendarSystem,
         school_type: settingsData.schoolType,
         stage: settingsData.educationalStage,
-        principal_name: principalData.fullName,
+        educational_pathway: settingsData.educationalStage === 'secondary_pathways' ? settingsData.educationalPathway : '',
+        principal_name: schoolData.principal_name || principalData.fullName,
         principal_email: principalData.email,
         principal_phone: principalData.primaryPhone,
+        principal_mobile: schoolData.principal_mobile,
       };
       
       // API call to create school
@@ -396,8 +415,8 @@ ${createdSchool?.tenant_code}
     setCurrentStep(1);
     setIsComplete(false);
     setCreatedSchool(null);
-    setSchoolData({ name: '', logo: null, logoPreview: null, country: 'SA', city: '', address: '' });
-    setSettingsData({ defaultLanguage: 'ar', calendarSystem: 'hijri_gregorian', schoolType: 'public', educationalStage: 'primary', assessmentSystem: 'standard' });
+    setSchoolData({ name: '', logo: null, logoPreview: null, country: 'SA', city: '', region: '', address: '', email: '', principal_name: '', principal_mobile: '' });
+    setSettingsData({ defaultLanguage: 'ar', calendarSystem: 'hijri_gregorian', schoolType: 'public', educationalStage: 'primary', educationalPathway: '', assessmentSystem: 'standard' });
     setPrincipalData({ fullName: '', primaryPhone: '', secondaryPhone: '', email: '' });
     setErrors({});
   };
@@ -568,6 +587,66 @@ ${createdSchool?.tenant_code}
                       {errors.address && <p className="text-sm text-red-500 font-medium">{errors.address}</p>}
                     </div>
                   </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div className="space-y-1.5" data-field="region">
+                      <Label className="flex items-center gap-2">
+                        <MapPin className="h-4 w-4" />
+                        {isRTL ? 'المنطقة' : 'Region'}
+                      </Label>
+                      <Input
+                        value={schoolData.region}
+                        onChange={(e) => setSchoolData({ ...schoolData, region: e.target.value })}
+                        placeholder={isRTL ? 'المنطقة الإدارية' : 'Administrative region'}
+                        data-testid="region-input"
+                      />
+                    </div>
+                    <div className="space-y-1.5" data-field="email">
+                      <Label className="flex items-center gap-2">
+                        <Mail className="h-4 w-4" />
+                        {isRTL ? 'البريد الإلكتروني' : 'Email'}
+                      </Label>
+                      <Input
+                        type="email"
+                        value={schoolData.email}
+                        onChange={(e) => setSchoolData({ ...schoolData, email: e.target.value })}
+                        placeholder="school@example.edu.sa"
+                        dir="ltr"
+                        data-testid="school-email-input"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div className="space-y-1.5" data-field="principal_name">
+                      <Label className="flex items-center gap-2">
+                        <User className="h-4 w-4" />
+                        {isRTL ? 'اسم المدير' : 'Principal Name'}
+                      </Label>
+                      <Input
+                        value={schoolData.principal_name}
+                        onChange={(e) => setSchoolData({ ...schoolData, principal_name: e.target.value })}
+                        placeholder={isRTL ? 'الاسم الكامل للمدير' : 'Principal full name'}
+                        data-testid="school-principal-name-input"
+                      />
+                    </div>
+                    <div className="space-y-1.5" data-field="principal_mobile">
+                      <Label className="flex items-center gap-2">
+                        <Phone className="h-4 w-4" />
+                        {isRTL ? 'رقم جوال المدير' : 'Principal Mobile'}
+                        <Badge variant="destructive" className="text-[10px]">{t('required2')}</Badge>
+                      </Label>
+                      <Input
+                        value={schoolData.principal_mobile}
+                        onChange={(e) => { setSchoolData({ ...schoolData, principal_mobile: e.target.value }); clearFieldError('principal_mobile'); }}
+                        placeholder="05XXXXXXXX"
+                        className={errors.principal_mobile ? 'border-red-500' : ''}
+                        dir="ltr"
+                        data-testid="school-principal-mobile-input"
+                      />
+                      {errors.principal_mobile && <p className="text-sm text-red-500 font-medium">{errors.principal_mobile}</p>}
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -642,7 +721,7 @@ ${createdSchool?.tenant_code}
                         <GraduationCap className="h-4 w-4" />
                         {isRTL ? 'المرحلة التعليمية' : 'Educational Stage'}
                       </Label>
-                      <Select value={settingsData.educationalStage} onValueChange={(v) => setSettingsData({ ...settingsData, educationalStage: v })}>
+                      <Select value={settingsData.educationalStage} onValueChange={(v) => setSettingsData({ ...settingsData, educationalStage: v, educationalPathway: v === 'secondary_pathways' ? settingsData.educationalPathway : '' })}>
                         <SelectTrigger data-testid="stage-select">
                           <SelectValue />
                         </SelectTrigger>
@@ -678,6 +757,29 @@ ${createdSchool?.tenant_code}
                       </p>
                     </div>
                   </div>
+
+                  {settingsData.educationalStage === 'secondary_pathways' && (
+                    <div className="mb-4">
+                      <div className="space-y-1.5">
+                        <Label className="flex items-center gap-2">
+                          <GraduationCap className="h-4 w-4" />
+                          {isRTL ? 'المسار التعليمي' : 'Educational Pathway'}
+                        </Label>
+                        <Select value={settingsData.educationalPathway} onValueChange={(v) => setSettingsData({ ...settingsData, educationalPathway: v })}>
+                          <SelectTrigger data-testid="pathway-select">
+                            <SelectValue placeholder={isRTL ? 'اختر المسار التعليمي' : 'Select educational pathway'} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {EDUCATIONAL_PATHWAYS.map((pathway) => (
+                              <SelectItem key={pathway.value} value={pathway.value}>
+                                {isRTL ? pathway.label : pathway.label_en}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="flex justify-center">
                     <Button variant="outline" size="sm" onClick={resetSettingsToDefault} className="text-muted-foreground">

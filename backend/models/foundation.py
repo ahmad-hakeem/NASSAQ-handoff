@@ -98,6 +98,9 @@ class EducationalStage(str, Enum):
     PRIMARY = "primary"                # ابتدائي
     INTERMEDIATE = "intermediate"      # متوسط
     SECONDARY = "secondary"            # ثانوي
+    SECONDARY_GENERAL = "secondary_general"        # ثانوية عامة
+    SECONDARY_PATHWAYS = "secondary_pathways"      # ثانوية مسارات
+    SCHOOL_COMPLEX = "school_complex"              # مجمع مدارس
 
 
 class GenderType(str, Enum):

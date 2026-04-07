@@ -110,6 +110,8 @@ class School(Base):
     principal_name = Column(String, nullable=True)
     principal_email = Column(String, nullable=True)
     principal_phone = Column(String, nullable=True)
+    principal_mobile = Column(String, nullable=True)
+    educational_pathway = Column(String, nullable=True)
     configuration = Column(JSONB, default=dict)
     location = Column(JSONB, default=dict)
     ministry_id = Column(String, nullable=True)

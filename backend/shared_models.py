@@ -153,6 +153,8 @@ class SchoolCreate(BaseModel):
     principal_name: Optional[str] = None
     principal_email: Optional[EmailStr] = None
     principal_phone: Optional[str] = None
+    principal_mobile: Optional[str] = None
+    educational_pathway: Optional[str] = None
 
 class SchoolResponse(BaseModel):
     model_config = ConfigDict(extra="ignore", from_attributes=True)

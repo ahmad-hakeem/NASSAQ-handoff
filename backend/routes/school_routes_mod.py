@@ -119,6 +119,8 @@ async def create_school(
         "principal_name": school_data.principal_name,
         "principal_email": school_data.principal_email,
         "principal_phone": school_data.principal_phone,
+        "principal_mobile": school_data.principal_mobile,
+        "educational_pathway": school_data.educational_pathway,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "created_by": current_user.get("user_id")
@@ -271,6 +273,8 @@ async def create_school_draft(
         "principal_name": school_data.principal_name or "",
         "principal_email": school_data.principal_email or "",
         "principal_phone": school_data.principal_phone or "",
+        "principal_mobile": school_data.principal_mobile or "",
+        "educational_pathway": school_data.educational_pathway or "",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "created_by": current_user.get("user_id")

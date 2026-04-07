@@ -162,7 +162,10 @@ class SchoolInfoUpdate(BaseModel):
     region: Optional[str] = None
     address: Optional[str] = None
     type: Optional[str] = None
+    stage: Optional[str] = None
     principal_name: Optional[str] = None
+    principal_mobile: Optional[str] = None
+    educational_pathway: Optional[str] = None
 
 
 class WorkDaysConfig(BaseModel):
@@ -335,6 +338,8 @@ async def get_school_info(
         "email": school.get("email"),
         "license_number": school.get("license_number"),
         "principal_name": school.get("principal_name"),
+        "principal_mobile": school.get("principal_mobile"),
+        "educational_pathway": school.get("educational_pathway"),
         "logo_url": school.get("logo_url"),
         "is_active": school.get("is_active", True),
         "updated_at": school.get("updated_at"),
@@ -364,6 +369,10 @@ async def update_school_info_direct(
     update_data = {k: v for k, v in data.model_dump().items() if v is not None}
     update_data.pop("license_number", None)
     update_data.pop("id", None)
+    if "principal_mobile" in update_data and not update_data["principal_mobile"].strip():
+        raise HTTPException(status_code=422, detail="رقم جوال المدير مطلوب")
+    if "stage" in update_data and update_data.get("stage") != "secondary_pathways":
+        update_data["educational_pathway"] = None
     if "name_ar" in update_data and "name" not in update_data:
         update_data["name"] = update_data["name_ar"]
     elif "name" in update_data and "name_ar" not in update_data:

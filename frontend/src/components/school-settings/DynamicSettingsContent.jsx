@@ -99,20 +99,6 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
                     data-testid="school-name-ar-input"
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label className="font-semibold text-slate-700 flex items-center gap-1">
-                    <Building2 className="h-3.5 w-3.5 text-[#1C3D74]" />
-                    School Name (English)
-                  </Label>
-                  <Input
-                    dir="ltr"
-                    className="h-11 border-slate-200 focus:border-[#1C3D74]"
-                    value={editedSchoolInfo.name_en || ''}
-                    onChange={e => setEditedSchoolInfo(p => ({ ...p, name_en: e.target.value }))}
-                    placeholder="School name in English"
-                    data-testid="school-name-en-input"
-                  />
-                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -130,17 +116,34 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
                 </div>
                 <div className="space-y-2">
                   <Label className="font-semibold text-slate-700">المرحلة الدراسية</Label>
-                  <Select value={editedSchoolInfo.stage || ''} onValueChange={v => setEditedSchoolInfo(p => ({ ...p, stage: v }))}>
+                  <Select value={editedSchoolInfo.stage || ''} onValueChange={v => setEditedSchoolInfo(p => ({ ...p, stage: v, educational_pathway: v === 'secondary_pathways' ? p.educational_pathway : '' }))}>
                     <SelectTrigger className="h-11 border-slate-200" data-testid="school-stage-select"><SelectValue placeholder="اختر المرحلة" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="primary">ابتدائية</SelectItem>
-                      <SelectItem value="middle">متوسطة</SelectItem>
-                      <SelectItem value="secondary">ثانوية</SelectItem>
-                      <SelectItem value="combined">مشتركة</SelectItem>
+                      <SelectItem value="intermediate">متوسطة</SelectItem>
+                      <SelectItem value="secondary_general">ثانوية عامة</SelectItem>
+                      <SelectItem value="secondary_pathways">ثانوية مسارات</SelectItem>
+                      <SelectItem value="school_complex">مجمع مدارس</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
+
+              {editedSchoolInfo.stage === 'secondary_pathways' && (
+                <div className="space-y-2">
+                  <Label className="font-semibold text-slate-700 flex items-center gap-1"><GraduationCap className="h-3.5 w-3.5 text-[#1C3D74]" />المسار التعليمي</Label>
+                  <Select value={editedSchoolInfo.educational_pathway || ''} onValueChange={v => setEditedSchoolInfo(p => ({ ...p, educational_pathway: v }))}>
+                    <SelectTrigger className="h-11 border-slate-200" data-testid="school-pathway-select"><SelectValue placeholder="اختر المسار التعليمي" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="general">المسار العام</SelectItem>
+                      <SelectItem value="cs_engineering">مسار علوم الحاسب والهندسة</SelectItem>
+                      <SelectItem value="health_life">مسار الصحة والحياة</SelectItem>
+                      <SelectItem value="business">مسار إدارة الأعمال</SelectItem>
+                      <SelectItem value="sharia">المسار الشرعي</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -153,15 +156,10 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label className="font-semibold text-slate-700 flex items-center gap-1"><MapPin className="h-3.5 w-3.5 text-[#1C3D74]" />العنوان التفصيلي</Label>
-                <Input dir="rtl" className="h-11 border-slate-200 focus:border-[#1C3D74] text-right" value={editedSchoolInfo.address || ''} onChange={e => setEditedSchoolInfo(p => ({ ...p, address: e.target.value }))} placeholder="الحي، الشارع، رقم المبنى" data-testid="school-address-input" />
-              </div>
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label className="font-semibold text-slate-700 flex items-center gap-1"><Phone className="h-3.5 w-3.5 text-[#1C3D74]" />رقم الهاتف</Label>
-                  <Input dir="ltr" type="tel" className="h-11 border-slate-200 focus:border-[#1C3D74]" value={editedSchoolInfo.phone || ''} onChange={e => setEditedSchoolInfo(p => ({ ...p, phone: e.target.value }))} placeholder="+966 1X XXX XXXX" data-testid="school-phone-input" />
+                  <Label className="font-semibold text-slate-700 flex items-center gap-1"><Phone className="h-3.5 w-3.5 text-[#1C3D74]" />رقم جوال المدير <span className="text-red-500">*</span></Label>
+                  <Input dir="ltr" type="tel" className="h-11 border-slate-200 focus:border-[#1C3D74]" value={editedSchoolInfo.principal_mobile || ''} onChange={e => setEditedSchoolInfo(p => ({ ...p, principal_mobile: e.target.value }))} placeholder="05XXXXXXXX" data-testid="school-principal-mobile-input" />
                 </div>
                 <div className="space-y-2">
                   <Label className="font-semibold text-slate-700 flex items-center gap-1"><Mail className="h-3.5 w-3.5 text-[#1C3D74]" />البريد الإلكتروني</Label>
