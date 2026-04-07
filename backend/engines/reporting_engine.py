@@ -29,6 +29,8 @@ from datetime import datetime, timezone, timedelta
 import logging
 import math
 
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_count, gd_delete_one, gd_delete_many
+
 logger = logging.getLogger("nassaq.reporting_engine")
 
 
@@ -81,20 +83,24 @@ class ReportingEngine:
         self.db = db
         self.hakim_engine = hakim_engine
 
-    async def _paginated_find(self, collection, query: dict, projection: dict, page_size: int = 5000, sort_key: str = None, sort_dir: int = 1):
+    @property
+    def session(self):
+        return self.db.session
+
+    async def _paginated_find(self, collection_name, query: dict, projection: dict = None, page_size: int = 5000, sort_key: str = None, sort_dir: int = 1):
         all_docs = []
-        skip = 0
+        offset = 0
         while True:
-            cursor = collection.find(query, projection)
-            if sort_key:
-                cursor = cursor.sort(sort_key, sort_dir)
-            batch = await cursor.skip(skip).limit(page_size).to_list(page_size)
+            batch = await gd_find(self.session, collection_name, query,
+                                  order_by=sort_key,
+                                  desc_order=(sort_dir == -1) if sort_key else True,
+                                  limit=page_size, offset=offset if offset > 0 else None)
             if not batch:
                 break
             all_docs.extend(batch)
             if len(batch) < page_size:
                 break
-            skip += page_size
+            offset += page_size
         return all_docs
 
     def _wrap(self, report_type: str, school_id: str, period: dict, data: dict) -> dict:
@@ -151,30 +157,21 @@ class ReportingEngine:
     # ------------------------------------------------------------------
     async def _school_attendance(self, school_id: str, start_date: str,
                                   end_date: str, **_kw) -> dict:
-        date_field = "date"
-        base_match = {"school_id": school_id, date_field: {"$gte": start_date, "$lte": end_date}}
+        base_filter = {"school_id": school_id, "date": {"$gte": start_date, "$lte": end_date}}
         class_id = _kw.get("class_id")
         if class_id:
-            base_match["class_id"] = class_id
+            base_filter["class_id"] = class_id
 
-        pipeline_daily = [
-            {"$match": base_match},
-            {"$group": {
-                "_id": {"date": f"${date_field}", "status": "$status"},
-                "count": {"$sum": 1},
-            }},
-            {"$sort": {"_id.date": 1}},
-        ]
-        raw = await self.db.attendance.aggregate(pipeline_daily).to_list(10000)
+        raw_records = await gd_find(self.session, "attendance", base_filter, limit=10000)
 
         daily: Dict[str, dict] = {}
-        for r in raw:
-            d = r["_id"]["date"]
-            s = r["_id"]["status"]
+        for r in raw_records:
+            d = r.get("date", "")
+            s = r.get("status", "absent")
             if d not in daily:
                 daily[d] = {"date": d, "present": 0, "absent": 0, "late": 0, "excused": 0, "total": 0}
-            daily[d][s] = daily[d].get(s, 0) + r["count"]
-            daily[d]["total"] += r["count"]
+            daily[d][s] = daily[d].get(s, 0) + 1
+            daily[d]["total"] += 1
         for v in daily.values():
             v["rate"] = round((v["present"] + v.get("late", 0)) / v["total"] * 100, 1) if v["total"] else 0
 
@@ -198,28 +195,18 @@ class ReportingEngine:
         for v in monthly.values():
             v["rate"] = round((v["present"] + v.get("late", 0)) / v["total"] * 100, 1) if v["total"] else 0
 
-        pipeline_class = [
-            {"$match": base_match},
-            {"$group": {
-                "_id": {"class_id": "$class_id", "status": "$status"},
-                "count": {"$sum": 1},
-            }},
-        ]
-        raw_class = await self.db.attendance.aggregate(pipeline_class).to_list(2000)
         by_class: Dict[str, dict] = {}
-        for r in raw_class:
-            cid = r["_id"].get("class_id", "unknown")
-            s = r["_id"]["status"]
+        for r in raw_records:
+            cid = r.get("class_id", "unknown")
+            s = r.get("status", "absent")
             if cid not in by_class:
                 by_class[cid] = {"class_id": cid, "present": 0, "absent": 0, "late": 0, "total": 0}
-            by_class[cid][s] = by_class[cid].get(s, 0) + r["count"]
-            by_class[cid]["total"] += r["count"]
+            by_class[cid][s] = by_class[cid].get(s, 0) + 1
+            by_class[cid]["total"] += 1
         for v in by_class.values():
             v["rate"] = round((v["present"] + v.get("late", 0)) / v["total"] * 100, 1) if v["total"] else 0
 
-        classes = await self.db.classes.find(
-            {"school_id": school_id}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1}
-        ).to_list(200)
+        classes = await gd_find(self.session, "classes", {"school_id": school_id}, limit=200)
         name_map = {c["id"]: c.get("name_ar") or c.get("name", c["id"]) for c in classes}
         for v in by_class.values():
             v["class_name"] = name_map.get(v["class_id"], v["class_id"])
@@ -252,9 +239,7 @@ class ReportingEngine:
         if class_id:
             session_query["class_id"] = class_id
 
-        sessions = await self.db.class_sessions.find(
-            session_query, {"_id": 0, "id": 1, "class_id": 1, "date": 1}
-        ).to_list(2000)
+        sessions = await gd_find(self.session, "class_sessions", session_query, limit=2000)
         session_ids = [s["id"] for s in sessions]
         session_class = {s["id"]: s.get("class_id") for s in sessions}
 
@@ -264,68 +249,57 @@ class ReportingEngine:
                                {"summary": {"total_sessions": 0, "total_interactions": 0},
                                 "by_class": [], "by_type": [], "top_students": []})
 
-        pipeline = [
-            {"$match": {"session_id": {"$in": session_ids}}},
-            {"$group": {
-                "_id": "$interaction_type",
-                "count": {"$sum": 1},
-            }},
-        ]
-        type_agg = await self.db.session_interactions.aggregate(pipeline).to_list(50)
-        by_type = [{"type": r["_id"], "count": r["count"]} for r in type_agg]
+        all_interactions = await gd_find(self.session, "session_interactions", {"session_id": {"$in": session_ids}}, limit=50000)
 
-        pipeline_student = [
-            {"$match": {"session_id": {"$in": session_ids}}},
-            {"$group": {
-                "_id": "$student_id",
-                "interactions": {"$sum": 1},
-                "correct": {"$sum": {"$cond": [{"$eq": ["$answer_result", "correct"]}, 1, 0]}},
-            }},
-            {"$sort": {"interactions": -1}},
-            {"$limit": 20},
-        ]
-        top_raw = await self.db.session_interactions.aggregate(pipeline_student).to_list(20)
+        type_counts: Dict[str, int] = {}
+        for i in all_interactions:
+            itype = i.get("interaction_type", "unknown")
+            type_counts[itype] = type_counts.get(itype, 0) + 1
+        by_type = [{"type": t, "count": c} for t, c in type_counts.items()]
 
-        student_ids = [r["_id"] for r in top_raw if r["_id"]]
-        students = await self.db.students.find(
-            {"id": {"$in": student_ids}, "school_id": school_id},
-            {"_id": 0, "id": 1, "full_name": 1, "name": 1, "name_ar": 1, "class_id": 1}
-        ).to_list(200)
+        student_agg: Dict[str, dict] = {}
+        for i in all_interactions:
+            sid = i.get("student_id")
+            if not sid:
+                continue
+            if sid not in student_agg:
+                student_agg[sid] = {"interactions": 0, "correct": 0}
+            student_agg[sid]["interactions"] += 1
+            if i.get("answer_result") == "correct":
+                student_agg[sid]["correct"] += 1
+        top_sorted = sorted(student_agg.items(), key=lambda x: -x[1]["interactions"])[:20]
+
+        student_ids = [s[0] for s in top_sorted if s[0]]
+        students = await gd_find(self.session, "students", {"id": {"$in": student_ids}, "school_id": school_id}, limit=200) if student_ids else []
         stu_map = {s["id"]: s for s in students}
 
         top_students = []
-        for r in top_raw:
-            stu = stu_map.get(r["_id"], {})
+        for sid, agg in top_sorted:
+            stu = stu_map.get(sid, {})
             top_students.append({
-                "student_id": r["_id"],
+                "student_id": sid,
                 "student_name": stu.get("name_ar") or stu.get("full_name") or stu.get("name", ""),
                 "class_id": stu.get("class_id"),
-                "interactions": r["interactions"],
-                "correct_answers": r["correct"],
+                "interactions": agg["interactions"],
+                "correct_answers": agg["correct"],
             })
 
         session_date = {s["id"]: s.get("date", "") for s in sessions}
 
-        pipeline_by_session = [
-            {"$match": {"session_id": {"$in": session_ids}}},
-            {"$group": {
-                "_id": "$session_id",
-                "count": {"$sum": 1},
-            }},
-        ]
-        sess_counts = await self.db.session_interactions.aggregate(pipeline_by_session).to_list(2000)
+        session_inter_counts: Dict[str, int] = {}
+        for i in all_interactions:
+            ssid = i.get("session_id", "")
+            session_inter_counts[ssid] = session_inter_counts.get(ssid, 0) + 1
 
         by_class_counts: Dict[str, int] = {}
         weekly_counts: Dict[str, int] = {}
-        for sc in sess_counts:
-            cid = session_class.get(sc["_id"], "unknown")
-            by_class_counts[cid] = by_class_counts.get(cid, 0) + sc["count"]
-            wk = _week_key(session_date.get(sc["_id"], ""))
-            weekly_counts[wk] = weekly_counts.get(wk, 0) + sc["count"]
+        for ssid, cnt in session_inter_counts.items():
+            cid = session_class.get(ssid, "unknown")
+            by_class_counts[cid] = by_class_counts.get(cid, 0) + cnt
+            wk = _week_key(session_date.get(ssid, ""))
+            weekly_counts[wk] = weekly_counts.get(wk, 0) + cnt
 
-        classes = await self.db.classes.find(
-            {"school_id": school_id}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1}
-        ).to_list(200)
+        classes = await gd_find(self.session, "classes", {"school_id": school_id}, limit=200)
         cn_map = {c["id"]: c.get("name_ar") or c.get("name", c["id"]) for c in classes}
 
         by_class = [
@@ -335,7 +309,7 @@ class ReportingEngine:
 
         trend = [{"week": w, "interactions": c} for w, c in sorted(weekly_counts.items())]
 
-        total_interactions = sum(r["count"] for r in type_agg)
+        total_interactions = sum(type_counts.values())
 
         data = {
             "summary": {
@@ -356,74 +330,58 @@ class ReportingEngine:
     async def _school_behaviour(self, school_id: str, start_date: str,
                                  end_date: str, **_kw) -> dict:
         class_id = _kw.get("class_id")
-        match: dict = {"school_id": school_id}
-        date_filter = {"$gte": start_date, "$lte": end_date}
-        match["$or"] = [{"created_at": date_filter}, {"date": date_filter}]
+
+        match_created: dict = {"school_id": school_id, "created_at": {"$gte": start_date, "$lte": end_date}}
         if class_id:
-            match["class_id"] = class_id
+            match_created["class_id"] = class_id
+        match_date: dict = {"school_id": school_id, "date": {"$gte": start_date, "$lte": end_date}}
+        if class_id:
+            match_date["class_id"] = class_id
 
-        pipeline_type = [
-            {"$match": match},
-            {"$group": {
-                "_id": {"$ifNull": ["$type", {"$ifNull": ["$behavior_type", "other"]}]},
-                "count": {"$sum": 1},
-            }},
-            {"$sort": {"count": -1}},
-        ]
-        type_agg = await self.db.behavior.aggregate(pipeline_type).to_list(50)
-        by_type = [{"type": r["_id"], "count": r["count"]} for r in type_agg]
-        type_counts = {r["_id"]: r["count"] for r in type_agg}
-        total_incidents = sum(r["count"] for r in type_agg)
+        records_created = await gd_find(self.session, "behavior", match_created, limit=10000)
+        records_date = await gd_find(self.session, "behavior", match_date, limit=10000)
 
-        pipeline_class = [
-            {"$match": match},
-            {"$group": {
-                "_id": {
-                    "class_id": {"$ifNull": ["$class_id", "unknown"]},
-                    "type": {"$ifNull": ["$type", {"$ifNull": ["$behavior_type", "other"]}]},
-                },
-                "count": {"$sum": 1},
-            }},
-        ]
-        class_agg = await self.db.behavior.aggregate(pipeline_class).to_list(1000)
+        seen_ids = set()
+        all_records = []
+        for r in records_created + records_date:
+            rid = r.get("id", id(r))
+            if rid not in seen_ids:
+                seen_ids.add(rid)
+                all_records.append(r)
 
-        classes = await self.db.classes.find(
-            {"school_id": school_id}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1}
-        ).to_list(200)
+        type_counts: Dict[str, int] = {}
+        for r in all_records:
+            btype = r.get("type") or r.get("behavior_type") or "other"
+            type_counts[btype] = type_counts.get(btype, 0) + 1
+        by_type = sorted([{"type": t, "count": c} for t, c in type_counts.items()], key=lambda x: -x["count"])
+        total_incidents = sum(type_counts.values())
+
+        classes = await gd_find(self.session, "classes", {"school_id": school_id}, limit=200)
         cn_map = {c["id"]: c.get("name_ar") or c.get("name", c["id"]) for c in classes}
 
         class_data: Dict[str, dict] = {}
-        for r in class_agg:
-            cid = r["_id"]["class_id"]
-            btype = r["_id"]["type"]
+        for r in all_records:
+            cid = r.get("class_id", "unknown")
+            btype = r.get("type") or r.get("behavior_type") or "other"
             if cid not in class_data:
                 class_data[cid] = {"class_id": cid, "class_name": cn_map.get(cid, cid), "total": 0, "breakdown": {}}
-            class_data[cid]["breakdown"][btype] = r["count"]
-            class_data[cid]["total"] += r["count"]
+            class_data[cid]["breakdown"][btype] = class_data[cid]["breakdown"].get(btype, 0) + 1
+            class_data[cid]["total"] += 1
         by_class = sorted(class_data.values(), key=lambda x: -x["total"])
 
-        pipeline_daily = [
-            {"$match": match},
-            {"$project": {
-                "day": {"$substr": [{"$ifNull": ["$date", {"$ifNull": ["$created_at", ""]}]}, 0, 10]},
-            }},
-            {"$group": {"_id": "$day", "count": {"$sum": 1}}},
-            {"$sort": {"_id": 1}},
-        ]
-        daily_agg = await self.db.behavior.aggregate(pipeline_daily).to_list(1000)
-        trend = [{"date": r["_id"], "count": r["count"]} for r in daily_agg if r["_id"]]
+        daily_counts: Dict[str, int] = {}
+        for r in all_records:
+            day = (r.get("date") or r.get("created_at") or "")[:10]
+            if day:
+                daily_counts[day] = daily_counts.get(day, 0) + 1
+        trend = sorted([{"date": d, "count": c} for d, c in daily_counts.items()], key=lambda x: x["date"])
 
-        recent_records = await self.db.behavior.find(
-            match, {"_id": 0}
-        ).sort("created_at", -1).limit(10).to_list(10)
-        student_ids_needed = list(set(r.get("student_id") for r in recent_records if r.get("student_id")))
-        stu_docs = await self.db.students.find(
-            {"id": {"$in": student_ids_needed}, "school_id": school_id},
-            {"_id": 0, "id": 1, "name_ar": 1, "full_name": 1, "name": 1}
-        ).to_list(100) if student_ids_needed else []
+        sorted_records = sorted(all_records, key=lambda x: x.get("created_at", ""), reverse=True)[:10]
+        student_ids_needed = list(set(r.get("student_id") for r in sorted_records if r.get("student_id")))
+        stu_docs = await gd_find(self.session, "students", {"id": {"$in": student_ids_needed}, "school_id": school_id}, limit=100) if student_ids_needed else []
         stu_map = {s["id"]: s.get("name_ar") or s.get("full_name") or s.get("name", "") for s in stu_docs}
         recent_items = []
-        for r in recent_records:
+        for r in sorted_records:
             recent_items.append({
                 "student_id": r.get("student_id"),
                 "student_name": stu_map.get(r.get("student_id"), ""),
@@ -449,114 +407,80 @@ class ReportingEngine:
                                 end_date: str, **_kw) -> dict:
         class_id = _kw.get("class_id")
 
-        score_match: dict = {"school_id": school_id, "date": {"$gte": start_date, "$lte": end_date}}
+        score_filter: dict = {"school_id": school_id, "date": {"$gte": start_date, "$lte": end_date}}
         if class_id:
-            score_match["class_id"] = class_id
+            score_filter["class_id"] = class_id
 
-        pipeline_class = [
-            {"$match": score_match},
-            {"$group": {
-                "_id": "$class_id",
-                "avg_score": {"$avg": "$score"},
-                "max_score": {"$max": "$score"},
-                "min_score": {"$min": "$score"},
-                "count": {"$sum": 1},
-            }},
-            {"$sort": {"avg_score": -1}},
-        ]
-        class_agg = await self.db.student_daily_scores.aggregate(pipeline_class).to_list(200)
+        all_scores = await gd_find(self.session, "student_daily_scores", score_filter, limit=50000)
 
-        classes = await self.db.classes.find(
-            {"school_id": school_id}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1}
-        ).to_list(200)
+        class_groups: Dict[str, list] = {}
+        for s in all_scores:
+            cid = s.get("class_id", "unknown")
+            if cid not in class_groups:
+                class_groups[cid] = []
+            class_groups[cid].append(s.get("score", 0) or 0)
+
+        classes = await gd_find(self.session, "classes", {"school_id": school_id}, limit=200)
         cn_map = {c["id"]: c.get("name_ar") or c.get("name", c["id"]) for c in classes}
 
         class_performance = []
-        for r in class_agg:
+        for cid, scores_list in sorted(class_groups.items(), key=lambda x: -(sum(x[1]) / len(x[1]) if x[1] else 0)):
+            avg_s = sum(scores_list) / len(scores_list) if scores_list else 0
             class_performance.append({
-                "class_id": r["_id"],
-                "class_name": cn_map.get(r["_id"], r["_id"] or "unknown"),
-                "avg_score": round(r["avg_score"], 1) if r["avg_score"] is not None else 0,
-                "max_score": r["max_score"] or 0,
-                "min_score": r["min_score"] or 0,
-                "records": r["count"],
+                "class_id": cid,
+                "class_name": cn_map.get(cid, cid or "unknown"),
+                "avg_score": round(avg_s, 1),
+                "max_score": max(scores_list) if scores_list else 0,
+                "min_score": min(scores_list) if scores_list else 0,
+                "records": len(scores_list),
             })
 
-        pipeline_dist = [
-            {"$match": score_match},
-            {"$bucket": {
-                "groupBy": "$score",
-                "boundaries": [0, 50, 60, 70, 80, 90, 101],
-                "default": "other",
-                "output": {"count": {"$sum": 1}},
-            }},
-        ]
-        try:
-            dist_raw = await self.db.student_daily_scores.aggregate(pipeline_dist).to_list(20)
-        except Exception as e:
-            logger.debug("Score distribution aggregation failed: %s", e)
-            dist_raw = []
-
+        boundaries = [0, 50, 60, 70, 80, 90, 101]
         labels = {0: "0-49", 50: "50-59", 60: "60-69", 70: "70-79", 80: "80-89", 90: "90-100"}
+        bucket_counts: Dict[int, int] = {}
+        for s in all_scores:
+            score_val = s.get("score", 0) or 0
+            for i in range(len(boundaries) - 1):
+                if boundaries[i] <= score_val < boundaries[i + 1]:
+                    bucket_counts[boundaries[i]] = bucket_counts.get(boundaries[i], 0) + 1
+                    break
         distribution = []
-        for r in dist_raw:
-            bucket = r["_id"]
-            distribution.append({
-                "range": labels.get(bucket, str(bucket)),
-                "count": r["count"],
-            })
+        for b in [0, 50, 60, 70, 80, 90]:
+            if b in bucket_counts:
+                distribution.append({"range": labels.get(b, str(b)), "count": bucket_counts[b]})
 
-        pipeline_top = [
-            {"$match": score_match},
-            {"$group": {
-                "_id": "$student_id",
-                "avg_score": {"$avg": "$score"},
-                "total": {"$sum": 1},
-            }},
-            {"$sort": {"avg_score": -1}},
-            {"$limit": 10},
-        ]
-        top_raw = await self.db.student_daily_scores.aggregate(pipeline_top).to_list(10)
+        student_scores: Dict[str, list] = {}
+        for s in all_scores:
+            sid = s.get("student_id")
+            if sid:
+                if sid not in student_scores:
+                    student_scores[sid] = []
+                student_scores[sid].append(s.get("score", 0) or 0)
 
-        pipeline_bottom = [
-            {"$match": score_match},
-            {"$group": {
-                "_id": "$student_id",
-                "avg_score": {"$avg": "$score"},
-                "total": {"$sum": 1},
-            }},
-            {"$sort": {"avg_score": 1}},
-            {"$limit": 10},
-        ]
-        bottom_raw = await self.db.student_daily_scores.aggregate(pipeline_bottom).to_list(10)
+        student_avgs = [(sid, sum(sc) / len(sc), len(sc)) for sid, sc in student_scores.items()]
+        student_avgs_sorted = sorted(student_avgs, key=lambda x: -x[1])
+        top_raw = student_avgs_sorted[:10]
+        bottom_raw = sorted(student_avgs, key=lambda x: x[1])[:10]
 
         all_stu_ids = list(set(
-            [r["_id"] for r in top_raw if r["_id"]] +
-            [r["_id"] for r in bottom_raw if r["_id"]]
+            [r[0] for r in top_raw if r[0]] +
+            [r[0] for r in bottom_raw if r[0]]
         ))
-        stu_docs = await self.db.students.find(
-            {"id": {"$in": all_stu_ids}, "school_id": school_id},
-            {"_id": 0, "id": 1, "name_ar": 1, "full_name": 1, "name": 1, "class_id": 1}
-        ).to_list(200)
+        stu_docs = await gd_find(self.session, "students", {"id": {"$in": all_stu_ids}, "school_id": school_id}, limit=200)
         stu_map = {s["id"]: s for s in stu_docs}
 
         def _stu_row(r):
-            s = stu_map.get(r["_id"], {})
+            s = stu_map.get(r[0], {})
             return {
-                "student_id": r["_id"],
+                "student_id": r[0],
                 "student_name": s.get("name_ar") or s.get("full_name") or s.get("name", ""),
                 "class_id": s.get("class_id"),
-                "avg_score": round(r["avg_score"], 1) if r["avg_score"] is not None else 0,
-                "records": r["total"],
+                "avg_score": round(r[1], 1),
+                "records": r[2],
             }
 
-        overall_avg_pipeline = [
-            {"$match": score_match},
-            {"$group": {"_id": None, "avg": {"$avg": "$score"}, "count": {"$sum": 1}}},
-        ]
-        overall = await self.db.student_daily_scores.aggregate(overall_avg_pipeline).to_list(1)
-        overall_avg = round(overall[0]["avg"], 1) if overall and overall[0].get("avg") is not None else 0
-        overall_count = overall[0]["count"] if overall else 0
+        overall_avg = round(sum(s.get("score", 0) or 0 for s in all_scores) / len(all_scores), 1) if all_scores else 0
+        overall_count = len(all_scores)
 
         session_match: dict = {
             "school_id": school_id,
@@ -565,46 +489,51 @@ class ReportingEngine:
         }
         if class_id:
             session_match["class_id"] = class_id
-        pipeline_subject_interactions = [
-            {"$match": session_match},
-            {"$lookup": {
-                "from": "session_interactions",
-                "localField": "id",
-                "foreignField": "session_id",
-                "as": "interactions",
-            }},
-            {"$group": {
-                "_id": "$subject_id",
-                "sessions": {"$sum": 1},
-                "classes": {"$addToSet": "$class_id"},
-                "total_interactions": {"$sum": {"$size": "$interactions"}},
-            }},
-            {"$sort": {"sessions": -1}},
-        ]
-        subject_inter_agg = await self.db.class_sessions.aggregate(
-            pipeline_subject_interactions
-        ).to_list(100)
 
-        subject_ids = [r["_id"] for r in subject_inter_agg if r["_id"]]
-        subjects = await self.db.subjects.find(
-            {"id": {"$in": subject_ids}, "school_id": school_id},
-            {"_id": 0, "id": 1, "name_ar": 1, "name_en": 1}
-        ).to_list(200) if subject_ids else []
+        completed_sessions = await gd_find(self.session, "class_sessions", session_match, limit=2000)
+        session_ids = [s["id"] for s in completed_sessions]
+
+        if session_ids:
+            all_interactions = await gd_find(self.session, "session_interactions", {"session_id": {"$in": session_ids}}, limit=50000)
+        else:
+            all_interactions = []
+
+        session_inter_map: Dict[str, list] = {}
+        for i in all_interactions:
+            ssid = i.get("session_id", "")
+            if ssid not in session_inter_map:
+                session_inter_map[ssid] = []
+            session_inter_map[ssid].append(i)
+
+        session_subject = {s["id"]: s.get("subject_id") for s in completed_sessions}
+        session_class_map = {s["id"]: s.get("class_id") for s in completed_sessions}
+
+        subject_data: Dict[str, dict] = {}
+        for s in completed_sessions:
+            subj_id = s.get("subject_id")
+            if not subj_id:
+                continue
+            if subj_id not in subject_data:
+                subject_data[subj_id] = {"sessions": 0, "classes": set(), "total_interactions": 0}
+            subject_data[subj_id]["sessions"] += 1
+            if s.get("class_id"):
+                subject_data[subj_id]["classes"].add(s.get("class_id"))
+            subject_data[subj_id]["total_interactions"] += len(session_inter_map.get(s["id"], []))
+
+        subject_ids = list(subject_data.keys())
+        subjects = await gd_find(self.session, "subjects", {"id": {"$in": subject_ids}, "school_id": school_id}, limit=200) if subject_ids else []
         subj_map = {s["id"]: s for s in subjects}
 
         subject_performance = []
-        for r in subject_inter_agg:
-            sid = r["_id"]
-            if not sid:
-                continue
+        for sid, sd in sorted(subject_data.items(), key=lambda x: -x[1]["sessions"]):
             subj = subj_map.get(sid, {})
             subject_performance.append({
                 "subject_id": sid,
                 "subject_name": subj.get("name_ar") or subj.get("name_en") or sid,
-                "sessions": r["sessions"],
-                "classes_count": len(r.get("classes", [])),
-                "total_interactions": r["total_interactions"],
-                "avg_interactions_per_session": round(r["total_interactions"] / r["sessions"], 1) if r["sessions"] else 0,
+                "sessions": sd["sessions"],
+                "classes_count": len(sd["classes"]),
+                "total_interactions": sd["total_interactions"],
+                "avg_interactions_per_session": round(sd["total_interactions"] / sd["sessions"], 1) if sd["sessions"] else 0,
             })
 
         data = {
@@ -629,14 +558,9 @@ class ReportingEngine:
                                {"start_date": start_date, "end_date": end_date},
                                {"error": "teacher_id مطلوب"})
 
-        teacher = await self.db.teachers.find_one(
-            {"id": teacher_id, "school_id": school_id}, {"_id": 0, "id": 1, "full_name": 1, "name": 1, "email": 1}
-        )
+        teacher = await gd_find_one(self.session, "teachers", {"id": teacher_id, "school_id": school_id})
         if not teacher:
-            user = await self.db.users.find_one(
-                {"teacher_id": teacher_id, "tenant_id": school_id},
-                {"_id": 0, "full_name": 1, "email": 1}
-            )
+            user = await gd_find_one(self.session, "users", {"teacher_id": teacher_id, "tenant_id": school_id})
             teacher = user or {"id": teacher_id}
 
         session_match = {
@@ -647,21 +571,17 @@ class ReportingEngine:
         if start_date:
             session_match["date"] = {"$gte": start_date, "$lte": end_date}
 
-        sessions = await self._paginated_find(self.db.class_sessions,
-            session_match, {"_id": 0, "id": 1, "class_id": 1, "date": 1, "duration": 1})
+        sessions = await self._paginated_find("class_sessions", session_match)
         session_ids = [s["id"] for s in sessions]
 
         total_interactions = 0
         if session_ids:
-            total_interactions = await self.db.session_interactions.count_documents(
-                {"session_id": {"$in": session_ids}}
-            )
+            total_interactions = await gd_count(self.session, "session_interactions",
+                {"session_id": {"$in": session_ids}})
 
         classes_taught = list(set(s.get("class_id") for s in sessions if s.get("class_id")))
 
-        classes_docs = await self.db.classes.find(
-            {"id": {"$in": classes_taught}, "school_id": school_id}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1}
-        ).to_list(200)
+        classes_docs = await gd_find(self.session, "classes", {"id": {"$in": classes_taught}, "school_id": school_id}, limit=200)
         cn_map = {c["id"]: c.get("name_ar") or c.get("name", c["id"]) for c in classes_docs}
 
         class_session_counts: Dict[str, int] = {}
@@ -712,8 +632,7 @@ class ReportingEngine:
         if start_date:
             session_match["date"] = {"$gte": start_date, "$lte": end_date}
 
-        sessions = await self._paginated_find(self.db.class_sessions,
-            session_match, {"_id": 0, "id": 1, "class_id": 1, "date": 1, "duration": 1})
+        sessions = await self._paginated_find("class_sessions", session_match)
         session_ids = [s["id"] for s in sessions]
 
         if not session_ids:
@@ -721,24 +640,26 @@ class ReportingEngine:
                                {"start_date": start_date, "end_date": end_date},
                                {"sessions": [], "class_engagement": []})
 
-        pipeline = [
-            {"$match": {"session_id": {"$in": session_ids}}},
-            {"$group": {
-                "_id": "$session_id",
-                "total_interactions": {"$sum": 1},
-                "unique_students": {"$addToSet": "$student_id"},
-                "correct": {"$sum": {"$cond": [{"$eq": ["$answer_result", "correct"]}, 1, 0]}},
-                "questions": {"$sum": {"$cond": [{"$eq": ["$interaction_type", "question"]}, 1, 0]}},
-            }},
-        ]
-        sess_agg = await self.db.session_interactions.aggregate(pipeline).to_list(5000)
-        sess_map = {r["_id"]: r for r in sess_agg}
+        all_interactions = await gd_find(self.session, "session_interactions", {"session_id": {"$in": session_ids}}, limit=50000)
+
+        sess_agg: Dict[str, dict] = {}
+        for i in all_interactions:
+            ssid = i.get("session_id", "")
+            if ssid not in sess_agg:
+                sess_agg[ssid] = {"total_interactions": 0, "unique_students": set(), "correct": 0, "questions": 0}
+            sess_agg[ssid]["total_interactions"] += 1
+            if i.get("student_id"):
+                sess_agg[ssid]["unique_students"].add(i.get("student_id"))
+            if i.get("answer_result") == "correct":
+                sess_agg[ssid]["correct"] += 1
+            if i.get("interaction_type") == "question":
+                sess_agg[ssid]["questions"] += 1
 
         session_details = []
         for s in sessions:
             sid = s["id"]
-            agg = sess_map.get(sid, {})
-            unique = len(agg.get("unique_students", []))
+            agg = sess_agg.get(sid, {})
+            unique = len(agg.get("unique_students", set()))
             total_inter = agg.get("total_interactions", 0)
             questions = agg.get("questions", 0)
             correct = agg.get("correct", 0)
@@ -756,9 +677,7 @@ class ReportingEngine:
 
         session_details.sort(key=lambda x: x.get("date", ""), reverse=True)
 
-        classes_docs = await self.db.classes.find(
-            {"school_id": school_id}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1}
-        ).to_list(200)
+        classes_docs = await gd_find(self.session, "classes", {"school_id": school_id}, limit=200)
         cn_map = {c["id"]: c.get("name_ar") or c.get("name", c["id"]) for c in classes_docs}
 
         class_engagement: Dict[str, dict] = {}
@@ -800,19 +719,16 @@ class ReportingEngine:
                                {"start_date": start_date, "end_date": end_date},
                                {"error": "student_id مطلوب"})
 
-        student = await self.db.students.find_one(
-            {"id": student_id, "school_id": school_id},
-            {"_id": 0, "id": 1, "full_name": 1, "name": 1, "name_ar": 1, "class_id": 1}
-        )
+        student = await gd_find_one(self.session, "students", {"id": student_id, "school_id": school_id})
         if not student:
             return self._wrap("student_progress", school_id,
                                {"start_date": start_date, "end_date": end_date},
                                {"error": "الطالب غير موجود"})
 
-        att_records = await self._paginated_find(self.db.attendance, {
+        att_records = await self._paginated_find("attendance", {
             "student_id": student_id, "school_id": school_id,
             "date": {"$gte": start_date, "$lte": end_date},
-        }, {"_id": 0, "date": 1, "status": 1})
+        })
 
         att_weekly: Dict[str, dict] = {}
         for r in att_records:
@@ -826,21 +742,19 @@ class ReportingEngine:
             v["rate"] = round(v["present"] / v["total"] * 100, 1) if v["total"] else 0
         att_trend = sorted(att_weekly.values(), key=lambda x: x["week"])
 
-        scores = await self.db.student_daily_scores.find({
+        scores = await gd_find(self.session, "student_daily_scores", {
             "student_id": student_id, "school_id": school_id,
             "date": {"$gte": start_date, "$lte": end_date},
-        }, {"_id": 0, "date": 1, "score": 1}).sort("date", 1).to_list(5000)
+        }, order_by="date", desc_order=False, limit=5000)
         grade_trend = [{"date": s.get("date"), "score": s.get("score", 0)} for s in scores]
 
-        session_ids_raw = await self._paginated_find(self.db.class_sessions,
-            {"school_id": school_id, "date": {"$gte": start_date, "$lte": end_date}},
-            {"_id": 0, "id": 1, "date": 1})
+        session_ids_raw = await self._paginated_find("class_sessions",
+            {"school_id": school_id, "date": {"$gte": start_date, "$lte": end_date}})
         sid_date = {s["id"]: s.get("date", "") for s in session_ids_raw}
         all_sids = list(sid_date.keys())
 
-        interactions = await self._paginated_find(self.db.session_interactions,
-            {"session_id": {"$in": all_sids}, "student_id": student_id},
-            {"_id": 0, "session_id": 1, "interaction_type": 1}) if all_sids else []
+        interactions = await self._paginated_find("session_interactions",
+            {"session_id": {"$in": all_sids}, "student_id": student_id}) if all_sids else []
 
         part_weekly: Dict[str, int] = {}
         for i in interactions:
@@ -873,10 +787,10 @@ class ReportingEngine:
                                {"start_date": start_date, "end_date": end_date},
                                {"error": "student_id مطلوب"})
 
-        records = await self._paginated_find(self.db.attendance, {
+        records = await self._paginated_find("attendance", {
             "student_id": student_id, "school_id": school_id,
             "date": {"$gte": start_date, "$lte": end_date},
-        }, {"_id": 0, "date": 1, "status": 1}, sort_key="date")
+        }, sort_key="date")
 
         total = len(records)
         present = sum(1 for r in records if r.get("status") in ("present", "late"))
@@ -931,65 +845,61 @@ class ReportingEngine:
                                {"start_date": start_date, "end_date": end_date},
                                {"error": "student_id مطلوب"})
 
-        student = await self.db.students.find_one(
-            {"id": student_id, "school_id": school_id},
-            {"_id": 0, "id": 1, "full_name": 1, "name": 1, "name_ar": 1, "class_id": 1}
-        )
+        student = await gd_find_one(self.session, "students", {"id": student_id, "school_id": school_id})
         if not student:
             return self._wrap("student_performance", school_id,
                                {"start_date": start_date, "end_date": end_date},
                                {"error": "الطالب غير موجود"})
 
-        att_total = await self.db.attendance.count_documents({
+        att_total = await gd_count(self.session, "attendance", {
             "student_id": student_id, "school_id": school_id,
             "date": {"$gte": start_date, "$lte": end_date},
         })
-        att_present = await self.db.attendance.count_documents({
+        att_present = await gd_count(self.session, "attendance", {
             "student_id": student_id, "school_id": school_id,
             "date": {"$gte": start_date, "$lte": end_date},
             "status": {"$in": ["present", "late"]},
         })
 
-        score_pipeline = [
-            {"$match": {
-                "student_id": student_id, "school_id": school_id,
-                "date": {"$gte": start_date, "$lte": end_date},
-            }},
-            {"$group": {
-                "_id": None,
-                "avg_score": {"$avg": "$score"},
-                "max_score": {"$max": "$score"},
-                "min_score": {"$min": "$score"},
-                "count": {"$sum": 1},
-            }},
-        ]
-        score_agg = await self.db.student_daily_scores.aggregate(score_pipeline).to_list(1)
-        score_stats = score_agg[0] if score_agg else {}
+        score_records = await gd_find(self.session, "student_daily_scores", {
+            "student_id": student_id, "school_id": school_id,
+            "date": {"$gte": start_date, "$lte": end_date},
+        }, limit=5000)
+        score_values = [s.get("score", 0) or 0 for s in score_records]
+        score_stats = {}
+        if score_values:
+            score_stats = {
+                "avg_score": sum(score_values) / len(score_values),
+                "max_score": max(score_values),
+                "min_score": min(score_values),
+                "count": len(score_values),
+            }
 
-        session_ids_raw = await self._paginated_find(self.db.class_sessions,
-            {"school_id": school_id, "date": {"$gte": start_date, "$lte": end_date}},
-            {"_id": 0, "id": 1})
+        session_ids_raw = await self._paginated_find("class_sessions",
+            {"school_id": school_id, "date": {"$gte": start_date, "$lte": end_date}})
         all_sids = [s["id"] for s in session_ids_raw]
 
-        inter_pipeline = [
-            {"$match": {"session_id": {"$in": all_sids}, "student_id": student_id}},
-            {"$group": {
-                "_id": "$interaction_type",
-                "count": {"$sum": 1},
-                "correct": {"$sum": {"$cond": [{"$eq": ["$answer_result", "correct"]}, 1, 0]}},
-            }},
-        ] if all_sids else []
-        inter_agg = await self.db.session_interactions.aggregate(inter_pipeline).to_list(50) if inter_pipeline else []
+        if all_sids:
+            inter_records = await gd_find(self.session, "session_interactions",
+                {"session_id": {"$in": all_sids}, "student_id": student_id}, limit=50000)
+        else:
+            inter_records = []
 
-        participation_breakdown = {r["_id"]: {"count": r["count"], "correct": r["correct"]} for r in inter_agg}
-        total_interactions = sum(r["count"] for r in inter_agg)
+        participation_breakdown: Dict[str, dict] = {}
+        for i in inter_records:
+            itype = i.get("interaction_type", "unknown")
+            if itype not in participation_breakdown:
+                participation_breakdown[itype] = {"count": 0, "correct": 0}
+            participation_breakdown[itype]["count"] += 1
+            if i.get("answer_result") == "correct":
+                participation_breakdown[itype]["correct"] += 1
+
+        total_interactions = sum(v["count"] for v in participation_breakdown.values())
         total_questions = participation_breakdown.get("question", {}).get("count", 0)
         total_correct = participation_breakdown.get("question", {}).get("correct", 0)
 
-        risk_doc = await self.db.ai_insights.find_one(
-            {"type": "student_risk", "entity_id": student_id, "school_id": school_id},
-            {"_id": 0, "data": 1}
-        )
+        risk_doc = await gd_find_one(self.session, "ai_insights",
+            {"type": "student_risk", "entity_id": student_id, "school_id": school_id})
         risk_data = risk_doc.get("data") if risk_doc else None
 
         if not risk_data and self.hakim_engine:
@@ -1063,48 +973,49 @@ class ReportingEngine:
 
     async def generate_student_report(self, student_id: str, school_id: str) -> dict:
         """Generate a comprehensive report for a single student."""
-        student = await self.db.students.find_one(
-            {"id": student_id, "school_id": school_id}, {"_id": 0}
-        )
+        student = await gd_find_one(self.session, "students", {"id": student_id, "school_id": school_id})
         if not student:
             return {"error": "الطالب غير موجود"}
 
-        att_total = await self.db.attendance.count_documents({
+        att_total = await gd_count(self.session, "attendance", {
             "student_id": student_id, "school_id": school_id
         })
-        att_present = await self.db.attendance.count_documents({
+        att_present = await gd_count(self.session, "attendance", {
             "student_id": student_id, "school_id": school_id,
             "status": {"$in": ["present", "late"]}
         })
         att_absent = att_total - att_present
         att_rate = round((att_present / att_total * 100) if att_total > 0 else 0, 1)
 
-        scores = await self.db.student_daily_scores.find({
+        scores = await gd_find(self.session, "student_daily_scores", {
             "student_id": student_id, "school_id": school_id
-        }, {"_id": 0, "score": 1}).to_list(5000)
+        }, limit=5000)
         total_score = sum(s.get("score", 0) for s in scores)
 
-        session_ids = [s["id"] for s in await self._paginated_find(self.db.class_sessions,
-            {"school_id": school_id}, {"_id": 0, "id": 1})]
+        session_ids = [s["id"] for s in await self._paginated_find("class_sessions",
+            {"school_id": school_id})]
         inter_query: dict = {"student_id": student_id}
         if session_ids:
             inter_query["session_id"] = {"$in": session_ids}
 
-        inter_agg_raw = await self.db.session_interactions.aggregate([
-            {"$match": inter_query},
-            {"$group": {
-                "_id": {"type": "$interaction_type", "result": "$answer_result"},
-                "count": {"$sum": 1}
-            }}
-        ]).to_list(100)
+        inter_records = await gd_find(self.session, "session_interactions", inter_query, limit=50000)
+
+        type_result_counts: Dict[str, Dict[str, int]] = {}
+        for i in inter_records:
+            itype = i.get("interaction_type", "unknown")
+            result = i.get("answer_result", "none")
+            key = f"{itype}|{result}"
+            if key not in type_result_counts:
+                type_result_counts[key] = {"type": itype, "result": result, "count": 0}
+            type_result_counts[key]["count"] += 1
 
         total_interactions = 0
         questions_total = 0
         correct = 0
         participations = 0
-        for r in inter_agg_raw:
-            itype = r["_id"].get("type")
-            result = r["_id"].get("result")
+        for r in type_result_counts.values():
+            itype = r["type"]
+            result = r["result"]
             cnt = r["count"]
             total_interactions += cnt
             if itype == "question":
@@ -1114,10 +1025,8 @@ class ReportingEngine:
             elif itype == "participation":
                 participations += cnt
 
-        risk_doc = await self.db.ai_insights.find_one(
-            {"type": "student_risk", "entity_id": student_id, "school_id": school_id},
-            {"_id": 0, "data": 1}
-        )
+        risk_doc = await gd_find_one(self.session, "ai_insights",
+            {"type": "student_risk", "entity_id": student_id, "school_id": school_id})
 
         for key in ("_id", "created_at", "updated_at"):
             student.pop(key, None)
@@ -1149,24 +1058,19 @@ class ReportingEngine:
                               end_date: str, **kw) -> dict:
         class_id = kw.get("class_id")
         if not class_id:
-            classes = await self.db.classes.find(
-                {"school_id": school_id}, {"_id": 0, "id": 1, "name": 1}
-            ).to_list(200)
+            classes = await gd_find(self.session, "classes", {"school_id": school_id}, limit=200)
             class_summaries = []
             for cls in classes:
                 cid = cls["id"]
-                stu_count = await self.db.students.count_documents(
-                    {"class_id": cid, "school_id": school_id, "is_active": True}
-                )
-                att_total = await self.db.attendance.count_documents(
+                stu_count = await gd_count(self.session, "students",
+                    {"class_id": cid, "school_id": school_id, "is_active": True})
+                att_total = await gd_count(self.session, "attendance",
                     {"class_id": cid, "school_id": school_id,
-                     "date": {"$gte": start_date, "$lte": end_date}}
-                )
-                att_present = await self.db.attendance.count_documents(
+                     "date": {"$gte": start_date, "$lte": end_date}})
+                att_present = await gd_count(self.session, "attendance",
                     {"class_id": cid, "school_id": school_id,
                      "date": {"$gte": start_date, "$lte": end_date},
-                     "status": {"$in": ["present", "late"]}}
-                )
+                     "status": {"$in": ["present", "late"]}})
                 class_summaries.append({
                     "class_id": cid,
                     "class_name": cls.get("name", cid),
@@ -1194,25 +1098,21 @@ class ReportingEngine:
 
     async def _timetable_report(self, school_id: str, start_date: str,
                                   end_date: str, **kw) -> dict:
-        tt = await self.db.timetables.find_one(
-            {"school_id": school_id, "status": "published"},
-            {"_id": 0, "id": 1, "name": 1, "status": 1, "created_at": 1, "total_sessions": 1}
-        )
+        tt = await gd_find_one(self.session, "timetables",
+            {"school_id": school_id, "status": "published"})
         sessions = []
         if tt:
-            raw = await self._paginated_find(self.db.timetable_sessions,
-                {"timetable_id": tt["id"], "school_id": school_id},
-                {"_id": 0, "day": 1, "period": 1, "class_id": 1, "teacher_id": 1,
-                 "subject_id": 1, "room": 1})
+            raw = await self._paginated_find("timetable_sessions",
+                {"timetable_id": tt["id"], "school_id": school_id})
             class_ids = list(set(s.get("class_id", "") for s in raw))
             teacher_ids = list(set(s.get("teacher_id", "") for s in raw))
             subject_ids = list(set(s.get("subject_id", "") for s in raw))
-            classes = {c["id"]: c.get("name", c["id"]) for c in await self.db.classes.find(
-                {"id": {"$in": class_ids}}, {"_id": 0, "id": 1, "name": 1}).to_list(500)}
-            teachers = {t["id"]: t.get("full_name", t["id"]) for t in await self.db.teachers.find(
-                {"id": {"$in": teacher_ids}}, {"_id": 0, "id": 1, "full_name": 1}).to_list(500)}
-            subjects = {s["id"]: s.get("name_ar", s.get("name", s["id"])) for s in await self.db.subjects.find(
-                {"id": {"$in": subject_ids}}, {"_id": 0, "id": 1, "name_ar": 1, "name": 1}).to_list(500)}
+            classes_list = await gd_find(self.session, "classes", {"id": {"$in": class_ids}}, limit=500)
+            classes = {c["id"]: c.get("name", c["id"]) for c in classes_list}
+            teachers_list = await gd_find(self.session, "teachers", {"id": {"$in": teacher_ids}}, limit=500)
+            teachers = {t["id"]: t.get("full_name", t["id"]) for t in teachers_list}
+            subjects_list = await gd_find(self.session, "subjects", {"id": {"$in": subject_ids}}, limit=500)
+            subjects = {s["id"]: s.get("name_ar", s.get("name", s["id"])) for s in subjects_list}
             for s in raw:
                 sessions.append({
                     "day": s.get("day", ""),
@@ -1240,57 +1140,52 @@ class ReportingEngine:
 
     async def generate_class_report(self, class_id: str, school_id: str) -> dict:
         """Generate an aggregate report for a class including attendance and grades."""
-        cls = await self.db.classes.find_one(
-            {"id": class_id, "school_id": school_id}, {"_id": 0, "name": 1, "id": 1}
-        )
-        students = await self.db.students.find(
-            {"class_id": class_id, "school_id": school_id, "is_active": True},
-            {"_id": 0, "id": 1, "full_name": 1}
-        ).to_list(200)
+        cls = await gd_find_one(self.session, "classes", {"id": class_id, "school_id": school_id})
+        students = await gd_find(self.session, "students",
+            {"class_id": class_id, "school_id": school_id, "is_active": True}, limit=200)
 
         student_ids = [s["id"] for s in students]
         name_map = {s["id"]: s.get("full_name", "") for s in students}
 
-        att_total = await self.db.attendance.count_documents({
+        att_total = await gd_count(self.session, "attendance", {
             "class_id": class_id, "school_id": school_id
         })
-        att_present = await self.db.attendance.count_documents({
+        att_present = await gd_count(self.session, "attendance", {
             "class_id": class_id, "school_id": school_id,
             "status": {"$in": ["present", "late"]}
         })
         att_rate = round((att_present / att_total * 100) if att_total > 0 else 0, 1)
 
-        sessions = await self.db.class_sessions.find({
+        sessions = await gd_find(self.session, "class_sessions", {
             "class_id": class_id, "school_id": school_id, "status": "completed"
-        }, {"_id": 0, "id": 1}).to_list(500)
+        }, limit=500)
         session_ids = [s["id"] for s in sessions]
 
         if session_ids:
-            part_agg_raw = await self.db.session_interactions.aggregate([
-                {"$match": {"session_id": {"$in": session_ids}, "student_id": {"$in": student_ids}}},
-                {"$group": {"_id": "$student_id"}}
-            ]).to_list(5000)
-            participating_students = set(r["_id"] for r in part_agg_raw)
+            inter_records = await gd_find(self.session, "session_interactions",
+                {"session_id": {"$in": session_ids}, "student_id": {"$in": student_ids}}, limit=50000)
+            participating_students = set(r.get("student_id") for r in inter_records)
         else:
+            inter_records = []
             participating_students = set()
         participation_rate = round((len(participating_students) / len(students) * 100) if students else 0, 1)
 
-        health_doc = await self.db.ai_insights.find_one(
-            {"type": "class_health", "entity_id": class_id, "school_id": school_id},
-            {"_id": 0, "data": 1}
-        )
+        health_doc = await gd_find_one(self.session, "ai_insights",
+            {"type": "class_health", "entity_id": class_id, "school_id": school_id})
+
+        interactions = inter_records
 
         student_summaries = []
         for stu in students:
             sid = stu["id"]
-            s_att = await self.db.attendance.count_documents({
+            s_att = await gd_count(self.session, "attendance", {
                 "student_id": sid, "school_id": school_id,
                 "status": {"$in": ["present", "late"]}
             })
-            s_total = await self.db.attendance.count_documents({
+            s_total = await gd_count(self.session, "attendance", {
                 "student_id": sid, "school_id": school_id
             })
-            s_interactions = sum(1 for i in interactions if i["student_id"] == sid)
+            s_interactions = sum(1 for i in interactions if i.get("student_id") == sid)
             student_summaries.append({
                 "student_id": sid,
                 "full_name": name_map.get(sid, ""),
@@ -1324,50 +1219,34 @@ class ReportingEngine:
         if class_id:
             query["class_id"] = class_id
 
-        overall_pipeline = [
-            {"$match": query},
-            {"$group": {"_id": "$status", "count": {"$sum": 1}}}
-        ]
-        overall_raw = await self.db.attendance.aggregate(overall_pipeline).to_list(20)
-        total = sum(r["count"] for r in overall_raw)
-        status_totals = {r["_id"]: r["count"] for r in overall_raw}
+        all_records = await gd_find(self.session, "attendance", query, limit=50000)
+
+        status_totals: Dict[str, int] = {}
+        for r in all_records:
+            st = r.get("status", "absent")
+            status_totals[st] = status_totals.get(st, 0) + 1
+        total = len(all_records)
         present = status_totals.get("present", 0)
         late = status_totals.get("late", 0)
         absent = status_totals.get("absent", 0)
 
-        daily_pipeline = [
-            {"$match": query},
-            {"$group": {
-                "_id": {"date": "$date", "status": "$status"},
-                "count": {"$sum": 1}
-            }}
-        ]
-        daily_raw = await self.db.attendance.aggregate(daily_pipeline).to_list(5000)
         by_date: Dict[str, Dict] = {}
-        for r in daily_raw:
-            d = r["_id"]["date"]
-            st = r["_id"]["status"]
+        for r in all_records:
+            d = r.get("date", "unknown")
+            st = r.get("status", "absent")
             if d not in by_date:
                 by_date[d] = {"date": d, "total": 0, "present": 0, "absent": 0, "late": 0}
-            by_date[d]["total"] += r["count"]
-            by_date[d][st] = by_date[d].get(st, 0) + r["count"]
+            by_date[d]["total"] += 1
+            by_date[d][st] = by_date[d].get(st, 0) + 1
 
-        class_pipeline = [
-            {"$match": query},
-            {"$group": {
-                "_id": {"class_id": "$class_id", "status": "$status"},
-                "count": {"$sum": 1}
-            }}
-        ]
-        class_raw = await self.db.attendance.aggregate(class_pipeline).to_list(5000)
         by_class: Dict[str, Dict] = {}
-        for r in class_raw:
-            cid = r["_id"].get("class_id") or "unknown"
-            st = r["_id"]["status"]
+        for r in all_records:
+            cid = r.get("class_id") or "unknown"
+            st = r.get("status", "absent")
             if cid not in by_class:
                 by_class[cid] = {"class_id": cid, "total": 0, "present": 0, "absent": 0, "late": 0}
-            by_class[cid]["total"] += r["count"]
-            by_class[cid][st] = by_class[cid].get(st, 0) + r["count"]
+            by_class[cid]["total"] += 1
+            by_class[cid][st] = by_class[cid].get(st, 0) + 1
 
         daily = sorted(by_date.values(), key=lambda x: x["date"])
         class_summary = sorted(by_class.values(), key=lambda x: x["class_id"])
@@ -1390,48 +1269,41 @@ class ReportingEngine:
 
     async def generate_teacher_report(self, teacher_id: str, school_id: str) -> dict:
         """Generate a performance and workload report for a teacher."""
-        teacher = await self.db.teachers.find_one(
-            {"id": teacher_id, "school_id": school_id}, {"_id": 0}
-        )
+        teacher = await gd_find_one(self.session, "teachers", {"id": teacher_id, "school_id": school_id})
         if not teacher:
-            user = await self.db.users.find_one(
-                {"teacher_id": teacher_id, "tenant_id": school_id},
-                {"_id": 0, "full_name": 1, "email": 1}
-            )
+            user = await gd_find_one(self.session, "users", {"teacher_id": teacher_id, "tenant_id": school_id})
             teacher = user or {}
 
-        assignments = await self.db.teacher_assignments.find(
-            {"teacher_id": teacher_id, "school_id": school_id}, {"_id": 0}
-        ).to_list(50)
+        assignments = await gd_find(self.session, "teacher_assignments",
+            {"teacher_id": teacher_id, "school_id": school_id}, limit=50)
 
-        sessions = await self.db.class_sessions.find(
-            {"teacher_id": teacher_id, "school_id": school_id, "status": "completed"},
-            {"_id": 0, "id": 1}
-        ).to_list(1000)
+        sessions = await gd_find(self.session, "class_sessions",
+            {"teacher_id": teacher_id, "school_id": school_id, "status": "completed"}, limit=1000)
         session_ids = [s["id"] for s in sessions]
 
         if session_ids:
-            inter_count_raw = await self.db.session_interactions.aggregate([
-                {"$match": {"session_id": {"$in": session_ids}}},
-                {"$group": {"_id": None, "count": {"$sum": 1}}}
-            ]).to_list(1)
-            inter_count = inter_count_raw[0]["count"] if inter_count_raw else 0
+            inter_count = await gd_count(self.session, "session_interactions",
+                {"session_id": {"$in": session_ids}})
         else:
             inter_count = 0
         avg_interactions = round(inter_count / len(sessions), 1) if sessions else 0
 
         if session_ids:
-            sa_agg_raw = await self.db.session_attendance.aggregate([
-                {"$match": {"session_id": {"$in": session_ids}}},
-                {"$group": {"_id": "$status", "count": {"$sum": 1}}}
-            ]).to_list(20)
-            sa_totals = {r["_id"]: r["count"] for r in sa_agg_raw}
-            att_total = sum(r["count"] for r in sa_agg_raw)
+            sa_records = await gd_find(self.session, "session_attendance",
+                {"session_id": {"$in": session_ids}}, limit=50000)
+            sa_totals: Dict[str, int] = {}
+            for r in sa_records:
+                st = r.get("status", "absent")
+                sa_totals[st] = sa_totals.get(st, 0) + 1
+            att_total = len(sa_records)
             att_present = sa_totals.get("present", 0)
         else:
             att_total = 0
             att_present = 0
         att_rate = round((att_present / att_total * 100) if att_total else 0, 1)
+
+        interactions = await gd_find(self.session, "session_interactions",
+            {"session_id": {"$in": session_ids}}, limit=50000) if session_ids else []
 
         return {
             "report_type": "teacher_report",
@@ -1448,27 +1320,25 @@ class ReportingEngine:
 
     async def generate_school_report(self, school_id: str) -> dict:
         """Generate a whole-school overview report with key statistics."""
-        school = await self.db.schools.find_one({"id": school_id}, {"_id": 0})
+        school = await gd_find_one(self.session, "schools", {"id": school_id})
         if not school:
             return {"error": "المدرسة غير موجودة"}
 
-        total_students = await self.db.students.count_documents({"school_id": school_id, "is_active": True})
-        total_teachers = await self.db.teachers.count_documents({"school_id": school_id})
-        total_classes = await self.db.classes.count_documents({"school_id": school_id})
+        total_students = await gd_count(self.session, "students", {"school_id": school_id, "is_active": True})
+        total_teachers = await gd_count(self.session, "teachers", {"school_id": school_id})
+        total_classes = await gd_count(self.session, "classes", {"school_id": school_id})
 
-        att_total = await self.db.attendance.count_documents({"school_id": school_id})
-        att_present = await self.db.attendance.count_documents({
+        att_total = await gd_count(self.session, "attendance", {"school_id": school_id})
+        att_present = await gd_count(self.session, "attendance", {
             "school_id": school_id, "status": {"$in": ["present", "late"]}
         })
         att_rate = round((att_present / att_total * 100) if att_total else 0, 1)
 
-        sessions_total = await self.db.class_sessions.count_documents(
+        sessions_total = await gd_count(self.session, "class_sessions",
             {"school_id": school_id, "status": "completed"})
 
-        analysis = await self.db.ai_insights.find_one(
-            {"type": "full_school_analysis", "school_id": school_id},
-            {"_id": 0}
-        )
+        analysis = await gd_find_one(self.session, "ai_insights",
+            {"type": "full_school_analysis", "school_id": school_id})
 
         return {
             "report_type": "school_report",

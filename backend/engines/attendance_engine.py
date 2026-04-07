@@ -1,19 +1,21 @@
 """
 NASSAQ Attendance Engine
 محرك الحضور والغياب لمنصة نَسَّق
-
-Handles:
-- Student attendance recording
-- Bulk attendance operations
-- Attendance reports and statistics
-- Excuse management
-- Late arrivals and early departures
 """
 
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone, date, timedelta
+from collections import defaultdict
 from enum import Enum
 import uuid
+
+from sqlalchemy import select, func, and_
+
+from engines.sql_utils import (
+    model_to_dict, models_to_dicts, apply_updates,
+    gd_find, gd_find_one, gd_insert, gd_update_one, gd_count,
+    gd_insert_many,
+)
 
 
 class AttendanceStatus(str, Enum):
@@ -33,20 +35,13 @@ class ExcuseType(str, Enum):
 
 
 class AttendanceEngine:
-    """
-    Core Attendance Engine for NASSAQ
-    Manages student attendance tracking and reporting
-    """
-    
     def __init__(self, db):
         self.db = db
-        self.attendance_collection = db.attendance
-        self.excuses_collection = db.attendance_excuses
-        self.attendance_settings_collection = db.attendance_settings
-        self.audit_collection = db.audit_logs
-    
-    # ============== ATTENDANCE RECORDING ==============
-    
+
+    @property
+    def session(self):
+        return self.db.session
+
     async def record_attendance(
         self,
         tenant_id: str,
@@ -57,64 +52,77 @@ class AttendanceEngine:
         recorded_by: str,
         **kwargs
     ) -> Dict[str, Any]:
-        """Record attendance for a single student"""
+        from pg_models import Attendance
         now = datetime.now(timezone.utc).isoformat()
-        
-        # Check if attendance already exists for this student/date
-        existing = await self.attendance_collection.find_one({
-            "tenant_id": tenant_id,
-            "student_id": student_id,
-            "attendance_date": attendance_date
-        })
-        
+
+        stmt = select(Attendance).where(
+            Attendance.school_id == tenant_id,
+            Attendance.student_id == student_id,
+            Attendance.date == attendance_date
+        ).limit(1)
+        result = await self.session.execute(stmt)
+        existing = result.scalars().first()
+
         if existing:
-            old_status = existing.get("status")
-            updates = {
-                "status": status,
-                "updated_at": now,
-                "updated_by": recorded_by
-            }
-            
-            if kwargs.get("arrival_time"):
-                updates["arrival_time"] = kwargs["arrival_time"]
-            if kwargs.get("departure_time"):
-                updates["departure_time"] = kwargs["departure_time"]
+            old_status = existing.status
+            existing.status = status
+            existing.updated_at = datetime.now(timezone.utc)
             if kwargs.get("notes"):
-                updates["notes"] = kwargs["notes"]
-            
-            await self.attendance_collection.update_one(
-                {"id": existing["id"]},
-                {"$set": updates}
-            )
-            
-            existing.update(updates)
-            existing.pop("_id", None)
-            existing["old_status"] = old_status
-            return existing
-        
-        # Create new record
+                existing.notes = kwargs["notes"]
+
+            extra = {}
+            if kwargs.get("arrival_time"):
+                extra["arrival_time"] = kwargs["arrival_time"]
+            if kwargs.get("departure_time"):
+                extra["departure_time"] = kwargs["departure_time"]
+            if extra and hasattr(existing, "data"):
+                current_data = dict(existing.data) if existing.data else {}
+                current_data.update(extra)
+                existing.data = current_data
+
+            await self.session.flush()
+            d = model_to_dict(existing)
+            d["old_status"] = old_status
+            d["tenant_id"] = d.get("school_id")
+            d["section_id"] = d.get("class_id")
+            d["attendance_date"] = attendance_date
+            return d
+
         attendance_id = str(uuid.uuid4())
-        
-        attendance_doc = {
-            "id": attendance_id,
-            "tenant_id": tenant_id,
-            "student_id": student_id,
-            "section_id": section_id,
-            "attendance_date": attendance_date,
-            "status": status,
-            "arrival_time": kwargs.get("arrival_time"),
-            "departure_time": kwargs.get("departure_time"),
-            "notes": kwargs.get("notes"),
-            "recorded_at": now,
-            "recorded_by": recorded_by,
-            "session_id": kwargs.get("session_id"),  # For per-session attendance
-            "period": kwargs.get("period")
-        }
-        
-        await self.attendance_collection.insert_one(attendance_doc)
-        
-        return attendance_doc
-    
+        att_obj = Attendance(
+            id=attendance_id,
+            school_id=tenant_id,
+            student_id=student_id,
+            class_id=section_id,
+            date=attendance_date,
+            status=status,
+            recorded_by=recorded_by,
+            notes=kwargs.get("notes"),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+
+        extra_data = {}
+        if kwargs.get("arrival_time"):
+            extra_data["arrival_time"] = kwargs["arrival_time"]
+        if kwargs.get("departure_time"):
+            extra_data["departure_time"] = kwargs["departure_time"]
+        if kwargs.get("session_id"):
+            att_obj.session_id = kwargs["session_id"]
+        if kwargs.get("period"):
+            extra_data["period"] = kwargs["period"]
+        if extra_data and hasattr(att_obj, "data"):
+            att_obj.data = extra_data
+
+        self.session.add(att_obj)
+        await self.session.flush()
+
+        d = model_to_dict(att_obj)
+        d["tenant_id"] = tenant_id
+        d["section_id"] = section_id
+        d["attendance_date"] = attendance_date
+        return d
+
     async def record_bulk_attendance(
         self,
         tenant_id: str,
@@ -123,7 +131,7 @@ class AttendanceEngine:
         attendance_records: List[Dict[str, Any]],
         recorded_by: str
     ) -> Dict[str, Any]:
-        """Record attendance for multiple students using batch operations"""
+        from pg_models import Attendance
         results = {
             "processed": 0,
             "created": 0,
@@ -131,7 +139,7 @@ class AttendanceEngine:
             "errors": [],
             "transitions": []
         }
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(timezone.utc)
 
         valid_records = []
         for record in attendance_records:
@@ -145,19 +153,16 @@ class AttendanceEngine:
             return results
 
         student_ids = [r["student_id"] for r in valid_records]
-        existing_rows = await self.attendance_collection.find(
-            {
-                "tenant_id": tenant_id,
-                "section_id": section_id,
-                "attendance_date": attendance_date,
-                "student_id": {"$in": student_ids},
-            },
-            {"_id": 0},
-        ).to_list(len(student_ids))
-        existing_map = {row["student_id"]: row for row in existing_rows}
+        stmt = select(Attendance).where(
+            Attendance.school_id == tenant_id,
+            Attendance.class_id == section_id,
+            Attendance.date == attendance_date,
+            Attendance.student_id.in_(student_ids),
+        )
+        result = await self.session.execute(stmt)
+        existing_objs = result.scalars().all()
+        existing_map = {obj.student_id: obj for obj in existing_objs}
 
-        to_insert = []
-        to_update = []
         for record in valid_records:
             try:
                 student_id = record["student_id"]
@@ -165,21 +170,10 @@ class AttendanceEngine:
                 existing = existing_map.get(student_id)
 
                 if existing:
-                    old_status = existing.get("status")
-                    upd_dict = {
-                        "id": existing["id"],
-                        "status": status,
-                        "updated_at": now,
-                        "updated_by": recorded_by,
-                    }
-                    if record.get("arrival_time"):
-                        upd_dict["arrival_time"] = record["arrival_time"]
-                    if record.get("departure_time"):
-                        upd_dict["departure_time"] = record["departure_time"]
-                    if record.get("notes"):
-                        upd_dict["notes"] = record["notes"]
-
-                    to_update.append(upd_dict)
+                    old_status = existing.status
+                    existing.status = status
+                    existing.updated_at = now
+                    existing.recorded_by = recorded_by
                     results["updated"] += 1
                     results["transitions"].append({
                         "student_id": student_id,
@@ -187,22 +181,22 @@ class AttendanceEngine:
                         "new_status": status,
                     })
                 else:
-                    doc = {
-                        "id": str(uuid.uuid4()),
-                        "tenant_id": tenant_id,
-                        "student_id": student_id,
-                        "section_id": section_id,
-                        "attendance_date": attendance_date,
-                        "status": status,
-                        "arrival_time": record.get("arrival_time"),
-                        "departure_time": record.get("departure_time"),
-                        "notes": record.get("notes"),
-                        "recorded_at": now,
-                        "recorded_by": recorded_by,
-                        "session_id": record.get("session_id"),
-                        "period": record.get("period"),
-                    }
-                    to_insert.append(doc)
+                    att_obj = Attendance(
+                        id=str(uuid.uuid4()),
+                        school_id=tenant_id,
+                        student_id=student_id,
+                        class_id=section_id,
+                        date=attendance_date,
+                        status=status,
+                        recorded_by=recorded_by,
+                        notes=record.get("notes"),
+                        created_at=now,
+                        updated_at=now,
+                    )
+                    if record.get("session_id") and hasattr(att_obj, "session_id"):
+                        att_obj.session_id = record["session_id"]
+                    self.session.add(att_obj)
+                    results["created"] += 1
                     results["transitions"].append({
                         "student_id": student_id,
                         "old_status": None,
@@ -215,14 +209,9 @@ class AttendanceEngine:
                     "error": str(e),
                 })
 
-        if to_update:
-            await self.attendance_collection.batch_update_by_ids(to_update)
-        if to_insert:
-            await self.attendance_collection.insert_many(to_insert)
-            results["created"] = len(to_insert)
-
+        await self.session.flush()
         return results
-    
+
     async def create_bulk_class_attendance(
         self,
         tenant_id: str,
@@ -233,14 +222,12 @@ class AttendanceEngine:
         records: List[Dict[str, Any]],
         recorded_by: str,
     ) -> Dict[str, Any]:
-        """Process bulk attendance for a class (route-delegated).
+        from pg_models import Attendance, Class, Student
+        now = datetime.now(timezone.utc)
 
-        Returns dict with created, updated, errors, transitions, and
-        absent_late list for the route to send notifications.
-        """
-        now = datetime.now(timezone.utc).isoformat()
-
-        class_doc = await self.db.classes.find_one({"id": class_id, "tenant_id": tenant_id})
+        stmt = select(Class).where(Class.id == class_id, Class.tenant_id == tenant_id).limit(1)
+        result = await self.session.execute(stmt)
+        class_doc = result.scalars().first()
         if not class_doc:
             raise ValueError(f"Class {class_id} not found or does not belong to tenant")
 
@@ -254,33 +241,26 @@ class AttendanceEngine:
 
         student_ids = list(seen)
 
-        valid_students = await self.db.students.find(
-            {"id": {"$in": student_ids}, "tenant_id": tenant_id},
-            {"_id": 0, "id": 1},
-        ).to_list(len(student_ids))
-        valid_student_set = {s["id"] for s in valid_students}
+        stmt = select(Student.id).where(Student.id.in_(student_ids), Student.school_id == tenant_id)
+        result = await self.session.execute(stmt)
+        valid_student_set = {row[0] for row in result.all()}
         deduped = [r for r in deduped if r.get("student_id") in valid_student_set]
         student_ids = [r["student_id"] for r in deduped]
 
-        existing_rows = await self.attendance_collection.find(
-            {
-                "class_id": class_id,
-                "date": date_str,
-                "time_slot_id": time_slot_id,
-                "student_id": {"$in": student_ids},
-                "tenant_id": tenant_id,
-            },
-            {"_id": 0},
-        ).to_list(len(student_ids))
-        existing_map = {row["student_id"]: row for row in existing_rows}
+        stmt = select(Attendance).where(
+            Attendance.class_id == class_id,
+            Attendance.date == date_str,
+            Attendance.school_id == tenant_id,
+            Attendance.student_id.in_(student_ids),
+        )
+        result = await self.session.execute(stmt)
+        existing_objs = result.scalars().all()
+        existing_map = {obj.student_id: obj for obj in existing_objs}
 
         created = 0
         updated = 0
         errors: List[Dict] = []
         transitions: List[Dict] = []
-        to_insert: List[Dict] = []
-        to_update: List[Dict] = []
-        to_insert_events: List[Dict] = []
         absent_late: List[tuple] = []
 
         for record in deduped:
@@ -291,56 +271,56 @@ class AttendanceEngine:
 
                 existing = existing_map.get(student_id)
                 if existing:
-                    old_status = existing.get("status")
-                    to_update.append({
-                        "id": existing["id"],
-                        "status": att_status,
-                        "notes": notes,
-                        "recorded_by": recorded_by,
-                        "recorded_at": now,
-                    })
+                    old_status = existing.status
+                    existing.status = att_status
+                    existing.notes = notes
+                    existing.recorded_by = recorded_by
+                    existing.updated_at = now
                     updated += 1
                     transitions.append({"student_id": student_id, "old_status": old_status, "new_status": att_status})
                 else:
-                    doc = {
-                        "id": str(uuid.uuid4()),
-                        "student_id": student_id,
-                        "class_id": class_id,
-                        "subject_id": subject_id,
-                        "teacher_id": recorded_by,
-                        "date": date_str,
-                        "time_slot_id": time_slot_id,
-                        "status": att_status,
-                        "notes": notes,
-                        "recorded_by": recorded_by,
-                        "recorded_at": now,
-                        "tenant_id": tenant_id,
-                    }
-                    to_insert.append(doc)
+                    att_obj = Attendance(
+                        id=str(uuid.uuid4()),
+                        student_id=student_id,
+                        class_id=class_id,
+                        date=date_str,
+                        status=att_status,
+                        notes=notes,
+                        recorded_by=recorded_by,
+                        school_id=tenant_id,
+                        created_at=now,
+                        updated_at=now,
+                    )
+                    if hasattr(att_obj, "session_id"):
+                        att_obj.session_id = None
+                    extra = {}
+                    if subject_id:
+                        extra["subject_id"] = subject_id
+                    if time_slot_id:
+                        extra["time_slot_id"] = time_slot_id
+                    extra["teacher_id"] = recorded_by
+                    if extra and hasattr(att_obj, "data"):
+                        att_obj.data = extra
+                    self.session.add(att_obj)
                     transitions.append({"student_id": student_id, "old_status": None, "new_status": att_status})
                     created += 1
 
                     if att_status in ("absent", "late"):
-                        to_insert_events.append({
+                        await gd_insert(self.session, "events", {
                             "id": str(uuid.uuid4()),
                             "type": f"student_{att_status}",
                             "student_id": student_id,
                             "class_id": class_id,
                             "date": date_str,
                             "recorded_by": recorded_by,
-                            "created_at": now,
+                            "created_at": now.isoformat(),
                             "tenant_id": tenant_id,
                         })
                         absent_late.append((student_id, att_status))
             except Exception as e:
                 errors.append({"student_id": record.get("student_id"), "error": str(e)})
 
-        if to_update:
-            await self.attendance_collection.batch_update_by_ids(to_update)
-        if to_insert:
-            await self.attendance_collection.insert_many(to_insert)
-        if to_insert_events:
-            await self.db.events.insert_many(to_insert_events)
+        await self.session.flush()
 
         return {
             "created": created,
@@ -359,12 +339,11 @@ class AttendanceEngine:
         recorded_by: str,
         student_ids: List[str]
     ) -> Dict[str, Any]:
-        """Mark all students in a class as present"""
         records = [
             {"student_id": sid, "status": AttendanceStatus.PRESENT.value}
             for sid in student_ids
         ]
-        
+
         return await self.record_bulk_attendance(
             tenant_id=tenant_id,
             section_id=section_id,
@@ -372,9 +351,7 @@ class AttendanceEngine:
             attendance_records=records,
             recorded_by=recorded_by
         )
-    
-    # ============== ATTENDANCE RETRIEVAL ==============
-    
+
     async def get_student_attendance(
         self,
         tenant_id: str,
@@ -383,74 +360,68 @@ class AttendanceEngine:
         end_date: Optional[str] = None,
         status: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        """Get attendance records for a student"""
-        query = {
-            "tenant_id": tenant_id,
-            "student_id": student_id
-        }
-        
+        from pg_models import Attendance
+        conditions = [
+            Attendance.school_id == tenant_id,
+            Attendance.student_id == student_id
+        ]
+
         if start_date:
-            query["attendance_date"] = {"$gte": start_date}
+            conditions.append(Attendance.date >= start_date)
         if end_date:
-            if "attendance_date" in query:
-                query["attendance_date"]["$lte"] = end_date
-            else:
-                query["attendance_date"] = {"$lte": end_date}
+            conditions.append(Attendance.date <= end_date)
         if status:
-            query["status"] = status
-        
-        records = await self.attendance_collection.find(
-            query,
-            {"_id": 0}
-        ).sort("attendance_date", -1).to_list(1000)
-        
-        return records
-    
+            conditions.append(Attendance.status == status)
+
+        stmt = select(Attendance).where(*conditions).order_by(Attendance.date.desc()).limit(1000)
+        result = await self.session.execute(stmt)
+        return [self._att_to_dict(a) for a in result.scalars().all()]
+
     async def get_section_attendance(
         self,
         tenant_id: str,
         section_id: str,
         attendance_date: str
     ) -> List[Dict[str, Any]]:
-        """Get attendance for a section on a specific date"""
-        records = await self.attendance_collection.find(
-            {
-                "tenant_id": tenant_id,
-                "section_id": section_id,
-                "attendance_date": attendance_date
-            },
-            {"_id": 0}
-        ).to_list(1000)
-        
-        return records
-    
+        from pg_models import Attendance
+        stmt = select(Attendance).where(
+            Attendance.school_id == tenant_id,
+            Attendance.class_id == section_id,
+            Attendance.date == attendance_date
+        ).limit(1000)
+        result = await self.session.execute(stmt)
+        return [self._att_to_dict(a) for a in result.scalars().all()]
+
     async def get_daily_attendance_report(
         self,
         tenant_id: str,
         attendance_date: str,
         section_id: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Get daily attendance report using SQL aggregation for counts"""
-        query = {
-            "tenant_id": tenant_id,
-            "attendance_date": attendance_date
-        }
+        from pg_models import Attendance
+        conditions = [Attendance.school_id == tenant_id, Attendance.date == attendance_date]
         if section_id:
-            query["section_id"] = section_id
+            conditions.append(Attendance.class_id == section_id)
 
-        counts = await self.attendance_collection.batched_counts({
-            "total": query,
-            "present": {**query, "status": AttendanceStatus.PRESENT.value},
-            "absent": {**query, "status": AttendanceStatus.ABSENT.value},
-            "late": {**query, "status": AttendanceStatus.LATE.value},
-            "excused": {**query, "status": AttendanceStatus.EXCUSED.value},
-            "left_early": {**query, "status": AttendanceStatus.LEFT_EARLY.value},
-        })
+        base = and_(*conditions)
 
-        total = counts["total"]
-        present = counts["present"]
+        total_stmt = select(func.count(Attendance.id)).where(base)
+        present_stmt = select(func.count(Attendance.id)).where(base, Attendance.status == AttendanceStatus.PRESENT.value)
+        absent_stmt = select(func.count(Attendance.id)).where(base, Attendance.status == AttendanceStatus.ABSENT.value)
+        late_stmt = select(func.count(Attendance.id)).where(base, Attendance.status == AttendanceStatus.LATE.value)
+        excused_stmt = select(func.count(Attendance.id)).where(base, Attendance.status == AttendanceStatus.EXCUSED.value)
+        left_early_stmt = select(func.count(Attendance.id)).where(base, Attendance.status == AttendanceStatus.LEFT_EARLY.value)
 
-        records = await self.attendance_collection.find(query, {"_id": 0}).to_list(total if total > 0 else 1)
+        total = (await self.session.execute(total_stmt)).scalar() or 0
+        present = (await self.session.execute(present_stmt)).scalar() or 0
+        absent = (await self.session.execute(absent_stmt)).scalar() or 0
+        late = (await self.session.execute(late_stmt)).scalar() or 0
+        excused = (await self.session.execute(excused_stmt)).scalar() or 0
+        left_early = (await self.session.execute(left_early_stmt)).scalar() or 0
+
+        stmt = select(Attendance).where(base).limit(max(total, 1))
+        result = await self.session.execute(stmt)
+        records = [self._att_to_dict(a) for a in result.scalars().all()]
 
         return {
             "date": attendance_date,
@@ -458,16 +429,14 @@ class AttendanceEngine:
             "section_id": section_id,
             "total_students": total,
             "present": present,
-            "absent": counts["absent"],
-            "late": counts["late"],
-            "excused": counts["excused"],
-            "left_early": counts["left_early"],
+            "absent": absent,
+            "late": late,
+            "excused": excused,
+            "left_early": left_early,
             "attendance_rate": round((present / total * 100) if total > 0 else 0, 2),
             "records": records
         }
-    
-    # ============== ATTENDANCE STATISTICS ==============
-    
+
     async def get_student_attendance_summary(
         self,
         tenant_id: str,
@@ -476,31 +445,21 @@ class AttendanceEngine:
         start_date: Optional[str] = None,
         end_date: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Get attendance summary for a student using SQL counts"""
-        query = {
-            "tenant_id": tenant_id,
-            "student_id": student_id
-        }
+        from pg_models import Attendance
+        conditions = [Attendance.school_id == tenant_id, Attendance.student_id == student_id]
         if start_date:
-            query["attendance_date"] = {"$gte": start_date}
+            conditions.append(Attendance.date >= start_date)
         if end_date:
-            if "attendance_date" in query:
-                query["attendance_date"]["$lte"] = end_date
-            else:
-                query["attendance_date"] = {"$lte": end_date}
+            conditions.append(Attendance.date <= end_date)
 
-        counts = await self.attendance_collection.batched_counts({
-            "total": query,
-            "present": {**query, "status": AttendanceStatus.PRESENT.value},
-            "absent": {**query, "status": AttendanceStatus.ABSENT.value},
-            "late": {**query, "status": AttendanceStatus.LATE.value},
-            "excused": {**query, "status": AttendanceStatus.EXCUSED.value},
-            "left_early": {**query, "status": AttendanceStatus.LEFT_EARLY.value},
-        })
-        total = counts["total"]
-        present = counts["present"]
-        absent = counts["absent"]
-        late = counts["late"]
+        base = and_(*conditions)
+
+        total = (await self.session.execute(select(func.count(Attendance.id)).where(base))).scalar() or 0
+        present = (await self.session.execute(select(func.count(Attendance.id)).where(base, Attendance.status == AttendanceStatus.PRESENT.value))).scalar() or 0
+        absent = (await self.session.execute(select(func.count(Attendance.id)).where(base, Attendance.status == AttendanceStatus.ABSENT.value))).scalar() or 0
+        late = (await self.session.execute(select(func.count(Attendance.id)).where(base, Attendance.status == AttendanceStatus.LATE.value))).scalar() or 0
+        excused = (await self.session.execute(select(func.count(Attendance.id)).where(base, Attendance.status == AttendanceStatus.EXCUSED.value))).scalar() or 0
+        left_early = (await self.session.execute(select(func.count(Attendance.id)).where(base, Attendance.status == AttendanceStatus.LEFT_EARLY.value))).scalar() or 0
 
         return {
             "student_id": student_id,
@@ -508,13 +467,13 @@ class AttendanceEngine:
             "present_days": present,
             "absent_days": absent,
             "late_days": late,
-            "excused_days": counts["excused"],
-            "left_early_days": counts["left_early"],
+            "excused_days": excused,
+            "left_early_days": left_early,
             "attendance_rate": round((present / total * 100) if total > 0 else 100, 2),
             "absence_rate": round((absent / total * 100) if total > 0 else 0, 2),
             "late_rate": round((late / total * 100) if total > 0 else 0, 2)
         }
-    
+
     async def get_section_attendance_summary(
         self,
         tenant_id: str,
@@ -522,41 +481,46 @@ class AttendanceEngine:
         start_date: str,
         end_date: str
     ) -> Dict[str, Any]:
-        """Get attendance summary for a section over a period using aggregation"""
-        query = {
-            "tenant_id": tenant_id,
-            "section_id": section_id,
-            "attendance_date": {"$gte": start_date, "$lte": end_date}
-        }
+        from pg_models import Attendance
+        stmt = select(Attendance).where(
+            Attendance.school_id == tenant_id,
+            Attendance.class_id == section_id,
+            Attendance.date >= start_date,
+            Attendance.date <= end_date
+        ).limit(5000)
+        result = await self.session.execute(stmt)
+        all_records = result.scalars().all()
 
-        pipeline = [
-            {"$match": query},
-            {"$group": {
-                "_id": "$student_id",
-                "total": {"$sum": 1},
-                "present": {"$sum": {"$cond": [{"$eq": ["$status", AttendanceStatus.PRESENT.value]}, 1, 0]}},
-                "absent": {"$sum": {"$cond": [{"$eq": ["$status", AttendanceStatus.ABSENT.value]}, 1, 0]}},
-                "late": {"$sum": {"$cond": [{"$eq": ["$status", AttendanceStatus.LATE.value]}, 1, 0]}},
-                "excused": {"$sum": {"$cond": [{"$eq": ["$status", AttendanceStatus.EXCUSED.value]}, 1, 0]}},
-            }},
-        ]
-        rows = await self.attendance_collection.aggregate(pipeline).to_list(5000)
-
-        student_stats = []
+        by_student: Dict[str, Dict] = {}
         total_records = 0
         total_present = 0
-        for row in rows:
-            t = row["total"]
-            p = row["present"]
-            total_records += t
-            total_present += p
+        for rec in all_records:
+            sid = rec.student_id
+            if sid not in by_student:
+                by_student[sid] = {"total": 0, "present": 0, "absent": 0, "late": 0, "excused": 0}
+            by_student[sid]["total"] += 1
+            total_records += 1
+            if rec.status == AttendanceStatus.PRESENT.value:
+                by_student[sid]["present"] += 1
+                total_present += 1
+            elif rec.status == AttendanceStatus.ABSENT.value:
+                by_student[sid]["absent"] += 1
+            elif rec.status == AttendanceStatus.LATE.value:
+                by_student[sid]["late"] += 1
+            elif rec.status == AttendanceStatus.EXCUSED.value:
+                by_student[sid]["excused"] += 1
+
+        student_stats = []
+        for sid, data in by_student.items():
+            t = data["total"]
+            p = data["present"]
             student_stats.append({
-                "student_id": row["_id"],
+                "student_id": sid,
                 "total": t,
                 "present": p,
-                "absent": row["absent"],
-                "late": row["late"],
-                "excused": row["excused"],
+                "absent": data["absent"],
+                "late": data["late"],
+                "excused": data["excused"],
                 "attendance_rate": round((p / t * 100) if t > 0 else 100, 2),
             })
 
@@ -568,39 +532,39 @@ class AttendanceEngine:
             "overall_attendance_rate": round((total_present / total_records * 100) if total_records > 0 else 0, 2),
             "students": student_stats
         }
-    
+
     async def get_tenant_attendance_overview(
         self,
         tenant_id: str,
         attendance_date: str
     ) -> Dict[str, Any]:
-        """Get attendance overview for entire tenant using aggregation"""
-        base_query = {"tenant_id": tenant_id, "attendance_date": attendance_date}
+        from pg_models import Attendance
+        conditions = [Attendance.school_id == tenant_id, Attendance.date == attendance_date]
+        base = and_(*conditions)
 
-        import asyncio
-        counts_coro = self.attendance_collection.batched_counts({
-            "total": base_query,
-            "present": {**base_query, "status": AttendanceStatus.PRESENT.value},
-            "absent": {**base_query, "status": AttendanceStatus.ABSENT.value},
-            "late": {**base_query, "status": AttendanceStatus.LATE.value},
-        })
-        sections_coro = self.attendance_collection.aggregate([
-            {"$match": base_query},
-            {"$group": {
-                "_id": "$section_id",
-                "total": {"$sum": 1},
-                "present": {"$sum": {"$cond": [{"$eq": ["$status", AttendanceStatus.PRESENT.value]}, 1, 0]}},
-                "absent": {"$sum": {"$cond": [{"$eq": ["$status", AttendanceStatus.ABSENT.value]}, 1, 0]}},
-            }},
-        ]).to_list(5000)
+        total = (await self.session.execute(select(func.count(Attendance.id)).where(base))).scalar() or 0
+        present = (await self.session.execute(select(func.count(Attendance.id)).where(base, Attendance.status == AttendanceStatus.PRESENT.value))).scalar() or 0
+        absent = (await self.session.execute(select(func.count(Attendance.id)).where(base, Attendance.status == AttendanceStatus.ABSENT.value))).scalar() or 0
+        late = (await self.session.execute(select(func.count(Attendance.id)).where(base, Attendance.status == AttendanceStatus.LATE.value))).scalar() or 0
 
-        counts, section_rows = await asyncio.gather(counts_coro, sections_coro)
-        total = counts["total"]
-        present = counts["present"]
+        stmt = select(Attendance).where(base).limit(5000)
+        result = await self.session.execute(stmt)
+        all_records = result.scalars().all()
+
+        section_data: Dict[str, Dict] = {}
+        for rec in all_records:
+            cid = rec.class_id or "unknown"
+            if cid not in section_data:
+                section_data[cid] = {"total": 0, "present": 0, "absent": 0}
+            section_data[cid]["total"] += 1
+            if rec.status == AttendanceStatus.PRESENT.value:
+                section_data[cid]["present"] += 1
+            elif rec.status == AttendanceStatus.ABSENT.value:
+                section_data[cid]["absent"] += 1
 
         sections = [
-            {"section_id": r["_id"], "total": r["total"], "present": r["present"], "absent": r["absent"]}
-            for r in section_rows
+            {"section_id": cid, "total": d["total"], "present": d["present"], "absent": d["absent"]}
+            for cid, d in section_data.items()
         ]
 
         return {
@@ -608,15 +572,13 @@ class AttendanceEngine:
             "date": attendance_date,
             "total_students": total,
             "present": present,
-            "absent": counts["absent"],
-            "late": counts["late"],
+            "absent": absent,
+            "late": late,
             "attendance_rate": round((present / total * 100) if total > 0 else 0, 2),
             "sections_count": len(sections),
             "sections": sections
         }
-    
-    # ============== EXCUSE MANAGEMENT ==============
-    
+
     async def create_excuse(
         self,
         tenant_id: str,
@@ -628,10 +590,9 @@ class AttendanceEngine:
         created_by: str,
         **kwargs
     ) -> Dict[str, Any]:
-        """Create an attendance excuse"""
         excuse_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
-        
+
         excuse_doc = {
             "id": excuse_id,
             "tenant_id": tenant_id,
@@ -645,92 +606,68 @@ class AttendanceEngine:
             "created_at": now,
             "created_by": created_by
         }
-        
-        await self.excuses_collection.insert_one(excuse_doc)
-        
+
+        await gd_insert(self.session, "attendance_excuses", excuse_doc)
         return excuse_doc
-    
+
     async def approve_excuse(
         self,
         excuse_id: str,
         approved_by: str,
         apply_to_attendance: bool = True
     ) -> Dict[str, Any]:
-        """Approve an attendance excuse"""
-        now = datetime.now(timezone.utc).isoformat()
-        
-        excuse = await self.excuses_collection.find_one(
-            {"id": excuse_id},
-            {"_id": 0}
-        )
-        
+        from pg_models import Attendance
+        now = datetime.now(timezone.utc)
+
+        excuse = await gd_find_one(self.session, "attendance_excuses", {"id": excuse_id})
         if not excuse:
             raise ValueError("العذر غير موجود")
-        
-        # Update excuse
-        await self.excuses_collection.update_one(
-            {"id": excuse_id},
-            {
-                "$set": {
-                    "is_approved": True,
-                    "approved_at": now,
-                    "approved_by": approved_by
-                }
-            }
-        )
-        
-        # Update attendance records if requested
+
+        await gd_update_one(self.session, "attendance_excuses", {"id": excuse_id}, {
+            "is_approved": True,
+            "approved_at": now.isoformat(),
+            "approved_by": approved_by
+        })
+
         if apply_to_attendance:
-            await self.attendance_collection.update_many(
-                {
-                    "tenant_id": excuse.get("tenant_id"),
-                    "student_id": excuse.get("student_id"),
-                    "attendance_date": {
-                        "$gte": excuse.get("start_date"),
-                        "$lte": excuse.get("end_date")
-                    },
-                    "status": AttendanceStatus.ABSENT.value
-                },
-                {
-                    "$set": {
-                        "status": AttendanceStatus.EXCUSED.value,
-                        "excuse_id": excuse_id,
-                        "updated_at": now,
-                        "updated_by": approved_by
-                    }
-                }
+            stmt = select(Attendance).where(
+                Attendance.school_id == excuse.get("tenant_id"),
+                Attendance.student_id == excuse.get("student_id"),
+                Attendance.date >= excuse.get("start_date"),
+                Attendance.date <= excuse.get("end_date"),
+                Attendance.status == AttendanceStatus.ABSENT.value
             )
-        
+            result = await self.session.execute(stmt)
+            for att_obj in result.scalars().all():
+                att_obj.status = AttendanceStatus.EXCUSED.value
+                att_obj.updated_at = now
+                if hasattr(att_obj, "data"):
+                    current = dict(att_obj.data) if att_obj.data else {}
+                    current["excuse_id"] = excuse_id
+                    att_obj.data = current
+            await self.session.flush()
+
         excuse["is_approved"] = True
-        excuse["approved_at"] = now
+        excuse["approved_at"] = now.isoformat()
         excuse["approved_by"] = approved_by
-        
+
         return excuse
-    
+
     async def get_student_excuses(
         self,
         tenant_id: str,
         student_id: str,
         pending_only: bool = False
     ) -> List[Dict[str, Any]]:
-        """Get excuses for a student"""
-        query = {
+        filters: Dict[str, Any] = {
             "tenant_id": tenant_id,
             "student_id": student_id
         }
-        
         if pending_only:
-            query["is_approved"] = False
-        
-        excuses = await self.excuses_collection.find(
-            query,
-            {"_id": 0}
-        ).sort("created_at", -1).to_list(1000)
-        
-        return excuses
-    
-    # ============== ATTENDANCE ALERTS ==============
-    
+            filters["is_approved"] = False
+
+        return await gd_find(self.session, "attendance_excuses", filters, order_by="created_at", desc_order=True, limit=1000)
+
     async def get_students_with_low_attendance(
         self,
         tenant_id: str,
@@ -738,36 +675,35 @@ class AttendanceEngine:
         start_date: str = None,
         end_date: str = None
     ) -> List[Dict[str, Any]]:
-        """Get students with attendance rate below threshold using aggregation"""
-        query = {"tenant_id": tenant_id}
+        from pg_models import Attendance
+        conditions = [Attendance.school_id == tenant_id]
         if start_date:
-            query["attendance_date"] = {"$gte": start_date}
+            conditions.append(Attendance.date >= start_date)
         if end_date:
-            if "attendance_date" in query:
-                query["attendance_date"]["$lte"] = end_date
-            else:
-                query["attendance_date"] = {"$lte": end_date}
+            conditions.append(Attendance.date <= end_date)
 
-        pipeline = [
-            {"$match": query},
-            {"$group": {
-                "_id": "$student_id",
-                "section_id": {"$min": "$section_id"},
-                "total": {"$sum": 1},
-                "present": {"$sum": {"$cond": [{"$eq": ["$status", AttendanceStatus.PRESENT.value]}, 1, 0]}},
-            }},
-        ]
-        rows = await self.attendance_collection.aggregate(pipeline).to_list(10000)
+        stmt = select(Attendance).where(*conditions).limit(10000)
+        result = await self.session.execute(stmt)
+        all_records = result.scalars().all()
+
+        by_student: Dict[str, Dict] = {}
+        for rec in all_records:
+            sid = rec.student_id
+            if sid not in by_student:
+                by_student[sid] = {"total": 0, "present": 0, "section_id": rec.class_id}
+            by_student[sid]["total"] += 1
+            if rec.status == AttendanceStatus.PRESENT.value:
+                by_student[sid]["present"] += 1
 
         low_attendance = []
-        for row in rows:
-            t = row["total"]
-            p = row["present"]
+        for sid, data in by_student.items():
+            t = data["total"]
+            p = data["present"]
             rate = (p / t * 100) if t > 0 else 100
             if rate < threshold:
                 low_attendance.append({
-                    "student_id": row["_id"],
-                    "section_id": row["section_id"],
+                    "student_id": sid,
+                    "section_id": data["section_id"],
                     "total": t,
                     "present": p,
                     "attendance_rate": round(rate, 2),
@@ -776,40 +712,24 @@ class AttendanceEngine:
 
         low_attendance.sort(key=lambda x: x["attendance_rate"])
         return low_attendance
-    
+
     async def get_consecutive_absences(
         self,
         tenant_id: str,
         min_days: int = 3
     ) -> List[Dict[str, Any]]:
-        """Get students with consecutive absences (last 30 days).
-
-        Two-step approach to minimise memory:
-        1. Aggregate to find students with >= min_days total absences.
-        2. Fetch only those students' absence dates for streak calculation.
-        """
+        from pg_models import Attendance
         end_dt = datetime.now(timezone.utc).date()
         start_dt = end_dt - timedelta(days=30)
 
-        base_filter = {
-            "tenant_id": tenant_id,
-            "attendance_date": {"$gte": start_dt.isoformat(), "$lte": end_dt.isoformat()},
-            "status": AttendanceStatus.ABSENT.value,
-        }
-
-        candidates = await self.attendance_collection.aggregate([
-            {"$match": base_filter},
-            {"$group": {"_id": "$student_id", "cnt": {"$sum": 1}}},
-        ]).to_list(5000)
-
-        candidate_ids = [c["_id"] for c in candidates if c.get("cnt", 0) >= min_days]
-        if not candidate_ids:
-            return []
-
-        records = await self.attendance_collection.find(
-            {**base_filter, "student_id": {"$in": candidate_ids}},
-            {"_id": 0, "student_id": 1, "attendance_date": 1}
-        ).sort([("student_id", 1), ("attendance_date", 1)]).to_list(len(candidate_ids) * 30)
+        stmt = select(Attendance).where(
+            Attendance.school_id == tenant_id,
+            Attendance.date >= start_dt.isoformat(),
+            Attendance.date <= end_dt.isoformat(),
+            Attendance.status == AttendanceStatus.ABSENT.value,
+        ).order_by(Attendance.student_id, Attendance.date).limit(10000)
+        result = await self.session.execute(stmt)
+        records = result.scalars().all()
 
         alerts = []
         current_student = None
@@ -824,10 +744,17 @@ class AttendanceEngine:
                     "last_absence_date": last_date.isoformat() if last_date else None,
                 })
 
-        for record in records:
-            sid = record.get("student_id")
+        for rec in records:
+            sid = rec.student_id
             try:
-                record_date = datetime.fromisoformat(record.get("attendance_date")).date()
+                if isinstance(rec.date, str):
+                    record_date = datetime.fromisoformat(rec.date).date()
+                elif isinstance(rec.date, datetime):
+                    record_date = rec.date.date()
+                elif isinstance(rec.date, date):
+                    record_date = rec.date
+                else:
+                    continue
             except (ValueError, TypeError):
                 continue
 
@@ -847,6 +774,18 @@ class AttendanceEngine:
         _flush()
         return alerts
 
+    def _att_to_dict(self, att_obj) -> Dict[str, Any]:
+        d = model_to_dict(att_obj)
+        d["tenant_id"] = d.get("school_id")
+        d["section_id"] = d.get("class_id")
+        att_date = d.get("date")
+        if isinstance(att_date, datetime):
+            d["attendance_date"] = att_date.isoformat()
+        elif att_date:
+            d["attendance_date"] = str(att_date)
+        else:
+            d["attendance_date"] = None
+        return d
 
-# Export
+
 __all__ = ["AttendanceEngine", "AttendanceStatus", "ExcuseType"]

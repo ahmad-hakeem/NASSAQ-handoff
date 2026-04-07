@@ -23,6 +23,10 @@ import base64
 import json
 import logging
 
+from sqlalchemy import select, and_, desc as sa_desc
+
+from pg_models import User, Teacher, School, SchoolSettings
+from engines.sql_utils import model_to_dict, dict_to_model, gd_insert, gd_find_one
 from engines.approval_engine import ApprovalHandler, ApprovalResult
 
 
@@ -78,23 +82,27 @@ class TeacherApprovalHandler(ApprovalHandler):
     async def validate_before_approve(self, request: dict) -> Optional[str]:
         """Validate business rules before approving teacher/school registration."""
         database = _get_db()
+        session = database.session
         email = request.get("email")
         phone = request.get("phone")
         national_id = request.get("national_id")
 
         if email:
-            existing = await database.users.find_one({"email": email})
-            if existing:
+            stmt = select(User).where(User.email == email).limit(1)
+            result = await session.execute(stmt)
+            if result.scalars().first():
                 return "يوجد حساب مسجل مسبقًا بنفس البريد الإلكتروني"
 
         if phone:
-            existing = await database.users.find_one({"phone": phone})
-            if existing:
+            stmt = select(User).where(User.phone == phone).limit(1)
+            result = await session.execute(stmt)
+            if result.scalars().first():
                 return "يوجد حساب مسجل مسبقًا بنفس رقم الهاتف"
 
         if national_id:
-            existing = await database.users.find_one({"national_id": national_id})
-            if existing:
+            stmt = select(User).where(User.national_id == national_id).limit(1)
+            result = await session.execute(stmt)
+            if result.scalars().first():
                 return "يوجد حساب مسجل مسبقًا بنفس رقم الهوية"
 
         return None
@@ -102,6 +110,7 @@ class TeacherApprovalHandler(ApprovalHandler):
     async def create_entities(self, request: dict, approved_by: dict) -> ApprovalResult:
         """Create the teacher or school entities upon approval."""
         database = _get_db()
+        session = database.session
         now = datetime.now(timezone.utc).isoformat()
         email = request.get("email")
         phone = request.get("phone")
@@ -113,7 +122,7 @@ class TeacherApprovalHandler(ApprovalHandler):
         teacher_id = _generate_teacher_id()
         qr_code = _generate_qr_code_data(teacher_id, user_id)
 
-        new_user = {
+        new_user = dict_to_model(User, {
             "id": user_id,
             "email": email,
             "password_hash": _hash_password(temp_password),
@@ -121,11 +130,6 @@ class TeacherApprovalHandler(ApprovalHandler):
             "role": "teacher",
             "phone": phone,
             "national_id": national_id,
-            "region": None,
-            "city": None,
-            "educational_department": None,
-            "school_name_ar": request.get("school_mentioned"),
-            "permissions": ["view_own_profile", "manage_own_classes", "view_own_students", "take_attendance"],
             "is_active": True,
             "must_change_password": True,
             "preferred_language": "ar",
@@ -133,36 +137,37 @@ class TeacherApprovalHandler(ApprovalHandler):
             "created_at": now,
             "updated_at": now,
             "created_by": approver_id,
-            "account_type": "independent_teacher"
-        }
-        await database.users.insert_one(new_user)
+            "account_type": "independent_teacher",
+            "permissions": ["view_own_profile", "manage_own_classes", "view_own_students", "take_attendance"],
+        })
+        session.add(new_user)
+        await session.flush()
 
-        teacher_record = {
+        teacher_record = dict_to_model(Teacher, {
             "id": str(uuid.uuid4()),
-            "user_id": user_id,
-            "teacher_id": teacher_id,
             "full_name": request.get("full_name"),
             "email": email,
             "phone": phone,
             "specialization": request.get("subject") or request.get("specialization"),
-            "educational_level": request.get("educational_level"),
             "years_of_experience": int(request.get("years_of_experience") or 0),
             "school_id": None,
-            "qr_code": qr_code,
             "is_active": True,
             "created_at": now,
-            "created_by": approver_id
-        }
-        await database.teachers.insert_one(teacher_record)
+            "user_id": user_id,
+            "teacher_id": teacher_id,
+            "qr_code": qr_code,
+            "created_by": approver_id,
+        })
+        session.add(teacher_record)
+        await session.flush()
 
-        qr_record = {
+        await gd_insert(session, "teacher_qr_codes", {
             "id": str(uuid.uuid4()),
             "user_id": user_id,
             "teacher_id": teacher_id,
             "qr_data": qr_code,
-            "created_at": now
-        }
-        await database.teacher_qr_codes.insert_one(qr_record)
+            "created_at": now,
+        })
 
         login_url = f"{os.environ.get('FRONTEND_URL', 'https://nassaq.com')}/login"
         message_template = f"""مرحبًا،
@@ -208,17 +213,21 @@ class TeacherApprovalHandler(ApprovalHandler):
     async def verify_after_approve(self, request: dict, result: ApprovalResult) -> Optional[str]:
         """Verify that entities were created successfully after approval."""
         database = _get_db()
+        session = database.session
         user_id = result.created_entities.get("user_id")
         teacher_id = result.created_entities.get("teacher_id")
 
-        user = await database.users.find_one({"id": user_id})
+        stmt = select(User).where(User.id == user_id).limit(1)
+        res = await session.execute(stmt)
+        user = res.scalars().first()
         if not user:
             return f"Post-approval verification failed: user {user_id} not found in users collection"
-
-        if not user.get("is_active"):
+        if not user.is_active:
             return f"Post-approval verification failed: user {user_id} is not active"
 
-        teacher = await database.teachers.find_one({"teacher_id": teacher_id})
+        stmt2 = select(Teacher).where(Teacher.id == teacher_id).limit(1)
+        res2 = await session.execute(stmt2)
+        teacher = res2.scalars().first()
         if not teacher:
             return f"Post-approval verification failed: teacher record {teacher_id} not found"
 
@@ -247,34 +256,44 @@ class SchoolApprovalHandler(ApprovalHandler):
     async def validate_before_approve(self, request: dict) -> Optional[str]:
         """Validate business rules before approving teacher/school registration."""
         database = _get_db()
+        session = database.session
         school_email = request.get("school_email") or request.get("email")
         if school_email:
-            existing = await database.users.find_one({"email": school_email})
-            if existing:
+            stmt = select(User).where(User.email == school_email).limit(1)
+            result = await session.execute(stmt)
+            if result.scalars().first():
                 return "يوجد حساب مسجل مسبقًا بنفس البريد الإلكتروني"
         return None
 
     async def _generate_school_code(self) -> str:
         database = _get_db()
+        session = database.session
         year_suffix = datetime.now().strftime("%y")
         country_code = "SA"
         prefix = f"NSS-{country_code}-{year_suffix}-"
 
-        last_school = await database.schools.find_one(
-            {"code": {"$regex": f"^{prefix}"}},
-            sort=[("code", -1)]
+        stmt = (
+            select(School)
+            .where(School.code.like(f"{prefix}%"))
+            .order_by(sa_desc(School.code))
+            .limit(1)
         )
+        result = await session.execute(stmt)
+        last_school = result.scalars().first()
+
         next_num = 1
-        if last_school and last_school.get("code"):
+        if last_school and last_school.code:
             try:
-                last_num = int(last_school["code"].split("-")[-1])
+                last_num = int(last_school.code.split("-")[-1])
                 next_num = last_num + 1
             except (ValueError, IndexError) as e:
                 logging.getLogger("nassaq.approval").debug("School code parse fallback: %s", e)
 
         school_code = f"{prefix}{str(next_num).zfill(4)}"
-        existing = await database.schools.find_one({"code": school_code})
-        if existing:
+
+        stmt2 = select(School).where(School.code == school_code).limit(1)
+        result2 = await session.execute(stmt2)
+        if result2.scalars().first():
             school_code = f"{prefix}{str(next_num + 1).zfill(4)}"
 
         return school_code
@@ -282,6 +301,7 @@ class SchoolApprovalHandler(ApprovalHandler):
     async def create_entities(self, request: dict, approved_by: dict) -> ApprovalResult:
         """Create the teacher or school entities upon approval."""
         database = _get_db()
+        session = database.session
         now = datetime.now(timezone.utc).isoformat()
         approver_id = approved_by.get("id", approved_by.get("user_id"))
 
@@ -299,7 +319,7 @@ class SchoolApprovalHandler(ApprovalHandler):
         except (ValueError, TypeError):
             student_capacity = 500
 
-        school_doc = {
+        school_obj = dict_to_model(School, {
             "id": school_id,
             "name": school_name,
             "name_ar": school_name,
@@ -311,36 +331,31 @@ class SchoolApprovalHandler(ApprovalHandler):
             "city": request.get("school_city", ""),
             "region": "",
             "country": "SA",
-            "logo_url": None,
             "status": "active",
             "student_capacity": student_capacity,
             "current_students": 0,
             "current_teachers": 0,
-            "language": "ar",
-            "calendar_system": "hijri_gregorian",
             "school_type": request.get("school_type", "public"),
-            "stage": "primary",
             "principal_name": principal_name,
             "principal_email": school_email,
             "principal_phone": school_phone,
             "created_at": now,
             "updated_at": now,
             "created_by": approver_id,
-        }
-        await database.schools.insert_one(school_doc)
+        })
+        session.add(school_obj)
+        await session.flush()
 
         temp_password = _generate_secure_password(12)
         principal_id = str(uuid.uuid4())
-        principal_doc = {
+        principal_obj = dict_to_model(User, {
             "id": principal_id,
             "email": school_email,
             "password_hash": _hash_password(temp_password),
             "full_name": principal_name,
-            "full_name_en": None,
             "role": "school_principal",
-            "tenant_id": school_id,
+            "school_id": school_id,
             "phone": school_phone,
-            "avatar_url": None,
             "is_active": True,
             "must_change_password": True,
             "preferred_language": "ar",
@@ -349,12 +364,13 @@ class SchoolApprovalHandler(ApprovalHandler):
             "created_at": now,
             "updated_at": now,
             "created_by": approver_id,
-        }
-        await database.users.insert_one(principal_doc)
+        })
+        session.add(principal_obj)
+        await session.flush()
 
-        default_settings = await database.default_settings.find_one({"id": "default-school-settings"}, {"_id": 0})
+        default_settings = await gd_find_one(session, "default_settings", {"id": "default-school-settings"})
         if default_settings:
-            school_settings = {
+            settings_obj = dict_to_model(SchoolSettings, {
                 "id": f"settings-{school_id}",
                 "school_id": school_id,
                 "working_days": default_settings.get("working_days"),
@@ -372,8 +388,9 @@ class SchoolApprovalHandler(ApprovalHandler):
                 "education_track": "track-general",
                 "created_at": now,
                 "updated_at": now,
-            }
-            await database.school_settings.insert_one(school_settings)
+            })
+            session.add(settings_obj)
+            await session.flush()
 
         login_url = f"{os.environ.get('FRONTEND_URL', 'https://nassaq.com')}/login"
         message_template = f"""مرحبًا {principal_name}،
@@ -421,24 +438,26 @@ class SchoolApprovalHandler(ApprovalHandler):
     async def verify_after_approve(self, request: dict, result: ApprovalResult) -> Optional[str]:
         """Verify that entities were created successfully after approval."""
         database = _get_db()
+        session = database.session
         school_id = result.created_entities.get("school_id")
         principal_id = result.created_entities.get("principal_id")
 
-        school = await database.schools.find_one({"id": school_id})
+        stmt = select(School).where(School.id == school_id).limit(1)
+        res = await session.execute(stmt)
+        school = res.scalars().first()
         if not school:
             return f"Post-approval verification failed: school {school_id} not found"
-
-        if school.get("status") != "active":
+        if school.status != "active":
             return f"Post-approval verification failed: school {school_id} is not active"
 
-        principal = await database.users.find_one({"id": principal_id})
+        stmt2 = select(User).where(User.id == principal_id).limit(1)
+        res2 = await session.execute(stmt2)
+        principal = res2.scalars().first()
         if not principal:
             return f"Post-approval verification failed: principal user {principal_id} not found"
-
-        if principal.get("tenant_id") != school_id:
+        if principal.school_id != school_id:
             return f"Post-approval verification failed: principal not linked to school"
-
-        if not principal.get("is_active"):
+        if not principal.is_active:
             return f"Post-approval verification failed: principal user is not active"
 
         logger.info(f"School verification passed: school_id={school_id}, principal_id={principal_id}")

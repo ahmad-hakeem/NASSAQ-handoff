@@ -24,8 +24,8 @@ Status Lifecycle:
        │                  │               │
        ├──► approved      ├──► rejected   ├──► archived
        ├──► rejected      ├──► info_required
-       ├──► info_required  
-       ├──► cancelled     
+       ├──► info_required
+       ├──► cancelled
        │
   info_required ──► pending_review (via submit-info)
        │
@@ -41,6 +41,11 @@ from datetime import datetime, timezone
 from dataclasses import dataclass, field
 import uuid
 import logging
+
+from sqlalchemy import select, and_, desc as sa_desc
+
+from pg_models import RegistrationRequest, ApprovalEvent, AuditLog
+from engines.sql_utils import model_to_dict, models_to_dicts, dict_to_model, apply_updates
 
 logger = logging.getLogger("nassaq.approval")
 
@@ -117,26 +122,35 @@ class ApprovalHandler:
         return ["full_name", "email", "phone", "created_at"]
 
 
+def _get_session():
+    db = _get_db()
+    return db.session
+
+
 async def _emit_event(database, event_type: str, request_id: str, request_type: str, *,
                        reviewer_id: str = None, status_before: str = None,
                        status_after: str = None, result: str = "success",
                        error_code: str = None, details: dict = None):
-    event = {
-        "id": str(uuid.uuid4()),
-        "event_type": event_type,
-        "entity_type": "approval_request",
-        "request_id": request_id,
-        "request_type": request_type,
-        "reviewer_id": reviewer_id,
-        "status_before": status_before,
-        "status_after": status_after,
-        "result": result,
-        "error_code": error_code,
-        "details": details or {},
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    }
+    session = database.session
+    obj = ApprovalEvent(
+        id=str(uuid.uuid4()),
+        request_id=request_id,
+        event_type=event_type,
+        from_status=status_before,
+        to_status=status_after,
+        performed_by=reviewer_id,
+        data={
+            "request_type": request_type,
+            "result": result,
+            "error_code": error_code,
+            "entity_type": "approval_request",
+            **(details or {}),
+        },
+        timestamp=datetime.now(timezone.utc),
+    )
     try:
-        await database.approval_events.insert_one(event)
+        session.add(obj)
+        await session.flush()
     except Exception as e:
         logger.error(f"Failed to emit approval event {event_type}: {e}")
 
@@ -168,7 +182,13 @@ class ApprovalEngine:
 
     async def _get_request(self, request_id: str):
         database = _get_db()
-        request = await database.registration_requests.find_one({"id": request_id}, {"_id": 0})
+        session = database.session
+        stmt = select(RegistrationRequest).where(RegistrationRequest.id == request_id).limit(1)
+        result = await session.execute(stmt)
+        row = result.scalars().first()
+        request = model_to_dict(row) if row else None
+        if request:
+            request.pop("_id", None)
         return database, request
 
     def _user_id(self, user: dict) -> str:
@@ -176,23 +196,38 @@ class ApprovalEngine:
 
     async def _write_audit(self, database, action: str, current_user: dict,
                             request: dict, request_type: str, extra_details: dict = None):
-        audit_log = {
-            "id": str(uuid.uuid4()),
-            "action": action,
-            "action_by": self._user_id(current_user),
-            "action_by_name": current_user.get("full_name", ""),
-            "action_by_role": current_user.get("role", ""),
-            "target_type": "registration_request",
-            "target_id": request.get("id", ""),
-            "target_name": request.get("full_name") or request.get("school_name", ""),
-            "details": {
+        session = database.session
+        obj = AuditLog(
+            id=str(uuid.uuid4()),
+            action=action,
+            performed_by=self._user_id(current_user),
+            actor_name=current_user.get("full_name", ""),
+            actor_role=current_user.get("role", ""),
+            target_type="registration_request",
+            target_id=request.get("id", ""),
+            target_name=request.get("full_name") or request.get("school_name", ""),
+            details={
                 "request_type": request_type,
                 "status_before": request.get("status"),
                 **(extra_details or {}),
             },
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        }
-        await database.audit_logs.insert_one(audit_log)
+            timestamp=datetime.now(timezone.utc),
+        )
+        session.add(obj)
+        await session.flush()
+
+    async def _update_request(self, database, request_id: str, current_status: str, updates: dict) -> int:
+        session = database.session
+        stmt = select(RegistrationRequest).where(
+            and_(RegistrationRequest.id == request_id, RegistrationRequest.status == current_status)
+        ).limit(1)
+        result = await session.execute(stmt)
+        obj = result.scalars().first()
+        if not obj:
+            return 0
+        apply_updates(obj, updates)
+        await session.flush()
+        return 1
 
     async def approve(self, request_id: str, current_user: dict, notes: str = "") -> ApprovalResult:
         """Approve a pending request and trigger entity creation."""
@@ -263,23 +298,16 @@ class ApprovalEngine:
         elif result.created_entities.get("user_id"):
             linked_fields["linked_entity_id"] = result.created_entities["user_id"]
 
-        update_result = await database.registration_requests.update_one(
-            {"id": request_id, "status": current_status},
-            {
-                "$set": {
-                    "status": "approved",
-                    "review_notes": notes,
-                    "approved_by": self._user_id(current_user),
-                    "approved_by_name": current_user.get("full_name"),
-                    "approved_at": now,
-                    "reviewed_at": now,
-                    "reviewed_by": self._user_id(current_user),
-                    "updated_at": now,
-                    **linked_fields,
-                }
-            },
-        )
-        if update_result.modified_count == 0:
+        update_fields = {
+            "status": "approved",
+            "review_note": notes,
+            "reviewed_at": now,
+            "reviewed_by": self._user_id(current_user),
+            **linked_fields,
+        }
+
+        modified = await self._update_request(database, request_id, current_status, update_fields)
+        if modified == 0:
             logger.warning(f"Concurrent transition detected for request {request_id}")
             await _emit_event(database, "approval_activation_failed", request_id, request_type,
                               reviewer_id=self._user_id(current_user),
@@ -307,237 +335,163 @@ class ApprovalEngine:
         )
         return result
 
-    async def reject(self, request_id: str, reason: str, current_user: dict) -> dict:
-        """Reject a pending request with a reason."""
+    async def _do_status_update(self, request_id: str, target_status: str,
+                                 current_user: dict, extra_updates: dict,
+                                 audit_action_suffix: str, event_type: str,
+                                 extra_audit: dict = None, extra_event: dict = None) -> dict:
         database, request = await self._get_request(request_id)
         if not request:
             return {"success": False, "detail": "طلب التسجيل غير موجود"}
 
         current_status = request.get("status", "")
-        valid, err_msg = validate_transition(current_status, "rejected")
+        valid, err_msg = validate_transition(current_status, target_status)
         if not valid:
             return {"success": False, "detail": err_msg}
 
         now = datetime.now(timezone.utc).isoformat()
         request_type = request.get("account_type", "unknown")
 
-        update_result = await database.registration_requests.update_one(
-            {"id": request_id, "status": current_status},
-            {
-                "$set": {
-                    "status": "rejected",
-                    "rejection_reason": reason,
-                    "review_notes": reason,
-                    "rejected_by": self._user_id(current_user),
-                    "rejected_by_name": current_user.get("full_name"),
-                    "rejected_at": now,
-                    "reviewed_at": now,
-                    "reviewed_by": self._user_id(current_user),
-                    "updated_at": now,
-                }
-            },
-        )
-        if update_result.modified_count == 0:
+        update_fields = {"status": target_status, **extra_updates}
+        modified = await self._update_request(database, request_id, current_status, update_fields)
+        if modified == 0:
             return {"success": False, "detail": "الطلب تغيّرت حالته — يرجى تحديث الصفحة والمحاولة مرة أخرى"}
 
-        await self._write_audit(database, f"request_rejected_{request_type}", current_user,
-                                 request, request_type, {"reason": reason})
-        await _emit_event(database, "approval_request_rejected", request_id, request_type,
+        await self._write_audit(database, f"request_{audit_action_suffix}_{request_type}",
+                                 current_user, request, request_type, extra_audit)
+        await _emit_event(database, event_type, request_id, request_type,
                           reviewer_id=self._user_id(current_user),
-                          status_before=current_status, status_after="rejected",
-                          details={"reason": reason})
+                          status_before=current_status, status_after=target_status,
+                          details=extra_event)
 
-        logger.info(f"Request rejected: type={request_type}, id={request_id}")
-        return {"success": True, "message": "تم رفض الطلب بنجاح", "rejection_reason": reason}
+        logger.info(f"Request {audit_action_suffix}: type={request_type}, id={request_id}")
+        return {"success": True}
+
+    async def reject(self, request_id: str, reason: str, current_user: dict) -> dict:
+        """Reject a pending request with a reason."""
+        result = await self._do_status_update(
+            request_id, "rejected", current_user,
+            {"review_note": reason, "reviewed_at": datetime.now(timezone.utc).isoformat(),
+             "reviewed_by": self._user_id(current_user)},
+            "rejected", "approval_request_rejected",
+            extra_audit={"reason": reason},
+            extra_event={"reason": reason},
+        )
+        if result.get("success"):
+            return {"success": True, "message": "تم رفض الطلب بنجاح", "rejection_reason": reason}
+        return result
 
     async def request_info(self, request_id: str, message: str, current_user: dict) -> dict:
         """Request additional information on a pending request."""
-        database, request = await self._get_request(request_id)
-        if not request:
-            return {"success": False, "detail": "طلب التسجيل غير موجود"}
-
-        current_status = request.get("status", "")
-        valid, err_msg = validate_transition(current_status, "info_required")
-        if not valid:
-            return {"success": False, "detail": err_msg}
-
-        now = datetime.now(timezone.utc).isoformat()
-        request_type = request.get("account_type", "unknown")
-
-        update_result = await database.registration_requests.update_one(
-            {"id": request_id, "status": current_status},
-            {
-                "$set": {
-                    "status": "info_required",
-                    "additional_info_request": message,
-                    "info_requested_by": self._user_id(current_user),
-                    "info_requested_by_name": current_user.get("full_name"),
-                    "info_requested_at": now,
-                    "updated_at": now,
-                }
-            },
+        result = await self._do_status_update(
+            request_id, "info_required", current_user,
+            {},
+            "info_requested", "approval_request_info_requested",
+            extra_audit={"message": message},
         )
-        if update_result.modified_count == 0:
-            return {"success": False, "detail": "الطلب تغيّرت حالته — يرجى تحديث الصفحة والمحاولة مرة أخرى"}
-
-        await self._write_audit(database, f"request_info_requested_{request_type}", current_user,
-                                 request, request_type, {"message": message})
-        await _emit_event(database, "approval_request_info_requested", request_id, request_type,
-                          reviewer_id=self._user_id(current_user),
-                          status_before=current_status, status_after="info_required")
-
-        return {"success": True, "message": "تم إرسال طلب المعلومات الإضافية"}
+        if result.get("success"):
+            return {"success": True, "message": "تم إرسال طلب المعلومات الإضافية"}
+        return result
 
     async def mark_under_review(self, request_id: str, notes: str, current_user: dict) -> dict:
         """Transition a request to under-review status."""
-        database, request = await self._get_request(request_id)
-        if not request:
-            return {"success": False, "detail": "طلب التسجيل غير موجود"}
-
-        current_status = request.get("status", "")
-        valid, err_msg = validate_transition(current_status, "under_review")
-        if not valid:
-            return {"success": False, "detail": err_msg}
-
-        now = datetime.now(timezone.utc).isoformat()
-        request_type = request.get("account_type", "unknown")
-
-        update_result = await database.registration_requests.update_one(
-            {"id": request_id, "status": current_status},
-            {
-                "$set": {
-                    "status": "under_review",
-                    "review_notes": notes,
-                    "under_review_by": self._user_id(current_user),
-                    "under_review_by_name": current_user.get("full_name"),
-                    "under_review_at": now,
-                    "updated_at": now,
-                }
-            },
+        result = await self._do_status_update(
+            request_id, "under_review", current_user,
+            {"review_note": notes},
+            "under_review", "approval_request_under_review",
+            extra_audit={"notes": notes},
+            extra_event={"notes": notes},
         )
-        if update_result.modified_count == 0:
-            return {"success": False, "detail": "الطلب تغيّرت حالته — يرجى تحديث الصفحة والمحاولة مرة أخرى"}
-
-        await self._write_audit(database, f"request_under_review_{request_type}", current_user,
-                                 request, request_type, {"notes": notes})
-        await _emit_event(database, "approval_request_under_review", request_id, request_type,
-                          reviewer_id=self._user_id(current_user),
-                          status_before=current_status, status_after="under_review",
-                          details={"notes": notes})
-
-        logger.info(f"Request under review: type={request_type}, id={request_id}")
-        return {"success": True, "message": "تم وضع الطلب تحت المراجعة"}
+        if result.get("success"):
+            return {"success": True, "message": "تم وضع الطلب تحت المراجعة"}
+        return result
 
     async def archive(self, request_id: str, current_user: dict) -> dict:
         """Archive a completed or rejected request."""
-        database, request = await self._get_request(request_id)
-        if not request:
-            return {"success": False, "detail": "طلب التسجيل غير موجود"}
-
-        current_status = request.get("status", "")
-        valid, err_msg = validate_transition(current_status, "archived")
-        if not valid:
-            return {"success": False, "detail": err_msg}
-
-        now = datetime.now(timezone.utc).isoformat()
-        request_type = request.get("account_type", "unknown")
-
-        update_result = await database.registration_requests.update_one(
-            {"id": request_id, "status": current_status},
-            {
-                "$set": {
-                    "status": "archived",
-                    "archived_by": self._user_id(current_user),
-                    "archived_by_name": current_user.get("full_name"),
-                    "archived_at": now,
-                    "updated_at": now,
-                }
-            },
+        result = await self._do_status_update(
+            request_id, "archived", current_user,
+            {},
+            "archived", "approval_request_archived",
         )
-        if update_result.modified_count == 0:
-            return {"success": False, "detail": "الطلب تغيّرت حالته — يرجى تحديث الصفحة والمحاولة مرة أخرى"}
-
-        await self._write_audit(database, f"request_archived_{request_type}", current_user,
-                                 request, request_type)
-        await _emit_event(database, "approval_request_archived", request_id, request_type,
-                          reviewer_id=self._user_id(current_user),
-                          status_before=current_status, status_after="archived")
-
-        logger.info(f"Request archived: type={request_type}, id={request_id}")
-        return {"success": True, "message": "تم أرشفة الطلب"}
+        if result.get("success"):
+            return {"success": True, "message": "تم أرشفة الطلب"}
+        return result
 
     async def cancel(self, request_id: str, reason: str, current_user: dict) -> dict:
         """Cancel a pending request."""
-        database, request = await self._get_request(request_id)
-        if not request:
-            return {"success": False, "detail": "طلب التسجيل غير موجود"}
-
-        current_status = request.get("status", "")
-        valid, err_msg = validate_transition(current_status, "cancelled")
-        if not valid:
-            return {"success": False, "detail": err_msg}
-
-        now = datetime.now(timezone.utc).isoformat()
-        request_type = request.get("account_type", "unknown")
-
-        update_result = await database.registration_requests.update_one(
-            {"id": request_id, "status": current_status},
-            {
-                "$set": {
-                    "status": "cancelled",
-                    "cancellation_reason": reason,
-                    "cancelled_by": self._user_id(current_user),
-                    "cancelled_by_name": current_user.get("full_name"),
-                    "cancelled_at": now,
-                    "updated_at": now,
-                }
-            },
+        result = await self._do_status_update(
+            request_id, "cancelled", current_user,
+            {},
+            "cancelled", "approval_request_cancelled",
+            extra_audit={"reason": reason},
+            extra_event={"reason": reason},
         )
-        if update_result.modified_count == 0:
-            return {"success": False, "detail": "الطلب تغيّرت حالته — يرجى تحديث الصفحة والمحاولة مرة أخرى"}
-
-        await self._write_audit(database, f"request_cancelled_{request_type}", current_user,
-                                 request, request_type, {"reason": reason})
-        await _emit_event(database, "approval_request_cancelled", request_id, request_type,
-                          reviewer_id=self._user_id(current_user),
-                          status_before=current_status, status_after="cancelled",
-                          details={"reason": reason})
-
-        logger.info(f"Request cancelled: type={request_type}, id={request_id}")
-        return {"success": True, "message": "تم إلغاء الطلب"}
+        if result.get("success"):
+            return {"success": True, "message": "تم إلغاء الطلب"}
+        return result
 
     async def get_queue(self, filters: dict = None) -> dict:
         """Return the filtered approval queue for a reviewer."""
-        database = _get_db()
-        query = {}
+        session = _get_session()
+        conditions = []
         filters = filters or {}
 
         if filters.get("status"):
-            query["status"] = filters["status"]
+            conditions.append(RegistrationRequest.status == filters["status"])
         if filters.get("account_type"):
-            query["account_type"] = filters["account_type"]
+            conditions.append(RegistrationRequest.type == filters["account_type"])
         if filters.get("request_type"):
-            query["account_type"] = filters["request_type"]
-        if filters.get("source"):
-            query["source"] = filters["source"]
+            conditions.append(RegistrationRequest.type == filters["request_type"])
 
-        requests = await database.registration_requests.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
+        stmt = select(RegistrationRequest)
+        if conditions:
+            stmt = stmt.where(and_(*conditions))
+        stmt = stmt.order_by(sa_desc(RegistrationRequest.created_at))
+
+        result = await session.execute(stmt)
+        requests = []
+        for row in result.scalars().all():
+            d = model_to_dict(row)
+            d.pop("_id", None)
+            requests.append(d)
         return {"requests": requests, "total": len(requests)}
 
     async def get_request_details(self, request_id: str) -> Optional[dict]:
         """Fetch full details of a single approval request."""
-        database = _get_db()
-        request = await database.registration_requests.find_one({"id": request_id}, {"_id": 0})
-        if not request:
+        session = _get_session()
+
+        stmt = select(RegistrationRequest).where(RegistrationRequest.id == request_id).limit(1)
+        result = await session.execute(stmt)
+        row = result.scalars().first()
+        if not row:
             return None
+        request = model_to_dict(row)
+        request.pop("_id", None)
 
-        events = await database.approval_events.find(
-            {"request_id": request_id}, {"_id": 0}
-        ).sort("timestamp", -1).to_list(50)
+        evt_stmt = (
+            select(ApprovalEvent)
+            .where(ApprovalEvent.request_id == request_id)
+            .order_by(sa_desc(ApprovalEvent.timestamp))
+            .limit(50)
+        )
+        evt_result = await session.execute(evt_stmt)
+        events = []
+        for e in evt_result.scalars().all():
+            d = model_to_dict(e)
+            d.pop("_id", None)
+            events.append(d)
 
-        audit_entries = await database.audit_logs.find(
-            {"target_id": request_id, "target_type": "registration_request"}, {"_id": 0}
-        ).sort("timestamp", -1).to_list(50)
+        audit_stmt = (
+            select(AuditLog)
+            .where(and_(AuditLog.target_id == request_id, AuditLog.target_type == "registration_request"))
+            .order_by(sa_desc(AuditLog.timestamp))
+            .limit(50)
+        )
+        audit_result = await session.execute(audit_stmt)
+        audit_entries = []
+        for a in audit_result.scalars().all():
+            d = model_to_dict(a)
+            d.pop("_id", None)
+            audit_entries.append(d)
 
         request["review_history"] = audit_entries
         request["lifecycle_events"] = events

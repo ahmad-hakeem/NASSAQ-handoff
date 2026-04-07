@@ -1,20 +1,20 @@
 """
 NASSAQ Scheduling Engine
 محرك الجداول الدراسية لمنصة نَسَّق
-
-Handles:
-- Master schedules management
-- Time slots and periods
-- Teacher assignments
-- Schedule sessions
-- Conflict detection
-- Schedule optimization
 """
 
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone, time
 from enum import Enum
 import uuid
+
+from sqlalchemy import select
+
+from engines.sql_utils import (
+    model_to_dict,
+    gd_find, gd_find_one, gd_insert, gd_update_one, gd_count,
+    gd_delete_one, gd_delete_many, gd_insert_many,
+)
 
 
 class ScheduleStatus(str, Enum):
@@ -38,24 +38,14 @@ class DayOfWeek(str, Enum):
 
 
 class SchedulingEngine:
-    """
-    Core Scheduling Engine for NASSAQ
-    Manages school schedules, sessions, and conflict detection
-    """
-    
     def __init__(self, db):
         self.db = db
-        self.schedules_collection = db.schedules
-        self.sessions_collection = db.schedule_sessions
-        self.time_slots_collection = db.time_slots
-        self.teacher_assignments_collection = db.teacher_assignments
-        self.conflicts_collection = db.schedule_conflicts
-        self.audit_collection = db.audit_logs
-    
-    # ============== TIME SLOTS ==============
-    
+
+    @property
+    def session(self):
+        return self.db.session
+
     async def seed_default_time_slots(self, tenant_id: str, created_by: str) -> int:
-        """Seed default time slots for a tenant"""
         default_slots = [
             {"period": 1, "start_time": "07:00", "end_time": "07:45", "type": "class"},
             {"period": 2, "start_time": "07:50", "end_time": "08:35", "type": "class"},
@@ -67,14 +57,14 @@ class SchedulingEngine:
             {"period": 8, "start_time": "12:10", "end_time": "12:55", "type": "prayer", "name_ar": "صلاة الظهر"},
             {"period": 9, "start_time": "12:55", "end_time": "13:40", "type": "class"},
         ]
-        
+
         count = 0
         for slot in default_slots:
-            existing = await self.time_slots_collection.find_one({
+            existing = await gd_find_one(self.session, "time_slots", {
                 "tenant_id": tenant_id,
                 "period": slot["period"]
             })
-            
+
             if not existing:
                 slot_doc = {
                     "id": str(uuid.uuid4()),
@@ -83,29 +73,23 @@ class SchedulingEngine:
                     "created_at": datetime.now(timezone.utc).isoformat(),
                     "created_by": created_by
                 }
-                await self.time_slots_collection.insert_one(slot_doc)
+                await gd_insert(self.session, "time_slots", slot_doc)
                 count += 1
-        
+
         return count
-    
+
     async def get_time_slots(
         self,
         tenant_id: str,
         slot_type: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        """Get time slots for a tenant"""
-        query = {"tenant_id": tenant_id}
-        
+        filters: Dict[str, Any] = {"tenant_id": tenant_id}
         if slot_type:
-            query["type"] = slot_type
-        
-        slots = await self.time_slots_collection.find(
-            query,
-            {"_id": 0}
-        ).sort("period", 1).to_list(50)
-        
+            filters["type"] = slot_type
+
+        slots = await gd_find(self.session, "time_slots", filters, order_by="period", desc_order=False, limit=50)
         return slots
-    
+
     async def create_time_slot(
         self,
         tenant_id: str,
@@ -116,10 +100,9 @@ class SchedulingEngine:
         created_by: str,
         **kwargs
     ) -> Dict[str, Any]:
-        """Create a new time slot"""
         slot_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
-        
+
         slot_doc = {
             "id": slot_id,
             "tenant_id": tenant_id,
@@ -132,38 +115,28 @@ class SchedulingEngine:
             "created_at": now,
             "created_by": created_by
         }
-        
-        await self.time_slots_collection.insert_one(slot_doc)
+
+        await gd_insert(self.session, "time_slots", slot_doc)
         return slot_doc
-    
+
     async def update_time_slot(
         self,
         slot_id: str,
         updates: Dict[str, Any],
         updated_by: str
     ) -> Dict[str, Any]:
-        """Update a time slot"""
         now = datetime.now(timezone.utc).isoformat()
-        
+
         protected = ["id", "tenant_id", "created_at", "created_by"]
         for field in protected:
             updates.pop(field, None)
-        
+
         updates["updated_at"] = now
         updates["updated_by"] = updated_by
-        
-        await self.time_slots_collection.update_one(
-            {"id": slot_id},
-            {"$set": updates}
-        )
-        
-        return await self.time_slots_collection.find_one(
-            {"id": slot_id},
-            {"_id": 0}
-        )
-    
-    # ============== MASTER SCHEDULES ==============
-    
+
+        await gd_update_one(self.session, "time_slots", {"id": slot_id}, updates)
+        return await gd_find_one(self.session, "time_slots", {"id": slot_id})
+
     async def create_schedule(
         self,
         tenant_id: str,
@@ -173,14 +146,13 @@ class SchedulingEngine:
         created_by: str,
         **kwargs
     ) -> Dict[str, Any]:
-        """Create a new master schedule"""
         schedule_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
-        
+
         schedule_doc = {
             "id": schedule_id,
             "tenant_id": tenant_id,
-            "school_id": tenant_id,  # For backward compatibility
+            "school_id": tenant_id,
             "name": name,
             "name_en": kwargs.get("name_en"),
             "academic_year": academic_year,
@@ -198,163 +170,101 @@ class SchedulingEngine:
                 "conflicts_count": 0
             }
         }
-        
-        await self.schedules_collection.insert_one(schedule_doc)
-        
-        # Log audit
-        await self._log_audit(
-            "schedule.created",
-            schedule_id,
-            created_by,
-            tenant_id,
-            {"name": name}
-        )
-        
+
+        await gd_insert(self.session, "schedules", schedule_doc)
+        await self._log_audit("schedule.created", schedule_id, created_by, tenant_id, {"name": name})
         return schedule_doc
-    
+
     async def get_schedules(
         self,
         tenant_id: str,
         status: Optional[str] = None,
         academic_year: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        """Get schedules for a tenant"""
-        query = {"tenant_id": tenant_id}
-        
+        filters: Dict[str, Any] = {"tenant_id": tenant_id}
         if status:
-            query["status"] = status
+            filters["status"] = status
         if academic_year:
-            query["academic_year"] = academic_year
-        
-        schedules = await self.schedules_collection.find(
-            query,
-            {"_id": 0}
-        ).sort("created_at", -1).to_list(100)
-        
-        return schedules
-    
+            filters["academic_year"] = academic_year
+
+        return await gd_find(self.session, "schedules", filters, order_by="created_at", desc_order=True, limit=100)
+
     async def get_schedule_by_id(self, schedule_id: str) -> Optional[Dict[str, Any]]:
-        """Get a schedule by ID"""
-        return await self.schedules_collection.find_one(
-            {"id": schedule_id},
-            {"_id": 0}
-        )
-    
+        return await gd_find_one(self.session, "schedules", {"id": schedule_id})
+
     async def update_schedule(
         self,
         schedule_id: str,
         updates: Dict[str, Any],
         updated_by: str
     ) -> Dict[str, Any]:
-        """Update a schedule"""
         now = datetime.now(timezone.utc).isoformat()
-        
+
         protected = ["id", "tenant_id", "school_id", "created_at", "created_by"]
         for field in protected:
             updates.pop(field, None)
-        
+
         updates["updated_at"] = now
         updates["updated_by"] = updated_by
-        
-        await self.schedules_collection.update_one(
-            {"id": schedule_id},
-            {"$set": updates}
-        )
-        
+
+        await gd_update_one(self.session, "schedules", {"id": schedule_id}, updates)
         return await self.get_schedule_by_id(schedule_id)
-    
+
     async def publish_schedule(
         self,
         schedule_id: str,
         published_by: str
     ) -> Dict[str, Any]:
-        """Publish a schedule"""
         now = datetime.now(timezone.utc).isoformat()
-        
-        # Check for conflicts before publishing
+
         conflicts = await self.get_schedule_conflicts(schedule_id)
         if conflicts:
             raise ValueError(f"لا يمكن نشر الجدول - يوجد {len(conflicts)} تعارض")
-        
-        await self.schedules_collection.update_one(
-            {"id": schedule_id},
-            {
-                "$set": {
-                    "status": ScheduleStatus.PUBLISHED.value,
-                    "published_at": now,
-                    "published_by": published_by,
-                    "updated_at": now
-                }
-            }
-        )
-        
+
+        await gd_update_one(self.session, "schedules", {"id": schedule_id}, {
+            "status": ScheduleStatus.PUBLISHED.value,
+            "published_at": now,
+            "published_by": published_by,
+            "updated_at": now
+        })
+
         schedule = await self.get_schedule_by_id(schedule_id)
-        
-        # Log audit
-        await self._log_audit(
-            "schedule.published",
-            schedule_id,
-            published_by,
-            schedule.get("tenant_id"),
-            {}
-        )
-        
+        await self._log_audit("schedule.published", schedule_id, published_by, schedule.get("tenant_id"), {})
         return schedule
-    
+
     async def archive_schedule(
         self,
         schedule_id: str,
         archived_by: str
     ) -> Dict[str, Any]:
-        """Archive a schedule"""
         now = datetime.now(timezone.utc).isoformat()
-        
-        await self.schedules_collection.update_one(
-            {"id": schedule_id},
-            {
-                "$set": {
-                    "status": ScheduleStatus.ARCHIVED.value,
-                    "archived_at": now,
-                    "archived_by": archived_by,
-                    "updated_at": now
-                }
-            }
-        )
-        
+        await gd_update_one(self.session, "schedules", {"id": schedule_id}, {
+            "status": ScheduleStatus.ARCHIVED.value,
+            "archived_at": now,
+            "archived_by": archived_by,
+            "updated_at": now
+        })
         return await self.get_schedule_by_id(schedule_id)
-    
+
     async def delete_schedule(
         self,
         schedule_id: str,
         deleted_by: str
     ) -> bool:
-        """Delete a schedule and its sessions"""
         schedule = await self.get_schedule_by_id(schedule_id)
         if not schedule:
             return False
-        
-        # Delete all sessions
-        await self.sessions_collection.delete_many({"schedule_id": schedule_id})
-        
-        # Delete all conflicts
-        await self.conflicts_collection.delete_many({"schedule_id": schedule_id})
-        
-        # Delete schedule
-        await self.schedules_collection.delete_one({"id": schedule_id})
-        
-        # Log audit
+
+        await gd_delete_many(self.session, "schedule_sessions", {"schedule_id": schedule_id})
+        await gd_delete_many(self.session, "schedule_conflicts", {"schedule_id": schedule_id})
+        await gd_delete_one(self.session, "schedules", {"id": schedule_id})
+
         await self._log_audit(
-            "schedule.deleted",
-            schedule_id,
-            deleted_by,
-            schedule.get("tenant_id"),
-            {"name": schedule.get("name")}
+            "schedule.deleted", schedule_id, deleted_by,
+            schedule.get("tenant_id"), {"name": schedule.get("name")}
         )
-        
         return True
-    
-    # ============== SCHEDULE SESSIONS ==============
-    
+
     async def create_session(
         self,
         schedule_id: str,
@@ -366,15 +276,12 @@ class SchedulingEngine:
         created_by: str,
         **kwargs
     ) -> Dict[str, Any]:
-        """Create a new schedule session"""
-        # Get schedule info
         schedule = await self.get_schedule_by_id(schedule_id)
         if not schedule:
             raise ValueError("الجدول غير موجود")
-        
+
         tenant_id = schedule.get("tenant_id")
-        
-        # Check for conflicts
+
         conflicts = await self._check_session_conflicts(
             tenant_id=tenant_id,
             schedule_id=schedule_id,
@@ -383,10 +290,10 @@ class SchedulingEngine:
             teacher_id=teacher_id,
             section_id=section_id
         )
-        
+
         session_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
-        
+
         session_doc = {
             "id": session_id,
             "schedule_id": schedule_id,
@@ -403,21 +310,18 @@ class SchedulingEngine:
             "created_at": now,
             "created_by": created_by
         }
-        
-        await self.sessions_collection.insert_one(session_doc)
-        
-        # Store conflicts if any
+
+        await gd_insert(self.session, "schedule_sessions", session_doc)
+
         if conflicts:
             for conflict in conflicts:
                 conflict["session_id"] = session_id
                 conflict["schedule_id"] = schedule_id
-                await self.conflicts_collection.insert_one(conflict)
-        
-        # Update schedule metadata
+                await gd_insert(self.session, "schedule_conflicts", conflict)
+
         await self._update_schedule_metadata(schedule_id)
-        
         return session_doc
-    
+
     async def get_sessions(
         self,
         schedule_id: str,
@@ -425,81 +329,65 @@ class SchedulingEngine:
         teacher_id: Optional[str] = None,
         day_of_week: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        """Get sessions for a schedule"""
-        query = {"schedule_id": schedule_id}
-        
+        filters: Dict[str, Any] = {"schedule_id": schedule_id}
         if section_id:
-            query["section_id"] = section_id
+            filters["section_id"] = section_id
         if teacher_id:
-            query["teacher_id"] = teacher_id
+            filters["teacher_id"] = teacher_id
         if day_of_week:
-            query["day_of_week"] = day_of_week
-        
-        sessions = await self.sessions_collection.find(
-            query,
-            {"_id": 0}
-        ).sort([("day_of_week", 1), ("period", 1)]).to_list(1000)
-        
+            filters["day_of_week"] = day_of_week
+
+        sessions = await gd_find(self.session, "schedule_sessions", filters, limit=1000)
+        sessions.sort(key=lambda x: (x.get("day_of_week", ""), x.get("period", 0)))
         return sessions
-    
+
     async def get_session_by_id(self, session_id: str) -> Optional[Dict[str, Any]]:
-        """Get a session by ID"""
-        return await self.sessions_collection.find_one(
-            {"id": session_id},
-            {"_id": 0}
-        )
-    
+        return await gd_find_one(self.session, "schedule_sessions", {"id": session_id})
+
     async def update_session(
         self,
         session_id: str,
         updates: Dict[str, Any],
         updated_by: str
     ) -> Dict[str, Any]:
-        """Update a session"""
         now = datetime.now(timezone.utc).isoformat()
-        
+
         protected = ["id", "schedule_id", "tenant_id", "created_at", "created_by"]
         for field in protected:
             updates.pop(field, None)
-        
+
         updates["updated_at"] = now
         updates["updated_by"] = updated_by
-        
-        # If changing day/period/teacher, recheck conflicts
-        session = await self.get_session_by_id(session_id)
-        if session and any(k in updates for k in ["day_of_week", "period", "teacher_id", "section_id"]):
-            new_day = updates.get("day_of_week", session.get("day_of_week"))
-            new_period = updates.get("period", session.get("period"))
-            new_teacher = updates.get("teacher_id", session.get("teacher_id"))
-            new_section = updates.get("section_id", session.get("section_id"))
-            
+
+        sess = await self.get_session_by_id(session_id)
+        if sess and any(k in updates for k in ["day_of_week", "period", "teacher_id", "section_id"]):
+            new_day = updates.get("day_of_week", sess.get("day_of_week"))
+            new_period = updates.get("period", sess.get("period"))
+            new_teacher = updates.get("teacher_id", sess.get("teacher_id"))
+            new_section = updates.get("section_id", sess.get("section_id"))
+
             conflicts = await self._check_session_conflicts(
-                tenant_id=session.get("tenant_id"),
-                schedule_id=session.get("schedule_id"),
+                tenant_id=sess.get("tenant_id"),
+                schedule_id=sess.get("schedule_id"),
                 day_of_week=new_day,
                 period=new_period,
                 teacher_id=new_teacher,
                 section_id=new_section,
                 exclude_session_id=session_id
             )
-            
+
             updates["has_conflicts"] = len(conflicts) > 0
-            
-            # Update conflicts
-            await self.conflicts_collection.delete_many({"session_id": session_id})
+
+            await gd_delete_many(self.session, "schedule_conflicts", {"session_id": session_id})
             if conflicts:
                 for conflict in conflicts:
                     conflict["session_id"] = session_id
-                    conflict["schedule_id"] = session.get("schedule_id")
-                    await self.conflicts_collection.insert_one(conflict)
-        
-        await self.sessions_collection.update_one(
-            {"id": session_id},
-            {"$set": updates}
-        )
-        
+                    conflict["schedule_id"] = sess.get("schedule_id")
+                    await gd_insert(self.session, "schedule_conflicts", conflict)
+
+        await gd_update_one(self.session, "schedule_sessions", {"id": session_id}, updates)
         return await self.get_session_by_id(session_id)
-    
+
     async def move_session(
         self,
         session_id: str,
@@ -507,39 +395,26 @@ class SchedulingEngine:
         new_period: int,
         moved_by: str
     ) -> Dict[str, Any]:
-        """Move a session to a new time slot"""
         return await self.update_session(
             session_id,
-            {
-                "day_of_week": new_day,
-                "period": new_period
-            },
+            {"day_of_week": new_day, "period": new_period},
             moved_by
         )
-    
+
     async def delete_session(
         self,
         session_id: str,
         deleted_by: str
     ) -> bool:
-        """Delete a session"""
-        session = await self.get_session_by_id(session_id)
-        if not session:
+        sess = await self.get_session_by_id(session_id)
+        if not sess:
             return False
-        
-        # Delete conflicts
-        await self.conflicts_collection.delete_many({"session_id": session_id})
-        
-        # Delete session
-        await self.sessions_collection.delete_one({"id": session_id})
-        
-        # Update schedule metadata
-        await self._update_schedule_metadata(session.get("schedule_id"))
-        
+
+        await gd_delete_many(self.session, "schedule_conflicts", {"session_id": session_id})
+        await gd_delete_one(self.session, "schedule_sessions", {"id": session_id})
+        await self._update_schedule_metadata(sess.get("schedule_id"))
         return True
-    
-    # ============== CONFLICT DETECTION ==============
-    
+
     async def _check_session_conflicts(
         self,
         tenant_id: str,
@@ -550,23 +425,19 @@ class SchedulingEngine:
         section_id: str,
         exclude_session_id: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        """Check for scheduling conflicts"""
         conflicts = []
         now = datetime.now(timezone.utc).isoformat()
-        
-        # Build base query
-        base_query = {
+
+        all_sessions = await gd_find(self.session, "schedule_sessions", {
             "schedule_id": schedule_id,
             "day_of_week": day_of_week,
-            "period": period
-        }
-        
+            "period": period,
+        }, limit=100)
+
         if exclude_session_id:
-            base_query["id"] = {"$ne": exclude_session_id}
-        
-        # Check teacher conflict
-        teacher_query = {**base_query, "teacher_id": teacher_id}
-        teacher_conflict = await self.sessions_collection.find_one(teacher_query, {"_id": 0})
+            all_sessions = [s for s in all_sessions if s.get("id") != exclude_session_id]
+
+        teacher_conflict = next((s for s in all_sessions if s.get("teacher_id") == teacher_id), None)
         if teacher_conflict:
             conflicts.append({
                 "id": str(uuid.uuid4()),
@@ -579,10 +450,8 @@ class SchedulingEngine:
                 "period": period,
                 "detected_at": now
             })
-        
-        # Check section conflict
-        section_query = {**base_query, "section_id": section_id}
-        section_conflict = await self.sessions_collection.find_one(section_query, {"_id": 0})
+
+        section_conflict = next((s for s in all_sessions if s.get("section_id") == section_id), None)
         if section_conflict:
             conflicts.append({
                 "id": str(uuid.uuid4()),
@@ -595,46 +464,33 @@ class SchedulingEngine:
                 "period": period,
                 "detected_at": now
             })
-        
+
         return conflicts
-    
+
     async def get_schedule_conflicts(
         self,
         schedule_id: str
     ) -> List[Dict[str, Any]]:
-        """Get all conflicts for a schedule"""
-        conflicts = await self.conflicts_collection.find(
-            {"schedule_id": schedule_id},
-            {"_id": 0}
-        ).to_list(1000)
-        
-        return conflicts
-    
+        return await gd_find(self.session, "schedule_conflicts", {"schedule_id": schedule_id}, limit=1000)
+
     async def resolve_conflict(
         self,
         conflict_id: str,
         resolved_by: str,
         resolution_note: Optional[str] = None
     ) -> bool:
-        """Mark a conflict as resolved"""
         now = datetime.now(timezone.utc).isoformat()
-        
-        result = await self.conflicts_collection.update_one(
-            {"id": conflict_id},
-            {
-                "$set": {
-                    "is_resolved": True,
-                    "resolved_at": now,
-                    "resolved_by": resolved_by,
-                    "resolution_note": resolution_note
-                }
-            }
-        )
-        
-        return result.modified_count > 0
-    
-    # ============== TEACHER ASSIGNMENTS ==============
-    
+        existing = await gd_find_one(self.session, "schedule_conflicts", {"id": conflict_id})
+        if not existing:
+            return False
+        await gd_update_one(self.session, "schedule_conflicts", {"id": conflict_id}, {
+            "is_resolved": True,
+            "resolved_at": now,
+            "resolved_by": resolved_by,
+            "resolution_note": resolution_note
+        })
+        return True
+
     async def assign_teacher_to_subject(
         self,
         tenant_id: str,
@@ -645,10 +501,9 @@ class SchedulingEngine:
         assigned_by: str,
         **kwargs
     ) -> Dict[str, Any]:
-        """Assign a teacher to teach a subject for specific sections"""
         assignment_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
-        
+
         assignment_doc = {
             "id": assignment_id,
             "tenant_id": tenant_id,
@@ -661,11 +516,10 @@ class SchedulingEngine:
             "created_at": now,
             "assigned_by": assigned_by
         }
-        
-        await self.teacher_assignments_collection.insert_one(assignment_doc)
-        
+
+        await gd_insert(self.session, "teacher_assignments", assignment_doc)
         return assignment_doc
-    
+
     async def get_teacher_assignments(
         self,
         tenant_id: str,
@@ -673,100 +527,74 @@ class SchedulingEngine:
         subject_id: Optional[str] = None,
         academic_year: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        """Get teacher assignments"""
-        query = {"tenant_id": tenant_id, "is_active": True}
-        
+        filters: Dict[str, Any] = {"tenant_id": tenant_id, "is_active": True}
         if teacher_id:
-            query["teacher_id"] = teacher_id
+            filters["teacher_id"] = teacher_id
         if subject_id:
-            query["subject_id"] = subject_id
+            filters["subject_id"] = subject_id
         if academic_year:
-            query["academic_year"] = academic_year
-        
-        assignments = await self.teacher_assignments_collection.find(
-            query,
-            {"_id": 0}
-        ).to_list(1000)
-        
-        return assignments
-    
+            filters["academic_year"] = academic_year
+
+        return await gd_find(self.session, "teacher_assignments", filters, limit=1000)
+
     async def get_teacher_weekly_schedule(
         self,
         tenant_id: str,
         teacher_id: str,
         schedule_id: Optional[str] = None
     ) -> Dict[str, List[Dict[str, Any]]]:
-        """Get a teacher's weekly schedule"""
-        query = {"tenant_id": tenant_id, "teacher_id": teacher_id}
-        
+        filters: Dict[str, Any] = {"tenant_id": tenant_id, "teacher_id": teacher_id}
         if schedule_id:
-            query["schedule_id"] = schedule_id
-        
-        sessions = await self.sessions_collection.find(
-            query,
-            {"_id": 0}
-        ).to_list(1000)
-        
-        # Group by day
+            filters["schedule_id"] = schedule_id
+
+        sessions = await gd_find(self.session, "schedule_sessions", filters, limit=1000)
+
         weekly = {day.value: [] for day in DayOfWeek}
-        for session in sessions:
-            day = session.get("day_of_week")
+        for s in sessions:
+            day = s.get("day_of_week")
             if day in weekly:
-                weekly[day].append(session)
-        
-        # Sort by period
+                weekly[day].append(s)
+
         for day in weekly:
             weekly[day].sort(key=lambda x: x.get("period", 0))
-        
+
         return weekly
-    
+
     async def get_section_weekly_schedule(
         self,
         tenant_id: str,
         section_id: str,
         schedule_id: Optional[str] = None
     ) -> Dict[str, List[Dict[str, Any]]]:
-        """Get a section's weekly schedule"""
-        query = {"tenant_id": tenant_id, "section_id": section_id}
-        
+        filters: Dict[str, Any] = {"tenant_id": tenant_id, "section_id": section_id}
         if schedule_id:
-            query["schedule_id"] = schedule_id
-        
-        sessions = await self.sessions_collection.find(
-            query,
-            {"_id": 0}
-        ).to_list(1000)
-        
-        # Group by day
+            filters["schedule_id"] = schedule_id
+
+        sessions = await gd_find(self.session, "schedule_sessions", filters, limit=1000)
+
         weekly = {day.value: [] for day in DayOfWeek}
-        for session in sessions:
-            day = session.get("day_of_week")
+        for s in sessions:
+            day = s.get("day_of_week")
             if day in weekly:
-                weekly[day].append(session)
-        
-        # Sort by period
+                weekly[day].append(s)
+
         for day in weekly:
             weekly[day].sort(key=lambda x: x.get("period", 0))
-        
+
         return weekly
-    
-    # ============== SCHEDULE STATISTICS ==============
-    
+
     async def get_schedule_statistics(self, schedule_id: str) -> Dict[str, Any]:
-        """Get statistics for a schedule"""
         sessions = await self.get_sessions(schedule_id)
         conflicts = await self.get_schedule_conflicts(schedule_id)
-        
-        # Unique teachers and sections
+
         teachers = set(s.get("teacher_id") for s in sessions if s.get("teacher_id"))
         sections = set(s.get("section_id") for s in sessions if s.get("section_id"))
         subjects = set(s.get("subject_id") for s in sessions if s.get("subject_id"))
-        
-        # Sessions per day
+
         sessions_per_day = {}
         for day in DayOfWeek:
             sessions_per_day[day.value] = len([s for s in sessions if s.get("day_of_week") == day.value])
-        
+
         return {
             "schedule_id": schedule_id,
             "total_sessions": len(sessions),
@@ -777,27 +605,18 @@ class SchedulingEngine:
             "unresolved_conflicts": len([c for c in conflicts if not c.get("is_resolved")]),
             "sessions_per_day": sessions_per_day
         }
-    
-    # ============== HELPER METHODS ==============
-    
+
     async def _update_schedule_metadata(self, schedule_id: str):
-        """Update schedule metadata after changes"""
         stats = await self.get_schedule_statistics(schedule_id)
-        
-        await self.schedules_collection.update_one(
-            {"id": schedule_id},
-            {
-                "$set": {
-                    "metadata": {
-                        "total_sessions": stats["total_sessions"],
-                        "assigned_teachers": stats["unique_teachers"],
-                        "conflicts_count": stats["total_conflicts"]
-                    },
-                    "updated_at": datetime.now(timezone.utc).isoformat()
-                }
-            }
-        )
-    
+        await gd_update_one(self.session, "schedules", {"id": schedule_id}, {
+            "metadata": {
+                "total_sessions": stats["total_sessions"],
+                "assigned_teachers": stats["unique_teachers"],
+                "conflicts_count": stats["total_conflicts"]
+            },
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        })
+
     async def _log_audit(
         self,
         action: str,
@@ -806,19 +625,20 @@ class SchedulingEngine:
         tenant_id: str,
         details: Dict[str, Any]
     ):
-        """Log an audit entry"""
-        audit_doc = {
-            "id": str(uuid.uuid4()),
-            "action": action,
-            "entity_type": "schedule",
-            "entity_id": entity_id,
-            "performed_by": performed_by,
-            "tenant_id": tenant_id,
-            "details": details,
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }
-        await self.audit_collection.insert_one(audit_doc)
+        from pg_models import AuditLog
+        log_obj = AuditLog(
+            id=str(uuid.uuid4()),
+            action=action,
+            entity_type="schedule",
+            entity_id=entity_id,
+            performed_by=performed_by,
+            tenant_id=tenant_id,
+            created_at=datetime.now(timezone.utc),
+        )
+        if hasattr(log_obj, "data"):
+            log_obj.data = {"details": details}
+        self.session.add(log_obj)
+        await self.session.flush()
 
 
-# Export
 __all__ = ["SchedulingEngine", "ScheduleStatus", "SessionStatus", "DayOfWeek"]

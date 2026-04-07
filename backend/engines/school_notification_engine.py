@@ -8,6 +8,14 @@ from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field
 from enum import Enum
 
+from sqlalchemy import select, and_, func, desc as sa_desc
+
+from pg_models import Notification, Student, Teacher, Parent
+from engines.sql_utils import (
+    model_to_dict, models_to_dicts, dict_to_model, apply_updates,
+    gd_insert, gd_insert_many, gd_find, gd_count,
+)
+
 logger = logging.getLogger(__name__)
 
 class RecipientType(str, Enum):
@@ -49,22 +57,20 @@ class SendNotificationRequest(BaseModel):
 
 class SchoolNotificationEngine:
     """Engine for school notifications"""
-    
+
     def __init__(self, db):
         self.db = db
-        self.notifications_collection = db.notifications
-        self.notification_logs_collection = db.notification_logs
-        self.users_collection = db.users
-        self.students_collection = db.students
-        self.teachers_collection = db.teachers
-        self.parents_collection = db.parents
-    
+
+    @property
+    def session(self):
+        return self.db.session
+
     def _generate_notification_id(self) -> str:
         """Generate unique notification ID"""
         timestamp = datetime.now().strftime("%y%m%d%H%M%S")
         import secrets
         return f"NTF-{timestamp}-{secrets.token_hex(3).upper()}"
-    
+
     async def send_notification(
         self,
         request: SendNotificationRequest,
@@ -75,22 +81,20 @@ class SchoolNotificationEngine:
         try:
             notification_id = self._generate_notification_id()
             now = datetime.now(timezone.utc)
-            
-            # Resolve recipients
+
             recipients = await self._resolve_recipients(
                 request.recipient_type,
                 request.recipient_filter,
                 tenant_id
             )
-            
+
             if not recipients:
                 return {
                     "success": False,
                     "error": "لا يوجد مستلمين للإشعار",
                     "error_en": "No recipients found"
                 }
-            
-            # Create notification document
+
             notification_doc = {
                 "notification_id": notification_id,
                 "tenant_id": tenant_id,
@@ -112,13 +116,24 @@ class SchoolNotificationEngine:
                 "sent_by": sent_by,
                 "created_at": now.isoformat(),
             }
-            
-            await self.notifications_collection.insert_one(notification_doc)
-            
-            # Create notification logs for each recipient
+
+            obj = dict_to_model(Notification, {
+                "id": notification_id,
+                "tenant_id": tenant_id,
+                "user_id": sent_by,
+                "title": request.title_ar,
+                "message": request.message_ar,
+                "type": request.notification_type.value,
+                "priority": request.priority.value,
+                "is_read": False,
+                "extra_data": notification_doc,
+            })
+            self.session.add(obj)
+            await self.session.flush()
+
             if not request.scheduled_at:
                 await self._create_recipient_logs(notification_id, recipients, tenant_id, now)
-            
+
             return {
                 "success": True,
                 "notification_id": notification_id,
@@ -126,11 +141,11 @@ class SchoolNotificationEngine:
                 "message": f"تم إرسال الإشعار إلى {len(recipients)} مستلم",
                 "message_en": f"Notification sent to {len(recipients)} recipients"
             }
-            
+
         except Exception as e:
             logger.error(f"Error sending notification: {e}")
             return {"success": False, "error": str(e)}
-    
+
     async def _resolve_recipients(
         self,
         recipient_type: RecipientType,
@@ -139,53 +154,53 @@ class SchoolNotificationEngine:
     ) -> List[Dict[str, Any]]:
         """Resolve recipients based on type and filter"""
         recipients = []
-        
+
         if recipient_type == RecipientType.all_students:
-            students = await self.students_collection.find(
-                {"school_id": tenant_id, "is_active": {"$ne": False}},
-                {"id": 1, "full_name": 1}
-            ).to_list(1000)
-            recipients = [{"id": s.get("id", str(s.get("_id"))), "type": "student", "name": s.get("full_name")} for s in students]
-            
+            stmt = select(Student).where(
+                and_(Student.school_id == tenant_id, Student.is_active == True)
+            )
+            result = await self.session.execute(stmt)
+            recipients = [{"id": s.id, "type": "student", "name": s.full_name} for s in result.scalars().all()]
+
         elif recipient_type == RecipientType.all_teachers:
-            teachers = await self.teachers_collection.find(
-                {"school_id": tenant_id, "is_active": {"$ne": False}},
-                {"id": 1, "full_name": 1, "name": 1}
-            ).to_list(500)
-            recipients = [{"id": t.get("id", str(t.get("_id"))), "type": "teacher", "name": t.get("full_name") or t.get("name")} for t in teachers]
-            
+            stmt = select(Teacher).where(
+                and_(Teacher.school_id == tenant_id, Teacher.is_active == True)
+            )
+            result = await self.session.execute(stmt)
+            recipients = [{"id": t.id, "type": "teacher", "name": t.full_name} for t in result.scalars().all()]
+
         elif recipient_type == RecipientType.all_parents:
-            parents = await self.parents_collection.find(
-                {"school_id": tenant_id, "is_active": {"$ne": False}},
-                {"id": 1, "parent_id": 1, "full_name": 1, "name_ar": 1}
-            ).to_list(1000)
-            recipients = [{"id": p.get("id") or p.get("parent_id", str(p.get("_id"))), "type": "parent", "name": p.get("full_name") or p.get("name_ar")} for p in parents]
-            
+            stmt = select(Parent).where(
+                and_(Parent.school_id == tenant_id, Parent.is_active == True)
+            )
+            result = await self.session.execute(stmt)
+            recipients = [{"id": p.id, "type": "parent", "name": p.full_name} for p in result.scalars().all()]
+
         elif recipient_type == RecipientType.grade_students:
             grade_id = recipient_filter.get("grade_id") if recipient_filter else None
             if grade_id:
-                students = await self.students_collection.find(
-                    {"school_id": tenant_id, "grade_level": grade_id, "is_active": {"$ne": False}},
-                    {"id": 1, "full_name": 1}
-                ).to_list(500)
-                recipients = [{"id": s.get("id", str(s.get("_id"))), "type": "student", "name": s.get("full_name")} for s in students]
-                
+                stmt = select(Student).where(
+                    and_(Student.school_id == tenant_id, Student.grade == grade_id, Student.is_active == True)
+                )
+                result = await self.session.execute(stmt)
+                recipients = [{"id": s.id, "type": "student", "name": s.full_name} for s in result.scalars().all()]
+
         elif recipient_type == RecipientType.class_students:
             class_id = recipient_filter.get("class_id") if recipient_filter else None
             if class_id:
-                students = await self.students_collection.find(
-                    {"school_id": tenant_id, "class_id": class_id, "is_active": {"$ne": False}},
-                    {"id": 1, "full_name": 1}
-                ).to_list(100)
-                recipients = [{"id": s.get("id", str(s.get("_id"))), "type": "student", "name": s.get("full_name")} for s in students]
-                
+                stmt = select(Student).where(
+                    and_(Student.school_id == tenant_id, Student.class_id == class_id, Student.is_active == True)
+                )
+                result = await self.session.execute(stmt)
+                recipients = [{"id": s.id, "type": "student", "name": s.full_name} for s in result.scalars().all()]
+
         elif recipient_type == RecipientType.specific_users:
             user_ids = recipient_filter.get("user_ids", []) if recipient_filter else []
             for uid in user_ids:
                 recipients.append({"id": uid, "type": "user", "name": ""})
-        
+
         return recipients
-    
+
     async def _create_recipient_logs(
         self,
         notification_id: str,
@@ -206,17 +221,23 @@ class SchoolNotificationEngine:
                 "read": False,
                 "sent_at": sent_at.isoformat(),
             })
-        
+
         if logs:
-            await self.notification_logs_collection.insert_many(logs)
-    
+            await gd_insert_many(self.session, "notification_logs", logs)
+
     async def get_notification(self, notification_id: str, tenant_id: str) -> Optional[Dict[str, Any]]:
         """Get notification by ID"""
-        return await self.notifications_collection.find_one({
-            "notification_id": notification_id,
-            "tenant_id": tenant_id
-        }, {"_id": 0})
-    
+        stmt = select(Notification).where(
+            and_(Notification.id == notification_id, Notification.tenant_id == tenant_id)
+        ).limit(1)
+        result = await self.session.execute(stmt)
+        row = result.scalars().first()
+        if not row:
+            return None
+        d = model_to_dict(row)
+        d.pop("_id", None)
+        return d
+
     async def list_notifications(
         self,
         tenant_id: str,
@@ -225,15 +246,29 @@ class SchoolNotificationEngine:
         limit: int = 50
     ) -> Dict[str, Any]:
         """List notifications"""
-        query = {"tenant_id": tenant_id}
+        conditions = [Notification.tenant_id == tenant_id]
         if notification_type:
-            query["notification_type"] = notification_type
-        
-        total = await self.notifications_collection.count_documents(query)
-        notifications = await self.notifications_collection.find(query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
-        
+            conditions.append(Notification.type == notification_type)
+
+        count_stmt = select(func.count(Notification.id)).where(and_(*conditions))
+        total = (await self.session.execute(count_stmt)).scalar() or 0
+
+        stmt = (
+            select(Notification)
+            .where(and_(*conditions))
+            .order_by(sa_desc(Notification.created_at))
+            .offset(skip)
+            .limit(limit)
+        )
+        result = await self.session.execute(stmt)
+        notifications = []
+        for row in result.scalars().all():
+            d = model_to_dict(row)
+            d.pop("_id", None)
+            notifications.append(d)
+
         return {"notifications": notifications, "total": total}
-    
+
     async def get_recipient_types(self) -> List[Dict[str, str]]:
         """Get recipient types"""
         return [
@@ -246,7 +281,7 @@ class SchoolNotificationEngine:
             {"code": "class_parents", "name_ar": "أولياء أمور فصل", "name_en": "Class Parents"},
             {"code": "specific_users", "name_ar": "مستخدمين محددين", "name_en": "Specific Users"},
         ]
-    
+
     async def get_notification_types(self) -> List[Dict[str, str]]:
         """Get notification types"""
         return [
@@ -256,7 +291,7 @@ class SchoolNotificationEngine:
             {"code": "event", "name_ar": "حدث", "name_en": "Event"},
             {"code": "emergency", "name_ar": "طوارئ", "name_en": "Emergency"},
         ]
-    
+
     async def get_priorities(self) -> List[Dict[str, str]]:
         """Get notification priorities"""
         return [

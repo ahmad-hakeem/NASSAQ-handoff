@@ -1,12 +1,6 @@
 """
 Product Intelligence Hub — Event Flow Engine
 محرك الأحداث لمركز ذكاء المنتج
-
-Handles all lifecycle events with:
-- Structured event emission
-- Activity log writes
-- Side-effect orchestration (SLA, feedback loop, notifications)
-- Status transition validation
 """
 
 from enum import Enum
@@ -15,7 +9,10 @@ from datetime import datetime, timezone, timedelta
 import uuid
 import logging
 
-from dependencies import db
+from sqlalchemy import select, update as sa_update
+
+from pg_models import IssueActivityLog, ProductIssue
+from engines.sql_utils import dict_to_model
 
 logger = logging.getLogger("nassaq.product_hub.events")
 
@@ -95,36 +92,44 @@ def _get_user_id(user: dict) -> str:
     return user.get("id", user.get("user_id", ""))
 
 
+def _get_session():
+    from dependencies import db
+    return db.session
+
+
 async def emit_event(
     event: HubEvent,
     issue_id: str,
     user: dict,
     details: Optional[Dict[str, Any]] = None,
 ) -> None:
-    """Publish a product-hub event to the event log."""
+    session = _get_session()
     entry = {
         "id": str(uuid.uuid4()),
-        "event_type": event.value,
-        "entity_type": "product_issue",
         "issue_id": issue_id,
+        "action": event.value,
         "performed_by": _get_user_id(user),
         "performed_by_name": user.get("full_name", ""),
-        "performed_by_role": user.get("role", ""),
-        "details": details or {},
-        "timestamp": _now_iso(),
+        "details": {
+            "event_type": event.value,
+            "entity_type": "product_issue",
+            "performed_by_role": user.get("role", ""),
+            **(details or {}),
+        },
+        "timestamp": datetime.now(timezone.utc),
     }
-    await db.issue_activity_log.insert_one(entry)
+    obj = dict_to_model(IssueActivityLog, entry)
+    session.add(obj)
+    await session.flush()
     logger.info(f"[Event] {event.value} on issue={issue_id[:8]} by={_get_user_id(user)[:8]}")
 
 
 def validate_status_transition(current_status: str, new_status: str) -> bool:
-    """Check whether an issue status transition is valid."""
     allowed = VALID_STATUS_TRANSITIONS.get(current_status, set())
     return new_status in allowed
 
 
 def get_transition_error(current_status: str, new_status: str) -> str:
-    """Return the error message for an invalid status transition."""
     return (
         f"لا يمكن الانتقال من '{STATUS_LABELS.get(current_status, current_status)}' "
         f"إلى '{STATUS_LABELS.get(new_status, new_status)}'"
@@ -132,7 +137,6 @@ def get_transition_error(current_status: str, new_status: str) -> str:
 
 
 def calculate_sla(priority: str, created_at: datetime) -> dict:
-    """Calculate SLA deadline based on priority and creation time."""
     sla_h = SLA_HOURS.get(priority)
     if not sla_h:
         return {"sla_deadline": None, "sla_status": None}
@@ -145,7 +149,6 @@ def calculate_sla(priority: str, created_at: datetime) -> dict:
 
 
 def enrich_sla_state(issue: dict) -> dict:
-    """Attach SLA metadata to an issue payload."""
     if issue.get("sla_deadline") and issue.get("status") not in FINAL_STATUSES:
         try:
             deadline = datetime.fromisoformat(issue["sla_deadline"].replace("Z", "+00:00"))
@@ -159,7 +162,6 @@ def enrich_sla_state(issue: dict) -> dict:
 
 
 async def handle_issue_created(issue_id: str, issue: dict, user: dict) -> None:
-    """Process a newly created product-hub issue."""
     await emit_event(HubEvent.ISSUE_CREATED, issue_id, user, {
         "issue_type": issue.get("issue_type"),
         "priority": issue.get("priority"),
@@ -169,7 +171,6 @@ async def handle_issue_created(issue_id: str, issue: dict, user: dict) -> None:
 
 
 async def handle_hakim_analysis(issue_id: str, user: dict, analysis: dict, source: str = "auto") -> None:
-    """Process a Hakim AI analysis event."""
     await emit_event(HubEvent.HAKIM_ANALYSIS_STARTED, issue_id, user, {"source": source})
 
     await emit_event(HubEvent.HAKIM_ANALYSIS_COMPLETED, issue_id, user, {
@@ -188,7 +189,6 @@ async def handle_hakim_analysis(issue_id: str, user: dict, analysis: dict, sourc
 
 
 async def handle_prompt_generated(issue_id: str, user: dict) -> None:
-    """Process a prompt-generation event."""
     await emit_event(HubEvent.PROMPT_GENERATED, issue_id, user)
 
 
@@ -199,7 +199,6 @@ async def handle_status_changed(
     to_status: str,
     note: str = "",
 ) -> None:
-    """Process an issue status change event."""
     event = HubEvent.STATUS_CHANGED
     details = {"from": from_status, "to": to_status, "note": note}
 
@@ -225,7 +224,6 @@ async def handle_feedback_response(
     resolved: bool,
     comment: str = "",
 ) -> None:
-    """Process user feedback on an issue."""
     if resolved:
         await emit_event(HubEvent.USER_CONFIRMED_RESOLVED, issue_id, user, {
             "comment": comment,
@@ -246,7 +244,6 @@ async def handle_issue_assigned(
     assigned_to: Optional[str] = None,
     note: str = "",
 ) -> None:
-    """Process an issue assignment event."""
     await emit_event(HubEvent.ISSUE_ASSIGNED, issue_id, user, {
         "team": team,
         "assigned_to": assigned_to,
@@ -255,21 +252,18 @@ async def handle_issue_assigned(
 
 
 async def handle_comment_added(issue_id: str, user: dict, comment_id: str) -> None:
-    """Process a new comment on an issue."""
     await emit_event(HubEvent.COMMENT_ADDED, issue_id, user, {
         "comment_id": comment_id,
     })
 
 
 async def handle_attachment_added(issue_id: str, user: dict, filename: str) -> None:
-    """Process a new attachment on an issue."""
     await emit_event(HubEvent.ATTACHMENT_ADDED, issue_id, user, {
         "filename": filename,
     })
 
 
 async def handle_issue_updated(issue_id: str, user: dict, changes: dict) -> None:
-    """Process a general issue update event."""
     await emit_event(HubEvent.ISSUE_UPDATED, issue_id, user, {
         "fields_changed": list(changes.keys()),
         "changes": changes,
@@ -277,7 +271,6 @@ async def handle_issue_updated(issue_id: str, user: dict, changes: dict) -> None
 
 
 async def check_sla_warning(issue_id: str, issue: dict, user: dict) -> bool:
-    """Check whether an issue is approaching its SLA deadline."""
     if issue.get("sla_warning_emitted"):
         return False
     if issue.get("sla_deadline") and issue.get("status") in OPEN_STATUSES:
@@ -290,11 +283,14 @@ async def check_sla_warning(issue_id: str, issue: dict, user: dict) -> bool:
                     "priority": issue.get("priority"),
                     "hours_exceeded": round((now - deadline).total_seconds() / 3600, 1),
                 })
-                from dependencies import db
-                await db.product_issues.update_one(
-                    {"id": issue_id},
-                    {"$set": {"sla_warning_emitted": True}}
+                session = _get_session()
+                stmt = (
+                    sa_update(ProductIssue)
+                    .where(ProductIssue.id == issue_id)
+                    .values(sla_warning_emitted=True)
                 )
+                await session.execute(stmt)
+                await session.flush()
                 return True
         except (ValueError, TypeError) as e:
             logging.getLogger("nassaq.product_hub").debug("SLA warning check error: %s", e)

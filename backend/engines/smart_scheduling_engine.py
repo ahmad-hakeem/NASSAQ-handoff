@@ -32,6 +32,8 @@ import uuid
 import logging
 import random
 
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_count, gd_delete_one, gd_delete_many
+
 logger = logging.getLogger(__name__)
 
 
@@ -237,40 +239,10 @@ class SmartSchedulingEngine:
     
     def __init__(self, db):
         self.db = db
-        # Collections
-        self.schools = db.schools
-        self.school_settings = db.school_settings
-        self.academic_years = db.academic_years
-        self.academic_terms = db.academic_terms
-        self.stages = db.academic_stages
-        self.grades = db.grades
-        self.classes = db.classes
-        self.subjects = db.subjects
-        self.grade_subjects = db.grade_subjects
-        self.teachers = db.teachers
-        self.teacher_ranks = db.teacher_ranks
-        self.teacher_subjects = db.teacher_subjects
-        self.teacher_availability = db.teacher_availability
-        self.constraints = db.administrative_constraints
-        self.school_constraints = db.school_constraints
-        self.hard_constraints = db.timetable_hard_constraints
-        self.soft_constraints = db.timetable_soft_constraints
-        self.holidays = db.school_holidays
-        self.teacher_assignments = db.teacher_assignments
-        # Timetable collections
-        self.timetable_runs = db.timetable_runs
-        self.timetable_run_logs = db.timetable_run_logs
-        self.timetables = db.timetables
-        self.timetable_sessions = db.timetable_sessions
-        self.timetable_conflicts = db.timetable_conflicts
-        self.unscheduled_demands = db.timetable_unscheduled_demands
-        self.timetable_approvals = db.timetable_approvals
-        self.audit_logs = db.audit_logs
-        # Reference data
-        self.reference_subjects = db.reference_subjects
-        self.reference_teacher_ranks = db.reference_teacher_ranks
-        self.admin_constraints = db.admin_constraints
-        self.default_settings = db.default_settings
+
+    @property
+    def session(self):
+        return self.db.session
         
     # ============== PHASE 1: PRE-VALIDATION ==============
     
@@ -299,7 +271,7 @@ class SmartSchedulingEngine:
         }
         
         # 1. Check school exists
-        school = await self.schools.find_one({"id": school_id}, {"_id": 0})
+        school = await gd_find_one(self.session, "schools", {"id": school_id})
         if not school:
             issues.append(ValidationIssue(
                 category="school",
@@ -312,14 +284,10 @@ class SmartSchedulingEngine:
         summary["school"] = school.get("name", school.get("name_ar", ""))
         
         # 2. Check academic year
-        academic_year = await self.academic_years.find_one(
-            {"school_id": school_id, "is_current": True}, {"_id": 0}
-        )
+        academic_year = await gd_find_one(self.session, "academic_years", {"school_id": school_id, "is_current": True})
         if not academic_year:
             # Try to find any academic year
-            academic_year = await self.academic_years.find_one(
-                {"school_id": school_id}, {"_id": 0}
-            )
+            academic_year = await gd_find_one(self.session, "academic_years", {"school_id": school_id})
         if not academic_year:
             issues.append(ValidationIssue(
                 category="academic_year",
@@ -332,18 +300,15 @@ class SmartSchedulingEngine:
         
         # 3. Check academic term/semester
         if academic_year:
-            academic_term = await self.academic_terms.find_one(
-                {"school_id": school_id, "academic_year_id": academic_year.get("id"), "is_active": True},
-                {"_id": 0}
-            )
+            academic_term = await gd_find_one(self.session, "academic_terms", {"school_id": school_id, "academic_year_id": academic_year.get("id"), "is_active": True})
             if academic_term:
                 summary["academic_term"] = academic_term.get("name")
         
         # 4. Check academic structure - Stages
-        stages_count = await self.stages.count_documents({"school_id": school_id, "is_active": True})
+        stages_count = await gd_count(self.session, "academic_stages", {"school_id": school_id, "is_active": True})
         if stages_count == 0:
             # Check reference stages
-            ref_stages_count = await self.stages.count_documents({"is_active": True})
+            ref_stages_count = await gd_count(self.session, "academic_stages", {"is_active": True})
             stages_count = ref_stages_count
         summary["stages"] = stages_count
         if stages_count == 0:
@@ -355,10 +320,10 @@ class SmartSchedulingEngine:
             ))
         
         # 5. Check Grades
-        grades_count = await self.grades.count_documents({"school_id": school_id, "is_active": True})
+        grades_count = await gd_count(self.session, "grades", {"school_id": school_id, "is_active": True})
         if grades_count == 0:
             # Check reference grades
-            grades_count = await self.grades.count_documents({"is_active": True})
+            grades_count = await gd_count(self.session, "grades", {"is_active": True})
         summary["grades"] = grades_count
         if grades_count == 0:
             issues.append(ValidationIssue(
@@ -369,7 +334,7 @@ class SmartSchedulingEngine:
             ))
         
         # 6. Check Classes
-        classes_count = await self.classes.count_documents({"school_id": school_id, "is_active": {"$ne": False}})
+        classes_count = await gd_count(self.session, "classes", {"school_id": school_id, "is_active": {"$ne": False}})
         summary["classes"] = classes_count
         if classes_count == 0:
             issues.append(ValidationIssue(
@@ -380,10 +345,10 @@ class SmartSchedulingEngine:
             ))
         
         # 7. Check Subjects
-        subjects_count = await self.subjects.count_documents({"school_id": school_id, "is_active": {"$ne": False}})
+        subjects_count = await gd_count(self.session, "subjects", {"school_id": school_id, "is_active": {"$ne": False}})
         if subjects_count == 0:
             # Check reference subjects
-            subjects_count = await self.reference_subjects.count_documents({"is_active": {"$ne": False}})
+            subjects_count = await gd_count(self.session, "reference_subjects", {"is_active": {"$ne": False}})
         summary["subjects"] = subjects_count
         if subjects_count == 0:
             issues.append(ValidationIssue(
@@ -394,7 +359,7 @@ class SmartSchedulingEngine:
             ))
         
         # 8. Check Grade-Subject mappings
-        grade_subjects_count = await self.grade_subjects.count_documents({"school_id": school_id, "is_active": True})
+        grade_subjects_count = await gd_count(self.session, "grade_subjects", {"school_id": school_id, "is_active": True})
         summary["grade_subjects"] = grade_subjects_count
         if grade_subjects_count == 0:
             issues.append(ValidationIssue(
@@ -405,7 +370,7 @@ class SmartSchedulingEngine:
             ))
         
         # 9. Check Teachers
-        teachers_count = await self.teachers.count_documents({"school_id": school_id, "is_active": {"$ne": False}})
+        teachers_count = await gd_count(self.session, "teachers", {"school_id": school_id, "is_active": {"$ne": False}})
         summary["teachers"] = teachers_count
         if teachers_count == 0:
             issues.append(ValidationIssue(
@@ -416,9 +381,9 @@ class SmartSchedulingEngine:
             ))
         
         # 10. Check Teacher Assignments (teacher_subjects or teacher_assignments)
-        assignments_count = await self.teacher_assignments.count_documents({"school_id": school_id, "is_active": True})
+        assignments_count = await gd_count(self.session, "teacher_assignments", {"school_id": school_id, "is_active": True})
         if assignments_count == 0:
-            assignments_count = await self.teacher_subjects.count_documents({"school_id": school_id, "is_active": True})
+            assignments_count = await gd_count(self.session, "teacher_subjects", {"school_id": school_id, "is_active": True})
         summary["teachers_with_assignments"] = assignments_count
         if assignments_count == 0:
             issues.append(ValidationIssue(
@@ -429,11 +394,11 @@ class SmartSchedulingEngine:
             ))
         
         # 11. Check Teacher Availability
-        availability_count = await self.teacher_availability.count_documents({"school_id": school_id})
+        availability_count = await gd_count(self.session, "teacher_availability", {"school_id": school_id})
         summary["teacher_availability_records"] = availability_count
         
         # 12. Check School Settings
-        settings = await self.school_settings.find_one({"school_id": school_id}, {"_id": 0})
+        settings = await gd_find_one(self.session, "school_settings", {"school_id": school_id})
         if settings:
             working_days = settings.get("working_days", [])
             # Handle dict format: {"sunday": True, "monday": True, ...}
@@ -470,13 +435,13 @@ class SmartSchedulingEngine:
             ))
         
         # 13. Check Constraints
-        constraints_count = await self.school_constraints.count_documents({"school_id": school_id, "is_active": True})
+        constraints_count = await gd_count(self.session, "school_constraints", {"school_id": school_id, "is_active": True})
         if constraints_count == 0:
-            constraints_count = await self.admin_constraints.count_documents({"is_active": True})
+            constraints_count = await gd_count(self.session, "admin_constraints", {"is_active": True})
         summary["constraints"] = constraints_count
         
         # 14. Check Holidays
-        holidays_count = await self.holidays.count_documents({"school_id": school_id, "is_active": True})
+        holidays_count = await gd_count(self.session, "school_holidays", {"school_id": school_id, "is_active": True})
         summary["holidays"] = holidays_count
         
         # Determine validity
@@ -498,10 +463,10 @@ class SmartSchedulingEngine:
         المرحلة 2: تحميل إعدادات المدرسة المعتمدة
         Phase 2: Load approved school settings
         """
-        settings = await self.school_settings.find_one({"school_id": school_id}, {"_id": 0})
+        settings = await gd_find_one(self.session, "school_settings", {"school_id": school_id})
         
         if not settings:
-            default = await self.default_settings.find_one({"id": "default-school-settings"}, {"_id": 0})
+            default = await gd_find_one(self.session, "default_settings", {"id": "default-school-settings"})
             if default:
                 settings = default
             else:
@@ -515,9 +480,7 @@ class SmartSchedulingEngine:
                     "school_day_end": "13:15"
                 }
         
-        db_time_slots = []
-        async for ts in self.db.time_slots.find({"school_id": school_id}, {"_id": 0}):
-            db_time_slots.append(ts)
+        db_time_slots = await gd_find(self.session, "time_slots", {"school_id": school_id}, limit=500)
         db_time_slots.sort(key=lambda x: x.get("period_number") if x.get("period_number") is not None else (x.get("slot_number") if x.get("slot_number") is not None else 99))
 
         if db_time_slots:
@@ -652,10 +615,7 @@ class SmartSchedulingEngine:
         demands = []
         
         # Get all classes
-        classes = await self.classes.find(
-            {"school_id": school_id, "is_active": {"$ne": False}},
-            {"_id": 0}
-        ).to_list(500)
+        classes = await gd_find(self.session, "classes", {"school_id": school_id, "is_active": {"$ne": False}}, limit=500)
         
         for cls in classes:
             class_id = cls.get("id") or cls.get("class_id")
@@ -663,24 +623,11 @@ class SmartSchedulingEngine:
             grade_id = cls.get("grade_id", "")
             
             # Get subjects for this grade
-            grade_subjects = await self.grade_subjects.find(
-                {"school_id": school_id, "grade_id": grade_id, "is_active": True},
-                {"_id": 0}
-            ).to_list(50)
+            grade_subjects = await gd_find(self.session, "grade_subjects", {"school_id": school_id, "grade_id": grade_id, "is_active": True}, limit=50)
             
             if not grade_subjects:
-                assignments = await self.teacher_assignments.find(
-                    {
-                        "school_id": school_id,
-                        "is_active": True,
-                        "$or": [
-                            {"class_id": class_id},
-                            {"class_id": None},
-                            {"class_id": {"$exists": False}}
-                        ]
-                    },
-                    {"_id": 0}
-                ).to_list(50)
+                all_assignments = await gd_find(self.session, "teacher_assignments", {"school_id": school_id, "is_active": True}, limit=200)
+                assignments = [a for a in all_assignments if a.get("class_id") == class_id or not a.get("class_id")]
                 
                 seen_subjects = set()
                 for assignment in assignments:
@@ -705,21 +652,8 @@ class SmartSchedulingEngine:
                 suitable_teachers = []
                 
                 # From teacher_assignments
-                teacher_assigns = await self.teacher_assignments.find(
-                    {
-                        "school_id": school_id,
-                        "subject_id": subject_id,
-                        "is_active": True,
-                        "$or": [
-                            {"class_id": class_id},
-                            {"class_id": None},
-                            {"class_id": {"$exists": False}},
-                            {"grade_id": grade_id},
-                            {"section_ids": {"$in": [class_id]}}
-                        ]
-                    },
-                    {"_id": 0, "teacher_id": 1}
-                ).to_list(20)
+                all_subject_assigns = await gd_find(self.session, "teacher_assignments", {"school_id": school_id, "subject_id": subject_id, "is_active": True}, limit=50)
+                teacher_assigns = [a for a in all_subject_assigns if a.get("class_id") == class_id or not a.get("class_id") or a.get("grade_id") == grade_id or class_id in (a.get("section_ids") or [])]
                 
                 for ta in teacher_assigns:
                     if ta.get("teacher_id") not in suitable_teachers:
@@ -727,18 +661,8 @@ class SmartSchedulingEngine:
                 
                 # If no specific assignment, find any teacher who can teach this subject
                 if not suitable_teachers:
-                    teachers_with_subject = await self.teachers.find(
-                        {
-                            "school_id": school_id,
-                            "is_active": {"$ne": False},
-                            "$or": [
-                                {"primary_subject_id": subject_id},
-                                {"subject_ids": subject_id},
-                                {"specialization": subject_id}
-                            ]
-                        },
-                        {"_id": 0, "id": 1, "teacher_id": 1}
-                    ).to_list(20)
+                    all_school_teachers = await gd_find(self.session, "teachers", {"school_id": school_id, "is_active": {"$ne": False}}, limit=500)
+                    teachers_with_subject = [t for t in all_school_teachers if t.get("primary_subject_id") == subject_id or subject_id in (t.get("subject_ids") or []) or t.get("specialization") == subject_id]
                     
                     for t in teachers_with_subject:
                         tid = t.get("id") or t.get("teacher_id")
@@ -772,10 +696,7 @@ class SmartSchedulingEngine:
         resources = []
         
         # Get all teachers
-        teachers = await self.teachers.find(
-            {"school_id": school_id, "is_active": {"$ne": False}},
-            {"_id": 0}
-        ).to_list(500)
+        teachers = await gd_find(self.session, "teachers", {"school_id": school_id, "is_active": {"$ne": False}}, limit=500)
         
         working_days = settings.get("working_days", ["sunday", "monday", "tuesday", "wednesday", "thursday"])
         periods_per_day = settings.get("periods_per_day", 7)
@@ -788,9 +709,9 @@ class SmartSchedulingEngine:
             rank_id = teacher.get("rank_id") or teacher.get("rank")
             weekly_load = 24  # Default
             if rank_id:
-                rank = await self.teacher_ranks.find_one({"id": rank_id}, {"_id": 0})
+                rank = await gd_find_one(self.session, "teacher_ranks", {"id": rank_id})
                 if not rank:
-                    rank = await self.reference_teacher_ranks.find_one({"id": rank_id}, {"_id": 0})
+                    rank = await gd_find_one(self.session, "reference_teacher_ranks", {"id": rank_id})
                 if rank:
                     weekly_load = rank.get("max_weekly_load", 24)
             
@@ -799,10 +720,7 @@ class SmartSchedulingEngine:
             if not subject_ids and teacher.get("primary_subject_id"):
                 subject_ids = [teacher.get("primary_subject_id")]
             
-            assignment_subjects = await self.teacher_assignments.find(
-                {"school_id": school_id, "teacher_id": teacher_id, "is_active": True},
-                {"_id": 0, "subject_id": 1}
-            ).to_list(20)
+            assignment_subjects = await gd_find(self.session, "teacher_assignments", {"school_id": school_id, "teacher_id": teacher_id, "is_active": True}, limit=20)
             for asn in assignment_subjects:
                 sid = asn.get("subject_id")
                 if sid and sid not in subject_ids:
@@ -819,10 +737,7 @@ class SmartSchedulingEngine:
                 availability[day] = list(teaching_period_numbers)
             
             # Apply teacher availability restrictions
-            teacher_avail = await self.teacher_availability.find(
-                {"school_id": school_id, "teacher_id": teacher_id},
-                {"_id": 0}
-            ).to_list(100)
+            teacher_avail = await gd_find(self.session, "teacher_availability", {"school_id": school_id, "teacher_id": teacher_id}, limit=100)
             
             for avail in teacher_avail:
                 day = avail.get("day_of_week", "").lower()
@@ -1937,23 +1852,17 @@ class SmartSchedulingEngine:
             "unscheduled_count": 0,
             "notes": ""
         }
-        await self.timetable_runs.insert_one(run_doc)
+        await gd_insert(self.session, "timetable_runs", run_doc)
         
         try:
             # Phase 1: Validate
             await self._log_run(run_id, "info", "بدء التحقق من جاهزية البيانات", {"phase": 1})
-            await self.timetable_runs.update_one(
-                {"id": run_id},
-                {"$set": {"status": TimetableRunStatus.VALIDATING.value, "completion_percentage": 5}}
-            )
+            await gd_update_one(self.session, "timetable_runs", {"id": run_id}, {"status": TimetableRunStatus.VALIDATING.value, "completion_percentage": 5})
             
             validation = await self.validate_data_readiness(school_id)
             if not validation.can_proceed:
                 await self._log_run(run_id, "error", "فشل التحقق - بيانات ناقصة", {"issues": len(validation.issues)})
-                await self.timetable_runs.update_one(
-                    {"id": run_id},
-                    {"$set": {"status": TimetableRunStatus.FAILED.value, "finished_at": datetime.now(timezone.utc).isoformat()}}
-                )
+                await gd_update_one(self.session, "timetable_runs", {"id": run_id}, {"status": TimetableRunStatus.FAILED.value, "finished_at": datetime.now(timezone.utc).isoformat()})
                 return GenerationResult(
                     success=False,
                     run_id=run_id,
@@ -1970,56 +1879,44 @@ class SmartSchedulingEngine:
             
             # Phase 2: Load settings
             await self._log_run(run_id, "info", "تحميل إعدادات المدرسة", {"phase": 2})
-            await self.timetable_runs.update_one(
-                {"id": run_id},
-                {"$set": {"status": TimetableRunStatus.LOADING.value, "completion_percentage": 15}}
-            )
+            await gd_update_one(self.session, "timetable_runs", {"id": run_id}, {"status": TimetableRunStatus.LOADING.value, "completion_percentage": 15})
             settings = await self.load_school_settings(school_id)
             
             # Phase 3: Build demand
             await self._log_run(run_id, "info", "بناء مصفوفة الطلب الأكاديمي", {"phase": 3})
-            await self.timetable_runs.update_one({"id": run_id}, {"$set": {"completion_percentage": 25}})
+            await gd_update_one(self.session, "timetable_runs", {"id": run_id}, {"completion_percentage": 25})
             demands = await self.build_academic_demand(school_id)
             
             # Phase 4: Build resources
             await self._log_run(run_id, "info", "بناء مصفوفة الموارد المتاحة", {"phase": 4})
-            await self.timetable_runs.update_one({"id": run_id}, {"$set": {"completion_percentage": 35}})
+            await gd_update_one(self.session, "timetable_runs", {"id": run_id}, {"completion_percentage": 35})
             resources = await self.build_resource_availability(school_id, settings)
             
             # Phase 5: Pre-check
             await self._log_run(run_id, "info", "التحقق المسبق من التعارضات", {"phase": 5})
-            await self.timetable_runs.update_one({"id": run_id}, {"$set": {"completion_percentage": 45}})
+            await gd_update_one(self.session, "timetable_runs", {"id": run_id}, {"completion_percentage": 45})
             pre_check = await self.pre_scheduling_check(school_id, demands, resources, settings)
             
             if not pre_check["can_schedule"]:
                 await self._log_run(run_id, "warning", "يوجد مشاكل قد تؤثر على الجدولة", {"errors": len(pre_check["errors"])})
             
             # Load hard constraints (system rules)
-            hard_constraints = await self.hard_constraints.find(
-                {"is_system": True, "is_active": True}, {"_id": 0}
-            ).to_list(50)
+            hard_constraints = await gd_find(self.session, "timetable_hard_constraints", {"is_system": True, "is_active": True}, limit=50)
             await self._log_run(run_id, "info", f"تم تحميل {len(hard_constraints)} قيد إلزامي من النظام", {"hard_constraints_count": len(hard_constraints)})
 
-            soft_constraints_list = await self.soft_constraints.find(
-                {"is_active": True}, {"_id": 0}
-            ).to_list(50)
+            soft_constraints_list = await gd_find(self.session, "timetable_soft_constraints", {"is_active": True}, limit=50)
             await self._log_run(run_id, "info", f"تم تحميل {len(soft_constraints_list)} قيد تفضيلي", {"soft_constraints_count": len(soft_constraints_list)})
             settings["soft_constraints"] = soft_constraints_list
 
-            constraints = await self.school_constraints.find(
-                {"school_id": school_id, "is_active": True}, {"_id": 0}
-            ).to_list(50)
+            constraints = await gd_find(self.session, "school_constraints", {"school_id": school_id, "is_active": True}, limit=50)
             if not constraints:
-                constraints = await self.constraints.find({"is_active": True}, {"_id": 0}).to_list(50)
+                constraints = await gd_find(self.session, "administrative_constraints", {"is_active": True}, limit=50)
 
             all_constraints = hard_constraints + constraints
             
             # Phase 6: Generate
             await self._log_run(run_id, "info", "بدء توليد الجدول", {"phase": 6})
-            await self.timetable_runs.update_one(
-                {"id": run_id},
-                {"$set": {"status": TimetableRunStatus.GENERATING.value, "completion_percentage": 55}}
-            )
+            await gd_update_one(self.session, "timetable_runs", {"id": run_id}, {"status": TimetableRunStatus.GENERATING.value, "completion_percentage": 55})
             
             timetable_id, sessions, gen_conflicts, unscheduled, underutilized_teachers = await self.generate_draft_timetable(
                 school_id, run_id, demands, resources, settings, all_constraints
@@ -2027,15 +1924,12 @@ class SmartSchedulingEngine:
             
             # Phase 7: Detect conflicts
             await self._log_run(run_id, "info", "اكتشاف التعارضات", {"phase": 7})
-            await self.timetable_runs.update_one({"id": run_id}, {"$set": {"completion_percentage": 70}})
+            await gd_update_one(self.session, "timetable_runs", {"id": run_id}, {"completion_percentage": 70})
             conflicts = await self.detect_conflicts(sessions, resources, all_constraints, run_id)
             
             # Phase 8: Optimize
             await self._log_run(run_id, "info", "تحسين الجدول", {"phase": 8})
-            await self.timetable_runs.update_one(
-                {"id": run_id},
-                {"$set": {"status": TimetableRunStatus.OPTIMIZING.value, "completion_percentage": 85}}
-            )
+            await gd_update_one(self.session, "timetable_runs", {"id": run_id}, {"status": TimetableRunStatus.OPTIMIZING.value, "completion_percentage": 85})
             optimized_sessions, optimization_score = await self.optimize_timetable(sessions, conflicts, resources, settings)
             
             # Save timetable
@@ -2066,45 +1960,39 @@ class SmartSchedulingEngine:
                 },
                 "capacity_issues": capacity_issues
             }
-            await self.timetables.insert_one(timetable_doc)
+            await gd_insert(self.session, "timetables", timetable_doc)
             
             # Save sessions
             if optimized_sessions:
                 session_docs = [s.model_dump() for s in optimized_sessions]
-                await self.timetable_sessions.insert_many(session_docs)
+                await gd_insert_many(self.session, "timetable_sessions", session_docs)
             
             # Save conflicts
             if conflicts:
                 conflict_docs = [c.model_dump() for c in conflicts]
-                await self.timetable_conflicts.insert_many(conflict_docs)
+                await gd_insert_many(self.session, "timetable_conflicts", conflict_docs)
             
             # Save unscheduled
             if unscheduled:
                 unscheduled_docs = [u.model_dump() for u in unscheduled]
-                await self.unscheduled_demands.insert_many(unscheduled_docs)
+                await gd_insert_many(self.session, "timetable_unscheduled_demands", unscheduled_docs)
 
             if underutilized_teachers:
                 await self._log_run(run_id, "warning", f"معلمون بحصص أقل من المتوقع: {len(underutilized_teachers)}", {
                     "underutilized_teachers": underutilized_teachers
                 })
-                await self.timetables.update_one(
-                    {"id": timetable_id},
-                    {"$set": {"underutilized_teachers": underutilized_teachers}}
-                )
+                await gd_update_one(self.session, "timetables", {"id": timetable_id}, {"underutilized_teachers": underutilized_teachers})
             
             # Update run
             status = TimetableRunStatus.COMPLETED.value if len(unscheduled) == 0 else TimetableRunStatus.PARTIAL.value
-            await self.timetable_runs.update_one(
-                {"id": run_id},
-                {"$set": {
-                    "status": status,
-                    "finished_at": datetime.now(timezone.utc).isoformat(),
-                    "completion_percentage": 100,
-                    "conflicts_count": len(conflicts),
-                    "unscheduled_count": len(unscheduled),
-                    "timetable_id": timetable_id
-                }}
-            )
+            await gd_update_one(self.session, "timetable_runs", {"id": run_id}, {
+                "status": status,
+                "finished_at": datetime.now(timezone.utc).isoformat(),
+                "completion_percentage": 100,
+                "conflicts_count": len(conflicts),
+                "unscheduled_count": len(unscheduled),
+                "timetable_id": timetable_id
+            })
             
             await self._log_run(run_id, "info", "اكتمل توليد الجدول", {
                 "sessions": len(optimized_sessions),
@@ -2134,14 +2022,11 @@ class SmartSchedulingEngine:
             tb = traceback.format_exc()
             logger.error(f"Timetable generation error: {e}\n{tb}")
             await self._log_run(run_id, "error", f"خطأ في التوليد: {str(e)}", {"exception": str(e), "traceback": tb})
-            await self.timetable_runs.update_one(
-                {"id": run_id},
-                {"$set": {
-                    "status": TimetableRunStatus.FAILED.value,
-                    "finished_at": datetime.now(timezone.utc).isoformat(),
-                    "notes": str(e)
-                }}
-            )
+            await gd_update_one(self.session, "timetable_runs", {"id": run_id}, {
+                "status": TimetableRunStatus.FAILED.value,
+                "finished_at": datetime.now(timezone.utc).isoformat(),
+                "notes": str(e)
+            })
             return GenerationResult(
                 success=False,
                 run_id=run_id,
@@ -2166,13 +2051,13 @@ class SmartSchedulingEngine:
             "context": context or {},
             "created_at": datetime.now(timezone.utc).isoformat()
         }
-        await self.timetable_run_logs.insert_one(log_doc)
+        await gd_insert(self.session, "timetable_run_logs", log_doc)
     
     # ============== RETRIEVAL METHODS ==============
     
     async def get_timetable(self, timetable_id: str) -> Optional[Dict[str, Any]]:
         """Get timetable by ID"""
-        return await self.timetables.find_one({"id": timetable_id}, {"_id": 0})
+        return await gd_find_one(self.session, "timetables", {"id": timetable_id})
     
     async def get_timetable_sessions(
         self,
@@ -2190,24 +2075,24 @@ class SmartSchedulingEngine:
         if day_of_week:
             query["day_of_week"] = day_of_week
         
-        return await self.timetable_sessions.find(query, {"_id": 0}).sort([("day_of_week", 1), ("period_number", 1)]).to_list(500)
+        return await gd_find(self.session, "timetable_sessions", query, order_by="day_of_week", desc_order=False, limit=500)
     
     async def get_timetable_conflicts(self, timetable_id: str) -> List[Dict[str, Any]]:
         """Get conflicts for a timetable"""
-        return await self.timetable_conflicts.find({"timetable_id": timetable_id}, {"_id": 0}).to_list(500)
+        return await gd_find(self.session, "timetable_conflicts", {"timetable_id": timetable_id}, limit=500)
     
     async def get_run_logs(self, run_id: str) -> List[Dict[str, Any]]:
         """Get logs for a run"""
-        return await self.timetable_run_logs.find({"run_id": run_id}, {"_id": 0}).sort("created_at", 1).to_list(1000)
+        return await gd_find(self.session, "timetable_run_logs", {"run_id": run_id}, order_by="created_at", desc_order=False, limit=1000)
     
     async def get_school_timetables(self, school_id: str) -> List[Dict[str, Any]]:
         """Get all timetables for a school"""
-        return await self.timetables.find({"school_id": school_id}, {"_id": 0}).sort("created_at", -1).to_list(100)
+        return await gd_find(self.session, "timetables", {"school_id": school_id}, order_by="created_at", desc_order=True, limit=100)
     
     async def publish_timetable(self, timetable_id: str, published_by: str) -> bool:
         """Publish a timetable"""
         # Check for critical conflicts
-        conflicts = await self.timetable_conflicts.count_documents({
+        conflicts = await gd_count(self.session, "timetable_conflicts", {
             "timetable_id": timetable_id,
             "severity": ConflictSeverity.CRITICAL.value,
             "is_resolved": False
@@ -2217,30 +2102,24 @@ class SmartSchedulingEngine:
             return False
         
         now = datetime.now(timezone.utc).isoformat()
-        result = await self.timetables.update_one(
-            {"id": timetable_id},
-            {"$set": {
-                "status": TimetableStatus.PUBLISHED.value,
-                "is_published": True,
-                "published_at": now,
-                "published_by": published_by,
-                "updated_at": now
-            }}
-        )
+        result = await gd_update_one(self.session, "timetables", {"id": timetable_id}, {
+            "status": TimetableStatus.PUBLISHED.value,
+            "is_published": True,
+            "published_at": now,
+            "published_by": published_by,
+            "updated_at": now
+        })
         
-        return result.modified_count > 0
+        return result > 0
     
     async def archive_timetable(self, timetable_id: str, archived_by: str) -> bool:
         """Archive a timetable"""
-        result = await self.timetables.update_one(
-            {"id": timetable_id},
-            {"$set": {
-                "status": TimetableStatus.ARCHIVED.value,
-                "archived_at": datetime.now(timezone.utc).isoformat(),
-                "archived_by": archived_by
-            }}
-        )
-        return result.modified_count > 0
+        result = await gd_update_one(self.session, "timetables", {"id": timetable_id}, {
+            "status": TimetableStatus.ARCHIVED.value,
+            "archived_at": datetime.now(timezone.utc).isoformat(),
+            "archived_by": archived_by
+        })
+        return result > 0
 
 
 # Export

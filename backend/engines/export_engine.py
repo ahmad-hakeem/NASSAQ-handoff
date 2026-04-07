@@ -20,6 +20,11 @@ import pandas as pd
 import arabic_reshaper
 from bidi.algorithm import get_display
 
+from sqlalchemy import select, and_
+
+from pg_models import Student, Attendance, GenericDocument
+from engines.sql_utils import model_to_dict
+
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -694,16 +699,26 @@ class ExportEngine:
 
     async def export_students(self, school_id: str, class_id: Optional[str] = None, fmt: str = "csv") -> Dict[str, Any]:
         """Export student records for a school."""
-        query = {"school_id": school_id, "is_active": True}
+        session = self.db.session
+        conditions = [Student.school_id == school_id, Student.is_active == True]
         if class_id:
-            query["class_id"] = class_id
-
-        students = await self.db.students.find(query, {
-            "_id": 0, "id": 1, "full_name": 1, "student_number": 1,
-            "class_id": 1, "class_name": 1, "grade_level": 1,
-            "date_of_birth": 1, "national_id": 1, "gender": 1,
-            "parent_name": 1, "parent_phone": 1, "enrollment_date": 1,
-        }).to_list(10000)
+            conditions.append(Student.class_id == class_id)
+        stmt = select(Student).where(and_(*conditions))
+        result = await session.execute(stmt)
+        students = []
+        for s in result.scalars().all():
+            d = model_to_dict(s)
+            students.append({
+                "id": d.get("id"), "full_name": d.get("full_name"),
+                "student_number": d.get("student_number"),
+                "class_id": d.get("class_id"), "class_name": d.get("class_name"),
+                "grade_level": d.get("grade_level"),
+                "date_of_birth": d.get("date_of_birth"),
+                "national_id": d.get("national_id"), "gender": d.get("gender"),
+                "parent_name": d.get("parent_name"),
+                "parent_phone": d.get("parent_phone"),
+                "enrollment_date": d.get("enrollment_date"),
+            })
 
         if fmt == "json":
             return self.export_to_json(students, "students")
@@ -714,25 +729,37 @@ class ExportEngine:
         class_id: Optional[str] = None, fmt: str = "csv"
     ) -> Dict[str, Any]:
         """Export attendance records for a date range."""
-        query = {
-            "school_id": school_id,
-            "date": {"$gte": start_date, "$lte": end_date},
-        }
+        session = self.db.session
+        conditions = [
+            Attendance.school_id == school_id,
+            Attendance.date >= start_date,
+            Attendance.date <= end_date,
+        ]
         if class_id:
-            query["class_id"] = class_id
+            conditions.append(Attendance.class_id == class_id)
 
-        records = await self.db.attendance.find(query, {
-            "_id": 0, "student_id": 1, "class_id": 1, "date": 1,
-            "status": 1, "teacher_id": 1,
-        }).to_list(100000)
+        stmt = select(Attendance).where(and_(*conditions))
+        result = await session.execute(stmt)
+        records = []
+        for r in result.scalars().all():
+            d = model_to_dict(r)
+            records.append({
+                "student_id": d.get("student_id"), "class_id": d.get("class_id"),
+                "date": d.get("date"), "status": d.get("status"),
+                "teacher_id": d.get("recorded_by"),
+            })
 
-        student_ids = list(set(r.get("student_id") for r in records))
-        students = await self.db.students.find(
-            {"id": {"$in": student_ids}, "school_id": school_id},
-            {"_id": 0, "id": 1, "full_name": 1, "student_number": 1}
-        ).to_list(10000)
-        name_map = {s["id"]: s.get("full_name", "") for s in students}
-        number_map = {s["id"]: s.get("student_number", "") for s in students}
+        student_ids = list(set(r.get("student_id") for r in records if r.get("student_id")))
+        name_map = {}
+        number_map = {}
+        if student_ids:
+            stmt2 = select(Student).where(
+                and_(Student.id.in_(student_ids), Student.school_id == school_id)
+            )
+            result2 = await session.execute(stmt2)
+            for s in result2.scalars().all():
+                name_map[s.id] = s.full_name or ""
+                number_map[s.id] = s.student_number or ""
 
         for r in records:
             r["student_name"] = name_map.get(r.get("student_id"), "")
@@ -746,24 +773,36 @@ class ExportEngine:
         self, school_id: str, class_id: Optional[str] = None, fmt: str = "csv"
     ) -> Dict[str, Any]:
         """Export grade records with optional subject filter."""
-        query = {"tenant_id": school_id}
-        grades = await self.db.student_grades.find(query, {
-            "_id": 0, "student_id": 1, "assessment_id": 1, "subject_id": 1,
-            "score": 1, "max_score": 1, "percentage": 1, "is_passing": 1,
-            "graded_at": 1,
-        }).to_list(50000)
+        from engines.sql_utils import gd_find
+        session = self.db.session
+        raw = await gd_find(session, "student_grades", {"tenant_id": school_id})
+        grades = []
+        for d in raw:
+            grades.append({
+                "student_id": d.get("student_id"),
+                "assessment_id": d.get("assessment_id"),
+                "subject_id": d.get("subject_id"),
+                "score": d.get("score"), "max_score": d.get("max_score"),
+                "percentage": d.get("percentage"),
+                "is_passing": d.get("is_passing"),
+                "graded_at": d.get("graded_at"),
+            })
 
-        student_ids = list(set(g.get("student_id") for g in grades))
-        students = await self.db.students.find(
-            {"id": {"$in": student_ids}, "school_id": school_id},
-            {"_id": 0, "id": 1, "full_name": 1, "class_id": 1}
-        ).to_list(10000)
-        name_map = {s["id"]: s.get("full_name", "") for s in students}
-        class_map = {s["id"]: s.get("class_id", "") for s in students}
+        student_ids = list(set(g.get("student_id") for g in grades if g.get("student_id")))
+        name_map = {}
+        class_map_data = {}
+        if student_ids:
+            stmt = select(Student).where(
+                and_(Student.id.in_(student_ids), Student.school_id == school_id)
+            )
+            result = await session.execute(stmt)
+            for s in result.scalars().all():
+                name_map[s.id] = s.full_name or ""
+                class_map_data[s.id] = s.class_id or ""
 
         for g in grades:
             g["student_name"] = name_map.get(g.get("student_id"), "")
-            g["class_id"] = class_map.get(g.get("student_id"), "")
+            g["class_id"] = class_map_data.get(g.get("student_id"), "")
 
         if class_id:
             grades = [g for g in grades if g.get("class_id") == class_id]

@@ -21,6 +21,8 @@ import uuid
 import random
 import logging
 
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_count, gd_delete_one, gd_delete_many
+
 logger = logging.getLogger("nassaq.session_engine")
 
 # Create router for session endpoints
@@ -265,10 +267,7 @@ STUDENT_LEVELS = DEFAULT_STUDENT_LEVELS
 async def load_tenant_score_rules(db: Any, tenant_id: str) -> dict:
     """Load tenant-specific score rules, falling back to defaults"""
     try:
-        settings = await db.tenant_settings.find_one(
-            {"tenant_id": tenant_id, "setting_key": "score_rules"},
-            {"_id": 0}
-        )
+        settings = await gd_find_one(db.session, "tenant_settings", {"tenant_id": tenant_id, "setting_key": "score_rules"})
         if settings and isinstance(settings.get("value"), dict):
             merged = dict(DEFAULT_SCORE_RULES)
             merged.update(settings["value"])
@@ -281,10 +280,7 @@ async def load_tenant_score_rules(db: Any, tenant_id: str) -> dict:
 async def load_tenant_student_levels(db: Any, tenant_id: str) -> dict:
     """Load tenant-specific student level thresholds, falling back to defaults."""
     try:
-        settings = await db.tenant_settings.find_one(
-            {"tenant_id": tenant_id, "setting_key": "student_levels"},
-            {"_id": 0}
-        )
+        settings = await gd_find_one(db.session, "tenant_settings", {"tenant_id": tenant_id, "setting_key": "student_levels"})
         if settings and isinstance(settings.get("value"), dict):
             return {
                 k: tuple(v) if isinstance(v, list) else v
@@ -308,6 +304,10 @@ class TeacherSessionEngine:
         self._tenant_rules_cache: Dict[str, dict] = {}
         self._tenant_levels_cache: Dict[str, dict] = {}
 
+    @property
+    def session(self):
+        return self.db.session
+
     async def _get_score_rules(self, tenant_id: str) -> dict:
         if not tenant_id:
             return DEFAULT_SCORE_RULES
@@ -324,9 +324,7 @@ class TeacherSessionEngine:
 
     async def _get_session_score_rules(self, session_id: str) -> dict:
         """Resolve tenant-aware score rules for a session, cached by tenant_id."""
-        session_doc = await self.db.class_sessions.find_one(
-            {"id": session_id}, {"_id": 0, "tenant_id": 1, "school_id": 1}
-        )
+        session_doc = await gd_find_one(self.session, "class_sessions", {"id": session_id})
         tid = (session_doc or {}).get("tenant_id") or (session_doc or {}).get("school_id") or ""
         return await self._get_score_rules(tid)
 
@@ -365,7 +363,7 @@ class TeacherSessionEngine:
             "metadata": metadata or {},
             "timestamp": now.isoformat()
         }
-        await self.db.session_event_log.insert_one(event)
+        await gd_insert(self.session, "session_event_log", event)
         return event
 
     async def validate_session_start(self, teacher_id: str, schedule_session_id: str, force_new: bool = False) -> Dict[str, Any]:
@@ -375,13 +373,9 @@ class TeacherSessionEngine:
         if there's already a running session to resume.
         If force_new=True, auto-complete any existing sessions and allow a fresh start.
         """
-        schedule_session = await self.db.schedule_sessions.find_one(
-            {"id": schedule_session_id}, {"_id": 0}
-        )
+        schedule_session = await gd_find_one(self.session, "schedule_sessions", {"id": schedule_session_id})
         if not schedule_session:
-            schedule_session = await self.db.timetable_sessions.find_one(
-                {"id": schedule_session_id}, {"_id": 0}
-            )
+            schedule_session = await gd_find_one(self.session, "timetable_sessions", {"id": schedule_session_id})
 
         if not schedule_session:
             schedule_session = {"id": schedule_session_id, "teacher_id": teacher_id}
@@ -392,11 +386,11 @@ class TeacherSessionEngine:
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         now = datetime.now(timezone.utc)
 
-        active_sessions = self.db.class_sessions.find({
+        active_sessions = await gd_find(self.session, "class_sessions", {
             "teacher_id": teacher_id,
             "status": {"$in": self.ACTIVE_STATUSES}
         })
-        async for active_session in active_sessions:
+        for active_session in active_sessions:
             should_complete = force_new
             if not should_complete:
                 if active_session.get("date") != today:
@@ -419,9 +413,9 @@ class TeacherSessionEngine:
                             logger.debug("Could not parse session start_time: %s", e)
 
             if should_complete:
-                await self.db.class_sessions.update_one(
+                await gd_update_one(self.session, "class_sessions",
                     {"id": active_session.get("id")},
-                    {"$set": {"status": SessionStatus.COMPLETED.value, "ended_at": now.isoformat()}}
+                    {"status": SessionStatus.COMPLETED.value, "ended_at": now.isoformat()}
                 )
             else:
                 schedule_session["existing_active_session"] = active_session
@@ -449,11 +443,9 @@ class TeacherSessionEngine:
             existing_id = existing.get("id")
             ex_class_id = existing.get("class_id", class_id)
             ex_subject_id = existing.get("subject_id", subject_id)
-            class_info = await self.db.classes.find_one({"id": ex_class_id}, {"_id": 0, "name": 1})
-            subject_info = await self.db.subjects.find_one({"id": ex_subject_id}, {"_id": 0, "name_ar": 1, "name": 1})
-            students = await self.db.students.find(
-                {"class_id": ex_class_id, "is_active": True}, {"_id": 0}
-            ).to_list(100)
+            class_info = await gd_find_one(self.session, "classes", {"id": ex_class_id})
+            subject_info = await gd_find_one(self.session, "subjects", {"id": ex_subject_id})
+            students = await gd_find(self.session, "students", {"class_id": ex_class_id, "is_active": True}, limit=100)
             return {
                 "session_record_id": existing_id,
                 "session_status": existing.get("status"),
@@ -467,25 +459,22 @@ class TeacherSessionEngine:
             }
         
         # Get teacher info
-        teacher = await self.db.teachers.find_one({"id": teacher_id}, {"_id": 0})
+        teacher = await gd_find_one(self.session, "teachers", {"id": teacher_id})
         if not teacher:
             # Try to find from users
-            user = await self.db.users.find_one({"teacher_id": teacher_id}, {"_id": 0})
+            user = await gd_find_one(self.session, "users", {"teacher_id": teacher_id})
             teacher = {"full_name": user.get("full_name") if user else "معلم"}
         
         # Get class info
-        class_info = await self.db.classes.find_one({"id": class_id}, {"_id": 0})
+        class_info = await gd_find_one(self.session, "classes", {"id": class_id})
         class_name = class_info.get("name", "فصل") if class_info else "فصل"
         
         # Get subject info
-        subject = await self.db.subjects.find_one({"id": subject_id}, {"_id": 0})
+        subject = await gd_find_one(self.session, "subjects", {"id": subject_id})
         subject_name = subject.get("name_ar") or subject.get("name") or "مادة" if subject else "مادة"
         
         # Get students in this class
-        students = await self.db.students.find(
-            {"class_id": class_id, "is_active": True},
-            {"_id": 0}
-        ).to_list(100)
+        students = await gd_find(self.session, "students", {"class_id": class_id, "is_active": True}, limit=100)
         
         # Create session record
         session_id = str(uuid.uuid4())
@@ -515,7 +504,7 @@ class TeacherSessionEngine:
             "created_at": now.isoformat()
         }
         
-        await self.db.class_sessions.insert_one(session_record)
+        await gd_insert(self.session, "class_sessions", session_record)
 
         await self._log_event(
             session_id=session_id,
@@ -538,7 +527,7 @@ class TeacherSessionEngine:
             })
         
         if attendance_drafts:
-            await self.db.session_attendance.insert_many(attendance_drafts)
+            await gd_insert_many(self.session, "session_attendance", attendance_drafts)
         
         return {
             "session_record_id": session_id,
@@ -557,23 +546,17 @@ class TeacherSessionEngine:
         Returns students grouped by gender.
         """
         # Get session
-        session = await self.db.class_sessions.find_one({"id": session_id}, {"_id": 0})
+        session = await gd_find_one(self.session, "class_sessions", {"id": session_id})
         if not session:
             raise HTTPException(status_code=404, detail="الجلسة غير موجودة")
         
         # Get attendance records
-        attendance_records = await self.db.session_attendance.find(
-            {"session_id": session_id},
-            {"_id": 0}
-        ).to_list(200)
+        attendance_records = await gd_find(self.session, "session_attendance", {"session_id": session_id}, limit=200)
         
         attendance_map = {a["student_id"]: a for a in attendance_records}
         
         # Get students
-        students = await self.db.students.find(
-            {"class_id": session["class_id"], "is_active": True},
-            {"_id": 0}
-        ).to_list(200)
+        students = await gd_find(self.session, "students", {"class_id": session["class_id"], "is_active": True}, limit=200)
         
         # Enrich students with attendance
         result = []
@@ -604,19 +587,17 @@ class TeacherSessionEngine:
         """Update attendance status for a single student"""
         now = datetime.now(timezone.utc)
         
-        result = await self.db.session_attendance.update_one(
+        result = await gd_update_one(self.session, "session_attendance",
             {"session_id": session_id, "student_id": student_id},
             {
-                "$set": {
-                    "status": status.value,
-                    "is_draft": True,
-                    "updated_by": teacher_id,
-                    "updated_at": now.isoformat()
-                }
+                "status": status.value,
+                "is_draft": True,
+                "updated_by": teacher_id,
+                "updated_at": now.isoformat()
             }
         )
         
-        if result.modified_count == 0:
+        if result == 0:
             raise HTTPException(status_code=404, detail="سجل الحضور غير موجود")
 
         await self._log_event(
@@ -640,33 +621,29 @@ class TeacherSessionEngine:
         now = datetime.now(timezone.utc)
         
         # Get all attendance records
-        records = await self.db.session_attendance.find(
-            {"session_id": session_id},
-            {"_id": 0}
-        ).to_list(200)
+        records = await gd_find(self.session, "session_attendance", {"session_id": session_id}, limit=200)
         
         if not records:
             raise HTTPException(status_code=404, detail="لا توجد سجلات حضور")
         
         # Update all to final
-        await self.db.session_attendance.update_many(
-            {"session_id": session_id},
-            {
-                "$set": {
+        for rec in records:
+            await gd_update_one(self.session, "session_attendance",
+                {"id": rec["id"]},
+                {
                     "is_draft": False,
                     "approved_by": teacher_id,
                     "approved_at": now.isoformat()
                 }
-            }
-        )
+            )
         
-        await self.db.class_sessions.update_one(
+        await gd_update_one(self.session, "class_sessions",
             {"id": session_id},
-            {"$set": {
+            {
                 "attendance_approved": True,
                 "status": SessionStatus.TEACHING_IN_PROGRESS.value,
                 "attendance_approved_at": now.isoformat()
-            }}
+            }
         )
 
         rules = await self._get_session_score_rules(session_id)
@@ -717,12 +694,12 @@ class TeacherSessionEngine:
     
     async def set_interaction_mode(self, session_id: str, mode: str, teacher_id: str = None) -> Dict[str, Any]:
         """Set the interaction mode for the session (homework, review, quiz)"""
-        await self.db.class_sessions.update_one(
+        await gd_update_one(self.session, "class_sessions",
             {"id": session_id},
-            {"$set": {
+            {
                 "interaction_mode": mode,
                 "status": SessionStatus.INTERACTION_RUNNING.value
-            }}
+            }
         )
         if teacher_id:
             await self._log_event(
@@ -739,15 +716,13 @@ class TeacherSessionEngine:
         Prioritizes students who haven't been selected recently.
         """
         # Get session
-        session = await self.db.class_sessions.find_one({"id": session_id}, {"_id": 0})
+        session = await gd_find_one(self.session, "class_sessions", {"id": session_id})
         if not session:
             raise HTTPException(status_code=404, detail="الجلسة غير موجودة")
         
         # Get present students only
-        attendance = await self.db.session_attendance.find(
-            {"session_id": session_id, "status": AttendanceStatus.PRESENT.value},
-            {"_id": 0}
-        ).to_list(200)
+        attendance = await gd_find(self.session, "session_attendance",
+            {"session_id": session_id, "status": AttendanceStatus.PRESENT.value}, limit=200)
         
         if not attendance:
             raise HTTPException(status_code=400, detail="لا يوجد طلاب حاضرين")
@@ -755,10 +730,8 @@ class TeacherSessionEngine:
         present_student_ids = [a["student_id"] for a in attendance]
         
         # Get interaction history for this session
-        interactions = await self.db.session_interactions.find(
-            {"session_id": session_id, "interaction_type": InteractionType.QUESTION.value},
-            {"_id": 0}
-        ).to_list(500)
+        interactions = await gd_find(self.session, "session_interactions",
+            {"session_id": session_id, "interaction_type": InteractionType.QUESTION.value}, limit=500)
         
         # Count selections per student
         selection_counts = {}
@@ -787,12 +760,12 @@ class TeacherSessionEngine:
         selected_id = random.choice(selection_pool)[0]
         
         # Get student info
-        student = await self.db.students.find_one({"id": selected_id}, {"_id": 0})
+        student = await gd_find_one(self.session, "students", {"id": selected_id})
         
         # Get participation count in this session
         participation_count = selection_counts.get(selected_id, 0)
         
-        session = await self.db.class_sessions.find_one({"id": session_id}, {"_id": 0, "teacher_id": 1})
+        session = await gd_find_one(self.session, "class_sessions", {"id": session_id})
         if session:
             await self._log_event(
                 session_id=session_id,
@@ -832,7 +805,7 @@ class TeacherSessionEngine:
             "recorded_at": now.isoformat()
         }
         
-        await self.db.session_interactions.insert_one(interaction)
+        await gd_insert(self.session, "session_interactions", interaction)
         
         rules = await self._get_session_score_rules(session_id)
         score_change = 0
@@ -890,7 +863,7 @@ class TeacherSessionEngine:
             "recorded_at": now.isoformat()
         }
         
-        await self.db.session_interactions.insert_one(interaction)
+        await gd_insert(self.session, "session_interactions", interaction)
         
         rules = await self._get_session_score_rules(session_id)
         score_change = 0
@@ -951,7 +924,7 @@ class TeacherSessionEngine:
             "editable_until": (now + timedelta(hours=1)).isoformat()
         }
         
-        await self.db.session_interactions.insert_one(interaction)
+        await gd_insert(self.session, "session_interactions", interaction)
         
         rules = await self._get_session_score_rules(session_id)
         score_change = 0
@@ -1001,23 +974,29 @@ class TeacherSessionEngine:
             raise HTTPException(status_code=400, detail="student_id مطلوب")
         if status not in ("done", "not_done"):
             raise HTTPException(status_code=400, detail="الحالة يجب أن تكون done أو not_done")
-        att = await self.db.session_attendance.find_one(
-            {"session_id": session_id, "student_id": student_id}, {"_id": 0, "student_id": 1}
-        )
+        att = await gd_find_one(self.session, "session_attendance", {"session_id": session_id, "student_id": student_id})
         if not att:
             raise HTTPException(status_code=400, detail="الطالب ليس في هذه الحصة")
         now = datetime.now(timezone.utc)
-        await self.db.session_homework.update_one(
-            {"session_id": session_id, "student_id": student_id},
-            {"$set": {
+        existing = await gd_find_one(self.session, "session_homework", {"session_id": session_id, "student_id": student_id})
+        if existing:
+            await gd_update_one(self.session, "session_homework",
+                {"session_id": session_id, "student_id": student_id},
+                {
+                    "status": status,
+                    "recorded_by": teacher_id,
+                    "recorded_at": now.isoformat()
+                }
+            )
+        else:
+            await gd_insert(self.session, "session_homework", {
+                "id": str(uuid.uuid4()),
                 "session_id": session_id,
                 "student_id": student_id,
                 "status": status,
                 "recorded_by": teacher_id,
                 "recorded_at": now.isoformat()
-            }},
-            upsert=True
-        )
+            })
         await self._log_event(
             session_id=session_id,
             event_type=EventType.HOMEWORK_RECORDED.value,
@@ -1029,9 +1008,7 @@ class TeacherSessionEngine:
 
     async def get_homework_statuses(self, session_id: str) -> Dict[str, str]:
         """Retrieve homework completion statuses for a session."""
-        records = await self.db.session_homework.find(
-            {"session_id": session_id}, {"_id": 0, "student_id": 1, "status": 1}
-        ).to_list(200)
+        records = await gd_find(self.session, "session_homework", {"session_id": session_id}, limit=200)
         return {r["student_id"]: r["status"] for r in records}
 
     async def bulk_record_homework(
@@ -1047,22 +1024,26 @@ class TeacherSessionEngine:
             if not rec.get("student_id") or rec.get("status") not in ("done", "not_done"):
                 raise HTTPException(status_code=400, detail="بيانات غير صالحة: كل سجل يجب أن يحتوي student_id وstatus (done/not_done)")
         now = datetime.now(timezone.utc)
-        from repositories.base import UpdateOne
-        ops = []
         for rec in records:
-            ops.append(UpdateOne(
-                {"session_id": session_id, "student_id": rec["student_id"]},
-                {"$set": {
+            existing = await gd_find_one(self.session, "session_homework", {"session_id": session_id, "student_id": rec["student_id"]})
+            if existing:
+                await gd_update_one(self.session, "session_homework",
+                    {"session_id": session_id, "student_id": rec["student_id"]},
+                    {
+                        "status": rec["status"],
+                        "recorded_by": teacher_id,
+                        "recorded_at": now.isoformat()
+                    }
+                )
+            else:
+                await gd_insert(self.session, "session_homework", {
+                    "id": str(uuid.uuid4()),
                     "session_id": session_id,
                     "student_id": rec["student_id"],
                     "status": rec["status"],
                     "recorded_by": teacher_id,
                     "recorded_at": now.isoformat()
-                }},
-                upsert=True
-            ))
-        if ops:
-            await self.db.session_homework.bulk_write(ops)
+                })
         done = sum(1 for r in records if r["status"] == "done")
         not_done = sum(1 for r in records if r["status"] == "not_done")
         await self._log_event(
@@ -1079,16 +1060,14 @@ class TeacherSessionEngine:
         """Get session review data without ending the session (Section 7.5-7.8)"""
         now = datetime.now(timezone.utc)
 
-        session = await self.db.class_sessions.find_one({"id": session_id}, {"_id": 0})
+        session = await gd_find_one(self.session, "class_sessions", {"id": session_id})
         if not session:
             raise HTTPException(status_code=404, detail="الجلسة غير موجودة")
 
         start_time = datetime.fromisoformat(session["start_time"].replace("Z", "+00:00"))
         duration = (now - start_time).total_seconds() / 60
 
-        attendance = await self.db.session_attendance.find(
-            {"session_id": session_id}, {"_id": 0}
-        ).to_list(200)
+        attendance = await gd_find(self.session, "session_attendance", {"session_id": session_id}, limit=200)
 
         present = sum(1 for a in attendance if a["status"] == AttendanceStatus.PRESENT.value)
         absent = sum(1 for a in attendance if a["status"] == AttendanceStatus.ABSENT.value)
@@ -1097,9 +1076,7 @@ class TeacherSessionEngine:
         total = len(attendance)
         attendance_approved = session.get("attendance_approved", False)
 
-        interactions = await self.db.session_interactions.find(
-            {"session_id": session_id}, {"_id": 0}
-        ).to_list(500)
+        interactions = await gd_find(self.session, "session_interactions", {"session_id": session_id}, limit=500)
 
         questions = [i for i in interactions if i.get("interaction_type") == InteractionType.QUESTION.value]
         correct = sum(1 for q in questions if q.get("answer_result") == AnswerResult.CORRECT.value)
@@ -1113,11 +1090,12 @@ class TeacherSessionEngine:
         positive_behaviours = sum(1 for b in behaviours if b.get("behaviour_category") == BehaviourCategory.POSITIVE.value)
         negative_behaviours = sum(1 for b in behaviours if b.get("behaviour_category") == BehaviourCategory.NEGATIVE.value)
 
-        skills_recorded = await self.db.student_skills.count_documents({"session_id": session_id})
-        skills_students = await self.db.student_skills.distinct("student_id", {"session_id": session_id})
+        skills_recorded = await gd_count(self.session, "student_skills", {"session_id": session_id})
+        skills_docs = await gd_find(self.session, "student_skills", {"session_id": session_id})
+        skills_students = list(set(d.get("student_id") for d in skills_docs))
 
-        notes_count = await self.db.session_notes.count_documents({"session_id": session_id})
-        teacher_notes = await self.db.session_notes.count_documents({
+        notes_count = await gd_count(self.session, "session_notes", {"session_id": session_id})
+        teacher_notes = await gd_count(self.session, "session_notes", {
             "session_id": session_id,
             "note_type": "session"
         })
@@ -1140,7 +1118,7 @@ class TeacherSessionEngine:
 
         top_participants = []
         for sid, st in sorted_students[:3]:
-            student = await self.db.students.find_one({"id": sid}, {"_id": 0})
+            student = await gd_find_one(self.session, "students", {"id": sid})
             if student:
                 top_participants.append({
                     "student_id": sid,
@@ -1154,7 +1132,7 @@ class TeacherSessionEngine:
         present_ids = [a["student_id"] for a in attendance if a["status"] == AttendanceStatus.PRESENT.value]
         for sid in present_ids:
             if sid not in interacted_ids:
-                student = await self.db.students.find_one({"id": sid}, {"_id": 0, "full_name": 1})
+                student = await gd_find_one(self.session, "students", {"id": sid})
                 if student:
                     needs_attention.append({
                         "student_id": sid,
@@ -1168,7 +1146,7 @@ class TeacherSessionEngine:
                 neg_students[sid] = neg_students.get(sid, 0) + 1
         for sid, count in neg_students.items():
             if count >= 2:
-                student = await self.db.students.find_one({"id": sid}, {"_id": 0, "full_name": 1})
+                student = await gd_find_one(self.session, "students", {"id": sid})
                 if student and not any(n["student_id"] == sid for n in needs_attention):
                     needs_attention.append({
                         "student_id": sid,
@@ -1242,13 +1220,13 @@ class TeacherSessionEngine:
         """
         now = datetime.now(timezone.utc)
         
-        session = await self.db.class_sessions.find_one({"id": session_id}, {"_id": 0})
+        session = await gd_find_one(self.session, "class_sessions", {"id": session_id})
         if not session:
             raise HTTPException(status_code=404, detail="الجلسة غير موجودة")
 
         session_teacher = session.get("teacher_id")
         if session_teacher and session_teacher != teacher_id:
-            user_record = await self.db.users.find_one({"id": teacher_id}, {"_id": 0, "teacher_id": 1})
+            user_record = await gd_find_one(self.session, "users", {"id": teacher_id})
             actual_teacher_id = user_record.get("teacher_id") if user_record else None
             if session_teacher != actual_teacher_id:
                 raise HTTPException(status_code=403, detail="لا يمكنك إنهاء حصة لست مسؤولاً عنها")
@@ -1257,7 +1235,7 @@ class TeacherSessionEngine:
             return await self._get_completed_session_summary(session, session_id, now)
 
         attendance_approved = session.get("attendance_approved", False)
-        attendance_records = await self.db.session_attendance.find({"session_id": session_id}, {"_id": 0}).to_list(200)
+        attendance_records = await gd_find(self.session, "session_attendance", {"session_id": session_id}, limit=200)
         if not attendance_approved and len(attendance_records) == 0:
             raise HTTPException(status_code=400, detail="لا يمكن إنهاء الحصة قبل تسجيل الحضور واعتماده")
 
@@ -1271,9 +1249,7 @@ class TeacherSessionEngine:
         excused = sum(1 for a in attendance if a["status"] == AttendanceStatus.EXCUSED.value)
         total = len(attendance)
         
-        interactions = await self.db.session_interactions.find(
-            {"session_id": session_id}, {"_id": 0}
-        ).to_list(500)
+        interactions = await gd_find(self.session, "session_interactions", {"session_id": session_id}, limit=500)
         
         questions = [i for i in interactions if i.get("interaction_type") == InteractionType.QUESTION.value]
         correct = sum(1 for q in questions if q.get("answer_result") == AnswerResult.CORRECT.value)
@@ -1287,7 +1263,7 @@ class TeacherSessionEngine:
         positive_behaviours = sum(1 for b in behaviours if b.get("behaviour_category") == BehaviourCategory.POSITIVE.value)
         negative_behaviours = sum(1 for b in behaviours if b.get("behaviour_category") == BehaviourCategory.NEGATIVE.value)
         
-        skills_recorded = await self.db.student_skills.count_documents({"session_id": session_id})
+        skills_recorded = await gd_count(self.session, "student_skills", {"session_id": session_id})
         
         student_interactions = {}
         for i in interactions:
@@ -1311,7 +1287,7 @@ class TeacherSessionEngine:
         
         top_participants = []
         for sid, stats in sorted_students[:3]:
-            student = await self.db.students.find_one({"id": sid}, {"_id": 0})
+            student = await gd_find_one(self.session, "students", {"id": sid})
             if student:
                 top_participants.append({
                     "student_id": sid,
@@ -1325,7 +1301,7 @@ class TeacherSessionEngine:
         present_ids = [a["student_id"] for a in attendance if a["status"] == AttendanceStatus.PRESENT.value]
         for sid in present_ids:
             if sid not in interacted_student_ids:
-                student = await self.db.students.find_one({"id": sid}, {"_id": 0, "full_name": 1})
+                student = await gd_find_one(self.session, "students", {"id": sid})
                 if student:
                     needs_attention.append({
                         "student_id": sid,
@@ -1339,7 +1315,7 @@ class TeacherSessionEngine:
                 neg_students[sid] = neg_students.get(sid, 0) + 1
         for sid, count in neg_students.items():
             if count >= 2:
-                student = await self.db.students.find_one({"id": sid}, {"_id": 0, "full_name": 1})
+                student = await gd_find_one(self.session, "students", {"id": sid})
                 if student and not any(n["student_id"] == sid for n in needs_attention):
                     needs_attention.append({
                         "student_id": sid,
@@ -1374,13 +1350,10 @@ class TeacherSessionEngine:
         }
         if closing_note:
             session_update["closing_note"] = closing_note
-        await self.db.class_sessions.update_one(
-            {"id": session_id},
-            {"$set": session_update}
-        )
+        await gd_update_one(self.session, "class_sessions", {"id": session_id}, session_update)
 
         if closing_note:
-            await self.db.session_notes.insert_one({
+            await gd_insert(self.session, "session_notes", {
                 "id": str(uuid.uuid4()),
                 "session_id": session_id,
                 "teacher_id": teacher_id,
@@ -1477,13 +1450,13 @@ class TeacherSessionEngine:
         except Exception as e:
             logger.debug("Could not compute session duration: %s", e)
             completed_duration = 0
-        attendance = await self.db.session_attendance.find({"session_id": session_id}, {"_id": 0}).to_list(200)
+        attendance = await gd_find(self.session, "session_attendance", {"session_id": session_id}, limit=200)
         present = sum(1 for a in attendance if a["status"] == AttendanceStatus.PRESENT.value)
         absent = sum(1 for a in attendance if a["status"] == AttendanceStatus.ABSENT.value)
         late = sum(1 for a in attendance if a["status"] == AttendanceStatus.LATE.value)
         excused = sum(1 for a in attendance if a["status"] == AttendanceStatus.EXCUSED.value)
         total = len(attendance)
-        interactions = await self.db.session_interactions.find({"session_id": session_id}, {"_id": 0}).to_list(500)
+        interactions = await gd_find(self.session, "session_interactions", {"session_id": session_id}, limit=500)
         questions = [i for i in interactions if i.get("interaction_type") == InteractionType.QUESTION.value]
         correct = sum(1 for q in questions if q.get("answer_result") == AnswerResult.CORRECT.value)
         participations = [i for i in interactions if i.get("interaction_type") == InteractionType.PARTICIPATION.value]
@@ -1491,7 +1464,7 @@ class TeacherSessionEngine:
         behaviours = [i for i in interactions if i.get("interaction_type") == InteractionType.BEHAVIOUR.value]
         positive_b = sum(1 for b in behaviours if b.get("behaviour_category") == BehaviourCategory.POSITIVE.value)
         negative_b = sum(1 for b in behaviours if b.get("behaviour_category") == BehaviourCategory.NEGATIVE.value)
-        skills_count = await self.db.student_skills.count_documents({"session_id": session_id})
+        skills_count = await gd_count(self.session, "student_skills", {"session_id": session_id})
         return SessionSummaryResponse(
             session_record_id=session_id,
             duration_minutes=round(completed_duration),
@@ -1546,14 +1519,13 @@ class TeacherSessionEngine:
             engagement = min(100, total_participations * 10 + pos * 5)
             update_fields["engagement_score"] = engagement
             
-            update_op = {"$set": update_fields}
             if inc_fields:
-                update_op["$inc"] = inc_fields
+                existing_student = await gd_find_one(self.session, "students", {"id": sid, "school_id": school_id})
+                if existing_student:
+                    for field, inc_val in inc_fields.items():
+                        update_fields[field] = existing_student.get(field, 0) + inc_val
             
-            await self.db.students.update_one(
-                {"id": sid, "school_id": school_id},
-                update_op
-            )
+            await gd_update_one(self.session, "students", {"id": sid, "school_id": school_id}, update_fields)
 
     async def _trigger_session_analytics(self, session_id, school_id, class_id, subject_id, teacher_id,
                                           attendance_rate, engagement_rate, positive_b, negative_b,
@@ -1578,7 +1550,7 @@ class TeacherSessionEngine:
             "present_count": present_count,
             "created_at": now.isoformat(),
         }
-        await self.db.session_analytics.insert_one(analytics_record)
+        await gd_insert(self.session, "session_analytics", analytics_record)
 
     async def _generate_ai_session_insights(self, session_id, school_id, class_id, subject_id, teacher_id,
                                              top_participants, needs_attention, attendance_rate, engagement_rate, now):
@@ -1627,7 +1599,7 @@ class TeacherSessionEngine:
             })
 
         if insights:
-            await self.db.ai_session_insights.insert_one({
+            await gd_insert(self.session, "ai_session_insights", {
                 "id": str(uuid.uuid4()),
                 "session_id": session_id,
                 "school_id": school_id,
@@ -1654,13 +1626,13 @@ class TeacherSessionEngine:
         absent_students = [a for a in attendance if a["status"] == AttendanceStatus.ABSENT.value]
         for a_rec in absent_students:
             sid = a_rec["student_id"]
-            student = await self.db.students.find_one({"id": sid}, {"_id": 0})
+            student = await gd_find_one(self.session, "students", {"id": sid})
             if not student:
                 continue
             parent_user_id = student.get("parent_user_id")
             if not parent_user_id:
                 continue
-            await self.db.notifications.insert_one({
+            await gd_insert(self.session, "notifications", {
                 "id": str(uuid.uuid4()),
                 "tenant_id": school_id,
                 "recipient_id": parent_user_id,
@@ -1680,22 +1652,21 @@ class TeacherSessionEngine:
 
         for sid, neg_count in neg_students.items():
             if neg_count >= 3:
-                student = await self.db.students.find_one({"id": sid}, {"_id": 0})
+                student = await gd_find_one(self.session, "students", {"id": sid})
                 if not student:
                     continue
                 parent_user_id = student.get("parent_user_id")
                 recipients = []
                 if parent_user_id:
                     recipients.append(parent_user_id)
-                principal = await self.db.users.find_one(
-                    {"school_id": school_id, "role": {"$in": ["school_admin", "school_principal"]}},
-                    {"_id": 0, "id": 1}
+                principal = await gd_find_one(self.session, "users",
+                    {"school_id": school_id, "role": {"$in": ["school_admin", "school_principal"]}}
                 )
                 if principal:
                     recipients.append(principal["id"])
                 
                 for rid in recipients:
-                    await self.db.notifications.insert_one({
+                    await gd_insert(self.session, "notifications", {
                         "id": str(uuid.uuid4()),
                         "tenant_id": school_id,
                         "recipient_id": rid,
@@ -1715,13 +1686,13 @@ class TeacherSessionEngine:
 
         for sid, si in student_interactions.items():
             if si.get("correct", 0) >= 3 or si.get("participation", 0) >= 5:
-                student = await self.db.students.find_one({"id": sid}, {"_id": 0})
+                student = await gd_find_one(self.session, "students", {"id": sid})
                 if not student:
                     continue
                 parent_user_id = student.get("parent_user_id")
                 if not parent_user_id:
                     continue
-                await self.db.notifications.insert_one({
+                await gd_insert(self.session, "notifications", {
                     "id": str(uuid.uuid4()),
                     "tenant_id": school_id,
                     "recipient_id": parent_user_id,
@@ -1749,13 +1720,13 @@ class TeacherSessionEngine:
     
     async def export_session_report(self, session_id: str, teacher_id: str, fmt: str = "csv") -> dict:
         """Export session report as JSON data for frontend to download."""
-        session = await self.db.class_sessions.find_one({"id": session_id}, {"_id": 0})
+        session = await gd_find_one(self.session, "class_sessions", {"id": session_id})
         if not session:
             raise HTTPException(status_code=404, detail="الجلسة غير موجودة")
 
-        attendance = await self.db.session_attendance.find({"session_id": session_id}, {"_id": 0}).to_list(200)
-        interactions = await self.db.session_interactions.find({"session_id": session_id}, {"_id": 0}).to_list(500)
-        notes = await self.db.session_notes.find({"session_id": session_id}, {"_id": 0}).to_list(100)
+        attendance = await gd_find(self.session, "session_attendance", {"session_id": session_id}, limit=200)
+        interactions = await gd_find(self.session, "session_interactions", {"session_id": session_id}, limit=500)
+        notes = await gd_find(self.session, "session_notes", {"session_id": session_id}, limit=100)
 
         student_ids = list(set(
             [a["student_id"] for a in attendance] +
@@ -1763,7 +1734,7 @@ class TeacherSessionEngine:
         ))
         students_map = {}
         for sid in student_ids:
-            s = await self.db.students.find_one({"id": sid}, {"_id": 0, "full_name": 1, "id": 1})
+            s = await gd_find_one(self.session, "students", {"id": sid})
             if s:
                 students_map[sid] = s.get("full_name", sid)
 
@@ -1825,7 +1796,7 @@ class TeacherSessionEngine:
         month = now.strftime("%Y-%m")
 
         if not school_id:
-            student = await self.db.students.find_one({"id": student_id}, {"_id": 0, "school_id": 1})
+            student = await gd_find_one(self.session, "students", {"id": student_id})
             school_id = student.get("school_id") if student else None
         
         ledger_entry = {
@@ -1841,33 +1812,32 @@ class TeacherSessionEngine:
             "created_at": now.isoformat()
         }
         
-        await self.db.student_score_ledger.insert_one(ledger_entry)
+        await gd_insert(self.session, "student_score_ledger", ledger_entry)
         
-        await self.db.student_daily_scores.update_one(
-            {"student_id": student_id, "date": today},
-            {
-                "$inc": {"score": score_change},
-                "$setOnInsert": {
-                    "id": str(uuid.uuid4()),
-                    "student_id": student_id,
-                    "school_id": school_id,
-                    "date": today,
-                    "created_at": now.isoformat()
-                }
-            },
-            upsert=True
-        )
+        existing = await gd_find_one(self.session, "student_daily_scores", {"student_id": student_id, "date": today})
+        if existing:
+            await gd_update_one(self.session, "student_daily_scores",
+                {"student_id": student_id, "date": today},
+                {"score": existing.get("score", 0) + score_change}
+            )
+        else:
+            await gd_insert(self.session, "student_daily_scores", {
+                "id": str(uuid.uuid4()),
+                "student_id": student_id,
+                "school_id": school_id,
+                "date": today,
+                "score": score_change,
+                "created_at": now.isoformat()
+            })
     
     async def _check_answer_streak(self, session_id: str, student_id: str) -> int:
         """Check consecutive correct answers for a student in current session"""
-        interactions = await self.db.session_interactions.find(
+        interactions = await gd_find(self.session, "session_interactions",
             {
                 "session_id": session_id,
                 "student_id": student_id,
                 "interaction_type": InteractionType.QUESTION.value
-            },
-            {"_id": 0}
-        ).sort("recorded_at", -1).to_list(10)
+            }, order_by="recorded_at", desc_order=True, limit=10)
         
         streak = 0
         for i in interactions:
@@ -1886,29 +1856,20 @@ class TeacherSessionEngine:
         month = now.strftime("%Y-%m")
         
         # Get student info
-        student = await self.db.students.find_one({"id": student_id}, {"_id": 0})
+        student = await gd_find_one(self.session, "students", {"id": student_id})
         if not student:
             raise HTTPException(status_code=404, detail="الطالب غير موجود")
         
         # Get daily score
-        daily = await self.db.student_daily_scores.find_one(
-            {"student_id": student_id, "date": today},
-            {"_id": 0}
-        )
+        daily = await gd_find_one(self.session, "student_daily_scores", {"student_id": student_id, "date": today})
         daily_score = daily.get("score", 0) if daily else 0
         
         # Get weekly score
-        weekly_scores = await self.db.student_score_ledger.find(
-            {"student_id": student_id, "week": week_start},
-            {"_id": 0}
-        ).to_list(500)
+        weekly_scores = await gd_find(self.session, "student_score_ledger", {"student_id": student_id, "week": week_start}, limit=500)
         weekly_score = sum(s.get("score_change", 0) for s in weekly_scores)
         
         # Get monthly score
-        monthly_scores = await self.db.student_score_ledger.find(
-            {"student_id": student_id, "month": month},
-            {"_id": 0}
-        ).to_list(1000)
+        monthly_scores = await gd_find(self.session, "student_score_ledger", {"student_id": student_id, "month": month}, limit=1000)
         monthly_score = sum(s.get("score_change", 0) for s in monthly_scores)
         
         # Get category scores
@@ -1956,15 +1917,15 @@ class TeacherSessionEngine:
         """Record a skill observation for a student during a session"""
         now = datetime.now(timezone.utc)
 
-        session = await self.db.class_sessions.find_one({"id": session_id}, {"_id": 0})
+        session = await gd_find_one(self.session, "class_sessions", {"id": session_id})
         if not session:
             raise HTTPException(status_code=404, detail="الجلسة غير موجودة")
 
-        skill_type = await self.db.skills_types.find_one({"id": skill_type_id}, {"_id": 0})
+        skill_type = await gd_find_one(self.session, "skills_types", {"id": skill_type_id})
         if not skill_type:
             raise HTTPException(status_code=404, detail="نوع المهارة غير موجود")
 
-        student = await self.db.students.find_one({"id": student_id}, {"_id": 0})
+        student = await gd_find_one(self.session, "students", {"id": student_id})
         if not student:
             raise HTTPException(status_code=404, detail="الطالب غير موجود")
 
@@ -1983,7 +1944,7 @@ class TeacherSessionEngine:
             "timestamp": now.isoformat(),
             "school_id": student.get("school_id")
         }
-        await self.db.student_skills.insert_one(skill_record)
+        await gd_insert(self.session, "student_skills", skill_record)
 
         interaction = {
             "id": str(uuid.uuid4()),
@@ -1997,7 +1958,7 @@ class TeacherSessionEngine:
             "recorded_at": now.isoformat(),
             "editable_until": (now + timedelta(hours=1)).isoformat()
         }
-        await self.db.session_interactions.insert_one(interaction)
+        await gd_insert(self.session, "session_interactions", interaction)
 
         rules = await self._get_session_score_rules(session_id)
         score_change = rules.get("special_skill", 3)
@@ -2028,9 +1989,8 @@ class TeacherSessionEngine:
 
     async def get_activity_log(self, session_id: str, limit: int = 50) -> list:
         """Fetch session interactions formatted as activity log entries"""
-        interactions = await self.db.session_interactions.find(
-            {"session_id": session_id}, {"_id": 0}
-        ).sort("recorded_at", -1).to_list(limit)
+        interactions = await gd_find(self.session, "session_interactions",
+            {"session_id": session_id}, order_by="recorded_at", desc_order=True, limit=limit)
 
         if not interactions:
             return []
@@ -2038,26 +1998,21 @@ class TeacherSessionEngine:
         student_ids = list(set(i["student_id"] for i in interactions if i.get("student_id")))
         students = {}
         if student_ids:
-            student_docs = await self.db.students.find(
-                {"id": {"$in": student_ids}}, {"_id": 0, "id": 1, "full_name": 1}
-            ).to_list(len(student_ids))
+            student_docs = await gd_find(self.session, "students", {"id": {"$in": student_ids}}, limit=len(student_ids))
             students = {s["id"]: s.get("full_name", "طالب") for s in student_docs}
 
         skill_ids = [i.get("behaviour_type") for i in interactions
                      if i.get("behaviour_category") == "skill" and i.get("behaviour_type")]
         skill_names = {}
         if skill_ids:
-            skill_docs = await self.db.skill_types.find(
-                {"id": {"$in": skill_ids}}, {"_id": 0, "id": 1, "name_ar": 1, "name": 1}
-            ).to_list(len(skill_ids))
+            skill_docs = await gd_find(self.session, "skill_types", {"id": {"$in": skill_ids}}, limit=len(skill_ids))
             skill_names = {s["id"]: s.get("name_ar", s.get("name", "مهارة")) for s in skill_docs}
 
-        events = await self.db.session_event_log.find(
+        events = await gd_find(self.session, "session_event_log",
             {"session_id": session_id,
              "event_type": {"$in": ["answer_recorded", "participation_recorded",
                                      "behaviour_recorded", "skill_recorded"]}},
-            {"_id": 0, "student_id": 1, "event_type": 1, "metadata": 1, "timestamp": 1}
-        ).sort("timestamp", -1).to_list(limit)
+            order_by="timestamp", desc_order=True, limit=limit)
         score_map = {}
         for e in events:
             key = f"{e.get('student_id')}_{e.get('event_type')}_{e.get('timestamp','')[:19]}"
@@ -2150,12 +2105,9 @@ class TeacherSessionEngine:
 
     async def get_class_metrics(self, teacher_id: str, class_id: str) -> Dict[str, Any]:
         """Get real metrics for a teacher's class from session data"""
-        sessions = await self.db.class_sessions.find(
-            {"class_id": class_id, "teacher_id": teacher_id},
-            {"_id": 0}
-        ).to_list(500)
+        sessions = await gd_find(self.session, "class_sessions", {"class_id": class_id, "teacher_id": teacher_id}, limit=500)
 
-        total_students = await self.db.students.count_documents({"class_id": class_id, "is_active": True})
+        total_students = await gd_count(self.session, "students", {"class_id": class_id, "is_active": True})
 
         total_attendance = 0
         total_present = 0
@@ -2166,16 +2118,12 @@ class TeacherSessionEngine:
         completed_sessions = [s for s in sessions if s.get("status") == SessionStatus.COMPLETED.value]
 
         for s in completed_sessions:
-            att_records = await self.db.session_attendance.find(
-                {"session_id": s["id"]}, {"_id": 0}
-            ).to_list(200)
+            att_records = await gd_find(self.session, "session_attendance", {"session_id": s["id"]}, limit=200)
             present = sum(1 for a in att_records if a.get("status") == AttendanceStatus.PRESENT.value)
             total_attendance += len(att_records)
             total_present += present
 
-            interactions = await self.db.session_interactions.find(
-                {"session_id": s["id"]}, {"_id": 0}
-            ).to_list(500)
+            interactions = await gd_find(self.session, "session_interactions", {"session_id": s["id"]}, limit=500)
             participants = set()
             for i in interactions:
                 if i.get("interaction_type") in [InteractionType.PARTICIPATION.value, InteractionType.QUESTION.value]:
@@ -2192,9 +2140,8 @@ class TeacherSessionEngine:
         avg_performance = round(total_correct / total_questions * 100, 1) if total_questions > 0 else 0
 
         next_session_info = None
-        in_progress = await self.db.class_sessions.find_one(
-            {"class_id": class_id, "teacher_id": teacher_id, "status": SessionStatus.IN_PROGRESS.value},
-            {"_id": 0}
+        in_progress = await gd_find_one(self.session, "class_sessions",
+            {"class_id": class_id, "teacher_id": teacher_id, "status": SessionStatus.IN_PROGRESS.value}
         )
         if in_progress:
             next_session_info = {"status": "in_progress", "start_time": in_progress.get("start_time")}
@@ -2232,7 +2179,7 @@ class TeacherSessionEngine:
             "student_ids": student_ids or [],
             "created_at": now.isoformat()
         }
-        await self.db.session_notes.insert_one(note)
+        await gd_insert(self.session, "session_notes", note)
 
         await self._log_event(
             session_id=session_id,
@@ -2246,21 +2193,18 @@ class TeacherSessionEngine:
 
     async def get_session_notes(self, session_id: str) -> List[Dict[str, Any]]:
         """Retrieve all notes attached to a session."""
-        notes = await self.db.session_notes.find(
-            {"session_id": session_id},
-            {"_id": 0}
-        ).sort("created_at", -1).to_list(500)
+        notes = await gd_find(self.session, "session_notes", {"session_id": session_id}, order_by="created_at", desc_order=True, limit=500)
 
         for note in notes:
             if note.get("student_id"):
-                student = await self.db.students.find_one({"id": note["student_id"]}, {"_id": 0, "full_name": 1})
+                student = await gd_find_one(self.session, "students", {"id": note["student_id"]})
                 note["student_name"] = student.get("full_name") if student else None
         return notes
 
     async def delete_note(self, note_id: str, teacher_id: str) -> Dict[str, Any]:
         """Remove a note from a session by note ID."""
-        result = await self.db.session_notes.delete_one({"id": note_id, "teacher_id": teacher_id})
-        if result.deleted_count == 0:
+        result = await gd_delete_one(self.session, "session_notes", {"id": note_id, "teacher_id": teacher_id})
+        if result == 0:
             raise HTTPException(status_code=404, detail="الملاحظة غير موجودة")
         return {"message": "تم حذف الملاحظة"}
 
@@ -2268,17 +2212,13 @@ class TeacherSessionEngine:
 
     async def get_live_metrics(self, session_id: str) -> Dict[str, Any]:
         """Return real-time participation and behaviour metrics for a session."""
-        session = await self.db.class_sessions.find_one({"id": session_id}, {"_id": 0})
+        session = await gd_find_one(self.session, "class_sessions", {"id": session_id})
         if not session:
             raise HTTPException(status_code=404, detail="الجلسة غير موجودة")
 
-        attendance = await self.db.session_attendance.find(
-            {"session_id": session_id}, {"_id": 0}
-        ).to_list(200)
+        attendance = await gd_find(self.session, "session_attendance", {"session_id": session_id}, limit=200)
 
-        interactions = await self.db.session_interactions.find(
-            {"session_id": session_id}, {"_id": 0}
-        ).to_list(1000)
+        interactions = await gd_find(self.session, "session_interactions", {"session_id": session_id}, limit=1000)
 
         present = sum(1 for a in attendance if a.get("status") == AttendanceStatus.PRESENT.value)
         absent = sum(1 for a in attendance if a.get("status") == AttendanceStatus.ABSENT.value)
@@ -2297,8 +2237,8 @@ class TeacherSessionEngine:
         pos_behaviours = sum(1 for b in behaviours if b.get("behaviour_category") == BehaviourCategory.POSITIVE.value)
         neg_behaviours = sum(1 for b in behaviours if b.get("behaviour_category") == BehaviourCategory.NEGATIVE.value)
 
-        skills_count = await self.db.student_skills.count_documents({"session_id": session_id})
-        notes_count = await self.db.session_notes.count_documents({"session_id": session_id})
+        skills_count = await gd_count(self.session, "student_skills", {"session_id": session_id})
+        notes_count = await gd_count(self.session, "session_notes", {"session_id": session_id})
 
         duration_minutes = 0
         if session.get("start_time"):
@@ -2348,21 +2288,20 @@ class TeacherSessionEngine:
         if status_filter:
             query["status"] = status_filter
 
-        total = await self.db.class_sessions.count_documents(query)
-        sessions = await self.db.class_sessions.find(
-            query, {"_id": 0}
-        ).sort("created_at", -1).skip((page - 1) * limit).limit(limit).to_list(limit)
+        total = await gd_count(self.session, "class_sessions", query)
+        sessions = await gd_find(self.session, "class_sessions", query,
+            order_by="created_at", desc_order=True, offset=(page - 1) * limit, limit=limit)
 
         enriched = []
         for s in sessions:
-            class_info = await self.db.classes.find_one({"id": s.get("class_id")}, {"_id": 0, "name": 1})
-            subject = await self.db.subjects.find_one({"id": s.get("subject_id")}, {"_id": 0, "name_ar": 1, "name": 1})
+            class_info = await gd_find_one(self.session, "classes", {"id": s.get("class_id")})
+            subject = await gd_find_one(self.session, "subjects", {"id": s.get("subject_id")})
 
-            att_count = await self.db.session_attendance.count_documents({"session_id": s["id"]})
-            present_count = await self.db.session_attendance.count_documents(
+            att_count = await gd_count(self.session, "session_attendance", {"session_id": s["id"]})
+            present_count = await gd_count(self.session, "session_attendance",
                 {"session_id": s["id"], "status": AttendanceStatus.PRESENT.value}
             )
-            interaction_count = await self.db.session_interactions.count_documents({"session_id": s["id"]})
+            interaction_count = await gd_count(self.session, "session_interactions", {"session_id": s["id"]})
 
             enriched.append({
                 **s,
@@ -2383,38 +2322,28 @@ class TeacherSessionEngine:
 
     async def get_session_report(self, session_id: str) -> Dict[str, Any]:
         """Generate a detailed post-session report."""
-        session = await self.db.class_sessions.find_one({"id": session_id}, {"_id": 0})
+        session = await gd_find_one(self.session, "class_sessions", {"id": session_id})
         if not session:
             raise HTTPException(status_code=404, detail="الجلسة غير موجودة")
 
-        class_info = await self.db.classes.find_one({"id": session.get("class_id")}, {"_id": 0})
-        subject = await self.db.subjects.find_one({"id": session.get("subject_id")}, {"_id": 0})
-        teacher = await self.db.teachers.find_one({"id": session.get("teacher_id")}, {"_id": 0})
+        class_info = await gd_find_one(self.session, "classes", {"id": session.get("class_id")})
+        subject = await gd_find_one(self.session, "subjects", {"id": session.get("subject_id")})
+        teacher = await gd_find_one(self.session, "teachers", {"id": session.get("teacher_id")})
 
-        attendance = await self.db.session_attendance.find(
-            {"session_id": session_id}, {"_id": 0}
-        ).to_list(200)
+        attendance = await gd_find(self.session, "session_attendance", {"session_id": session_id}, limit=200)
 
-        interactions = await self.db.session_interactions.find(
-            {"session_id": session_id}, {"_id": 0}
-        ).to_list(1000)
+        interactions = await gd_find(self.session, "session_interactions", {"session_id": session_id}, limit=1000)
 
-        notes = await self.db.session_notes.find(
-            {"session_id": session_id}, {"_id": 0}
-        ).to_list(500)
+        notes = await gd_find(self.session, "session_notes", {"session_id": session_id}, limit=500)
 
-        skills = await self.db.student_skills.find(
-            {"session_id": session_id}, {"_id": 0}
-        ).to_list(200)
+        skills = await gd_find(self.session, "student_skills", {"session_id": session_id}, limit=200)
 
-        events = await self.db.session_event_log.find(
-            {"session_id": session_id}, {"_id": 0}
-        ).sort("timestamp", 1).to_list(1000)
+        events = await gd_find(self.session, "session_event_log", {"session_id": session_id}, order_by="timestamp", desc_order=False, limit=1000)
 
         student_details = {}
         for att in attendance:
             sid = att["student_id"]
-            student = await self.db.students.find_one({"id": sid}, {"_id": 0, "full_name": 1})
+            student = await gd_find_one(self.session, "students", {"id": sid})
             student_details[sid] = {
                 "student_id": sid,
                 "name": student.get("full_name") if student else sid,
@@ -2428,7 +2357,7 @@ class TeacherSessionEngine:
         for inter in interactions:
             sid = inter["student_id"]
             if sid not in student_details:
-                student = await self.db.students.find_one({"id": sid}, {"_id": 0, "full_name": 1})
+                student = await gd_find_one(self.session, "students", {"id": sid})
                 student_details[sid] = {
                     "student_id": sid,
                     "name": student.get("full_name") if student else sid,
@@ -2491,9 +2420,8 @@ class TeacherSessionEngine:
 
     async def get_session_events(self, session_id: str, limit: int = 100) -> List[Dict[str, Any]]:
         """Return the chronological event log for a session."""
-        events = await self.db.session_event_log.find(
-            {"session_id": session_id}, {"_id": 0}
-        ).sort("timestamp", -1).to_list(limit)
+        events = await gd_find(self.session, "session_event_log",
+            {"session_id": session_id}, order_by="timestamp", desc_order=True, limit=limit)
         return events
 
     # ---------- Auto-Close Stale Sessions ----------
@@ -2501,10 +2429,10 @@ class TeacherSessionEngine:
     async def auto_close_stale_sessions(self, max_duration_hours: int = 4) -> Dict[str, Any]:
         """Close sessions that have been idle beyond the configured timeout."""
         cutoff = (datetime.now(timezone.utc) - timedelta(hours=max_duration_hours)).isoformat()
-        stale = await self.db.class_sessions.find({
+        stale = await gd_find(self.session, "class_sessions", {
             "status": {"$in": self.ACTIVE_STATUSES},
             "start_time": {"$lt": cutoff}
-        }, {"_id": 0}).to_list(100)
+        }, limit=100)
 
         closed_count = 0
         for session in stale:
@@ -2513,9 +2441,9 @@ class TeacherSessionEngine:
                 closed_count += 1
             except Exception as e:
                 logger.warning("Graceful end_session failed for %s, force-closing: %s", session["id"], e)
-                await self.db.class_sessions.update_one(
+                await gd_update_one(self.session, "class_sessions",
                     {"id": session["id"]},
-                    {"$set": {"status": SessionStatus.COMPLETED.value, "end_time": datetime.now(timezone.utc).isoformat(), "auto_closed": True}}
+                    {"status": SessionStatus.COMPLETED.value, "end_time": datetime.now(timezone.utc).isoformat(), "auto_closed": True}
                 )
                 closed_count += 1
 
@@ -2530,9 +2458,9 @@ class TeacherSessionEngine:
         teacher_id: str = None
     ) -> Dict[str, Any]:
         """Update student seating order for current session"""
-        await self.db.class_sessions.update_one(
+        await gd_update_one(self.session, "class_sessions",
             {"id": session_id},
-            {"$set": {"seating_order": student_order}}
+            {"seating_order": student_order}
         )
         if teacher_id:
             await self._log_event(

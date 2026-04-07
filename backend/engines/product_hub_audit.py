@@ -1,12 +1,6 @@
 """
 Product Intelligence Hub — Audit Logging System
 نظام التدقيق والتتبع لمركز ذكاء المنتج
-
-Provides:
-- Immutable audit trail for all issue lifecycle events
-- Structured log entries with full traceability
-- Auto-logging middleware for all actions
-- Security: logs are insert-only, no edit/delete allowed
 """
 
 from typing import Optional, Dict, Any
@@ -15,7 +9,10 @@ from enum import Enum
 import uuid
 import logging
 
-from dependencies import db
+from sqlalchemy import select, and_, desc
+
+from pg_models import IssueActivityLog
+from engines.sql_utils import model_to_dict, models_to_dicts, dict_to_model
 
 logger = logging.getLogger("nassaq.product_hub.audit")
 
@@ -64,6 +61,11 @@ def _get_user_id(user: dict) -> str:
     return user.get("id", user.get("user_id", ""))
 
 
+def _get_session():
+    from dependencies import db
+    return db.session
+
+
 async def write_audit_log(
     issue_id: str,
     action: AuditAction,
@@ -71,24 +73,42 @@ async def write_audit_log(
     notes: str = "",
     metadata: Optional[Dict[str, Any]] = None,
 ) -> dict:
+    entry_id = str(uuid.uuid4())
+    now = _now_iso()
     entry = {
-        "id": str(uuid.uuid4()),
+        "id": entry_id,
+        "issue_id": issue_id,
+        "action": action.value,
+        "performed_by": _get_user_id(user),
+        "performed_by_name": user.get("full_name", ""),
+        "timestamp": now,
+        "details": {
+            "role": _resolve_role(user),
+            "notes": notes,
+            "metadata": metadata or {},
+        },
+    }
+
+    session = _get_session()
+    obj = dict_to_model(IssueActivityLog, entry)
+    session.add(obj)
+    await session.flush()
+
+    logger.info(
+        f"[Audit] {action.value} on issue={issue_id[:8]} "
+        f"by={_get_user_id(user)[:8]} role={_resolve_role(user)}"
+    )
+    return {
+        "id": entry_id,
         "issue_id": issue_id,
         "action": action.value,
         "performed_by": _get_user_id(user),
         "performed_by_name": user.get("full_name", ""),
         "role": _resolve_role(user),
-        "timestamp": _now_iso(),
+        "timestamp": now,
         "notes": notes,
         "metadata": metadata or {},
     }
-
-    await db.issue_activity_log.insert_one(entry)
-    logger.info(
-        f"[Audit] {action.value} on issue={issue_id[:8]} "
-        f"by={_get_user_id(user)[:8]} role={entry['role']}"
-    )
-    return entry
 
 
 async def audit_issue_created(issue_id: str, user: dict, issue_data: dict):
@@ -208,10 +228,15 @@ async def audit_feedback_confirmed(issue_id: str, user: dict, resolved: bool, co
 
 
 async def get_audit_trail(issue_id: str, limit: int = 200) -> list:
-    entries = await db.issue_activity_log.find(
-        {"issue_id": issue_id}, {"_id": 0}
-    ).sort("timestamp", -1).to_list(limit)
-    return entries
+    session = _get_session()
+    stmt = (
+        select(IssueActivityLog)
+        .where(IssueActivityLog.issue_id == issue_id)
+        .order_by(desc(IssueActivityLog.timestamp))
+        .limit(limit)
+    )
+    result = await session.execute(stmt)
+    return models_to_dicts(result.scalars().all())
 
 
 async def get_full_timeline(issue_id: str) -> dict:

@@ -19,6 +19,8 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime, timezone, timedelta
 import uuid
 
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_count, gd_delete_one, gd_delete_many
+
 
 RISK_WEIGHTS = {
     "attendance": 0.35,
@@ -45,6 +47,10 @@ RISK_RECOMMENDATIONS = {
 class HakimAIEngine:
     def __init__(self, db):
         self.db = db
+
+    @property
+    def session(self):
+        return self.db.session
 
     # ------------------------------------------------------------------
     # 1. Student Early Warning System
@@ -87,7 +93,7 @@ class HakimAIEngine:
         if academic_score < 50:
             factors.append("تدني الأداء الأكاديمي")
 
-        student = await self.db.students.find_one({"id": student_id, "school_id": school_id}, {"_id": 0, "full_name": 1, "class_id": 1})
+        student = await gd_find_one(self.session, "students", {"id": student_id, "school_id": school_id})
 
         return {
             "student_id": student_id,
@@ -110,12 +116,12 @@ class HakimAIEngine:
         }
 
     async def _calc_attendance_score(self, student_id: str, school_id: str, cutoff: str) -> float:
-        total = await self.db.attendance.count_documents({
+        total = await gd_count(self.session, "attendance", {
             "student_id": student_id, "school_id": school_id, "date": {"$gte": cutoff}
         })
         if total == 0:
             return 100.0
-        present = await self.db.attendance.count_documents({
+        present = await gd_count(self.session, "attendance", {
             "student_id": student_id, "school_id": school_id,
             "date": {"$gte": cutoff}, "status": {"$in": ["present", "late"]}
         })
@@ -126,14 +132,14 @@ class HakimAIEngine:
         if not session_ids:
             return 50.0
 
-        sessions_with_student = await self.db.session_attendance.count_documents({
+        sessions_with_student = await gd_count(self.session, "session_attendance", {
             "student_id": student_id, "status": "present",
             "session_id": {"$in": session_ids},
         })
         if sessions_with_student == 0:
             return 50.0
 
-        interactions = await self.db.session_interactions.count_documents({
+        interactions = await gd_count(self.session, "session_interactions", {
             "student_id": student_id,
             "session_id": {"$in": session_ids},
         })
@@ -146,10 +152,9 @@ class HakimAIEngine:
         if not session_ids:
             return 75.0
 
-        interactions = await self.db.session_interactions.find(
-            {"student_id": student_id, "interaction_type": "behaviour", "session_id": {"$in": session_ids}},
-            {"_id": 0, "behaviour_type": 1, "behaviour_category": 1}
-        ).to_list(500)
+        interactions = await gd_find(self.session, "session_interactions", {
+            "student_id": student_id, "interaction_type": "behaviour", "session_id": {"$in": session_ids}
+        }, limit=500)
 
         if not interactions:
             return 75.0
@@ -163,17 +168,17 @@ class HakimAIEngine:
         return min(100.0, (positive / total) * 100 + 25)
 
     async def _calc_academic_score(self, student_id: str, school_id: str, cutoff: str) -> float:
-        scores = await self.db.student_daily_scores.find({
+        scores = await gd_find(self.session, "student_daily_scores", {
             "student_id": student_id,
             "school_id": school_id,
             "date": {"$gte": cutoff},
-        }, {"_id": 0, "score": 1}).to_list(500)
+        }, limit=500)
 
         if not scores:
-            grades = await self.db.student_grades.find({
+            grades = await gd_find(self.session, "student_grades", {
                 "student_id": student_id,
                 "tenant_id": school_id,
-            }, {"_id": 0, "percentage": 1}).to_list(100)
+            }, limit=100)
             if grades:
                 avg = sum(g.get("percentage", 0) for g in grades) / len(grades)
                 return min(100.0, avg)
@@ -186,10 +191,10 @@ class HakimAIEngine:
         return min(100.0, (total_score / max_possible) * 100)
 
     async def _get_school_session_ids(self, school_id: str, cutoff: str) -> List[str]:
-        sessions = await self.db.class_sessions.find({
+        sessions = await gd_find(self.session, "class_sessions", {
             "school_id": school_id, "status": "completed",
             "date": {"$gte": cutoff},
-        }, {"_id": 0, "id": 1}).to_list(5000)
+        }, limit=5000)
         return [s["id"] for s in sessions]
 
     # ------------------------------------------------------------------
@@ -202,10 +207,9 @@ class HakimAIEngine:
         """Evaluate participation patterns across a class."""
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime("%Y-%m-%d")
 
-        students = await self.db.students.find(
-            {"class_id": class_id, "school_id": school_id, "is_active": True},
-            {"_id": 0, "id": 1, "full_name": 1}
-        ).to_list(200)
+        students = await gd_find(self.session, "students", {
+            "class_id": class_id, "school_id": school_id, "is_active": True
+        }, limit=200)
 
         if not students:
             return {"class_id": class_id, "students": [], "summary": {}}
@@ -213,16 +217,16 @@ class HakimAIEngine:
         student_ids = [s["id"] for s in students]
         name_map = {s["id"]: s.get("full_name", "") for s in students}
 
-        sessions = await self.db.class_sessions.find({
+        sessions = await gd_find(self.session, "class_sessions", {
             "class_id": class_id, "school_id": school_id, "status": "completed",
             "date": {"$gte": cutoff},
-        }, {"_id": 0, "id": 1}).to_list(500)
+        }, limit=500)
         session_ids = [s["id"] for s in sessions]
 
-        interactions = await self.db.session_interactions.find({
+        interactions = await gd_find(self.session, "session_interactions", {
             "session_id": {"$in": session_ids},
             "student_id": {"$in": student_ids},
-        }, {"_id": 0, "student_id": 1, "interaction_type": 1, "answer_result": 1}).to_list(10000)
+        }, limit=10000)
 
         student_stats: Dict[str, Dict] = {}
         for sid in student_ids:
@@ -285,18 +289,17 @@ class HakimAIEngine:
         session_ids = await self._get_school_session_ids(school_id, cutoff)
 
         if session_ids:
-            interactions = await self.db.session_interactions.find(
-                {"student_id": student_id, "interaction_type": "behaviour", "session_id": {"$in": session_ids}},
-                {"_id": 0}
-            ).to_list(500)
+            interactions = await gd_find(self.session, "session_interactions", {
+                "student_id": student_id, "interaction_type": "behaviour", "session_id": {"$in": session_ids}
+            }, limit=500)
         else:
             interactions = []
 
-        behaviour_records = await self.db.behaviour_records.find({
+        behaviour_records = await gd_find(self.session, "behaviour_records", {
             "student_id": student_id,
             "tenant_id": school_id,
             "incident_date": {"$gte": cutoff},
-        }, {"_id": 0, "category": 1, "severity": 1, "incident_date": 1, "behaviour_type_name": 1, "points": 1}).to_list(500)
+        }, limit=500)
 
         positive_count = 0
         negative_count = 0
@@ -332,7 +335,7 @@ class HakimAIEngine:
 
         repeated = {k: v for k, v in type_freq.items() if v >= 3}
 
-        student = await self.db.students.find_one({"id": student_id, "school_id": school_id}, {"_id": 0, "full_name": 1})
+        student = await gd_find_one(self.session, "students", {"id": student_id, "school_id": school_id})
 
         return {
             "student_id": student_id,
@@ -356,10 +359,10 @@ class HakimAIEngine:
         """Analyze session metrics and teaching patterns for a teacher."""
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime("%Y-%m-%d")
 
-        sessions = await self.db.class_sessions.find({
+        sessions = await gd_find(self.session, "class_sessions", {
             "teacher_id": teacher_id, "school_id": school_id, "status": "completed",
             "date": {"$gte": cutoff},
-        }, {"_id": 0}).to_list(1000)
+        }, limit=1000)
 
         if not sessions:
             return {
@@ -372,9 +375,9 @@ class HakimAIEngine:
         session_ids = [s["id"] for s in sessions]
         total_sessions = len(sessions)
 
-        interactions = await self.db.session_interactions.find({
+        interactions = await gd_find(self.session, "session_interactions", {
             "session_id": {"$in": session_ids},
-        }, {"_id": 0, "session_id": 1, "interaction_type": 1, "answer_result": 1}).to_list(50000)
+        }, limit=50000)
 
         session_interaction_count: Dict[str, int] = {}
         total_questions = 0
@@ -397,9 +400,9 @@ class HakimAIEngine:
 
         avg_interactions_per_session = len(interactions) / total_sessions if total_sessions else 0
 
-        sa_records = await self.db.session_attendance.find({
+        sa_records = await gd_find(self.session, "session_attendance", {
             "session_id": {"$in": session_ids},
-        }, {"_id": 0, "session_id": 1, "status": 1}).to_list(50000)
+        }, limit=50000)
 
         total_attendance = len(sa_records)
         total_present = sum(1 for r in sa_records if r.get("status") == "present")
@@ -420,7 +423,7 @@ class HakimAIEngine:
             c_sessions = [s for s in sessions if s.get("class_id") == cid]
             c_sids = [s["id"] for s in c_sessions]
             c_interactions = sum(1 for i in interactions if i["session_id"] in c_sids)
-            cls = await self.db.classes.find_one({"id": cid, "school_id": school_id}, {"_id": 0, "name": 1})
+            cls = await gd_find_one(self.session, "classes", {"id": cid, "school_id": school_id})
             class_breakdown.append({
                 "class_id": cid,
                 "class_name": cls.get("name") if cls else cid,
@@ -429,9 +432,9 @@ class HakimAIEngine:
                 "avg_interactions": round(c_interactions / len(c_sessions), 1) if c_sessions else 0,
             })
 
-        teacher = await self.db.teachers.find_one({"id": teacher_id, "school_id": school_id}, {"_id": 0, "full_name": 1})
+        teacher = await gd_find_one(self.session, "teachers", {"id": teacher_id, "school_id": school_id})
         if not teacher:
-            user = await self.db.users.find_one({"teacher_id": teacher_id, "tenant_id": school_id}, {"_id": 0, "full_name": 1})
+            user = await gd_find_one(self.session, "users", {"teacher_id": teacher_id, "tenant_id": school_id})
             teacher = user or {}
 
         return {
@@ -463,10 +466,9 @@ class HakimAIEngine:
         """Compute a composite health score for a class."""
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime("%Y-%m-%d")
 
-        students = await self.db.students.find(
-            {"class_id": class_id, "school_id": school_id, "is_active": True},
-            {"_id": 0, "id": 1}
-        ).to_list(200)
+        students = await gd_find(self.session, "students", {
+            "class_id": class_id, "school_id": school_id, "is_active": True
+        }, limit=200)
         student_ids = [s["id"] for s in students]
         total_students = len(student_ids)
 
@@ -478,25 +480,25 @@ class HakimAIEngine:
                 "analyzed_at": datetime.now(timezone.utc).isoformat(),
             }
 
-        att_total = await self.db.attendance.count_documents({
+        att_total = await gd_count(self.session, "attendance", {
             "class_id": class_id, "school_id": school_id, "date": {"$gte": cutoff}
         })
-        att_present = await self.db.attendance.count_documents({
+        att_present = await gd_count(self.session, "attendance", {
             "class_id": class_id, "school_id": school_id,
             "date": {"$gte": cutoff}, "status": {"$in": ["present", "late"]}
         })
         attendance_rate = (att_present / att_total * 100) if att_total > 0 else 85
 
-        sessions = await self.db.class_sessions.find({
+        sessions = await gd_find(self.session, "class_sessions", {
             "class_id": class_id, "school_id": school_id, "status": "completed",
             "date": {"$gte": cutoff},
-        }, {"_id": 0, "id": 1}).to_list(500)
+        }, limit=500)
         session_ids = [s["id"] for s in sessions]
 
-        interactions = await self.db.session_interactions.find({
+        interactions = await gd_find(self.session, "session_interactions", {
             "session_id": {"$in": session_ids},
             "student_id": {"$in": student_ids},
-        }, {"_id": 0, "student_id": 1, "interaction_type": 1, "behaviour_category": 1, "behaviour_type": 1}).to_list(10000)
+        }, limit=10000)
 
         participating_students = set(i["student_id"] for i in interactions)
         participation_rate = (len(participating_students) / total_students * 100) if total_students else 0
@@ -506,11 +508,11 @@ class HakimAIEngine:
         total_b = positive_b + negative_b
         behaviour_score = ((positive_b / total_b) * 100) if total_b > 0 else 75
 
-        scores = await self.db.student_daily_scores.find({
+        scores = await gd_find(self.session, "student_daily_scores", {
             "student_id": {"$in": student_ids},
             "school_id": school_id,
             "date": {"$gte": cutoff},
-        }, {"_id": 0, "score": 1}).to_list(10000)
+        }, limit=10000)
         if scores:
             total_score = sum(s.get("score", 0) for s in scores)
             max_possible = len(scores) * 5
@@ -539,7 +541,7 @@ class HakimAIEngine:
             health_label = "يحتاج تحسين"
             health_category = "needs_improvement"
 
-        cls = await self.db.classes.find_one({"id": class_id, "school_id": school_id}, {"_id": 0, "name": 1})
+        cls = await gd_find_one(self.session, "classes", {"id": class_id, "school_id": school_id})
 
         return {
             "class_id": class_id,
@@ -567,10 +569,9 @@ class HakimAIEngine:
         """Execute all analysis pipelines for a school and store insights."""
         now = datetime.now(timezone.utc)
 
-        students = await self.db.students.find(
-            {"school_id": school_id, "is_active": True},
-            {"_id": 0, "id": 1, "class_id": 1}
-        ).to_list(10000)
+        students = await gd_find(self.session, "students", {
+            "school_id": school_id, "is_active": True
+        }, limit=10000)
         class_ids = list(set(s.get("class_id") for s in students if s.get("class_id")))
 
         student_risks = []
@@ -593,11 +594,10 @@ class HakimAIEngine:
             bp = await self.analyze_student_behaviour_patterns(student["id"], school_id, days_back)
             student_behaviours.append(bp)
 
-        teacher_ids_cursor = await self.db.teacher_assignments.find(
-            {"school_id": school_id, "is_active": True},
-            {"_id": 0, "teacher_id": 1}
-        ).to_list(200)
-        teacher_ids = list(set(t["teacher_id"] for t in teacher_ids_cursor))
+        teacher_ids_list = await gd_find(self.session, "teacher_assignments", {
+            "school_id": school_id, "is_active": True
+        }, limit=200)
+        teacher_ids = list(set(t["teacher_id"] for t in teacher_ids_list))
 
         teacher_analytics = []
         for tid in teacher_ids:
@@ -678,7 +678,7 @@ class HakimAIEngine:
             "created_at": now.isoformat(),
         }
 
-        await self.db.ai_insights.insert_one(analysis_doc)
+        await gd_insert(self.session, "ai_insights", analysis_doc)
 
         created_at_iso = now.isoformat()
 
@@ -712,18 +712,21 @@ class HakimAIEngine:
         }
 
     async def _upsert_insight(self, insight_type: str, entity_id: str, school_id: str, data: Dict, created_at: str):
-        await self.db.ai_insights.update_one(
-            {"type": insight_type, "entity_id": entity_id, "school_id": school_id},
-            {"$set": {
+        existing = await gd_find_one(self.session, "ai_insights", {"type": insight_type, "entity_id": entity_id, "school_id": school_id})
+        if existing:
+            await gd_update_one(self.session, "ai_insights", {"type": insight_type, "entity_id": entity_id, "school_id": school_id}, {
+                "data": data,
+                "updated_at": created_at,
+            })
+        else:
+            await gd_insert(self.session, "ai_insights", {
                 "id": str(uuid.uuid4()),
                 "type": insight_type,
                 "entity_id": entity_id,
                 "school_id": school_id,
                 "data": data,
                 "created_at": created_at,
-            }},
-            upsert=True,
-        )
+            })
 
     # ------------------------------------------------------------------
     # Insight retrieval helpers
@@ -731,18 +734,16 @@ class HakimAIEngine:
 
     async def get_stored_insight(self, insight_type: str, entity_id: str, school_id: str) -> Optional[Dict[str, Any]]:
         """Retrieve a previously stored AI insight by ID."""
-        doc = await self.db.ai_insights.find_one(
-            {"type": insight_type, "entity_id": entity_id, "school_id": school_id},
-            {"_id": 0}
-        )
+        doc = await gd_find_one(self.session, "ai_insights", {
+            "type": insight_type, "entity_id": entity_id, "school_id": school_id
+        })
         return doc
 
     async def get_school_insights(self, school_id: str, limit: int = 20) -> List[Dict[str, Any]]:
         """List stored AI insights for a school, with optional filters."""
-        docs = await self.db.ai_insights.find(
-            {"school_id": school_id},
-            {"_id": 0}
-        ).sort("created_at", -1).to_list(limit)
+        docs = await gd_find(self.session, "ai_insights", {
+            "school_id": school_id
+        }, order_by="created_at", desc_order=True, limit=limit)
         return docs
 
     # ------------------------------------------------------------------
@@ -756,10 +757,9 @@ class HakimAIEngine:
         now = datetime.now(timezone.utc)
         cutoff = (now - timedelta(days=days_back)).strftime("%Y-%m-%d")
 
-        students = await self.db.students.find(
-            {"school_id": school_id, "is_active": True},
-            {"_id": 0, "id": 1, "full_name": 1, "class_id": 1}
-        ).to_list(10000)
+        students = await gd_find(self.session, "students", {
+            "school_id": school_id, "is_active": True
+        }, limit=10000)
 
         interventions_created = []
         notifications_sent = []
@@ -769,7 +769,7 @@ class HakimAIEngine:
             if risk["risk_category"] not in ("critical", "high"):
                 continue
 
-            existing = await self.db.ai_interventions.find_one({
+            existing = await gd_find_one(self.session, "ai_interventions", {
                 "student_id": student["id"],
                 "school_id": school_id,
                 "status": {"$in": ["active", "pending"]},
@@ -795,7 +795,7 @@ class HakimAIEngine:
                 "expires_at": (now + timedelta(days=30)).isoformat(),
                 "follow_ups": [],
             }
-            await self.db.ai_interventions.insert_one(intervention)
+            await gd_insert(self.session, "ai_interventions", intervention)
             interventions_created.append(intervention)
 
             notif_id = str(uuid.uuid4())
@@ -812,7 +812,7 @@ class HakimAIEngine:
                 "is_read": False,
                 "created_at": now.isoformat(),
             }
-            await self.db.notifications.insert_one(notif)
+            await gd_insert(self.session, "notifications", notif)
             notifications_sent.append(notif_id)
 
         return {
@@ -955,10 +955,9 @@ class HakimAIEngine:
         if "سلوك متراجع" in weaknesses:
             goals.append({"goal_ar": "تقليل الملاحظات السلبية إلى صفر خلال أسبوعين", "metric": "negative_behaviours", "target": 0})
 
-        student = await self.db.students.find_one(
-            {"id": student_id, "school_id": school_id},
-            {"_id": 0, "full_name": 1, "class_id": 1}
-        )
+        student = await gd_find_one(self.session, "students", {
+            "id": student_id, "school_id": school_id
+        })
 
         return {
             "student_id": student_id,
@@ -987,10 +986,9 @@ class HakimAIEngine:
         self, student_id: str, school_id: str
     ) -> Dict[str, Any]:
         """Compute the grade trend direction for a student."""
-        grades = await self.db.student_grades.find(
-            {"student_id": student_id, "tenant_id": school_id},
-            {"_id": 0, "percentage": 1, "graded_at": 1, "subject_id": 1}
-        ).sort("graded_at", 1).to_list(200)
+        grades = await gd_find(self.session, "student_grades", {
+            "student_id": student_id, "tenant_id": school_id
+        }, order_by="graded_at", desc_order=False, limit=200)
 
         if len(grades) < 2:
             return {"student_id": student_id, "trend": "insufficient_data", "grades_count": len(grades)}
@@ -1049,10 +1047,9 @@ class HakimAIEngine:
         self, school_id: str, threshold: float = -10.0
     ) -> Dict[str, Any]:
         """Identify students with significant grade declines."""
-        students = await self.db.students.find(
-            {"school_id": school_id, "is_active": True},
-            {"_id": 0, "id": 1, "full_name": 1, "class_id": 1}
-        ).to_list(10000)
+        students = await gd_find(self.session, "students", {
+            "school_id": school_id, "is_active": True
+        }, limit=10000)
 
         declining_students = []
         for student in students:
@@ -1091,16 +1088,14 @@ class HakimAIEngine:
         now = datetime.now(timezone.utc)
         week_ago = (now - timedelta(days=7)).strftime("%Y-%m-%d")
 
-        teachers = await self.db.teachers.find(
-            {"school_id": school_id, "is_active": True},
-            {"_id": 0, "id": 1, "full_name": 1}
-        ).to_list(500)
+        teachers = await gd_find(self.session, "teachers", {
+            "school_id": school_id, "is_active": True
+        }, limit=500)
         teacher_map = {t["id"]: t.get("full_name", "") for t in teachers}
 
-        assignments = await self.db.teacher_assignments.find(
-            {"school_id": school_id, "is_active": True},
-            {"_id": 0, "teacher_id": 1, "subject_id": 1, "class_ids": 1, "weekly_periods": 1}
-        ).to_list(2000)
+        assignments = await gd_find(self.session, "teacher_assignments", {
+            "school_id": school_id, "is_active": True
+        }, limit=2000)
 
         teacher_load: Dict[str, int] = {}
         for a in assignments:
@@ -1129,10 +1124,9 @@ class HakimAIEngine:
                 "candidate_teachers": candidates[:3],
             })
 
-        absent_teachers = await self.db.teacher_attendance.find(
-            {"school_id": school_id, "date": {"$gte": week_ago}, "status": "absent"},
-            {"_id": 0, "teacher_id": 1, "date": 1}
-        ).to_list(500)
+        absent_teachers = await gd_find(self.session, "teacher_attendance", {
+            "school_id": school_id, "date": {"$gte": week_ago}, "status": "absent"
+        }, limit=500)
 
         absent_counts: Dict[str, int] = {}
         for rec in absent_teachers:
@@ -1155,16 +1149,14 @@ class HakimAIEngine:
                 "suggested_substitutes": subs,
             })
 
-        classes = await self.db.classes.find(
-            {"school_id": school_id},
-            {"_id": 0, "id": 1, "name": 1}
-        ).to_list(500)
+        classes = await gd_find(self.session, "classes", {
+            "school_id": school_id
+        }, limit=500)
 
         for cls in classes:
-            health_insight = await self.db.ai_insights.find_one(
-                {"type": "class_health", "entity_id": cls["id"], "school_id": school_id},
-                {"_id": 0, "data": 1}
-            )
+            health_insight = await gd_find_one(self.session, "ai_insights", {
+                "type": "class_health", "entity_id": cls["id"], "school_id": school_id
+            })
             if health_insight:
                 health_score = health_insight.get("data", {}).get("health_score", 100)
                 if health_score < 50:
@@ -1223,7 +1215,7 @@ class HakimAIEngine:
                 "is_read": False,
                 "created_at": now.isoformat(),
             }
-            await self.db.notifications.insert_one(notif)
+            await gd_insert(self.session, "notifications", notif)
 
         scan_record = {
             "id": str(uuid.uuid4()),
@@ -1239,7 +1231,7 @@ class HakimAIEngine:
             },
             "created_at": now.isoformat(),
         }
-        await self.db.ai_insights.insert_one(scan_record)
+        await gd_insert(self.session, "ai_insights", scan_record)
 
         return {
             "school_id": school_id,
