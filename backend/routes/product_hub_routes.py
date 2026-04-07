@@ -862,7 +862,7 @@ async def _get_allowed_mention_ids(current_user: dict) -> set:
                 "platform_admin", "platform_operations_manager",
                 "platform_technical_admin", "platform_support_specialist",
             ]}},
-            {"id": 1}, limit=200)
+            limit=200)
         ids = {u["id"] for u in all_admins if u.get("id")}
         own_id = get_user_id(current_user)
         ids.discard(own_id)
@@ -870,7 +870,7 @@ async def _get_allowed_mention_ids(current_user: dict) -> set:
 
     if is_platform_admin(current_user):
         main_users = await gd_find(db.session, "users", {"is_active": True, "email": {"$in": list(MAIN_ADMIN_EMAILS)}},
-            {"id": 1}, limit=10)
+            limit=10)
         return {u["id"] for u in main_users if u.get("id")}
 
     return set()

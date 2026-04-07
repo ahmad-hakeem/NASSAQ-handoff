@@ -101,7 +101,7 @@ async def get_school_id_from_year(year_id: str, current_user: dict) -> str:
     sid = get_school_id(current_user)
     if sid:
         return sid
-    year = await gd_find_one(db.session, "academic_years", {"id": year_id}, {"school_id": 1})
+    year = await gd_find_one(db.session, "academic_years", {"id": year_id})
     if year:
         return year.get("school_id", "")
     return ""

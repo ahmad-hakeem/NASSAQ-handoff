@@ -355,95 +355,205 @@ async def _gd_unset(session, collection: str, filters: dict, unset_fields: dict)
     return await gd_update_one(session, collection, filters, updates)
 
 
+def _eval_agg_expr(expr, doc):
+    if isinstance(expr, str) and expr.startswith("$"):
+        return doc.get(expr[1:])
+    if isinstance(expr, dict):
+        if "$ifNull" in expr:
+            parts = expr["$ifNull"]
+            val = _eval_agg_expr(parts[0], doc)
+            return val if val is not None else (parts[1] if len(parts) > 1 else None)
+        if "$cond" in expr:
+            cond = expr["$cond"]
+            if isinstance(cond, list) and len(cond) == 3:
+                test, t_val, f_val = cond
+            elif isinstance(cond, dict):
+                test, t_val, f_val = cond.get("if"), cond.get("then"), cond.get("else")
+            else:
+                return 0
+            if _eval_match_expr(test, doc):
+                return _eval_agg_expr(t_val, doc)
+            return _eval_agg_expr(f_val, doc)
+    return expr
+
+def _eval_match_expr(expr, doc):
+    if isinstance(expr, dict):
+        if "$eq" in expr:
+            parts = expr["$eq"]
+            return _eval_agg_expr(parts[0], doc) == _eval_agg_expr(parts[1], doc)
+        if "$ne" in expr:
+            parts = expr["$ne"]
+            return _eval_agg_expr(parts[0], doc) != _eval_agg_expr(parts[1], doc)
+        if "$gt" in expr:
+            parts = expr["$gt"]
+            a, b = _eval_agg_expr(parts[0], doc), _eval_agg_expr(parts[1], doc)
+            return (a or 0) > (b or 0)
+        if "$gte" in expr:
+            parts = expr["$gte"]
+            a, b = _eval_agg_expr(parts[0], doc), _eval_agg_expr(parts[1], doc)
+            return (a or 0) >= (b or 0)
+        if "$in" in expr:
+            parts = expr["$in"]
+            return _eval_agg_expr(parts[0], doc) in (_eval_agg_expr(parts[1], doc) or [])
+    return bool(expr)
+
+def _apply_match_filter(docs, match_filter):
+    result = []
+    for doc in docs:
+        ok = True
+        for k, v in match_filter.items():
+            dv = doc.get(k)
+            if isinstance(v, dict):
+                for op, ov in v.items():
+                    if op == "$gt" and not ((dv or 0) > ov):
+                        ok = False
+                    elif op == "$gte" and not ((dv or 0) >= ov):
+                        ok = False
+                    elif op == "$lt" and not ((dv or 0) < ov):
+                        ok = False
+                    elif op == "$lte" and not ((dv or 0) <= ov):
+                        ok = False
+                    elif op == "$ne" and dv == ov:
+                        ok = False
+                    elif op == "$in" and dv not in (ov or []):
+                        ok = False
+                    elif op == "$nin" and dv in (ov or []):
+                        ok = False
+            elif dv != v:
+                ok = False
+            if not ok:
+                break
+        if ok:
+            result.append(doc)
+    return result
+
+def _apply_group(docs, group_stage):
+    group_id = group_stage.get("_id")
+    groups = {}
+    for doc in docs:
+        if isinstance(group_id, str) and group_id.startswith("$"):
+            key = doc.get(group_id[1:])
+        elif isinstance(group_id, dict):
+            key_parts = {}
+            for gk, gv in group_id.items():
+                if isinstance(gv, str) and gv.startswith("$"):
+                    key_parts[gk] = doc.get(gv[1:])
+                else:
+                    key_parts[gk] = gv
+            key = tuple(sorted(key_parts.items()))
+        elif group_id is None:
+            key = None
+        else:
+            key = group_id
+
+        if key not in groups:
+            groups[key] = {"_id": dict(key) if isinstance(key, tuple) else key, "_docs": []}
+        groups[key]["_docs"].append(doc)
+
+    result = []
+    for key, group in groups.items():
+        row = {"_id": group["_id"]}
+        for field, expr in group_stage.items():
+            if field == "_id":
+                continue
+            if isinstance(expr, dict):
+                if "$sum" in expr:
+                    sum_expr = expr["$sum"]
+                    if isinstance(sum_expr, (int, float)):
+                        row[field] = sum_expr * len(group["_docs"]) if sum_expr != 1 else len(group["_docs"])
+                    elif isinstance(sum_expr, str) and sum_expr.startswith("$"):
+                        row[field] = sum(doc.get(sum_expr[1:], 0) or 0 for doc in group["_docs"])
+                    elif isinstance(sum_expr, dict):
+                        row[field] = sum(_eval_agg_expr(sum_expr, doc) or 0 for doc in group["_docs"])
+                    else:
+                        row[field] = 0
+                elif "$avg" in expr:
+                    avg_field = expr["$avg"]
+                    if isinstance(avg_field, str) and avg_field.startswith("$"):
+                        vals = [doc.get(avg_field[1:], 0) or 0 for doc in group["_docs"]]
+                        row[field] = sum(vals) / len(vals) if vals else 0
+                elif "$first" in expr:
+                    first_field = expr["$first"]
+                    if isinstance(first_field, str) and first_field.startswith("$"):
+                        row[field] = group["_docs"][0].get(first_field[1:]) if group["_docs"] else None
+                elif "$push" in expr:
+                    push_field = expr["$push"]
+                    if isinstance(push_field, str) and push_field.startswith("$"):
+                        row[field] = [doc.get(push_field[1:]) for doc in group["_docs"]]
+                    elif isinstance(push_field, dict):
+                        row[field] = [{pk: _eval_agg_expr(pv, doc) for pk, pv in push_field.items()} for doc in group["_docs"]]
+                    else:
+                        row[field] = [push_field for _ in group["_docs"]]
+                elif "$max" in expr:
+                    max_field = expr["$max"]
+                    if isinstance(max_field, str) and max_field.startswith("$"):
+                        vals = [doc.get(max_field[1:]) for doc in group["_docs"] if doc.get(max_field[1:]) is not None]
+                        row[field] = max(vals) if vals else None
+                elif "$min" in expr:
+                    min_field = expr["$min"]
+                    if isinstance(min_field, str) and min_field.startswith("$"):
+                        vals = [doc.get(min_field[1:]) for doc in group["_docs"] if doc.get(min_field[1:]) is not None]
+                        row[field] = min(vals) if vals else None
+                elif "$count" in expr:
+                    row[field] = len(group["_docs"])
+            elif isinstance(expr, str) and expr.startswith("$"):
+                row[field] = group["_docs"][0].get(expr[1:]) if group["_docs"] else None
+        result.append(row)
+    return result
+
 async def _gd_aggregate(session, collection: str, pipeline: list) -> List[dict]:
-    match_filter = {}
+    initial_match = {}
+    first_stage = pipeline[0] if pipeline else {}
+    if "$match" in first_stage:
+        initial_match = first_stage["$match"]
+
+    docs = await gd_find(session, collection, initial_match, limit=50000)
+
     for stage in pipeline:
         if "$match" in stage:
-            match_filter = stage["$match"]
-            break
-    docs = await gd_find(session, collection, match_filter, limit=50000)
-    
-    group_stage = None
-    sort_stage = None
-    limit_val = None
-    project_stage = None
-    add_fields_stage = None
-    
-    for stage in pipeline:
-        if "$group" in stage:
-            group_stage = stage["$group"]
+            if stage is first_stage:
+                continue
+            docs = _apply_match_filter(docs, stage["$match"])
+        elif "$group" in stage:
+            docs = _apply_group(docs, stage["$group"])
         elif "$sort" in stage:
-            sort_stage = stage["$sort"]
+            for field, direction in reversed(list(stage["$sort"].items())):
+                docs = sorted(docs, key=lambda d, f=field: d.get(f) or "", reverse=(direction == -1))
         elif "$limit" in stage:
-            limit_val = stage["$limit"]
-        elif "$project" in stage:
-            project_stage = stage["$project"]
+            docs = docs[:stage["$limit"]]
+        elif "$count" in stage:
+            count_field = stage["$count"]
+            docs = [{count_field: len(docs)}]
         elif "$addFields" in stage:
-            add_fields_stage = stage["$addFields"]
-    
-    if group_stage:
-        group_id = group_stage.get("_id")
-        groups = {}
-        for doc in docs:
-            if isinstance(group_id, str) and group_id.startswith("$"):
-                key = doc.get(group_id[1:])
-            elif isinstance(group_id, dict):
-                key_parts = {}
-                for gk, gv in group_id.items():
-                    if isinstance(gv, str) and gv.startswith("$"):
-                        key_parts[gk] = doc.get(gv[1:])
-                    else:
-                        key_parts[gk] = gv
-                key = tuple(sorted(key_parts.items()))
-            elif group_id is None:
-                key = None
+            for doc in docs:
+                for k, v in stage["$addFields"].items():
+                    doc[k] = _eval_agg_expr(v, doc)
+        elif "$project" in stage:
+            proj = stage["$project"]
+            if "$slice" in str(proj):
+                for doc in docs:
+                    for k, v in proj.items():
+                        if isinstance(v, dict) and "$slice" in v:
+                            arr = v["$slice"]
+                            src = _eval_agg_expr(arr[0], doc) if isinstance(arr, list) else []
+                            n = arr[1] if isinstance(arr, list) and len(arr) > 1 else len(src)
+                            doc[k] = (src or [])[:n]
+        elif "$unwind" in stage:
+            unwind = stage["$unwind"]
+            if isinstance(unwind, str):
+                field = unwind.lstrip("$")
             else:
-                key = group_id
-            
-            if key not in groups:
-                groups[key] = {"_id": dict(key) if isinstance(key, tuple) else key, "_docs": []}
-            groups[key]["_docs"].append(doc)
-        
-        result = []
-        for key, group in groups.items():
-            row = {"_id": group["_id"]}
-            for field, expr in group_stage.items():
-                if field == "_id":
-                    continue
-                if isinstance(expr, dict):
-                    if "$sum" in expr:
-                        sum_expr = expr["$sum"]
-                        if isinstance(sum_expr, str) and sum_expr.startswith("$"):
-                            row[field] = sum(doc.get(sum_expr[1:], 0) or 0 for doc in group["_docs"])
-                        elif sum_expr == 1:
-                            row[field] = len(group["_docs"])
-                        else:
-                            row[field] = sum_expr * len(group["_docs"])
-                    elif "$avg" in expr:
-                        avg_field = expr["$avg"]
-                        if isinstance(avg_field, str) and avg_field.startswith("$"):
-                            vals = [doc.get(avg_field[1:], 0) or 0 for doc in group["_docs"]]
-                            row[field] = sum(vals) / len(vals) if vals else 0
-                    elif "$first" in expr:
-                        first_field = expr["$first"]
-                        if isinstance(first_field, str) and first_field.startswith("$"):
-                            row[field] = group["_docs"][0].get(first_field[1:]) if group["_docs"] else None
-                    elif "$push" in expr:
-                        push_field = expr["$push"]
-                        if isinstance(push_field, str) and push_field.startswith("$"):
-                            row[field] = [doc.get(push_field[1:]) for doc in group["_docs"]]
-                    elif "$count" in expr:
-                        row[field] = len(group["_docs"])
-                elif isinstance(expr, str) and expr.startswith("$"):
-                    row[field] = group["_docs"][0].get(expr[1:]) if group["_docs"] else None
-            result.append(row)
-        docs = result
-    
-    if sort_stage:
-        for field, direction in reversed(list(sort_stage.items())):
-            docs = sorted(docs, key=lambda d: d.get(field, ""), reverse=(direction == -1))
-    
-    if limit_val:
-        docs = docs[:limit_val]
-    
+                field = unwind.get("path", "").lstrip("$")
+            new_docs = []
+            for doc in docs:
+                arr = doc.get(field, [])
+                if isinstance(arr, list):
+                    for item in arr:
+                        new_doc = dict(doc)
+                        new_doc[field] = item
+                        new_docs.append(new_doc)
+                else:
+                    new_docs.append(doc)
+            docs = new_docs
+
     return docs

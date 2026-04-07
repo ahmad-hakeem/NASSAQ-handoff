@@ -785,7 +785,7 @@ async def delete_parent(
 
     matching_students = await gd_find(db.session, "students", {"parent_ids": parent_id})
     for stu in matching_students:
-        await _gd_pull(db.session, "students", {"id": stu["id"]}, "parent_ids", parent_id)
+        await _gd_pull(db.session, "students", {"id": stu["id"]}, {"parent_ids": parent_id})
 
     if user_id:
         await gd_delete_one(db.session, "users", {"id": user_id})
