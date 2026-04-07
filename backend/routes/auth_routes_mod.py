@@ -39,6 +39,11 @@ async def register(user_data: UserCreate):
     user_data.role = UserRole.STUDENT
     user_data.tenant_id = None
 
+    try:
+        validate_password_complexity(user_data.password)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     existing = await gd_find_one(db.session, "users", {"email": user_data.email})
     if existing:
         raise HTTPException(status_code=400, detail="البريد الإلكتروني مسجل مسبقاً")

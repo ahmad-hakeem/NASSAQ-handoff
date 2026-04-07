@@ -565,7 +565,7 @@ async def gd_update_one(session, collection: str, filters: dict, updates: dict) 
     conds = _build_filter_conditions(GenericDocument, filters)
     if conds:
         stmt = stmt.where(and_(*conds))
-    stmt = stmt.limit(1)
+    stmt = stmt.limit(1).with_for_update()
     result = await session.execute(stmt)
     obj = result.scalars().first()
     if not obj:
@@ -673,6 +673,7 @@ async def gd_update_many(session, collection: str, filters: dict, updates: dict)
     conds = _build_filter_conditions(GenericDocument, filters)
     if conds:
         stmt = stmt.where(and_(*conds))
+    stmt = stmt.with_for_update()
     result = await session.execute(stmt)
     objs = result.scalars().all()
     count = 0

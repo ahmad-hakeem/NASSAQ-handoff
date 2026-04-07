@@ -49,6 +49,9 @@ export const WebSocketProvider = ({ children }) => {
   const wsRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
   const reconnectDelayRef = useRef(1000);
+  const reconnectAttemptsRef = useRef(0);
+  const MAX_RECONNECT_ATTEMPTS = 15;
+  const isConnectingRef = useRef(false);
   const audioRef = useRef(null);
   
   const [isConnected, setIsConnected] = useState(false);
@@ -171,10 +174,23 @@ export const WebSocketProvider = ({ children }) => {
   // Connect to WebSocket
   const connect = useCallback(() => {
     if (!token || !WS_URL) return;
+    if (isConnectingRef.current) return;
+    isConnectingRef.current = true;
     
-    // Close existing connection
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+    
     if (wsRef.current) {
-      wsRef.current.close();
+      if (wsRef.current.pingInterval) {
+        clearInterval(wsRef.current.pingInterval);
+      }
+      wsRef.current.onclose = null;
+      wsRef.current.onerror = null;
+      wsRef.current.onmessage = null;
+      wsRef.current.close(1000, 'Replacing connection');
+      wsRef.current = null;
     }
     
     try {
@@ -184,6 +200,8 @@ export const WebSocketProvider = ({ children }) => {
         if (process.env.NODE_ENV === 'development') console.info('WebSocket connected');
         setIsConnected(true);
         reconnectDelayRef.current = 1000;
+        reconnectAttemptsRef.current = 0;
+        isConnectingRef.current = false;
         
         const pingInterval = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {
@@ -213,29 +231,38 @@ export const WebSocketProvider = ({ children }) => {
       ws.onclose = (event) => {
         if (process.env.NODE_ENV === 'development') console.info('WebSocket disconnected:', event.code);
         setIsConnected(false);
+        isConnectingRef.current = false;
         
-        // Clear ping interval
         if (ws.pingInterval) {
           clearInterval(ws.pingInterval);
         }
         
-        if (event.code !== 1000 && token) {
+        if (event.code === 4001) {
+          if (process.env.NODE_ENV === 'development') console.warn('WebSocket auth failed (4001), not reconnecting');
+          return;
+        }
+        
+        if (event.code !== 1000 && token && reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
+          reconnectAttemptsRef.current += 1;
           const delay = reconnectDelayRef.current;
           reconnectDelayRef.current = Math.min(delay * 2, 30000);
           reconnectTimeoutRef.current = setTimeout(() => {
-            if (process.env.NODE_ENV === 'development') console.info(`WebSocket reconnecting (delay=${delay}ms)...`);
+            if (process.env.NODE_ENV === 'development') console.info(`WebSocket reconnecting (attempt=${reconnectAttemptsRef.current}, delay=${delay}ms)...`);
             connect();
           }, delay);
+        } else if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
+          if (process.env.NODE_ENV === 'development') console.warn('WebSocket max reconnect attempts reached, giving up');
         }
       };
       
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
+      ws.onerror = () => {
+        isConnectingRef.current = false;
       };
       
       wsRef.current = ws;
       
     } catch (err) {
+      isConnectingRef.current = false;
       console.error('WebSocket connection error:', err);
     }
   }, [token, handleNotification]);

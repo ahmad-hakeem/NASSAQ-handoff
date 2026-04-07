@@ -286,6 +286,7 @@ export default function SecurityCenterPage() {
 
   React.useEffect(() => {
     fetchSecurityData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   
   // ============= NEW SECURITY API FUNCTIONS =============
@@ -405,6 +406,7 @@ export default function SecurityCenterPage() {
   // Load roles on component mount
   React.useEffect(() => {
     fetchRoles();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   
   // Reset search when dialog opens
