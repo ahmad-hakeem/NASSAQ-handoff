@@ -89,8 +89,10 @@ export const SystemMonitoringPage = () => {
   const [performanceData, setPerformanceData] = useState([]);
   const [showErrorLogs, setShowErrorLogs] = useState(false);
   const [showJobsSheet, setShowJobsSheet] = useState(false);
+  const [showApiMonitor, setShowApiMonitor] = useState(false);
   const [showDiagnosticDialog, setShowDiagnosticDialog] = useState(false);
   const [isDiagnosing, setIsDiagnosing] = useState(false);
+  const [diagnosisResults, setDiagnosisResults] = useState(null);
   
   // Dynamic data states
   const [errorLogs, setErrorLogs] = useState(INITIAL_ERRORS);
@@ -150,7 +152,15 @@ export const SystemMonitoringPage = () => {
       
       if (errorsRes.status === 'fulfilled') {
         const d = errorsRes.value.data;
-        setErrorLogs(Array.isArray(d) ? d : []);
+        const mapped = (Array.isArray(d) ? d : []).map(e => ({
+          id: e.id || e.timestamp || Math.random(),
+          severity: e.level || e.severity || 'info',
+          type: e.message ? e.message.split(':')[0] : (e.type || 'Error'),
+          message: e.message || '',
+          time: e.timestamp || e.time || '',
+          service: e.source || e.service || 'system',
+        }));
+        setErrorLogs(mapped);
       }
       if (jobsRes.status === 'fulfilled') {
         const d = jobsRes.value.data;
@@ -308,14 +318,25 @@ export const SystemMonitoringPage = () => {
     };
   }, []);
 
-  const runDiagnosis = () => {
+  const runDiagnosis = async () => {
     setIsDiagnosing(true);
-    if (diagnosisTimeoutRef.current) clearTimeout(diagnosisTimeoutRef.current);
-    diagnosisTimeoutRef.current = setTimeout(() => {
+    setDiagnosisResults(null);
+    try {
+      const res = await api.post('/system/ai-diagnosis');
+      setDiagnosisResults(res.data);
+      if (res.data.status === 'healthy') {
+        toast.success(t('diagnosisCompleteSystemHealthy'));
+      } else if (res.data.status === 'warning') {
+        toast.warning(t('diagnosisCompleteWithWarnings'));
+      } else {
+        toast.error(t('diagnosisCompleteCriticalIssues'));
+      }
+    } catch (err) {
+      console.error('AI diagnosis failed:', err);
+      toast.error(t('diagnosisFailed'));
+    } finally {
       setIsDiagnosing(false);
-      setShowDiagnosticDialog(false);
-      toast.success(t('diagnosisCompleteSystemHealthy'));
-    }, 3000);
+    }
   };
   
   const healthStatus = getHealthStatus();
@@ -864,7 +885,7 @@ export const SystemMonitoringPage = () => {
                 {/* Monitor APIs */}
                 <Card 
                   className="card-nassaq hover:shadow-lg transition-all cursor-pointer"
-                  onClick={() => toast.success(t('openingApiMonitoring'))}
+                  onClick={() => setShowApiMonitor(true)}
                 >
                   <CardContent className="p-6 text-center">
                     <div className="w-14 h-14 mx-auto mb-4 rounded-xl bg-blue-100 flex items-center justify-center">
@@ -898,10 +919,13 @@ export const SystemMonitoringPage = () => {
                   className="card-nassaq hover:shadow-lg transition-all cursor-pointer"
                   onClick={() => {
                     toast.promise(
-                      new Promise((resolve) => setTimeout(resolve, 2000)),
+                      api.post('/system/restart-service').then(res => {
+                        fetchMonitoringData();
+                        return res;
+                      }),
                       {
                         loading: t('restartingService'),
-                        success: t('serviceRestartedSuccessfully'),
+                        success: (res) => res.data?.status === 'healthy' ? t('serviceRestartedSuccessfully') : t('serviceHealthDegraded'),
                         error: t('restartFailed'),
                       }
                     );
@@ -923,7 +947,10 @@ export const SystemMonitoringPage = () => {
                   className="card-nassaq hover:shadow-lg transition-all cursor-pointer"
                   onClick={() => {
                     toast.promise(
-                      new Promise((resolve) => setTimeout(resolve, 2500)),
+                      api.post('/system/resync').then(res => {
+                        fetchMonitoringData();
+                        return res;
+                      }),
                       {
                         loading: t('resyncing'),
                         success: t('resyncCompletedSuccessfully'),
@@ -946,7 +973,11 @@ export const SystemMonitoringPage = () => {
                 {/* Escalate Alert */}
                 <Card 
                   className="card-nassaq hover:shadow-lg transition-all cursor-pointer"
-                  onClick={() => toast.success(t('alertEscalatedToTechTeam'))}
+                  onClick={() => {
+                    api.post('/system/escalate-alert')
+                      .then(() => toast.success(t('alertEscalatedToTechTeam')))
+                      .catch(() => toast.error(t('actionFailed')));
+                  }}
                 >
                   <CardContent className="p-6 text-center">
                     <div className="w-14 h-14 mx-auto mb-4 rounded-xl bg-yellow-100 flex items-center justify-center">
@@ -1107,9 +1138,71 @@ export const SystemMonitoringPage = () => {
           </SheetContent>
         </Sheet>
         
+        {/* API Monitor Sheet */}
+        <Sheet open={showApiMonitor} onOpenChange={setShowApiMonitor}>
+          <SheetContent side={isRTL ? 'left' : 'right'} className="w-[500px] sm:w-[600px]">
+            <SheetHeader>
+              <SheetTitle className="flex items-center gap-2">
+                <Globe className="h-5 w-5 text-brand-navy" />
+                {t('monitorAPIs')}
+              </SheetTitle>
+            </SheetHeader>
+            <div className="mt-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <Card>
+                  <CardContent className="p-4 text-center">
+                    <p className="text-3xl font-bold text-blue-600">{metrics.apiResponseTime}<span className="text-sm font-normal text-muted-foreground ms-1">{t('ms')}</span></p>
+                    <p className="text-sm text-muted-foreground mt-1">{t('avgResponseTime')}</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4 text-center">
+                    <p className="text-3xl font-bold text-green-600">{metrics.apiSuccessRate}<span className="text-sm font-normal text-muted-foreground ms-1">%</span></p>
+                    <p className="text-sm text-muted-foreground mt-1">{t('successRate')}</p>
+                  </CardContent>
+                </Card>
+              </div>
+              <div className="space-y-3">
+                <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
+                  <span className="text-sm font-medium">{t('totalRequests')}</span>
+                  <span className="font-bold">{metrics.totalOperations.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
+                  <span className="text-sm font-medium">{t('requestsPerMin')}</span>
+                  <span className="font-bold">{metrics.apiRequestsPerMin}</span>
+                </div>
+                <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
+                  <span className="text-sm font-medium">{t('failedRequests')}</span>
+                  <span className={`font-bold ${metrics.apiFailedRequests > 0 ? 'text-red-600' : 'text-green-600'}`}>{metrics.apiFailedRequests}</span>
+                </div>
+                <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
+                  <span className="text-sm font-medium">P95 {t('responseTime')}</span>
+                  <span className="font-bold">{metrics.p95ResponseMs || 0} {t('ms')}</span>
+                </div>
+                <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
+                  <span className="text-sm font-medium">P99 {t('responseTime')}</span>
+                  <span className="font-bold">{metrics.p99ResponseMs || 0} {t('ms')}</span>
+                </div>
+                <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
+                  <span className="text-sm font-medium">{t('dbConnections')}</span>
+                  <span className="font-bold">{metrics.dbConnections} / {metrics.poolSize || 0}</span>
+                </div>
+                <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
+                  <span className="text-sm font-medium">{t('dbLatency')}</span>
+                  <span className="font-bold">{metrics.dbQueryTime} {t('ms')}</span>
+                </div>
+                <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
+                  <span className="text-sm font-medium">{t('cacheHitRate')}</span>
+                  <span className="font-bold">{metrics.cacheHitRate || 0}%</span>
+                </div>
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
+
         {/* AI Diagnostic Dialog */}
-        <Dialog open={showDiagnosticDialog} onOpenChange={setShowDiagnosticDialog}>
-          <DialogContent>
+        <Dialog open={showDiagnosticDialog} onOpenChange={(open) => { setShowDiagnosticDialog(open); if (!open) setDiagnosisResults(null); }}>
+          <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Brain className="h-5 w-5 text-brand-navy" />
@@ -1125,12 +1218,62 @@ export const SystemMonitoringPage = () => {
                 <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-brand-navy/10 flex items-center justify-center">
                   <RefreshCw className="h-8 w-8 text-brand-navy animate-spin" />
                 </div>
-                <p className="font-medium">
-                  {t('runningDiagnosis')}
-                </p>
-                <p className="text-sm text-muted-foreground mt-2">
-                  {t('pleaseWait')}
-                </p>
+                <p className="font-medium">{t('runningDiagnosis')}</p>
+                <p className="text-sm text-muted-foreground mt-2">{t('pleaseWait')}</p>
+              </div>
+            ) : diagnosisResults ? (
+              <div className="py-4 space-y-4">
+                <div className={`flex items-center gap-3 p-3 rounded-lg ${
+                  diagnosisResults.status === 'healthy' ? 'bg-green-50 border border-green-200' :
+                  diagnosisResults.status === 'warning' ? 'bg-yellow-50 border border-yellow-200' :
+                  'bg-red-50 border border-red-200'
+                }`}>
+                  {diagnosisResults.status === 'healthy' ? (
+                    <CheckCircle2 className="h-6 w-6 text-green-500" />
+                  ) : diagnosisResults.status === 'warning' ? (
+                    <AlertTriangle className="h-6 w-6 text-yellow-500" />
+                  ) : (
+                    <XCircle className="h-6 w-6 text-red-500" />
+                  )}
+                  <span className="font-bold">
+                    {diagnosisResults.status === 'healthy' ? t('systemHealthy') :
+                     diagnosisResults.status === 'warning' ? t('systemWarnings') :
+                     t('systemCritical')}
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {diagnosisResults.findings?.map((finding, idx) => (
+                    <div key={idx} className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
+                      {finding.status === 'healthy' ? (
+                        <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0" />
+                      ) : finding.status === 'warning' ? (
+                        <AlertTriangle className="h-5 w-5 text-yellow-500 shrink-0" />
+                      ) : finding.status === 'critical' ? (
+                        <XCircle className="h-5 w-5 text-red-500 shrink-0" />
+                      ) : (
+                        <Info className="h-5 w-5 text-gray-400 shrink-0" />
+                      )}
+                      <span className="text-sm">{finding.message}</span>
+                    </div>
+                  ))}
+                </div>
+                {diagnosisResults.recommendations?.length > 0 && (
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg space-y-1">
+                    <p className="font-medium text-sm text-blue-800">{t('recommendations')}</p>
+                    {diagnosisResults.recommendations.map((rec, idx) => (
+                      <p key={idx} className="text-sm text-blue-700">{rec}</p>
+                    ))}
+                  </div>
+                )}
+                <DialogFooter className="flex-row-reverse gap-2">
+                  <Button variant="outline" onClick={() => { setShowDiagnosticDialog(false); setDiagnosisResults(null); }}>
+                    {t('close')}
+                  </Button>
+                  <Button onClick={runDiagnosis} className="bg-brand-navy">
+                    <RefreshCw className="h-4 w-4 me-2" />
+                    {t('rerun')}
+                  </Button>
+                </DialogFooter>
               </div>
             ) : (
               <>

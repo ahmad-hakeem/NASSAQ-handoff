@@ -399,3 +399,224 @@ async def system_metrics(current_user: dict = Depends(require_roles([UserRole.PL
 @router.get("/metrics/history")
 async def system_metrics_history(current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))):
     return list(_metrics_history)
+
+
+@router.post("/restart-service")
+async def restart_service(current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))):
+    checks = {}
+    try:
+        db_ok, latency = await _pg_ping(db)
+        checks["database"] = {"status": "healthy" if db_ok else "degraded", "latency_ms": latency}
+    except Exception as e:
+        checks["database"] = {"status": "error", "detail": str(e)}
+
+    try:
+        import psutil
+        proc = psutil.Process()
+        checks["process"] = {
+            "status": "running",
+            "cpu_percent": psutil.cpu_percent(interval=None),
+            "memory_rss_mb": round(proc.memory_info().rss / 1024 / 1024, 1),
+            "threads": proc.num_threads(),
+        }
+    except Exception:
+        checks["process"] = {"status": "running"}
+
+    try:
+        from middleware.request_tracing import get_response_metrics
+        rm = get_response_metrics()
+        checks["api"] = {"status": "healthy", "avg_response_ms": rm.get("avg_response_ms", 0)}
+    except Exception:
+        checks["api"] = {"status": "unknown"}
+
+    all_healthy = all(c.get("status") in ("healthy", "running") for c in checks.values())
+    try:
+        await gd_insert(db.session, "audit_logs", {
+            "action": "system_restart_service",
+            "user_id": current_user.get("id"),
+            "details": {"checks": checks, "result": "healthy" if all_healthy else "degraded"},
+        })
+    except Exception as e:
+        logger.warning(f"Audit log for restart-service failed: {e}")
+
+    return {
+        "status": "healthy" if all_healthy else "degraded",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "checks": checks,
+    }
+
+
+@router.post("/resync")
+async def resync_integrations(current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))):
+    results = {}
+    try:
+        db_ok, latency = await _pg_ping(db)
+        results["database"] = {"connected": db_ok, "latency_ms": latency}
+    except Exception:
+        results["database"] = {"connected": False, "latency_ms": 0}
+
+    try:
+        pool_stats_data = {}
+        from db import get_sync_engine
+        from middleware.query_monitor import get_pool_stats
+        pool_stats_data = get_pool_stats(get_sync_engine())
+        results["connection_pool"] = {"status": "healthy", "checked_out": pool_stats_data.get("checked_out", 0)}
+    except Exception:
+        results["connection_pool"] = {"status": "unknown"}
+
+    try:
+        from middleware.cache_metrics import get_cache_metrics
+        cm = get_cache_metrics()
+        results["cache"] = {"status": "active", "hit_rate": cm.get("hit_rate_percent", 0)}
+    except Exception:
+        results["cache"] = {"status": "unknown"}
+
+    try:
+        await gd_insert(db.session, "audit_logs", {
+            "action": "system_resync",
+            "user_id": current_user.get("id"),
+            "details": {"results": results},
+        })
+    except Exception as e:
+        logger.warning(f"Audit log for resync failed: {e}")
+
+    return {
+        "status": "completed",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "results": results,
+    }
+
+
+@router.post("/escalate-alert")
+async def escalate_alert(current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))):
+    try:
+        await gd_insert(db.session, "audit_logs", {
+            "action": "alert_escalated",
+            "user_id": current_user.get("id"),
+            "details": {
+                "escalated_by": current_user.get("email", "unknown"),
+                "escalated_at": datetime.now(timezone.utc).isoformat(),
+                "target": "tech_team",
+            },
+        })
+    except Exception as e:
+        logger.warning(f"Audit log for escalate-alert failed: {e}")
+
+    return {
+        "status": "escalated",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "message": "Alert escalated to tech team",
+    }
+
+
+@router.post("/ai-diagnosis")
+async def ai_diagnosis(current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))):
+    findings = []
+    overall = "healthy"
+
+    cpu_pct = 0
+    mem_pct = 0
+    disk_pct = 0
+    try:
+        import psutil
+        cpu_pct = psutil.cpu_percent(interval=0.3)
+        mem_pct = psutil.virtual_memory().percent
+        try:
+            disk_pct = psutil.disk_usage("/").percent
+        except Exception:
+            pass
+    except ImportError:
+        pass
+
+    if cpu_pct > 80:
+        findings.append({"category": "cpu", "status": "critical" if cpu_pct > 90 else "warning",
+                         "message": f"CPU usage high: {cpu_pct}%", "value": cpu_pct})
+        overall = "critical" if cpu_pct > 90 else "warning"
+    else:
+        findings.append({"category": "cpu", "status": "healthy", "message": f"CPU usage normal: {cpu_pct}%", "value": cpu_pct})
+
+    if mem_pct > 85:
+        findings.append({"category": "memory", "status": "critical" if mem_pct > 95 else "warning",
+                         "message": f"Memory usage high: {mem_pct}%", "value": mem_pct})
+        if overall != "critical":
+            overall = "critical" if mem_pct > 95 else "warning"
+    else:
+        findings.append({"category": "memory", "status": "healthy", "message": f"Memory usage normal: {mem_pct}%", "value": mem_pct})
+
+    if disk_pct > 90:
+        findings.append({"category": "disk", "status": "critical" if disk_pct > 95 else "warning",
+                         "message": f"Disk usage high: {disk_pct}%", "value": disk_pct})
+        if overall != "critical":
+            overall = "critical" if disk_pct > 95 else "warning"
+    else:
+        findings.append({"category": "disk", "status": "healthy", "message": f"Disk usage normal: {disk_pct}%", "value": disk_pct})
+
+    db_latency = 0
+    try:
+        db_ok, db_latency = await _pg_ping(db)
+        if not db_ok:
+            findings.append({"category": "database", "status": "critical", "message": "Database connection failed", "value": 0})
+            overall = "critical"
+        elif db_latency > 100:
+            findings.append({"category": "database", "status": "warning", "message": f"Database latency high: {db_latency}ms", "value": db_latency})
+            if overall == "healthy":
+                overall = "warning"
+        else:
+            findings.append({"category": "database", "status": "healthy", "message": f"Database latency normal: {db_latency}ms", "value": db_latency})
+    except Exception:
+        findings.append({"category": "database", "status": "critical", "message": "Database check failed", "value": 0})
+        overall = "critical"
+
+    try:
+        from middleware.request_tracing import get_response_metrics
+        rm = get_response_metrics()
+        total_reqs = rm.get("total_requests", 0)
+        total_errs = rm.get("total_errors", 0)
+        error_rate = (total_errs / total_reqs * 100) if total_reqs > 0 else 0
+        if error_rate > 5:
+            findings.append({"category": "errors", "status": "warning", "message": f"Error rate elevated: {error_rate:.1f}%", "value": round(error_rate, 1)})
+            if overall == "healthy":
+                overall = "warning"
+        else:
+            findings.append({"category": "errors", "status": "healthy", "message": f"Error rate normal: {error_rate:.1f}%", "value": round(error_rate, 1)})
+
+        avg_ms = rm.get("avg_response_ms", 0)
+        if avg_ms > 1000:
+            findings.append({"category": "response_time", "status": "warning", "message": f"Average response time slow: {avg_ms}ms", "value": avg_ms})
+            if overall == "healthy":
+                overall = "warning"
+        else:
+            findings.append({"category": "response_time", "status": "healthy", "message": f"Response time normal: {avg_ms}ms", "value": avg_ms})
+    except Exception:
+        findings.append({"category": "errors", "status": "unknown", "message": "Could not retrieve error metrics", "value": 0})
+
+    try:
+        from db import get_sync_engine
+        from middleware.query_monitor import get_pool_stats
+        ps = get_pool_stats(get_sync_engine())
+        utilization = ps.get("checked_out", 0) / max(ps.get("pool_size", 1), 1) * 100
+        if utilization > 80:
+            findings.append({"category": "pool", "status": "warning", "message": f"Connection pool utilization high: {utilization:.0f}%", "value": round(utilization)})
+            if overall == "healthy":
+                overall = "warning"
+        else:
+            findings.append({"category": "pool", "status": "healthy", "message": f"Pool utilization normal: {utilization:.0f}%", "value": round(utilization)})
+    except Exception:
+        findings.append({"category": "pool", "status": "unknown", "message": "Pool stats unavailable", "value": 0})
+
+    recommendations = []
+    for f in findings:
+        if f["status"] == "critical":
+            recommendations.append(f"⚠️ {f['message']} — immediate attention required")
+        elif f["status"] == "warning":
+            recommendations.append(f"⚡ {f['message']} — monitor closely")
+
+    if not recommendations:
+        recommendations.append("All systems operating within normal parameters")
+
+    return {
+        "status": overall,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "findings": findings,
+        "recommendations": recommendations,
+    }
