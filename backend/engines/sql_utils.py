@@ -110,7 +110,7 @@ def _resolve_json_path(model_cls, field_path: str):
     return expr
 
 def _build_filter_conditions(model_cls, filters: dict):
-    """Translate Mongo-style filter dict to SQLAlchemy WHERE conditions.
+    """Translate dict-style filter to SQLAlchemy WHERE conditions.
 
     Supported operators: $or, $and, $expr ($ne/$eq field comparisons),
     $gt/$gte/$lt/$lte/$ne/$in/$nin/$exists/$regex on JSONB fields.
@@ -240,8 +240,14 @@ async def gd_find(session, collection: str, filters: dict = None,
     return models_to_dicts(result.scalars().all())
 
 
-async def gd_find_one(session, collection: str, filters: dict = None) -> Optional[dict]:
-    results = await gd_find(session, collection, filters, limit=1)
+async def gd_find_one(session, collection: str, filters: dict = None, sort=None) -> Optional[dict]:
+    order_by = None
+    desc_order = True
+    if sort and isinstance(sort, list) and len(sort) > 0:
+        field, direction = sort[0]
+        order_by = field
+        desc_order = (direction == -1)
+    results = await gd_find(session, collection, filters, order_by=order_by, desc_order=desc_order, limit=1)
     return results[0] if results else None
 
 
@@ -293,6 +299,27 @@ async def gd_update_one(session, collection: str, filters: dict, updates: dict) 
     obj.data = current_data
     await session.flush()
     return 1
+
+
+async def gd_upsert(session, collection: str, filters: dict, updates: dict) -> int:
+    from pg_models import GenericDocument
+    stmt = select(GenericDocument).where(GenericDocument._collection == collection)
+    conds = _build_filter_conditions(GenericDocument, filters)
+    if conds:
+        stmt = stmt.where(and_(*conds))
+    stmt = stmt.limit(1)
+    result = await session.execute(stmt)
+    obj = result.scalars().first()
+    if obj:
+        current_data = dict(obj.data) if obj.data else {}
+        _apply_dict_updates(current_data, updates)
+        obj.data = current_data
+        await session.flush()
+        return 1
+    else:
+        merged = dict(filters)
+        merged.update(updates)
+        return await gd_insert(session, collection, merged)
 
 
 async def gd_update_many(session, collection: str, filters: dict, updates: dict) -> int:
@@ -625,7 +652,7 @@ def _apply_group(docs, group_stage):
     return result
 
 async def _gd_aggregate(session, collection: str, pipeline: list) -> List[dict]:
-    """Mongo-compat aggregate pipeline emulation over gd_find.
+    """Aggregate pipeline emulation over gd_find.
 
     Supported stages: $match, $group, $sort, $limit, $count, $addFields,
     $project, $unwind.  Fetches up to 50k docs from SQL then processes

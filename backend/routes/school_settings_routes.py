@@ -9,6 +9,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 import uuid
 import logging
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
 
 logger = logging.getLogger("nassaq.school_settings")
 
@@ -61,7 +62,7 @@ def setup_school_settings_routes(db, get_current_user, require_roles, UserRole):
 
     async def log_audit(school_id: str, user: dict, action: str, entity: str, entity_id: str, changes: dict = None):
         try:
-            await db.audit_logs.insert_one({
+            await gd_insert(db.session, "audit_logs", {
                 "id": str(uuid.uuid4()),
                 "school_id": school_id,
                 "user_id": user.get("id"),
@@ -89,12 +90,12 @@ def setup_school_settings_routes(db, get_current_user, require_roles, UserRole):
         school_id = await get_school_id_from_user(current_user)
         
         # Get school info
-        school = await db.schools.find_one({"id": school_id}, {"_id": 0})
+        school = await gd_find_one(db.session, "schools", {"id": school_id})
         if not school:
             raise HTTPException(status_code=404, detail="المدرسة غير موجودة")
         
         # Get settings
-        settings = await db.school_settings.find_one({"school_id": school_id}, {"_id": 0})
+        settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
         if not settings:
             settings = {
                 "school_id": school_id,
@@ -112,22 +113,22 @@ def setup_school_settings_routes(db, get_current_user, require_roles, UserRole):
             }
         
         # Get academic years
-        academic_years = await db.academic_years.find({"school_id": school_id}, {"_id": 0}).to_list(20)
-        academic_terms = await db.academic_terms.find({"school_id": school_id}, {"_id": 0}).to_list(20)
+        academic_years = await gd_find(db.session, "academic_years", {"school_id": school_id}, limit=20)
+        academic_terms = await gd_find(db.session, "academic_terms", {"school_id": school_id}, limit=20)
         
         # Get stages/grades/classes
-        stages = await db.academic_stages.find({"school_id": school_id}, {"_id": 0}).to_list(20)
-        grades = await db.grades.find({"school_id": school_id}, {"_id": 0}).to_list(50)
-        classes = await db.classes.find({"school_id": school_id}, {"_id": 0}).to_list(200)
+        stages = await gd_find(db.session, "academic_stages", {"school_id": school_id}, limit=20)
+        grades = await gd_find(db.session, "grades", {"school_id": school_id}, limit=50)
+        classes = await gd_find(db.session, "classes", {"school_id": school_id}, limit=200)
         
         # Get teachers
-        teachers = await db.teachers.find({"school_id": school_id}, {"_id": 0}).to_list(100)
+        teachers = await gd_find(db.session, "teachers", {"school_id": school_id}, limit=100)
         
         # Get subjects
-        subjects = await db.subjects.find({"school_id": school_id}, {"_id": 0}).to_list(50)
+        subjects = await gd_find(db.session, "subjects", {"school_id": school_id}, limit=50)
         
         # Get teacher assignments
-        teacher_assignments = await db.teacher_assignments.find({"school_id": school_id}, {"_id": 0}).to_list(500)
+        teacher_assignments = await gd_find(db.session, "teacher_assignments", {"school_id": school_id}, limit=500)
         
         return {
             "school": school,
@@ -159,14 +160,11 @@ def setup_school_settings_routes(db, get_current_user, require_roles, UserRole):
         update_data["updated_at"] = now
         update_data["updated_by"] = current_user.get("email")
         
-        existing = await db.school_settings.find_one({"school_id": school_id})
+        existing = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
         if existing:
-            await db.school_settings.update_one(
-                {"school_id": school_id},
-                {"$set": update_data}
-            )
+            await gd_update_one(db.session, "school_settings", {"school_id": school_id}, update_data)
         else:
-            await db.school_settings.insert_one({
+            await gd_insert(db.session, "school_settings", {
                 "school_id": school_id,
                 "created_at": now,
                 **update_data
@@ -175,7 +173,7 @@ def setup_school_settings_routes(db, get_current_user, require_roles, UserRole):
         await log_audit(school_id, current_user, "UPDATE", "school_settings", school_id, update_data)
         
         # Return fresh data
-        updated = await db.school_settings.find_one({"school_id": school_id}, {"_id": 0})
+        updated = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
         return {"success": True, "settings": updated, "message": "تم حفظ الإعدادات بنجاح"}
 
     @router.put("/settings/basic")
@@ -196,10 +194,10 @@ def setup_school_settings_routes(db, get_current_user, require_roles, UserRole):
             raise HTTPException(status_code=400, detail="لا توجد بيانات صالحة للتحديث")
         
         update_data["updated_at"] = now
-        await db.schools.update_one({"id": school_id}, {"$set": update_data})
+        await gd_update_one(db.session, "schools", {"id": school_id}, update_data)
         await log_audit(school_id, current_user, "UPDATE", "school_basic_info", school_id, update_data)
         
-        school = await db.schools.find_one({"id": school_id}, {"_id": 0})
+        school = await gd_find_one(db.session, "schools", {"id": school_id})
         return {"success": True, "school": school, "message": "تم تحديث بيانات المدرسة بنجاح"}
 
     # ============ HARD CONSTRAINTS (SYSTEM RULES) ============
@@ -211,10 +209,7 @@ def setup_school_settings_routes(db, get_current_user, require_roles, UserRole):
             UserRole.PLATFORM_ADMIN, UserRole.TEACHER
         ]))
     ):
-        constraints = await db.timetable_hard_constraints.find(
-            {"is_system": True},
-            {"_id": 0}
-        ).sort("order", 1).to_list(50)
+        constraints = await gd_find(db.session, "timetable_hard_constraints", {"is_system": True}, order_by="order", desc_order=False, limit=50)
 
         categories = {}
         for c in constraints:
@@ -252,7 +247,7 @@ def setup_school_settings_routes(db, get_current_user, require_roles, UserRole):
         ]))
     ):
         school_id = await get_school_id_from_user(current_user)
-        constraints = await db.school_constraints.find({"school_id": school_id}, {"_id": 0}).to_list(100)
+        constraints = await gd_find(db.session, "school_constraints", {"school_id": school_id}, limit=100)
         return {"constraints": constraints, "total": len(constraints)}
 
     @router.post("/settings/constraints")
@@ -274,10 +269,10 @@ def setup_school_settings_routes(db, get_current_user, require_roles, UserRole):
             "updated_at": now,
             "created_by": current_user.get("email"),
         }
-        await db.school_constraints.insert_one(doc)
+        await gd_insert(db.session, "school_constraints", doc)
         await log_audit(school_id, current_user, "CREATE", "school_constraint", cid, constraint.dict())
         
-        created = await db.school_constraints.find_one({"id": cid}, {"_id": 0})
+        created = await gd_find_one(db.session, "school_constraints", {"id": cid})
         return {"success": True, "constraint": created, "message": "تم إضافة القيد بنجاح"}
 
     @router.put("/settings/constraints/{constraint_id}")
@@ -290,17 +285,17 @@ def setup_school_settings_routes(db, get_current_user, require_roles, UserRole):
     ):
         school_id = await get_school_id_from_user(current_user)
         
-        existing = await db.school_constraints.find_one({"id": constraint_id, "school_id": school_id})
+        existing = await gd_find_one(db.session, "school_constraints", {"id": constraint_id, "school_id": school_id})
         if not existing:
             raise HTTPException(status_code=404, detail="القيد غير موجود")
         
         update_data = {k: v for k, v in update.dict().items() if v is not None}
         update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
         
-        await db.school_constraints.update_one({"id": constraint_id}, {"$set": update_data})
+        await gd_update_one(db.session, "school_constraints", {"id": constraint_id}, update_data)
         await log_audit(school_id, current_user, "UPDATE", "school_constraint", constraint_id, update_data)
         
-        updated = await db.school_constraints.find_one({"id": constraint_id}, {"_id": 0})
+        updated = await gd_find_one(db.session, "school_constraints", {"id": constraint_id})
         return {"success": True, "constraint": updated, "message": "تم تحديث القيد بنجاح"}
 
     @router.patch("/settings/constraints/{constraint_id}/status")
@@ -313,14 +308,11 @@ def setup_school_settings_routes(db, get_current_user, require_roles, UserRole):
     ):
         school_id = await get_school_id_from_user(current_user)
         
-        existing = await db.school_constraints.find_one({"id": constraint_id, "school_id": school_id})
+        existing = await gd_find_one(db.session, "school_constraints", {"id": constraint_id, "school_id": school_id})
         if not existing:
             raise HTTPException(status_code=404, detail="القيد غير موجود")
         
-        await db.school_constraints.update_one(
-            {"id": constraint_id},
-            {"$set": {"is_active": status.is_active, "updated_at": datetime.now(timezone.utc).isoformat()}}
-        )
+        await gd_update_one(db.session, "school_constraints", {"id": constraint_id}, {"is_active": status.is_active, "updated_at": datetime.now(timezone.utc).isoformat()})
         await log_audit(school_id, current_user, "TOGGLE_STATUS", "school_constraint", constraint_id, {"is_active": status.is_active})
         
         action = "تفعيل" if status.is_active else "إيقاف"
@@ -335,11 +327,11 @@ def setup_school_settings_routes(db, get_current_user, require_roles, UserRole):
     ):
         school_id = await get_school_id_from_user(current_user)
         
-        existing = await db.school_constraints.find_one({"id": constraint_id, "school_id": school_id})
+        existing = await gd_find_one(db.session, "school_constraints", {"id": constraint_id, "school_id": school_id})
         if not existing:
             raise HTTPException(status_code=404, detail="القيد غير موجود")
         
-        await db.school_constraints.delete_one({"id": constraint_id})
+        await gd_delete_one(db.session, "school_constraints", {"id": constraint_id})
         await log_audit(school_id, current_user, "DELETE", "school_constraint", constraint_id, {})
         
         return {"success": True, "message": "تم حذف القيد بنجاح"}
@@ -353,14 +345,14 @@ def setup_school_settings_routes(db, get_current_user, require_roles, UserRole):
             UserRole.PLATFORM_ADMIN, UserRole.PLATFORM_OPERATIONS_MANAGER
         ]))
     ):
-        stages = await db.official_curriculum_stages.find({}, {"_id": 0}).sort("order", 1).to_list(10)
-        tracks = await db.official_curriculum_tracks.find({}, {"_id": 0}).sort("order", 1).to_list(20)
-        grades = await db.official_curriculum_grades.find({}, {"_id": 0}).to_list(50)
-        subjects = await db.official_curriculum_subjects.find({}, {"_id": 0}).to_list(200)
-        grade_subjects = await db.official_curriculum_grade_subjects.find({}, {"_id": 0}).sort("display_order", 1).to_list(1000)
-        rank_loads = await db.official_teacher_rank_loads.find({}, {"_id": 0}).to_list(20)
-        optional_pools = await db.official_optional_subject_pools.find({}, {"_id": 0}).to_list(10)
-        pool_items = await db.official_optional_subject_pool_items.find({}, {"_id": 0}).to_list(50)
+        stages = await gd_find(db.session, "official_curriculum_stages", {}, order_by="order", desc_order=False, limit=10)
+        tracks = await gd_find(db.session, "official_curriculum_tracks", {}, order_by="order", desc_order=False, limit=20)
+        grades = await gd_find(db.session, "official_curriculum_grades", {}, limit=50)
+        subjects = await gd_find(db.session, "official_curriculum_subjects", {}, limit=200)
+        grade_subjects = await gd_find(db.session, "official_curriculum_grade_subjects", {}, order_by="display_order", desc_order=False, limit=1000)
+        rank_loads = await gd_find(db.session, "official_teacher_rank_loads", {}, limit=20)
+        optional_pools = await gd_find(db.session, "official_optional_subject_pools", {}, limit=10)
+        pool_items = await gd_find(db.session, "official_optional_subject_pool_items", {}, limit=50)
         
         return {
             "stages": stages,
@@ -390,15 +382,11 @@ def setup_school_settings_routes(db, get_current_user, require_roles, UserRole):
             UserRole.PLATFORM_ADMIN
         ]))
     ):
-        grades = await db.official_curriculum_grades.find(
-            {"stage_id": stage_id, "track_id": track_id}, {"_id": 0}
-        ).to_list(20)
+        grades = await gd_find(db.session, "official_curriculum_grades", {"stage_id": stage_id, "track_id": track_id}, limit=20)
         
         result = []
         for grade in grades:
-            grade_subjects = await db.official_curriculum_grade_subjects.find(
-                {"grade_id": grade["id"]}, {"_id": 0}
-            ).sort("display_order", 1).to_list(30)
+            grade_subjects = await gd_find(db.session, "official_curriculum_grade_subjects", {"grade_id": grade["id"]}, order_by="display_order", desc_order=False, limit=30)
             result.append({**grade, "subjects": grade_subjects})
         
         return {"grades": result}
@@ -412,7 +400,7 @@ def setup_school_settings_routes(db, get_current_user, require_roles, UserRole):
         ]))
     ):
         school_id = await get_school_id_from_user(current_user)
-        assignments = await db.teacher_assignments.find({"school_id": school_id}, {"_id": 0}).to_list(500)
+        assignments = await gd_find(db.session, "teacher_assignments", {"school_id": school_id}, limit=500)
         return {"assignments": assignments, "total": len(assignments)}
 
     @router.post("/settings/teacher-assignments")
@@ -433,12 +421,12 @@ def setup_school_settings_routes(db, get_current_user, require_roles, UserRole):
             raise HTTPException(status_code=400, detail="teacher_id و subject_id مطلوبان")
         
         # Check teacher exists in this school
-        teacher = await db.teachers.find_one({"id": teacher_id, "school_id": school_id})
+        teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id, "school_id": school_id})
         if not teacher:
             raise HTTPException(status_code=404, detail="المعلم غير موجود")
         
         # Check duplicate
-        existing = await db.teacher_assignments.find_one({
+        existing = await gd_find_one(db.session, "teacher_assignments", {
             "school_id": school_id, "teacher_id": teacher_id,
             "subject_id": subject_id, "class_id": class_id
         })
@@ -456,10 +444,10 @@ def setup_school_settings_routes(db, get_current_user, require_roles, UserRole):
             "is_active": True,
             "created_at": now,
         }
-        await db.teacher_assignments.insert_one(doc)
+        await gd_insert(db.session, "teacher_assignments", doc)
         await log_audit(school_id, current_user, "CREATE", "teacher_assignment", aid, doc)
         
-        created = await db.teacher_assignments.find_one({"id": aid}, {"_id": 0})
+        created = await gd_find_one(db.session, "teacher_assignments", {"id": aid})
         return {"success": True, "assignment": created, "message": "تم إضافة تكليف المعلم بنجاح"}
 
     @router.delete("/settings/teacher-assignments/{assignment_id}")
@@ -471,11 +459,11 @@ def setup_school_settings_routes(db, get_current_user, require_roles, UserRole):
     ):
         school_id = await get_school_id_from_user(current_user)
         
-        existing = await db.teacher_assignments.find_one({"id": assignment_id, "school_id": school_id})
+        existing = await gd_find_one(db.session, "teacher_assignments", {"id": assignment_id, "school_id": school_id})
         if not existing:
             raise HTTPException(status_code=404, detail="التكليف غير موجود")
         
-        await db.teacher_assignments.delete_one({"id": assignment_id})
+        await gd_delete_one(db.session, "teacher_assignments", {"id": assignment_id})
         await log_audit(school_id, current_user, "DELETE", "teacher_assignment", assignment_id, {})
         
         return {"success": True, "message": "تم حذف التكليف بنجاح"}
@@ -498,7 +486,7 @@ def setup_school_settings_routes(db, get_current_user, require_roles, UserRole):
             raise HTTPException(status_code=400, detail="grade_id و section مطلوبان")
         
         # Get grade info
-        grade = await db.grades.find_one({"id": grade_id, "school_id": school_id})
+        grade = await gd_find_one(db.session, "grades", {"id": grade_id, "school_id": school_id})
         if not grade:
             raise HTTPException(status_code=404, detail="الصف غير موجود")
         
@@ -516,7 +504,7 @@ def setup_school_settings_routes(db, get_current_user, require_roles, UserRole):
             "is_active": True,
             "created_at": now,
         }
-        await db.classes.insert_one(class_doc)
+        await gd_insert(db.session, "classes", class_doc)
         await log_audit(school_id, current_user, "CREATE", "class", class_id, class_doc)
 
         try:
@@ -525,7 +513,7 @@ def setup_school_settings_routes(db, get_current_user, require_roles, UserRole):
         except Exception as e:
             logger.warning(f"Auto-assign class {class_id} to teachers failed: {e}")
         
-        created = await db.classes.find_one({"id": class_id}, {"_id": 0})
+        created = await gd_find_one(db.session, "classes", {"id": class_id})
         return {"success": True, "class": created, "message": "تم إنشاء الفصل بنجاح"}
 
     @router.delete("/settings/classes/{class_id}")
@@ -537,7 +525,7 @@ def setup_school_settings_routes(db, get_current_user, require_roles, UserRole):
     ):
         school_id = await get_school_id_from_user(current_user)
         
-        existing = await db.classes.find_one({"id": class_id, "school_id": school_id})
+        existing = await gd_find_one(db.session, "classes", {"id": class_id, "school_id": school_id})
         if not existing:
             raise HTTPException(status_code=404, detail="الفصل غير موجود")
         
@@ -549,27 +537,27 @@ def setup_school_settings_routes(db, get_current_user, require_roles, UserRole):
             )
         
         cleanup = {}
-        await db.classes.delete_one({"id": class_id})
-        r = await db.teacher_assignments.delete_many({"class_id": class_id, "school_id": school_id})
-        cleanup["teacher_assignments"] = r.deleted_count
-        r = await db.teacher_class_assignments.delete_many({"class_id": class_id})
-        cleanup["teacher_class_assignments"] = r.deleted_count
-        r = await db.class_subjects.delete_many({"class_id": class_id})
-        cleanup["class_subjects"] = r.deleted_count
-        r = await db.timetable_sessions.delete_many({"class_id": class_id})
-        cleanup["timetable_sessions"] = r.deleted_count
-        r = await db.class_sessions.delete_many({"class_id": class_id})
-        cleanup["class_sessions"] = r.deleted_count
-        r = await db.attendance.delete_many({"class_id": class_id})
-        cleanup["attendance"] = r.deleted_count
-        r = await db.session_attendance.delete_many({"class_id": class_id})
-        cleanup["session_attendance"] = r.deleted_count
-        r = await db.assessments.delete_many({"class_id": class_id})
-        cleanup["assessments"] = r.deleted_count
-        r = await db.grades.delete_many({"class_id": class_id})
-        cleanup["grades"] = r.deleted_count
-        r = await db.behaviour_records.delete_many({"class_id": class_id})
-        cleanup["behaviour_records"] = r.deleted_count
+        await gd_delete_one(db.session, "classes", {"id": class_id})
+        r = await gd_delete_many(db.session, "teacher_assignments", {"class_id": class_id, "school_id": school_id})
+        cleanup["teacher_assignments"] = r
+        r = await gd_delete_many(db.session, "teacher_class_assignments", {"class_id": class_id})
+        cleanup["teacher_class_assignments"] = r
+        r = await gd_delete_many(db.session, "class_subjects", {"class_id": class_id})
+        cleanup["class_subjects"] = r
+        r = await gd_delete_many(db.session, "timetable_sessions", {"class_id": class_id})
+        cleanup["timetable_sessions"] = r
+        r = await gd_delete_many(db.session, "class_sessions", {"class_id": class_id})
+        cleanup["class_sessions"] = r
+        r = await gd_delete_many(db.session, "attendance", {"class_id": class_id})
+        cleanup["attendance"] = r
+        r = await gd_delete_many(db.session, "session_attendance", {"class_id": class_id})
+        cleanup["session_attendance"] = r
+        r = await gd_delete_many(db.session, "assessments", {"class_id": class_id})
+        cleanup["assessments"] = r
+        r = await gd_delete_many(db.session, "grades", {"class_id": class_id})
+        cleanup["grades"] = r
+        r = await gd_delete_many(db.session, "behaviour_records", {"class_id": class_id})
+        cleanup["behaviour_records"] = r
 
         await log_audit(school_id, current_user, "DELETE", "class", class_id, {"cleanup": cleanup})
         

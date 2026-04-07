@@ -11,6 +11,7 @@ from typing import List, Optional, Any, Dict
 from datetime import datetime, timezone, timedelta
 import uuid, os, logging, json, random, re, io, base64
 
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
 from dependencies import (
     db, get_current_user, require_roles, UserRole, SchoolStatus,
     hash_password, verify_password, create_access_token,
@@ -109,8 +110,8 @@ async def get_audit_logs(
         ]
 
     effective_skip = (page - 1) * limit if page > 1 else skip
-    total = await db.audit_logs.count_documents(query)
-    raw = await db.audit_logs.find(query).sort("timestamp", -1).skip(effective_skip).limit(limit).to_list(limit)
+    total = await gd_count(db.session, "audit_logs", query)
+    raw = await gd_find(db.session, "audit_logs", query, order_by="timestamp", desc_order=True, skip=effective_skip, limit=limit)
 
     enriched = []
     for log in raw:
@@ -174,7 +175,7 @@ async def get_audit_stats(
 
         # Fetch all logs in period (max 20k) and compute stats in Python
         
-        all_logs = await db.audit_logs.find(base_q, {"severity": 1, "action": 1, "performed_by": 1, "timestamp": 1}).to_list(20000)
+        all_logs = await gd_find(db.session, "audit_logs", base_q, limit=20000)
 
         total_events   = len(all_logs)
         today_events   = sum(1 for l in all_logs if (l.get("timestamp") or "") >= today_start)
@@ -302,10 +303,10 @@ async def export_audit_report(
 async def seed_admin(current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))):
     """Create initial platform admin if not exists - Platform Admin only"""
     # Check for old admin and delete
-    await db.users.delete_one({"email": "admin@nassaq.sa"})
+    await gd_delete_one(db.session, "users", {"email": "admin@nassaq.sa"})
     
     # Check if new admin exists
-    existing = await db.users.find_one({"email": "info@nassaqapp.com"})
+    existing = await gd_find_one(db.session, "users", {"email": "info@nassaqapp.com"})
     if existing:
         return {"message": "Admin already exists", "email": "info@nassaqapp.com"}
     
@@ -327,7 +328,7 @@ async def seed_admin(current_user: dict = Depends(require_roles([UserRole.PLATFO
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
     
-    await db.users.insert_one(admin_doc)
+    await gd_insert(db.session, "users", admin_doc)
     return {"message": "Admin created", "email": "info@nassaqapp.com"}
 
 
@@ -348,7 +349,7 @@ async def seed_test_accounts(current_user: dict = Depends(require_roles([UserRol
     }
     
     # Get or create a test school
-    test_school = await db.schools.find_one({"code": "TEST001"}, {"_id": 0})
+    test_school = await gd_find_one(db.session, "schools", {"code": "TEST001"})
     if not test_school:
         school_id = str(uuid.uuid4())
         test_school = {
@@ -370,22 +371,19 @@ async def seed_test_accounts(current_user: dict = Depends(require_roles([UserRol
             "created_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat()
         }
-        await db.schools.insert_one(test_school)
+        await gd_insert(db.session, "schools", test_school)
     
     school_id = test_school.get("id")
     
     # 1. Create Principal Account
-    existing_principal = await db.users.find_one({"email": "principal@nassaq.com"})
+    existing_principal = await gd_find_one(db.session, "users", {"email": "principal@nassaq.com"})
     if existing_principal:
         # Update password to ensure it's correct
-        await db.users.update_one(
-            {"email": "principal@nassaq.com"},
-            {"$set": {
+        await gd_update_one(db.session, "users", {"email": "principal@nassaq.com"}, {
                 "password_hash": hash_password("NassaqPrincipal2026"),
                 "is_active": True,
                 "updated_at": datetime.now(timezone.utc).isoformat()
-            }}
-        )
+            })
         results["principal"] = {"status": "updated", "email": "principal@nassaq.com"}
     else:
         principal_id = str(uuid.uuid4())
@@ -405,21 +403,18 @@ async def seed_test_accounts(current_user: dict = Depends(require_roles([UserRol
             "created_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat()
         }
-        await db.users.insert_one(principal_doc)
+        await gd_insert(db.session, "users", principal_doc)
         results["principal"] = {"status": "created", "email": "principal@nassaq.com"}
     
     # 2. Create Teacher Account
-    existing_teacher = await db.users.find_one({"email": "teacher@nassaq.com"})
+    existing_teacher = await gd_find_one(db.session, "users", {"email": "teacher@nassaq.com"})
     if existing_teacher:
         # Update password to ensure it's correct
-        await db.users.update_one(
-            {"email": "teacher@nassaq.com"},
-            {"$set": {
+        await gd_update_one(db.session, "users", {"email": "teacher@nassaq.com"}, {
                 "password_hash": hash_password("NassaqTeacher2026"),
                 "is_active": True,
                 "updated_at": datetime.now(timezone.utc).isoformat()
-            }}
-        )
+            })
         results["teacher"] = {"status": "updated", "email": "teacher@nassaq.com"}
     else:
         teacher_user_id = str(uuid.uuid4())
@@ -461,14 +456,13 @@ async def seed_test_accounts(current_user: dict = Depends(require_roles([UserRol
             "updated_at": datetime.now(timezone.utc).isoformat()
         }
         
-        await db.users.insert_one(teacher_user_doc)
-        await db.teachers.insert_one(teacher_profile_doc)
+        await gd_insert(db.session, "users", teacher_user_doc)
+        await gd_insert(db.session, "teachers", teacher_profile_doc)
         
         # Update school teacher count
-        await db.schools.update_one(
-            {"id": school_id},
-            {"$inc": {"current_teachers": 1}}
-        )
+        school = await gd_find_one(db.session, "schools", {"id": school_id})
+        if school:
+            await gd_update_one(db.session, "schools", {"id": school_id}, {"current_teachers": (school.get("current_teachers") or 0) + 1})
         
         results["teacher"] = {"status": "created", "email": "teacher@nassaq.com"}
     
@@ -520,7 +514,7 @@ async def get_daily_activity(
     if school_id:
         query["school_id"] = school_id
     
-    logs = await db.activity_logs.find(query, {"_id": 0}).to_list(10000)
+    logs = await gd_find(db.session, "activity_logs", query, limit=10000)
     
     if view_by == "hour":
         hourly_data = {}
@@ -602,18 +596,18 @@ async def get_activity_summary(current_user: dict = Depends(get_current_user)):
     yesterday = today - timedelta(days=1)
     
     today_query = {"timestamp": {"$gte": today.isoformat()}}
-    today_lessons = await db.activity_logs.count_documents({**today_query, "type": "lesson"})
-    today_attendance = await db.activity_logs.count_documents({**today_query, "type": "attendance"})
-    today_grades = await db.activity_logs.count_documents({**today_query, "type": "grade"})
-    today_users = await db.activity_logs.count_documents({**today_query, "type": "user_activity"})
+    today_lessons = await gd_count(db.session, "activity_logs", {**today_query, "type": "lesson"})
+    today_attendance = await gd_count(db.session, "activity_logs", {**today_query, "type": "attendance"})
+    today_grades = await gd_count(db.session, "activity_logs", {**today_query, "type": "grade"})
+    today_users = await gd_count(db.session, "activity_logs", {**today_query, "type": "user_activity"})
     
     # If no activity_logs data, fall back to real collections for an honest summary
     if today_lessons + today_attendance + today_grades + today_users == 0:
         today_str = today.strftime("%Y-%m-%d")
-        today_attendance = await db.attendance.count_documents({"date": today_str})
-        today_users = await db.users.count_documents({"is_active": True})
-        today_lessons = await db.timetable_sessions.count_documents({})
-        today_grades = await db.grades.count_documents({})
+        today_attendance = await gd_count(db.session, "attendance", {"date": today_str})
+        today_users = await gd_count(db.session, "users", {"is_active": True})
+        today_lessons = await gd_count(db.session, "timetable_sessions", {})
+        today_grades = await gd_count(db.session, "grades", {})
 
         return {
             "lessons": {"count": today_lessons, "change": 0, "status": "normal"},
@@ -623,10 +617,10 @@ async def get_activity_summary(current_user: dict = Depends(get_current_user)):
         }
 
     yesterday_query = {"timestamp": {"$gte": yesterday.isoformat(), "$lt": today.isoformat()}}
-    yesterday_lessons = await db.activity_logs.count_documents({**yesterday_query, "type": "lesson"}) or 1
-    yesterday_attendance = await db.activity_logs.count_documents({**yesterday_query, "type": "attendance"}) or 1
-    yesterday_grades = await db.activity_logs.count_documents({**yesterday_query, "type": "grade"}) or 1
-    yesterday_users = await db.activity_logs.count_documents({**yesterday_query, "type": "user_activity"}) or 1
+    yesterday_lessons = await gd_count(db.session, "activity_logs", {**yesterday_query, "type": "lesson"}) or 1
+    yesterday_attendance = await gd_count(db.session, "activity_logs", {**yesterday_query, "type": "attendance"}) or 1
+    yesterday_grades = await gd_count(db.session, "activity_logs", {**yesterday_query, "type": "grade"}) or 1
+    yesterday_users = await gd_count(db.session, "activity_logs", {**yesterday_query, "type": "user_activity"}) or 1
     
     def calc_change(today_val, yesterday_val):
         if yesterday_val == 0:
@@ -664,7 +658,7 @@ async def get_activity_alerts(current_user: dict = Depends(get_current_user)):
     
     alerts = []
     
-    today_attendance = await db.activity_logs.count_documents({
+    today_attendance = await gd_count(db.session, "activity_logs", {
         "timestamp": {"$gte": today.isoformat()},
         "type": "attendance"
     })
@@ -677,9 +671,9 @@ async def get_activity_alerts(current_user: dict = Depends(get_current_user)):
             "action": "attendance_report"
         })
     
-    schools = await db.demo_schools.find({}, {"id": 1, "name": 1, "_id": 0}).to_list(100)
+    schools = await gd_find(db.session, "demo_schools", {}, limit=100)
     for school in schools:
-        school_activity = await db.activity_logs.count_documents({
+        school_activity = await gd_count(db.session, "activity_logs", {
             "timestamp": {"$gte": today.isoformat()},
             "school_id": school["id"]
         })
@@ -692,7 +686,7 @@ async def get_activity_alerts(current_user: dict = Depends(get_current_user)):
                 "school_id": school["id"]
             })
     
-    today_total = await db.activity_logs.count_documents({
+    today_total = await gd_count(db.session, "activity_logs", {
         "timestamp": {"$gte": today.isoformat()}
     })
     

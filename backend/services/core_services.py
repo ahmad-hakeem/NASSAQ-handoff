@@ -174,7 +174,7 @@ class NassaqCoreService:
             success=True
         )
         
-        # Remove MongoDB _id before returning
+        # Remove internal _id before returning
         data.pop("_id", None)
         
         return data

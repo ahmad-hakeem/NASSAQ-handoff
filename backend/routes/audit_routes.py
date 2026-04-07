@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone, timedelta
 import logging
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
 
 logger = logging.getLogger("nassaq.audit")
 
@@ -250,7 +251,7 @@ def setup_audit_routes(db, get_current_user, require_roles, UserRole):
                     {"details.path": {"$regex": search, "$options": "i"}},
                 ]
 
-            total = await db.audit_logs.count_documents(query)
+            total = await gd_count(db.session, "audit_logs", query)
             skip = (page - 1) * limit
             logs_cursor = db.audit_logs.find(query).sort("timestamp", -1).skip(skip).limit(limit)
             logs_list = await logs_cursor.to_list(limit)
@@ -309,11 +310,11 @@ def setup_audit_routes(db, get_current_user, require_roles, UserRole):
             cutoff = (now - timedelta(days=days)).isoformat()
             today_start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
 
-            total_events = await db.audit_logs.count_documents({"timestamp": {"$gte": cutoff}})
-            today_events = await db.audit_logs.count_documents({"timestamp": {"$gte": today_start}})
-            critical_count = await db.audit_logs.count_documents({"timestamp": {"$gte": cutoff}, "severity": "critical"})
-            high_count = await db.audit_logs.count_documents({"timestamp": {"$gte": cutoff}, "severity": "high"})
-            failed_logins = await db.audit_logs.count_documents({
+            total_events = await gd_count(db.session, "audit_logs", {"timestamp": {"$gte": cutoff}})
+            today_events = await gd_count(db.session, "audit_logs", {"timestamp": {"$gte": today_start}})
+            critical_count = await gd_count(db.session, "audit_logs", {"timestamp": {"$gte": cutoff}, "severity": "critical"})
+            high_count = await gd_count(db.session, "audit_logs", {"timestamp": {"$gte": cutoff}, "severity": "high"})
+            failed_logins = await gd_count(db.session, "audit_logs", {
                 "timestamp": {"$gte": cutoff},
                 "action": {"$in": ["auth.login_failed", "login_failed"]}
             })
@@ -405,7 +406,7 @@ def setup_audit_routes(db, get_current_user, require_roles, UserRole):
                 "details": details,
                 "status": "success",
             }
-            await db.audit_logs.insert_one(log_entry)
+            await gd_insert(db.session, "audit_logs", log_entry)
             return {"success": True, "log_id": log_entry["id"]}
         except Exception as e:
             logger.error(f"Error creating audit log: {e}")
@@ -437,7 +438,7 @@ def setup_audit_routes(db, get_current_user, require_roles, UserRole):
                 if to_date:
                     query.setdefault("timestamp", {})["$lte"] = to_date
 
-            logs = await db.audit_logs.find(query, {"_id": 0}).sort("timestamp", -1).limit(limit).to_list(limit)
+            logs = await gd_find(db.session, "audit_logs", query, order_by="timestamp", desc_order=True, limit=limit)
 
             if format == "csv":
                 if not logs:
@@ -469,10 +470,7 @@ def setup_audit_routes(db, get_current_user, require_roles, UserRole):
         current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
     ):
         """سجل تدقيق مستخدم معين"""
-        logs = await db.audit_logs.find(
-            {"$or": [{"performed_by": user_id}, {"entity_id": user_id}, {"target_id": user_id}]},
-            {"_id": 0}
-        ).sort("timestamp", -1).limit(limit).to_list(limit)
+        logs = await gd_find(db.session, "audit_logs", {"$or": [{"performed_by": user_id}, {"entity_id": user_id}, {"target_id": user_id}]}, order_by="timestamp", desc_order=True, limit=limit)
 
         for log in logs:
             log["action_ar"] = _translate(log.get("action", ""))
@@ -486,10 +484,10 @@ def setup_audit_routes(db, get_current_user, require_roles, UserRole):
     ):
         """حذف سجلات التدقيق القديمة"""
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-        result = await db.audit_logs.delete_many({"timestamp": {"$lt": cutoff}})
+        result = await gd_delete_many(db.session, "audit_logs", {"timestamp": {"$lt": cutoff}})
         return {
-            "message": f"تم حذف {result.deleted_count} سجل أقدم من {days} يوم",
-            "deleted_count": result.deleted_count
+            "message": f"تم حذف {result} سجل أقدم من {days} يوم",
+            "deleted_count": result
         }
 
     return router

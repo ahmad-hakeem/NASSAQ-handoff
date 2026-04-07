@@ -14,6 +14,7 @@ from typing import List, Optional
 from pydantic import BaseModel, EmailStr
 from datetime import datetime
 import logging
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
 
 logger = logging.getLogger("nassaq.teacher_registration_routes")
 
@@ -197,10 +198,7 @@ def create_teacher_registration_router(db, get_current_user, require_roles, User
         
         # Get full details for admin
         from engines.teacher_registration_engine import TeacherRegistrationEngine
-        full_request = await db.teacher_registration_requests.find_one(
-            {"id": request_id},
-            {"_id": 0}
-        )
+        full_request = await gd_find_one(db.session, "teacher_registration_requests", {"id": request_id})
         
         return full_request
     

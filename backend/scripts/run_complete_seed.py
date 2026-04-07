@@ -9,6 +9,7 @@ import asyncio
 import os
 import sys
 from datetime import datetime, timezone
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_upsert
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
@@ -25,12 +26,12 @@ async def verify_seed_data():
         print("Seeded Data Statistics")
         print("=" * 60)
 
-        stages_count = await db.official_curriculum_stages.count_documents({})
-        tracks_count = await db.official_curriculum_tracks.count_documents({})
-        grades_count = await db.official_curriculum_grades.count_documents({})
-        subjects_count = await db.official_curriculum_subjects.count_documents({})
-        details_count = await db.official_curriculum_subject_details.count_documents({})
-        ranks_count = await db.official_teacher_rank_loads.count_documents({})
+        stages_count = await gd_count(db.session, "official_curriculum_stages", {})
+        tracks_count = await gd_count(db.session, "official_curriculum_tracks", {})
+        grades_count = await gd_count(db.session, "official_curriculum_grades", {})
+        subjects_count = await gd_count(db.session, "official_curriculum_subjects", {})
+        details_count = await gd_count(db.session, "official_curriculum_subject_details", {})
+        ranks_count = await gd_count(db.session, "official_teacher_rank_loads", {})
 
         print(f"\nStages: {stages_count}")
         print(f"Tracks: {tracks_count}")
@@ -39,16 +40,12 @@ async def verify_seed_data():
         print(f"Subject Details: {details_count}")
         print(f"Teacher Ranks: {ranks_count}")
 
-        stages = await db.official_curriculum_stages.find({}).to_list(length=10)
+        stages = await gd_find(db.session, "official_curriculum_stages", {}, limit=10)
         for stage in stages:
-            stage_grades = await db.official_curriculum_grades.find(
-                {"stage_id": stage["id"]}
-            ).to_list(length=50)
+            stage_grades = await gd_find(db.session, "official_curriculum_grades", {"stage_id": stage["id"]}, limit=50)
 
             grade_ids = [g["id"] for g in stage_grades]
-            details = await db.official_curriculum_subject_details.find(
-                {"grade_id": {"$in": grade_ids}}
-            ).to_list(length=1000)
+            details = await gd_find(db.session, "official_curriculum_subject_details", {"grade_id": {"$in": grade_ids}}, limit=1000)
 
             total_details = len(details)
             print(f"  {stage['name_ar']}: {len(stage_grades)} grades, {total_details} details")

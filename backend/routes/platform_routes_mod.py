@@ -11,6 +11,7 @@ from typing import List, Optional, Any, Dict
 from datetime import datetime, timezone, timedelta
 import uuid, os, logging, json, re, io, base64
 
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
 from dependencies import (
     db, get_current_user, require_roles, UserRole, SchoolStatus,
     hash_password, verify_password, create_access_token,
@@ -33,12 +34,12 @@ async def get_analytics_overview(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
     """Get platform analytics overview"""
-    total_schools = await db.schools.count_documents({})
-    active_schools = await db.schools.count_documents({"status": "active"})
-    total_students = await db.students.count_documents({})
-    total_teachers = await db.teachers.count_documents({})
-    total_users = await db.users.count_documents({})
-    active_users = await db.users.count_documents({"is_active": True})
+    total_schools = await gd_count(db.session, "schools", {})
+    active_schools = await gd_count(db.session, "schools", {"status": "active"})
+    total_students = await gd_count(db.session, "students", {})
+    total_teachers = await gd_count(db.session, "teachers", {})
+    total_users = await gd_count(db.session, "users", {})
+    active_users = await gd_count(db.session, "users", {"is_active": True})
     
     # Get monthly growth data
     now = datetime.now(timezone.utc)
@@ -47,13 +48,13 @@ async def get_analytics_overview(
         month_start = (now - timedelta(days=30*(5-i))).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         month_end = (now - timedelta(days=30*(4-i))).replace(day=1, hour=0, minute=0, second=0, microsecond=0) if i < 5 else now
         
-        students_count = await db.students.count_documents({
+        students_count = await gd_count(db.session, "students", {
             "created_at": {"$lte": month_end.isoformat()}
         })
-        teachers_count = await db.teachers.count_documents({
+        teachers_count = await gd_count(db.session, "teachers", {
             "created_at": {"$lte": month_end.isoformat()}
         })
-        schools_count = await db.schools.count_documents({
+        schools_count = await gd_count(db.session, "schools", {
             "created_at": {"$lte": month_end.isoformat()}
         })
         
@@ -71,7 +72,7 @@ async def get_analytics_overview(
         {"$sort": {"count": -1}},
         {"$limit": 5}
     ]
-    city_distribution = await db.schools.aggregate(pipeline).to_list(10)
+    city_distribution = await _gd_aggregate(db.session, "schools", pipeline)
     
     return {
         "stats": {
@@ -103,7 +104,7 @@ async def get_analytics_charts(
         {"$sort": {"count": -1}},
         {"$limit": 8},
     ]
-    cities_raw = await db.schools.aggregate(pipeline_city).to_list(10)
+    cities_raw = await _gd_aggregate(db.session, "schools", pipeline_city)
     cities_data = [
         {
             "name": c["_id"] or "غير محدد",
@@ -115,12 +116,12 @@ async def get_analytics_charts(
     ]
 
     # ── 2. Attendance breakdown (overall platform) ───────────────────────
-    total_att = await db.attendance.count_documents({})
+    total_att = await gd_count(db.session, "attendance", {})
     if total_att > 0:
-        present_count = await db.attendance.count_documents({"status": "present"})
-        absent_count  = await db.attendance.count_documents({"status": "absent"})
-        late_count    = await db.attendance.count_documents({"status": "late"})
-        excused_count = await db.attendance.count_documents({"status": "excused"})
+        present_count = await gd_count(db.session, "attendance", {"status": "present"})
+        absent_count  = await gd_count(db.session, "attendance", {"status": "absent"})
+        late_count    = await gd_count(db.session, "attendance", {"status": "late"})
+        excused_count = await gd_count(db.session, "attendance", {"status": "excused"})
         present_pct = round(present_count / total_att * 100, 1)
         absent_pct  = round(absent_count  / total_att * 100, 1)
         late_pct    = round(late_count    / total_att * 100, 1)
@@ -143,9 +144,9 @@ async def get_analytics_charts(
     for i in range(5, -1, -1):
         target = now - timedelta(days=30 * i)
         cutoff = target.isoformat()
-        students_cnt = await db.students.count_documents({"created_at": {"$lte": cutoff}})
-        teachers_cnt = await db.teachers.count_documents({"created_at": {"$lte": cutoff}})
-        schools_cnt  = await db.schools.count_documents({"created_at":  {"$lte": cutoff}})
+        students_cnt = await gd_count(db.session, "students", {"created_at": {"$lte": cutoff}})
+        teachers_cnt = await gd_count(db.session, "teachers", {"created_at": {"$lte": cutoff}})
+        schools_cnt  = await gd_count(db.session, "schools", {"created_at":  {"$lte": cutoff}})
         growth_trend.append({
             "month":    month_names_ar[target.month - 1],
             "students": students_cnt,
@@ -165,10 +166,7 @@ async def get_analytics_reports(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
     """Get available reports"""
-    reports = await db.reports.find(
-        {"type": report_type} if report_type else {},
-        {"_id": 0}
-    ).sort("created_at", -1).limit(50).to_list(50)
+    reports = await gd_find(db.session, "reports", {"type": report_type} if report_type else {}, order_by="created_at", desc_order=True, limit=50)
     
     return {"reports": reports}
 
@@ -180,7 +178,7 @@ async def get_ai_insights(
     insights = []
     
     # Check attendance trends
-    total_students = await db.students.count_documents({})
+    total_students = await gd_count(db.session, "students", {})
     if total_students > 100:
         insights.append({
             "id": str(uuid.uuid4()),
@@ -194,7 +192,7 @@ async def get_ai_insights(
         })
     
     # Check inactive schools
-    inactive_schools = await db.schools.count_documents({"status": {"$ne": "active"}})
+    inactive_schools = await gd_count(db.session, "schools", {"status": {"$ne": "active"}})
     if inactive_schools > 0:
         insights.append({
             "id": str(uuid.uuid4()),
@@ -208,8 +206,8 @@ async def get_ai_insights(
         })
     
     # Check AI usage
-    ai_enabled_schools = await db.schools.count_documents({"ai_enabled": True})
-    total_schools = await db.schools.count_documents({})
+    ai_enabled_schools = await gd_count(db.session, "schools", {"ai_enabled": True})
+    total_schools = await gd_count(db.session, "schools", {})
     if total_schools > 0 and ai_enabled_schools < total_schools * 0.5:
         insights.append({
             "id": str(uuid.uuid4()),
@@ -234,29 +232,27 @@ async def get_ai_insights(
 async def platform_analytics(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
 ):
-    total_schools = await db.schools.count_documents({"status": "active"})
-    total_students = await db.students.count_documents({"is_active": True})
-    total_teachers = await db.teachers.count_documents({})
-    total_users = await db.users.count_documents({})
-    total_classes = await db.classes.count_documents({})
-    total_sessions = await db.class_sessions.count_documents({"status": "completed"})
+    total_schools = await gd_count(db.session, "schools", {"status": "active"})
+    total_students = await gd_count(db.session, "students", {"is_active": True})
+    total_teachers = await gd_count(db.session, "teachers", {})
+    total_users = await gd_count(db.session, "users", {})
+    total_classes = await gd_count(db.session, "classes", {})
+    total_sessions = await gd_count(db.session, "class_sessions", {"status": "completed"})
 
-    att_total = await db.attendance.count_documents({})
-    att_present = await db.attendance.count_documents({"status": {"$in": ["present", "late"]}})
+    att_total = await gd_count(db.session, "attendance", {})
+    att_present = await gd_count(db.session, "attendance", {"status": {"$in": ["present", "late"]}})
     overall_attendance = round((att_present / att_total * 100) if att_total else 0, 1)
 
-    schools = await db.schools.find(
-        {"status": "active"}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1}
-    ).to_list(100)
+    schools = await gd_find(db.session, "schools", {"status": "active"}, limit=100)
 
     school_stats = []
     for school in schools:
         sid = school["id"]
-        s_students = await db.students.count_documents({"school_id": sid, "is_active": True})
-        s_teachers = await db.teachers.count_documents({"school_id": sid})
-        s_sessions = await db.class_sessions.count_documents({"school_id": sid, "status": "completed"})
-        s_att_total = await db.attendance.count_documents({"school_id": sid})
-        s_att_present = await db.attendance.count_documents({"school_id": sid, "status": {"$in": ["present", "late"]}})
+        s_students = await gd_count(db.session, "students", {"school_id": sid, "is_active": True})
+        s_teachers = await gd_count(db.session, "teachers", {"school_id": sid})
+        s_sessions = await gd_count(db.session, "class_sessions", {"school_id": sid, "status": "completed"})
+        s_att_total = await gd_count(db.session, "attendance", {"school_id": sid})
+        s_att_present = await gd_count(db.session, "attendance", {"school_id": sid, "status": {"$in": ["present", "late"]}})
         s_att_rate = round((s_att_present / s_att_total * 100) if s_att_total else 0, 1)
 
         school_stats.append({
@@ -272,7 +268,7 @@ async def platform_analytics(
     pipeline = [
         {"$group": {"_id": "$role", "count": {"$sum": 1}}}
     ]
-    async for doc in db.users.aggregate(pipeline):
+    for doc in await _gd_aggregate(db.session, "users", pipeline):
         role_dist[doc["_id"] or "unknown"] = doc["count"]
 
     return {
@@ -301,10 +297,10 @@ async def platform_growth_analytics(
         month_label = target.strftime("%Y-%m")
         cutoff = target.strftime("%Y-%m-%dT%H:%M:%S")
 
-        students = await db.students.count_documents({
+        students = await gd_count(db.session, "students", {
             "enrollment_date": {"$lte": target.strftime("%Y-%m-%d")}
         })
-        sessions = await db.class_sessions.count_documents({
+        sessions = await gd_count(db.session, "class_sessions", {
             "date": {"$lte": target.strftime("%Y-%m-%d")},
             "status": "completed",
         })
@@ -438,7 +434,7 @@ async def create_api_key(
         "last_used": None
     }
     
-    await db.api_keys.insert_one(new_key)
+    await gd_insert(db.session, "api_keys", new_key)
     
     # Audit log
     audit_log = {
@@ -451,7 +447,7 @@ async def create_api_key(
         "target_name": key_data.name,
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
-    await db.audit_logs.insert_one(audit_log)
+    await gd_insert(db.session, "audit_logs", audit_log)
     
     # Return with the secret (only time it's shown)
     return {
@@ -472,10 +468,7 @@ async def get_api_keys(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
     """Get all API keys"""
-    keys = await db.api_keys.find(
-        {},
-        {"_id": 0, "secret_hash": 0}  # Exclude MongoDB _id and secret hash
-    ).sort("created_at", -1).to_list(100)
+    keys = await gd_find(db.session, "api_keys", {}, order_by="created_at", desc_order=True, limit=100)
     
     return {"keys": keys}
 
@@ -486,14 +479,11 @@ async def revoke_api_key(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
     """Revoke (deactivate) an API key"""
-    key = await db.api_keys.find_one({"id": key_id})
+    key = await gd_find_one(db.session, "api_keys", {"id": key_id})
     if not key:
         raise HTTPException(status_code=404, detail="مفتاح API غير موجود")
     
-    await db.api_keys.update_one(
-        {"id": key_id},
-        {"$set": {"is_active": False}}
-    )
+    await gd_update_one(db.session, "api_keys", {"id": key_id}, {"is_active": False})
     
     # Audit log
     audit_log = {
@@ -506,7 +496,7 @@ async def revoke_api_key(
         "target_name": key.get("name", ""),
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
-    await db.audit_logs.insert_one(audit_log)
+    await gd_insert(db.session, "audit_logs", audit_log)
     
     return {"message": "تم إلغاء مفتاح API بنجاح"}
 
@@ -517,11 +507,11 @@ async def delete_api_key(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
     """Delete an API key"""
-    key = await db.api_keys.find_one({"id": key_id})
+    key = await gd_find_one(db.session, "api_keys", {"id": key_id})
     if not key:
         raise HTTPException(status_code=404, detail="مفتاح API غير موجود")
     
-    await db.api_keys.delete_one({"id": key_id})
+    await gd_delete_one(db.session, "api_keys", {"id": key_id})
     
     # Audit log
     audit_log = {
@@ -534,7 +524,7 @@ async def delete_api_key(
         "target_name": key.get("name", ""),
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
-    await db.audit_logs.insert_one(audit_log)
+    await gd_insert(db.session, "audit_logs", audit_log)
     
     return {"message": "تم حذف مفتاح API بنجاح"}
 
@@ -595,7 +585,7 @@ async def create_integration(
         "created_by": current_user["id"]
     }
     
-    await db.integrations.insert_one(integration_doc)
+    await gd_insert(db.session, "integrations", integration_doc)
     
     return IntegrationResponse(
         id=integration_id,
@@ -623,10 +613,7 @@ async def get_integrations(
     if status:
         query["status"] = status
     
-    integrations = await db.integrations.find(
-        query,
-        {"_id": 0, "api_key": 0}  # Never return API keys
-    ).to_list(100)
+    integrations = await gd_find(db.session, "integrations", query, limit=100)
     
     return {"integrations": integrations}
 
@@ -636,10 +623,7 @@ async def get_integration(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
     """Get integration details"""
-    integration = await db.integrations.find_one(
-        {"id": integration_id},
-        {"_id": 0, "api_key": 0}
-    )
+    integration = await gd_find_one(db.session, "integrations", {"id": integration_id})
     if not integration:
         raise HTTPException(status_code=404, detail="التكامل غير موجود")
     return integration
@@ -651,7 +635,7 @@ async def update_integration(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
     """Update integration"""
-    integration = await db.integrations.find_one({"id": integration_id})
+    integration = await gd_find_one(db.session, "integrations", {"id": integration_id})
     if not integration:
         raise HTTPException(status_code=404, detail="التكامل غير موجود")
     
@@ -670,7 +654,7 @@ async def update_integration(
     if data.api_key:
         updates["api_key"] = data.api_key
     
-    await db.integrations.update_one({"id": integration_id}, {"$set": updates})
+    await gd_update_one(db.session, "integrations", {"id": integration_id}, updates)
     
     return {"message": "تم تحديث التكامل بنجاح"}
 
@@ -680,20 +664,17 @@ async def toggle_integration(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
     """Enable/disable integration"""
-    integration = await db.integrations.find_one({"id": integration_id})
+    integration = await gd_find_one(db.session, "integrations", {"id": integration_id})
     if not integration:
         raise HTTPException(status_code=404, detail="التكامل غير موجود")
     
     new_status = not integration.get("is_active", False)
     
-    await db.integrations.update_one(
-        {"id": integration_id},
-        {"$set": {
+    await gd_update_one(db.session, "integrations", {"id": integration_id}, {
             "is_active": new_status,
             "status": "active" if new_status else "inactive",
             "updated_at": datetime.now(timezone.utc).isoformat()
-        }}
-    )
+        })
     
     return {
         "message": "تم تفعيل التكامل" if new_status else "تم تعطيل التكامل",
@@ -706,7 +687,7 @@ async def test_integration(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
     """Test integration connection"""
-    integration = await db.integrations.find_one({"id": integration_id})
+    integration = await gd_find_one(db.session, "integrations", {"id": integration_id})
     if not integration:
         raise HTTPException(status_code=404, detail="التكامل غير موجود")
     
@@ -721,7 +702,7 @@ async def sync_integration(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
     """Trigger data sync for integration"""
-    integration = await db.integrations.find_one({"id": integration_id})
+    integration = await gd_find_one(db.session, "integrations", {"id": integration_id})
     if not integration:
         raise HTTPException(status_code=404, detail="التكامل غير موجود")
     
@@ -733,26 +714,20 @@ async def sync_integration(
         "status": "in_progress",
         "triggered_by": current_user["id"]
     }
-    await db.integration_sync_logs.insert_one(sync_log)
+    await gd_insert(db.session, "integration_sync_logs", sync_log)
     
     # Simulate sync completion
-    await db.integrations.update_one(
-        {"id": integration_id},
-        {"$set": {
+    await gd_update_one(db.session, "integrations", {"id": integration_id}, {
             "last_sync": datetime.now(timezone.utc).isoformat(),
             "sync_status": "completed"
-        }}
-    )
+        })
     
     # Update sync log
-    await db.integration_sync_logs.update_one(
-        {"id": sync_log["id"]},
-        {"$set": {
+    await gd_update_one(db.session, "integration_sync_logs", {"id": sync_log["id"]}, {
             "completed_at": datetime.now(timezone.utc).isoformat(),
             "status": "completed",
             "records_synced": 0
-        }}
-    )
+        })
     
     return {"message": "تم المزامنة بنجاح", "sync_id": sync_log["id"]}
 
@@ -763,14 +738,11 @@ async def get_integration_logs(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
     """Get integration sync logs"""
-    integration = await db.integrations.find_one({"id": integration_id})
+    integration = await gd_find_one(db.session, "integrations", {"id": integration_id})
     if not integration:
         raise HTTPException(status_code=404, detail="التكامل غير موجود")
     
-    logs = await db.integration_sync_logs.find(
-        {"integration_id": integration_id},
-        {"_id": 0}
-    ).sort("started_at", -1).limit(limit).to_list(limit)
+    logs = await gd_find(db.session, "integration_sync_logs", {"integration_id": integration_id}, order_by="started_at", desc_order=True, limit=limit)
     
     return {"logs": logs}
 
@@ -780,11 +752,11 @@ async def delete_integration(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
     """Delete integration"""
-    integration = await db.integrations.find_one({"id": integration_id})
+    integration = await gd_find_one(db.session, "integrations", {"id": integration_id})
     if not integration:
         raise HTTPException(status_code=404, detail="التكامل غير موجود")
     
-    await db.integrations.delete_one({"id": integration_id})
+    await gd_delete_one(db.session, "integrations", {"id": integration_id})
     
     # Audit log
     audit_log = {
@@ -797,7 +769,7 @@ async def delete_integration(
         "target_name": integration.get("name", ""),
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
-    await db.audit_logs.insert_one(audit_log)
+    await gd_insert(db.session, "audit_logs", audit_log)
     
     return {"message": "تم حذف التكامل بنجاح"}
 
@@ -809,7 +781,7 @@ async def delete_integration(
 @router.get("/public/contact-info")
 async def get_public_contact_info():
     """Get public contact information for landing page (no auth required)"""
-    settings = await db.platform_settings.find_one({"type": "platform"}, {"_id": 0})
+    settings = await gd_find_one(db.session, "platform_settings", {"type": "platform"})
     
     if not settings:
         # Return defaults
@@ -861,7 +833,7 @@ async def get_system_rules(
     if status:
         query["status"] = status
     
-    rules = await db.system_rules.find(query, {"_id": 0}).to_list(100)
+    rules = await gd_find(db.session, "system_rules", query, limit=100)
     
     return {"rules": rules, "count": len(rules)}
 
@@ -891,7 +863,7 @@ async def create_system_rule(
         "created_by": current_user.get("id"),
     }
     
-    await db.system_rules.insert_one(new_rule)
+    await gd_insert(db.session, "system_rules", new_rule)
     
     return {"success": True, "rule": {k: v for k, v in new_rule.items() if k != "_id"}}
 
@@ -902,7 +874,7 @@ async def update_system_rule(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
     """Update a system rule"""
-    existing = await db.system_rules.find_one({"id": rule_id})
+    existing = await gd_find_one(db.session, "system_rules", {"id": rule_id})
     if not existing:
         raise HTTPException(status_code=404, detail="القاعدة غير موجودة")
     
@@ -921,7 +893,7 @@ async def update_system_rule(
         "updated_by": current_user.get("id"),
     }
     
-    await db.system_rules.update_one({"id": rule_id}, {"$set": update_data})
+    await gd_update_one(db.session, "system_rules", {"id": rule_id}, update_data)
     
     return {"success": True, "message": "تم تحديث القاعدة بنجاح"}
 
@@ -931,9 +903,9 @@ async def delete_system_rule(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
     """Delete a system rule"""
-    result = await db.system_rules.delete_one({"id": rule_id})
+    result = await gd_delete_one(db.session, "system_rules", {"id": rule_id})
     
-    if result.deleted_count == 0:
+    if result == 0:
         raise HTTPException(status_code=404, detail="القاعدة غير موجودة")
     
     return {"success": True, "message": "تم حذف القاعدة بنجاح"}
@@ -947,7 +919,7 @@ async def get_platform_settings(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
     """Get all platform settings"""
-    settings = await db.platform_settings.find_one({"type": "platform"})
+    settings = await gd_find_one(db.session, "platform_settings", {"type": "platform"})
     
     if not settings:
         # Return default settings
@@ -1011,7 +983,7 @@ async def get_platform_settings(
         }
         return default_settings
     
-    # Remove MongoDB _id
+    # Remove internal _id
     settings.pop("_id", None)
     settings.pop("type", None)
     return settings
@@ -1024,17 +996,11 @@ async def update_general_settings(
 ):
     """Update general platform settings"""
     update_data = {
-        "$set": {
-            "general": settings.model_dump(),
-            "updated_at": datetime.now(timezone.utc).isoformat()
-        }
+        "general": settings.model_dump(),
+        "updated_at": datetime.now(timezone.utc).isoformat()
     }
     
-    await db.platform_settings.update_one(
-        {"type": "platform"},
-        update_data,
-        upsert=True
-    )
+    await gd_upsert(db.session, "platform_settings", {"type": "platform"}, update_data)
     
     # Audit log
     audit_log = {
@@ -1047,7 +1013,7 @@ async def update_general_settings(
         "details": {"section": "general"},
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
-    await db.audit_logs.insert_one(audit_log)
+    await gd_insert(db.session, "audit_logs", audit_log)
     
     return {"message": "تم تحديث الإعدادات العامة بنجاح", "settings": settings.model_dump()}
 
@@ -1059,17 +1025,11 @@ async def update_brand_settings(
 ):
     """Update brand/identity settings"""
     update_data = {
-        "$set": {
-            "brand": settings.model_dump(),
-            "updated_at": datetime.now(timezone.utc).isoformat()
-        }
+        "brand": settings.model_dump(),
+        "updated_at": datetime.now(timezone.utc).isoformat()
     }
     
-    await db.platform_settings.update_one(
-        {"type": "platform"},
-        update_data,
-        upsert=True
-    )
+    await gd_upsert(db.session, "platform_settings", {"type": "platform"}, update_data)
     
     return {"message": "تم تحديث إعدادات الهوية البصرية بنجاح", "settings": settings.model_dump()}
 
@@ -1081,17 +1041,11 @@ async def update_contact_settings(
 ):
     """Update contact information settings"""
     update_data = {
-        "$set": {
-            "contact": settings.model_dump(),
-            "updated_at": datetime.now(timezone.utc).isoformat()
-        }
+        "contact": settings.model_dump(),
+        "updated_at": datetime.now(timezone.utc).isoformat()
     }
     
-    await db.platform_settings.update_one(
-        {"type": "platform"},
-        update_data,
-        upsert=True
-    )
+    await gd_upsert(db.session, "platform_settings", {"type": "platform"}, update_data)
     
     return {"message": "تم تحديث بيانات التواصل بنجاح", "settings": settings.model_dump()}
 
@@ -1113,24 +1067,18 @@ async def update_terms_settings(
         "created_by_name": current_user.get("full_name", ""),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
-    await db.legal_versions.insert_one(version_history)
+    await gd_insert(db.session, "legal_versions", version_history)
     
     update_data = {
-        "$set": {
-            "terms": {
-                "content": content.content,
-                "version": content.version,
-                "effective_date": content.effective_date or datetime.now(timezone.utc).isoformat()
-            },
-            "updated_at": datetime.now(timezone.utc).isoformat()
-        }
+        "terms": {
+            "content": content.content,
+            "version": content.version,
+            "effective_date": content.effective_date or datetime.now(timezone.utc).isoformat()
+        },
+        "updated_at": datetime.now(timezone.utc).isoformat()
     }
     
-    await db.platform_settings.update_one(
-        {"type": "platform"},
-        update_data,
-        upsert=True
-    )
+    await gd_upsert(db.session, "platform_settings", {"type": "platform"}, update_data)
     
     return {"message": "تم تحديث الشروط والأحكام بنجاح", "version": content.version}
 
@@ -1152,24 +1100,18 @@ async def update_privacy_settings(
         "created_by_name": current_user.get("full_name", ""),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
-    await db.legal_versions.insert_one(version_history)
+    await gd_insert(db.session, "legal_versions", version_history)
     
     update_data = {
-        "$set": {
-            "privacy": {
-                "content": content.content,
-                "version": content.version,
-                "effective_date": content.effective_date or datetime.now(timezone.utc).isoformat()
-            },
-            "updated_at": datetime.now(timezone.utc).isoformat()
-        }
+        "privacy": {
+            "content": content.content,
+            "version": content.version,
+            "effective_date": content.effective_date or datetime.now(timezone.utc).isoformat()
+        },
+        "updated_at": datetime.now(timezone.utc).isoformat()
     }
     
-    await db.platform_settings.update_one(
-        {"type": "platform"},
-        update_data,
-        upsert=True
-    )
+    await gd_upsert(db.session, "platform_settings", {"type": "platform"}, update_data)
     
     return {"message": "تم تحديث سياسة الخصوصية بنجاح", "version": content.version}
 
@@ -1181,17 +1123,11 @@ async def update_security_settings(
 ):
     """Update security settings"""
     update_data = {
-        "$set": {
-            "security": settings.model_dump(),
-            "updated_at": datetime.now(timezone.utc).isoformat()
-        }
+        "security": settings.model_dump(),
+        "updated_at": datetime.now(timezone.utc).isoformat()
     }
     
-    await db.platform_settings.update_one(
-        {"type": "platform"},
-        update_data,
-        upsert=True
-    )
+    await gd_upsert(db.session, "platform_settings", {"type": "platform"}, update_data)
     
     return {"message": "تم تحديث إعدادات الأمان بنجاح", "settings": settings.model_dump()}
 
@@ -1205,10 +1141,7 @@ async def get_legal_versions(
     if doc_type not in ["terms", "privacy"]:
         raise HTTPException(status_code=400, detail="نوع المستند غير صالح")
     
-    versions = await db.legal_versions.find(
-        {"type": doc_type},
-        {"_id": 0}
-    ).sort("created_at", -1).to_list(100)
+    versions = await gd_find(db.session, "legal_versions", {"type": doc_type}, order_by="created_at", desc_order=True, limit=100)
     
     return {"versions": versions}
 

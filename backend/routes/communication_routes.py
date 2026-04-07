@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pydantic import BaseModel
 import uuid
 import logging
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
 
 logger = logging.getLogger("nassaq.communication_routes")
 
@@ -49,12 +50,12 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
             query["school_id"] = school_id
         
         # Count messages
-        total_sent = await db.messages.count_documents({**query, "status": "sent"})
-        total_scheduled = await db.messages.count_documents({**query, "status": "scheduled"})
-        total_drafts = await db.messages.count_documents({**query, "status": "draft"})
+        total_sent = await gd_count(db.session, "messages", {**query, "status": "sent"})
+        total_scheduled = await gd_count(db.session, "messages", {**query, "status": "scheduled"})
+        total_drafts = await gd_count(db.session, "messages", {**query, "status": "draft"})
         
         # Count templates
-        total_templates = await db.message_templates.count_documents(query)
+        total_templates = await gd_count(db.session, "message_templates", query)
         
         return {
             "sent": total_sent,
@@ -82,13 +83,13 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
         # Count recipients
         recipient_count = 0
         if message.audience == "all":
-            recipient_count = await db.users.count_documents({"tenant_id": school_id}) if school_id else await db.users.count_documents({})
+            recipient_count = await gd_count(db.session, "users", {"tenant_id": school_id}) if school_id else await gd_count(db.session, "users", {})
         elif message.audience == "teachers":
-            recipient_count = await db.teachers.count_documents({"school_id": school_id}) if school_id else await db.teachers.count_documents({})
+            recipient_count = await gd_count(db.session, "teachers", {"school_id": school_id}) if school_id else await gd_count(db.session, "teachers", {})
         elif message.audience == "students":
-            recipient_count = await db.students.count_documents({"school_id": school_id}) if school_id else await db.students.count_documents({})
+            recipient_count = await gd_count(db.session, "students", {"school_id": school_id}) if school_id else await gd_count(db.session, "students", {})
         elif message.audience == "parents":
-            recipient_count = await db.users.count_documents({"role": "parent", "tenant_id": school_id}) if school_id else await db.users.count_documents({"role": "parent"})
+            recipient_count = await gd_count(db.session, "users", {"role": "parent", "tenant_id": school_id}) if school_id else await gd_count(db.session, "users", {"role": "parent"})
         elif message.audience == "custom":
             recipient_count = len(message.audience_ids)
         
@@ -109,7 +110,7 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
             "sent_at": now if status == "sent" else None
         }
         
-        await db.messages.insert_one(message_doc)
+        await gd_insert(db.session, "messages", message_doc)
         
         # Create notifications for recipients if sent immediately
         if status == "sent":
@@ -125,7 +126,7 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
                 "created_at": now,
                 "read_by": []
             }
-            await db.notifications.insert_one(notification_doc)
+            await gd_insert(db.session, "notifications", notification_doc)
         
         return {
             "message": "تم إرسال الرسالة بنجاح" if status == "sent" else "تمت جدولة الرسالة بنجاح",
@@ -150,12 +151,9 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
         if status:
             query["status"] = status
         
-        messages = await db.messages.find(
-            query,
-            {"_id": 0}
-        ).sort("created_at", -1).skip(skip).limit(limit).to_list(length=limit)
+        messages = await gd_find(db.session, "messages", query, order_by="created_at", desc_order=True, skip=skip, limit=limit)
         
-        total = await db.messages.count_documents(query)
+        total = await gd_count(db.session, "messages", query)
         
         return {
             "messages": messages,
@@ -207,7 +205,7 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
         if school_id:
             query["school_id"] = school_id
         
-        templates = await db.message_templates.find(query, {"_id": 0}).to_list(100)
+        templates = await gd_find(db.session, "message_templates", query, limit=100)
         
         if not templates:
             return default_templates
@@ -222,16 +220,16 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
         school_id = current_user.get("tenant_id")
         
         if school_id:
-            teachers = await db.teachers.count_documents({"school_id": school_id, "is_active": True})
-            students = await db.students.count_documents({"school_id": school_id, "is_active": True})
-            parents = await db.users.count_documents({"role": "parent", "tenant_id": school_id, "is_active": True})
+            teachers = await gd_count(db.session, "teachers", {"school_id": school_id, "is_active": True})
+            students = await gd_count(db.session, "students", {"school_id": school_id, "is_active": True})
+            parents = await gd_count(db.session, "users", {"role": "parent", "tenant_id": school_id, "is_active": True})
             total = teachers + students + parents
         else:
             # Platform-wide for admins
-            total = await db.users.count_documents({"is_active": True})
-            teachers = await db.teachers.count_documents({"is_active": True})
-            students = await db.students.count_documents({"is_active": True})
-            parents = await db.users.count_documents({"role": "parent", "is_active": True})
+            total = await gd_count(db.session, "users", {"is_active": True})
+            teachers = await gd_count(db.session, "teachers", {"is_active": True})
+            students = await gd_count(db.session, "students", {"is_active": True})
+            parents = await gd_count(db.session, "users", {"role": "parent", "is_active": True})
         
         return [
             {"id": "all", "name": "الجميع", "name_en": "Everyone", "count": total, "icon": "users"},
@@ -245,12 +243,12 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
         current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
     ):
         """Get audience counts for broadcast messaging"""
-        all_users = await db.users.count_documents({"is_active": True})
-        schools = await db.schools.count_documents({})
-        teachers = await db.users.count_documents({"role": {"$in": ["teacher", "independent_teacher"]}, "is_active": True})
-        students = await db.users.count_documents({"role": "student", "is_active": True})
-        principals = await db.users.count_documents({"role": "school_principal", "is_active": True})
-        parents = await db.users.count_documents({"role": "parent", "is_active": True})
+        all_users = await gd_count(db.session, "users", {"is_active": True})
+        schools = await gd_count(db.session, "schools", {})
+        teachers = await gd_count(db.session, "users", {"role": {"$in": ["teacher", "independent_teacher"]}, "is_active": True})
+        students = await gd_count(db.session, "users", {"role": "student", "is_active": True})
+        principals = await gd_count(db.session, "users", {"role": "school_principal", "is_active": True})
+        parents = await gd_count(db.session, "users", {"role": "parent", "is_active": True})
         
         return {
             "all": all_users,
@@ -266,9 +264,7 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
         current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
     ):
         """Get scheduled messages"""
-        messages = await db.messages.find(
-            {"status": "scheduled"}
-        ).sort("scheduled_at", 1).to_list(50)
+        messages = await gd_find(db.session, "messages", {"status": "scheduled"}, order_by="scheduled_at", desc_order=False, limit=50)
         
         return {
             "messages": [
@@ -291,9 +287,7 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
         current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
     ):
         """Get sent messages history"""
-        messages = await db.messages.find(
-            {"status": "sent"}
-        ).sort("sent_at", -1).limit(50).to_list(50)
+        messages = await gd_find(db.session, "messages", {"status": "sent"}, order_by="sent_at", desc_order=True, limit=50)
         
         return {
             "messages": [
@@ -323,13 +317,13 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
         # Count recipients
         recipient_count = 0
         if message.audience == "all":
-            recipient_count = await db.users.count_documents({"is_active": True})
+            recipient_count = await gd_count(db.session, "users", {"is_active": True})
         elif message.audience == "teachers":
-            recipient_count = await db.users.count_documents({"role": {"$in": ["teacher", "independent_teacher"]}, "is_active": True})
+            recipient_count = await gd_count(db.session, "users", {"role": {"$in": ["teacher", "independent_teacher"]}, "is_active": True})
         elif message.audience == "students":
-            recipient_count = await db.users.count_documents({"role": "student", "is_active": True})
+            recipient_count = await gd_count(db.session, "users", {"role": "student", "is_active": True})
         elif message.audience == "schools":
-            recipient_count = await db.users.count_documents({"role": "school_principal", "is_active": True})
+            recipient_count = await gd_count(db.session, "users", {"role": "school_principal", "is_active": True})
         
         message_doc = {
             "id": message_id,
@@ -345,7 +339,7 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
             "sent_by_name": current_user.get("full_name", "")
         }
         
-        await db.messages.insert_one(message_doc)
+        await gd_insert(db.session, "messages", message_doc)
         
         # Create notifications for recipients (simplified)
         # In production, this should be a background task
@@ -386,7 +380,7 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
         
         query["audience"] = {"$in": audience_filter}
         
-        messages = await db.messages.find(query, {"_id": 0}).sort("sent_at", -1).to_list(50)
+        messages = await gd_find(db.session, "messages", query, order_by="sent_at", desc_order=True, limit=50)
         
         # Add read status
         for msg in messages:
@@ -407,10 +401,12 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
         """Mark message as read"""
         user_id = current_user.get("id")
         
-        await db.messages.update_one(
-            {"id": message_id},
-            {"$addToSet": {"read_by": user_id}}
-        )
+        msg = await gd_find_one(db.session, "messages", {"id": message_id})
+        if msg:
+            read_by = msg.get("read_by") or []
+            if user_id not in read_by:
+                read_by.append(user_id)
+                await gd_update_one(db.session, "messages", {"id": message_id}, {"read_by": read_by})
         
         return {"success": True, "message": "تم تعيين الرسالة كمقروءة"}
     
@@ -422,7 +418,7 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
     ):
         """Update a scheduled message"""
         # Find the message
-        message = await db.messages.find_one({"id": message_id})
+        message = await gd_find_one(db.session, "messages", {"id": message_id})
         if not message:
             raise HTTPException(status_code=404, detail="الرسالة غير موجودة")
         
@@ -442,7 +438,7 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
         
         update_fields["updated_at"] = datetime.now(timezone.utc).isoformat()
         
-        await db.messages.update_one({"id": message_id}, {"$set": update_fields})
+        await gd_update_one(db.session, "messages", {"id": message_id}, update_fields)
         
         return {"success": True, "message": "تم تحديث الرسالة المجدولة"}
     
@@ -453,7 +449,7 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
     ):
         """Send a scheduled message immediately"""
         # Find the message
-        message = await db.messages.find_one({"id": message_id})
+        message = await gd_find_one(db.session, "messages", {"id": message_id})
         if not message:
             raise HTTPException(status_code=404, detail="الرسالة غير موجودة")
         
@@ -463,14 +459,11 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
         now = datetime.now(timezone.utc).isoformat()
         
         # Update status to sent
-        await db.messages.update_one(
-            {"id": message_id},
-            {"$set": {
+        await gd_update_one(db.session, "messages", {"id": message_id}, {
                 "status": "sent",
                 "sent_at": now,
                 "sent_count": message.get("recipient_count", 0)
-            }}
-        )
+            })
         
         # Create notification
         notification_doc = {
@@ -484,7 +477,7 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
             "created_at": now,
             "read_by": []
         }
-        await db.notifications.insert_one(notification_doc)
+        await gd_insert(db.session, "notifications", notification_doc)
         
         return {
             "success": True,
@@ -498,9 +491,9 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
         current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN]))
     ):
         """Delete a message"""
-        result = await db.messages.delete_one({"id": message_id})
+        result = await gd_delete_one(db.session, "messages", {"id": message_id})
         
-        if result.deleted_count == 0:
+        if result == 0:
             raise HTTPException(status_code=404, detail="الرسالة غير موجودة")
         
         return {"success": True, "message": "تم حذف الرسالة"}
@@ -524,7 +517,7 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
             "created_by": current_user.get("id")
         }
         
-        await db.message_templates.insert_one(template)
+        await gd_insert(db.session, "message_templates", template)
         template.pop("_id", None)
         
         return {"success": True, "template": template}

@@ -20,6 +20,7 @@ import uuid
 
 import sys as _sys
 import os as _os
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_upsert
 _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), ".."))
 from scripts.seed_db_helper import get_seed_db
 
@@ -405,59 +406,59 @@ async def seed_official_curriculum():
         try:
             # Drop existing official collections
             print("\n[1/6] حذف البيانات القديمة...")
-            await db.official_curriculum_stages.drop()
-            await db.official_curriculum_tracks.drop()
-            await db.official_curriculum_grades.drop()
-            await db.official_curriculum_subjects.drop()
-            await db.official_curriculum_subject_details.drop()
-            await db.official_teacher_rank_loads.drop()
+            await gd_delete_many(db.session, "official_curriculum_stages", {})
+            await gd_delete_many(db.session, "official_curriculum_tracks", {})
+            await gd_delete_many(db.session, "official_curriculum_grades", {})
+            await gd_delete_many(db.session, "official_curriculum_subjects", {})
+            await gd_delete_many(db.session, "official_curriculum_subject_details", {})
+            await gd_delete_many(db.session, "official_teacher_rank_loads", {})
             print("✓ تم حذف البيانات القديمة")
 
             # Insert stages
             print("\n[2/6] تثبيت المراحل الدراسية...")
             for stage in OFFICIAL_STAGES:
                 stage["created_at"] = datetime.now(timezone.utc).isoformat()
-                await db.official_curriculum_stages.insert_one(stage)
+                await gd_insert(db.session, "official_curriculum_stages", stage)
             print(f"✓ تم تثبيت {len(OFFICIAL_STAGES)} مراحل")
 
             # Insert tracks
             print("\n[3/6] تثبيت المسارات التعليمية...")
             for track in OFFICIAL_TRACKS:
                 track["created_at"] = datetime.now(timezone.utc).isoformat()
-                await db.official_curriculum_tracks.insert_one(track)
+                await gd_insert(db.session, "official_curriculum_tracks", track)
             print(f"✓ تم تثبيت {len(OFFICIAL_TRACKS)} مسارات")
 
             # Insert grades
             print("\n[4/6] تثبيت الصفوف والسنوات...")
             for grade in OFFICIAL_GRADES:
                 grade["created_at"] = datetime.now(timezone.utc).isoformat()
-                await db.official_curriculum_grades.insert_one(grade)
+                await gd_insert(db.session, "official_curriculum_grades", grade)
             print(f"✓ تم تثبيت {len(OFFICIAL_GRADES)} صف/سنة")
 
             # Insert subjects
             print("\n[5/6] تثبيت المواد الدراسية...")
             for subj in OFFICIAL_SUBJECTS:
                 subj["created_at"] = datetime.now(timezone.utc).isoformat()
-                await db.official_curriculum_subjects.insert_one(subj)
+                await gd_insert(db.session, "official_curriculum_subjects", subj)
             print(f"✓ تم تثبيت {len(OFFICIAL_SUBJECTS)} مادة")
 
             # Insert teacher rank loads
             print("\n[6/6] تثبيت النصاب الرسمي للمعلمين...")
             for rank in OFFICIAL_TEACHER_RANK_LOADS:
                 rank["created_at"] = datetime.now(timezone.utc).isoformat()
-                await db.official_teacher_rank_loads.insert_one(rank)
+                await gd_insert(db.session, "official_teacher_rank_loads", rank)
             print(f"✓ تم تثبيت {len(OFFICIAL_TEACHER_RANK_LOADS)} رتب")
 
             # Create indexes
             print("\n[*] إنشاء الفهارس...")
-            await db.official_curriculum_stages.create_index("id", unique=True)
-            await db.official_curriculum_tracks.create_index("id", unique=True)
-            await db.official_curriculum_grades.create_index("id", unique=True)
-            await db.official_curriculum_grades.create_index([("stage_id", 1), ("track_id", 1)])
-            await db.official_curriculum_subjects.create_index("id", unique=True)
-            await db.official_curriculum_subject_details.create_index("id", unique=True)
-            await db.official_curriculum_subject_details.create_index([("grade_id", 1), ("subject_id", 1)])
-            await db.official_teacher_rank_loads.create_index("id", unique=True)
+            pass  # index handled by PostgreSQL
+            pass  # index handled by PostgreSQL
+            pass  # index handled by PostgreSQL
+            pass  # index handled by PostgreSQL, ("track_id", 1)])
+            pass  # index handled by PostgreSQL
+            pass  # index handled by PostgreSQL
+            pass  # index handled by PostgreSQL, ("subject_id", 1)])
+            pass  # index handled by PostgreSQL
             print("✓ تم إنشاء الفهارس")
 
             print("\n" + "=" * 60)

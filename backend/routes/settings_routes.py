@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 import uuid
 import os
 import base64
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
 
 
 # Models
@@ -107,7 +108,7 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
     ):
         """جلب الإعدادات العامة"""
         try:
-            settings = await db.system_settings.find_one({"type": "general"})
+            settings = await gd_find_one(db.session, "system_settings", {"type": "general"})
             if settings:
                 return GeneralSettings(**settings.get("data", {}))
             return GeneralSettings()
@@ -124,7 +125,7 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
         now = datetime.now(timezone.utc).isoformat()
         new_data = settings.dict()
 
-        existing = await db.system_settings.find_one({"type": "general"})
+        existing = await gd_find_one(db.session, "system_settings", {"type": "general"})
         old_data = existing.get("data", {}) if existing else {}
 
         field_labels = {
@@ -147,14 +148,10 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
                     "new_value": str(new_val),
                 })
 
-        await db.system_settings.update_one(
-            {"type": "general"},
-            {"$set": {"type": "general", "data": new_data, "updated_at": now, "updated_by": current_user.get("id")}},
-            upsert=True
-        )
+        await gd_upsert(db.session, "system_settings", {"type": "general"}, {"type": "general", "data": new_data, "updated_at": now, "updated_by": current_user.get("id")})
 
         if changes:
-            await db.audit_logs.insert_one({
+            await gd_insert(db.session, "audit_logs", {
                 "id": str(uuid.uuid4()),
                 "action": "settings_updated",
                 "target_type": "general_settings",
@@ -175,7 +172,7 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
     ):
         """جلب إعدادات الصيانة"""
         try:
-            settings = await db.system_settings.find_one({"type": "maintenance"})
+            settings = await gd_find_one(db.session, "system_settings", {"type": "maintenance"})
             if settings:
                 return MaintenanceSettings(**settings.get("data", {}))
             return MaintenanceSettings()
@@ -189,8 +186,7 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
     ):
         """تحديث إعدادات الصيانة"""
         try:
-            await db.system_settings.update_one(
-                {"type": "maintenance"},
+            await gd_update_one(db.session, "system_settings", {"type": "maintenance"},
                 {
                     "$set": {
                         "type": "maintenance",
@@ -204,7 +200,7 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
             
             # Log the action
             action = "maintenance_enabled" if settings.maintenance_mode else "maintenance_disabled"
-            await db.audit_logs.insert_one({
+            await gd_insert(db.session, "audit_logs", {
                 "id": str(uuid.uuid4()),
                 "action": action,
                 "performed_by": current_user.get("id"),
@@ -226,7 +222,7 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
     ):
         """جلب جميع إصدارات الشروط والأحكام"""
         try:
-            versions = await db.terms_versions.find().sort("version_number", -1).to_list(100)
+            versions = await gd_find(db.session, "terms_versions", {}, order_by="version_number", desc_order=True, limit=100)
             return [
                 TermsVersion(
                     id=str(v.get("id", v.get("_id"))),
@@ -253,7 +249,7 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
         """إنشاء إصدار جديد من الشروط والأحكام"""
         try:
             # Get next version number
-            last_version = await db.terms_versions.find_one(sort=[("version_number", -1)])
+            last_version = await gd_find_one(db.session, "terms_versions", sort=[("version_number", -1)])
             next_version = (last_version.get("version_number", 0) if last_version else 0) + 1
             
             version = {
@@ -267,9 +263,9 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
                 "is_published": False
             }
             
-            await db.terms_versions.insert_one(version)
+            await gd_insert(db.session, "terms_versions", version)
             
-            await db.audit_logs.insert_one({
+            await gd_insert(db.session, "audit_logs", {
                 "id": str(uuid.uuid4()),
                 "action": "terms_updated",
                 "performed_by": current_user.get("id"),
@@ -292,21 +288,13 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
         """نشر إصدار من الشروط والأحكام"""
         try:
             # Unpublish all other versions
-            await db.terms_versions.update_many(
-                {},
-                {"$set": {"is_published": False}}
-            )
+            await gd_update_many(db.session, "terms_versions", {}, {"is_published": False})
             
             # Publish this version
-            await db.terms_versions.update_one(
-                {"id": version_id},
-                {
-                    "$set": {
+            await gd_update_one(db.session, "terms_versions", {"id": version_id}, {
                         "is_published": True,
                         "published_at": datetime.now(timezone.utc).isoformat()
-                    }
-                }
-            )
+                    })
             
             return {"success": True, "message": "تم نشر الإصدار بنجاح"}
         except Exception as e:
@@ -322,7 +310,7 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
     ):
         """جلب جميع إصدارات سياسة الخصوصية"""
         try:
-            versions = await db.privacy_versions.find().sort("version_number", -1).to_list(100)
+            versions = await gd_find(db.session, "privacy_versions", {}, order_by="version_number", desc_order=True, limit=100)
             return [
                 PrivacyVersion(
                     id=str(v.get("id", v.get("_id"))),
@@ -348,7 +336,7 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
     ):
         """إنشاء إصدار جديد من سياسة الخصوصية"""
         try:
-            last_version = await db.privacy_versions.find_one(sort=[("version_number", -1)])
+            last_version = await gd_find_one(db.session, "privacy_versions", sort=[("version_number", -1)])
             next_version = (last_version.get("version_number", 0) if last_version else 0) + 1
             
             version = {
@@ -362,7 +350,7 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
                 "is_published": False
             }
             
-            await db.privacy_versions.insert_one(version)
+            await gd_insert(db.session, "privacy_versions", version)
             
             return {"success": True, "version_number": next_version}
         except Exception as e:
@@ -377,11 +365,8 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
     ):
         """نشر إصدار من سياسة الخصوصية"""
         try:
-            await db.privacy_versions.update_many({}, {"$set": {"is_published": False}})
-            await db.privacy_versions.update_one(
-                {"id": version_id},
-                {"$set": {"is_published": True, "published_at": datetime.now(timezone.utc).isoformat()}}
-            )
+            await gd_update_many(db.session, "privacy_versions", {}, {"is_published": False})
+            await gd_update_one(db.session, "privacy_versions", {"id": version_id}, {"is_published": True, "published_at": datetime.now(timezone.utc).isoformat()})
             return {"success": True, "message": "تم نشر الإصدار بنجاح"}
         except Exception as e:
             import logging as _log
@@ -396,7 +381,7 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
     ):
         """جلب بيانات التواصل"""
         try:
-            settings = await db.system_settings.find_one({"type": "contact"})
+            settings = await gd_find_one(db.session, "system_settings", {"type": "contact"})
             if settings:
                 return ContactInfo(**settings.get("data", {}))
             return ContactInfo()
@@ -412,7 +397,7 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
         now = datetime.now(timezone.utc).isoformat()
         new_data = info.dict()
 
-        existing = await db.system_settings.find_one({"type": "contact"})
+        existing = await gd_find_one(db.session, "system_settings", {"type": "contact"})
         old_data = existing.get("data", {}) if existing else {}
 
         field_labels = {
@@ -438,14 +423,10 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
                     "new_value": str(new_val),
                 })
 
-        await db.system_settings.update_one(
-            {"type": "contact"},
-            {"$set": {"type": "contact", "data": new_data, "updated_at": now}},
-            upsert=True
-        )
+        await gd_upsert(db.session, "system_settings", {"type": "contact"}, {"type": "contact", "data": new_data, "updated_at": now})
 
         if changes:
-            await db.audit_logs.insert_one({
+            await gd_insert(db.session, "audit_logs", {
                 "id": str(uuid.uuid4()),
                 "action": "settings_updated",
                 "target_type": "contact_settings",
@@ -466,7 +447,7 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
     ):
         """جلب إعدادات الأمان"""
         try:
-            settings = await db.system_settings.find_one({"type": "security"})
+            settings = await gd_find_one(db.session, "system_settings", {"type": "security"})
             if settings:
                 return SecuritySettings(**settings.get("data", {}))
             return SecuritySettings()
@@ -482,7 +463,7 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
         now = datetime.now(timezone.utc).isoformat()
         new_data = settings.dict()
 
-        existing = await db.system_settings.find_one({"type": "security"})
+        existing = await gd_find_one(db.session, "system_settings", {"type": "security"})
         old_data = existing.get("data", {}) if existing else {}
 
         field_labels = {
@@ -506,14 +487,10 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
                     "new_value": str(new_val),
                 })
 
-        await db.system_settings.update_one(
-            {"type": "security"},
-            {"$set": {"type": "security", "data": new_data, "updated_at": now}},
-            upsert=True
-        )
+        await gd_upsert(db.session, "system_settings", {"type": "security"}, {"type": "security", "data": new_data, "updated_at": now})
 
         if changes:
-            await db.audit_logs.insert_one({
+            await gd_insert(db.session, "audit_logs", {
                 "id": str(uuid.uuid4()),
                 "action": "settings_updated",
                 "target_type": "security_settings",
@@ -534,7 +511,7 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
     ):
         """جلب إعدادات حساب المستخدم"""
         try:
-            user = await db.users.find_one({"id": current_user.get("id")})
+            user = await gd_find_one(db.session, "users", {"id": current_user.get("id")})
             if user:
                 return {
                     "name": user.get("full_name", user.get("name", "")),
@@ -556,7 +533,7 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
         user_id = current_user.get("id")
         now = datetime.now(timezone.utc).isoformat()
 
-        existing = await db.users.find_one({"id": user_id})
+        existing = await gd_find_one(db.session, "users", {"id": user_id})
         if not existing:
             raise HTTPException(status_code=404, detail="المستخدم غير موجود")
 
@@ -590,12 +567,9 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
         if not changes:
             return {"success": True, "message": "لا توجد تغييرات لحفظها", "changes": []}
 
-        await db.users.update_one(
-            {"id": user_id},
-            {"$set": update_fields}
-        )
+        await gd_update_one(db.session, "users", {"id": user_id}, update_fields)
 
-        await db.audit_logs.insert_one({
+        await gd_insert(db.session, "audit_logs", {
             "id": str(uuid.uuid4()),
             "action": "account_settings_updated",
             "target_type": "user_account",
@@ -621,10 +595,7 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
             encoded = base64.b64encode(content).decode('utf-8')
             data_url = f"data:{file.content_type};base64,{encoded}"
             
-            await db.users.update_one(
-                {"id": current_user.get("id")},
-                {"$set": {"profile_picture": data_url, "avatar_url": data_url}}
-            )
+            await gd_update_one(db.session, "users", {"id": current_user.get("id")}, {"profile_picture": data_url, "avatar_url": data_url})
             
             return {"success": True, "profile_picture": data_url}
         except Exception as e:
@@ -636,10 +607,7 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
     async def delete_profile_picture(
         current_user: dict = Depends(get_current_user)
     ):
-        await db.users.update_one(
-            {"id": current_user.get("id")},
-            {"$unset": {"profile_picture": "", "avatar_url": ""}}
-        )
+        await gd_update_one(db.session, "users", {"id": current_user.get("id")}, {"profile_picture": None, "avatar_url": None})
         return {"success": True}
 
     # ============= ACTIVE SESSIONS =============
@@ -650,7 +618,7 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
     ):
         """جلب الجلسات النشطة"""
         try:
-            sessions = await db.sessions.find().sort("created_at", -1).to_list(100)
+            sessions = await gd_find(db.session, "sessions", {}, order_by="created_at", desc_order=True, limit=100)
             return [
                 {
                     "id": str(s.get("id", s.get("_id"))),

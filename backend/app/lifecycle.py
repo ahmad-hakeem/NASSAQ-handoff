@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 
 from dependencies import db, hash_password
 from db import async_session_factory, init_pg_tables, close_pg_engine
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
 
 logger = logging.getLogger("nassaq")
 
@@ -46,7 +47,7 @@ async def _seed_platform_admins():
         if not admin["password"]:
             logger.warning(f"Skipping admin seed for {admin['email']}: password env var not set")
             continue
-        existing = await db.users.find_one({"email": admin["email"]})
+        existing = await gd_find_one(db.session, "users", {"email": admin["email"]})
         if not existing:
             user_doc = {
                 "id": str(uuid.uuid4()),
@@ -64,11 +65,11 @@ async def _seed_platform_admins():
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }
-            await db.users.insert_one(user_doc)
+            await gd_insert(db.session, "users", user_doc)
             logger.info(f"Seeded platform admin: {admin['email']}")
         else:
             if existing.get("role") != "platform_admin":
-                await db.users.update_one({"email": admin["email"]}, {"$set": {"role": "platform_admin"}})
+                await gd_update_one(db.session, "users", {"email": admin["email"]}, {"role": "platform_admin"})
                 logger.info(f"Updated role to platform_admin: {admin['email']}")
 
 
@@ -124,11 +125,11 @@ async def startup_tasks():
 
     async def _data_snapshot():
         nonlocal db_has_data
-        user_count_result = await db.users.count_documents({})
+        user_count_result = await gd_count(db.session, "users", {})
         db_has_data = user_count_result > 0
-        school_count = await db.schools.count_documents({})
-        student_count = await db.students.count_documents({})
-        teacher_count = await db.teachers.count_documents({})
+        school_count = await gd_count(db.session, "schools", {})
+        student_count = await gd_count(db.session, "students", {})
+        teacher_count = await gd_count(db.session, "teachers", {})
         logger.info(f"DEPLOYMENT SAFETY: Data snapshot on startup — users={user_count_result}, schools={school_count}, students={student_count}, teachers={teacher_count}")
 
     await _run_with_session("Data snapshot", _data_snapshot)

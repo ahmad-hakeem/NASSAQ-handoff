@@ -12,6 +12,7 @@ from dependencies import db, get_current_user, require_roles, UserRole
 from sqlalchemy import text as sa_text
 from sqlalchemy.exc import SQLAlchemyError
 import logging
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
 
 logger = logging.getLogger("nassaq.monitoring_routes")
 
@@ -122,11 +123,11 @@ async def system_status(current_user: dict = Depends(require_roles([UserRole.PLA
         db_ok, _ = await _pg_ping(db)
         if db_ok:
             table_count = await _pg_table_count(db)
-            total_users = await db.users.count_documents({})
-            total_schools = await db.schools.count_documents({})
+            total_users = await gd_count(db.session, "users", {})
+            total_schools = await gd_count(db.session, "schools", {})
             from datetime import timedelta
             cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
-            active_users_24h = await db.users.count_documents({"last_login": {"$gte": cutoff.isoformat()}})
+            active_users_24h = await gd_count(db.session, "users", {"last_login": {"$gte": cutoff.isoformat()}})
     except Exception as e:
         logger.warning(f"System status query error: {e}")
 
@@ -268,13 +269,13 @@ async def system_metrics(current_user: dict = Depends(require_roles([UserRole.PL
     db_counts = {}
     try:
         db_counts = {
-            "users": await db.users.count_documents({}),
-            "schools": await db.schools.count_documents({}),
-            "teachers": await db.teachers.count_documents({}),
-            "students": await db.students.count_documents({}),
-            "classes": await db.classes.count_documents({}),
-            "sessions": await db.teacher_sessions.count_documents({}),
-            "audit_logs": await db.audit_logs.count_documents({}),
+            "users": await gd_count(db.session, "users", {}),
+            "schools": await gd_count(db.session, "schools", {}),
+            "teachers": await gd_count(db.session, "teachers", {}),
+            "students": await gd_count(db.session, "students", {}),
+            "classes": await gd_count(db.session, "classes", {}),
+            "sessions": await gd_count(db.session, "teacher_sessions", {}),
+            "audit_logs": await gd_count(db.session, "audit_logs", {}),
         }
     except (SQLAlchemyError, ConnectionError, OSError) as e:
         logger.error(f"System metrics DB query failed: {e}")

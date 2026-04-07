@@ -12,6 +12,8 @@ import uuid
 import re
 import logging
 
+from engines.sql_utils import gd_find_one, gd_insert
+
 logger = logging.getLogger(__name__)
 
 SENSITIVE_QUERY_KEYS = frozenset({
@@ -350,10 +352,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
                     tenant_id = payload.get("tenant_id")
                     # Try to resolve name
                     if user_id and self.db:
-                        u_doc = await self.db.users.find_one(
-                            {"id": user_id},
-                            {"full_name": 1, "email": 1, "role": 1, "tenant_id": 1}
-                        )
+                        u_doc = await gd_find_one(self.db.session, "users", {"id": user_id})
                         if u_doc:
                             user_name = u_doc.get("full_name")
                             user_email = u_doc.get("email") or user_email
@@ -396,7 +395,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
             },
         }
 
-        await self.db.audit_logs.insert_one(audit_doc)
+        await gd_insert(self.db.session, "audit_logs", audit_doc)
 
 
 def create_audit_middleware(db):

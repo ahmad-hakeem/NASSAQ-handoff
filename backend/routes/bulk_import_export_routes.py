@@ -14,6 +14,7 @@ import uuid
 import re
 import logging
 from enum import Enum
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
 
 logger = logging.getLogger("nassaq.bulk_import")
 
@@ -190,7 +191,7 @@ def setup_bulk_routes(db, get_current_user, require_roles, UserRole):
                 failed = result['failed']
             
             # Log the import
-            await db.audit_logs.insert_one({
+            await gd_insert(db.session, "audit_logs", {
                 "id": str(uuid.uuid4()),
                 "action": f"bulk_import_{import_type.value}",
                 "performed_by": current_user.get("id"),
@@ -285,7 +286,7 @@ def setup_bulk_routes(db, get_current_user, require_roles, UserRole):
             output.seek(0)
             
             # Log the export
-            await db.audit_logs.insert_one({
+            await gd_insert(db.session, "audit_logs", {
                 "id": str(uuid.uuid4()),
                 "action": f"bulk_export_{export_type.value}",
                 "performed_by": current_user.get("id"),
@@ -374,7 +375,7 @@ async def _import_students(db, df: pd.DataFrame, school_id: str, user: dict, err
                 continue
             
             # Check if student already exists
-            existing = await db.students.find_one({
+            existing = await gd_find_one(db.session, "students", {
                 "national_id": national_id,
                 "school_id": school_id
             })
@@ -414,7 +415,7 @@ async def _import_students(db, df: pd.DataFrame, school_id: str, user: dict, err
                 "import_source": "bulk_import"
             }
             
-            await db.students.insert_one(student)
+            await gd_insert(db.session, "students", student)
             imported += 1
             
         except Exception as e:
@@ -472,7 +473,7 @@ async def _import_teachers(db, df: pd.DataFrame, school_id: str, user: dict, err
                 continue
             
             # Check if teacher already exists
-            existing = await db.teachers.find_one({
+            existing = await gd_find_one(db.session, "teachers", {
                 "$or": [
                     {"email": email},
                     {"phone": phone}
@@ -517,7 +518,7 @@ async def _import_teachers(db, df: pd.DataFrame, school_id: str, user: dict, err
                 "import_source": "bulk_import"
             }
             
-            await db.teachers.insert_one(teacher)
+            await gd_insert(db.session, "teachers", teacher)
             imported += 1
             
         except Exception as e:
@@ -537,7 +538,7 @@ async def _export_students(db, school_id: str, grade: str = None, class_name: st
     if class_name:
         query["class_name"] = class_name
     
-    students = await db.students.find(query).to_list(10000)
+    students = await gd_find(db.session, "students", query, limit=10000)
     
     data = []
     for s in students:
@@ -568,7 +569,7 @@ async def _export_teachers(db, school_id: str):
     if school_id:
         query["school_id"] = school_id
     
-    teachers = await db.teachers.find(query).to_list(5000)
+    teachers = await gd_find(db.session, "teachers", query, limit=5000)
     
     data = []
     for t in teachers:
@@ -597,7 +598,7 @@ async def _export_schedule(db, school_id: str):
     if school_id:
         query["school_id"] = school_id
     
-    schedules = await db.schedules.find(query).to_list(1000)
+    schedules = await gd_find(db.session, "schedules", query, limit=1000)
     
     data = []
     for s in schedules:
@@ -629,7 +630,7 @@ async def _export_attendance(db, school_id: str, grade: str = None, class_name: 
     if class_name:
         query["class_name"] = class_name
     
-    records = await db.attendance.find(query).sort("date", -1).limit(5000).to_list(5000)
+    records = await gd_find(db.session, "attendance", query, order_by="date", desc_order=True, limit=5000)
     
     data = []
     for r in records:
@@ -658,7 +659,7 @@ async def _export_grades(db, school_id: str, grade: str = None, class_name: str 
     if class_name:
         query["class_name"] = class_name
     
-    records = await db.grades.find(query).to_list(10000)
+    records = await gd_find(db.session, "grades", query, limit=10000)
     
     data = []
     for r in records:
@@ -689,10 +690,7 @@ def setup_import_tracking_routes(db, get_current_user, require_roles, UserRole):
     ):
         """Get import history and status"""
         school_id = current_user.get("tenant_id")
-        logs = await db.audit_logs.find(
-            {"action": {"$regex": "^bulk_import_"}, "details.school_id": school_id},
-            {"_id": 0}
-        ).sort("timestamp", -1).limit(limit).to_list(limit)
+        logs = await gd_find(db.session, "audit_logs", {"action": {"$regex": "^bulk_import_"}, "details.school_id": school_id}, order_by="timestamp", desc_order=True, limit=limit)
 
         return {"history": logs, "total": len(logs)}
 
@@ -703,10 +701,7 @@ def setup_import_tracking_routes(db, get_current_user, require_roles, UserRole):
     ):
         """Get export history"""
         school_id = current_user.get("tenant_id")
-        logs = await db.audit_logs.find(
-            {"action": "data_exported", "details.school_id": school_id},
-            {"_id": 0}
-        ).sort("timestamp", -1).limit(limit).to_list(limit)
+        logs = await gd_find(db.session, "audit_logs", {"action": "data_exported", "details.school_id": school_id}, order_by="timestamp", desc_order=True, limit=limit)
 
         return {"history": logs, "total": len(logs)}
 

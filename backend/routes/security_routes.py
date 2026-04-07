@@ -9,6 +9,7 @@ from typing import Optional, List
 from datetime import datetime, timezone
 import uuid
 import logging
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
 logger = logging.getLogger("nassaq")
 
 # Models
@@ -62,12 +63,12 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
                 return []
             
             # Search by email or phone
-            results = await db.users.find({
+            results = await gd_find(db.session, "users", {
                 "$or": [
                     {"email": {"$regex": query, "$options": "i"}},
                     {"phone": {"$regex": query, "$options": "i"}}
                 ]
-            }).to_list(20)
+            }, limit=20)
             
             return [
                 AccountSearchResult(
@@ -95,23 +96,18 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
         Lock a user account
         """
         try:
-            result = await db.users.update_one(
-                {"$or": [{"id": user_id}, {"_id": user_id}]},
-                {
-                    "$set": {
+            result = await gd_update_one(db.session, "users", {"$or": [{"id": user_id}, {"_id": user_id}]}, {
                         "is_locked": True,
                         "is_active": False,
                         "locked_at": datetime.now(timezone.utc).isoformat(),
                         "locked_by": current_user.get("id")
-                    }
-                }
-            )
+                    })
             
-            if result.modified_count == 0:
+            if result == 0:
                 raise HTTPException(status_code=404, detail="المستخدم غير موجود")
             
             # Log the action
-            await db.audit_logs.insert_one({
+            await gd_insert(db.session, "audit_logs", {
                 "id": str(uuid.uuid4()),
                 "action": "account_locked",
                 "target_user_id": user_id,
@@ -165,23 +161,18 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
         Unlock a user account
         """
         try:
-            result = await db.users.update_one(
-                {"$or": [{"id": user_id}, {"_id": user_id}]},
-                {
-                    "$set": {
+            result = await gd_update_one(db.session, "users", {"$or": [{"id": user_id}, {"_id": user_id}]}, {
                         "is_locked": False,
                         "is_active": True,
                         "unlocked_at": datetime.now(timezone.utc).isoformat(),
                         "unlocked_by": current_user.get("id")
-                    }
-                }
-            )
+                    })
             
-            if result.modified_count == 0:
+            if result == 0:
                 raise HTTPException(status_code=404, detail="المستخدم غير موجود")
             
             # Log the action
-            await db.audit_logs.insert_one({
+            await gd_insert(db.session, "audit_logs", {
                 "id": str(uuid.uuid4()),
                 "action": "account_unlocked",
                 "target_user_id": user_id,
@@ -208,7 +199,7 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
             now = datetime.now(timezone.utc).isoformat()
             admin_id = current_user.get("id")
 
-            await db.audit_logs.insert_one({
+            await gd_insert(db.session, "audit_logs", {
                 "id": str(uuid.uuid4()),
                 "action": "all_sessions_terminated",
                 "performed_by": admin_id,
@@ -239,52 +230,37 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
             
             if request.target_type == 'user' and request.user_id:
                 # Single user
-                result = await db.users.update_one(
-                    {"$or": [{"id": request.user_id}, {"_id": request.user_id}]},
-                    {
-                        "$set": {
+                result = await gd_update_one(db.session, "users", {"$or": [{"id": request.user_id}, {"_id": request.user_id}]}, {
                             "must_change_password": True,
                             "password_change_required_at": datetime.now(timezone.utc).isoformat(),
                             "password_change_required_by": current_user.get("id")
-                        }
-                    }
-                )
-                affected_count = result.modified_count
+                        })
+                affected_count = result
                 
             elif request.target_type == 'role' and request.role:
                 # All users with specific role
-                result = await db.users.update_many(
-                    {"role": request.role},
-                    {
-                        "$set": {
+                result = await gd_update_many(db.session, "users", {"role": request.role}, {
                             "must_change_password": True,
                             "password_change_required_at": datetime.now(timezone.utc).isoformat(),
                             "password_change_required_by": current_user.get("id")
-                        }
-                    }
-                )
-                affected_count = result.modified_count
+                        })
+                affected_count = result
                 
                 logger.info(f"Force password change applied to role={request.role}, affected={affected_count}")
                 
             elif request.target_type == 'all':
                 # ALL users except current admin
-                result = await db.users.update_many(
-                    {"id": {"$ne": current_user.get("id")}},
-                    {
-                        "$set": {
+                result = await gd_update_many(db.session, "users", {"id": {"$ne": current_user.get("id")}}, {
                             "must_change_password": True,
                             "password_change_required_at": datetime.now(timezone.utc).isoformat(),
                             "password_change_required_by": current_user.get("id")
-                        }
-                    }
-                )
-                affected_count = result.modified_count
+                        })
+                affected_count = result
                 
                 logger.info(f"Force password change applied to all users, affected={affected_count}")
             
             # Log the action
-            await db.audit_logs.insert_one({
+            await gd_insert(db.session, "audit_logs", {
                 "id": str(uuid.uuid4()),
                 "action": "force_password_change",
                 "target_type": request.target_type,
@@ -329,17 +305,14 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
     ):
         """تعطيل حساب مستخدم"""
         try:
-            user = await db.users.find_one({"id": user_id}, {"_id": 0, "full_name": 1})
+            user = await gd_find_one(db.session, "users", {"id": user_id})
             if not user:
                 raise HTTPException(status_code=404, detail="المستخدم غير موجود")
 
             now = datetime.now(timezone.utc).isoformat()
-            await db.users.update_one(
-                {"id": user_id},
-                {"$set": {"is_active": False, "deactivated_at": now, "deactivated_by": current_user["id"]}}
-            )
+            await gd_update_one(db.session, "users", {"id": user_id}, {"is_active": False, "deactivated_at": now, "deactivated_by": current_user["id"]})
 
-            await db.audit_logs.insert_one({
+            await gd_insert(db.session, "audit_logs", {
                 "id": str(uuid.uuid4()),
                 "action": "account_deactivated",
                 "performed_by": current_user.get("id"),
@@ -362,17 +335,14 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
     ):
         """إعادة تفعيل حساب مستخدم"""
         try:
-            user = await db.users.find_one({"id": user_id}, {"_id": 0, "full_name": 1})
+            user = await gd_find_one(db.session, "users", {"id": user_id})
             if not user:
                 raise HTTPException(status_code=404, detail="المستخدم غير موجود")
 
             now = datetime.now(timezone.utc).isoformat()
-            await db.users.update_one(
-                {"id": user_id},
-                {"$set": {"is_active": True, "reactivated_at": now}}
-            )
+            await gd_update_one(db.session, "users", {"id": user_id}, {"is_active": True, "reactivated_at": now})
 
-            await db.audit_logs.insert_one({
+            await gd_insert(db.session, "audit_logs", {
                 "id": str(uuid.uuid4()),
                 "action": "account_reactivated",
                 "performed_by": current_user.get("id"),
@@ -395,7 +365,7 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
     ):
         """إنشاء طلب إعادة تعيين كلمة المرور (يرسل كلمة مرور مؤقتة)"""
         try:
-            user = await db.users.find_one({"id": user_id}, {"_id": 0, "full_name": 1, "email": 1})
+            user = await gd_find_one(db.session, "users", {"id": user_id})
             if not user:
                 raise HTTPException(status_code=404, detail="المستخدم غير موجود")
 
@@ -405,17 +375,14 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
             hashed = hash_password(temp_password)
 
             now = datetime.now(timezone.utc).isoformat()
-            await db.users.update_one(
-                {"id": user_id},
-                {"$set": {
+            await gd_update_one(db.session, "users", {"id": user_id}, {
                     "password_hash": hashed,
                     "must_change_password": True,
                     "password_reset_at": now,
                     "password_reset_by": current_user["id"]
-                }}
-            )
+                })
 
-            await db.audit_logs.insert_one({
+            await gd_insert(db.session, "audit_logs", {
                 "id": str(uuid.uuid4()),
                 "action": "password_reset",
                 "performed_by": current_user.get("id"),
@@ -442,13 +409,7 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
         current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
     ):
         """جلب حالة الحساب"""
-        user = await db.users.find_one(
-            {"id": user_id},
-            {"_id": 0, "id": 1, "full_name": 1, "email": 1, "role": 1,
-             "is_active": 1, "is_locked": 1, "must_change_password": 1,
-             "last_login": 1, "created_at": 1, "deactivated_at": 1,
-             "reactivated_at": 1, "locked_at": 1, "password_reset_at": 1}
-        )
+        user = await gd_find_one(db.session, "users", {"id": user_id})
         if not user:
             raise HTTPException(status_code=404, detail="المستخدم غير موجود")
 

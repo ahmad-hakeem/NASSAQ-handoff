@@ -5,6 +5,7 @@ Audit logging utilities
 from datetime import datetime, timezone
 import uuid
 from typing import Optional
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
 
 
 async def log_action(
@@ -36,7 +37,7 @@ async def log_action(
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
     
-    await db.audit_logs.insert_one(audit_log)
+    await gd_insert(db.session, "audit_logs", audit_log)
     return audit_log
 
 
@@ -88,10 +89,9 @@ async def get_audit_logs(
         if to_date:
             query["timestamp"]["$lte"] = to_date
     
-    cursor = db.audit_logs.find(query, {"_id": 0}).sort("timestamp", -1).skip(skip).limit(limit)
-    logs = await cursor.to_list(length=limit)
+    logs = await gd_find(db.session, "audit_logs", query, order_by="timestamp", desc_order=True, skip=skip, limit=limit)
     
-    total = await db.audit_logs.count_documents(query)
+    total = await gd_count(db.session, "audit_logs", query)
     
     return {
         "logs": logs,

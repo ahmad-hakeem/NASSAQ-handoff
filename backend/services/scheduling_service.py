@@ -13,6 +13,8 @@ from typing import List, Dict, Optional, Tuple
 from datetime import datetime, timezone
 import uuid
 
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_delete_many, gd_update_one
+
 from models.scheduling import (
     TeacherRank,
     DayOfWeek,
@@ -46,9 +48,7 @@ class SchedulingService:
         conflicts = []
         
         # Get assignment details
-        assignment = await self.db.teacher_assignments.find_one(
-            {"id": assignment_id}, {"_id": 0}
-        )
+        assignment = await gd_find_one(self.db.session, "teacher_assignments", {"id": assignment_id})
         if not assignment:
             conflicts.append(ScheduleConflict(
                 conflict_type="invalid_assignment",
@@ -74,22 +74,16 @@ class SchedulingService:
         if exclude_session_id:
             base_query["id"] = {"$ne": exclude_session_id}
         
-        existing_sessions = await self.db.schedule_sessions.find(
-            base_query, {"_id": 0}
-        ).to_list(100)
+        existing_sessions = await gd_find(self.db.session, "schedule_sessions", base_query, limit=100)
         
         for session in existing_sessions:
-            session_assignment = await self.db.teacher_assignments.find_one(
-                {"id": session.get("assignment_id")}, {"_id": 0}
-            )
+            session_assignment = await gd_find_one(self.db.session, "teacher_assignments", {"id": session.get("assignment_id")})
             if not session_assignment:
                 continue
             
             # Check teacher double booking
             if session_assignment.get("teacher_id") == teacher_id:
-                teacher = await self.db.teachers.find_one(
-                    {"id": teacher_id}, {"_id": 0, "full_name": 1}
-                )
+                teacher = await gd_find_one(self.db.session, "teachers", {"id": teacher_id})
                 teacher_name = teacher.get("full_name", "Unknown") if teacher else "Unknown"
                 conflicts.append(ScheduleConflict(
                     conflict_type="teacher_double_booking",
@@ -103,9 +97,7 @@ class SchedulingService:
             
             # Check class double booking
             if session_assignment.get("class_id") == class_id:
-                class_doc = await self.db.classes.find_one(
-                    {"id": class_id}, {"_id": 0, "name": 1}
-                )
+                class_doc = await gd_find_one(self.db.session, "classes", {"id": class_id})
                 class_name = class_doc.get("name", "Unknown") if class_doc else "Unknown"
                 conflicts.append(ScheduleConflict(
                     conflict_type="class_double_booking",
@@ -129,9 +121,7 @@ class SchedulingService:
         Calculate teacher's actual workload in a schedule
         """
         # Get teacher info with rank
-        teacher = await self.db.teachers.find_one(
-            {"id": teacher_id}, {"_id": 0}
-        )
+        teacher = await gd_find_one(self.db.session, "teachers", {"id": teacher_id})
         if not teacher:
             return {"error": "Teacher not found"}
         
@@ -144,18 +134,16 @@ class SchedulingService:
         workload_config = DEFAULT_WORKLOAD_CONFIGS.get(rank)
         
         # Get teacher's assignments
-        assignments = await self.db.teacher_assignments.find(
-            {"teacher_id": teacher_id, "is_active": True}, {"_id": 0}
-        ).to_list(100)
+        assignments = await gd_find(self.db.session, "teacher_assignments", {"teacher_id": teacher_id, "is_active": True}, limit=100)
         
         assignment_ids = [a.get("id") for a in assignments]
         
         # Count sessions in schedule
-        sessions = await self.db.schedule_sessions.find({
+        sessions = await gd_find(self.db.session, "schedule_sessions", {
             "schedule_id": schedule_id,
             "assignment_id": {"$in": assignment_ids},
             "status": {"$ne": SessionStatus.CANCELLED.value}
-        }, {"_id": 0}).to_list(200)
+        }, limit=200)
         
         # Group by day
         sessions_by_day = {}
@@ -193,10 +181,10 @@ class SchedulingService:
         conflicts = []
         
         # Get all sessions
-        sessions = await self.db.schedule_sessions.find({
+        sessions = await gd_find(self.db.session, "schedule_sessions", {
             "schedule_id": schedule_id,
             "status": {"$ne": SessionStatus.CANCELLED.value}
-        }, {"_id": 0}).to_list(1000)
+        }, limit=1000)
         
         # Group by day and time slot
         by_day_slot = {}
@@ -213,9 +201,7 @@ class SchedulingService:
             
             # Get all assignments for these sessions
             assignment_ids = [s.get("assignment_id") for s in slot_sessions]
-            assignments = await self.db.teacher_assignments.find(
-                {"id": {"$in": assignment_ids}}, {"_id": 0}
-            ).to_list(100)
+            assignments = await gd_find(self.db.session, "teacher_assignments", {"id": {"$in": assignment_ids}}, limit=100)
             assignment_map = {a.get("id"): a for a in assignments}
             
             # Check teacher conflicts
@@ -240,9 +226,7 @@ class SchedulingService:
             # Report teacher conflicts
             for teacher_id, session_ids in teachers_in_slot.items():
                 if len(session_ids) > 1:
-                    teacher = await self.db.teachers.find_one(
-                        {"id": teacher_id}, {"_id": 0, "full_name": 1}
-                    )
+                    teacher = await gd_find_one(self.db.session, "teachers", {"id": teacher_id})
                     name = teacher.get("full_name", "Unknown") if teacher else "Unknown"
                     conflicts.append(ScheduleConflict(
                         conflict_type="teacher_double_booking",
@@ -257,9 +241,7 @@ class SchedulingService:
             # Report class conflicts
             for class_id, session_ids in classes_in_slot.items():
                 if len(session_ids) > 1:
-                    class_doc = await self.db.classes.find_one(
-                        {"id": class_id}, {"_id": 0, "name": 1}
-                    )
+                    class_doc = await gd_find_one(self.db.session, "classes", {"id": class_id})
                     name = class_doc.get("name", "Unknown") if class_doc else "Unknown"
                     conflicts.append(ScheduleConflict(
                         conflict_type="class_double_booking",
@@ -287,9 +269,7 @@ class SchedulingService:
         warnings = []
         
         # Get schedule info
-        schedule = await self.db.schedules.find_one(
-            {"id": schedule_id}, {"_id": 0}
-        )
+        schedule = await gd_find_one(self.db.session, "schedules", {"id": schedule_id})
         if not schedule:
             return ScheduleGenerationResult(
                 success=False,
@@ -305,10 +285,7 @@ class SchedulingService:
         ])
         
         # Get time slots
-        time_slots = await self.db.time_slots.find(
-            {"school_id": school_id, "is_active": True, "is_break": False},
-            {"_id": 0}
-        ).to_list(20)
+        time_slots = await gd_find(self.db.session, "time_slots", {"school_id": school_id, "is_active": True, "is_break": False}, limit=20)
         
         if not time_slots:
             return ScheduleGenerationResult(
@@ -322,15 +299,12 @@ class SchedulingService:
         time_slots.sort(key=lambda x: x.get("slot_number", 0))
         
         # Get active assignments for this school
-        assignments = await self.db.teacher_assignments.find(
-            {
-                "school_id": school_id,
-                "is_active": True,
-                "academic_year": schedule.get("academic_year"),
-                "semester": schedule.get("semester")
-            },
-            {"_id": 0}
-        ).to_list(500)
+        assignments = await gd_find(self.db.session, "teacher_assignments", {
+            "school_id": school_id,
+            "is_active": True,
+            "academic_year": schedule.get("academic_year"),
+            "semester": schedule.get("semester")
+        }, limit=500)
         
         if not assignments:
             return ScheduleGenerationResult(
@@ -341,9 +315,7 @@ class SchedulingService:
             )
         
         # Clear existing sessions for this schedule
-        await self.db.schedule_sessions.delete_many({
-            "schedule_id": schedule_id
-        })
+        await gd_delete_many(self.db.session, "schedule_sessions", {"schedule_id": schedule_id})
         
         # Build placement requirements
         # Each assignment needs weekly_sessions distributed across days
@@ -419,7 +391,7 @@ class SchedulingService:
                         "updated_at": datetime.now(timezone.utc).isoformat()
                     }
                     
-                    await self.db.schedule_sessions.insert_one(session_doc)
+                    await gd_insert(self.db.session, "schedule_sessions", session_doc)
                     
                     # Update tracking
                     teacher_schedule[teacher_id][day].append(slot_id)
@@ -436,16 +408,11 @@ class SchedulingService:
         conflicts = await self.detect_all_conflicts(schedule_id)
         
         # Update schedule status
-        await self.db.schedules.update_one(
-            {"id": schedule_id},
-            {
-                "$set": {
-                    "total_sessions": sessions_created,
-                    "status": ScheduleStatus.DRAFT.value,
-                    "updated_at": datetime.now(timezone.utc).isoformat()
-                }
-            }
-        )
+        await gd_update_one(self.db.session, "schedules", {"id": schedule_id}, {
+            "total_sessions": sessions_created,
+            "status": ScheduleStatus.DRAFT.value,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        })
         
         unplaced = sum(1 for s in sessions_to_place if not s["placed"])
         

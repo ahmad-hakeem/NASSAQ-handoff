@@ -26,6 +26,7 @@ from dependencies import (
     REPORT_TYPES, generate_student_qr_code
 )
 
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
 from shared_models import (
     SchoolCreate, SchoolResponse
 )
@@ -38,7 +39,7 @@ router = APIRouter()
 async def _generate_unique_school_code(country: str = "SA", custom_code: str = None) -> str:
     """Generate a unique school code with retry logic."""
     if custom_code:
-        existing = await db.schools.find_one({"code": custom_code})
+        existing = await gd_find_one(db.session, "schools", {"code": custom_code})
         if existing:
             raise HTTPException(status_code=400, detail="رمز المدرسة مستخدم مسبقاً — يُرجى اختيار رمز آخر")
         return custom_code
@@ -47,10 +48,7 @@ async def _generate_unique_school_code(country: str = "SA", custom_code: str = N
     country_code = country[:2].upper() if country else "SA"
     prefix = f"NSS-{country_code}-{year_suffix}-"
 
-    last_school = await db.schools.find_one(
-        {"code": {"$regex": f"^{prefix}"}},
-        sort=[("code", -1)]
-    )
+    last_school = await gd_find_one(db.session, "schools", {"code": {"$regex": f"^{prefix}"}})
     if last_school and last_school.get("code"):
         try:
             last_num = int(last_school["code"].split("-")[-1])
@@ -62,7 +60,7 @@ async def _generate_unique_school_code(country: str = "SA", custom_code: str = N
 
     for attempt in range(10):
         candidate = f"{prefix}{str(next_num + attempt).zfill(4)}"
-        existing = await db.schools.find_one({"code": candidate})
+        existing = await gd_find_one(db.session, "schools", {"code": candidate})
         if not existing:
             return candidate
 
@@ -82,13 +80,13 @@ async def create_school(
     
     # Validate principal email uniqueness (except if teacher creating parent account)
     if school_data.principal_email:
-        existing_email = await db.users.find_one({"email": school_data.principal_email})
+        existing_email = await gd_find_one(db.session, "users", {"email": school_data.principal_email})
         if existing_email:
             raise HTTPException(status_code=400, detail="البريد الإلكتروني مستخدم مسبقاً")
     
     # Validate principal phone uniqueness
     if school_data.principal_phone:
-        existing_phone = await db.users.find_one({"phone": school_data.principal_phone})
+        existing_phone = await gd_find_one(db.session, "users", {"phone": school_data.principal_phone})
         if existing_phone:
             raise HTTPException(status_code=400, detail="رقم الهاتف مستخدم مسبقاً")
     
@@ -127,13 +125,13 @@ async def create_school(
     }
     
     try:
-        await db.schools.insert_one(school_doc)
+        await gd_insert(db.session, "schools", school_doc)
     except Exception as e:
         if "duplicate" in str(e).lower() or "unique" in str(e).lower():
             school_code = await _generate_unique_school_code(country=school_data.country)
             school_doc["code"] = school_code
             school_doc["email"] = school_data.email or school_data.principal_email or f"school-{school_code.lower()}@nassaq.com"
-            await db.schools.insert_one(school_doc)
+            await gd_insert(db.session, "schools", school_doc)
         else:
             raise
     
@@ -164,7 +162,7 @@ async def create_school(
             "created_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat()
         }
-        await db.users.insert_one(principal_doc)
+        await gd_insert(db.session, "users", principal_doc)
         
         # Log tenant creation using Audit Engine
         await audit_engine.log_data_change(
@@ -196,7 +194,7 @@ async def create_school(
         )
     
     # Create default school settings from template
-    default_settings = await db.default_settings.find_one({"id": "default-school-settings"}, {"_id": 0})
+    default_settings = await gd_find_one(db.session, "default_settings", {"id": "default-school-settings"})
     if default_settings:
         school_settings = {
             "id": f"settings-{school_id}",
@@ -217,7 +215,7 @@ async def create_school(
             "created_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat()
         }
-        await db.school_settings.insert_one(school_settings)
+        await gd_insert(db.session, "school_settings", school_settings)
     
     return SchoolResponse(
         id=school_id,
@@ -279,13 +277,13 @@ async def create_school_draft(
     }
     
     try:
-        await db.schools.insert_one(school_doc)
+        await gd_insert(db.session, "schools", school_doc)
     except Exception as e:
         if "duplicate" in str(e).lower() or "unique" in str(e).lower():
             school_code = await _generate_unique_school_code(country=school_data.country)
             school_doc["code"] = school_code
             school_doc["email"] = school_data.email or f"school-{school_code.lower()}@nassaq.com"
-            await db.schools.insert_one(school_doc)
+            await gd_insert(db.session, "schools", school_doc)
         else:
             raise
     
@@ -304,7 +302,7 @@ async def create_school_draft(
     )
     
     # Create default school settings from template
-    default_settings = await db.default_settings.find_one({"id": "default-school-settings"}, {"_id": 0})
+    default_settings = await gd_find_one(db.session, "default_settings", {"id": "default-school-settings"})
     if default_settings:
         school_settings = {
             "id": f"settings-{school_id}",
@@ -325,7 +323,7 @@ async def create_school_draft(
             "created_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat()
         }
-        await db.school_settings.insert_one(school_settings)
+        await gd_insert(db.session, "school_settings", school_settings)
     
     return SchoolResponse(
         id=school_id,
@@ -352,18 +350,18 @@ async def delete_school_draft(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
     """Delete a school draft (only if status is 'setup')"""
-    school = await db.schools.find_one({"id": school_id})
+    school = await gd_find_one(db.session, "schools", {"id": school_id})
     if not school:
         raise HTTPException(status_code=404, detail="المدرسة غير موجودة")
 
     if school.get("status") != "setup":
         raise HTTPException(status_code=400, detail="يمكن حذف المسودات فقط (الحالة: قيد الإعداد)")
 
-    await db.schools.delete_one({"id": school_id})
+    await gd_delete_one(db.session, "schools", {"id": school_id})
 
     # Clean up any associated data
-    await db.users.delete_many({"tenant_id": school_id})
-    await db.school_settings.delete_many({"school_id": school_id})
+    await gd_delete_many(db.session, "users", {"tenant_id": school_id})
+    await gd_delete_many(db.session, "school_settings", {"school_id": school_id})
 
     await audit_engine.log_data_change(
         action=AuditAction.TENANT_UPDATED.value,
@@ -403,12 +401,12 @@ async def get_schools(
     if status:
         query["status"] = status
     
-    schools = await db.schools.find(query, {"_id": 0}).to_list(1000)
+    schools = await gd_find(db.session, "schools", query, limit=1000)
     return [SchoolResponse(**_normalize_school(s)) for s in schools]
 
 @router.get("/schools/{school_id}", response_model=SchoolResponse)
 async def get_school(school_id: str, current_user: dict = Depends(get_current_user)):
-    school = await db.schools.find_one({"id": school_id}, {"_id": 0})
+    school = await gd_find_one(db.session, "schools", {"id": school_id})
     if not school:
         raise HTTPException(status_code=404, detail="المدرسة غير موجودة")
     return SchoolResponse(**_normalize_school(school))
@@ -419,11 +417,8 @@ async def update_school_status(
     status: SchoolStatus,
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
-    result = await db.schools.update_one(
-        {"id": school_id},
-        {"$set": {"status": status.value, "updated_at": datetime.now(timezone.utc).isoformat()}}
-    )
-    if result.modified_count == 0:
+    result = await gd_update_one(db.session, "schools", {"id": school_id}, {"status": status.value, "updated_at": datetime.now(timezone.utc).isoformat()})
+    if result == 0:
         raise HTTPException(status_code=404, detail="المدرسة غير موجودة")
     return {"message": "تم تحديث حالة المدرسة"}
 
@@ -440,7 +435,7 @@ async def suspend_school(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
     """Suspend a school with reason - logs full audit trail"""
-    school = await db.schools.find_one({"id": school_id})
+    school = await gd_find_one(db.session, "schools", {"id": school_id})
     if not school:
         raise HTTPException(status_code=404, detail="المدرسة غير موجودة")
 
@@ -451,21 +446,15 @@ async def suspend_school(
     now = datetime.now(timezone.utc).isoformat()
 
     # Update school status
-    await db.schools.update_one(
-        {"id": school_id},
-        {"$set": {
+    await gd_update_one(db.session, "schools", {"id": school_id}, {
             "status": "suspended",
             "suspended_at": now,
             "suspended_by": current_user.get("id", current_user.get("user_id")),
             "suspension_reason": body.reason,
             "updated_at": now,
-        }}
-    )
+        })
 
-    await db.users.update_many(
-        {"tenant_id": school_id, "is_active": True},
-        {"$set": {"is_active": False, "suspended_at": now, "suspended_by_school": True}}
-    )
+    await gd_update_many(db.session, "users", {"tenant_id": school_id, "is_active": True}, {"is_active": False, "suspended_at": now, "suspended_by_school": True})
 
     # Audit log
     performer_id = current_user.get("id", current_user.get("user_id"))
@@ -502,7 +491,7 @@ async def activate_school(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
     """Activate a suspended school with reason - logs full audit trail"""
-    school = await db.schools.find_one({"id": school_id})
+    school = await gd_find_one(db.session, "schools", {"id": school_id})
     if not school:
         raise HTTPException(status_code=404, detail="المدرسة غير موجودة")
 
@@ -511,21 +500,15 @@ async def activate_school(
     now = datetime.now(timezone.utc).isoformat()
 
     # Update school status
-    await db.schools.update_one(
-        {"id": school_id},
-        {"$set": {
+    await gd_update_one(db.session, "schools", {"id": school_id}, {
             "status": "active",
             "activated_at": now,
             "activated_by": current_user.get("id", current_user.get("user_id")),
             "activation_reason": body.reason,
             "updated_at": now,
-        }}
-    )
+        })
 
-    await db.users.update_many(
-        {"tenant_id": school_id, "is_active": False, "suspended_by_school": True},
-        {"$set": {"is_active": True, "activated_at": now, "suspended_by_school": False}}
-    )
+    await gd_update_many(db.session, "users", {"tenant_id": school_id, "is_active": False, "suspended_by_school": True}, {"is_active": True, "activated_at": now, "suspended_by_school": False})
 
     # Audit log
     performer_id = current_user.get("id", current_user.get("user_id"))
@@ -560,28 +543,22 @@ async def get_school_detail(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
     """Get comprehensive school detail for Platform Admin"""
-    school = await db.schools.find_one({"id": school_id}, {"_id": 0})
+    school = await gd_find_one(db.session, "schools", {"id": school_id})
     if not school:
         raise HTTPException(status_code=404, detail="المدرسة غير موجودة")
 
     # Fetch related data
-    users = await db.users.find({"tenant_id": school_id}, {"_id": 0, "password_hash": 0}).to_list(1000)
-    students = await db.students.find({"school_id": school_id}, {"_id": 0}).to_list(500)
-    teachers = await db.teachers.find({"school_id": school_id}, {"_id": 0}).to_list(500)
-    classes = await db.classes.find({"school_id": school_id}, {"_id": 0}).to_list(200)
+    users = await gd_find(db.session, "users", {"tenant_id": school_id}, limit=1000)
+    students = await gd_find(db.session, "students", {"school_id": school_id}, limit=500)
+    teachers = await gd_find(db.session, "teachers", {"school_id": school_id}, limit=500)
+    classes = await gd_find(db.session, "classes", {"school_id": school_id}, limit=200)
 
     # Find principal account (school admin login)
-    principal_account = await db.users.find_one(
-        {"tenant_id": school_id, "role": UserRole.SCHOOL_PRINCIPAL.value},
-        {"_id": 0, "password_hash": 0}
-    )
+    principal_account = await gd_find_one(db.session, "users", {"tenant_id": school_id, "role": UserRole.SCHOOL_PRINCIPAL.value})
     has_credentials = principal_account is not None
 
     # Audit logs for this school
-    audit_logs = await db.audit_logs.find(
-        {"$or": [{"tenant_id": school_id}, {"entity_id": school_id}]},
-        {"_id": 0}
-    ).to_list(100)
+    audit_logs = await gd_find(db.session, "audit_logs", {"$or": [{"tenant_id": school_id}, {"entity_id": school_id}]}, limit=100)
     audit_logs.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
     audit_logs = audit_logs[:50]
 
@@ -627,7 +604,7 @@ async def manage_school_credentials(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
     """Create or update the school principal account credentials (email + password)"""
-    school = await db.schools.find_one({"id": school_id})
+    school = await gd_find_one(db.session, "schools", {"id": school_id})
     if not school:
         raise HTTPException(status_code=404, detail="المدرسة غير موجودة")
 
@@ -636,7 +613,7 @@ async def manage_school_credentials(
     principal_name = body.name or school.get("principal_name") or "مدير المدرسة"
 
     # Find existing principal account for this school
-    existing_principal = await db.users.find_one({
+    existing_principal = await gd_find_one(db.session, "users", {
         "tenant_id": school_id,
         "role": UserRole.SCHOOL_PRINCIPAL.value
     })
@@ -664,16 +641,13 @@ async def manage_school_credentials(
         }
         if raw_password:
             update_fields["password_hash"] = hash_password(raw_password)
-        await db.users.update_one(
-            {"id": existing_principal["id"]},
-            {"$set": update_fields}
-        )
+        await gd_update_one(db.session, "users", {"id": existing_principal["id"]}, update_fields)
         principal_id = existing_principal["id"]
     else:
         # Create new principal
         hashed = hash_password(raw_password)
         principal_id = str(uuid.uuid4())
-        await db.users.insert_one({
+        await gd_insert(db.session, "users", {
             "id": principal_id,
             "email": body.email,
             "password_hash": hashed,
@@ -690,14 +664,11 @@ async def manage_school_credentials(
         is_new = True
 
     # Update school record with principal info
-    await db.schools.update_one(
-        {"id": school_id},
-        {"$set": {
+    await gd_update_one(db.session, "schools", {"id": school_id}, {
             "principal_email": body.email,
             "principal_name": principal_name,
             "updated_at": now,
-        }}
-    )
+        })
 
     # Audit log
     performer_id = current_user.get("id", current_user.get("user_id"))
@@ -734,7 +705,7 @@ async def patch_school(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
     """Patch school fields (status, ai_enabled, etc.)"""
-    school = await db.schools.find_one({"id": school_id})
+    school = await gd_find_one(db.session, "schools", {"id": school_id})
     if not school:
         raise HTTPException(status_code=404, detail="المدرسة غير موجودة")
 
@@ -746,8 +717,8 @@ async def patch_school(
         if field in data:
             update_data[field] = data[field]
 
-    await db.schools.update_one({"id": school_id}, {"$set": update_data})
-    updated = await db.schools.find_one({"id": school_id}, {"_id": 0})
+    await gd_update_one(db.session, "schools", {"id": school_id}, update_data)
+    updated = await gd_find_one(db.session, "schools", {"id": school_id})
     return updated
 
 
@@ -761,7 +732,7 @@ async def update_school(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
     """Update school information"""
-    school = await db.schools.find_one({"id": school_id})
+    school = await gd_find_one(db.session, "schools", {"id": school_id})
     if not school:
         raise HTTPException(status_code=404, detail="المدرسة غير موجودة")
     
@@ -773,9 +744,9 @@ async def update_school(
         if field in data and data[field] is not None:
             update_data[field] = data[field]
     
-    await db.schools.update_one({"id": school_id}, {"$set": update_data})
+    await gd_update_one(db.session, "schools", {"id": school_id}, update_data)
     
-    updated_school = await db.schools.find_one({"id": school_id}, {"_id": 0})
+    updated_school = await gd_find_one(db.session, "schools", {"id": school_id})
     return updated_school
 
 
@@ -794,32 +765,32 @@ async def get_school_dashboard(
         raise HTTPException(status_code=400, detail="المستخدم غير مرتبط بمدرسة")
     
     # Get counts from database - REAL DATA
-    total_students = await db.students.count_documents({"school_id": school_id, "is_active": True})
-    total_teachers = await db.teachers.count_documents({"school_id": school_id, "is_active": True})
-    total_classes = await db.classes.count_documents({"school_id": school_id, "is_active": True})
+    total_students = await gd_count(db.session, "students", {"school_id": school_id, "is_active": True})
+    total_teachers = await gd_count(db.session, "teachers", {"school_id": school_id, "is_active": True})
+    total_classes = await gd_count(db.session, "classes", {"school_id": school_id, "is_active": True})
     
     # Get today's attendance - using 'type' field
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     
-    student_attendance = await db.attendance.find({
+    student_attendance = await gd_find(db.session, "attendance", {
         "school_id": school_id,
         "date": today,
         "type": "student"
-    }, {"_id": 0}).to_list(10000)
+    }, limit=10000)
     
     # Get teacher attendance from teacher_attendance collection (where it's actually stored)
-    teacher_attendance_records = await db.teacher_attendance.find({
+    teacher_attendance_records = await gd_find(db.session, "teacher_attendance", {
         "school_id": school_id,
         "date": today
-    }, {"_id": 0}).to_list(1000)
+    }, limit=1000)
     
     # If no records in teacher_attendance, fallback to attendance collection
     if not teacher_attendance_records:
-        teacher_attendance_records = await db.attendance.find({
+        teacher_attendance_records = await gd_find(db.session, "attendance", {
             "school_id": school_id,
             "date": today,
             "type": "teacher"
-        }, {"_id": 0}).to_list(1000)
+        }, limit=1000)
     
     # Calculate attendance stats - REAL DATA
     student_present = len([a for a in student_attendance if a.get("status") == "present"])
@@ -834,18 +805,18 @@ async def get_school_dashboard(
     
     # Get today's sessions count
     today_day = datetime.now(timezone.utc).strftime("%A").lower()
-    sessions_count = await db.schedule_sessions.count_documents({
+    sessions_count = await gd_count(db.session, "schedule_sessions", {
         "school_id": school_id,
         "day_of_week": today_day
     })
     
     # Get total sessions
-    total_sessions = await db.schedule_sessions.count_documents({"school_id": school_id})
+    total_sessions = await gd_count(db.session, "schedule_sessions", {"school_id": school_id})
     
     # Get recent notifications/alerts
-    alerts = await db.notifications.find({
+    alerts = await gd_find(db.session, "notifications", {
         "school_id": school_id
-    }, {"_id": 0}).sort("created_at", -1).to_list(10)
+    }, order_by="created_at", desc_order=True, limit=10)
     
     # Calculate attendance rate from REAL data
     total_student_today = len(student_attendance)
@@ -864,7 +835,7 @@ async def get_school_dashboard(
         {"$group": {"_id": "$teacher_id", "count": {"$sum": 1}}},
         {"$match": {"count": {"$gt": 2}}}
     ]
-    frequent_absences = await db.teacher_attendance.aggregate(frequent_absence_pipeline).to_list(100)
+    frequent_absences = await _gd_aggregate(db.session, "teacher_attendance", frequent_absence_pipeline)
     
     # Fallback to attendance collection if no data
     if not frequent_absences:
@@ -873,13 +844,13 @@ async def get_school_dashboard(
             {"$group": {"_id": "$teacher_id", "count": {"$sum": 1}}},
             {"$match": {"count": {"$gt": 2}}}
         ]
-        frequent_absences = await db.attendance.aggregate(frequent_absence_pipeline_old).to_list(100)
+        frequent_absences = await _gd_aggregate(db.session, "attendance", frequent_absence_pipeline_old)
     
     teachers_frequent_absence = len(frequent_absences)
     
     # Count classes with low attendance (<80%)
     classes_low_attendance = 0
-    all_classes = await db.classes.find({"school_id": school_id, "is_active": True}, {"_id": 0, "id": 1}).to_list(100)
+    all_classes = await gd_find(db.session, "classes", {"school_id": school_id, "is_active": True}, limit=100)
     for cls in all_classes:
         class_attendance = [a for a in student_attendance if a.get("class_id") == cls["id"]]
         if class_attendance:
@@ -1014,7 +985,7 @@ async def get_public_stats():
         from middleware.cache_metrics import record_miss
         record_miss()
 
-        cached_stats = await db.platform_stats.find_one({"id": "platform_stats"})
+        cached_stats = await gd_find_one(db.session, "platform_stats", {"id": "platform_stats"})
         
         if cached_stats:
             result = {
@@ -1029,19 +1000,19 @@ async def get_public_stats():
             _public_stats_cache["expires"] = _now + _PUBLIC_STATS_TTL
             return result
         
-        total_schools = await db.schools.count_documents({})
-        active_schools = await db.schools.count_documents({"status": "active"})
+        total_schools = await gd_count(db.session, "schools", {})
+        active_schools = await gd_count(db.session, "schools", {"status": "active"})
 
-        students_from_users = await db.users.count_documents({"role": "student"})
-        students_from_col = await db.students.count_documents({})
+        students_from_users = await gd_count(db.session, "users", {"role": "student"})
+        students_from_col = await gd_count(db.session, "students", {})
         total_students = max(students_from_users, students_from_col)
 
-        teachers_from_users = await db.users.count_documents({"role": "teacher"})
-        teachers_from_col = await db.teachers.count_documents({})
+        teachers_from_users = await gd_count(db.session, "users", {"role": "teacher"})
+        teachers_from_col = await gd_count(db.session, "teachers", {})
         total_teachers = max(teachers_from_users, teachers_from_col)
 
-        parents_from_users = await db.users.count_documents({"role": "parent"})
-        parents_from_col = await db.parents.count_documents({})
+        parents_from_users = await gd_count(db.session, "users", {"role": "parent"})
+        parents_from_col = await gd_count(db.session, "parents", {})
         total_parents = max(parents_from_users, parents_from_col)
 
         result = {

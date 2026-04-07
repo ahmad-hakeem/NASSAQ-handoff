@@ -16,6 +16,7 @@ from datetime import datetime, timezone, timedelta
 
 import sys as _sys
 import os as _os
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_upsert
 _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), ".."))
 from scripts.seed_db_helper import get_seed_db
 
@@ -70,7 +71,7 @@ async def main():
 
         # ─── STEP 0: Clean broken data ───
         print("\n[0] Cleaning broken user_relationships...")
-        deleted = await db.user_relationships.delete_many({
+        deleted = await gd_delete_many(db.session, "user_relationships", {
             "$or": [
                 {"from_entity_type": None},
                 {"user_id_1": None},
@@ -81,12 +82,12 @@ async def main():
 
         # ─── STEP 1: Load all data ───
         print("\n[1] Loading data...")
-        all_students = await db.students.find({}, {"_id": 0}).to_list(2000)
-        all_users = await db.users.find({}, {"_id": 0, "password_hash": 0}).to_list(2000)
-        all_teachers = await db.teachers.find({}, {"_id": 0}).to_list(500)
-        all_schools = await db.schools.find({}, {"_id": 0}).to_list(20)
-        all_teacher_assignments = await db.teacher_assignments.find({}, {"_id": 0}).to_list(2000)
-        all_teacher_class_assignments = await db.teacher_class_assignments.find({}, {"_id": 0}).to_list(2000)
+        all_students = await gd_find(db.session, "students", {}, {"_id": 0}, limit=2000)
+        all_users = await gd_find(db.session, "users", {}, {"_id": 0, "password_hash": 0}, limit=2000)
+        all_teachers = await gd_find(db.session, "teachers", {}, {"_id": 0}, limit=500)
+        all_schools = await gd_find(db.session, "schools", {}, {"_id": 0}, limit=20)
+        all_teacher_assignments = await gd_find(db.session, "teacher_assignments", {}, {"_id": 0}, limit=2000)
+        all_teacher_class_assignments = await gd_find(db.session, "teacher_class_assignments", {}, {"_id": 0}, limit=2000)
 
         users_by_id = {u["id"]: u for u in all_users}
         users_by_role = {}
@@ -127,7 +128,7 @@ async def main():
 
         # ─── STEP 2: Seed guardian_links for ALL students ───
         print("\n[2] Seeding guardian_links...")
-        existing_links = await db.guardian_links.find({}, {"_id": 0, "student_id": 1, "parent_ref": 1}).to_list(5000)
+        existing_links = await gd_find(db.session, "guardian_links", {}, {"_id": 0, "student_id": 1, "parent_ref": 1}, limit=5000)
         existing_link_keys = {(l["student_id"], l["parent_ref"]) for l in existing_links}
 
         guardian_links_to_insert = []
@@ -148,10 +149,7 @@ async def main():
                 else:
                     parent_user = random.choice(school_parents)
                     parent_user_id = parent_user["id"]
-                    await db.students.update_one(
-                        {"id": student_id},
-                        {"$set": {"parent_user_id": parent_user_id}}
-                    )
+                    await gd_update_one(db.session, "students", {"id": student_id}, {"parent_user_id": parent_user_id})
 
                 if (student_id, parent_user_id) in existing_link_keys:
                     if parent_user_id not in parent_child_map:
@@ -184,9 +182,9 @@ async def main():
                 parent_child_map[parent_user_id].append(student_id)
 
         if guardian_links_to_insert:
-            await db.guardian_links.insert_many(guardian_links_to_insert)
+            await gd_insert_many(db.session, "guardian_links", guardian_links_to_insert)
         print(f"    Inserted {len(guardian_links_to_insert)} new guardian_links")
-        total_links = await db.guardian_links.count_documents({})
+        total_links = await gd_count(db.session, "guardian_links", {})
         print(f"    Total guardian_links now: {total_links}")
 
         # ─── STEP 3: Update existing guardian_links permissions ───
@@ -203,7 +201,7 @@ async def main():
 
         # ─── STEP 4: Seed user_relationships ───
         print("\n[4] Seeding user_relationships...")
-        await db.user_relationships.delete_many({})
+        await gd_delete_many(db.session, "user_relationships", {})
         relationships_to_insert = []
 
         def make_rel(rel_type, uid1, uid2, tenant_id=None, metadata=None):
@@ -386,13 +384,13 @@ async def main():
             batch_size = 1000
             for i in range(0, len(relationships_to_insert), batch_size):
                 batch = relationships_to_insert[i:i + batch_size]
-                await db.user_relationships.insert_many(batch)
-        total_rels = await db.user_relationships.count_documents({})
+                await gd_insert_many(db.session, "user_relationships", batch)
+        total_rels = await gd_count(db.session, "user_relationships", {})
         print(f"\n    Total user_relationships: {total_rels}")
 
         # ─── STEP 5: Populate user_identities ───
         print("\n[5] Populating user_identities...")
-        await db.user_identities.delete_many({})
+        await gd_delete_many(db.session, "user_identities", {})
         identities = []
         for user in all_users:
             identities.append({
@@ -409,12 +407,12 @@ async def main():
                 "updated_at": now_iso(),
             })
         if identities:
-            await db.user_identities.insert_many(identities)
+            await gd_insert_many(db.session, "user_identities", identities)
         print(f"    Created {len(identities)} user_identities")
 
         # ─── STEP 6: Populate user_roles ───
         print("\n[6] Populating user_roles...")
-        await db.user_roles.delete_many({})
+        await gd_delete_many(db.session, "user_roles", {})
         role_records = []
         for user in all_users:
             role_records.append({
@@ -428,7 +426,7 @@ async def main():
                 "assigned_by": "system",
             })
         if role_records:
-            await db.user_roles.insert_many(role_records)
+            await gd_insert_many(db.session, "user_roles", role_records)
         print(f"    Created {len(role_records)} user_roles")
 
         # ─── STEP 7: Detect and link multi-role users ───
@@ -491,7 +489,7 @@ async def main():
                         "assigned_at": now_iso(),
                         "assigned_by": "system",
                     }
-                    await db.user_roles.insert_one(role_records_extra)
+                    await gd_insert(db.session, "user_roles", role_records_extra)
                     multi_role_count += 1
 
         # Also set linked_roles for all users who have empty linked_roles but a valid tenant
@@ -554,31 +552,31 @@ async def main():
                     })
 
         if behaviour_records:
-            await db.behaviour_records.insert_many(behaviour_records)
+            await gd_insert_many(db.session, "behaviour_records", behaviour_records)
         print(f"    Created {len(behaviour_records)} behaviour records")
 
         # ─── STEP 9: Create indexes ───
         print("\n[9] Creating indexes...")
-        await db.guardian_links.create_index([("tenant_id", 1), ("student_id", 1)])
-        await db.guardian_links.create_index([("parent_ref", 1)])
-        await db.guardian_links.create_index([("parent_user_id", 1)])
-        await db.user_relationships.create_index([("user_id_1", 1), ("relationship_type", 1)])
-        await db.user_relationships.create_index([("user_id_2", 1), ("relationship_type", 1)])
-        await db.user_relationships.create_index([("tenant_id", 1), ("relationship_type", 1)])
-        await db.user_identities.create_index([("user_id", 1)])
-        await db.user_roles.create_index([("user_id", 1)])
-        await db.behaviour_records.create_index([("student_id", 1)])
-        await db.behaviour_records.create_index([("school_id", 1)])
+        pass  # index handled by PostgreSQL, ("student_id", 1)])
+        pass  # index handled by PostgreSQL])
+        pass  # index handled by PostgreSQL])
+        pass  # index handled by PostgreSQL, ("relationship_type", 1)])
+        pass  # index handled by PostgreSQL, ("relationship_type", 1)])
+        pass  # index handled by PostgreSQL, ("relationship_type", 1)])
+        pass  # index handled by PostgreSQL])
+        pass  # index handled by PostgreSQL])
+        pass  # index handled by PostgreSQL])
+        pass  # index handled by PostgreSQL])
         print("    Indexes created")
 
         # ─── FINAL SUMMARY ───
         print("\n" + "=" * 60)
         print("FINAL COUNTS:")
-        print(f"  guardian_links:      {await db.guardian_links.count_documents({})}")
-        print(f"  user_relationships:  {await db.user_relationships.count_documents({})}")
-        print(f"  user_identities:     {await db.user_identities.count_documents({})}")
-        print(f"  user_roles:          {await db.user_roles.count_documents({})}")
-        print(f"  behaviour_records:   {await db.behaviour_records.count_documents({})}")
+        print(f"  guardian_links:      {await gd_count(db.session, "guardian_links", {})}")
+        print(f"  user_relationships:  {await gd_count(db.session, "user_relationships", {})}")
+        print(f"  user_identities:     {await gd_count(db.session, "user_identities", {})}")
+        print(f"  user_roles:          {await gd_count(db.session, "user_roles", {})}")
+        print(f"  behaviour_records:   {await gd_count(db.session, "behaviour_records", {})}")
 
         rel_types = await db.user_relationships.aggregate([
             {"$group": {"_id": "$relationship_type", "count": {"$sum": 1}}}
@@ -587,7 +585,7 @@ async def main():
         for rt in sorted(rel_types, key=lambda x: x["_id"]):
             print(f"    {rt['_id']}: {rt['count']}")
 
-        multi = await db.users.count_documents({"linked_roles.1": {"$exists": True}})
+        multi = await gd_count(db.session, "users", {"linked_roles.1": {"$exists": True}})
         print(f"\n  Users with 2+ linked_roles: {multi}")
 
         print("\n" + "=" * 60)

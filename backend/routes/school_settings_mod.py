@@ -11,8 +11,7 @@ from typing import List, Optional, Any, Dict
 from datetime import datetime, timezone, timedelta
 
 import uuid, os, logging, json, random, re, io, base64
-from repositories.base import UpdateOne
-
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
 from dependencies import (
     db, get_current_user, require_roles, UserRole, SchoolStatus,
     hash_password, verify_password, create_access_token,
@@ -33,7 +32,7 @@ async def regenerate_time_slots_from_settings(school_id: str):
     Reads dayStart, periodsPerDay, periodDuration, breaks from school_settings
     and rebuilds all time slots with proper breaks/prayer inserted.
     """
-    settings = await db.school_settings.find_one({"school_id": school_id}, {"_id": 0})
+    settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
     if not settings:
         return {"regenerated": False, "reason": "no_settings"}
 
@@ -134,19 +133,16 @@ async def regenerate_time_slots_from_settings(school_id: str):
         else:
             current_minutes += passing_time
 
-    await db.time_slots.delete_many({"school_id": school_id})
+    await gd_delete_many(db.session, "time_slots", {"school_id": school_id})
     if slots:
-        await db.time_slots.insert_many(slots)
+        await gd_insert_many(db.session, "time_slots", slots)
 
     final_h, final_m = divmod(current_minutes, 60)
     day_end = f"{final_h:02d}:{final_m:02d}"
-    await db.school_settings.update_one(
-        {"school_id": school_id},
-        {"$set": {
+    await gd_update_one(db.session, "school_settings", {"school_id": school_id}, {
             "school_day_end": day_end,
             "settings.school_day_end": day_end,
-        }}
-    )
+        })
 
     return {"regenerated": True, "count": len(slots), "day_end": day_end}
 
@@ -317,12 +313,12 @@ async def get_school_info(
     if not school_id:
         raise HTTPException(status_code=400, detail="School context required")
     
-    school = await db.schools.find_one({"id": school_id}, {"_id": 0})
+    school = await gd_find_one(db.session, "schools", {"id": school_id})
     if not school:
         return {}
     
     # Get school settings too
-    settings = await db.school_settings.find_one({"school_id": school_id}, {"_id": 0})
+    settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
     
     return {
         "id": school.get("id"),
@@ -361,7 +357,7 @@ async def update_school_info_direct(
     if not school_id:
         raise HTTPException(status_code=400, detail="School context required")
 
-    old_school = await db.schools.find_one({"id": school_id}, {"_id": 0})
+    old_school = await gd_find_one(db.session, "schools", {"id": school_id})
     if not old_school:
         raise HTTPException(status_code=404, detail="المدرسة غير موجودة")
 
@@ -376,10 +372,10 @@ async def update_school_info_direct(
         update_data["name_ar"] = update_data["name"]
 
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
-    await db.schools.update_one({"id": school_id}, {"$set": update_data})
+    await gd_update_one(db.session, "schools", {"id": school_id}, update_data)
 
     # Audit log
-    await db.audit_logs.insert_one({
+    await gd_insert(db.session, "audit_logs", {
         "id": str(uuid.uuid4()),
         "school_id": school_id,
         "action": "UPDATE",
@@ -392,7 +388,7 @@ async def update_school_info_direct(
         "timestamp": datetime.now(timezone.utc).isoformat(),
     })
 
-    school = await db.schools.find_one({"id": school_id}, {"_id": 0})
+    school = await gd_find_one(db.session, "schools", {"id": school_id})
     return {"success": True, "school": school, "message": "تم تحديث بيانات المدرسة بنجاح"}
 
 @router.get("/school/day-status")
@@ -404,17 +400,14 @@ async def get_school_day_status(
     if not school_id:
         raise HTTPException(status_code=400, detail="School context required")
 
-    settings = await db.school_settings.find_one({"school_id": school_id}, {"_id": 0})
+    settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
     nested = (settings or {}).get("settings", {}) if settings else {}
 
     day_start_str = nested.get("school_day_start") or (settings or {}).get("school_day_start") or "07:00"
     day_end_str = nested.get("school_day_end") or (settings or {}).get("school_day_end") or "13:15"
     periods_per_day = nested.get("periods_per_day") or (settings or {}).get("periods_per_day") or 7
 
-    time_slots_raw = await db.time_slots.find(
-        {"school_id": school_id},
-        {"_id": 0, "start_time": 1, "end_time": 1, "is_break": 1, "name": 1, "name_en": 1, "order": 1}
-    ).sort("start_time", 1).to_list(30)
+    time_slots_raw = await gd_find(db.session, "time_slots", {"school_id": school_id}, order_by="start_time", desc_order=False, limit=30)
 
     def parse_time(t):
         if not t or not isinstance(t, str) or ":" not in t:
@@ -522,14 +515,14 @@ async def get_school_settings(
         raise HTTPException(status_code=400, detail="School context required")
     
     # Get school info
-    school = await db.schools.find_one({"id": school_id}, {"_id": 0})
+    school = await gd_find_one(db.session, "schools", {"id": school_id})
     
     # Get school-specific settings
-    settings = await db.school_settings.find_one({"school_id": school_id}, {"_id": 0})
+    settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
     
     if not settings:
         # Get default settings template and create school-specific settings
-        default_settings = await db.default_settings.find_one({"id": "default-school-settings"}, {"_id": 0})
+        default_settings = await gd_find_one(db.session, "default_settings", {"id": "default-school-settings"})
         
         if default_settings:
             settings = {
@@ -562,19 +555,19 @@ async def get_school_settings(
                 "school_day_end": "13:15",
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
-        await db.school_settings.insert_one(settings)
+        await gd_insert(db.session, "school_settings", settings)
     
     # Get reference data from academic structure
-    academic_stages = await db.academic_stages.find({"is_active": True}, {"_id": 0}).sort("order", 1).to_list(10)
-    academic_grades = await db.academic_grades.find({"is_active": True}, {"_id": 0}).sort("order", 1).to_list(50)
-    education_tracks = await db.education_tracks.find({"is_active": True}, {"_id": 0}).to_list(10)
-    subjects = await db.subjects.find({"is_active": True}, {"_id": 0}).to_list(50)
-    teacher_ranks = await db.teacher_ranks.find({"is_active": True}, {"_id": 0}).sort("order", 1).to_list(20)
-    admin_constraints = await db.admin_constraints.find({"is_active": True}, {"_id": 0}).to_list(50)
+    academic_stages = await gd_find(db.session, "academic_stages", {"is_active": True}, order_by="order", desc_order=False, limit=10)
+    academic_grades = await gd_find(db.session, "academic_grades", {"is_active": True}, order_by="order", desc_order=False, limit=50)
+    education_tracks = await gd_find(db.session, "education_tracks", {"is_active": True}, limit=10)
+    subjects = await gd_find(db.session, "subjects", {"is_active": True}, limit=50)
+    teacher_ranks = await gd_find(db.session, "teacher_ranks", {"is_active": True}, order_by="order", desc_order=False, limit=20)
+    admin_constraints = await gd_find(db.session, "admin_constraints", {"is_active": True}, limit=50)
     
     # Get school-specific data
-    sections = await db.classes.find({"school_id": school_id}, {"_id": 0}).to_list(200)
-    terms = await db.academic_terms.find({"school_id": school_id}, {"_id": 0}).to_list(10)
+    sections = await gd_find(db.session, "classes", {"school_id": school_id}, limit=200)
+    terms = await gd_find(db.session, "academic_terms", {"school_id": school_id}, limit=10)
     
     # Extract settings nested values
     nested_settings = settings.get("settings", {})
@@ -632,10 +625,7 @@ async def get_school_audit_logs(
     if entity_type:
         query["entity_type"] = entity_type
     
-    logs = await db.audit_logs.find(
-        query, 
-        {"_id": 0}
-    ).sort("timestamp", -1).limit(limit).to_list(limit)
+    logs = await gd_find(db.session, "audit_logs", query, order_by="timestamp", desc_order=True, limit=limit)
     
     return {"logs": logs, "total": len(logs)}
 
@@ -653,16 +643,13 @@ async def update_school_info(
         raise HTTPException(status_code=400, detail="School context required")
     
     # Get old data for audit log
-    old_school = await db.schools.find_one({"id": school_id}, {"_id": 0})
+    old_school = await gd_find_one(db.session, "schools", {"id": school_id})
     
     update_data = {k: v for k, v in data.model_dump().items() if v is not None}
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
     update_data["updated_by"] = current_user["id"]
     
-    await db.schools.update_one(
-        {"id": school_id},
-        {"$set": update_data}
-    )
+    await gd_update_one(db.session, "schools", {"id": school_id}, update_data)
     
     # Audit log
     audit_log = {
@@ -678,7 +665,7 @@ async def update_school_info(
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "ip_address": None
     }
-    await db.audit_logs.insert_one(audit_log)
+    await gd_insert(db.session, "audit_logs", audit_log)
     
     return {"message": "تم تحديث معلومات المدرسة بنجاح", "updated": update_data}
 
@@ -696,7 +683,7 @@ async def update_work_days(
         raise HTTPException(status_code=400, detail="School context required")
     
     # Get old settings for audit log
-    old_settings = await db.school_settings.find_one({"school_id": school_id}, {"_id": 0})
+    old_settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
     old_work_days = old_settings.get("work_days", {}) if old_settings else {}
     
     # Convert to Arabic day names
@@ -709,8 +696,7 @@ async def update_work_days(
     weekend_days_ar = [day_names_ar[day] for day, active in data.model_dump().items() if not active]
     
     working_days_dict = data.model_dump()
-    await db.school_settings.update_one(
-        {"school_id": school_id},
+    await gd_update_one(db.session, "school_settings", {"school_id": school_id},
         {
             "$set": {
                 "work_days": working_days_dict,
@@ -738,7 +724,7 @@ async def update_work_days(
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "ip_address": None
     }
-    await db.audit_logs.insert_one(audit_log)
+    await gd_insert(db.session, "audit_logs", audit_log)
     
     return {"message": "تم تحديث أيام العمل بنجاح", "work_days": data.model_dump(), "working_days_ar": working_days_ar}
 
@@ -759,11 +745,13 @@ async def add_official_holiday(
     holiday["id"] = str(uuid.uuid4())
     holiday["created_at"] = datetime.now(timezone.utc).isoformat()
     
-    await db.school_settings.update_one(
-        {"school_id": school_id},
-        {"$push": {"official_holidays": holiday}},
-        upsert=True
-    )
+    settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
+    if not settings:
+        await gd_upsert(db.session, "school_settings", {"school_id": school_id}, {"official_holidays": [holiday]})
+    else:
+        existing = settings.get("official_holidays") or []
+        existing.append(holiday)
+        await gd_update_one(db.session, "school_settings", {"school_id": school_id}, {"official_holidays": existing})
     
     return {"message": "تم إضافة الإجازة الرسمية", "holiday": holiday}
 
@@ -780,10 +768,10 @@ async def delete_official_holiday(
     if not school_id:
         raise HTTPException(status_code=400, detail="School context required")
     
-    await db.school_settings.update_one(
-        {"school_id": school_id},
-        {"$pull": {"official_holidays": {"id": holiday_id}}}
-    )
+    settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
+    if settings:
+        existing = [h for h in (settings.get("official_holidays") or []) if h.get("id") != holiday_id]
+        await gd_update_one(db.session, "school_settings", {"school_id": school_id}, {"official_holidays": existing})
     
     return {"message": "تم حذف الإجازة الرسمية"}
 
@@ -857,19 +845,15 @@ async def update_school_settings_full(
         update_data["breaks"] = breaks_data
 
     # Get old settings for audit log
-    old_settings = await db.school_settings.find_one({"school_id": school_id}, {"_id": 0}) or {}
+    old_settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id}) or {}
 
     # Update school_settings collection
-    await db.school_settings.update_one(
-        {"school_id": school_id},
-        {"$set": update_data},
-        upsert=True
-    )
+    await gd_upsert(db.session, "school_settings", {"school_id": school_id}, update_data)
 
     # Also update time_slots collection if time_slots provided
     if "time_slots" in settings_data:
         # Delete old time slots
-        await db.time_slots.delete_many({"school_id": school_id})
+        await gd_delete_many(db.session, "time_slots", {"school_id": school_id})
 
         # Insert new time slots
         for slot in settings_data["time_slots"]:
@@ -879,12 +863,12 @@ async def update_school_settings_full(
                 **slot,
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
-            await db.time_slots.insert_one(slot_doc)
+            await gd_insert(db.session, "time_slots", slot_doc)
 
     # Audit log — record every settings save
     changed_keys = [k for k in update_data if k != "updated_at" and old_settings.get(k) != update_data[k]]
     if changed_keys or "soft_constraints" in settings_data:
-        await db.audit_logs.insert_one({
+        await gd_insert(db.session, "audit_logs", {
             "id": str(uuid.uuid4()),
             "school_id": school_id,
             "action": "UPDATE",
@@ -921,10 +905,7 @@ async def get_hard_constraints(
         UserRole.PLATFORM_ADMIN, UserRole.TEACHER
     ]))
 ):
-    constraints = await db.timetable_hard_constraints.find(
-        {"is_system": True},
-        {"_id": 0}
-    ).sort("order", 1).to_list(50)
+    constraints = await gd_find(db.session, "timetable_hard_constraints", {"is_system": True}, order_by="order", desc_order=False, limit=50)
 
     categories = {}
     for c in constraints:
@@ -962,10 +943,7 @@ async def get_soft_constraints(
         UserRole.PLATFORM_ADMIN, UserRole.TEACHER
     ]))
 ):
-    constraints = await db.timetable_soft_constraints.find(
-        {},
-        {"_id": 0}
-    ).sort("order", 1).to_list(50)
+    constraints = await gd_find(db.session, "timetable_soft_constraints", {}, order_by="order", desc_order=False, limit=50)
 
     categories = {}
     for c in constraints:
@@ -996,7 +974,7 @@ async def toggle_soft_constraint(
     data: dict,
     current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN]))
 ):
-    constraint = await db.timetable_soft_constraints.find_one({"code": code})
+    constraint = await gd_find_one(db.session, "timetable_soft_constraints", {"code": code})
     if not constraint:
         raise HTTPException(status_code=404, detail="القيد غير موجود")
 
@@ -1008,7 +986,7 @@ async def toggle_soft_constraint(
         if isinstance(w, int) and 1 <= w <= 10:
             update["weight"] = w
 
-    await db.timetable_soft_constraints.update_one({"code": code}, {"$set": update})
+    await gd_update_one(db.session, "timetable_soft_constraints", {"code": code}, update)
     return {"success": True, "message": "تم تحديث القيد التفضيلي بنجاح"}
 
 
@@ -1031,19 +1009,12 @@ async def update_school_constraint(
         update_data["is_active"] = data["is_active"]
     
     # Try to update in reference_admin_constraints first
-    result = await db.reference_admin_constraints.update_one(
-        {"id": constraint_id},
-        {"$set": update_data}
-    )
+    result = await gd_update_one(db.session, "reference_admin_constraints", {"id": constraint_id}, update_data)
     
-    if result.matched_count == 0:
-        # Try admin_constraints collection
-        result = await db.admin_constraints.update_one(
-            {"id": constraint_id},
-            {"$set": update_data}
-        )
+    if result == 0:
+        result = await gd_update_one(db.session, "admin_constraints", {"id": constraint_id}, update_data)
     
-    if result.matched_count == 0:
+    if result == 0:
         raise HTTPException(status_code=404, detail="Constraint not found")
     
     return {"message": "تم تحديث القيد بنجاح", "is_active": data.get("is_active")}
@@ -1065,11 +1036,13 @@ async def add_exception_day(
     exception["id"] = str(uuid.uuid4())
     exception["created_at"] = datetime.now(timezone.utc).isoformat()
     
-    await db.school_settings.update_one(
-        {"school_id": school_id},
-        {"$push": {"exception_days": exception}},
-        upsert=True
-    )
+    settings_doc = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
+    if not settings_doc:
+        await gd_upsert(db.session, "school_settings", {"school_id": school_id}, {"exception_days": [exception]})
+    else:
+        existing = settings_doc.get("exception_days") or []
+        existing.append(exception)
+        await gd_update_one(db.session, "school_settings", {"school_id": school_id}, {"exception_days": existing})
     
     return {"message": "تم إضافة يوم الاستثناء", "exception": exception}
 
@@ -1086,10 +1059,10 @@ async def delete_exception_day(
     if not school_id:
         raise HTTPException(status_code=400, detail="School context required")
     
-    await db.school_settings.update_one(
-        {"school_id": school_id},
-        {"$pull": {"exception_days": {"id": exception_id}}}
-    )
+    settings_doc = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
+    if settings_doc:
+        existing = [e for e in (settings_doc.get("exception_days") or []) if e.get("id") != exception_id]
+        await gd_update_one(db.session, "school_settings", {"school_id": school_id}, {"exception_days": existing})
     
     return {"message": "تم حذف يوم الاستثناء"}
 
@@ -1113,16 +1086,10 @@ async def update_periods_per_day(
     if periods < 1 or periods > 12:
         raise HTTPException(status_code=400, detail="عدد الحصص يجب أن يكون بين 1 و 12")
     
-    await db.school_settings.update_one(
-        {"school_id": school_id},
-        {
-            "$set": {
+    await gd_upsert(db.session, "school_settings", {"school_id": school_id}, {
                 "periods_per_day": periods,
                 "updated_at": datetime.now(timezone.utc).isoformat()
-            }
-        },
-        upsert=True
-    )
+            })
     
     regen_result = await regenerate_time_slots_from_settings(school_id)
     return {"message": "تم تحديث عدد الحصص", "periods_per_day": periods, "time_slots_regenerated": regen_result}
@@ -1140,20 +1107,14 @@ async def update_school_timing(
     if not school_id:
         raise HTTPException(status_code=400, detail="School context required")
     
-    await db.school_settings.update_one(
-        {"school_id": school_id},
-        {
-            "$set": {
+    await gd_upsert(db.session, "school_settings", {"school_id": school_id}, {
                 "timing": data.model_dump(),
                 "school_day_start": data.start,
                 "school_day_end": data.end,
                 "settings.school_day_start": data.start,
                 "settings.school_day_end": data.end,
                 "updated_at": datetime.now(timezone.utc).isoformat()
-            }
-        },
-        upsert=True
-    )
+            })
     
     regen_result = await regenerate_time_slots_from_settings(school_id)
     return {"message": "تم تحديث أوقات الدوام", "timing": data.model_dump(), "time_slots_regenerated": regen_result}
@@ -1178,16 +1139,10 @@ async def update_breaks(
             break_dict["id"] = str(uuid.uuid4())
         breaks_data.append(break_dict)
     
-    await db.school_settings.update_one(
-        {"school_id": school_id},
-        {
-            "$set": {
+    await gd_upsert(db.session, "school_settings", {"school_id": school_id}, {
                 "breaks": breaks_data,
                 "updated_at": datetime.now(timezone.utc).isoformat()
-            }
-        },
-        upsert=True
-    )
+            })
     
     regen_result = await regenerate_time_slots_from_settings(school_id)
     return {"message": "تم تحديث فترات الاستراحة", "breaks": breaks_data, "time_slots_regenerated": regen_result}
@@ -1223,11 +1178,13 @@ async def add_activity_day(
     activity["id"] = str(uuid.uuid4())
     activity["created_at"] = datetime.now(timezone.utc).isoformat()
     
-    await db.school_settings.update_one(
-        {"school_id": school_id},
-        {"$push": {"activity_days": activity}},
-        upsert=True
-    )
+    settings_doc = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
+    if not settings_doc:
+        await gd_upsert(db.session, "school_settings", {"school_id": school_id}, {"activity_days": [activity]})
+    else:
+        existing = settings_doc.get("activity_days") or []
+        existing.append(activity)
+        await gd_update_one(db.session, "school_settings", {"school_id": school_id}, {"activity_days": existing})
     
     return {"message": "تم إضافة يوم النشاط", "activity": activity}
 
@@ -1244,10 +1201,10 @@ async def delete_activity_day(
     if not school_id:
         raise HTTPException(status_code=400, detail="School context required")
     
-    await db.school_settings.update_one(
-        {"school_id": school_id},
-        {"$pull": {"activity_days": {"id": activity_id}}}
-    )
+    settings_doc = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
+    if settings_doc:
+        existing = [a for a in (settings_doc.get("activity_days") or []) if a.get("id") != activity_id]
+        await gd_update_one(db.session, "school_settings", {"school_id": school_id}, {"activity_days": existing})
     
     return {"message": "تم حذف يوم النشاط"}
 
@@ -1264,16 +1221,10 @@ async def update_teaching_loads(
     if not school_id:
         raise HTTPException(status_code=400, detail="School context required")
     
-    await db.school_settings.update_one(
-        {"school_id": school_id},
-        {
-            "$set": {
+    await gd_upsert(db.session, "school_settings", {"school_id": school_id}, {
                 "teaching_loads": loads,
                 "updated_at": datetime.now(timezone.utc).isoformat()
-            }
-        },
-        upsert=True
-    )
+            })
     
     return {"message": "تم تحديث الأنصبة التدريسية", "teaching_loads": loads}
 
@@ -1290,19 +1241,13 @@ async def update_teacher_availability(
     if not school_id:
         raise HTTPException(status_code=400, detail="School context required")
     
-    await db.school_settings.update_one(
-        {"school_id": school_id},
-        {
-            "$set": {
+    await gd_upsert(db.session, "school_settings", {"school_id": school_id}, {
                 f"teacher_availability.{data.teacher_id}": {
                     "available_days": data.available_days,
                     "available_periods": data.available_periods
                 },
                 "updated_at": datetime.now(timezone.utc).isoformat()
-            }
-        },
-        upsert=True
-    )
+            })
     
     return {"message": "تم تحديث توفر المعلم"}
 
@@ -1326,16 +1271,10 @@ async def update_constraints(
             c_dict["id"] = str(uuid.uuid4())
         constraints_data.append(c_dict)
     
-    await db.school_settings.update_one(
-        {"school_id": school_id},
-        {
-            "$set": {
+    await gd_upsert(db.session, "school_settings", {"school_id": school_id}, {
                 "constraints": constraints_data,
                 "updated_at": datetime.now(timezone.utc).isoformat()
-            }
-        },
-        upsert=True
-    )
+            })
     
     return {"message": "تم تحديث القيود الإدارية", "constraints": constraints_data}
 
@@ -1372,127 +1311,97 @@ async def _auto_populate_teacher_class_assignments(school_id: str):
     Auto-populate teacher-class assignments: all teachers linked to all classes by default.
     Uses bulk upsert for concurrency safety (idempotent).
     """
-    teachers = await db.teachers.find(
-        {"school_id": school_id, "is_active": {"$ne": False}},
-        {"id": 1, "_id": 0}
-    ).to_list(2000)
-    classes = await db.classes.find(
-        {"school_id": school_id, "is_active": {"$ne": False}},
-        {"id": 1, "_id": 0}
-    ).to_list(500)
+    teachers = await gd_find(db.session, "teachers", {"school_id": school_id, "is_active": {"$ne": False}}, limit=2000)
+    classes = await gd_find(db.session, "classes", {"school_id": school_id, "is_active": {"$ne": False}}, limit=500)
 
     if not teachers or not classes:
         return 0
 
-    existing_count = await db.teacher_class_assignments.count_documents({"school_id": school_id})
+    existing_count = await gd_count(db.session, "teacher_class_assignments", {"school_id": school_id})
     expected_total = len(teachers) * len(classes)
     if existing_count >= expected_total:
         return 0
 
-    settings = await db.school_settings.find_one({"school_id": school_id})
+    settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
     academic_year_id = None
     if settings:
         nested = settings.get("settings", {})
         academic_year_id = nested.get("academic_year") or settings.get("academicYear")
 
     now = datetime.now(timezone.utc).isoformat()
-    ops = []
+    upserted = 0
     for t in teachers:
         for c in classes:
             filt = {"school_id": school_id, "teacher_id": t["id"], "class_id": c["id"]}
-            ops.append(UpdateOne(
-                filt,
-                {"$setOnInsert": {
-                    "id": str(uuid.uuid4()),
-                    "school_id": school_id,
-                    "teacher_id": t["id"],
-                    "class_id": c["id"],
-                    "academic_year_id": academic_year_id,
-                    "auto_assigned": True,
-                    "created_at": now,
-                    "updated_at": now,
-                }},
-                upsert=True,
-            ))
-
-    if ops:
-        result = await db.teacher_class_assignments.bulk_write(ops, ordered=False)
-        return result.upserted_count
-    return 0
+            doc = {
+                "id": str(uuid.uuid4()),
+                "school_id": school_id,
+                "teacher_id": t["id"],
+                "class_id": c["id"],
+                "academic_year_id": academic_year_id,
+                "auto_assigned": True,
+                "created_at": now,
+                "updated_at": now,
+            }
+            await gd_upsert(db.session, "teacher_class_assignments", filt, doc)
+            upserted += 1
+    return upserted
 
 
 async def _ensure_teacher_linked_to_all_classes(school_id: str, teacher_id: str):
     """When a new teacher is created, auto-assign to all classes via bulk upsert."""
-    classes = await db.classes.find(
-        {"school_id": school_id, "is_active": {"$ne": False}},
-        {"id": 1, "_id": 0}
-    ).to_list(500)
+    classes = await gd_find(db.session, "classes", {"school_id": school_id, "is_active": {"$ne": False}}, limit=500)
     if not classes:
         return
 
-    settings = await db.school_settings.find_one({"school_id": school_id})
+    settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
     academic_year_id = None
     if settings:
         nested = settings.get("settings", {})
         academic_year_id = nested.get("academic_year") or settings.get("academicYear")
 
     now = datetime.now(timezone.utc).isoformat()
-    ops = []
     for c in classes:
         filt = {"school_id": school_id, "teacher_id": teacher_id, "class_id": c["id"]}
-        ops.append(UpdateOne(
-            filt,
-            {"$setOnInsert": {
-                "id": str(uuid.uuid4()),
-                "teacher_id": teacher_id,
-                "class_id": c["id"],
-                "school_id": school_id,
-                "academic_year_id": academic_year_id,
-                "auto_assigned": True,
-                "created_at": now,
-                "updated_at": now,
-            }},
-            upsert=True,
-        ))
-    if ops:
-        await db.teacher_class_assignments.bulk_write(ops, ordered=False)
+        doc = {
+            "id": str(uuid.uuid4()),
+            "teacher_id": teacher_id,
+            "class_id": c["id"],
+            "school_id": school_id,
+            "academic_year_id": academic_year_id,
+            "auto_assigned": True,
+            "created_at": now,
+            "updated_at": now,
+        }
+        await gd_upsert(db.session, "teacher_class_assignments", filt, doc)
 
 
 async def _ensure_class_linked_to_all_teachers(school_id: str, class_id: str):
     """When a new class is created, auto-assign all teachers to it via bulk upsert."""
-    teachers = await db.teachers.find(
-        {"school_id": school_id, "is_active": {"$ne": False}},
-        {"id": 1, "_id": 0}
-    ).to_list(2000)
+    teachers = await gd_find(db.session, "teachers", {"school_id": school_id, "is_active": {"$ne": False}}, limit=2000)
     if not teachers:
         return
 
-    settings = await db.school_settings.find_one({"school_id": school_id})
+    settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
     academic_year_id = None
     if settings:
         nested = settings.get("settings", {})
         academic_year_id = nested.get("academic_year") or settings.get("academicYear")
 
     now = datetime.now(timezone.utc).isoformat()
-    ops = []
     for t in teachers:
         filt = {"school_id": school_id, "teacher_id": t["id"], "class_id": class_id}
-        ops.append(UpdateOne(
-            filt,
-            {"$setOnInsert": {
-                "id": str(uuid.uuid4()),
-                "teacher_id": t["id"],
-                "class_id": class_id,
-                "school_id": school_id,
-                "academic_year_id": academic_year_id,
-                "auto_assigned": True,
-                "created_at": now,
-                "updated_at": now,
-            }},
-            upsert=True,
-        ))
-    if ops:
-        await db.teacher_class_assignments.bulk_write(ops, ordered=False)
+        doc = {
+            "id": str(uuid.uuid4()),
+            "teacher_id": t["id"],
+            "class_id": class_id,
+            "school_id": school_id,
+            "academic_year_id": academic_year_id,
+            "auto_assigned": True,
+            "created_at": now,
+            "updated_at": now,
+        }
+        await gd_upsert(db.session, "teacher_class_assignments", filt, doc)
 
 
 @router.get("/teacher-class-assignments")
@@ -1523,18 +1432,16 @@ async def get_teacher_class_assignments(
     if class_id:
         query_filter["class_id"] = class_id
 
-    total = await db.teacher_class_assignments.count_documents(query_filter)
+    total = await gd_count(db.session, "teacher_class_assignments", query_filter)
     skip = (page - 1) * page_size
 
-    assignments = await db.teacher_class_assignments.find(
-        query_filter
-    ).skip(skip).limit(page_size).to_list(page_size)
+    assignments = await gd_find(db.session, "teacher_class_assignments", query_filter, skip=skip, limit=page_size)
 
     t_ids = list({a.get("teacher_id") for a in assignments if a.get("teacher_id")})
     c_ids = list({a.get("class_id") for a in assignments if a.get("class_id")})
 
-    teachers_list = await db.teachers.find({"id": {"$in": t_ids}}).to_list(len(t_ids) + 1) if t_ids else []
-    classes_list = await db.classes.find({"id": {"$in": c_ids}}).to_list(len(c_ids) + 1) if c_ids else []
+    teachers_list = await gd_find(db.session, "teachers", {"id": {"$in": t_ids}}, limit=len(t_ids) + 1) if t_ids else []
+    classes_list = await gd_find(db.session, "classes", {"id": {"$in": c_ids}}, limit=len(c_ids) + 1) if c_ids else []
 
     teacher_map = {t["id"]: t for t in teachers_list}
     class_map = {c["id"]: c for c in classes_list}
@@ -1581,7 +1488,7 @@ async def create_teacher_class_assignment(
         raise HTTPException(status_code=400, detail="Missing school context")
     
     # Check if assignment already exists
-    existing = await db.teacher_class_assignments.find_one({
+    existing = await gd_find_one(db.session, "teacher_class_assignments", {
         "school_id": school_id,
         "teacher_id": assignment.teacher_id,
         "class_id": assignment.class_id,
@@ -1594,7 +1501,7 @@ async def create_teacher_class_assignment(
     # Get settings for academic year if not provided
     academic_year_id = assignment.academic_year_id
     if not academic_year_id:
-        settings = await db.school_settings.find_one({"school_id": school_id})
+        settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
         if settings:
             nested = settings.get("settings", {})
             academic_year_id = nested.get("academic_year") or settings.get("academicYear")
@@ -1610,11 +1517,11 @@ async def create_teacher_class_assignment(
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
     
-    await db.teacher_class_assignments.insert_one(new_assignment)
+    await gd_insert(db.session, "teacher_class_assignments", new_assignment)
     
     # Get teacher and class names for response
-    teacher = await db.teachers.find_one({"id": assignment.teacher_id})
-    class_doc = await db.classes.find_one({"id": assignment.class_id})
+    teacher = await gd_find_one(db.session, "teachers", {"id": assignment.teacher_id})
+    class_doc = await gd_find_one(db.session, "classes", {"id": assignment.class_id})
     
     return {
         "message": "تم إنشاء الإسناد بنجاح",
@@ -1644,12 +1551,12 @@ async def delete_teacher_class_assignment(
     if not school_id:
         raise HTTPException(status_code=400, detail="Missing school context")
     
-    result = await db.teacher_class_assignments.delete_one({
+    result = await gd_delete_one(db.session, "teacher_class_assignments", {
         "id": assignment_id,
         "school_id": school_id
     })
     
-    if result.deleted_count == 0:
+    if result == 0:
         raise HTTPException(status_code=404, detail="الإسناد غير موجود")
     
     return {"message": "تم حذف الإسناد بنجاح"}
@@ -1668,9 +1575,9 @@ async def get_classes_without_teachers(
         raise HTTPException(status_code=400, detail="Missing school context")
     
     # Get all classes
-    all_classes = await db.classes.find({"school_id": school_id}).to_list(500)
+    all_classes = await gd_find(db.session, "classes", {"school_id": school_id}, limit=500)
     
-    assigned_class_ids = set(await db.teacher_class_assignments.distinct("class_id", {"school_id": school_id}))
+    assigned_class_ids = set(await gd_distinct(db.session, "teacher_class_assignments", "class_id", {"school_id": school_id}))
     
     # Filter unassigned classes
     unassigned = []
@@ -1702,16 +1609,13 @@ async def get_teacher_assignments(
     if not school_id:
         raise HTTPException(status_code=400, detail="Missing school context")
     
-    assignments = await db.teacher_class_assignments.find({
+    assignments = await gd_find(db.session, "teacher_class_assignments", {
         "school_id": school_id,
         "teacher_id": teacher_id
-    }).to_list(500)
+    }, limit=500)
     
     class_ids = list({a.get("class_id") for a in assignments if a.get("class_id")})
-    classes_docs = await db.classes.find(
-        {"id": {"$in": class_ids}},
-        {"_id": 0, "id": 1, "name": 1, "section": 1, "grade_id": 1}
-    ).to_list(500) if class_ids else []
+    classes_docs = await gd_find(db.session, "classes", {"id": {"$in": class_ids}}, limit=500) if class_ids else []
     class_map = {c["id"]: c for c in classes_docs}
 
     result = []

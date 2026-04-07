@@ -6,6 +6,7 @@ from fastapi import APIRouter
 from datetime import datetime, timezone
 import logging
 import time
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
 
 logger = logging.getLogger("nassaq.public_routes")
 
@@ -25,7 +26,7 @@ def create_public_routes(db):
             if _stats_cache["data"] and now < _stats_cache["expires"]:
                 return _stats_cache["data"]
 
-            cached_stats = await db.platform_stats.find_one({"id": "platform_stats"})
+            cached_stats = await gd_find_one(db.session, "platform_stats", {"id": "platform_stats"})
             
             if cached_stats:
                 result = {
@@ -40,14 +41,14 @@ def create_public_routes(db):
                 _stats_cache["expires"] = now + _STATS_TTL
                 return result
             
-            total_schools = await db.schools.count_documents({})
-            active_schools = await db.schools.count_documents({"status": "active"})
-            students_from_users = await db.users.count_documents({"role": "student"})
-            students_from_col = await db.students.count_documents({})
-            teachers_from_users = await db.users.count_documents({"role": "teacher"})
-            teachers_from_col = await db.teachers.count_documents({})
-            parents_from_users = await db.users.count_documents({"role": "parent"})
-            parents_from_col = await db.parents.count_documents({})
+            total_schools = await gd_count(db.session, "schools", {})
+            active_schools = await gd_count(db.session, "schools", {"status": "active"})
+            students_from_users = await gd_count(db.session, "users", {"role": "student"})
+            students_from_col = await gd_count(db.session, "students", {})
+            teachers_from_users = await gd_count(db.session, "users", {"role": "teacher"})
+            teachers_from_col = await gd_count(db.session, "teachers", {})
+            parents_from_users = await gd_count(db.session, "users", {"role": "parent"})
+            parents_from_col = await gd_count(db.session, "parents", {})
 
             total_students = max(students_from_users, students_from_col)
             total_teachers = max(teachers_from_users, teachers_from_col)

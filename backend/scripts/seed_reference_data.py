@@ -15,10 +15,11 @@ import uuid
 
 import sys as _sys
 import os as _os
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_upsert
 _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), ".."))
 from scripts.seed_db_helper import get_seed_db
 
-# MongoDB connection
+# Database connection
 # ============================================
 # 1. DEFAULT SCHOOL SETTINGS
 # ============================================
@@ -403,13 +404,13 @@ async def apply_settings_to_existing_schools():
         print("=" * 60)
 
         # Get default settings
-        default_settings = await db.default_settings.find_one({"id": "default-school-settings"})
+        default_settings = await gd_find_one(db.session, "default_settings", {"id": "default-school-settings"})
         if not default_settings:
             print("ERROR: Default settings not found!")
             return False
 
         # Get all schools
-        schools = await db.schools.find({}).to_list(None)
+        schools = await gd_find(db.session, "schools", {}, limit=10000)
 
         for school in schools:
             school_id = school.get('id')

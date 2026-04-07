@@ -71,7 +71,7 @@ class TenantIsolation:
         tenant_field: str = "tenant_id"
     ) -> Dict[str, Any]:
         """
-        Apply tenant filter to a MongoDB query
+        Apply tenant filter to a query
         Returns modified query with tenant restriction
         """
         if TenantIsolation.is_platform_user(user):

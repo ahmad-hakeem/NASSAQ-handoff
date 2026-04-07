@@ -10,6 +10,7 @@ from datetime import datetime, timezone, timedelta
 import uuid
 import logging
 from sqlalchemy.exc import SQLAlchemyError
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
 
 logger = logging.getLogger("nassaq.admin_dashboard")
 
@@ -66,30 +67,30 @@ def setup_admin_routes(db, get_current_user, require_roles, UserRole):
             now = datetime.now(timezone.utc)
             today = now.strftime("%Y-%m-%d")
 
-            registered_schools = await db.schools.count_documents({})
-            active_schools = await db.schools.count_documents({"status": "active"})
-            suspended_schools = await db.schools.count_documents({"status": "suspended"})
-            pending_schools = await db.schools.count_documents({"status": "pending"})
+            registered_schools = await gd_count(db.session, "schools", {})
+            active_schools = await gd_count(db.session, "schools", {"status": "active"})
+            suspended_schools = await gd_count(db.session, "schools", {"status": "suspended"})
+            pending_schools = await gd_count(db.session, "schools", {"status": "pending"})
 
-            registered_students = await db.students.count_documents({})
-            total_parents = await db.parents.count_documents({})
+            registered_students = await gd_count(db.session, "students", {})
+            total_parents = await gd_count(db.session, "parents", {})
             if total_parents == 0:
-                total_parents = await db.users.count_documents({"role": "parent"})
-            total_classes = await db.classes.count_documents({})
-            total_subjects = await db.subjects.count_documents({})
+                total_parents = await gd_count(db.session, "users", {"role": "parent"})
+            total_classes = await gd_count(db.session, "classes", {})
+            total_subjects = await gd_count(db.session, "subjects", {})
 
-            teachers_in_schools = await db.teachers.count_documents({"school_id": {"$ne": None}})
+            teachers_in_schools = await gd_count(db.session, "teachers", {"school_id": {"$ne": None}})
             if teachers_in_schools == 0:
-                teachers_in_schools = await db.users.count_documents({
+                teachers_in_schools = await gd_count(db.session, "users", {
                     "role": "teacher", "tenant_id": {"$ne": None}
                 })
 
-            independent_teachers = await db.users.count_documents({
+            independent_teachers = await gd_count(db.session, "users", {
                 "role": "teacher",
                 "$or": [{"tenant_id": None}, {"tenant_id": ""}]
             })
 
-            total_school_admins = await db.users.count_documents({
+            total_school_admins = await gd_count(db.session, "users", {
                 "role": {"$in": ["school_admin", "school_principal", "school_sub_admin"]}
             })
 
@@ -98,46 +99,46 @@ def setup_admin_routes(db, get_current_user, require_roles, UserRole):
                 "platform_technical_admin", "platform_support_specialist",
                 "platform_data_analyst", "platform_security_officer"
             ]
-            platform_accounts = await db.users.count_documents({"role": {"$in": platform_roles}})
+            platform_accounts = await gd_count(db.session, "users", {"role": {"$in": platform_roles}})
 
-            total_users = await db.users.count_documents({})
+            total_users = await gd_count(db.session, "users", {})
 
-            pending_requests = await db.registration_requests.count_documents({"status": "pending"})
+            pending_requests = await gd_count(db.session, "registration_requests", {"status": "pending"})
 
-            published_timetables = await db.timetable_runs.count_documents({"status": "published"})
+            published_timetables = await gd_count(db.session, "timetable_runs", {"status": "published"})
 
             active_statuses = ["in_progress", "session_opened", "attendance_in_progress",
                                "attendance_approved", "teaching_in_progress", "interaction_running", "session_review"]
-            sessions_today = await db.class_sessions.count_documents({"date": today})
-            active_sessions_now = await db.class_sessions.count_documents({
+            sessions_today = await gd_count(db.session, "class_sessions", {"date": today})
+            active_sessions_now = await gd_count(db.session, "class_sessions", {
                 "date": today, "status": {"$in": active_statuses}
             })
 
-            notifications_sent_today = await db.notifications.count_documents({
+            notifications_sent_today = await gd_count(db.session, "notifications", {
                 "created_at": {"$gte": now.replace(hour=0, minute=0, second=0).isoformat()}
             })
 
-            behaviour_records_today = await db.behaviour_records.count_documents({
+            behaviour_records_today = await gd_count(db.session, "behaviour_records", {
                 "date": {"$gte": today}
             })
 
-            total_student_att = await db.attendance.count_documents({
+            total_student_att = await gd_count(db.session, "attendance", {
                 "user_type": "student", "date": {"$gte": today}
             })
-            present_students = await db.attendance.count_documents({
+            present_students = await gd_count(db.session, "attendance", {
                 "user_type": "student", "status": "present", "date": {"$gte": today}
             })
             student_attendance_rate = (present_students / total_student_att) * 100 if total_student_att > 0 else 0
 
-            total_teacher_att = await db.attendance.count_documents({
+            total_teacher_att = await gd_count(db.session, "attendance", {
                 "user_type": "teacher", "date": {"$gte": today}
             })
-            present_teachers = await db.attendance.count_documents({
+            present_teachers = await gd_count(db.session, "attendance", {
                 "user_type": "teacher", "status": "present", "date": {"$gte": today}
             })
             teacher_attendance_rate = (present_teachers / total_teacher_att) * 100 if total_teacher_att > 0 else 0
 
-            ai_enabled_schools = await db.schools.count_documents({
+            ai_enabled_schools = await gd_count(db.session, "schools", {
                 "$or": [{"ai_enabled": True}, {"ai_features_enabled": True}, {"hakim_enabled": True}]
             })
             if ai_enabled_schools == 0:
@@ -202,33 +203,33 @@ def setup_admin_routes(db, get_current_user, require_roles, UserRole):
         current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.PLATFORM_OPERATIONS_MANAGER]))
     ):
         try:
-            schools = await db.schools.find({}, {"_id": 0}).to_list(100)
+            schools = await gd_find(db.session, "schools", {}, limit=100)
             result = []
             for school in schools:
                 sid = school.get("id", "")
                 tenant_id = school.get("tenant_id") or sid
-                student_count = await db.students.count_documents({"school_id": {"$in": [sid, tenant_id]}})
+                student_count = await gd_count(db.session, "students", {"school_id": {"$in": [sid, tenant_id]}})
                 if student_count == 0:
-                    student_count = await db.students.count_documents({"tenant_id": tenant_id})
-                teacher_count = await db.teachers.count_documents({"school_id": {"$in": [sid, tenant_id]}})
+                    student_count = await gd_count(db.session, "students", {"tenant_id": tenant_id})
+                teacher_count = await gd_count(db.session, "teachers", {"school_id": {"$in": [sid, tenant_id]}})
                 if teacher_count == 0:
-                    teacher_count = await db.users.count_documents({"role": "teacher", "tenant_id": tenant_id})
-                class_count = await db.classes.count_documents({"tenant_id": tenant_id})
+                    teacher_count = await gd_count(db.session, "users", {"role": "teacher", "tenant_id": tenant_id})
+                class_count = await gd_count(db.session, "classes", {"tenant_id": tenant_id})
                 if class_count == 0:
-                    class_count = await db.classes.count_documents({"school_id": sid})
-                parent_count = await db.parents.count_documents({"school_id": {"$in": [sid, tenant_id]}})
+                    class_count = await gd_count(db.session, "classes", {"school_id": sid})
+                parent_count = await gd_count(db.session, "parents", {"school_id": {"$in": [sid, tenant_id]}})
                 if parent_count == 0:
-                    parent_count = await db.users.count_documents({"role": "parent", "tenant_id": tenant_id})
+                    parent_count = await gd_count(db.session, "users", {"role": "parent", "tenant_id": tenant_id})
 
                 today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-                sessions_today = await db.class_sessions.count_documents({
+                sessions_today = await gd_count(db.session, "class_sessions", {
                     "school_id": {"$in": [sid, tenant_id]}, "date": today
                 })
 
                 has_teachers = teacher_count > 0
                 has_students = student_count > 0
                 has_classes = class_count > 0
-                has_timetable = await db.timetable_runs.count_documents({
+                has_timetable = await gd_count(db.session, "timetable_runs", {
                     "school_id": {"$in": [sid, tenant_id]}, "status": "published"
                 }) > 0
                 setup_score = sum([has_teachers, has_students, has_classes, has_timetable]) * 25
@@ -317,22 +318,22 @@ def setup_admin_routes(db, get_current_user, require_roles, UserRole):
         current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.PLATFORM_OPERATIONS_MANAGER]))
     ):
         try:
-            total_notifications = await db.notifications.count_documents({})
-            unread_notifications = await db.notifications.count_documents({
+            total_notifications = await gd_count(db.session, "notifications", {})
+            unread_notifications = await gd_count(db.session, "notifications", {
                 "read_status": False,
                 "$or": [
                     {"recipient_id": current_user.get("id")},
                     {"recipient_role": "platform_admin"}
                 ]
             })
-            sent_messages = await db.messages.count_documents({"status": "sent"})
-            received_messages = await db.messages.count_documents({
+            sent_messages = await gd_count(db.session, "messages", {"status": "sent"})
+            received_messages = await gd_count(db.session, "messages", {
                 "$or": [
                     {"recipient_id": current_user.get("id")},
                     {"recipient_role": "platform_admin"}
                 ]
             })
-            scheduled_messages = await db.messages.count_documents({"status": "scheduled"})
+            scheduled_messages = await gd_count(db.session, "messages", {"status": "scheduled"})
 
             return NotificationStats(
                 total_notifications=total_notifications,
@@ -358,8 +359,8 @@ def setup_admin_routes(db, get_current_user, require_roles, UserRole):
             result = {"operation": operation_type, "status": "completed", "message": "", "details": {}}
 
             if operation_type == "diagnosis":
-                total_schools = await db.schools.count_documents({})
-                active_schools = await db.schools.count_documents({"status": "active"})
+                total_schools = await gd_count(db.session, "schools", {})
+                active_schools = await gd_count(db.session, "schools", {"status": "active"})
                 health_score = (active_schools / max(total_schools, 1)) * 100
                 result["message"] = "تم تشخيص النظام بنجاح"
                 result["details"] = {
@@ -369,13 +370,13 @@ def setup_admin_routes(db, get_current_user, require_roles, UserRole):
                     "issues_found": max(0, total_schools - active_schools)
                 }
             elif operation_type == "data_quality":
-                students_missing = await db.students.count_documents({
+                students_missing = await gd_count(db.session, "students", {
                     "$or": [{"parent_phone": None}, {"parent_phone": ""}]
                 })
-                teachers_missing = await db.teachers.count_documents({
+                teachers_missing = await gd_count(db.session, "teachers", {
                     "$or": [{"rank": None}, {"rank": ""}]
                 })
-                total_records = await db.students.count_documents({}) + await db.teachers.count_documents({})
+                total_records = await gd_count(db.session, "students", {}) + await gd_count(db.session, "teachers", {})
                 quality_score = max(0, 100 - ((students_missing + teachers_missing) / max(total_records, 1) * 100))
                 result["message"] = f"جودة البيانات: {round(quality_score, 1)}%"
                 result["details"] = {
@@ -384,14 +385,14 @@ def setup_admin_routes(db, get_current_user, require_roles, UserRole):
                     "teachers_missing_data": teachers_missing
                 }
             elif operation_type == "alerts_review":
-                pending_alerts = await db.notifications.count_documents({"type": "alert", "read_status": False})
+                pending_alerts = await gd_count(db.session, "notifications", {"type": "alert", "read_status": False})
                 result["message"] = f"تم مراجعة {pending_alerts} تنبيه"
                 result["details"] = {"pending_alerts": pending_alerts, "reviewed": pending_alerts}
             else:
                 result["message"] = "تم تحليل ملفات الاستيراد"
                 result["details"] = {"files_analyzed": 0, "ready_for_import": 0, "issues_found": 0}
 
-            await db.ai_operations.insert_one({
+            await gd_insert(db.session, "ai_operations", {
                 "id": str(uuid.uuid4()),
                 "operation_type": operation_type,
                 "performed_by": current_user.get("id"),

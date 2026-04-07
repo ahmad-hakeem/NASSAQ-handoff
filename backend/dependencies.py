@@ -58,6 +58,7 @@ from engines.smart_scheduling_engine import (
 
 from db import get_pg_session, get_db, async_session_factory
 from sqlalchemy.ext.asyncio import AsyncSession
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
 
 audit_engine = AuditLogEngine(db)
 smart_scheduling_engine = SmartSchedulingEngine(db)
@@ -140,7 +141,7 @@ async def get_current_user(
         if not user_id:
             raise HTTPException(status_code=401, detail="Invalid token")
 
-        user = await db.users.find_one({"id": user_id})
+        user = await gd_find_one(db.session, "users", {"id": user_id})
 
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
@@ -150,21 +151,21 @@ async def get_current_user(
             user["id"] = user_id
 
         if user.get("role") == UserRole.TEACHER.value and not user.get("teacher_id"):
-            teacher = await db.teachers.find_one({"email": user.get("email")}, {"_id": 0, "id": 1})
+            teacher = await gd_find_one(db.session, "teachers", {"email": user.get("email")})
             if teacher:
                 user["teacher_id"] = teacher.get("id")
 
         if user.get("role") == UserRole.STUDENT.value and not user.get("student_id"):
-            student = await db.students.find_one({"email": user.get("email")}, {"_id": 0, "id": 1})
+            student = await gd_find_one(db.session, "students", {"email": user.get("email")})
             if student:
                 user["student_id"] = student.get("id")
 
         if user.get("role") == UserRole.PARENT.value and not user.get("parent_id"):
-            parent = await db.parents.find_one({"email": user.get("email")}, {"_id": 0, "id": 1})
+            parent = await gd_find_one(db.session, "parents", {"email": user.get("email")})
             if parent:
                 user["parent_id"] = parent.get("id")
             else:
-                link = await db.guardian_links.find_one({"parent_ref": user.get("id"), "is_active": True}, {"_id": 0, "parent_ref": 1})
+                link = await gd_find_one(db.session, "guardian_links", {"parent_ref": user.get("id"), "is_active": True})
                 if link:
                     user["parent_id"] = link.get("parent_ref")
 
@@ -186,7 +187,7 @@ async def get_current_user(
                 user["tenant_id"] = payload["tenant_id"]
 
         if x_school_context and user.get("role") == UserRole.PLATFORM_ADMIN.value:
-            school = await db.schools.find_one({"id": x_school_context})
+            school = await gd_find_one(db.session, "schools", {"id": x_school_context})
             if school:
                 user["tenant_id"] = x_school_context
                 user["is_impersonating"] = True

@@ -10,6 +10,7 @@ import uuid
 import csv
 import io
 import logging
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
 
 logger = logging.getLogger("nassaq.bulk_teacher")
 
@@ -140,13 +141,13 @@ def create_bulk_teacher_routes(db, get_current_user, require_roles, UserRole, ha
         school_id = current_user.get("tenant_id")
         
         # Check duplicate email
-        existing = await db.teachers.find_one({"email": teacher_data.email, "school_id": school_id})
+        existing = await gd_find_one(db.session, "teachers", {"email": teacher_data.email, "school_id": school_id})
         if existing:
             raise HTTPException(status_code=400, detail="البريد الإلكتروني مستخدم مسبقاً")
         
         # Generate teacher ID
         year = datetime.now().strftime("%y")
-        count = await db.teachers.count_documents({"school_id": school_id})
+        count = await gd_count(db.session, "teachers", {"school_id": school_id})
         teacher_id = f"TCH-{year}-{str(count + 1).zfill(4)}"
         
         # Generate temp password
@@ -174,7 +175,7 @@ def create_bulk_teacher_routes(db, get_current_user, require_roles, UserRole, ha
             "created_by": current_user["id"]
         }
         
-        await db.teachers.insert_one(teacher_doc)
+        await gd_insert(db.session, "teachers", teacher_doc)
         
         # Create user account
         user_doc = {
@@ -192,7 +193,7 @@ def create_bulk_teacher_routes(db, get_current_user, require_roles, UserRole, ha
             "created_at": now
         }
         
-        await db.users.insert_one(user_doc)
+        await gd_insert(db.session, "users", user_doc)
         
         return {
             "success": True,
@@ -216,7 +217,7 @@ def create_bulk_teacher_routes(db, get_current_user, require_roles, UserRole, ha
         for teacher_data in teachers:
             try:
                 # Check duplicate
-                existing = await db.teachers.find_one({"email": teacher_data.email, "school_id": school_id})
+                existing = await gd_find_one(db.session, "teachers", {"email": teacher_data.email, "school_id": school_id})
                 if existing:
                     results.append({"email": teacher_data.email, "success": False, "error": "Email exists"})
                     failed += 1
@@ -224,7 +225,7 @@ def create_bulk_teacher_routes(db, get_current_user, require_roles, UserRole, ha
                 
                 # Generate IDs
                 year = datetime.now().strftime("%y")
-                count = await db.teachers.count_documents({"school_id": school_id})
+                count = await gd_count(db.session, "teachers", {"school_id": school_id})
                 teacher_id = f"TCH-{year}-{str(count + 1).zfill(4)}"
                 temp_password = generate_temp_password()
                 now = datetime.now(timezone.utc).isoformat()
@@ -244,7 +245,7 @@ def create_bulk_teacher_routes(db, get_current_user, require_roles, UserRole, ha
                     "created_at": now,
                     "created_by": current_user["id"]
                 }
-                await db.teachers.insert_one(teacher_doc)
+                await gd_insert(db.session, "teachers", teacher_doc)
                 
                 # Create user account
                 user_doc = {
@@ -259,7 +260,7 @@ def create_bulk_teacher_routes(db, get_current_user, require_roles, UserRole, ha
                     "preferred_language": "ar",
                     "created_at": now
                 }
-                await db.users.insert_one(user_doc)
+                await gd_insert(db.session, "users", user_doc)
                 
                 results.append({
                     "email": teacher_data.email,

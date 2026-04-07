@@ -10,6 +10,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import List
 
 from dependencies import JWT_SECRET, JWT_ALGORITHM
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
 
 ACCESS_TOKEN_EXPIRE = 30
 
@@ -60,12 +61,12 @@ def create_get_current_user(db):
             
             user = None
             try:
-                user = await db.users.find_one({"_id": str(user_id)})
+                user = await gd_find_one(db.session, "users", {"_id": str(user_id)})
             except Exception:
                 pass
             
             if not user:
-                user = await db.users.find_one({"id": user_id})
+                user = await gd_find_one(db.session, "users", {"id": user_id})
             
             if not user:
                 raise HTTPException(status_code=401, detail="User not found")

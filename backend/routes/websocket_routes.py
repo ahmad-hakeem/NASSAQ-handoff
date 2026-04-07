@@ -10,6 +10,7 @@ import json
 import asyncio
 import uuid
 import logging
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
 
 logger = logging.getLogger("nassaq.websocket")
 
@@ -375,9 +376,9 @@ async def send_realtime_notification(
         
         # Save to all users in DB
         if save_to_db:
-            users = await db.users.find({"is_active": True}, {"id": 1}).to_list(10000)
+            users = await gd_find(db.session, "users", {"is_active": True}, limit=10000)
             for user in users:
-                await db.notifications.insert_one({
+                await gd_insert(db.session, "notifications", {
                     **notification,
                     "id": str(uuid.uuid4()),
                     "recipient_id": user["id"]
@@ -388,7 +389,7 @@ async def send_realtime_notification(
             await manager.send_personal_message(notification, user_id)
             
             if save_to_db:
-                await db.notifications.insert_one({
+                await gd_insert(db.session, "notifications", {
                     **notification,
                     "recipient_id": user_id
                 })
@@ -398,9 +399,9 @@ async def send_realtime_notification(
         
         if save_to_db:
             for role in target_roles:
-                users = await db.users.find({"role": role, "is_active": True}, {"id": 1}).to_list(1000)
+                users = await gd_find(db.session, "users", {"role": role, "is_active": True}, limit=1000)
                 for user in users:
-                    await db.notifications.insert_one({
+                    await gd_insert(db.session, "notifications", {
                         **notification,
                         "id": str(uuid.uuid4()),
                         "recipient_id": user["id"]
@@ -410,9 +411,9 @@ async def send_realtime_notification(
         await manager.broadcast_to_tenant(notification, target_tenant)
         
         if save_to_db:
-            users = await db.users.find({"tenant_id": target_tenant, "is_active": True}, {"id": 1}).to_list(1000)
+            users = await gd_find(db.session, "users", {"tenant_id": target_tenant, "is_active": True}, limit=1000)
             for user in users:
-                await db.notifications.insert_one({
+                await gd_insert(db.session, "notifications", {
                     **notification,
                     "id": str(uuid.uuid4()),
                     "recipient_id": user["id"]

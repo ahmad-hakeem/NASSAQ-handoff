@@ -31,6 +31,7 @@ from shared_models import (
     DashboardStats, SuperAdminDashboardStats
 )
 import logging
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
 logger = logging.getLogger("nassaq")
 
 router = APIRouter()
@@ -116,18 +117,11 @@ async def get_dashboard_stats(
                     time_filter["created_at"]["$lte"] = date_to
         
         base_school_filter = {k: v for k, v in school_filter.items() if k != "status"}
-        school_counts = await db.schools.batched_counts({
-            "total": school_filter,
-            "active": {**base_school_filter, "status": "active"},
-            "pending": {**base_school_filter, "status": "pending"},
-            "suspended": {**base_school_filter, "status": "suspended"},
-            "setup": {**base_school_filter, "status": "setup"},
-        })
-        total_schools = school_counts["total"]
-        active_schools = school_counts["active"]
-        pending_schools = school_counts["pending"]
-        suspended_schools = school_counts["suspended"]
-        setup_schools = school_counts["setup"]
+        total_schools = await gd_count(db.session, "schools", school_filter)
+        active_schools = await gd_count(db.session, "schools", {**base_school_filter, "status": "active"})
+        pending_schools = await gd_count(db.session, "schools", {**base_school_filter, "status": "pending"})
+        suspended_schools = await gd_count(db.session, "schools", {**base_school_filter, "status": "suspended"})
+        setup_schools = await gd_count(db.session, "schools", {**base_school_filter, "status": "setup"})
         
         if status and status != 'all':
             if status == 'active':
@@ -325,11 +319,11 @@ async def get_super_admin_dashboard_stats(
         
         total_lessons_today = event_counts["lessons_today"]
         if total_lessons_today == 0:
-            total_lessons_today = await db.schedules.count_documents({"date": {"$gte": today_str}})
+            total_lessons_today = await gd_count(db.session, "schedules", {"date": {"$gte": today_str}})
         
         waiting_sessions = event_counts["waiting"]
         if waiting_sessions == 0:
-            waiting_sessions = await db.schedules.count_documents({"teacher_id": None, "date": {"$gte": today_str}})
+            waiting_sessions = await gd_count(db.session, "schedules", {"teacher_id": None, "date": {"$gte": today_str}})
         
         schools_growth_rate = (schools_last_month / max(total_schools - schools_last_month, 1)) * 100 if total_schools > 0 else 0
         students_growth_rate = (students_last_month / max(total_students - students_last_month, 1)) * 100 if total_students > 0 else 0
@@ -446,11 +440,11 @@ async def get_command_center_stats(
         platform_accounts = total_users - school_bound_users - school_teachers
 
         if ai_enabled_schools == 0:
-            ai_enabled_schools = await db.schools.count_documents({"status": "active"})
+            ai_enabled_schools = await gd_count(db.session, "schools", {"status": "active"})
 
         if teachers_total_today == 0:
-            teachers_present_today = await db.attendance.count_documents({"user_type": "teacher", "status": "present", "date": {"$gte": today_str}})
-            teachers_total_today = await db.attendance.count_documents({"user_type": "teacher", "date": {"$gte": today_str}})
+            teachers_present_today = await gd_count(db.session, "attendance", {"user_type": "teacher", "status": "present", "date": {"$gte": today_str}})
+            teachers_total_today = await gd_count(db.session, "attendance", {"user_type": "teacher", "date": {"$gte": today_str}})
 
         student_attendance_rate = round((students_present_today / students_total_today) * 100, 1) if students_total_today > 0 else 0
         teacher_attendance_rate = round((teachers_present_today / teachers_total_today) * 100, 1) if teachers_total_today > 0 else 0

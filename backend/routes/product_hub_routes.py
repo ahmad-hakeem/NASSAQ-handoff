@@ -312,7 +312,7 @@ async def _generate_prompt(issue: dict) -> str:
     lines.append("-" * 60)
     lines.append("")
     lines.append("Fix the issue described above in the NASSAQ codebase.")
-    lines.append("Stack: React (frontend) + FastAPI (backend) + MongoDB.")
+    lines.append("Stack: React (frontend) + FastAPI (backend) + PostgreSQL.")
     lines.append("RTL Arabic UI — use existing brand design tokens.")
     lines.append("Ensure the fix handles edge cases and does not break existing functionality.")
     lines.append("Test the fix before marking as complete.")

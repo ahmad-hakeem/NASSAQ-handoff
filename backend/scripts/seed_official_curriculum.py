@@ -1,5 +1,5 @@
 """
-Seed Official Saudi Curriculum Data into MongoDB
+Seed Official Saudi Curriculum Data into PostgreSQL
 Read-only reference data - cannot be modified by school principals
 """
 import asyncio
@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 
 import sys as _sys
 import os as _os
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_upsert
 _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), ".."))
 from scripts.seed_db_helper import get_seed_db
 
@@ -584,15 +585,15 @@ async def seed():
 
         print("Seeding stages...")
         for stage in STAGES:
-            await db.official_curriculum_stages.insert_one({**stage, "is_official": True, "is_read_only": True, "created_at": now})
+            await gd_insert(db.session, "official_curriculum_stages", {**stage, "is_official": True, "is_read_only": True, "created_at": now})
 
         print("Seeding tracks...")
         for track in TRACKS:
-            await db.official_curriculum_tracks.insert_one({**track, "is_official": True, "is_read_only": True, "created_at": now})
+            await gd_insert(db.session, "official_curriculum_tracks", {**track, "is_official": True, "is_read_only": True, "created_at": now})
 
         print("Seeding grades...")
         for grade in GRADES:
-            await db.official_curriculum_grades.insert_one({**grade, "is_official": True, "is_read_only": True, "created_at": now})
+            await gd_insert(db.session, "official_curriculum_grades", {**grade, "is_official": True, "is_read_only": True, "created_at": now})
 
         print("Seeding subjects and grade-subject mappings...")
         # Collect all unique subject names
@@ -602,7 +603,7 @@ async def seed():
                 if subj_name not in all_subjects:
                     sub_id = "ocs-" + subj_name.replace(" ", "-").replace("(", "").replace(")", "")[:30]
                     all_subjects[subj_name] = sub_id
-                    await db.official_curriculum_subjects.insert_one({
+                    await gd_insert(db.session, "official_curriculum_subjects", {
                         "id": sub_id,
                         "name_ar": subj_name,
                         "name_en": subj_name,
@@ -651,7 +652,7 @@ async def seed():
         print("Seeding optional subject pools...")
         for pool in OPTIONAL_POOLS:
             pool_id = pool["id"]
-            await db.official_optional_subject_pools.insert_one({
+            await gd_insert(db.session, "official_optional_subject_pools", {
                 "id": pool_id,
                 "grade_id": pool["grade_id"],
                 "name_ar": pool["name_ar"],
@@ -672,10 +673,10 @@ async def seed():
                 })
 
         # Create indexes
-        await db.official_curriculum_stages.create_index("id", unique=True)
-        await db.official_curriculum_tracks.create_index("id", unique=True)
-        await db.official_curriculum_grades.create_index("id", unique=True)
-        await db.official_curriculum_grade_subjects.create_index([("grade_id", 1), ("subject_id", 1)])
+        pass  # index handled by PostgreSQL
+        pass  # index handled by PostgreSQL
+        pass  # index handled by PostgreSQL
+        pass  # index handled by PostgreSQL, ("subject_id", 1)])
 
         print("\n========= CURRICULUM SEED COMPLETE =========")
         print(f"Stages: {len(STAGES)}")

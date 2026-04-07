@@ -22,6 +22,7 @@ from dependencies import (
     REPORT_TYPES, generate_student_qr_code
 )
 
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
 from shared_models import (
     RegistrationRequest, RegistrationRequestResponse, ApproveRequestData, RejectRequestData, RequestMoreInfoData
 )
@@ -61,14 +62,9 @@ async def check_school_name(name: str = Query(..., min_length=2)):
     if len(normalized) < 2:
         return {"similar_schools": [], "is_duplicate": False}
 
-    existing_schools = await db.schools.find(
-        {}, {"_id": 0, "id": 1, "name": 1, "city": 1, "status": 1}
-    ).to_list(500)
+    existing_schools = await gd_find(db.session, "schools", {}, limit=500)
 
-    pending_requests = await db.registration_requests.find(
-        {"account_type": "school", "status": {"$in": ["pending", "pending_review"]}},
-        {"_id": 0, "school_name": 1, "school_city": 1}
-    ).to_list(200)
+    pending_requests = await gd_find(db.session, "registration_requests", {"account_type": "school", "status": {"$in": ["pending", "pending_review"]}}, limit=200)
 
     similar = []
     for s in existing_schools:
@@ -109,7 +105,7 @@ async def create_registration_request(request_data: RegistrationRequest):
         if len(phone_digits) >= 7:
             spaced_regex = ''.join(f'[\\s\\-]*{re.escape(c)}' for c in phone_digits)
             phone_regex = f"(\\+?966|0)?{spaced_regex}$"
-            existing_user_phone = await db.users.find_one({
+            existing_user_phone = await gd_find_one(db.session, "users", {
                 "phone": {"$regex": phone_regex},
                 "is_active": True
             })
@@ -118,7 +114,7 @@ async def create_registration_request(request_data: RegistrationRequest):
                     status_code=400,
                     detail="يوجد حساب نشط مسجل بنفس رقم الهاتف"
                 )
-            existing_pending_phone = await db.registration_requests.find_one({
+            existing_pending_phone = await gd_find_one(db.session, "registration_requests", {
                 "phone": {"$regex": phone_regex},
                 "status": {"$in": ["pending", "pending_review"]}
             })
@@ -150,7 +146,7 @@ async def create_registration_request(request_data: RegistrationRequest):
         "updated_at": now
     }
     
-    await db.registration_requests.insert_one(request_doc)
+    await gd_insert(db.session, "registration_requests", request_doc)
     logger.info(f"[ApprovalQueue] Created registration request id={request_id[:8]}… type={request_data.account_type} status=pending_review source=public_signup")
 
     try:
@@ -177,15 +173,12 @@ async def create_registration_request(request_data: RegistrationRequest):
             "timestamp": now,
             "created_at": now
         }
-        await db.audit_logs.insert_one(audit_entry)
+        await gd_insert(db.session, "audit_logs", audit_entry)
     except Exception as e:
         logger.error(f"Failed to create audit log for registration request: {e}")
 
     try:
-        admin_users = await db.users.find(
-            {"role": {"$in": ["platform_admin", "platform_operations_manager"]}, "is_active": True},
-            {"_id": 0, "id": 1}
-        ).to_list(50)
+        admin_users = await gd_find(db.session, "users", {"role": {"$in": ["platform_admin", "platform_operations_manager"]}, "is_active": True}, limit=50)
 
         notif_docs = []
         for admin in admin_users:
@@ -201,7 +194,7 @@ async def create_registration_request(request_data: RegistrationRequest):
                 "created_at": now
             })
         if notif_docs:
-            await db.notifications.insert_many(notif_docs)
+            await gd_insert_many(db.session, "notifications", notif_docs)
     except Exception as e:
         logger.error(f"Failed to send admin notifications for registration request: {e}")
     
@@ -236,7 +229,7 @@ async def get_registration_requests(
     if source:
         query["source"] = source
     
-    requests = await db.registration_requests.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    requests = await gd_find(db.session, "registration_requests", query, order_by="created_at", desc_order=True, limit=1000)
     logger.info(f"[ApprovalQueue] GET /registration-requests query={query} → {len(requests)} result(s)")
     return {"requests": requests, "total": len(requests)}
 
@@ -409,7 +402,7 @@ async def submit_additional_info(
     """
     from engines.approval_engine import validate_transition
 
-    request = await db.registration_requests.find_one({"id": request_id}, {"_id": 0})
+    request = await gd_find_one(db.session, "registration_requests", {"id": request_id})
     if not request:
         raise HTTPException(status_code=404, detail="طلب التسجيل غير موجود")
     
@@ -432,11 +425,8 @@ async def submit_additional_info(
         if info.get(key):
             update_data[key] = str(info[key])[:200]
     
-    update_result = await db.registration_requests.update_one(
-        {"id": request_id, "status": current_status},
-        {"$set": update_data}
-    )
-    if update_result.modified_count == 0:
+    update_result = await gd_update_one(db.session, "registration_requests", {"id": request_id, "status": current_status}, update_data)
+    if update_result == 0:
         raise HTTPException(status_code=409, detail="الطلب تغيّرت حالته — يرجى المحاولة مرة أخرى")
 
     try:
@@ -479,9 +469,7 @@ async def get_approval_events(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
     """Get lifecycle events for a specific approval request"""
-    events = await db.approval_events.find(
-        {"request_id": request_id}, {"_id": 0}
-    ).sort("timestamp", -1).to_list(100)
+    events = await gd_find(db.session, "approval_events", {"request_id": request_id}, order_by="timestamp", desc_order=True, limit=100)
     return {"events": events, "total": len(events)}
 
 
@@ -517,7 +505,7 @@ async def create_student_enrollment(
         "updated_at": now
     }
 
-    await db.registration_requests.insert_one(enrollment_doc)
+    await gd_insert(db.session, "registration_requests", enrollment_doc)
     enrollment_doc.pop("_id", None)
     return enrollment_doc
 
@@ -536,7 +524,7 @@ async def get_student_enrollments(
     if current_user.get("role") == "parent":
         query["parent_user_id"] = current_user["id"]
 
-    requests = await db.registration_requests.find(query, {"_id": 0}).sort("submitted_at", -1).to_list(100)
+    requests = await gd_find(db.session, "registration_requests", query, order_by="submitted_at", desc_order=True, limit=100)
     return {"requests": requests, "total": len(requests)}
 
 
@@ -547,7 +535,7 @@ async def approve_student_enrollment(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
     """Approve a student enrollment"""
-    req = await db.registration_requests.find_one({"id": request_id, "type": "student_enrollment"})
+    req = await gd_find_one(db.session, "registration_requests", {"id": request_id, "type": "student_enrollment"})
     if not req:
         raise HTTPException(status_code=404, detail="طلب التسجيل غير موجود")
 
@@ -573,18 +561,15 @@ async def approve_student_enrollment(
         "created_at": now,
         "updated_at": now
     }
-    await db.students.insert_one(student_doc)
+    await gd_insert(db.session, "students", student_doc)
 
-    await db.registration_requests.update_one(
-        {"id": request_id},
-        {"$set": {
+    await gd_update_one(db.session, "registration_requests", {"id": request_id}, {
             "status": "approved",
             "approved_by": current_user["id"],
             "approved_at": now,
             "student_id": student_id,
             "updated_at": now
-        }}
-    )
+        })
 
     return {"message": "تم قبول طلب التسجيل وإنشاء حساب الطالب", "student_id": student_id}
 
@@ -596,20 +581,17 @@ async def reject_student_enrollment(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
     """Reject a student enrollment"""
-    req = await db.registration_requests.find_one({"id": request_id, "type": "student_enrollment"})
+    req = await gd_find_one(db.session, "registration_requests", {"id": request_id, "type": "student_enrollment"})
     if not req:
         raise HTTPException(status_code=404, detail="طلب التسجيل غير موجود")
 
     now = datetime.now(timezone.utc).isoformat()
-    await db.registration_requests.update_one(
-        {"id": request_id},
-        {"$set": {
+    await gd_update_one(db.session, "registration_requests", {"id": request_id}, {
             "status": "rejected",
             "rejected_by": current_user["id"],
             "rejected_at": now,
             "rejection_reason": data.get("reason", ""),
             "updated_at": now
-        }}
-    )
+        })
 
     return {"message": "تم رفض طلب التسجيل"}

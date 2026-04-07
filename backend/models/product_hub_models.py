@@ -3,7 +3,7 @@ Product Intelligence Hub — Database Models & Validation
 نماذج قاعدة البيانات ونظام التحقق لمركز ذكاء المنتج
 
 Production-ready Pydantic models with strict enum validation,
-field constraints, and structured document schemas for MongoDB.
+field constraints, and structured document schemas for PostgreSQL.
 """
 
 from pydantic import BaseModel, Field, field_validator, model_validator

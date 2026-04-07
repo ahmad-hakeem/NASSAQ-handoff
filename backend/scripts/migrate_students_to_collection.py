@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 
 import sys as _sys
 import os as _os
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_upsert
 _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), ".."))
 from scripts.seed_db_helper import get_seed_db
 
@@ -18,14 +19,14 @@ async def migrate():
         print("=== MIGRATING STUDENTS to students collection ===")
 
         # Get all student users
-        student_users = await db.users.find({"role": "student"}, {"_id": 0}).to_list(10000)
+        student_users = await gd_find(db.session, "users", {"role": "student"}, {"_id": 0}, limit=10000)
         print(f"Found {len(student_users)} student users in users collection")
 
-        existing_students = await db.students.count_documents({})
+        existing_students = await gd_count(db.session, "students", {})
         print(f"Students currently in students collection: {existing_students}")
 
         # Get class map
-        classes = await db.classes.find({}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "grade_level": 1, "school_id": 1}).to_list(5000)
+        classes = await gd_find(db.session, "classes", {}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "grade_level": 1, "school_id": 1}, limit=5000)
         class_map = {c["id"]: c for c in classes}
 
         created = 0
@@ -69,25 +70,25 @@ async def migrate():
                 "updated_at": user.get("updated_at") or now,
             }
 
-            await db.students.insert_one(student_doc)
+            await gd_insert(db.session, "students", student_doc)
             created += 1
 
             if created % 50 == 0:
                 print(f"  Created {created} students so far...")
 
         # Create indexes
-        await db.students.create_index("school_id")
-        await db.students.create_index("class_id")
-        await db.students.create_index("email", sparse=True)
+        pass  # index handled by PostgreSQL
+        pass  # index handled by PostgreSQL
+        pass  # index handled by PostgreSQL
 
         print(f"\n=== MIGRATION COMPLETE ===")
         print(f"Created: {created} student records in students collection")
         print(f"Skipped: {skipped} (already existed)")
 
         # Verify counts per school
-        schools = await db.schools.find({}, {"id": 1, "name_ar": 1}).to_list(10)
+        schools = await gd_find(db.session, "schools", {}, {"id": 1, "name_ar": 1}, limit=10)
         for school in schools:
-            count = await db.students.count_documents({"school_id": school["id"]})
+            count = await gd_count(db.session, "students", {"school_id": school["id"]})
             print(f"  {school['id']}: {count} students")
 if __name__ == "__main__":
     asyncio.run(migrate())

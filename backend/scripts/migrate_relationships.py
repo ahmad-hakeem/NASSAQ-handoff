@@ -5,6 +5,7 @@ New: from_entity_type, from_entity_id, to_entity_type, to_entity_id, status
 """
 import asyncio
 import sys
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_upsert
 sys.path.insert(0, "/home/runner/workspace/backend")
 
 from datetime import datetime, timezone
@@ -71,13 +72,13 @@ RELATIONSHIP_TYPE_MAP = {
 async def migrate():
     async with get_seed_db() as db:
 
-        total = await db.user_relationships.count_documents({})
+        total = await gd_count(db.session, "user_relationships", {})
         print(f"Total user_relationships: {total}")
 
-        already_migrated = await db.user_relationships.count_documents({"from_entity_id": {"$exists": True, "$ne": None}})
+        already_migrated = await gd_count(db.session, "user_relationships", {"from_entity_id": {"$exists": True, "$ne": None}})
         print(f"Already migrated: {already_migrated}")
 
-        needs_migration = await db.user_relationships.count_documents({
+        needs_migration = await gd_count(db.session, "user_relationships", {
             "$or": [
                 {"from_entity_id": {"$exists": False}},
                 {"from_entity_id": None}
@@ -93,15 +94,13 @@ async def migrate():
         migrated = 0
         errors = 0
 
-        cursor = db.user_relationships.find({
+        docs = await gd_find(db.session, "user_relationships", {
             "$or": [
-                {"from_entity_id": {"$exists": False}},
                 {"from_entity_id": None}
             ]
-        })
+        }, limit=10000)
 
-        batch_ops = []
-        async for doc in cursor:
+        for doc in docs:
             rel_type = doc.get("relationship_type", "")
             mapping = RELATIONSHIP_TYPE_MAP.get(rel_type)
 
@@ -119,26 +118,16 @@ async def migrate():
                 "updated_at": now
             }
 
-            from repositories.base import UpdateOne
-            batch_ops.append(UpdateOne(
-                {"id": doc["id"]},
-                {"$set": update_fields}
-            ))
+            await gd_update_one(db.session, "user_relationships", {"id": doc["id"]}, update_fields)
+            migrated += 1
 
-            if len(batch_ops) >= 500:
-                result = await db.user_relationships.bulk_write(batch_ops)
-                migrated += result.modified_count
+            if migrated % 500 == 0:
                 print(f"  Migrated batch: {migrated}/{needs_migration}")
-                batch_ops = []
-
-        if batch_ops:
-            result = await db.user_relationships.bulk_write(batch_ops)
-            migrated += result.modified_count
 
         print(f"\nMigration complete: {migrated} migrated, {errors} errors")
 
         # Verify
-        still_broken = await db.user_relationships.count_documents({
+        still_broken = await gd_count(db.session, "user_relationships", {
             "$or": [
                 {"from_entity_type": None},
                 {"from_entity_type": {"$exists": False}}

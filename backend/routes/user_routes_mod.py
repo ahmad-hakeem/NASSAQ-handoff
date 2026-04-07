@@ -75,13 +75,13 @@ async def create_platform_user(
         raise HTTPException(status_code=400, detail="نوع الحساب غير مسموح به")
     
     # Check if email exists
-    existing_email = await db.users.find_one({"email": user_data.email})
+    existing_email = await gd_find_one(db.session, "users", {"email": user_data.email})
     if existing_email:
         raise HTTPException(status_code=400, detail="البريد الإلكتروني مستخدم مسبقاً")
     
     # Check if phone exists (if provided)
     if user_data.phone:
-        existing_phone = await db.users.find_one({"phone": user_data.phone})
+        existing_phone = await gd_find_one(db.session, "users", {"phone": user_data.phone})
         if existing_phone:
             raise HTTPException(status_code=400, detail="رقم الهاتف مستخدم مسبقاً")
     
@@ -111,7 +111,7 @@ async def create_platform_user(
         "created_by": current_user["id"],
     }
     
-    await db.users.insert_one(new_user)
+    await gd_insert(db.session, "users", new_user)
     
     # Log this action using the new Audit Engine
     await audit_engine.log_data_change(
@@ -152,21 +152,17 @@ async def get_users_management_stats(
 ):
     """Real-time stats for the Users Management page analysis cards.
     All values are direct DB counts — no mock data, no hardcoded values."""
-    total_users = await db.users.count_documents({})
-    active_users = await db.users.count_documents({"is_active": {"$ne": False}})
-    suspended_users = await db.users.count_documents({"is_active": False})
+    total_users = await gd_count(db.session, "users", {})
+    active_users = await gd_count(db.session, "users", {"is_active": {"$ne": False}})
+    suspended_users = await gd_count(db.session, "users", {"is_active": False})
 
-    platform_admins = await db.users.count_documents(
-        {"role": {"$in": ["platform_admin", "platform_operations_manager"]}}
-    )
-    school_admins = await db.users.count_documents(
-        {"role": {"$in": ["school_principal", "school_sub_admin", "school_manager"]}}
-    )
-    teachers = await db.users.count_documents({"role": "teacher"})
-    students = await db.users.count_documents({"role": "student"})
-    parents = await db.users.count_documents({"role": "parent"})
+    platform_admins = await gd_count(db.session, "users", {"role": {"$in": ["platform_admin", "platform_operations_manager"]}})
+    school_admins = await gd_count(db.session, "users", {"role": {"$in": ["school_principal", "school_sub_admin", "school_manager"]}})
+    teachers = await gd_count(db.session, "users", {"role": "teacher"})
+    students = await gd_count(db.session, "users", {"role": "student"})
+    parents = await gd_count(db.session, "users", {"role": "parent"})
 
-    pending_requests = await db.registration_requests.count_documents({"status": "pending"})
+    pending_requests = await gd_count(db.session, "registration_requests", {"status": "pending"})
 
     return {
         "total_users": total_users,
@@ -242,12 +238,9 @@ async def get_platform_users(
         else:
             query["$or"] = search_conditions
 
-    users = await db.users.find(
-        query,
-        {"_id": 0, "password_hash": 0}
-    ).skip(skip).limit(limit).to_list(length=limit)
+    users = await gd_find(db.session, "users", query, skip=skip, limit=limit)
     
-    total = await db.users.count_documents(query)
+    total = await gd_count(db.session, "users", query)
 
     return {
         "users": users,
@@ -264,7 +257,7 @@ async def delete_platform_user(
     """
     Soft delete a platform user
     """
-    user = await db.users.find_one({"id": user_id})
+    user = await gd_find_one(db.session, "users", {"id": user_id})
     if not user:
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")
     
@@ -273,14 +266,11 @@ async def delete_platform_user(
         raise HTTPException(status_code=400, detail="لا يمكن حذف مدير المنصة")
     
     # Soft delete - just mark as inactive
-    await db.users.update_one(
-        {"id": user_id},
-        {"$set": {
+    await gd_update_one(db.session, "users", {"id": user_id}, {
             "is_active": False,
             "deleted_at": datetime.now(timezone.utc).isoformat(),
             "deleted_by": current_user["id"]
-        }}
-    )
+        })
     
     # Audit log
     audit_log = {
@@ -293,7 +283,7 @@ async def delete_platform_user(
         "target_name": user.get("full_name", ""),
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
-    await db.audit_logs.insert_one(audit_log)
+    await gd_insert(db.session, "audit_logs", audit_log)
     
     return {"message": "تم حذف المستخدم بنجاح"}
 
@@ -317,7 +307,7 @@ async def get_users(
     if role:
         query["role"] = role
     
-    users = await db.users.find(query, {"_id": 0, "password_hash": 0}).to_list(1000)
+    users = await gd_find(db.session, "users", query, limit=1000)
     return [UserResponse(**u) for u in users]
 
 class UserStatusRequest(BaseModel):
@@ -330,7 +320,7 @@ async def update_user_status(
     status_data: UserStatusRequest,
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
-    user = await db.users.find_one({"id": user_id})
+    user = await gd_find_one(db.session, "users", {"id": user_id})
     if not user:
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")
 
@@ -339,10 +329,7 @@ async def update_user_status(
             raise HTTPException(status_code=403, detail="غير مصرح لك بتعديل بيانات هذا المستخدم")
 
     old_status = user.get("is_active", True)
-    await db.users.update_one(
-        {"id": user_id},
-        {"$set": {"is_active": status_data.is_active, "updated_at": datetime.now(timezone.utc).isoformat()}}
-    )
+    await gd_update_one(db.session, "users", {"id": user_id}, {"is_active": status_data.is_active, "updated_at": datetime.now(timezone.utc).isoformat()})
 
     audit_log = {
         "id": str(uuid.uuid4()),
@@ -358,7 +345,7 @@ async def update_user_status(
         },
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
-    await db.audit_logs.insert_one(audit_log)
+    await gd_insert(db.session, "audit_logs", audit_log)
 
     return {"message": "تم تحديث حالة المستخدم"}
 
@@ -373,13 +360,13 @@ async def get_user_by_id(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
     """Get detailed user information by ID"""
-    user = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
+    user = await gd_find_one(db.session, "users", {"id": user_id})
     if not user:
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")
     
     # Get creator name if exists
     if user.get("created_by"):
-        creator = await db.users.find_one({"id": user["created_by"]}, {"_id": 0, "full_name": 1})
+        creator = await gd_find_one(db.session, "users", {"id": user["created_by"]})
         user["created_by_name"] = creator.get("full_name") if creator else None
     
     return user
@@ -406,7 +393,7 @@ async def update_user(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
     """Update user information"""
-    user = await db.users.find_one({"id": user_id})
+    user = await gd_find_one(db.session, "users", {"id": user_id})
     if not user:
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")
     
@@ -421,7 +408,7 @@ async def update_user(
         updates["full_name"] = user_data.full_name
     if user_data.email:
         # Check email uniqueness
-        existing = await db.users.find_one({"email": user_data.email, "id": {"$ne": user_id}})
+        existing = await gd_find_one(db.session, "users", {"email": user_data.email, "id": {"$ne": user_id}})
         if existing:
             raise HTTPException(status_code=400, detail="البريد الإلكتروني مستخدم مسبقاً")
         updates["email"] = user_data.email
@@ -446,7 +433,7 @@ async def update_user(
         old_role = user.get("role", "")
         updates["role"] = user_data.role
     
-    await db.users.update_one({"id": user_id}, {"$set": updates})
+    await gd_update_one(db.session, "users", {"id": user_id}, updates)
     
     field_changes = {}
     for field, new_val in updates.items():
@@ -471,7 +458,7 @@ async def update_user(
         audit_log["action"] = "user_role_changed"
         audit_log["old_role"] = field_changes["role"]["old"]
         audit_log["new_role"] = field_changes["role"]["new"]
-    await db.audit_logs.insert_one(audit_log)
+    await gd_insert(db.session, "audit_logs", audit_log)
     
     return {"message": "تم تحديث البيانات بنجاح"}
 
@@ -485,19 +472,16 @@ async def update_user_permissions(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
     """Update user permissions"""
-    user = await db.users.find_one({"id": user_id})
+    user = await gd_find_one(db.session, "users", {"id": user_id})
     if not user:
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")
     
     old_permissions = user.get("permissions", [])
     
-    await db.users.update_one(
-        {"id": user_id},
-        {"$set": {
+    await gd_update_one(db.session, "users", {"id": user_id}, {
             "permissions": data.permissions,
             "updated_at": datetime.now(timezone.utc).isoformat()
-        }}
-    )
+        })
     
     # Audit log
     audit_log = {
@@ -516,7 +500,7 @@ async def update_user_permissions(
         },
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
-    await db.audit_logs.insert_one(audit_log)
+    await gd_insert(db.session, "audit_logs", audit_log)
     
     return {"message": "تم تحديث الصلاحيات بنجاح"}
 
@@ -530,7 +514,7 @@ async def reset_user_password(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
     """Reset user password (admin only)"""
-    user = await db.users.find_one({"id": user_id})
+    user = await gd_find_one(db.session, "users", {"id": user_id})
     if not user:
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")
 
@@ -538,16 +522,13 @@ async def reset_user_password(
         if user.get("tenant_id") != current_user.get("tenant_id"):
             raise HTTPException(status_code=403, detail="غير مصرح لك بتعديل بيانات هذا المستخدم")
 
-    await db.users.update_one(
-        {"id": user_id},
-        {"$set": {
+    await gd_update_one(db.session, "users", {"id": user_id}, {
             "password_hash": hash_password(data.new_password),
             "must_change_password": True,
             "password_reset_at": datetime.now(timezone.utc).isoformat(),
             "password_reset_by": current_user["id"],
             "updated_at": datetime.now(timezone.utc).isoformat()
-        }}
-    )
+        })
     
     # Audit log
     audit_log = {
@@ -560,7 +541,7 @@ async def reset_user_password(
         "target_name": user.get("full_name", ""),
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
-    await db.audit_logs.insert_one(audit_log)
+    await gd_insert(db.session, "audit_logs", audit_log)
     
     return {"message": "تم إعادة تعيين كلمة المرور بنجاح"}
 
@@ -570,7 +551,7 @@ async def suspend_user(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
     """Toggle user suspension status"""
-    user = await db.users.find_one({"id": user_id})
+    user = await gd_find_one(db.session, "users", {"id": user_id})
     if not user:
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")
 
@@ -584,15 +565,12 @@ async def suspend_user(
     
     new_status = not user.get("is_active", True)
     
-    await db.users.update_one(
-        {"id": user_id},
-        {"$set": {
+    await gd_update_one(db.session, "users", {"id": user_id}, {
             "is_active": new_status,
             "suspended_at": datetime.now(timezone.utc).isoformat() if not new_status else None,
             "suspended_by": current_user["id"] if not new_status else None,
             "updated_at": datetime.now(timezone.utc).isoformat()
-        }}
-    )
+        })
     
     # Audit log
     audit_log = {
@@ -605,7 +583,7 @@ async def suspend_user(
         "target_name": user.get("full_name", ""),
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
-    await db.audit_logs.insert_one(audit_log)
+    await gd_insert(db.session, "audit_logs", audit_log)
     
     return {
         "message": "تم تعليق الحساب بنجاح" if not new_status else "تم تفعيل الحساب بنجاح",
@@ -624,7 +602,7 @@ async def send_user_notification(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
     """Send notification to a user"""
-    user = await db.users.find_one({"id": user_id})
+    user = await gd_find_one(db.session, "users", {"id": user_id})
     if not user:
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")
     
@@ -640,11 +618,12 @@ async def send_user_notification(
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     
-    await db.notifications.insert_one(notification)
+    await gd_insert(db.session, "notifications", notification)
     
     return {"message": "تم إرسال الإشعار بنجاح", "notification_id": notification["id"]}
 
 import base64
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
 
 class ImageUploadRequest(BaseModel):
     image_data: str  # Base64 encoded image
@@ -664,17 +643,14 @@ async def upload_user_image(
     if not data.image_data.startswith(allowed_prefixes):
         raise HTTPException(status_code=400, detail="صيغة الصورة غير مدعومة (فقط JPEG, PNG, WEBP)")
 
-    user = await db.users.find_one({"id": user_id})
+    user = await gd_find_one(db.session, "users", {"id": user_id})
     if not user:
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")
     
-    await db.users.update_one(
-        {"id": user_id},
-        {"$set": {
+    await gd_update_one(db.session, "users", {"id": user_id}, {
             "avatar_url": data.image_data,
             "updated_at": datetime.now(timezone.utc).isoformat()
-        }}
-    )
+        })
     
     return {"message": "تم رفع الصورة بنجاح", "avatar_url": data.image_data}
 
@@ -685,18 +661,15 @@ async def get_user_activity(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
 ):
     """Get user activity logs"""
-    user = await db.users.find_one({"id": user_id})
+    user = await gd_find_one(db.session, "users", {"id": user_id})
     if not user:
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")
     
     # Get activity from audit logs
-    activities = await db.audit_logs.find(
-        {"$or": [
+    activities = await gd_find(db.session, "audit_logs", {"$or": [
             {"action_by": user_id},
             {"target_id": user_id}
-        ]},
-        {"_id": 0}
-    ).sort("timestamp", -1).limit(limit).to_list(limit)
+        ]}, order_by="timestamp", desc_order=True, limit=limit)
     
     return {"activities": activities, "total": len(activities)}
 
@@ -747,22 +720,22 @@ async def update_current_user_profile(
         update_data["full_name_en"] = data.full_name_en
     if data.email is not None:
         # Check if email is already used by another user
-        existing = await db.users.find_one({"email": data.email, "id": {"$ne": current_user["id"]}})
+        existing = await gd_find_one(db.session, "users", {"email": data.email, "id": {"$ne": current_user["id"]}})
         if existing:
             raise HTTPException(status_code=400, detail="البريد الإلكتروني مستخدم مسبقاً")
         update_data["email"] = data.email
     if data.phone is not None:
         # Check if phone is already used by another user
-        existing = await db.users.find_one({"phone": data.phone, "id": {"$ne": current_user["id"]}})
+        existing = await gd_find_one(db.session, "users", {"phone": data.phone, "id": {"$ne": current_user["id"]}})
         if existing:
             raise HTTPException(status_code=400, detail="رقم الهاتف مستخدم مسبقاً")
         update_data["phone"] = data.phone
     if data.avatar_url is not None:
         update_data["avatar_url"] = data.avatar_url
     
-    await db.users.update_one({"id": current_user["id"]}, {"$set": update_data})
+    await gd_update_one(db.session, "users", {"id": current_user["id"]}, update_data)
     
-    updated_user = await db.users.find_one({"id": current_user["id"]}, {"_id": 0, "password_hash": 0})
+    updated_user = await gd_find_one(db.session, "users", {"id": current_user["id"]})
     return UserResponse(**updated_user)
 
 @router.get("/users/me/preferences")
@@ -797,7 +770,7 @@ async def update_current_user_preferences(
     if data.first_day_of_week is not None:
         update_data["first_day_of_week"] = data.first_day_of_week
     
-    await db.users.update_one({"id": current_user["id"]}, {"$set": update_data})
+    await gd_update_one(db.session, "users", {"id": current_user["id"]}, update_data)
     
     return {"message": "تم تحديث التفضيلات بنجاح", "success": True}
 
@@ -842,7 +815,7 @@ async def update_current_user_notification_settings(
     if data.weekly_digest is not None:
         update_data["weekly_digest"] = data.weekly_digest
     
-    await db.users.update_one({"id": current_user["id"]}, {"$set": update_data})
+    await gd_update_one(db.session, "users", {"id": current_user["id"]}, update_data)
     
     return {"message": "تم تحديث إعدادات الإشعارات بنجاح", "success": True}
 
@@ -878,7 +851,7 @@ async def upload_user_avatar(
             "updated_at": datetime.now(timezone.utc).isoformat()
         }
         
-        await db.users.update_one({"id": current_user["id"]}, {"$set": update_data})
+        await gd_update_one(db.session, "users", {"id": current_user["id"]}, update_data)
         
         return {
             "success": True,
@@ -923,12 +896,12 @@ async def update_user_profile_extended(
     if data.full_name_en is not None:
         update_data["full_name_en"] = data.full_name_en
     if data.email is not None and data.email:
-        existing = await db.users.find_one({"email": data.email, "id": {"$ne": current_user["id"]}})
+        existing = await gd_find_one(db.session, "users", {"email": data.email, "id": {"$ne": current_user["id"]}})
         if existing:
             raise HTTPException(status_code=400, detail="البريد الإلكتروني مستخدم مسبقاً")
         update_data["email"] = data.email
     if data.phone is not None and data.phone:
-        existing = await db.users.find_one({"phone": data.phone, "id": {"$ne": current_user["id"]}})
+        existing = await gd_find_one(db.session, "users", {"phone": data.phone, "id": {"$ne": current_user["id"]}})
         if existing:
             raise HTTPException(status_code=400, detail="رقم الهاتف مستخدم مسبقاً")
         update_data["phone"] = data.phone
@@ -939,9 +912,9 @@ async def update_user_profile_extended(
     if data.bio is not None:
         update_data["bio"] = data.bio
     
-    await db.users.update_one({"id": current_user["id"]}, {"$set": update_data})
+    await gd_update_one(db.session, "users", {"id": current_user["id"]}, update_data)
     
-    updated_user = await db.users.find_one({"id": current_user["id"]}, {"_id": 0, "password_hash": 0})
+    updated_user = await gd_find_one(db.session, "users", {"id": current_user["id"]})
     
     return {
         "success": True,
@@ -959,10 +932,7 @@ async def get_user_sessions(
     current_user: dict = Depends(get_current_user)
 ):
     """Get active sessions for the current user"""
-    sessions = await db.user_sessions.find(
-        {"user_id": current_user["id"]},
-        {"_id": 0}
-    ).sort("last_active", -1).to_list(20)
+    sessions = await gd_find(db.session, "user_sessions", {"user_id": current_user["id"]}, order_by="last_active", desc_order=True, limit=20)
     
     return {"sessions": sessions}
 
@@ -974,7 +944,7 @@ async def end_all_sessions(
     """End all other sessions except current"""
     # In a real implementation, you would invalidate all tokens except the current one
     # For now, we'll just clear the sessions collection
-    await db.user_sessions.delete_many({
+    await gd_delete_many(db.session, "user_sessions", {
         "user_id": current_user["id"],
         "is_current": {"$ne": True}
     })
@@ -988,12 +958,12 @@ async def end_session(
     current_user: dict = Depends(get_current_user)
 ):
     """End a specific session"""
-    result = await db.user_sessions.delete_one({
+    result = await gd_delete_one(db.session, "user_sessions", {
         "id": session_id,
         "user_id": current_user["id"]
     })
     
-    if result.deleted_count == 0:
+    if result == 0:
         raise HTTPException(status_code=404, detail="الجلسة غير موجودة")
     
     return {"message": "تم إنهاء الجلسة"}

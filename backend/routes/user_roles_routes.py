@@ -9,6 +9,7 @@ from typing import Optional, List
 from datetime import datetime, timezone
 import uuid
 import logging
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
 logger = logging.getLogger("nassaq")
 
 
@@ -54,7 +55,7 @@ def setup_user_roles_routes(db, get_current_user, require_roles, UserRole, creat
     async def _get_school_name(tenant_id: str) -> Optional[str]:
         if not tenant_id:
             return None
-        school = await db.schools.find_one({"id": tenant_id}, {"name": 1, "name_en": 1})
+        school = await gd_find_one(db.session, "schools", {"id": tenant_id})
         if school:
             return school.get("name") or school.get("name_en")
         return None
@@ -77,7 +78,7 @@ def setup_user_roles_routes(db, get_current_user, require_roles, UserRole, creat
     ):
         try:
             user_id = current_user.get("id")
-            user = await db.users.find_one({"id": user_id})
+            user = await gd_find_one(db.session, "users", {"id": user_id})
             if not user:
                 raise HTTPException(status_code=404, detail="المستخدم غير موجود")
 
@@ -118,7 +119,7 @@ def setup_user_roles_routes(db, get_current_user, require_roles, UserRole, creat
                 })
 
             if user.get("role") == "platform_admin":
-                schools = await db.schools.find({}, {"id": 1, "name": 1, "name_en": 1}).to_list(100)
+                schools = await gd_find(db.session, "schools", {}, limit=100)
                 for school in schools:
                     s_name = school.get("name") or school.get("name_en")
                     available_roles.append({
@@ -157,7 +158,7 @@ def setup_user_roles_routes(db, get_current_user, require_roles, UserRole, creat
     ):
         try:
             user_id = current_user.get("id")
-            user = await db.users.find_one({"id": user_id})
+            user = await gd_find_one(db.session, "users", {"id": user_id})
             if not user:
                 raise HTTPException(status_code=404, detail="المستخدم غير موجود")
 
@@ -202,7 +203,7 @@ def setup_user_roles_routes(db, get_current_user, require_roles, UserRole, creat
                         break
 
             if user.get("role") == "platform_admin" and target_role == "school_principal" and target_tenant_id:
-                school = await db.schools.find_one({"id": target_tenant_id})
+                school = await gd_find_one(db.session, "schools", {"id": target_tenant_id})
                 if school:
                     is_valid_role = True
                     tenant_name = school.get("name")
@@ -211,7 +212,7 @@ def setup_user_roles_routes(db, get_current_user, require_roles, UserRole, creat
                 raise HTTPException(status_code=403, detail="ليس لديك صلاحية لهذا الدور")
 
             if target_tenant_id and target_role in SCHOOL_SCOPED_ROLES:
-                school_doc = await db.schools.find_one({"id": target_tenant_id}, {"id": 1})
+                school_doc = await gd_find_one(db.session, "schools", {"id": target_tenant_id})
                 if not school_doc:
                     raise HTTPException(status_code=404, detail="المدرسة غير موجودة")
 
@@ -233,7 +234,7 @@ def setup_user_roles_routes(db, get_current_user, require_roles, UserRole, creat
 
             client_ip = request.client.host if request.client else None
 
-            await db.audit_logs.insert_one({
+            await gd_insert(db.session, "audit_logs", {
                 "id": str(uuid.uuid4()),
                 "action": "role_switched",
                 "user_id": user_id,
@@ -250,7 +251,7 @@ def setup_user_roles_routes(db, get_current_user, require_roles, UserRole, creat
                 }
             })
 
-            await db.role_switch_history.insert_one({
+            await gd_insert(db.session, "role_switch_history", {
                 "id": str(uuid.uuid4()),
                 "user_id": user_id,
                 "from_role": from_role,
@@ -296,7 +297,7 @@ def setup_user_roles_routes(db, get_current_user, require_roles, UserRole, creat
     ):
         try:
             user_id = current_user.get("id")
-            user = await db.users.find_one({"id": user_id})
+            user = await gd_find_one(db.session, "users", {"id": user_id})
             if not user:
                 raise HTTPException(status_code=404, detail="المستخدم غير موجود")
 
@@ -318,7 +319,7 @@ def setup_user_roles_routes(db, get_current_user, require_roles, UserRole, creat
 
             client_ip = request.client.host if request.client else None
 
-            await db.audit_logs.insert_one({
+            await gd_insert(db.session, "audit_logs", {
                 "id": str(uuid.uuid4()),
                 "action": "role_returned_to_original",
                 "user_id": user_id,
@@ -365,9 +366,7 @@ def setup_user_roles_routes(db, get_current_user, require_roles, UserRole, creat
     ):
         try:
             user_id = current_user.get("id")
-            history = await db.role_switch_history.find(
-                {"user_id": user_id}
-            ).sort("switched_at", -1).limit(20).to_list(20)
+            history = await gd_find(db.session, "role_switch_history", {"user_id": user_id}, order_by="switched_at", desc_order=True, limit=20)
 
             return {
                 "history": [

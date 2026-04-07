@@ -23,6 +23,7 @@ from dependencies import (
     REPORT_TYPES, generate_student_qr_code
 )
 
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
 from shared_models import (
     UserCreate, UserLogin, UserResponse, TokenResponse,
     validate_password_complexity,
@@ -38,7 +39,7 @@ async def register(user_data: UserCreate):
     user_data.role = UserRole.STUDENT
     user_data.tenant_id = None
 
-    existing = await db.users.find_one({"email": user_data.email})
+    existing = await gd_find_one(db.session, "users", {"email": user_data.email})
     if existing:
         raise HTTPException(status_code=400, detail="البريد الإلكتروني مسجل مسبقاً")
     
@@ -61,7 +62,7 @@ async def register(user_data: UserCreate):
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
     
-    await db.users.insert_one(user_doc)
+    await gd_insert(db.session, "users", user_doc)
     
     # Create token
     token = create_access_token({"sub": user_id, "role": user_data.role.value})
@@ -85,7 +86,7 @@ async def register(user_data: UserCreate):
 
 @router.post("/auth/login", response_model=TokenResponse)
 async def login(credentials: UserLogin):
-    user = await db.users.find_one({"email": credentials.email})
+    user = await gd_find_one(db.session, "users", {"email": credentials.email})
     if not user:
         # Log failed login attempt
         await audit_engine.log_auth_event(
@@ -223,7 +224,7 @@ async def update_preferences(
     if preferred_theme:
         updates["preferred_theme"] = preferred_theme
     
-    await db.users.update_one({"id": current_user["id"]}, {"$set": updates})
+    await gd_update_one(db.session, "users", {"id": current_user["id"]}, updates)
     return {"message": "تم تحديث الإعدادات"}
 
 
@@ -295,7 +296,7 @@ async def set_active_role_context(
     # Get school name if school_id provided
     school_name = None
     if school_id:
-        school = await db.schools.find_one({"id": school_id}, {"_id": 0, "name_ar": 1, "name_en": 1})
+        school = await gd_find_one(db.session, "schools", {"id": school_id})
         if school:
             school_name = school.get("name_ar") or school.get("name_en")
     
@@ -308,13 +309,10 @@ async def set_active_role_context(
         "is_active": True
     }
     
-    await db.users.update_one(
-        {"id": user_id},
-        {"$set": {
+    await gd_update_one(db.session, "users", {"id": user_id}, {
             "active_role_context": active_context,
             "updated_at": now
-        }}
-    )
+        })
     
     original_role = current_user.get("original_role") or current_user.get("role")
     new_token = create_access_token({
@@ -354,7 +352,7 @@ async def get_active_role_context(current_user: dict = Depends(get_current_user)
         school_name = None
         
         if school_id:
-            school = await db.schools.find_one({"id": school_id}, {"_id": 0, "name_ar": 1})
+            school = await gd_find_one(db.session, "schools", {"id": school_id})
             if school:
                 school_name = school.get("name_ar")
         
@@ -371,7 +369,7 @@ async def get_active_role_context(current_user: dict = Depends(get_current_user)
     # Get school name
     school_name = None
     if active_context.get("school_id"):
-        school = await db.schools.find_one({"id": active_context["school_id"]}, {"_id": 0, "name_ar": 1})
+        school = await gd_find_one(db.session, "schools", {"id": active_context["school_id"]})
         if school:
             school_name = school.get("name_ar")
     
@@ -426,15 +424,12 @@ async def change_password(
         raise HTTPException(status_code=400, detail="كلمة المرور الجديدة يجب أن تكون مختلفة")
     
     # Update password and clear must_change_password flag
-    await db.users.update_one(
-        {"id": current_user["id"]},
-        {"$set": {
+    await gd_update_one(db.session, "users", {"id": current_user["id"]}, {
             "password_hash": hash_password(request.new_password),
             "must_change_password": False,
             "password_changed_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat()
-        }}
-    )
+        })
     
     # Log password change
     audit_log = {
@@ -446,7 +441,7 @@ async def change_password(
         "target_id": current_user["id"],
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
-    await db.audit_logs.insert_one(audit_log)
+    await gd_insert(db.session, "audit_logs", audit_log)
     
     return {"message": "تم تغيير كلمة المرور بنجاح"}
 
@@ -464,7 +459,7 @@ async def get_user_roles(
     if current_user["id"] != user_id and current_user["role"] != "platform_admin":
         raise HTTPException(status_code=403, detail="غير مصرح")
     
-    user = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
+    user = await gd_find_one(db.session, "users", {"id": user_id})
     if not user:
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")
     
@@ -504,7 +499,7 @@ async def switch_user_role(
     if current_user["id"] != user_id:
         raise HTTPException(status_code=403, detail="يمكنك فقط تبديل دورك الخاص")
     
-    user = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
+    user = await gd_find_one(db.session, "users", {"id": user_id})
     if not user:
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")
     
@@ -533,7 +528,7 @@ async def switch_user_role(
     
     # Audit log
     now = datetime.now(timezone.utc).isoformat()
-    await db.audit_logs.insert_one({
+    await gd_insert(db.session, "audit_logs", {
         "id": str(uuid.uuid4()),
         "action": "role_switched",
         "action_category": "identity",
@@ -581,7 +576,7 @@ async def add_role_to_user(
     """Add an additional role to a user"""
     now = datetime.now(timezone.utc).isoformat()
     
-    user = await db.users.find_one({"id": user_id}, {"_id": 0})
+    user = await gd_find_one(db.session, "users", {"id": user_id})
     if not user:
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")
     
@@ -602,8 +597,7 @@ async def add_role_to_user(
         "assigned_by": current_user["id"],
     }
     
-    await db.users.update_one(
-        {"id": user_id},
+    await gd_update_one(db.session, "users", {"id": user_id},
         {
             "$push": {"linked_roles": new_role},
             "$set": {"updated_at": now}
@@ -611,7 +605,7 @@ async def add_role_to_user(
     )
     
     # Audit log
-    await db.audit_logs.insert_one({
+    await gd_insert(db.session, "audit_logs", {
         "id": str(uuid.uuid4()),
         "action": "role_assigned",
         "action_category": "identity",
@@ -657,9 +651,7 @@ async def get_available_roles(
 
     schools = []
     if role == UserRole.PLATFORM_ADMIN.value:
-        school_docs = await db.schools.find(
-            {"status": "active"}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1}
-        ).to_list(100)
+        school_docs = await gd_find(db.session, "schools", {"status": "active"}, limit=100)
         schools = school_docs
 
     return {
@@ -685,7 +677,7 @@ async def switch_role(
 
     if current_role == UserRole.PLATFORM_ADMIN.value:
         if target_school_id:
-            school = await db.schools.find_one({"id": target_school_id})
+            school = await gd_find_one(db.session, "schools", {"id": target_school_id})
             if not school:
                 raise HTTPException(404, "المدرسة غير موجودة")
         else:
@@ -707,7 +699,7 @@ async def switch_role(
     }
     new_token = create_access_token(token_data)
 
-    await db.audit_logs.insert_one({
+    await gd_insert(db.session, "audit_logs", {
         "id": str(uuid.uuid4()),
         "action": "role_switch",
         "action_by": user_id,
@@ -735,11 +727,11 @@ async def restore_role(
 
     user_id = current_user.get("original_user_id") or current_user.get("id")
 
-    user = await db.users.find_one({"id": user_id})
+    user = await gd_find_one(db.session, "users", {"id": user_id})
     if not user:
         
         try:
-            user = await db.users.find_one({"_id": str(user_id)})
+            user = await gd_find_one(db.session, "users", {"_id": str(user_id)})
         except Exception as e:
             logger.debug(f"User lookup fallback failed for user_id={user_id}: {e}")
     if not user:
@@ -824,10 +816,7 @@ async def complete_profile(
         if value is not None:
             updates[field] = value
 
-    await db.users.update_one(
-        {"id": current_user["id"]},
-        {"$set": updates}
-    )
+    await gd_update_one(db.session, "users", {"id": current_user["id"]}, updates)
 
     return {"message": "تم تحديث الملف الشخصي بنجاح"}
 
@@ -837,10 +826,7 @@ async def get_user_sessions(
     current_user: dict = Depends(get_current_user)
 ):
     """Get active sessions for the current user"""
-    sessions = await db.user_sessions.find(
-        {"user_id": current_user["id"], "is_active": True},
-        {"_id": 0}
-    ).sort("last_activity", -1).to_list(10)
+    sessions = await gd_find(db.session, "user_sessions", {"user_id": current_user["id"], "is_active": True}, order_by="last_activity", desc_order=True, limit=10)
 
     return {"sessions": sessions, "total": len(sessions)}
 
@@ -850,10 +836,7 @@ async def revoke_all_sessions(
     current_user: dict = Depends(get_current_user)
 ):
     """Revoke all sessions except current"""
-    await db.user_sessions.update_many(
-        {"user_id": current_user["id"]},
-        {"$set": {"is_active": False, "revoked_at": datetime.now(timezone.utc).isoformat()}}
-    )
+    await gd_update_many(db.session, "user_sessions", {"user_id": current_user["id"]}, {"is_active": False, "revoked_at": datetime.now(timezone.utc).isoformat()})
     return {"message": "تم إلغاء جميع الجلسات"}
 
 
@@ -863,10 +846,7 @@ async def get_login_history(
     current_user: dict = Depends(get_current_user)
 ):
     """Get login history for the current user"""
-    logs = await db.audit_logs.find(
-        {"actor_id": current_user["id"], "action": {"$in": ["login", "login_success", "password_changed"]}},
-        {"_id": 0}
-    ).sort("timestamp", -1).limit(limit).to_list(limit)
+    logs = await gd_find(db.session, "audit_logs", {"actor_id": current_user["id"], "action": {"$in": ["login", "login_success", "password_changed"]}}, order_by="timestamp", desc_order=True, limit=limit)
 
     return {"history": logs, "total": len(logs)}
 
