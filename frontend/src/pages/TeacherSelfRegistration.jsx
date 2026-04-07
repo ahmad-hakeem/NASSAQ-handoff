@@ -36,6 +36,9 @@ import {
   AlertCircle,
   Sparkles,
   IdCard,
+  Lock,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 import { useAuth } from '../contexts/AuthContext';
@@ -63,6 +66,9 @@ export const TeacherSelfRegistration = () => {
   const [academicDegrees, setAcademicDegrees] = useState([]);
   const [schoolTypes, setSchoolTypes] = useState([]);
   
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
   // Form data
   const [formData, setFormData] = useState({
     // Step 1: البيانات الأساسية
@@ -70,6 +76,8 @@ export const TeacherSelfRegistration = () => {
     national_id: '',
     phone: '',
     email: '',
+    password: '',
+    confirm_password: '',
     
     // Step 2: المعلومات المهنية
     subject: '',
@@ -185,6 +193,16 @@ export const TeacherSelfRegistration = () => {
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       newErrors.email = isRTL ? 'البريد الإلكتروني غير صالح' : 'Invalid email format';
     }
+    if (!formData.password) {
+      newErrors.password = isRTL ? 'كلمة المرور مطلوبة' : 'Password is required';
+    } else if (formData.password.length < 6) {
+      newErrors.password = isRTL ? 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' : 'Password must be at least 6 characters';
+    }
+    if (!formData.confirm_password) {
+      newErrors.confirm_password = isRTL ? 'تأكيد كلمة المرور مطلوب' : 'Please confirm your password';
+    } else if (formData.password !== formData.confirm_password) {
+      newErrors.confirm_password = isRTL ? 'كلمات المرور غير متطابقة' : 'Passwords do not match';
+    }
     
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -270,7 +288,7 @@ export const TeacherSelfRegistration = () => {
     }
   };
 
-  // Submit registration
+  // Submit registration (direct — no approval queue)
   const handleSubmit = async () => {
     if (!validateStep4()) {
       return;
@@ -279,11 +297,12 @@ export const TeacherSelfRegistration = () => {
     setSubmitting(true);
     
     try {
-      const response = await api.post('/teacher-registration/request', {
+      const response = await api.post('/teacher-registration/direct', {
         full_name: formData.full_name,
         national_id: formData.national_id,
         phone: formData.phone,
         email: formData.email,
+        password: formData.password,
         subject: formData.subject,
         education_level: formData.education_level,
         years_of_experience: parseInt(formData.years_of_experience),
@@ -296,13 +315,19 @@ export const TeacherSelfRegistration = () => {
         referred_by: formData.referred_by || null,
       });
       
-      setSubmissionResult(response.data);
-      setCurrentStep(5); // Move to success step
+      const { access_token, refresh_token, user: userData } = response.data;
+      localStorage.setItem('nassaq_token', access_token);
+      localStorage.setItem('nassaq_refresh_token', refresh_token);
       
-      toast.success(isRTL ? 'تم إرسال طلبك بنجاح!' : 'Your request has been submitted successfully!');
+      toast.success(isRTL ? 'تم تسجيل حسابك بنجاح! جاري الدخول...' : 'Account created successfully! Logging in...');
+      
+      setTimeout(() => {
+        window.location.href = '/dashboard';
+      }, 800);
     } catch (error) {
       console.error('Submission error:', error);
-      const message = error.response?.data?.detail || (isRTL ? 'حدث خطأ أثناء الإرسال' : 'Error submitting request');
+      const errData = error.response?.data;
+      const message = errData?.error?.message || errData?.detail || (isRTL ? 'حدث خطأ أثناء الإرسال' : 'Error submitting request');
       nassaqError(message);
     } finally {
       setSubmitting(false);
@@ -613,10 +638,7 @@ export const TeacherSelfRegistration = () => {
           <Card className="w-full max-w-2xl card-nassaq" data-testid="registration-card">
             <CardHeader className="text-center pb-2">
               <h1 className="font-cairo text-2xl font-bold text-foreground">
-                {currentStep === 5 
-                  ? (isRTL ? 'تم إرسال طلبك بنجاح!' : 'Request Submitted Successfully!')
-                  : (isRTL ? 'تسجيل معلم جديد' : 'New Teacher Registration')
-                }
+                {isRTL ? 'تسجيل معلم جديد' : 'New Teacher Registration'}
               </h1>
               {currentStep < 5 && (
                 <p className="text-muted-foreground font-tajawal text-sm">
@@ -715,6 +737,68 @@ export const TeacherSelfRegistration = () => {
                       </div>
                       {errors.email && (
                         <p className="text-destructive text-xs font-tajawal">{errors.email}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="password" className="font-tajawal">
+                        {isRTL ? 'كلمة المرور' : 'Password'} *
+                      </Label>
+                      <div className="relative">
+                        <Lock className="absolute start-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                        <Input
+                          id="password"
+                          type={showPassword ? 'text' : 'password'}
+                          placeholder={isRTL ? 'أدخل كلمة المرور' : 'Enter password'}
+                          value={formData.password}
+                          onChange={(e) => updateFormData('password', e.target.value)}
+                          className={`ps-10 pe-10 h-12 rounded-xl font-tajawal ${errors.password ? 'border-destructive' : ''}`}
+                          dir="ltr"
+                          data-testid="password-input"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute end-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          tabIndex={-1}
+                        >
+                          {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                        </button>
+                      </div>
+                      {errors.password && (
+                        <p className="text-destructive text-xs font-tajawal">{errors.password}</p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="confirm_password" className="font-tajawal">
+                        {isRTL ? 'تأكيد كلمة المرور' : 'Confirm Password'} *
+                      </Label>
+                      <div className="relative">
+                        <Lock className="absolute start-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                        <Input
+                          id="confirm_password"
+                          type={showConfirmPassword ? 'text' : 'password'}
+                          placeholder={isRTL ? 'أعد إدخال كلمة المرور' : 'Re-enter password'}
+                          value={formData.confirm_password}
+                          onChange={(e) => updateFormData('confirm_password', e.target.value)}
+                          className={`ps-10 pe-10 h-12 rounded-xl font-tajawal ${errors.confirm_password ? 'border-destructive' : ''}`}
+                          dir="ltr"
+                          data-testid="confirm-password-input"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                          className="absolute end-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          tabIndex={-1}
+                        >
+                          {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                        </button>
+                      </div>
+                      {errors.confirm_password && (
+                        <p className="text-destructive text-xs font-tajawal">{errors.confirm_password}</p>
                       )}
                     </div>
                   </div>
@@ -985,75 +1069,7 @@ export const TeacherSelfRegistration = () => {
                 </div>
               )}
 
-              {/* ========== Step 5: نجاح الإرسال ========== */}
-              {currentStep === 5 && submissionResult && (
-                <div className="space-y-6 text-center" data-testid="step-5-success">
-                  <div className="w-20 h-20 mx-auto bg-green-100 rounded-full flex items-center justify-center">
-                    <CheckCircle2 className="h-10 w-10 text-green-600" />
-                  </div>
-                  
-                  <div>
-                    <p className="text-muted-foreground font-tajawal mb-4">
-                      {isRTL 
-                        ? 'تم إرسال طلبك بنجاح وهو قيد المراجعة. سيتم إشعارك بالنتيجة خلال 24 ساعة.'
-                        : 'Your request has been submitted and is under review. You will be notified within 24 hours.'}
-                    </p>
-                  </div>
-
-                  {/* Tracking Code Card */}
-                  <div className="bg-brand-navy/5 border border-brand-navy/10 rounded-2xl p-6">
-                    <p className="text-sm text-muted-foreground font-tajawal mb-2">
-                      {isRTL ? 'كود التتبع الخاص بطلبك:' : 'Your tracking code:'}
-                    </p>
-                    <div className="flex items-center justify-center gap-3">
-                      <code className="text-2xl font-bold text-brand-navy font-mono" dir="ltr">
-                        {submissionResult.tracking_code}
-                      </code>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={copyTrackingCode}
-                        className="rounded-xl"
-                        data-testid="copy-tracking-code-btn"
-                      >
-                        <Copy className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-3 font-tajawal">
-                      {isRTL 
-                        ? 'احتفظ بهذا الكود للاستعلام عن حالة طلبك'
-                        : 'Keep this code to check your request status'}
-                    </p>
-                  </div>
-
-                  {/* Review Deadline */}
-                  <div className="flex items-center justify-center gap-2 text-sm">
-                    <Timer className="h-4 w-4 text-brand-turquoise" />
-                    <span className="font-tajawal text-muted-foreground">
-                      {isRTL ? 'الوقت المتبقي للمراجعة: ' : 'Review deadline: '}
-                      <span className="font-bold text-foreground">24 {isRTL ? 'ساعة' : 'hours'}</span>
-                    </span>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex flex-col sm:flex-row gap-3 justify-center pt-4">
-                    <Button
-                      variant="outline"
-                      onClick={() => navigate('/')}
-                      className="rounded-xl"
-                    >
-                      <Home className="h-4 w-4 me-2" />
-                      {isRTL ? 'العودة للرئيسية' : 'Back to Home'}
-                    </Button>
-                    <Button
-                      onClick={() => navigate('/login')}
-                      className="bg-brand-turquoise hover:bg-brand-turquoise/90 rounded-xl"
-                    >
-                      {isRTL ? 'تسجيل الدخول' : 'Login'}
-                    </Button>
-                  </div>
-                </div>
-              )}
+              {/* ========== Step 5: (unused — auto-redirect on success) ========== */}
 
               {/* Navigation Buttons */}
               {currentStep < 5 && (
@@ -1101,11 +1117,11 @@ export const TeacherSelfRegistration = () => {
                       {submitting ? (
                         <span className="flex items-center gap-2">
                           <Loader2 className="h-5 w-5 animate-spin" />
-                          {isRTL ? 'جاري الإرسال...' : 'Submitting...'}
+                          {isRTL ? 'جاري إنشاء الحساب...' : 'Creating Account...'}
                         </span>
                       ) : (
                         <span className="flex items-center gap-2">
-                          {isRTL ? 'إرسال الطلب' : 'Submit Request'}
+                          {isRTL ? 'إنشاء الحساب' : 'Create Account'}
                           <CheckCircle2 className="h-5 w-5" />
                         </span>
                       )}

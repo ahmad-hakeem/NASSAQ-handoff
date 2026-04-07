@@ -48,6 +48,29 @@ class TeacherRegistrationCreate(BaseModel):
     referred_by: Optional[str] = None
 
 
+class TeacherDirectRegistration(BaseModel):
+    """نموذج تسجيل معلم مباشر — بدون مراجعة"""
+    full_name: str
+    national_id: str
+    phone: str
+    email: EmailStr
+    password: str
+
+    subject: str
+    education_level: str
+    years_of_experience: int
+    academic_degree: str
+
+    teacher_rank: str
+
+    school_name: str
+    school_country: str = "SA"
+    school_city: str
+    school_type: str
+
+    referred_by: Optional[str] = None
+
+
 class MoreInfoRequest(BaseModel):
     """طلب معلومات إضافية"""
     questions: List[str]
@@ -111,6 +134,146 @@ def create_teacher_registration_router(db, get_current_user, require_roles, User
         except ValueError as e:
             raise HTTPException(status_code=400, detail="خطأ في البيانات المرسلة")
     
+    @router.post("/direct")
+    async def direct_teacher_registration(
+        data: TeacherDirectRegistration,
+        request: Request,
+    ):
+        """تسجيل معلم مباشر بدون مراجعة — Direct teacher registration without approval"""
+        import uuid as _uuid
+        import base64, json
+        import random
+
+        from pg_models import User, Teacher
+        from engines.sql_utils import dict_to_model
+        from dependencies import (
+            hash_password, create_access_token, create_refresh_token,
+        )
+        from shared_models import validate_password_complexity, UserResponse
+        from sqlalchemy import or_
+
+        try:
+            validate_password_complexity(data.password)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+        session = db.session
+
+        from sqlalchemy import select as sa_select
+        stmt = sa_select(User).where(
+            or_(
+                User.email == data.email,
+                User.phone == data.phone,
+                User.national_id == data.national_id,
+            )
+        ).limit(1)
+        result = await session.execute(stmt)
+        existing = result.scalars().first()
+        if existing:
+            if existing.email == data.email:
+                raise HTTPException(status_code=400, detail="البريد الإلكتروني مسجل مسبقاً")
+            if existing.phone == data.phone:
+                raise HTTPException(status_code=400, detail="رقم الهاتف مسجل مسبقاً")
+            if existing.national_id == data.national_id:
+                raise HTTPException(status_code=400, detail="رقم الهوية مسجل مسبقاً")
+
+        from datetime import timezone as _tz
+        now = datetime.now(_tz.utc)
+        user_id = str(_uuid.uuid4())
+        teacher_id_code = f"TCH-{random.randint(100000, 999999)}"
+        qr_data = {
+            "type": "teacher",
+            "teacher_id": teacher_id_code,
+            "user_id": user_id,
+            "platform": "NASSAQ",
+        }
+        qr_code = base64.b64encode(json.dumps(qr_data).encode()).decode()
+
+        new_user = dict_to_model(User, {
+            "id": user_id,
+            "email": data.email,
+            "password_hash": hash_password(data.password),
+            "full_name": data.full_name,
+            "role": "teacher",
+            "phone": data.phone,
+            "national_id": data.national_id,
+            "is_active": True,
+            "must_change_password": False,
+            "preferred_language": "ar",
+            "preferred_theme": "light",
+            "teacher_id": teacher_id_code,
+            "created_at": now,
+            "updated_at": now,
+            "account_type": "independent_teacher",
+            "permissions": [
+                "view_own_profile",
+                "manage_own_classes",
+                "view_own_students",
+                "take_attendance",
+            ],
+        })
+        session.add(new_user)
+        await session.flush()
+
+        teacher_record = dict_to_model(Teacher, {
+            "id": str(_uuid.uuid4()),
+            "full_name": data.full_name,
+            "email": data.email,
+            "phone": data.phone,
+            "specialization": data.subject,
+            "rank": data.teacher_rank,
+            "years_of_experience": data.years_of_experience,
+            "school_id": None,
+            "is_active": True,
+            "created_at": now,
+            "user_id": user_id,
+            "teacher_id": teacher_id_code,
+            "qr_code": qr_code,
+        })
+        session.add(teacher_record)
+        await session.flush()
+
+        from engines.sql_utils import gd_insert as _gd_insert
+        await _gd_insert(session, "teacher_qr_codes", {
+            "id": str(_uuid.uuid4()),
+            "user_id": user_id,
+            "teacher_id": teacher_id_code,
+            "qr_data": qr_code,
+            "created_at": now.isoformat(),
+        })
+
+        await session.commit()
+
+        token_payload = {"sub": user_id, "role": "teacher"}
+        access_token = create_access_token(token_payload)
+        refresh_token = create_refresh_token(token_payload)
+
+        user_response = UserResponse(
+            id=user_id,
+            email=data.email,
+            full_name=data.full_name,
+            role="teacher",
+            tenant_id=None,
+            phone=data.phone,
+            avatar_url=None,
+            is_active=True,
+            must_change_password=False,
+            preferred_language="ar",
+            preferred_theme="light",
+            created_at=now.isoformat(),
+            teacher_id=teacher_id_code,
+        )
+
+        logger.info(f"Direct teacher registration: {data.email} -> {teacher_id_code}")
+
+        return {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "bearer",
+            "user": user_response.model_dump(),
+            "teacher_id": teacher_id_code,
+        }
+
     @router.get("/status/{tracking_code}")
     async def get_request_status(
         tracking_code: str,
