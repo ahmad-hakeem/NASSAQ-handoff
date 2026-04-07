@@ -215,7 +215,7 @@ class TeacherApprovalHandler(ApprovalHandler):
         database = _get_db()
         session = database.session
         user_id = result.created_entities.get("user_id")
-        teacher_id = result.created_entities.get("teacher_id")
+        teacher_code = result.created_entities.get("teacher_id")
 
         stmt = select(User).where(User.id == user_id).limit(1)
         res = await session.execute(stmt)
@@ -225,13 +225,11 @@ class TeacherApprovalHandler(ApprovalHandler):
         if not user.is_active:
             return f"Post-approval verification failed: user {user_id} is not active"
 
-        stmt2 = select(Teacher).where(Teacher.id == teacher_id).limit(1)
-        res2 = await session.execute(stmt2)
-        teacher = res2.scalars().first()
-        if not teacher:
-            return f"Post-approval verification failed: teacher record {teacher_id} not found"
+        teacher_doc = await gd_find_one(session, "teachers", {"user_id": user_id})
+        if not teacher_doc:
+            return f"Post-approval verification failed: teacher record for user {user_id} not found"
 
-        logger.info(f"Teacher verification passed: user_id={user_id}, teacher_id={teacher_id}")
+        logger.info(f"Teacher verification passed: user_id={user_id}, teacher_code={teacher_code}")
         return None
 
 
