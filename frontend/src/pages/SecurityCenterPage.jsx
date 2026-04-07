@@ -626,10 +626,10 @@ export default function SecurityCenterPage() {
                       <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center"><Key className="h-5 w-5 text-blue-600" /></div>
                       <div>
                         <p className="text-sm text-muted-foreground">{t('passwordPolicy')}</p>
-                        <p className="font-bold text-xl text-blue-600">{t('strong')}</p>
+                        <p className={`font-bold text-xl ${metrics.passwordPolicyStrength === 'strong' ? 'text-blue-600' : metrics.passwordPolicyStrength === 'moderate' ? 'text-yellow-600' : 'text-red-600'}`}>{t(metrics.passwordPolicyStrength) || metrics.passwordPolicyStrength}</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-blue-600" /><span className="text-sm text-blue-600">{t('12Characters')}</span></div>
+                    <div className="flex items-center gap-2"><CheckCircle2 className={`h-4 w-4 ${metrics.passwordPolicyStrength === 'strong' ? 'text-blue-600' : metrics.passwordPolicyStrength === 'moderate' ? 'text-yellow-600' : 'text-red-600'}`} /><span className={`text-sm ${metrics.passwordPolicyStrength === 'strong' ? 'text-blue-600' : metrics.passwordPolicyStrength === 'moderate' ? 'text-yellow-600' : 'text-red-600'}`}>{metrics.mustChangePassword > 0 ? `${metrics.mustChangePassword} ${t('accountsNeedPasswordChange') || 'accounts need password change'}` : t('allAccountsSecure') || 'All accounts secure'}</span></div>
                   </CardContent>
                 </Card>
                 <Card className="bg-purple-50 border-purple-200">

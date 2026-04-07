@@ -157,6 +157,8 @@
   "alert": "تنبيه",
   "alertChannels": "قنوات التنبيه",
   "alertDismissed": "تم تجاهل التنبيه",
+  "accountsNeedPasswordChange": "حسابات تحتاج تغيير كلمة المرور",
+  "allAccountsSecure": "جميع الحسابات آمنة",
   "clickGenerateReportToGetAiRecommendations": "اضغط على \"إنشاء تقرير\" للحصول على توصيات الذكاء الاصطناعي",
   "noSecurityAlerts": "لا توجد تنبيهات أمنية — النظام آمن",
   "partialDataLoaded": "تم تحميل بعض البيانات — بعض الخدمات غير متاحة حالياً",

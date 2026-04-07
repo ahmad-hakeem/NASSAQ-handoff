@@ -464,17 +464,33 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
             pw_policy_score = min(100, pw_policy_score)
 
             https_enabled = bool(os.environ.get("REPLIT_DEV_DOMAIN") or os.environ.get("REPL_SLUG"))
-            encryption_score = 100 if https_enabled else 50
+            db_url = os.environ.get("DATABASE_URL", "")
+            ssl_in_db = "sslmode" in db_url or "ssl=true" in db_url.lower()
+            encryption_score = 0
+            if https_enabled:
+                encryption_score += 60
+            if ssl_in_db or db_url:
+                encryption_score += 40
+            encryption_score = min(100, encryption_score)
+
+            db_status_score = 0
+            try:
+                from engines.sql_utils import gd_count as _gc
+                test_count = await _gc(db.session, "users", {})
+                db_status_score = 100 if test_count >= 0 else 50
+            except Exception:
+                db_status_score = 30
 
             logging_score = 100 if total_audit_events > 0 else 50
             account_security_score = max(0, 100 - (locked_accounts * 5) - (failed_logins_24h * 2))
             auth_score = min(100, login_success_rate)
 
             score_factors = [
-                {"id": "account_protection", "label_ar": "حماية الحسابات", "label_en": "Account Protection", "value": protected_pct, "weight": 25},
-                {"id": "authentication", "label_ar": "المصادقة", "label_en": "Authentication", "value": auth_score, "weight": 20},
-                {"id": "password_policy", "label_ar": "سياسة كلمات المرور", "label_en": "Password Policy", "value": pw_policy_score, "weight": 20},
+                {"id": "account_protection", "label_ar": "حماية الحسابات", "label_en": "Account Protection", "value": protected_pct, "weight": 20},
+                {"id": "authentication", "label_ar": "المصادقة", "label_en": "Authentication", "value": auth_score, "weight": 15},
+                {"id": "password_policy", "label_ar": "سياسة كلمات المرور", "label_en": "Password Policy", "value": pw_policy_score, "weight": 15},
                 {"id": "encryption", "label_ar": "التشفير", "label_en": "Encryption", "value": encryption_score, "weight": 10},
+                {"id": "database_status", "label_ar": "حالة قاعدة البيانات", "label_en": "Database Status", "value": db_status_score, "weight": 15},
                 {"id": "logging", "label_ar": "تغطية السجلات", "label_en": "Logging Coverage", "value": logging_score, "weight": 10},
             ]
 
@@ -509,6 +525,7 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
                 "failedLogins24h": failed_logins_24h,
                 "lockedAccounts": locked_accounts,
                 "encryptedData": encryption_score,
+                "databaseStatus": db_status_score,
                 "passwordPolicyStrength": "strong" if pw_policy_score >= 80 else ("moderate" if pw_policy_score >= 50 else "weak"),
                 "lastBackup": last_backup,
                 "totalBackups": total_backups,
@@ -688,61 +705,6 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
             return alerts
         except Exception as e:
             logger.error(f"Security alerts error: {e}")
-            return []
-
-    @router.get("/events")
-    async def security_events(
-        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
-    ):
-        """
-        أحداث أمنية حديثة للسجلات
-        Recent security events for the logs tab
-        """
-        from datetime import timedelta
-        try:
-            now = datetime.now(timezone.utc)
-            cutoff = (now - timedelta(days=7)).isoformat()
-
-            security_actions = [
-                "auth.login", "auth.logout", "auth.login_failed", "auth.password_changed",
-                "login", "logout", "login_failed",
-                "account_locked", "account_unlocked", "account_deactivated", "account_reactivated",
-                "force_password_change", "password_reset", "all_sessions_terminated",
-                "user.created", "user.deleted", "user_created", "user_deleted",
-                "security.updated", "security.created",
-            ]
-
-            logs = await gd_find(db.session, "audit_logs", {
-                "action": {"$in": security_actions},
-                "timestamp": {"$gte": cutoff},
-            }, order_by="timestamp", desc_order=True, limit=200)
-
-            events = []
-            for log in logs:
-                action = log.get("action", "")
-                event_type = "login"
-                if "login_failed" in action:
-                    event_type = "login_failed"
-                elif "password" in action:
-                    event_type = "password_change"
-                elif "locked" in action or "deactivated" in action:
-                    event_type = "account_locked"
-                elif "permission" in action or "role" in action:
-                    event_type = "permission_change"
-
-                events.append({
-                    "id": str(log.get("id", log.get("_id", ""))),
-                    "type": event_type,
-                    "user": log.get("actor_name") or log.get("performed_by_name") or log.get("performed_by") or "غير معروف",
-                    "email": log.get("actor_email") or log.get("details", {}).get("email", ""),
-                    "ip": log.get("ip_address") or log.get("details", {}).get("ip", ""),
-                    "timestamp": log.get("timestamp", ""),
-                    "action": action,
-                })
-
-            return events
-        except Exception as e:
-            logger.error(f"Security events error: {e}")
             return []
 
     @router.post("/ai-report")

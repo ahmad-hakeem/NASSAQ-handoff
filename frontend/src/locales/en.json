@@ -157,6 +157,8 @@
   "alert": "Alert",
   "alertChannels": "Alert Channels",
   "alertDismissed": "Alert dismissed",
+  "accountsNeedPasswordChange": "accounts need password change",
+  "allAccountsSecure": "All accounts secure",
   "clickGenerateReportToGetAiRecommendations": "Click \"Generate Report\" to get AI recommendations",
   "noSecurityAlerts": "No security alerts — system is secure",
   "partialDataLoaded": "Some data loaded — some services are currently unavailable",
