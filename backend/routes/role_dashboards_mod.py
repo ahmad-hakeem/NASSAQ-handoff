@@ -319,8 +319,9 @@ async def get_student_dashboard(
 
     user_tenant = current_user.get("tenant_id")
     student_school = student.get("school_id")
-    if user_tenant and student_school and user_tenant != student_school:
-        raise HTTPException(status_code=403, detail="لا يمكنك الوصول إلى بيانات طالب من مدرسة أخرى")
+    if user_tenant:
+        if not student_school or user_tenant != student_school:
+            raise HTTPException(status_code=403, detail="لا يمكنك الوصول إلى بيانات طالب من مدرسة أخرى")
     
     school_id = student_school
     class_id = student.get("class_id")

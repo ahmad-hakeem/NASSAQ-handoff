@@ -188,15 +188,27 @@ def create_websocket_routes(db, decode_token):
                 "online_users": manager.get_online_users_count()
             })
             
+            async def _server_ping_loop(ws, uid):
+                """Server-initiated ping every 30s to detect zombie connections."""
+                try:
+                    while True:
+                        await asyncio.sleep(30)
+                        try:
+                            await ws.send_json({"type": "server_ping", "ts": datetime.now(timezone.utc).isoformat()})
+                        except Exception:
+                            logger.info(f"Server ping failed for user={uid}, closing")
+                            break
+                except asyncio.CancelledError:
+                    pass
+
+            ping_task = asyncio.create_task(_server_ping_loop(websocket, user_id))
             try:
                 while True:
-                    # Keep connection alive and handle incoming messages
                     data = await websocket.receive_text()
                     
                     try:
                         message = json.loads(data)
                         
-                        # Handle ping/pong for keep-alive
                         if message.get("type") == "ping":
                             await websocket.send_json({"type": "pong"})
                         
@@ -216,6 +228,7 @@ def create_websocket_routes(db, decode_token):
                         pass
                         
             except (WebSocketDisconnect, Exception) as e:
+                ping_task.cancel()
                 if not isinstance(e, WebSocketDisconnect):
                     logger.warning(f"WebSocket error: {e}")
                 if user_id in manager.active_connections:
