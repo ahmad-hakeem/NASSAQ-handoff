@@ -696,18 +696,15 @@ async def update_work_days(
     weekend_days_ar = [day_names_ar[day] for day, active in data.model_dump().items() if not active]
     
     working_days_dict = data.model_dump()
-    await gd_update_one(db.session, "school_settings", {"school_id": school_id},
+    await gd_upsert(db.session, "school_settings", {"school_id": school_id},
         {
-            "$set": {
-                "work_days": working_days_dict,
-                "working_days": working_days_dict,
-                "working_days_ar": working_days_ar,
-                "weekend_days_ar": weekend_days_ar,
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-                "updated_by": current_user["id"]
-            }
-        },
-        upsert=True
+            "work_days": working_days_dict,
+            "working_days": working_days_dict,
+            "working_days_ar": working_days_ar,
+            "weekend_days_ar": weekend_days_ar,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_by": current_user["id"]
+        }
     )
     
     # Audit log
@@ -1435,7 +1432,7 @@ async def get_teacher_class_assignments(
     total = await gd_count(db.session, "teacher_class_assignments", query_filter)
     skip = (page - 1) * page_size
 
-    assignments = await gd_find(db.session, "teacher_class_assignments", query_filter, skip=skip, limit=page_size)
+    assignments = await gd_find(db.session, "teacher_class_assignments", query_filter, offset=skip, limit=page_size)
 
     t_ids = list({a.get("teacher_id") for a in assignments if a.get("teacher_id")})
     c_ids = list({a.get("class_id") for a in assignments if a.get("class_id")})

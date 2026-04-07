@@ -89,7 +89,7 @@ async def get_audit_logs(
         if to_date:
             query["timestamp"]["$lte"] = to_date
     
-    logs = await gd_find(db.session, "audit_logs", query, order_by="timestamp", desc_order=True, skip=skip, limit=limit)
+    logs = await gd_find(db.session, "audit_logs", query, order_by="timestamp", desc_order=True, offset=skip, limit=limit)
     
     total = await gd_count(db.session, "audit_logs", query)
     

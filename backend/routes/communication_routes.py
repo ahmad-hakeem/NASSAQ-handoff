@@ -151,7 +151,7 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
         if status:
             query["status"] = status
         
-        messages = await gd_find(db.session, "messages", query, order_by="created_at", desc_order=True, skip=skip, limit=limit)
+        messages = await gd_find(db.session, "messages", query, order_by="created_at", desc_order=True, offset=skip, limit=limit)
         
         total = await gd_count(db.session, "messages", query)
         

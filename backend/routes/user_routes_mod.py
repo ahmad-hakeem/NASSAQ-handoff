@@ -238,7 +238,7 @@ async def get_platform_users(
         else:
             query["$or"] = search_conditions
 
-    users = await gd_find(db.session, "users", query, skip=skip, limit=limit)
+    users = await gd_find(db.session, "users", query, offset=skip, limit=limit)
     
     total = await gd_count(db.session, "users", query)
 

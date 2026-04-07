@@ -270,18 +270,45 @@ async def gd_insert_many(session, collection: str, docs: list) -> List[str]:
 
 
 def _apply_dict_updates(current_data: dict, updates: dict) -> dict:
+    if "$set" in updates or "$push" in updates or "$pull" in updates or "$inc" in updates or "$unset" in updates:
+        if "$set" in updates:
+            for k, v in updates["$set"].items():
+                _set_nested(current_data, k, v)
+        if "$push" in updates:
+            for k, v in updates["$push"].items():
+                arr = current_data.get(k, [])
+                if not isinstance(arr, list):
+                    arr = []
+                arr.append(v)
+                current_data[k] = arr
+        if "$pull" in updates:
+            for k, v in updates["$pull"].items():
+                arr = current_data.get(k, [])
+                if isinstance(arr, list):
+                    current_data[k] = [item for item in arr if item != v]
+        if "$inc" in updates:
+            for k, v in updates["$inc"].items():
+                current_data[k] = (current_data.get(k) or 0) + v
+        if "$unset" in updates:
+            for k in updates["$unset"]:
+                current_data.pop(k, None)
+        return current_data
     for k, v in updates.items():
-        if "." in k:
-            parts = k.split(".")
-            target = current_data
-            for p in parts[:-1]:
-                if p not in target or not isinstance(target[p], dict):
-                    target[p] = {}
-                target = target[p]
-            target[parts[-1]] = v
-        else:
-            current_data[k] = v
+        _set_nested(current_data, k, v)
     return current_data
+
+
+def _set_nested(data: dict, key: str, value) -> None:
+    if "." in key:
+        parts = key.split(".")
+        target = data
+        for p in parts[:-1]:
+            if p not in target or not isinstance(target[p], dict):
+                target[p] = {}
+            target = target[p]
+        target[parts[-1]] = value
+    else:
+        data[key] = value
 
 async def gd_update_one(session, collection: str, filters: dict, updates: dict) -> int:
     from pg_models import GenericDocument

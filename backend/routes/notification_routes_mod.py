@@ -236,7 +236,7 @@ async def get_my_notifications(
     if read_status is not None:
         query['read_status'] = read_status
     
-    notifications = await gd_find(db.session, "notifications", query, order_by="created_at", desc_order=True, skip=skip, limit=limit)
+    notifications = await gd_find(db.session, "notifications", query, order_by="created_at", desc_order=True, offset=skip, limit=limit)
     
     result = []
     for n in notifications:

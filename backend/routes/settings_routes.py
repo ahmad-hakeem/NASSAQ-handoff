@@ -186,16 +186,13 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
     ):
         """تحديث إعدادات الصيانة"""
         try:
-            await gd_update_one(db.session, "system_settings", {"type": "maintenance"},
+            await gd_upsert(db.session, "system_settings", {"type": "maintenance"},
                 {
-                    "$set": {
-                        "type": "maintenance",
-                        "data": settings.dict(),
-                        "updated_at": datetime.now(timezone.utc).isoformat(),
-                        "updated_by": current_user.get("id")
-                    }
-                },
-                upsert=True
+                    "type": "maintenance",
+                    "data": settings.dict(),
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "updated_by": current_user.get("id")
+                }
             )
             
             # Log the action

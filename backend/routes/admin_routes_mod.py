@@ -111,7 +111,7 @@ async def get_audit_logs(
 
     effective_skip = (page - 1) * limit if page > 1 else skip
     total = await gd_count(db.session, "audit_logs", query)
-    raw = await gd_find(db.session, "audit_logs", query, order_by="timestamp", desc_order=True, skip=effective_skip, limit=limit)
+    raw = await gd_find(db.session, "audit_logs", query, order_by="timestamp", desc_order=True, offset=effective_skip, limit=limit)
 
     enriched = []
     for log in raw:

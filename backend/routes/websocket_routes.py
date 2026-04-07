@@ -221,12 +221,10 @@ def create_websocket_routes(db, decode_token):
                             notification_id = message.get("notification_id")
                             if notification_id:
                                 from db import async_session_factory
-                                from repositories import Repos
                                 async with async_session_factory() as ws_session:
-                                    ws_repos = Repos(ws_session)
-                                    await ws_repos.notifications.update_one(
+                                    await gd_update_one(ws_session, "notifications",
                                         {"id": notification_id, "recipient_id": user_id},
-                                        {"$set": {"read_status": True, "read_at": datetime.now(timezone.utc).isoformat()}}
+                                        {"read_status": True, "read_at": datetime.now(timezone.utc).isoformat()}
                                     )
                                     await ws_session.commit()
                     except json.JSONDecodeError:
