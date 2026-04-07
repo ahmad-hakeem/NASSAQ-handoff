@@ -700,7 +700,8 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
                     "alert_key": alert_key,
                 })
 
-            alerts.sort(key=lambda a: (severity_rank.get(a["type"], 3), a.get("timestamp", "")), reverse=False)
+            alerts.sort(key=lambda a: a.get("timestamp", ""), reverse=True)
+            alerts.sort(key=lambda a: severity_rank.get(a["type"], 3))
 
             return alerts
         except Exception as e:
