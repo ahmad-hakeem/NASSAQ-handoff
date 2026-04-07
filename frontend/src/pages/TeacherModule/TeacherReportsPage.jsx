@@ -79,7 +79,6 @@ export default function TeacherReportsPage() {
       const classMetrics = (metricsRes?.data && typeof metricsRes.data === 'object') ? (metricsRes.data[selectedClass] || {}) : {};
 
       const filterByTime = (items, dateField = 'created_at') => {
-  const { t } = useTranslation();
         if (timePeriod === 'all') return items;
         const now = new Date();
         const cutoff = new Date();

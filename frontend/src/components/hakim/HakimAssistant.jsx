@@ -102,6 +102,7 @@ const MarkdownMessage = ({ content, onNavigate }) => {
 };
 
 const HakimAssistantInner = () => {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');

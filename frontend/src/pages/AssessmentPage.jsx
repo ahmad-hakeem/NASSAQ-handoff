@@ -377,6 +377,7 @@ function ExamScheduleTab({ periods, setPeriods, isRTL, apiClasses, apiTeachers }
 }
 
 function CommitteesTab({ committees, setCommittees, isRTL, apiClasses, apiTeachers, api }) {
+  const { t } = useTranslation();
   const { nassaqError } = useNassaqAlert();
   const [selectedId, setSelectedId] = useState(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -921,6 +922,7 @@ function CommitteesTab({ committees, setCommittees, isRTL, apiClasses, apiTeache
 }
 
 function SeatingCardsTab({ committees, isRTL, api }) {
+  const { t } = useTranslation();
   const [fields, setFields] = useState(DEFAULT_FIELDS);
   const [cardWidth, setCardWidth] = useState(300);
   const [cardHeight, setCardHeight] = useState(180);
@@ -1138,6 +1140,7 @@ function SeatingCardsTab({ committees, isRTL, api }) {
 }
 
 export const AssessmentPage = () => {
+  const { t } = useTranslation();
   const { user, api } = useAuth();
   const { isRTL, toggleTheme, toggleLanguage, isDark } = useTheme();
 

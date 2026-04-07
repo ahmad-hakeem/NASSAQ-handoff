@@ -284,7 +284,9 @@ export const SchoolReportsPage = () => {
     }
   };
 
-  const StatCard = ({ title, value, icon: Icon, change, changeType, color }) => (
+  const StatCard = ({ title, value, icon: Icon, change, changeType, color }) => {
+    const { t } = useTranslation();
+    return (
     <Card className="card-nassaq">
       <CardContent className="p-6">
         <div className="flex items-center justify-between">
@@ -310,7 +312,8 @@ export const SchoolReportsPage = () => {
         </div>
       </CardContent>
     </Card>
-  );
+    );
+  };
 
   if (loading) {
     return (

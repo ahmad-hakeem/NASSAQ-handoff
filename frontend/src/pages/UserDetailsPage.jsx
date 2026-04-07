@@ -210,6 +210,7 @@ const generatePassword = () => {
 };
 
 export default function UserDetailsPage() {
+  const { t } = useTranslation();
   const { userId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();

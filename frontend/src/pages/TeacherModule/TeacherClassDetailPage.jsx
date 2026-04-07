@@ -131,7 +131,6 @@ export default function TeacherClassDetailPage() {
   }, [students, studentSearch]);
 
   const getGradeColor = (grade) => {
-  const { t } = useTranslation();
     if (grade >= 90) return 'text-emerald-600';
     if (grade >= 75) return 'text-blue-600';
     if (grade >= 60) return 'text-amber-600';

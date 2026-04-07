@@ -158,6 +158,7 @@ const UploadStep = ({ onFileSelect, isRTL }) => {
 
 // Step 2: Preview & Analyze
 const PreviewStep = ({ data, errors, onFix, isRTL }) => {
+  const { t } = useTranslation();
   const validRows = data.filter((_, idx) => !errors.some(e => e.row === idx));
   const invalidRows = data.filter((_, idx) => errors.some(e => e.row === idx));
 
@@ -280,7 +281,9 @@ const PreviewStep = ({ data, errors, onFix, isRTL }) => {
 };
 
 // Step 3: Import Progress
-const ImportStep = ({ progress, total, created, failed, isRTL }) => (
+const ImportStep = ({ progress, total, created, failed, isRTL }) => {
+  const { t } = useTranslation();
+  return (
   <div className="space-y-6">
     <div className="text-center">
       <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -315,10 +318,12 @@ const ImportStep = ({ progress, total, created, failed, isRTL }) => (
       </Card>
     </div>
   </div>
-);
-
+  );
+};
 // Step 4: Results
-const ResultsStep = ({ results, isRTL, onClose }) => (
+const ResultsStep = ({ results, isRTL, onClose }) => {
+  const { t } = useTranslation();
+  return (
   <div className="space-y-6 text-center">
     <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto">
       <CheckCircle2 className="h-10 w-10 text-green-600" />
@@ -361,10 +366,12 @@ const ResultsStep = ({ results, isRTL, onClose }) => (
       {t('close')}
     </Button>
   </div>
-);
+  );
+};
 
 // Main Bulk Import Wizard
 export const BulkTeacherImport = ({ open, onClose }) => {
+  const { t } = useTranslation();
   const { isRTL } = useTheme();
   const { token, api } = useAuth();
   

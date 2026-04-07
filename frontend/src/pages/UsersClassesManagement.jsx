@@ -224,12 +224,12 @@ const ParentAvatar = ({ parent, size = 'md' }) => {
 };
 
 const StudentCard = ({ student, isRTL, onEdit, onDelete, onView, onAction, viewMode = 'grid' }) => {
-  const t = THEME_COLORS.student;
+  const tc = THEME_COLORS.student;
   if (viewMode === 'list') {
     return (
-      <Card className={`group hover:shadow-md transition-all duration-200 border-border/50 ${t.hoverBorder} cursor-pointer overflow-hidden`}
+      <Card className={`group hover:shadow-md transition-all duration-200 border-border/50 ${tc.hoverBorder} cursor-pointer overflow-hidden`}
         onClick={() => onView(student)}>
-        <div className={`h-0.5 ${t.bar}`} />
+        <div className={`h-0.5 ${tc.bar}`} />
         <CardContent className="p-3 flex items-center gap-3">
           <StudentAvatar student={student} size="sm" />
           <div className="flex-1 min-w-0 flex items-center gap-4">
@@ -238,8 +238,8 @@ const StudentCard = ({ student, isRTL, onEdit, onDelete, onView, onAction, viewM
             <span className="text-[10px] text-muted-foreground font-mono hidden md:inline">{student.student_number || student.id?.slice(0, 8)}</span>
           </div>
           <Badge variant={student.is_active !== false ? 'default' : 'destructive'}
-            className={`text-[10px] h-5 rounded-full border-0 ${student.is_active !== false ? t.badge : ''}`}>
-            <span className={`w-1.5 h-1.5 rounded-full me-1 ${student.is_active !== false ? t.badgeDot : 'bg-red-500'}`} />
+            className={`text-[10px] h-5 rounded-full border-0 ${student.is_active !== false ? tc.badge : ''}`}>
+            <span className={`w-1.5 h-1.5 rounded-full me-1 ${student.is_active !== false ? tc.badgeDot : 'bg-red-500'}`} />
             {student.is_active !== false ? (t('active')) : (isRTL ? 'معلق' : 'Suspended')}
           </Badge>
           <DropdownMenu>
@@ -260,9 +260,9 @@ const StudentCard = ({ student, isRTL, onEdit, onDelete, onView, onAction, viewM
   }
 
   return (
-    <Card className={`group hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 border-border/50 ${t.hoverBorder} h-full cursor-pointer overflow-hidden`}
+    <Card className={`group hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 border-border/50 ${tc.hoverBorder} h-full cursor-pointer overflow-hidden`}
       onClick={() => onView(student)}>
-      <div className={`h-1.5 ${t.bar}`} />
+      <div className={`h-1.5 ${tc.bar}`} />
       <CardContent className="p-4">
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-3">
@@ -306,11 +306,11 @@ const StudentCard = ({ student, isRTL, onEdit, onDelete, onView, onAction, viewM
         </div>
         <div className="flex items-center justify-between pt-2.5 border-t border-border/40">
           <Badge variant={student.is_active !== false ? 'default' : 'destructive'}
-            className={`text-[10px] h-5 rounded-full border-0 ${student.is_active !== false ? t.badge : ''}`}>
-            <span className={`w-1.5 h-1.5 rounded-full me-1 ${student.is_active !== false ? t.badgeDot : 'bg-red-500'}`} />
+            className={`text-[10px] h-5 rounded-full border-0 ${student.is_active !== false ? tc.badge : ''}`}>
+            <span className={`w-1.5 h-1.5 rounded-full me-1 ${student.is_active !== false ? tc.badgeDot : 'bg-red-500'}`} />
             {student.is_active !== false ? (t('active')) : (isRTL ? 'معلق' : 'Suspended')}
           </Badge>
-          <ChevronRight className={`h-3.5 w-3.5 text-muted-foreground/30 group-hover:${t.accent} group-hover:translate-x-0.5 transition-all`} />
+          <ChevronRight className={`h-3.5 w-3.5 text-muted-foreground/30 group-hover:${tc.accent} group-hover:translate-x-0.5 transition-all`} />
         </div>
       </CardContent>
     </Card>
@@ -318,12 +318,12 @@ const StudentCard = ({ student, isRTL, onEdit, onDelete, onView, onAction, viewM
 };
 
 const TeacherCard = ({ teacher, isRTL, onEdit, onDelete, onView, onAction, viewMode = 'grid' }) => {
-  const t = THEME_COLORS.teacher;
+  const tc = THEME_COLORS.teacher;
   if (viewMode === 'list') {
     return (
-      <Card className={`group hover:shadow-md transition-all duration-200 border-border/50 ${t.hoverBorder} cursor-pointer overflow-hidden`}
+      <Card className={`group hover:shadow-md transition-all duration-200 border-border/50 ${tc.hoverBorder} cursor-pointer overflow-hidden`}
         onClick={() => onView(teacher)}>
-        <div className={`h-0.5 ${t.bar}`} />
+        <div className={`h-0.5 ${tc.bar}`} />
         <CardContent className="p-3 flex items-center gap-3">
           <TeacherAvatar teacher={teacher} size="sm" />
           <div className="flex-1 min-w-0 flex items-center gap-4">
@@ -331,8 +331,8 @@ const TeacherCard = ({ teacher, isRTL, onEdit, onDelete, onView, onAction, viewM
             <span className="text-xs text-muted-foreground truncate hidden sm:inline">{teacher.specialization || (t('teacher'))}</span>
             <span className="text-xs text-muted-foreground hidden md:inline">{teacher.weekly_periods || teacher.sessions_count || '-'} {isRTL ? 'حصة/أسبوع' : 'sessions/wk'}</span>
           </div>
-          <Badge className={`text-[10px] h-5 rounded-full border-0 ${teacher.is_active !== false ? t.badge : 'bg-red-100 text-red-700'}`}>
-            <span className={`w-1.5 h-1.5 rounded-full me-1 ${teacher.is_active !== false ? t.badgeDot : 'bg-red-500'}`} />
+          <Badge className={`text-[10px] h-5 rounded-full border-0 ${teacher.is_active !== false ? tc.badge : 'bg-red-100 text-red-700'}`}>
+            <span className={`w-1.5 h-1.5 rounded-full me-1 ${teacher.is_active !== false ? tc.badgeDot : 'bg-red-500'}`} />
             {teacher.is_active !== false ? (t('active')) : (isRTL ? 'معلق' : 'Suspended')}
           </Badge>
           <DropdownMenu>
@@ -352,9 +352,9 @@ const TeacherCard = ({ teacher, isRTL, onEdit, onDelete, onView, onAction, viewM
   }
 
   return (
-    <Card className={`group hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 border-border/50 ${t.hoverBorder} h-full cursor-pointer overflow-hidden`}
+    <Card className={`group hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 border-border/50 ${tc.hoverBorder} h-full cursor-pointer overflow-hidden`}
       onClick={() => onView(teacher)}>
-      <div className={`h-1.5 ${t.bar}`} />
+      <div className={`h-1.5 ${tc.bar}`} />
       <CardContent className="p-4">
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-3">
@@ -396,8 +396,8 @@ const TeacherCard = ({ teacher, isRTL, onEdit, onDelete, onView, onAction, viewM
           </div>
         </div>
         <div className="flex items-center justify-between pt-2.5 border-t border-border/40">
-          <Badge className={`text-[10px] h-5 rounded-full border-0 ${teacher.is_active !== false ? t.badge : 'bg-red-100 text-red-700'}`}>
-            <span className={`w-1.5 h-1.5 rounded-full me-1 ${teacher.is_active !== false ? t.badgeDot : 'bg-red-500'}`} />
+          <Badge className={`text-[10px] h-5 rounded-full border-0 ${teacher.is_active !== false ? tc.badge : 'bg-red-100 text-red-700'}`}>
+            <span className={`w-1.5 h-1.5 rounded-full me-1 ${teacher.is_active !== false ? tc.badgeDot : 'bg-red-500'}`} />
             {teacher.is_active !== false ? (t('active')) : (isRTL ? 'معلق' : 'Suspended')}
           </Badge>
           <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/30 group-hover:text-emerald-500 group-hover:translate-x-0.5 transition-all" />
@@ -408,12 +408,12 @@ const TeacherCard = ({ teacher, isRTL, onEdit, onDelete, onView, onAction, viewM
 };
 
 const ParentCard = ({ parent, isRTL, onView, onAction, onDelete, viewMode = 'grid' }) => {
-  const t = THEME_COLORS.parent;
+  const tc = THEME_COLORS.parent;
   if (viewMode === 'list') {
     return (
-      <Card className={`group hover:shadow-md transition-all duration-200 border-border/50 ${t.hoverBorder} cursor-pointer overflow-hidden`}
+      <Card className={`group hover:shadow-md transition-all duration-200 border-border/50 ${tc.hoverBorder} cursor-pointer overflow-hidden`}
         onClick={() => onView(parent)}>
-        <div className={`h-0.5 ${t.bar}`} />
+        <div className={`h-0.5 ${tc.bar}`} />
         <CardContent className="p-3 flex items-center gap-3">
           <ParentAvatar parent={parent} size="sm" />
           <div className="flex-1 min-w-0 flex items-center gap-4">
@@ -421,7 +421,7 @@ const ParentCard = ({ parent, isRTL, onView, onAction, onDelete, viewMode = 'gri
             <span className="text-xs text-muted-foreground truncate hidden sm:inline">{parent.relationship || (isRTL ? 'ولي أمر' : 'Parent')}</span>
             <span className="text-xs text-muted-foreground hidden md:inline">{parent.children_count || 0} {t('children')}</span>
           </div>
-          <Badge className={`text-[10px] h-5 rounded-full border-0 ${t.badge}`}>
+          <Badge className={`text-[10px] h-5 rounded-full border-0 ${tc.badge}`}>
             <Heart className="h-2.5 w-2.5 me-1" />
             {parent.children_count || 0}
           </Badge>
@@ -431,9 +431,9 @@ const ParentCard = ({ parent, isRTL, onView, onAction, onDelete, viewMode = 'gri
   }
 
   return (
-    <Card className={`group hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 border-border/50 ${t.hoverBorder} h-full cursor-pointer overflow-hidden`}
+    <Card className={`group hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 border-border/50 ${tc.hoverBorder} h-full cursor-pointer overflow-hidden`}
       onClick={() => onView(parent)}>
-      <div className={`h-1.5 ${t.bar}`} />
+      <div className={`h-1.5 ${tc.bar}`} />
       <CardContent className="p-4">
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-3">
@@ -491,7 +491,7 @@ const ParentCard = ({ parent, isRTL, onView, onAction, onDelete, viewMode = 'gri
           )}
         </div>
         <div className="flex items-center justify-between pt-2.5 border-t border-border/40">
-          <Badge className={`text-[10px] h-5 rounded-full border-0 ${t.badge}`}>
+          <Badge className={`text-[10px] h-5 rounded-full border-0 ${tc.badge}`}>
             <Shield className="h-2.5 w-2.5 me-1" />
             {parent.relationship || (isRTL ? 'ولي أمر' : 'Parent')}
           </Badge>
@@ -503,16 +503,17 @@ const ParentCard = ({ parent, isRTL, onView, onAction, onDelete, viewMode = 'gri
 };
 
 const ClassCard = ({ classItem, isRTL, onEdit, onDelete, onView, viewMode = 'grid' }) => {
+  const { t } = useTranslation();
   const pct = Math.min(100, ((classItem.student_count || 0) / (classItem.capacity || 30)) * 100);
-  const t = THEME_COLORS.class;
+  const tc = THEME_COLORS.class;
 
   if (viewMode === 'list') {
     return (
-      <Card className={`group hover:shadow-md transition-all duration-200 border-border/50 ${t.hoverBorder} cursor-pointer overflow-hidden`}
+      <Card className={`group hover:shadow-md transition-all duration-200 border-border/50 ${tc.hoverBorder} cursor-pointer overflow-hidden`}
         onClick={() => onView(classItem)}>
-        <div className={`h-0.5 ${t.bar}`} />
+        <div className={`h-0.5 ${tc.bar}`} />
         <CardContent className="p-3 flex items-center gap-3">
-          <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${t.gradient} flex items-center justify-center shrink-0`}>
+          <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${tc.gradient} flex items-center justify-center shrink-0`}>
             <Building2 className="h-4 w-4 text-white" />
           </div>
           <div className="flex-1 min-w-0 flex items-center gap-4">
@@ -542,13 +543,13 @@ const ClassCard = ({ classItem, isRTL, onEdit, onDelete, onView, viewMode = 'gri
   }
 
   return (
-    <Card className={`group hover:shadow-lg transition-all duration-200 border-border/50 ${t.hoverBorder} h-full cursor-pointer`}
+    <Card className={`group hover:shadow-lg transition-all duration-200 border-border/50 ${tc.hoverBorder} h-full cursor-pointer`}
       onClick={() => onView(classItem)}>
-      <div className={`h-1.5 rounded-t-lg ${t.bar}`} />
+      <div className={`h-1.5 rounded-t-lg ${tc.bar}`} />
       <CardContent className="p-4">
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-3">
-            <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${t.gradient} flex items-center justify-center shadow-sm`}>
+            <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${tc.gradient} flex items-center justify-center shadow-sm`}>
               <Building2 className="h-5 w-5 text-white" />
             </div>
             <div className="min-w-0">
@@ -596,6 +597,7 @@ const ClassCard = ({ classItem, isRTL, onEdit, onDelete, onView, viewMode = 'gri
 };
 
 const PermanentHakimWidget = ({ insights, isRTL, onAction, stats }) => {
+  const { t } = useTranslation();
   const [panelOpen, setPanelOpen] = useState(false);
   const [currentBubble, setCurrentBubble] = useState(0);
   const hasInsights = insights && insights.length > 0 && insights.some(i => i.severity !== 'success');
@@ -739,7 +741,9 @@ const PermanentHakimWidget = ({ insights, isRTL, onAction, stats }) => {
   );
 };
 
-const AddPickerDialog = ({ open, onClose, isRTL, onSelect }) => (
+const AddPickerDialog = ({ open, onClose, isRTL, onSelect }) => {
+  const { t } = useTranslation();
+  return (
   <Dialog open={open} onOpenChange={(val) => { if (!val) onClose(); }}>
     <DialogContent className="sm:max-w-[480px]">
       <DialogHeader>
@@ -774,9 +778,11 @@ const AddPickerDialog = ({ open, onClose, isRTL, onSelect }) => (
       </div>
     </DialogContent>
   </Dialog>
-);
+  );
+};
 
 export default function UsersClassesManagement() {
+  const { t } = useTranslation();
   const { user, api, schoolContext, isImpersonating } = useAuth();
   const { isRTL, toggleTheme, toggleLanguage, isDark } = useTheme();
   const { nassaqConfirm, nassaqError, nassaqWarning } = useNassaqAlert();

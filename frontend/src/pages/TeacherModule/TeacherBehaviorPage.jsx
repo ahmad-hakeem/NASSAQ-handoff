@@ -162,7 +162,6 @@ export default function TeacherBehaviorPage() {
   };
 
   const getStudentPoints = (studentId) => {
-  const { t } = useTranslation();
     return records
       .filter(r => r.student_id === studentId)
       .reduce((sum, r) => sum + (r.points || 0), 0);

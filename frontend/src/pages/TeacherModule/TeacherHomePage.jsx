@@ -36,6 +36,7 @@ const getTimeUntilLesson = (lessonTime) => {
 };
 
 export default function TeacherHomePage() {
+  const { t } = useTranslation();
   const { user, api, isRTL } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);

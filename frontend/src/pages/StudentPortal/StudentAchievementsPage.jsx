@@ -68,6 +68,7 @@ const AchievementCard = ({ achievement, isRTL, earned = true }) => {
 };
 
 const StudentAchievementsPage = () => {
+  const { t } = useTranslation();
   const { token, api } = useAuth();
   const { isRTL } = useTheme();
   const [loading, setLoading] = useState(true);

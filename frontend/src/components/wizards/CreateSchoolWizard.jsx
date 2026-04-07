@@ -100,6 +100,7 @@ const generateTempPassword = () => {
 };
 
 export default function CreateSchoolWizard({ open, onOpenChange, onSuccess, api, isRTL = true }) {
+  const { t } = useTranslation();
   const { nassaqError, nassaqWarning } = useNassaqAlert();
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);

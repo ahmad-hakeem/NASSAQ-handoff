@@ -128,6 +128,7 @@ export function EditProfileModal({ hook }) {
 }
 
 export function BehaviourModal({ hook }) {
+  const { t } = useTranslation();
   const {
     isRTL, behaviourModalOpen, setBehaviourModalOpen,
     editingBehaviour, behaviourForm, setBehaviourForm,
@@ -203,6 +204,7 @@ export function BehaviourModal({ hook }) {
 }
 
 export function ExportPlanModal({ hook }) {
+  const { t } = useTranslation();
   const {
     isRTL, exportModalOpen, setExportModalOpen,
     remedialPlan, enrichmentPlan,
@@ -279,6 +281,7 @@ export function ExportPlanModal({ hook }) {
 }
 
 export function ActivityModal({ hook }) {
+  const { t } = useTranslation();
   const {
     isRTL, activityModalOpen, setActivityModalOpen,
     editingActivity, activityForm, setActivityForm,
@@ -338,6 +341,7 @@ export function ActivityModal({ hook }) {
 }
 
 export function CertificateModal({ hook }) {
+  const { t } = useTranslation();
   const {
     isRTL, certificateModalOpen, setCertificateModalOpen,
     editingCertificate, certificateForm, setCertificateForm,
@@ -386,6 +390,7 @@ export function CertificateModal({ hook }) {
 }
 
 export function FullProfileExportModal({ hook }) {
+  const { t } = useTranslation();
   const {
     isRTL, profileExportModalOpen, setProfileExportModalOpen,
     profileExportSections, profileExportFormat, setProfileExportFormat,

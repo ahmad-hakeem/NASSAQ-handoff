@@ -485,6 +485,7 @@ const generateSecurePassword = () => {
 // =============================================================
 
 export default function CreateUserWizard({ open, onOpenChange, onSuccess, api, isRTL }) {
+  const { t } = useTranslation();
   const { nassaqError } = useNassaqAlert();
   const [step, setStep] = useState(1);
   const totalSteps = 5;

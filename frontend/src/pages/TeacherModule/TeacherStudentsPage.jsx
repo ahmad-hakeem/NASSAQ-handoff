@@ -141,7 +141,6 @@ export default function TeacherStudentsPage() {
   };
 
   const openMessageParent = (e, student) => {
-  const { t } = useTranslation();
     e.stopPropagation();
     if (!student.parent_id) {
       nassaqError(t('noParentLinkedToThisStudent'));

@@ -141,7 +141,6 @@ export default function TeacherSchedulePage() {
   }, [fetchSchedule]);
 
   const getSessionsForCell = (day, slotId, slotNumber, slotStartTime) => {
-  const { t } = useTranslation();
     return schedule.filter(s => {
       if (s.day_of_week !== day) return false;
       if (s.time_slot_id && s.time_slot_id === slotId) return true;

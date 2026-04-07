@@ -58,6 +58,7 @@ const activityIcons = {
 };
 
 export default function TeacherSettingsPage() {
+  const { t } = useTranslation();
   const { user, api, isRTL, refreshUser } = useAuth();
   const { isDark, toggleTheme, language, setLanguage } = useTheme();
   const { nassaqError } = useNassaqAlert();
@@ -92,14 +93,14 @@ export default function TeacherSettingsPage() {
         api.get(`/users/${user?.id}/notifications/settings`).catch(() => null),
       ]);
 
-      const t = teacherRes?.data;
-      if (t) {
-        setTeacherInfo(t);
+      const teacherData = teacherRes?.data;
+      if (teacherData) {
+        setTeacherInfo(teacherData);
         setProfile({
-          full_name: t.full_name || user?.full_name || '',
-          email: t.email || user?.email || '',
-          phone: t.phone || user?.phone || '',
-          avatar_url: t.avatar_url || user?.avatar_url || '',
+          full_name: teacherData.full_name || user?.full_name || '',
+          email: teacherData.email || user?.email || '',
+          phone: teacherData.phone || user?.phone || '',
+          avatar_url: teacherData.avatar_url || user?.avatar_url || '',
         });
       } else {
         setProfile({

@@ -178,6 +178,7 @@ export default function TeacherClassesPage() {
   };
 
   const ClassCard = ({ cls }) => {
+    const { t } = useTranslation();
     const gc = getGradeColor(cls.grade_level || cls.grade_id);
     return (
       <Card
@@ -286,6 +287,7 @@ export default function TeacherClassesPage() {
   };
 
   const ClassTableRow = ({ cls }) => {
+    const { t } = useTranslation();
     const gc = getGradeColor(cls.grade_level || cls.grade_id);
     return (
       <tr

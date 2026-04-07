@@ -138,7 +138,6 @@ export default function TeacherResourcesPage() {
   });
 
   const getResourceIcon = (type) => {
-  const { t } = useTranslation();
     const resourceType = RESOURCE_TYPES.find(t => t.value === type);
     return resourceType?.icon || File;
   };

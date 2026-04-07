@@ -197,7 +197,6 @@ export default function SessionStartPage() {
       const startTime = Date.now();
       const duration = 2200;
       const animate = () => {
-  const { t } = useTranslation();
         const elapsed = Date.now() - startTime;
         const progress = Math.min(elapsed / duration, 1);
         setTransitionProgress(progress);

@@ -101,12 +101,12 @@ const THEME_COLORS = {
 };
 
 const StudentCard = ({ student, isRTL, onView, onEdit, onDelete, onAction, viewMode = 'grid' }) => {
-  const t = THEME_COLORS.student;
+  const tc = THEME_COLORS.student;
   if (viewMode === 'list') {
     return (
-      <Card className={`group hover:shadow-md transition-all duration-200 border-border/50 ${t.hoverBorder} cursor-pointer overflow-hidden`}
+      <Card className={`group hover:shadow-md transition-all duration-200 border-border/50 ${tc.hoverBorder} cursor-pointer overflow-hidden`}
         onClick={() => onView(student)}>
-        <div className={`h-0.5 ${t.bar}`} />
+        <div className={`h-0.5 ${tc.bar}`} />
         <CardContent className="p-3 flex items-center gap-3">
           <div className="relative">
             <div className={`rounded-full ring-2 ${student.is_gifted ? 'ring-amber-400' : 'ring-transparent'}`}>
@@ -127,8 +127,8 @@ const StudentCard = ({ student, isRTL, onView, onEdit, onDelete, onAction, viewM
             <span className="text-[10px] text-muted-foreground font-mono hidden md:inline">{student.student_number || student.id?.slice(0, 8)}</span>
           </div>
           <Badge variant={student.is_active !== false ? 'default' : 'destructive'}
-            className={`text-[10px] h-5 rounded-full border-0 ${student.is_active !== false ? t.badge : ''}`}>
-            <span className={`w-1.5 h-1.5 rounded-full me-1 ${student.is_active !== false ? t.badgeDot : 'bg-red-500'}`} />
+            className={`text-[10px] h-5 rounded-full border-0 ${student.is_active !== false ? tc.badge : ''}`}>
+            <span className={`w-1.5 h-1.5 rounded-full me-1 ${student.is_active !== false ? tc.badgeDot : 'bg-red-500'}`} />
             {student.is_active !== false ? (t('active')) : (isRTL ? 'معلق' : 'Suspended')}
           </Badge>
           <DropdownMenu>
@@ -149,9 +149,9 @@ const StudentCard = ({ student, isRTL, onView, onEdit, onDelete, onAction, viewM
   }
 
   return (
-    <Card className={`group hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 border-border/50 ${t.hoverBorder} h-full cursor-pointer overflow-hidden`}
+    <Card className={`group hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 border-border/50 ${tc.hoverBorder} h-full cursor-pointer overflow-hidden`}
       onClick={() => onView(student)}>
-      <div className={`h-1.5 ${t.bar}`} />
+      <div className={`h-1.5 ${tc.bar}`} />
       <CardContent className="p-4">
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-3">
@@ -175,7 +175,7 @@ const StudentCard = ({ student, isRTL, onView, onEdit, onDelete, onAction, viewM
                 <div className="flex flex-wrap gap-0.5 mt-1">
                   {student.talents.slice(0, 2).map(t => (
                     <span key={t} className="text-[8px] px-1.5 py-0 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 border border-amber-200 dark:border-amber-700">
-                      {t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).substring(0, 12)}
+                      {tc.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).substring(0, 12)}
                     </span>
                   ))}
                   {student.talents.length > 2 && (
@@ -219,11 +219,11 @@ const StudentCard = ({ student, isRTL, onView, onEdit, onDelete, onAction, viewM
         </div>
         <div className="flex items-center justify-between pt-2.5 border-t border-border/40">
           <Badge variant={student.is_active !== false ? 'default' : 'destructive'}
-            className={`text-[10px] h-5 rounded-full border-0 ${student.is_active !== false ? t.badge : ''}`}>
-            <span className={`w-1.5 h-1.5 rounded-full me-1 ${student.is_active !== false ? t.badgeDot : 'bg-red-500'}`} />
+            className={`text-[10px] h-5 rounded-full border-0 ${student.is_active !== false ? tc.badge : ''}`}>
+            <span className={`w-1.5 h-1.5 rounded-full me-1 ${student.is_active !== false ? tc.badgeDot : 'bg-red-500'}`} />
             {student.is_active !== false ? (t('active')) : (isRTL ? 'معلق' : 'Suspended')}
           </Badge>
-          <ChevronRight className={`h-3.5 w-3.5 text-muted-foreground/30 group-hover:${t.accent} group-hover:translate-x-0.5 transition-all`} />
+          <ChevronRight className={`h-3.5 w-3.5 text-muted-foreground/30 group-hover:${tc.accent} group-hover:translate-x-0.5 transition-all`} />
         </div>
       </CardContent>
     </Card>
@@ -231,6 +231,7 @@ const StudentCard = ({ student, isRTL, onView, onEdit, onDelete, onAction, viewM
 };
 
 export default function ClassDetailPage() {
+  const { t } = useTranslation();
   const { classId } = useParams();
   const navigate = useNavigate();
   const { user, api, schoolContext, isImpersonating } = useAuth();

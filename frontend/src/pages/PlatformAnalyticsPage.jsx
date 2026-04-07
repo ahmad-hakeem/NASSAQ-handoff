@@ -694,6 +694,7 @@ export const PlatformAnalyticsPage = () => {
   
   // Custom tooltip for charts
   const CustomTooltip = ({ active, payload, label }) => {
+    const { t } = useTranslation();
     if (active && payload && payload.length) {
       return (
         <div className="bg-white p-3 rounded-lg shadow-lg border">

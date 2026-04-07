@@ -359,7 +359,6 @@ export default function UsersManagement() {
   };
 
   const copyToClipboard = (text) => {
-  const { t } = useTranslation();
     navigator.clipboard.writeText(text);
     toast.success('تم النسخ');
   };

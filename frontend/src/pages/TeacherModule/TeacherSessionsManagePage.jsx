@@ -132,7 +132,6 @@ export default function TeacherSessionsManagePage() {
   });
 
   const getStatusBadge = (status) => {
-  const { t } = useTranslation();
     const s = STATUS_MAP[status] || { label: status || 'مجدولة', labelEn: status || 'Scheduled', color: 'bg-gray-100 text-gray-700 border-gray-200' };
     return <Badge className={s.color}>{isRTL ? s.label : s.labelEn}</Badge>;
   };

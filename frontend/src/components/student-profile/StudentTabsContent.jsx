@@ -225,6 +225,7 @@ export function OverviewTab({ hook }) {
 }
 
 export function AcademicTab({ hook }) {
+  const { t } = useTranslation();
   const {
     isRTL, attendanceSummary, loadingAttendance, loadingAttendanceHistory,
     attendanceChartData, homeworkRate, loadingHomework, loadingGrades,
@@ -458,6 +459,7 @@ export function AcademicTab({ hook }) {
 }
 
 export function TalentsTab({ hook }) {
+  const { t } = useTranslation();
   const {
     isRTL, student, globalTalents, loadingGlobalTalents,
     customTalentName, setCustomTalentName, addingCustomTalent,
@@ -609,6 +611,7 @@ export function TalentsTab({ hook }) {
 }
 
 export function BehaviourTab({ hook }) {
+  const { t } = useTranslation();
   const {
     isRTL, student, user, isTeacher,
     behaviourRecords, behaviourSummary, loadingBehaviour, behaviourTrendData,
@@ -799,6 +802,7 @@ export function BehaviourTab({ hook }) {
 }
 
 export function ActivitiesTab({ hook }) {
+  const { t } = useTranslation();
   const {
     isRTL, user, isTeacher, student,
     activities, certificates, loadingActivities, involvementScore,
@@ -926,6 +930,7 @@ export function ActivitiesTab({ hook }) {
 }
 
 export function PlansTab({ hook }) {
+  const { t } = useTranslation();
   const {
     isRTL, remedialPlan, enrichmentPlan, loadingRemedial, loadingEnrichment,
     exportingPlan, generatePlan, openExportModal,
@@ -998,6 +1003,7 @@ export function PlansTab({ hook }) {
 }
 
 export function LongitudinalTab({ hook }) {
+  const { t } = useTranslation();
   const { isRTL, longitudinalData, loadingLongitudinal } = hook;
 
   return (

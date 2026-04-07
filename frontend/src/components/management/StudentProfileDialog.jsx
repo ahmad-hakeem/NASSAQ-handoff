@@ -215,6 +215,7 @@ const HakimPlanCard = ({ type, plan, isRTL, loading, onGenerate, onExport }) => 
 };
 
 export default function StudentProfileDialog({ open, onClose, student, classes = [], onRefresh }) {
+  const { t } = useTranslation();
   const { api } = useAuth();
   const { isRTL } = useTheme();
   const { nassaqConfirm, nassaqError, nassaqWarning } = useNassaqAlert();

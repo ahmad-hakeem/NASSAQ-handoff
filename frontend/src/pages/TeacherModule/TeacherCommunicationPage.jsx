@@ -111,7 +111,6 @@ export default function TeacherCommunicationPage() {
   };
 
   const toggleStudentSelection = (studentId, parentId) => {
-  const { t } = useTranslation();
     setNewMessage(prev => {
       const isSelected = prev.selectedStudents.includes(studentId);
       return { ...prev, selectedStudents: isSelected ? prev.selectedStudents.filter(id => id !== studentId) : [...prev.selectedStudents, studentId], selectedParents: isSelected ? prev.selectedParents.filter(id => id !== parentId) : [...prev.selectedParents, parentId] };

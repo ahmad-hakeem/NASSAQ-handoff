@@ -116,6 +116,7 @@ const SectionHeader = ({ icon: Icon, title, subtitle, color = 'green' }) => {
 };
 
 export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
+  const { t } = useTranslation();
   const { isRTL } = useTheme();
   const { token, api } = useAuth();
   const { nassaqError } = useNassaqAlert();

@@ -171,6 +171,7 @@ const NotificationRow = ({ title, desc, checked, onChange }) => (
 );
 
 export const AccountSettingsPage = () => {
+  const { t } = useTranslation();
   const { user, api, logout, refreshUser } = useAuth();
   const { isRTL, toggleTheme, toggleLanguage, isDark, language, setLanguage, theme, setTheme } = useTheme();
 

@@ -220,6 +220,7 @@ const HeroMetric = ({ title, value, subtitle, icon: Icon, gradient, onClick, isR
 };
 
 const AttendanceRadial = ({ data, isRTL }) => {
+  const { t } = useTranslation();
   const studentTotalRaw = data?.students?.total || 0;
   const studentPresent = data?.students?.present || 0;
   const studentAbsent = data?.students?.absent || 0;
@@ -259,6 +260,7 @@ const AttendanceRadial = ({ data, isRTL }) => {
   };
 
   const StatBar = ({ label, value, total, color, icon: Icon }) => {
+    const { t } = useTranslation();
     const pct = total > 0 ? Math.round((value / total) * 100) : 0;
     return (
       <div className="flex items-center gap-2.5">
@@ -367,6 +369,7 @@ const AttendanceRadial = ({ data, isRTL }) => {
 };
 
 const DailyOpsPanel = ({ data, isRTL, onNavigate }) => {
+  const { t } = useTranslation();
   const ops = data || {};
   const items = [
     {
@@ -527,6 +530,7 @@ const DailyOpsPanel = ({ data, isRTL, onNavigate }) => {
 };
 
 const PerformanceSnapshot = ({ metrics, attendance, isRTL }) => {
+  const { t } = useTranslation();
   const m = metrics || {};
   const totalStudents = m.totalStudents?.value || 0;
   const totalTeachers = m.totalTeachers?.value || 0;
@@ -639,6 +643,7 @@ const PerformanceSnapshot = ({ metrics, attendance, isRTL }) => {
 };
 
 const StrategicNav = ({ onAction, isRTL, onNavigate }) => {
+  const { t } = useTranslation();
   const navItems = [
     { id: 'users', label: t('userManagement'), icon: Users, path: '/admin/users-management', color: 'from-blue-500 to-blue-600' },
     { id: 'schedule', label: t('timetable'), icon: CalendarDays, path: '/school/schedule', color: 'from-emerald-500 to-emerald-600' },
@@ -675,6 +680,7 @@ const StrategicNav = ({ onAction, isRTL, onNavigate }) => {
 };
 
 const QuickAddBar = ({ onAction, isRTL }) => {
+  const { t } = useTranslation();
   const actions = [
     { id: 'add-student', label: t('addStudent'), icon: UserPlus, color: 'text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 border-blue-200 dark:border-blue-800' },
     { id: 'add-teacher', label: t('addTeacher'), icon: GraduationCap, color: 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800' },
@@ -696,6 +702,7 @@ const QuickAddBar = ({ onAction, isRTL }) => {
 };
 
 export const SchoolDashboardContent = () => {
+  const { t } = useTranslation();
   const { isRTL } = useTheme();
   const { api, schoolContext, isImpersonating } = useAuth();
   const navigate = useNavigate();

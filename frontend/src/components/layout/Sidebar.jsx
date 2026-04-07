@@ -455,7 +455,9 @@ export const Sidebar = ({ children }) => {
 
   const isActive = (href) => location.pathname === href;
 
-  const SidebarContent = () => (
+  const SidebarContent = () => {
+    const { t } = useTranslation();
+    return (
     <div className="flex flex-col h-full">
       {/* Logo */}
       <div className="p-4 flex flex-col items-center">
@@ -781,7 +783,8 @@ export const Sidebar = ({ children }) => {
         </DialogContent>
       </Dialog>
     </div>
-  );
+    );
+  };
 
   return (
     <div className="min-h-screen flex">

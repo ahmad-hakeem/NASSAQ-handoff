@@ -233,7 +233,6 @@ export default function SessionTeachPage() {
       || sessionInfo?.planned_end_time || sessionInfo?.plannedEndTime;
     if (!endStr) return;
     const checkTime = () => {
-  const { t } = useTranslation();
       const remaining = (new Date(endStr).getTime() - Date.now()) / 60000;
       setRemainingMinutes(Math.ceil(remaining));
       if (remaining <= 0 && timeWarning !== 'ended') {
@@ -1562,6 +1561,7 @@ function ActionButton({ color, icon, label, sub, onClick }) {
 }
 
 function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
+  const { t } = useTranslation();
   const { api } = useAuth();
   const { nassaqError } = useNassaqAlert();
   const navigate = useNavigate();

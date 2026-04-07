@@ -120,7 +120,6 @@ export default function TeacherAttendanceManagePage() {
   }, [selectedClass, selectedDate, fetchStudents]);
 
   const handleStatusChange = (studentId, status) => {
-  const { t } = useTranslation();
     setAttendance(prev => ({ ...prev, [studentId]: status }));
   };
 

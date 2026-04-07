@@ -149,6 +149,7 @@ const TeacherDayProgress = ({ isRTL }) => {
 };
 
 export default function TeacherMainDashboard() {
+  const { t } = useTranslation();
   const { user, api, isRTL } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);

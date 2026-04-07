@@ -111,6 +111,7 @@ const SectionHeader = ({ icon: Icon, title, subtitle, color = 'purple' }) => {
 };
 
 export const CreateClassWizard = ({ open, onOpenChange, onSuccess }) => {
+  const { t } = useTranslation();
   const { isRTL } = useTheme();
   const { token, api } = useAuth();
   const { nassaqError } = useNassaqAlert();

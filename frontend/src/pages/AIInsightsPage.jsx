@@ -102,8 +102,8 @@ const MiniGauge = ({ value, size = 44, color = '#1B93A4' }) => {
 const VisualMetricCard = ({ icon: Icon, value, label, subLabel, gradient, accentColor, onClick, delay = 0 }) => {
   const [visible, setVisible] = useState(false);
   useEffect(() => {
-    const t = setTimeout(() => setVisible(true), delay);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setVisible(true), delay);
+    return () => clearTimeout(timer);
   }, [delay]);
 
   return (
@@ -128,6 +128,7 @@ const VisualMetricCard = ({ icon: Icon, value, label, subLabel, gradient, accent
 };
 
 const AlertsTimeline = ({ alerts, isRTL, onNavigate }) => {
+  const { t } = useTranslation();
   const typeConfig = {
     warning: { icon: AlertTriangle, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-950/30', line: 'bg-amber-300', accent: 'border-amber-200' },
     info: { icon: Lightbulb, color: 'text-sky-500', bg: 'bg-sky-50 dark:bg-sky-950/30', line: 'bg-sky-300', accent: 'border-sky-200' },
@@ -212,6 +213,7 @@ const AlertsTimeline = ({ alerts, isRTL, onNavigate }) => {
 };
 
 const PredictionsPanel = ({ predictions, isRTL }) => {
+  const { t } = useTranslation();
   const impactColors = {
     positive: { ring: '#10B981', bg: 'bg-emerald-50 dark:bg-emerald-950/30', text: 'text-emerald-600', badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400' },
     medium: { ring: '#F59E0B', bg: 'bg-amber-50 dark:bg-amber-950/30', text: 'text-amber-600', badge: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400' },
@@ -286,6 +288,7 @@ const PredictionsPanel = ({ predictions, isRTL }) => {
 };
 
 const RecommendationsPanel = ({ recommendations, isRTL }) => {
+  const { t } = useTranslation();
   const priorityConfig = {
     high: { color: 'from-red-500 to-rose-500', accent: 'bg-red-500', label: t('high2'), icon: Flame },
     medium: { color: 'from-amber-500 to-yellow-500', accent: 'bg-amber-500', label: t('medium2'), icon: Star },
@@ -359,6 +362,7 @@ const RecommendationsPanel = ({ recommendations, isRTL }) => {
 };
 
 const RiskStudentsPanel = ({ students, isRTL, onNavigate }) => {
+  const { t } = useTranslation();
   const getRiskConfig = (level) => {
     if (level >= 70) return { color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/30', ring: '#EF4444', badge: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400', label: t('highRisk') };
     if (level >= 50) return { color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/30', ring: '#F59E0B', badge: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400', label: t('moderate') };
@@ -463,6 +467,7 @@ const HealthRing = ({ label, value, color, icon: Icon, isRTL }) => {
 };
 
 export const AIInsightsPage = () => {
+  const { t } = useTranslation();
   const { api } = useAuth();
   const { isRTL, toggleTheme, toggleLanguage, isDark } = useTheme();
   const navigate = useNavigate();
