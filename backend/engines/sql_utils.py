@@ -88,9 +88,26 @@ def apply_updates(obj, updates: dict, model_cls=None):
     if extra and "data" in cols:
         current = getattr(obj, "data", None)
         current = dict(current) if isinstance(current, dict) else {}
-        current.update(extra)
+        for ek, ev in extra.items():
+            if "." in ek:
+                parts = ek.split(".")
+                target = current
+                for p in parts[:-1]:
+                    if p not in target or not isinstance(target[p], dict):
+                        target[p] = {}
+                    target = target[p]
+                target[parts[-1]] = ev
+            else:
+                current[ek] = ev
         setattr(obj, "data", current)
 
+
+def _resolve_json_path(model_cls, field_path: str):
+    parts = field_path.split(".")
+    expr = model_cls.data
+    for part in parts:
+        expr = expr[part]
+    return expr
 
 def _build_filter_conditions(model_cls, filters: dict):
     conds = []
@@ -109,6 +126,8 @@ def _build_filter_conditions(model_cls, filters: dict):
             for sub in v:
                 sub_conds = _build_filter_conditions(model_cls, sub)
                 conds.extend(sub_conds)
+        elif k == "$expr":
+            pass
         elif k == "id":
             if isinstance(v, dict):
                 for op, val in v.items():
@@ -119,7 +138,8 @@ def _build_filter_conditions(model_cls, filters: dict):
             else:
                 conds.append(model_cls.id == v)
         elif isinstance(v, dict):
-            col_expr = model_cls.data[k].astext
+            json_expr = _resolve_json_path(model_cls, k)
+            col_expr = json_expr.astext
             for op, val in v.items():
                 if op == "$gte":
                     conds.append(col_expr >= str(val))
@@ -144,15 +164,18 @@ def _build_filter_conditions(model_cls, filters: dict):
                     conds.append(col_expr.op("~")(str(val)))
                 elif op == "$exists":
                     if val:
-                        conds.append(model_cls.data[k].isnot(None))
+                        conds.append(json_expr.isnot(None))
                     else:
-                        conds.append(model_cls.data[k].is_(None))
+                        conds.append(json_expr.is_(None))
         elif isinstance(v, list):
-            conds.append(model_cls.data[k].astext.in_([str(x) for x in v]))
+            json_expr = _resolve_json_path(model_cls, k)
+            conds.append(json_expr.astext.in_([str(x) for x in v]))
         elif isinstance(v, bool):
-            conds.append(model_cls.data[k].astext == str(v).lower())
+            json_expr = _resolve_json_path(model_cls, k)
+            conds.append(json_expr.astext == str(v).lower())
         else:
-            conds.append(model_cls.data[k].astext == str(v))
+            json_expr = _resolve_json_path(model_cls, k)
+            conds.append(json_expr.astext == str(v))
     return conds
 
 
@@ -355,9 +378,19 @@ async def _gd_unset(session, collection: str, filters: dict, unset_fields: dict)
     return await gd_update_one(session, collection, filters, updates)
 
 
+def _resolve_dot_path(doc, path):
+    parts = path.split(".")
+    val = doc
+    for p in parts:
+        if isinstance(val, dict):
+            val = val.get(p)
+        else:
+            return None
+    return val
+
 def _eval_agg_expr(expr, doc):
     if isinstance(expr, str) and expr.startswith("$"):
-        return doc.get(expr[1:])
+        return _resolve_dot_path(doc, expr[1:])
     if isinstance(expr, dict):
         if "$ifNull" in expr:
             parts = expr["$ifNull"]
@@ -374,6 +407,31 @@ def _eval_agg_expr(expr, doc):
             if _eval_match_expr(test, doc):
                 return _eval_agg_expr(t_val, doc)
             return _eval_agg_expr(f_val, doc)
+        if "$multiply" in expr:
+            parts = expr["$multiply"]
+            result = 1
+            for p in parts:
+                v = _eval_agg_expr(p, doc)
+                result *= (v if v is not None else 0)
+            return result
+        if "$divide" in expr:
+            parts = expr["$divide"]
+            num = _eval_agg_expr(parts[0], doc) or 0
+            den = _eval_agg_expr(parts[1], doc) or 1
+            return num / den if den else 0
+        if "$add" in expr:
+            return sum(_eval_agg_expr(p, doc) or 0 for p in expr["$add"])
+        if "$subtract" in expr:
+            parts = expr["$subtract"]
+            return (_eval_agg_expr(parts[0], doc) or 0) - (_eval_agg_expr(parts[1], doc) or 0)
+        if "$size" in expr:
+            arr = _eval_agg_expr(expr["$size"], doc)
+            return len(arr) if isinstance(arr, list) else 0
+        if "$slice" in expr:
+            parts = expr["$slice"]
+            arr = _eval_agg_expr(parts[0], doc) or []
+            n = parts[1] if len(parts) > 1 else len(arr)
+            return arr[:n]
     return expr
 
 def _eval_match_expr(expr, doc):
@@ -397,33 +455,47 @@ def _eval_match_expr(expr, doc):
             return _eval_agg_expr(parts[0], doc) in (_eval_agg_expr(parts[1], doc) or [])
     return bool(expr)
 
+def _check_match_condition(doc, k, v):
+    if k == "$or":
+        return any(all(_check_match_condition(doc, sk, sv) for sk, sv in sub.items()) for sub in v)
+    if k == "$and":
+        return all(all(_check_match_condition(doc, sk, sv) for sk, sv in sub.items()) for sub in v)
+    if k == "$expr":
+        return _eval_match_expr(v, doc)
+    dv = _resolve_dot_path(doc, k)
+    if isinstance(v, dict):
+        for op, ov in v.items():
+            if op == "$gt" and not ((dv or 0) > ov):
+                return False
+            elif op == "$gte" and not ((dv or 0) >= ov):
+                return False
+            elif op == "$lt" and not ((dv or 0) < ov):
+                return False
+            elif op == "$lte" and not ((dv or 0) <= ov):
+                return False
+            elif op == "$ne" and dv == ov:
+                return False
+            elif op == "$in" and dv not in (ov or []):
+                return False
+            elif op == "$nin" and dv in (ov or []):
+                return False
+            elif op == "$exists":
+                if ov and dv is None:
+                    return False
+                if not ov and dv is not None:
+                    return False
+            elif op == "$regex":
+                import re as _re
+                pattern = str(ov)
+                if not _re.search(pattern, str(dv or ""), _re.IGNORECASE):
+                    return False
+        return True
+    return dv == v
+
 def _apply_match_filter(docs, match_filter):
     result = []
     for doc in docs:
-        ok = True
-        for k, v in match_filter.items():
-            dv = doc.get(k)
-            if isinstance(v, dict):
-                for op, ov in v.items():
-                    if op == "$gt" and not ((dv or 0) > ov):
-                        ok = False
-                    elif op == "$gte" and not ((dv or 0) >= ov):
-                        ok = False
-                    elif op == "$lt" and not ((dv or 0) < ov):
-                        ok = False
-                    elif op == "$lte" and not ((dv or 0) <= ov):
-                        ok = False
-                    elif op == "$ne" and dv == ov:
-                        ok = False
-                    elif op == "$in" and dv not in (ov or []):
-                        ok = False
-                    elif op == "$nin" and dv in (ov or []):
-                        ok = False
-            elif dv != v:
-                ok = False
-            if not ok:
-                break
-        if ok:
+        if all(_check_match_condition(doc, k, v) for k, v in match_filter.items()):
             result.append(doc)
     return result
 
@@ -432,12 +504,12 @@ def _apply_group(docs, group_stage):
     groups = {}
     for doc in docs:
         if isinstance(group_id, str) and group_id.startswith("$"):
-            key = doc.get(group_id[1:])
+            key = _resolve_dot_path(doc, group_id[1:])
         elif isinstance(group_id, dict):
             key_parts = {}
             for gk, gv in group_id.items():
                 if isinstance(gv, str) and gv.startswith("$"):
-                    key_parts[gk] = doc.get(gv[1:])
+                    key_parts[gk] = _resolve_dot_path(doc, gv[1:])
                 else:
                     key_parts[gk] = gv
             key = tuple(sorted(key_parts.items()))
@@ -530,14 +602,27 @@ async def _gd_aggregate(session, collection: str, pipeline: list) -> List[dict]:
                     doc[k] = _eval_agg_expr(v, doc)
         elif "$project" in stage:
             proj = stage["$project"]
-            if "$slice" in str(proj):
-                for doc in docs:
-                    for k, v in proj.items():
-                        if isinstance(v, dict) and "$slice" in v:
-                            arr = v["$slice"]
-                            src = _eval_agg_expr(arr[0], doc) if isinstance(arr, list) else []
-                            n = arr[1] if isinstance(arr, list) and len(arr) > 1 else len(src)
-                            doc[k] = (src or [])[:n]
+            new_docs = []
+            for doc in docs:
+                new_doc = {}
+                for k, v in proj.items():
+                    if v == 0:
+                        continue
+                    elif v == 1:
+                        new_doc[k] = doc.get(k)
+                    elif isinstance(v, dict):
+                        new_doc[k] = _eval_agg_expr(v, doc)
+                    elif isinstance(v, str) and v.startswith("$"):
+                        new_doc[k] = _resolve_dot_path(doc, v[1:])
+                    else:
+                        new_doc[k] = v
+                for k in doc:
+                    if k not in proj:
+                        has_excludes = any(pv == 0 for pv in proj.values())
+                        if has_excludes:
+                            new_doc[k] = doc[k]
+                new_docs.append(new_doc)
+            docs = new_docs
         elif "$unwind" in stage:
             unwind = stage["$unwind"]
             if isinstance(unwind, str):
