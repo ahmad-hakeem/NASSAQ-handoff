@@ -286,11 +286,7 @@ async def seed_reference_data():
         for stage in ACADEMIC_STAGES:
             stage['created_at'] = now
             stage['updated_at'] = now
-            await db.academic_stages.update_one(
-                {"id": stage["id"]},
-                {"$set": stage},
-                upsert=True
-            )
+            await gd_upsert(db.session, "academic_stages", {"id": stage["id"]}, stage)
         print(f"  ✓ {len(ACADEMIC_STAGES)} stages seeded")
 
         # 2. Seed Academic Grades
@@ -298,11 +294,7 @@ async def seed_reference_data():
         for grade in ACADEMIC_GRADES:
             grade['created_at'] = now
             grade['updated_at'] = now
-            await db.academic_grades.update_one(
-                {"id": grade["id"]},
-                {"$set": grade},
-                upsert=True
-            )
+            await gd_upsert(db.session, "academic_grades", {"id": grade["id"]}, grade)
         print(f"  ✓ {len(ACADEMIC_GRADES)} grades seeded")
 
         # 3. Seed Education Tracks
@@ -310,11 +302,7 @@ async def seed_reference_data():
         for track in EDUCATION_TRACKS:
             track['created_at'] = now
             track['updated_at'] = now
-            await db.education_tracks.update_one(
-                {"id": track["id"]},
-                {"$set": track},
-                upsert=True
-            )
+            await gd_upsert(db.session, "education_tracks", {"id": track["id"]}, track)
         print(f"  ✓ {len(EDUCATION_TRACKS)} tracks seeded")
 
         # 4. Seed Subjects
@@ -323,11 +311,7 @@ async def seed_reference_data():
             subject['created_at'] = now
             subject['updated_at'] = now
             subject['is_active'] = True
-            await db.subjects.update_one(
-                {"id": subject["id"]},
-                {"$set": subject},
-                upsert=True
-            )
+            await gd_upsert(db.session, "subjects", {"id": subject["id"]}, subject)
         print(f"  ✓ {len(BASE_SUBJECTS)} subjects seeded")
 
         # 5. Seed Subject Mappings
@@ -336,11 +320,7 @@ async def seed_reference_data():
             mapping['id'] = f"mapping-{mapping['stage_id']}-{mapping['track_id']}-{'-'.join(mapping['grade_ids'])}"
             mapping['created_at'] = now
             mapping['updated_at'] = now
-            await db.subject_mappings.update_one(
-                {"id": mapping["id"]},
-                {"$set": mapping},
-                upsert=True
-            )
+            await gd_upsert(db.session, "subject_mappings", {"id": mapping["id"]}, mapping)
         print(f"  ✓ {len(SUBJECT_MAPPINGS)} subject mappings seeded")
 
         # 6. Seed Teacher Ranks
@@ -349,11 +329,7 @@ async def seed_reference_data():
             rank['created_at'] = now
             rank['updated_at'] = now
             rank['is_active'] = True
-            await db.teacher_ranks.update_one(
-                {"id": rank["id"]},
-                {"$set": rank},
-                upsert=True
-            )
+            await gd_upsert(db.session, "teacher_ranks", {"id": rank["id"]}, rank)
         print(f"  ✓ {len(TEACHER_RANKS)} teacher ranks seeded")
 
         # 7. Seed Administrative Constraints
@@ -361,11 +337,7 @@ async def seed_reference_data():
         for constraint in ADMIN_CONSTRAINTS:
             constraint['created_at'] = now
             constraint['updated_at'] = now
-            await db.admin_constraints.update_one(
-                {"id": constraint["id"]},
-                {"$set": constraint},
-                upsert=True
-            )
+            await gd_upsert(db.session, "admin_constraints", {"id": constraint["id"]}, constraint)
         print(f"  ✓ {len(ADMIN_CONSTRAINTS)} constraints seeded")
 
         # 8. Seed Default School Settings Template
@@ -379,11 +351,7 @@ async def seed_reference_data():
             "created_at": now,
             "updated_at": now
         }
-        await db.default_settings.update_one(
-            {"id": "default-school-settings"},
-            {"$set": settings_template},
-            upsert=True
-        )
+        await gd_upsert(db.session, "default_settings", {"id": "default-school-settings"}, settings_template)
         print("  ✓ Default school settings template seeded")
 
         print("\n" + "=" * 60)
@@ -436,11 +404,7 @@ async def apply_settings_to_existing_schools():
                 "updated_at": now
             }
 
-            await db.school_settings.update_one(
-                {"school_id": school_id},
-                {"$set": school_settings},
-                upsert=True
-            )
+            await gd_upsert(db.session, "school_settings", {"school_id": school_id}, school_settings)
             print(f"  ✓ Settings applied to: {school.get('name')}")
 
         print(f"\n  Total: {len(schools)} schools updated")

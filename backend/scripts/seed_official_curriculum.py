@@ -621,7 +621,7 @@ async def seed():
                 sub_id = all_subjects[subj_name]
                 grade = next((g for g in GRADES if g["id"] == grade_id), None)
                 if grade:
-                    await db.official_curriculum_grade_subjects.insert_one({
+                    await gd_insert(db.session, "official_curriculum_grade_subjects", {
                         "id": str(uuid.uuid4()),
                         "grade_id": grade_id,
                         "stage_id": grade["stage_id"],
@@ -641,7 +641,7 @@ async def seed():
 
         print("Seeding teacher rank loads...")
         for rank in TEACHER_RANK_LOADS:
-            await db.official_teacher_rank_loads.insert_one({
+            await gd_insert(db.session, "official_teacher_rank_loads", {
                 "id": str(uuid.uuid4()),
                 **rank,
                 "is_official": True,
@@ -662,7 +662,7 @@ async def seed():
                 "created_at": now,
             })
             for item in pool["items"]:
-                await db.official_optional_subject_pool_items.insert_one({
+                await gd_insert(db.session, "official_optional_subject_pool_items", {
                     "id": str(uuid.uuid4()),
                     "pool_id": pool_id,
                     "name_ar": item["name_ar"],

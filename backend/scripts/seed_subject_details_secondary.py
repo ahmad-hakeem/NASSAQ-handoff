@@ -287,11 +287,7 @@ async def seed_subject_details_secondary():
             count = 0
             for detail in ALL_SUBJECT_DETAILS_SECONDARY:
                 detail["created_at"] = datetime.now(timezone.utc).isoformat()
-                await db.official_curriculum_subject_details.update_one(
-                    {"id": detail["id"]},
-                    {"$set": detail},
-                    upsert=True
-                )
+                await gd_upsert(db.session, "official_curriculum_subject_details", {"id": detail["id"]}, detail)
                 count += 1
 
             print(f"✓ تم تثبيت {count} توزيعة للمرحلة الثانوية")

@@ -148,15 +148,13 @@ Each fix report must include: root cause, why it wasn't caught before, what chan
   - **utils/api_response.py**: `ApiResponse[T]` envelope — `{success, data, error: {code, message, message_ar}, meta}` with `ok()`/`fail()` helpers
   - **Global error envelope**: All HTTPExceptions → `{success: false, error: {code: "HTTP_<status>", message}}`, validation errors → `{success: false, error: {code: "VALIDATION_ERROR", message}, meta: {validation_errors: [...]}}`
   - **Route files**: Each under ~1000 lines; `academics_routes_mod.py` (3848 lines) split into 7 sub-modules, `scheduling_routes_mod.py` (2875 lines) split into 4 sub-modules
-- **Database**: PostgreSQL (async SQLAlchemy + asyncpg) — MongoDB fully removed
-  - **PostgreSQL**: Replit built-in via `DATABASE_URL`, 49 ORM tables (Event, SystemSetting promoted from GenericDocument), Alembic migrations
-  - **Repository layer**: `backend/repositories/base.py` — BaseRepository with full API (find_one, find, insert_one, update_one, delete_one, aggregate, bulk_write, batched_counts). `backend/repositories/__init__.py` — Repos container with lazy session resolution via context var, MODEL_REGISTRY mapping collection names to ORM models
-  - **Session management**: Repos uses `contextvars.ContextVar` for per-request session isolation. BaseRepository accepts either direct session or Repos holder — engines that cache `self.collection = db.X` at init time work correctly because session is resolved lazily at query time
-  - **Core files**: `backend/db.py` (async engine), `backend/pg_models.py` (49 ORM models), `backend/pg_helpers.py` (utilities), `backend/alembic/` (migrations, head: h1i2j3k4l5m6)
-  - **Eager loading**: Key relationships use `lazy="selectin"` (Student.school, Student.class_, Teacher.school, Teacher.assignments, User.tenant, TeacherAssignment.school_rel/class_rel/subject_rel). BaseRepository `find()`/`find_one()` accept `options=` parameter for explicit `joinedload`/`selectinload`
+- **Database**: PostgreSQL (async SQLAlchemy + asyncpg)
+  - **PostgreSQL**: Replit built-in via `DATABASE_URL`, GenericDocument JSONB storage, Alembic migrations
+  - **Repository layer**: `backend/repositories/__init__.py` — Simplified Repos class providing `session` property only. All data access via `gd_*` helpers from `engines/sql_utils.py`
+  - **Session management**: Repos uses `contextvars.ContextVar` for per-request session isolation
+  - **Core files**: `backend/db.py` (async engine), `backend/pg_models.py` (ORM models), `backend/alembic/` (migrations, head: h1i2j3k4l5m6)
   - **asyncpg SSL fix**: `sslmode` param stripped from DATABASE_URL (asyncpg uses `ssl=True` instead)
-  - **No MongoDB**: pg_adapter.py, bson_compat.py, nosql_sanitizer.py permanently removed. motor/pymongo removed from dependencies
-  - **Engine SQL utils**: `backend/engines/sql_utils.py` — GenericDocument-based helper functions (`gd_find`, `gd_find_one`, `gd_insert`, `gd_insert_many`, `gd_update_one`, `gd_count`, `gd_delete_one`, `gd_delete_many`) used by all 25 engine files. Supports filter operators (`$gte`, `$lte`, `$gt`, `$lt`, `$ne`, `$in`, `$regex`), `order_by`/`desc_order`/`limit`/`offset` params, automatic `data` JSONB expansion, and `tenant_id`↔`school_id` aliasing. Engine classes use `@property session` returning `self.db.session`
+  - **Data access layer**: `backend/engines/sql_utils.py` — `gd_find`, `gd_find_one`, `gd_insert`, `gd_insert_many`, `gd_update_one`, `gd_update_many`, `gd_count`, `gd_delete_one`, `gd_delete_many`, `gd_distinct`, `gd_upsert`, `_gd_aggregate`. Supports filter operators, `order_by`/`desc_order`/`limit`/`offset` params, update operators (`$set`/`$push`/`$pull`/`$inc`/`$unset`), and `tenant_id`↔`school_id` aliasing
 
 ### Product Intelligence Hub (مركز ذكاء المنتج)
 - **Database Models**: `backend/models/product_hub_models.py` — Production-ready Pydantic schemas: 12 enums (IssueType, IssueStatus, IssuePriority, Reproducible, TeamEnum, ImpactType, RelatedTo, AccountType, Platform, CommentType, AuditAction, AuditRole), structured sub-models (IssueContext, IssueDescription, IssueTechnical, IssueBusiness, IssueAssignment, IssueAI, SubmissionMetadata, IssueVisibility, IssueSystem), `IssueCreate.to_issue_document()` builder, backward-compatible `ISSUE_TYPE_COMPAT` map (performance→performance_issue, etc.), attachment validation (max 10 files, allowed extensions), field length limits
@@ -170,7 +168,7 @@ Each fix report must include: root cause, why it wasn't caught before, what chan
 - **Frontend Pages**: `ProductHubPage.jsx` (3-tab: Dashboard KPI cards + analytics charts, Expandable Smart Panels list, Kanban board with per-status columns), `ProductHubSubmitPage.jsx` (4-step guided form: Reporter → Details → Extra Info → Review, impact multi-select pills, reproducibility buttons, platform selection), `ProductHubIssuePage.jsx` (rich header with StatusChip/PriorityBadge/SLAIndicator + progress bar, HakimInsightCard sidebar, typed comments with admin_note/qa_note/general, activity timeline with colored event dots, admin action bar with status transitions + team assign, Developer Prompt panel with copy)
 - **Routes**: `/admin/product-hub`, `/admin/product-hub/submit`, `/admin/product-hub/issues/:issueId`
 - **Collections & Indexes**: `product_issues` (15 indexes: id unique, issue_number unique, status, priority, type, team, employee, created_by, created_at, compound is_deleted+status+date, compound is_deleted+creator+date, compound status+priority+date, compound status+team, section, compound created_by+date), `counters` (atomic sequence counter for issue_number — `_id: "product_issue_number"`, `seq: N`), `bulk_action_history` (3 indexes: id unique, user+date, date), `issue_activity_log` (5 indexes: id, issue_id+timestamp, action, performed_by, timestamp), `issue_comments` (3 indexes: id, issue_id+timestamp, created_by), `issue_duplicates_map` (4 indexes: id, issue_id, duplicate_of, compound pair)
-- **Data Integrity System**: On startup: `_ensure_issue_counter()` syncs atomic counter with max issue_number in DB; `_ensure_data_integrity()` backfills missing `is_deleted` fields, assigns numbers to orphaned issues, resolves duplicate numbers. All dashboard aggregation pipelines filter `is_deleted: {$ne: true}`. Issue creation uses atomic `find_one_and_update` with `$inc` on counters collection (no race conditions). `POST /issues/resequence` (main admin only) renumbers all active issues sequentially by creation date and resets counter.
+- **Data Integrity System**: On startup: `_ensure_issue_counter()` syncs atomic counter with max issue_number in DB; `_ensure_data_integrity()` backfills missing `is_deleted` fields, assigns numbers to orphaned issues, resolves duplicate numbers. All dashboard queries filter `is_deleted != true`. Issue creation uses atomic counter increment on counters collection (no race conditions). `POST /issues/resequence` (main admin only) renumbers all active issues sequentially by creation date and resets counter.
 - **Strict Status Lifecycle**: `new` → `under_review` → `in_progress` → `qa_validation` → `done` → `user_feedback_confirmed`. Reopen: `done/rejected` → `under_review`. Reject: only from `under_review`. No shortcuts.
 - **Validation Rules**: employee_name ≥ 3 chars, impact enum array validation, reproducibility enum (yes/no/sometimes), related_to enum array (api/ui/database/permissions/upload/auth), platform enum (web/mobile/api/desktop), comment_type enum (admin_note/qa_note/general), issue_type backward compat mapping, max 10 attachments, 5000 char limit on text fields
 - **SLA**: critical=24h, high=72h, medium=120h, low=None
@@ -296,7 +294,6 @@ import { getPose, getPoseForPath, getRandomPoseFromCategory, HERO_POSES } from '
   config.py       Centralized production config with validation
   db.py           PostgreSQL async engine (SQLAlchemy + asyncpg), session factory, init_pg_tables()
   pg_models.py    47 SQLAlchemy ORM table models for PostgreSQL
-  pg_helpers.py   PostgreSQL helper utilities (generate_id, serialize, issue sequence)
   alembic/        Alembic async migration framework (env.py, versions/)
   alembic.ini     Alembic configuration
   # Alembic Migration Chain (latest → oldest):
@@ -685,11 +682,10 @@ Real data-driven academic intelligence engine. No mock data — queries attendan
 ### Reporting Engine (`backend/engines/reporting_engine.py`)
 Centralized report generation with 9 report types using PostgreSQL aggregation queries.
 
-### Native SQL Aggregation (`backend/repositories/base.py` — `AggregationCursor`)
-- MongoDB-style `.aggregate()` pipelines are automatically translated to native SQL `GROUP BY` queries when the pipeline is simple enough
-- **Translatable patterns**: `$match → $group($sum, $avg, $min, $max, $count) → $sort → $limit` with simple group keys (single field, dict of fields, or null)
-- **Falls back to in-memory** for: `$unwind`, `$bucket`, `$project`, post-group `$match`, `$cond` accumulators, `$push/$addToSet`, dotted field paths in group keys, or generic (schemaless) collections
-- Graceful degradation: if SQL translation throws, logs a warning and falls back to the original in-memory path
+### Aggregation (`backend/engines/sql_utils.py` — `_gd_aggregate`)
+- Aggregation via `_gd_aggregate` helper operates on GenericDocument JSONB data
+- Supports `$match`, `$group` with accumulators (`$sum`, `$avg`, `$min`, `$max`), `$sort`, `$limit` stages
+- All aggregation is performed in-memory on filtered GenericDocument rows
 
 **Unified endpoint**: `GET /api/reports/generate/{report_type}` with query params:
 - `start_date`, `end_date` (YYYY-MM-DD, defaults to last 30 days)

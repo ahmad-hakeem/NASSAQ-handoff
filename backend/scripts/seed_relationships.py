@@ -78,16 +78,16 @@ async def main():
                 {"relationship_type": None},
             ]
         })
-        print(f"    Deleted {deleted.deleted_count} broken records")
+        print(f"    Deleted {deleted} broken records")
 
         # ─── STEP 1: Load all data ───
         print("\n[1] Loading data...")
-        all_students = await gd_find(db.session, "students", {}, {"_id": 0}, limit=2000)
-        all_users = await gd_find(db.session, "users", {}, {"_id": 0, "password_hash": 0}, limit=2000)
-        all_teachers = await gd_find(db.session, "teachers", {}, {"_id": 0}, limit=500)
-        all_schools = await gd_find(db.session, "schools", {}, {"_id": 0}, limit=20)
-        all_teacher_assignments = await gd_find(db.session, "teacher_assignments", {}, {"_id": 0}, limit=2000)
-        all_teacher_class_assignments = await gd_find(db.session, "teacher_class_assignments", {}, {"_id": 0}, limit=2000)
+        all_students = await gd_find(db.session, "students", {}, limit=2000)
+        all_users = await gd_find(db.session, "users", {}, limit=2000)
+        all_teachers = await gd_find(db.session, "teachers", {}, limit=500)
+        all_schools = await gd_find(db.session, "schools", {}, limit=20)
+        all_teacher_assignments = await gd_find(db.session, "teacher_assignments", {}, limit=2000)
+        all_teacher_class_assignments = await gd_find(db.session, "teacher_class_assignments", {}, limit=2000)
 
         users_by_id = {u["id"]: u for u in all_users}
         users_by_role = {}
@@ -128,7 +128,7 @@ async def main():
 
         # ─── STEP 2: Seed guardian_links for ALL students ───
         print("\n[2] Seeding guardian_links...")
-        existing_links = await gd_find(db.session, "guardian_links", {}, {"_id": 0, "student_id": 1, "parent_ref": 1}, limit=5000)
+        existing_links = await gd_find(db.session, "guardian_links", {}, limit=5000)
         existing_link_keys = {(l["student_id"], l["parent_ref"]) for l in existing_links}
 
         guardian_links_to_insert = []
@@ -189,15 +189,15 @@ async def main():
 
         # ─── STEP 3: Update existing guardian_links permissions ───
         print("\n[3] Updating existing guardian_link permissions...")
-        updated_perms = await db.guardian_links.update_many(
+        updated_perms = await gd_update_many(db.session, "guardian_links",
             {"permissions.can_view_financial_data": {"$exists": False}},
-            {"$set": {
+            {
                 "permissions.can_view_financial_data": False,
                 "permissions.receive_notifications": True,
                 "permissions.pickup_authorization": True,
-            }}
+            }
         )
-        print(f"    Updated {updated_perms.modified_count} links with new permission fields")
+        print(f"    Updated {updated_perms} links with new permission fields")
 
         # ─── STEP 4: Seed user_relationships ───
         print("\n[4] Seeding user_relationships...")
@@ -475,7 +475,7 @@ async def main():
                         "assigned_at": now_iso(),
                         "assigned_by": "system",
                     }
-                    await db.users.update_one(
+                    await gd_update_one(db.session, "users",
                         {"id": parent["id"]},
                         {"$push": {"linked_roles": new_role}}
                     )
@@ -493,30 +493,29 @@ async def main():
                     multi_role_count += 1
 
         # Also set linked_roles for all users who have empty linked_roles but a valid tenant
-        updated_lr = await db.users.update_many(
-            {
-                "tenant_id": {"$ne": None},
-                "$or": [
-                    {"linked_roles": {"$exists": False}},
-                    {"linked_roles": []},
-                    {"linked_roles": None},
-                ]
-            },
-            [
-                {"$set": {
-                    "linked_roles": [{
-                        "role": "$role",
-                        "tenant_id": "$tenant_id",
-                        "scope_id": None,
-                        "is_active": True,
-                        "assigned_at": now_iso(),
-                        "assigned_by": "system",
-                    }]
-                }}
+        users_needing_lr = await gd_find(db.session, "users", {
+            "tenant_id": {"$ne": None},
+            "$or": [
+                {"linked_roles": {"$exists": False}},
+                {"linked_roles": []},
+                {"linked_roles": None},
             ]
-        )
+        })
+        lr_updated_count = 0
+        for u in users_needing_lr:
+            await gd_update_one(db.session, "users", {"id": u["id"]}, {
+                "linked_roles": [{
+                    "role": u.get("role"),
+                    "tenant_id": u.get("tenant_id"),
+                    "scope_id": None,
+                    "is_active": True,
+                    "assigned_at": now_iso(),
+                    "assigned_by": "system",
+                }]
+            })
+            lr_updated_count += 1
         print(f"    Detected {multi_role_count} multi-role users (teacher+parent)")
-        print(f"    Set linked_roles for {updated_lr.modified_count} users who had empty linked_roles")
+        print(f"    Set linked_roles for {lr_updated_count} users who had empty linked_roles")
 
         # ─── STEP 8: Seed behaviour records ───
         print("\n[8] Seeding behaviour records for noor-ahlia...")
@@ -578,12 +577,14 @@ async def main():
         print(f"  user_roles:          {await gd_count(db.session, "user_roles", {})}")
         print(f"  behaviour_records:   {await gd_count(db.session, "behaviour_records", {})}")
 
-        rel_types = await db.user_relationships.aggregate([
-            {"$group": {"_id": "$relationship_type", "count": {"$sum": 1}}}
-        ]).to_list(20)
+        all_rels = await gd_find(db.session, "user_relationships", {})
+        rel_type_counts = {}
+        for r in all_rels:
+            rt = r.get("relationship_type", "unknown")
+            rel_type_counts[rt] = rel_type_counts.get(rt, 0) + 1
         print("\n  Relationship types:")
-        for rt in sorted(rel_types, key=lambda x: x["_id"]):
-            print(f"    {rt['_id']}: {rt['count']}")
+        for rt in sorted(rel_type_counts.keys()):
+            print(f"    {rt}: {rel_type_counts[rt]}")
 
         multi = await gd_count(db.session, "users", {"linked_roles.1": {"$exists": True}})
         print(f"\n  Users with 2+ linked_roles: {multi}")

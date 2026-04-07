@@ -141,7 +141,12 @@ async def migrate():
             {"$sort": {"count": -1}}
         ]
         print("\nRelationship types after migration:")
-        async for doc in db.user_relationships.aggregate(pipeline):
-            print(f"  {doc['_id']}: {doc['count']}")
+        all_rels = await gd_find(db.session, "user_relationships", {})
+        type_counts = {}
+        for r in all_rels:
+            rt = r.get("relationship_type", "unknown")
+            type_counts[rt] = type_counts.get(rt, 0) + 1
+        for rt in sorted(type_counts.keys(), key=lambda k: type_counts[k], reverse=True):
+            print(f"  {rt}: {type_counts[rt]}")
 if __name__ == "__main__":
     asyncio.run(migrate())

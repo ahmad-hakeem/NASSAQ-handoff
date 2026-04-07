@@ -1,6 +1,6 @@
 """
 Migration: Copy student users from users collection to students collection
-The /api/students endpoint reads from db.students, not db.users
+The /api/students endpoint reads from the students collection, not users
 """
 import asyncio
 import uuid
@@ -19,14 +19,14 @@ async def migrate():
         print("=== MIGRATING STUDENTS to students collection ===")
 
         # Get all student users
-        student_users = await gd_find(db.session, "users", {"role": "student"}, {"_id": 0}, limit=10000)
+        student_users = await gd_find(db.session, "users", {"role": "student"}, limit=10000)
         print(f"Found {len(student_users)} student users in users collection")
 
         existing_students = await gd_count(db.session, "students", {})
         print(f"Students currently in students collection: {existing_students}")
 
         # Get class map
-        classes = await gd_find(db.session, "classes", {}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "grade_level": 1, "school_id": 1}, limit=5000)
+        classes = await gd_find(db.session, "classes", {}, limit=5000)
         class_map = {c["id"]: c for c in classes}
 
         created = 0
@@ -34,7 +34,7 @@ async def migrate():
 
         for user in student_users:
             # Check if already exists in students collection
-            existing = await db.students.find_one({"$or": [
+            existing = await gd_find_one(db.session, "students", {"$or": [
                 {"id": user.get("id")},
                 {"user_id": user.get("id")},
                 {"email": user.get("email")}
@@ -86,7 +86,7 @@ async def migrate():
         print(f"Skipped: {skipped} (already existed)")
 
         # Verify counts per school
-        schools = await gd_find(db.session, "schools", {}, {"id": 1, "name_ar": 1}, limit=10)
+        schools = await gd_find(db.session, "schools", {}, limit=10)
         for school in schools:
             count = await gd_count(db.session, "students", {"school_id": school["id"]})
             print(f"  {school['id']}: {count} students")
