@@ -135,9 +135,8 @@ async def get_dashboard_stats(
         
         filtered_school_ids = []
         if school_filter:
-            schools_cursor = db.schools.find(school_filter, {"id": 1})
-            async for school in schools_cursor:
-                filtered_school_ids.append(school.get("id"))
+            schools_list = await gd_find(db.session, "schools", school_filter)
+            filtered_school_ids = [s.get("id") for s in schools_list]
             
             if filtered_school_ids:
                 student_filter["school_id"] = {"$in": filtered_school_ids}
@@ -145,43 +144,27 @@ async def get_dashboard_stats(
         
         school_id_filter = {"school_id": {"$in": filtered_school_ids}} if filtered_school_ids else {}
         
-        student_counts_coro = db.students.batched_counts({
-            "total": student_filter,
-            "missing_data": {**student_filter, "$or": [{"parent_phone": None}, {"parent_phone": ""}]},
-        })
-        teacher_counts_coro = db.teachers.batched_counts({
-            "total": teacher_filter,
-            "without_classes": {**teacher_filter, "assigned_classes": {"$size": 0}},
-            "incomplete_schedules": {**teacher_filter, "schedule_complete": False},
-            "without_rank": {**teacher_filter, "$or": [{"rank": None}, {"rank": ""}]},
-        })
-        user_counts_coro = db.users.batched_counts({
-            "total": {},
-            "active": {"is_active": True},
-        })
-        class_count_coro = db.classes.count_documents(school_id_filter if school_id_filter else {})
-        subject_count_coro = db.subjects.count_documents(school_id_filter if school_id_filter else {})
-        pending_req_coro = db.registration_requests.count_documents({"status": "pending"})
-        
         operations_filter = {**time_filter}
         if filtered_school_ids:
             operations_filter["tenant_id"] = {"$in": filtered_school_ids}
-        ops_coro = db.events.count_documents(operations_filter)
         
-        (student_counts, teacher_counts, user_counts, 
+        (total_students, students_missing_data,
+         total_teachers, teachers_without_classes, incomplete_schedules, teachers_without_rank,
+         total_users, active_users,
          total_classes, total_subjects, pending_requests, total_operations) = await asyncio.gather(
-            student_counts_coro, teacher_counts_coro, user_counts_coro,
-            class_count_coro, subject_count_coro, pending_req_coro, ops_coro
+            gd_count(db.session, "students", student_filter),
+            gd_count(db.session, "students", {**student_filter, "$or": [{"parent_phone": None}, {"parent_phone": ""}]}),
+            gd_count(db.session, "teachers", teacher_filter),
+            gd_count(db.session, "teachers", {**teacher_filter, "assigned_classes": {"$size": 0}}),
+            gd_count(db.session, "teachers", {**teacher_filter, "schedule_complete": False}),
+            gd_count(db.session, "teachers", {**teacher_filter, "$or": [{"rank": None}, {"rank": ""}]}),
+            gd_count(db.session, "users", {}),
+            gd_count(db.session, "users", {"is_active": True}),
+            gd_count(db.session, "classes", school_id_filter if school_id_filter else {}),
+            gd_count(db.session, "subjects", school_id_filter if school_id_filter else {}),
+            gd_count(db.session, "registration_requests", {"status": "pending"}),
+            gd_count(db.session, "events", operations_filter),
         )
-        
-        total_students = student_counts["total"]
-        students_missing_data = student_counts["missing_data"]
-        total_teachers = teacher_counts["total"]
-        teachers_without_classes = teacher_counts["without_classes"]
-        incomplete_schedules = teacher_counts["incomplete_schedules"]
-        teachers_without_rank = teacher_counts["without_rank"]
-        total_users = user_counts["total"]
-        active_users = user_counts["active"]
         schools_without_principal = 0
         
     else:
@@ -192,23 +175,16 @@ async def get_dashboard_stats(
         suspended_schools = 0
         setup_schools = 0
         
-        user_counts, student_teacher_class_subj, total_operations = await asyncio.gather(
-            db.users.batched_counts({
-                "total": {"tenant_id": tenant_id},
-                "active": {"tenant_id": tenant_id, "is_active": True},
-            }),
-            asyncio.gather(
-                db.students.count_documents({"school_id": tenant_id}),
-                db.teachers.count_documents({"school_id": tenant_id}),
-                db.classes.count_documents({"school_id": tenant_id}),
-                db.subjects.count_documents({"school_id": tenant_id}),
-            ),
-            db.events.count_documents({"tenant_id": tenant_id}),
+        (total_users, active_users, total_students, total_teachers,
+         total_classes, total_subjects, total_operations) = await asyncio.gather(
+            gd_count(db.session, "users", {"tenant_id": tenant_id}),
+            gd_count(db.session, "users", {"tenant_id": tenant_id, "is_active": True}),
+            gd_count(db.session, "students", {"school_id": tenant_id}),
+            gd_count(db.session, "teachers", {"school_id": tenant_id}),
+            gd_count(db.session, "classes", {"school_id": tenant_id}),
+            gd_count(db.session, "subjects", {"school_id": tenant_id}),
+            gd_count(db.session, "events", {"tenant_id": tenant_id}),
         )
-        
-        total_users = user_counts["total"]
-        active_users = user_counts["active"]
-        total_students, total_teachers, total_classes, total_subjects = student_teacher_class_subj
         pending_requests = 0
         teachers_without_classes = 0
         incomplete_schedules = 0
@@ -258,70 +234,40 @@ async def get_super_admin_dashboard_stats(
         today_str = today_start.isoformat()[:10]
         last_month_str = last_month_start.isoformat()
         
-        school_counts_coro = db.schools.batched_counts({
-            "total": {},
-            "active": {"status": "active"},
-            "suspended": {"status": "suspended"},
-            "pending": {"status": "pending"},
-            "growth": {"created_at": {"$gte": last_month_str}},
-        })
-        
-        attendance_counts_coro = db.attendance.batched_counts({
-            "students_present": {"user_type": "student", "status": "present", "date": {"$gte": today_str}},
-            "students_absent": {"user_type": "student", "status": "absent", "date": {"$gte": today_str}},
-            "teachers_present": {"user_type": "teacher", "status": "present", "date": {"$gte": today_str}},
-            "teachers_absent": {"user_type": "teacher", "status": "absent", "date": {"$gte": today_str}},
-        })
-        
-        student_counts_coro = db.students.batched_counts({
-            "total": {},
-            "growth": {"created_at": {"$gte": last_month_str}},
-        })
-        teacher_counts_coro = db.teachers.batched_counts({
-            "total": {},
-            "growth": {"created_at": {"$gte": last_month_str}},
-        })
-        
-        event_counts_coro = db.events.batched_counts({
-            "lessons_today": {"event_type": {"$in": ["lesson_started", "lesson", "class_session"]}, "created_at": {"$gte": today_start.isoformat()}},
-            "waiting": {"event_type": {"$in": ["waiting_session", "substitute_needed", "coverage_needed"]}, "status": "pending", "created_at": {"$gte": today_start.isoformat()}},
-        })
-        
-        classes_coro = db.classes.count_documents({})
-        users_coro = db.users.count_documents({"last_login": {"$gte": today_start.isoformat()}})
-        
-        (school_counts, attendance_counts, student_counts, teacher_counts,
-         event_counts, total_classes, active_users_today) = await asyncio.gather(
-            school_counts_coro, attendance_counts_coro, student_counts_coro, teacher_counts_coro,
-            event_counts_coro, classes_coro, users_coro
+        (total_schools, active_schools, suspended_schools, pending_schools, schools_last_month,
+         students_present_today, students_absent_today, teachers_present_today, teachers_absent_today,
+         total_students, students_last_month, total_teachers, teachers_last_month,
+         total_lessons_today_events, waiting_events,
+         total_classes, active_users_today) = await asyncio.gather(
+            gd_count(db.session, "schools", {}),
+            gd_count(db.session, "schools", {"status": "active"}),
+            gd_count(db.session, "schools", {"status": "suspended"}),
+            gd_count(db.session, "schools", {"status": "pending"}),
+            gd_count(db.session, "schools", {"created_at": {"$gte": last_month_str}}),
+            gd_count(db.session, "attendance", {"user_type": "student", "status": "present", "date": {"$gte": today_str}}),
+            gd_count(db.session, "attendance", {"user_type": "student", "status": "absent", "date": {"$gte": today_str}}),
+            gd_count(db.session, "attendance", {"user_type": "teacher", "status": "present", "date": {"$gte": today_str}}),
+            gd_count(db.session, "attendance", {"user_type": "teacher", "status": "absent", "date": {"$gte": today_str}}),
+            gd_count(db.session, "students", {}),
+            gd_count(db.session, "students", {"created_at": {"$gte": last_month_str}}),
+            gd_count(db.session, "teachers", {}),
+            gd_count(db.session, "teachers", {"created_at": {"$gte": last_month_str}}),
+            gd_count(db.session, "events", {"event_type": {"$in": ["lesson_started", "lesson", "class_session"]}, "created_at": {"$gte": today_start.isoformat()}}),
+            gd_count(db.session, "events", {"event_type": {"$in": ["waiting_session", "substitute_needed", "coverage_needed"]}, "status": "pending", "created_at": {"$gte": today_start.isoformat()}}),
+            gd_count(db.session, "classes", {}),
+            gd_count(db.session, "users", {"last_login": {"$gte": today_start.isoformat()}}),
         )
-        
-        total_schools = school_counts["total"]
-        active_schools = school_counts["active"]
-        suspended_schools = school_counts["suspended"]
-        pending_schools = school_counts["pending"]
-        schools_last_month = school_counts["growth"]
-        
-        total_students = student_counts["total"]
-        students_last_month = student_counts["growth"]
-        total_teachers = teacher_counts["total"]
-        teachers_last_month = teacher_counts["growth"]
-        
-        students_present_today = attendance_counts["students_present"]
-        students_absent_today = attendance_counts["students_absent"]
-        teachers_present_today = attendance_counts["teachers_present"]
-        teachers_absent_today = attendance_counts["teachers_absent"]
         
         student_total_tracked = students_present_today + students_absent_today
         student_attendance_percentage = (students_present_today / student_total_tracked * 100) if student_total_tracked > 0 else 0
         teacher_total_tracked = teachers_present_today + teachers_absent_today
         teacher_attendance_percentage = (teachers_present_today / teacher_total_tracked * 100) if teacher_total_tracked > 0 else 0
         
-        total_lessons_today = event_counts["lessons_today"]
+        total_lessons_today = total_lessons_today_events
         if total_lessons_today == 0:
             total_lessons_today = await gd_count(db.session, "schedules", {"date": {"$gte": today_str}})
         
-        waiting_sessions = event_counts["waiting"]
+        waiting_sessions = waiting_events
         if waiting_sessions == 0:
             waiting_sessions = await gd_count(db.session, "schedules", {"teacher_id": None, "date": {"$gte": today_str}})
         
@@ -389,53 +335,35 @@ async def get_command_center_stats(
 
         import asyncio
         
-        school_counts_coro = db.schools.batched_counts({
-            "total": {},
-            "ai_enabled": {"ai_enabled": True},
-            "active": {"status": "active"},
-            "growth": {"created_at": {"$gte": last_month_str}},
-        })
-        teacher_counts_coro = db.teachers.batched_counts({
-            "total": {},
-            "independent": {"school_id": None},
-            "growth": {"created_at": {"$gte": last_month_str}},
-        })
-        user_counts_coro = db.users.batched_counts({
-            "total": {},
-            "school_bound": {"role": {"$in": ["school_principal", "school_sub_admin", "school_manager"]}},
-            "school_teachers": {"role": "teacher", "tenant_id": {"$ne": None}},
-        })
-        attendance_counts_coro = db.attendance.batched_counts({
-            "students_present": {"user_type": "student", "status": "present", "date": {"$gte": today_str}},
-            "students_total": {"user_type": "student", "date": {"$gte": today_str}},
-        })
-        teacher_att_coro = db.teacher_attendance.batched_counts({
-            "present": {"status": "present", "date": today_str},
-            "total": {"date": today_str},
-        })
-        
-        (school_c, teacher_c, user_c, att_c, teacher_att_c,
+        (registered_schools, ai_enabled_schools, active_schools_cc, schools_delta,
+         teachers_in_schools, independent_teachers, teachers_delta,
+         total_users, school_bound_users, school_teachers_count,
+         students_present_cc, students_total_cc,
+         teacher_att_present, teacher_att_total,
          registered_students, students_delta, pending_requests) = await asyncio.gather(
-            school_counts_coro, teacher_counts_coro, user_counts_coro,
-            attendance_counts_coro, teacher_att_coro,
-            db.students.count_documents({}),
-            db.students.count_documents({"created_at": {"$gte": last_month_str}}),
-            db.registration_requests.count_documents({"status": "pending"}),
+            gd_count(db.session, "schools", {}),
+            gd_count(db.session, "schools", {"ai_enabled": True}),
+            gd_count(db.session, "schools", {"status": "active"}),
+            gd_count(db.session, "schools", {"created_at": {"$gte": last_month_str}}),
+            gd_count(db.session, "teachers", {}),
+            gd_count(db.session, "teachers", {"school_id": None}),
+            gd_count(db.session, "teachers", {"created_at": {"$gte": last_month_str}}),
+            gd_count(db.session, "users", {}),
+            gd_count(db.session, "users", {"role": {"$in": ["school_principal", "school_sub_admin", "school_manager"]}}),
+            gd_count(db.session, "users", {"role": "teacher", "tenant_id": {"$ne": None}}),
+            gd_count(db.session, "attendance", {"user_type": "student", "status": "present", "date": {"$gte": today_str}}),
+            gd_count(db.session, "attendance", {"user_type": "student", "date": {"$gte": today_str}}),
+            gd_count(db.session, "teacher_attendance", {"status": "present", "date": today_str}),
+            gd_count(db.session, "teacher_attendance", {"date": today_str}),
+            gd_count(db.session, "students", {}),
+            gd_count(db.session, "students", {"created_at": {"$gte": last_month_str}}),
+            gd_count(db.session, "registration_requests", {"status": "pending"}),
         )
-        
-        registered_schools = school_c["total"]
-        ai_enabled_schools = school_c["ai_enabled"]
-        schools_delta = school_c["growth"]
-        teachers_in_schools = teacher_c["total"]
-        independent_teachers = teacher_c["independent"]
-        teachers_delta = teacher_c["growth"]
-        total_users = user_c["total"]
-        school_bound_users = user_c["school_bound"]
-        school_teachers = user_c["school_teachers"]
-        students_present_today = att_c["students_present"]
-        students_total_today = att_c["students_total"]
-        teachers_present_today = teacher_att_c["present"]
-        teachers_total_today = teacher_att_c["total"]
+        school_teachers = school_teachers_count
+        students_present_today = students_present_cc
+        students_total_today = students_total_cc
+        teachers_present_today = teacher_att_present
+        teachers_total_today = teacher_att_total
 
         platform_accounts = total_users - school_bound_users - school_teachers
 

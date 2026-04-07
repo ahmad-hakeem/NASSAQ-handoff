@@ -253,8 +253,7 @@ def setup_audit_routes(db, get_current_user, require_roles, UserRole):
 
             total = await gd_count(db.session, "audit_logs", query)
             skip = (page - 1) * limit
-            logs_cursor = db.audit_logs.find(query).sort("timestamp", -1).skip(skip).limit(limit)
-            logs_list = await logs_cursor.to_list(limit)
+            logs_list = await gd_find(db.session, "audit_logs", query, order_by="timestamp", desc_order=True, offset=skip, limit=limit)
 
             logs = []
             for log in logs_list:
@@ -318,11 +317,7 @@ def setup_audit_routes(db, get_current_user, require_roles, UserRole):
                 "timestamp": {"$gte": cutoff},
                 "action": {"$in": ["auth.login_failed", "login_failed"]}
             })
-            unique_users_cursor = db.audit_logs.find(
-                {"timestamp": {"$gte": cutoff}, "performed_by": {"$ne": None}},
-                {"performed_by": 1}
-            )
-            unique_users_list = await unique_users_cursor.to_list(5000)
+            unique_users_list = await gd_find(db.session, "audit_logs", {"timestamp": {"$gte": cutoff}, "performed_by": {"$ne": None}})
             unique_users = len(set(d.get("performed_by") for d in unique_users_list if d.get("performed_by")))
 
             return {

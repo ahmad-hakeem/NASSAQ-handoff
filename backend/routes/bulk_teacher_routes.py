@@ -60,7 +60,8 @@ def create_bulk_teacher_routes(db, get_current_user, require_roles, UserRole, ha
             # Get existing emails and national IDs for duplicate check
             existing_emails = set()
             existing_ids = set()
-            async for doc in db.teachers.find({"school_id": school_id}, {"email": 1, "national_id": 1}):
+            existing_teachers = await gd_find(db.session, "teachers", {"school_id": school_id})
+            for doc in existing_teachers:
                 if doc.get("email"):
                     existing_emails.add(doc["email"].lower())
                 if doc.get("national_id"):
