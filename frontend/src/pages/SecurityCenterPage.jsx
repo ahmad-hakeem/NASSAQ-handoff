@@ -141,17 +141,17 @@ export default function SecurityCenterPage() {
   const [lockReason, setLockReason] = useState('suspicious');
   
   const [metrics, setMetrics] = useState({
-    securityScore: 87,
-    protectedAccounts: 1240,
-    totalAccounts: 1425,
-    applicationSecurity: 93,
-    failedLogins24h: 15,
-    lockedAccounts: 3,
+    securityScore: 0,
+    protectedAccounts: 0,
+    totalAccounts: 0,
+    applicationSecurity: 0,
+    failedLogins24h: 0,
+    lockedAccounts: 0,
     encryptedData: 100,
     passwordPolicyStrength: 'strong',
-    lastBackup: '2026-03-09T06:00:00Z',
-    totalBackups: 12,
-    loggingCoverage: 100,
+    lastBackup: new Date().toISOString(),
+    totalBackups: 0,
+    loggingCoverage: 0,
   });
   
   const getScoreColor = (score) => {
@@ -200,10 +200,72 @@ export default function SecurityCenterPage() {
     return types[type] || types.low;
   };
   
-  const handleRefresh = () => {
-    setRefreshing(true);
-    setTimeout(() => { setRefreshing(false); toast.success(t('dataRefreshed')); }, 1500);
+  const fetchSecurityData = async (showToast = false) => {
+    try {
+      setRefreshing(true);
+      const results = await Promise.allSettled([
+        api.get('/security/dashboard'),
+        api.get('/security/alerts'),
+        api.get('/security/events'),
+      ]);
+
+      const [dashResult, alertsResult, eventsResult] = results;
+      let anyFailed = false;
+
+      if (dashResult.status === 'fulfilled' && dashResult.value?.data) {
+        const d = dashResult.value.data;
+        setMetrics({
+          securityScore: d.securityScore ?? 0,
+          protectedAccounts: d.protectedAccounts ?? 0,
+          totalAccounts: d.totalAccounts ?? 0,
+          applicationSecurity: d.applicationSecurity ?? 0,
+          failedLogins24h: d.failedLogins24h ?? 0,
+          lockedAccounts: d.lockedAccounts ?? 0,
+          encryptedData: d.encryptedData ?? 100,
+          passwordPolicyStrength: d.passwordPolicyStrength ?? 'strong',
+          lastBackup: d.lastBackup ?? new Date().toISOString(),
+          totalBackups: d.totalBackups ?? 0,
+          loggingCoverage: d.loggingCoverage ?? 0,
+        });
+        if (d.scoreFactors) setScoreFactors(d.scoreFactors);
+      } else if (dashResult.status === 'rejected') {
+        anyFailed = true;
+      }
+
+      if (alertsResult.status === 'fulfilled' && alertsResult.value?.data) {
+        setSecurityAlerts(Array.isArray(alertsResult.value.data) ? alertsResult.value.data : []);
+      } else if (alertsResult.status === 'rejected') {
+        anyFailed = true;
+      }
+
+      if (eventsResult.status === 'fulfilled' && eventsResult.value?.data) {
+        setSecurityEvents(Array.isArray(eventsResult.value.data) ? eventsResult.value.data : []);
+      } else if (eventsResult.status === 'rejected') {
+        anyFailed = true;
+      }
+
+      if (showToast) {
+        if (anyFailed) {
+          toast.warning(t('partialDataLoaded'));
+        } else {
+          toast.success(t('dataRefreshed'));
+        }
+      }
+    } catch (error) {
+      console.error('Security data fetch error:', error);
+      if (showToast) toast.error(t('actionFailed'));
+    } finally {
+      setRefreshing(false);
+    }
   };
+
+  const handleRefresh = () => {
+    fetchSecurityData(true);
+  };
+
+  React.useEffect(() => {
+    fetchSecurityData();
+  }, []);
   
   // ============= NEW SECURITY API FUNCTIONS =============
   
@@ -376,9 +438,21 @@ export default function SecurityCenterPage() {
     toast.success(t('securityReportDownloaded'));
   };
   
-  const handleGenerateAIReport = () => {
+  const handleGenerateAIReport = async () => {
     setGeneratingReport(true);
-    setTimeout(() => { setGeneratingReport(false); toast.success(t('aiReportGenerated')); setShowAIReportDialog(false); }, 3000);
+    try {
+      const response = await api.post('/security/ai-report');
+      if (response.data?.recommendations) {
+        setAiRecommendations(response.data.recommendations);
+      }
+      toast.success(t('aiReportGenerated'));
+      setShowAIReportDialog(false);
+    } catch (error) {
+      console.error('AI report error:', error);
+      nassaqError(t('actionFailed'));
+    } finally {
+      setGeneratingReport(false);
+    }
   };
   
   const handleQuickAction = (action) => {
@@ -474,11 +548,11 @@ export default function SecurityCenterPage() {
                   <CardContent className="p-5">
                     <div className="flex items-center justify-between mb-3">
                       <UserCheck className="h-8 w-8 text-green-600" />
-                      <Badge variant="outline" className="text-green-600">{((metrics.protectedAccounts / metrics.totalAccounts) * 100).toFixed(0)}%</Badge>
+                      <Badge variant="outline" className="text-green-600">{metrics.totalAccounts > 0 ? ((metrics.protectedAccounts / metrics.totalAccounts) * 100).toFixed(0) : 0}%</Badge>
                     </div>
                     <h3 className="font-bold text-2xl">{metrics.protectedAccounts.toLocaleString()}</h3>
                     <p className="text-sm text-muted-foreground">{t('protectedAccounts')}</p>
-                    <Progress value={(metrics.protectedAccounts / metrics.totalAccounts) * 100} className="mt-2 h-2" />
+                    <Progress value={metrics.totalAccounts > 0 ? (metrics.protectedAccounts / metrics.totalAccounts) * 100 : 0} className="mt-2 h-2" />
                   </CardContent>
                 </Card>
                 <Card className="hover:shadow-lg transition-all">
@@ -572,7 +646,12 @@ export default function SecurityCenterPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
-                    {securityAlerts.slice(0, 3).map(alert => {
+                    {securityAlerts.length === 0 ? (
+                      <div className="text-center py-6">
+                        <ShieldCheck className="h-10 w-10 mx-auto text-green-500/40 mb-2" />
+                        <p className="text-sm text-muted-foreground">{t('noSecurityAlerts')}</p>
+                      </div>
+                    ) : securityAlerts.slice(0, 3).map(alert => {
                       const priorityInfo = getAlertPriorityInfo(alert.type);
                       const PriorityIcon = priorityInfo.icon;
                       return (
@@ -629,7 +708,9 @@ export default function SecurityCenterPage() {
                 </Select>
               </div>
               <div className="space-y-4">
-                {filteredAlerts.map(alert => {
+                {filteredAlerts.length === 0 ? (
+                  <Card><CardContent className="p-8 text-center"><ShieldCheck className="h-12 w-12 mx-auto text-green-500/40 mb-3" /><p className="text-muted-foreground">{t('noSecurityAlerts')}</p></CardContent></Card>
+                ) : filteredAlerts.map(alert => {
                   const priorityInfo = getAlertPriorityInfo(alert.type);
                   const PriorityIcon = priorityInfo.icon;
                   return (
@@ -648,9 +729,9 @@ export default function SecurityCenterPage() {
                             </div>
                           </div>
                           <div className="flex gap-2">
-                            <Button variant="outline" size="sm"><Eye className="h-4 w-4 me-1" />{t('viewDetails')}</Button>
-                            <Button variant="outline" size="sm">{t('dismiss')}</Button>
-                            <Button variant="destructive" size="sm">{t('escalate')}</Button>
+                            <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); setSelectedAlert(alert); setShowAlertDetailsSheet(true); }}><Eye className="h-4 w-4 me-1" />{t('viewDetails')}</Button>
+                            <Button variant="outline" size="sm" onClick={async (e) => { e.stopPropagation(); try { await api.post(`/security/dismiss-alert/${alert.id}`); setSecurityAlerts(prev => prev.filter(a => a.id !== alert.id)); toast.success(t('alertDismissed')); } catch { nassaqError(t('actionFailed')); } }}>{t('dismiss')}</Button>
+                            <Button variant="destructive" size="sm" onClick={async (e) => { e.stopPropagation(); try { await api.post(`/security/escalate-alert/${alert.id}`); toast.success(t('alertEscalatedToTechTeam')); } catch { nassaqError(t('actionFailed')); } }}>{t('escalate')}</Button>
                           </div>
                         </div>
                       </CardContent>
@@ -677,7 +758,7 @@ export default function SecurityCenterPage() {
                     <SelectItem value="account_locked">{t('accountLocked')}</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button variant="outline"><Download className="h-4 w-4 me-2" />{t('export')}</Button>
+                <Button variant="outline" onClick={async () => { try { const res = await api.get('/audit/export', { params: { format: 'json', days: 7 } }); const blob = new Blob([JSON.stringify(res.data?.data || [], null, 2)], { type: 'application/json' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `security_logs_${new Date().toISOString().split('T')[0]}.json`; link.click(); toast.success(t('exported')); } catch { nassaqError(t('actionFailed')); } }}><Download className="h-4 w-4 me-2" />{t('export')}</Button>
               </div>
               <Card>
                 <CardContent className="p-0">
@@ -747,9 +828,17 @@ export default function SecurityCenterPage() {
               </div>
               
               <Card>
-                <CardHeader><CardTitle className="flex items-center gap-2"><Brain className="h-5 w-5 text-brand-navy" />{t('aiRecommendations')}</CardTitle></CardHeader>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle className="flex items-center gap-2"><Brain className="h-5 w-5 text-brand-navy" />{t('aiRecommendations')}</CardTitle>
+                  <Button onClick={() => setShowAIReportDialog(true)} className="bg-brand-navy hover:bg-brand-navy/90"><Zap className="h-4 w-4 me-2" />{t('generateReport')}</Button>
+                </CardHeader>
                 <CardContent className="space-y-4">
-                  {aiRecommendations.map(rec => (
+                  {aiRecommendations.length === 0 ? (
+                    <div className="text-center py-8">
+                      <Brain className="h-12 w-12 mx-auto text-muted-foreground/30 mb-3" />
+                      <p className="text-muted-foreground">{t('clickGenerateReportToGetAiRecommendations')}</p>
+                    </div>
+                  ) : aiRecommendations.map(rec => (
                     <div key={rec.id} className="p-4 bg-muted/30 rounded-xl">
                       <div className="flex items-start justify-between mb-2">
                         <h4 className="font-medium">{isRTL ? rec.title_ar : rec.title_en}</h4>

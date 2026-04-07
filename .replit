@@ -83,7 +83,7 @@ FRONTEND_URL = "https://76d3d322-060b-41e8-b1b6-757b9374d907-00-uqpmfo0lufwh.wor
 ENVIRONMENT = "production"
 
   [objectStorage]
-  defaultBucketID = "replit-objstore-74e91ecd-87d7-4ff2-a2ad-91e1fdc9c773"
+defaultBucketID = "replit-objstore-74e91ecd-87d7-4ff2-a2ad-91e1fdc9c773"
 
 [postMerge]
 path = "scripts/post-merge.sh"
