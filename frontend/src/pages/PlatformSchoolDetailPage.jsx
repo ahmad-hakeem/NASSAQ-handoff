@@ -51,6 +51,7 @@ const ROLE_LABELS = {
 
 export default function PlatformSchoolDetailPage() {
   const { schoolId } = useParams();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { api, enterSchoolContext } = useAuth();
   const { isRTL } = useTheme();
@@ -76,7 +77,6 @@ export default function PlatformSchoolDetailPage() {
   const [credResult, setCredResult] = useState(null);
 
   const generatePassword = () => {
-  const { t } = useTranslation();
     const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$';
     const pwd = Array.from({ length: 14 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
     setCredForm(f => ({ ...f, password: pwd, confirmPassword: pwd }));

@@ -22,6 +22,7 @@ import {
 export default function PrincipalDashboard() {
   const navigate = useNavigate();
   const { user, schoolContext, isImpersonating, exitSchoolContext } = useAuth();
+  const { t } = useTranslation();
   const { isRTL, toggleTheme, toggleLanguage, isDark } = useTheme();
   const exitTimeoutRef = useRef(null);
 
@@ -32,7 +33,6 @@ export default function PrincipalDashboard() {
   }, []);
   
   const handleExitImpersonation = () => {
-  const { t } = useTranslation();
     exitSchoolContext();
     if (exitTimeoutRef.current) clearTimeout(exitTimeoutRef.current);
     exitTimeoutRef.current = setTimeout(() => {

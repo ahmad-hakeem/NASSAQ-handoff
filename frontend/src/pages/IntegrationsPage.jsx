@@ -271,6 +271,7 @@ const INITIAL_LOGS = [];
 
 export default function IntegrationsPage() {
   const { isRTL = true, isDark } = useTheme();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { token, api } = useAuth();
   const { nassaqError, nassaqWarning } = useNassaqAlert();
@@ -313,7 +314,6 @@ export default function IntegrationsPage() {
   
   // Format date
   const formatDateTime = (dateStr) => {
-  const { t } = useTranslation();
     if (!dateStr) return '-';
     return new Date(dateStr).toLocaleString(isRTL ? 'ar-SA' : 'en-US', {
       year: 'numeric',

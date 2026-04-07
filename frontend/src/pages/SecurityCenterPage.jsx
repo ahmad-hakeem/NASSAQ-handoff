@@ -247,6 +247,7 @@ const INITIAL_AI_RECOMMENDATIONS = [];
 
 export default function SecurityCenterPage() {
   const { isRTL = true, isDark } = useTheme();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { api } = useAuth();
   const { nassaqError, nassaqWarning } = useNassaqAlert();
@@ -299,11 +300,10 @@ export default function SecurityCenterPage() {
   });
   
   const getScoreColor = (score) => {
-  const { t } = useTranslation();
-    if (score >= 90) return { color: 'text-green-600', bg: 'bg-green-500', label: t.excellent };
-    if (score >= 70) return { color: 'text-blue-600', bg: 'bg-blue-500', label: t.good };
-    if (score >= 50) return { color: 'text-yellow-600', bg: 'bg-yellow-500', label: t.warning };
-    return { color: 'text-red-600', bg: 'bg-red-500', label: t.critical };
+    if (score >= 90) return { color: 'text-green-600', bg: 'bg-green-500', label: t('excellent') };
+    if (score >= 70) return { color: 'text-blue-600', bg: 'bg-blue-500', label: t('good') };
+    if (score >= 50) return { color: 'text-yellow-600', bg: 'bg-yellow-500', label: t('warning') };
+    return { color: 'text-red-600', bg: 'bg-red-500', label: t('critical') };
   };
   
   const scoreInfo = getScoreColor(metrics.securityScore);

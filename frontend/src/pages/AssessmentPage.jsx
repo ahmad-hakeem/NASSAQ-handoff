@@ -107,6 +107,7 @@ const DEFAULT_FIELDS = [
 
 function ExamScheduleTab({ periods, setPeriods, isRTL, apiClasses, apiTeachers }) {
   const { nassaqError } = useNassaqAlert();
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState({});
   const [addSubjectOpen, setAddSubjectOpen] = useState(false);
   const [targetPeriodId, setTargetPeriodId] = useState(null);
@@ -125,7 +126,6 @@ function ExamScheduleTab({ periods, setPeriods, isRTL, apiClasses, apiTeachers }
   const toggleExpand = (id) => setExpanded(p => ({ ...p, [id]: !p[id] }));
 
   const addPeriod = () => {
-  const { t } = useTranslation();
     const idx = periods.length;
     const title = idx < 5 ? `الفترة ${ORDINALS[idx]}` : `الفترة ${idx + 1}`;
     setPeriods([...periods, { id: uid(), title, subjects: [] }]);

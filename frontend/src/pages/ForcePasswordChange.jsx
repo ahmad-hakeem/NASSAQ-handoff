@@ -14,6 +14,7 @@ import { useTranslation } from '../contexts/ThemeContext';
 export default function ForcePasswordChange() {
   const navigate = useNavigate();
   const { user, logout, api } = useAuth();
+  const { t } = useTranslation();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
@@ -40,7 +41,6 @@ export default function ForcePasswordChange() {
   const isRTL = true; // Arabic interface
   
   const validatePassword = () => {
-  const { t } = useTranslation();
     const newErrors = {};
     
     if (!formData.currentPassword) {

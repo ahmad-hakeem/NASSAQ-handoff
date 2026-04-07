@@ -142,6 +142,7 @@ const LOGO_GRADIENTS = [
 
 export default function TenantsManagement() {
   const { api, isRTL: contextIsRTL, enterSchoolContext } = useAuth();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { nassaqError, nassaqWarning } = useNassaqAlert();
   const isRTL = contextIsRTL !== false;
@@ -255,7 +256,6 @@ export default function TenantsManagement() {
   };
 
   const resetFilters = () => {
-  const { t } = useTranslation();
     setFilters({ status: 'all', city: 'all' });
     setSearchQuery('');
     setActiveStatusFilter(null);

@@ -103,7 +103,6 @@ function AnimatedCounter({ target, duration = 2000, suffix = '' }) {
           hasAnimated.current = true;
           const startTime = Date.now();
           const animate = () => {
-  const { t } = useTranslation();
             const elapsed = Date.now() - startTime;
             const progress = Math.min(elapsed / duration, 1);
             const eased = 1 - Math.pow(1 - progress, 3);
@@ -156,6 +155,7 @@ function FloatingIcon({ icon: Icon, className, delay = '0s' }) {
 
 export const LandingPage = () => {
   const { isRTL, toggleLanguage, toggleTheme, isDark } = useTheme();
+  const { t } = useTranslation();
   const { api } = useAuth();
   const [activeJourneyStep, setActiveJourneyStep] = useState(0);
   const [activeAIStep, setActiveAIStep] = useState(0);
