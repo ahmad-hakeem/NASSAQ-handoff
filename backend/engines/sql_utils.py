@@ -127,7 +127,37 @@ def _build_filter_conditions(model_cls, filters: dict):
                 sub_conds = _build_filter_conditions(model_cls, sub)
                 conds.extend(sub_conds)
         elif k == "$expr":
-            pass
+            if isinstance(v, dict):
+                if "$ne" in v:
+                    parts = v["$ne"]
+                    if len(parts) == 2:
+                        left = parts[0]
+                        right = parts[1]
+                        if isinstance(left, str) and left.startswith("$") and isinstance(right, str) and right.startswith("$"):
+                            left_path = left[1:].split(".")
+                            right_path = right[1:].split(".")
+                            left_expr = model_cls.data
+                            for p in left_path:
+                                left_expr = left_expr[p]
+                            right_expr = model_cls.data
+                            for p in right_path:
+                                right_expr = right_expr[p]
+                            conds.append(left_expr.astext != right_expr.astext)
+                elif "$eq" in v:
+                    parts = v["$eq"]
+                    if len(parts) == 2:
+                        left = parts[0]
+                        right = parts[1]
+                        if isinstance(left, str) and left.startswith("$") and isinstance(right, str) and right.startswith("$"):
+                            left_path = left[1:].split(".")
+                            right_path = right[1:].split(".")
+                            left_expr = model_cls.data
+                            for p in left_path:
+                                left_expr = left_expr[p]
+                            right_expr = model_cls.data
+                            for p in right_path:
+                                right_expr = right_expr[p]
+                            conds.append(left_expr.astext == right_expr.astext)
         elif k == "id":
             if isinstance(v, dict):
                 for op, val in v.items():
@@ -226,6 +256,20 @@ async def gd_insert_many(session, collection: str, docs: list) -> List[str]:
     return ids
 
 
+def _apply_dict_updates(current_data: dict, updates: dict) -> dict:
+    for k, v in updates.items():
+        if "." in k:
+            parts = k.split(".")
+            target = current_data
+            for p in parts[:-1]:
+                if p not in target or not isinstance(target[p], dict):
+                    target[p] = {}
+                target = target[p]
+            target[parts[-1]] = v
+        else:
+            current_data[k] = v
+    return current_data
+
 async def gd_update_one(session, collection: str, filters: dict, updates: dict) -> int:
     from pg_models import GenericDocument
     stmt = select(GenericDocument).where(GenericDocument._collection == collection)
@@ -238,7 +282,7 @@ async def gd_update_one(session, collection: str, filters: dict, updates: dict) 
     if not obj:
         return 0
     current_data = dict(obj.data) if obj.data else {}
-    current_data.update(updates)
+    _apply_dict_updates(current_data, updates)
     obj.data = current_data
     await session.flush()
     return 1
@@ -255,7 +299,7 @@ async def gd_update_many(session, collection: str, filters: dict, updates: dict)
     count = 0
     for obj in objs:
         current_data = dict(obj.data) if obj.data else {}
-        current_data.update(updates)
+        _apply_dict_updates(current_data, updates)
         obj.data = current_data
         count += 1
     if count:
