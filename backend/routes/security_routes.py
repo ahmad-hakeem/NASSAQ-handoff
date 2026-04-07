@@ -693,10 +693,6 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
                 action = ev.get("action", "unknown")
                 if action in routine_actions:
                     continue
-                details = ev.get("details", {})
-                status_code = details.get("status_code", 200)
-                if 200 <= status_code < 400 and action in routine_actions:
-                    continue
                 alert_id += 1
                 alert_key = f"severity-{ev.get('id', alert_id)}"
                 if alert_key in dismissed_ids:

@@ -435,128 +435,128 @@ export default function SecurityCenterPage() {
   const handleDownloadReport = async () => {
     setLoading(true);
     try {
+      const { default: html2canvas } = await import('html2canvas');
       const { default: jsPDF } = await import('jspdf');
-      await import('jspdf-autotable');
+
+      const rtl = isRTL;
+      const dir = rtl ? 'rtl' : 'ltr';
+      const fontFamily = rtl ? "'Noto Sans Arabic', 'Segoe UI', Tahoma, sans-serif" : "'Segoe UI', Tahoma, sans-serif";
+      const align = rtl ? 'right' : 'left';
+
+      const scoreColor = metrics.securityScore >= 80 ? '#228B22' : metrics.securityScore >= 50 ? '#DAA520' : '#DC143C';
+      const scoreLabel = metrics.securityScore >= 90 ? (rtl ? 'ممتاز' : 'Excellent') : metrics.securityScore >= 70 ? (rtl ? 'جيد' : 'Good') : metrics.securityScore >= 50 ? (rtl ? 'يحتاج تحسين' : 'Needs Improvement') : (rtl ? 'حرج' : 'Critical');
+
+      const tbl = (headers, rows, headerBg = '#294164') => {
+        const ths = headers.map(h => `<th style="padding:6px 10px;background:${headerBg};color:#fff;font-size:11px;text-align:${align}">${h}</th>`).join('');
+        const trs = rows.map((r, i) => {
+          const bg = i % 2 === 1 ? '#f5f7fa' : '#fff';
+          const tds = r.map(c => `<td style="padding:5px 10px;font-size:10px;text-align:${align};border-bottom:1px solid #eee">${c}</td>`).join('');
+          return `<tr style="background:${bg}">${tds}</tr>`;
+        }).join('');
+        return `<table style="width:100%;border-collapse:collapse;margin-bottom:10px"><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table>`;
+      };
+
+      const metricsRows = [
+        [rtl ? 'الحسابات المحمية' : 'Protected Accounts', `${metrics.protectedAccounts} / ${metrics.totalAccounts}`],
+        [rtl ? 'محاولات فاشلة (24 ساعة)' : 'Failed Logins (24h)', String(metrics.failedLogins24h)],
+        [rtl ? 'حسابات مقفلة' : 'Locked Accounts', String(metrics.lockedAccounts)],
+        [rtl ? 'التشفير' : 'Encryption', `${metrics.encryptedData}%`],
+        [rtl ? 'سياسة كلمة المرور' : 'Password Policy', metrics.passwordPolicyStrength],
+        [rtl ? 'تغطية السجلات' : 'Logging Coverage', `${metrics.loggingCoverage}%`],
+        [rtl ? 'إجمالي النسخ الاحتياطية' : 'Total Backups', String(metrics.totalBackups)],
+        [rtl ? 'آخر نسخة احتياطية' : 'Last Backup', metrics.lastBackup ? new Date(metrics.lastBackup).toLocaleString(rtl ? 'ar-SA' : 'en-US') : (rtl ? 'غير متوفر' : 'N/A')],
+      ];
+
+      let factorsHtml = '';
+      if (scoreFactors.length > 0) {
+        const fHeaders = rtl ? ['العامل', 'النتيجة', 'الوزن'] : ['Factor', 'Score', 'Weight'];
+        const fRows = scoreFactors.map(f => [rtl ? (f.label_ar || f.label_en || f.id) : (f.label_en || f.id), `${f.value}%`, `${f.weight}%`]);
+        factorsHtml = `<h3 style="font-size:14px;margin:12px 0 6px;color:#294164">${rtl ? 'عوامل التقييم' : 'Score Factors'}</h3>${tbl(fHeaders, fRows)}`;
+      }
+
+      let alertsHtml = '';
+      if (securityAlerts.length > 0) {
+        const aHeaders = rtl ? ['الأولوية', 'التنبيه', 'الوقت'] : ['Priority', 'Alert', 'Time'];
+        const aRows = securityAlerts.map(a => [
+          a.type.toUpperCase(),
+          rtl ? (a.title_ar || a.title_en) : (a.title_en || a.title_ar),
+          a.timestamp ? new Date(a.timestamp).toLocaleString(rtl ? 'ar-SA' : 'en-US') : '',
+        ]);
+        alertsHtml = `<h3 style="font-size:14px;margin:12px 0 6px;color:#B42828">${rtl ? `تنبيهات نشطة (${securityAlerts.length})` : `Active Alerts (${securityAlerts.length})`}</h3>${tbl(aHeaders, aRows, '#B42828')}`;
+      }
+
+      let recsHtml = '';
+      if (aiRecommendations.length > 0) {
+        const rHeaders = rtl ? ['#', 'الأولوية', 'التوصية'] : ['#', 'Priority', 'Recommendation'];
+        const rRows = aiRecommendations.map((r, i) => [
+          String(i + 1),
+          r.priority || 'medium',
+          rtl ? (r.title_ar || r.title_en || r.title || '') : (r.title_en || r.title_ar || r.title || ''),
+        ]);
+        recsHtml = `<h3 style="font-size:14px;margin:12px 0 6px;color:#294164">${rtl ? 'توصيات الذكاء الاصطناعي' : 'AI Recommendations'}</h3>${tbl(rHeaders, rRows)}`;
+      }
+
+      const html = `
+        <div dir="${dir}" style="width:700px;padding:30px 25px;font-family:${fontFamily};color:#1a1a2e;background:#fff">
+          <div style="text-align:center;margin-bottom:20px">
+            <h1 style="font-size:20px;margin:0;color:#294164">${rtl ? 'تقرير الأمان — نَسَّق' : 'NASSAQ Security Report'}</h1>
+            <p style="font-size:10px;color:#888;margin:4px 0 0">${rtl ? 'تاريخ الإنشاء' : 'Generated'}: ${new Date().toLocaleString(rtl ? 'ar-SA' : 'en-US')}</p>
+          </div>
+          <div style="background:#f0f0f5;border-radius:8px;padding:14px;text-align:center;margin-bottom:16px">
+            <div style="font-size:22px;font-weight:bold;color:${scoreColor}">${rtl ? `${metrics.securityScore}/100 :درجة الأمان` : `Security Score: ${metrics.securityScore}/100`}</div>
+            <div style="font-size:10px;color:#666;margin-top:4px">${scoreLabel}</div>
+          </div>
+          <h3 style="font-size:14px;margin:12px 0 6px;color:#294164">${rtl ? 'المقاييس الرئيسية' : 'Key Metrics'}</h3>
+          ${tbl(rtl ? ['المقياس', 'القيمة'] : ['Metric', 'Value'], metricsRows)}
+          ${factorsHtml}
+          ${alertsHtml}
+          ${recsHtml}
+          <div style="text-align:center;font-size:8px;color:#999;margin-top:20px;border-top:1px solid #eee;padding-top:8px">
+            ${rtl ? 'منصة نَسَّق — تقرير الأمان' : 'NASSAQ Platform — Security Report'}
+          </div>
+        </div>
+      `;
+
+      const container = document.createElement('div');
+      container.style.position = 'fixed';
+      container.style.left = '-9999px';
+      container.style.top = '0';
+      container.innerHTML = html;
+      document.body.appendChild(container);
+
+      const canvas = await html2canvas(container.firstElementChild, { scale: 2, useCORS: true, logging: false });
+      document.body.removeChild(container);
+
+      const imgData = canvas.toDataURL('image/jpeg', 0.95);
+      const pdfWidth = 210;
+      const pdfMargin = 5;
+      const contentWidth = pdfWidth - 2 * pdfMargin;
+      const imgHeight = (canvas.height * contentWidth) / canvas.width;
+      const pageHeight = 297 - 2 * pdfMargin;
 
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-      const pageWidth = doc.internal.pageSize.getWidth();
-      const margin = 15;
-      let y = 20;
 
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(18);
-      doc.text('NASSAQ Security Report', pageWidth / 2, y, { align: 'center' });
-      y += 8;
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'normal');
-      doc.text(`Generated: ${new Date().toLocaleString('en-US')}`, pageWidth / 2, y, { align: 'center' });
-      y += 12;
-
-      doc.setFillColor(240, 240, 245);
-      doc.roundedRect(margin, y, pageWidth - 2 * margin, 30, 3, 3, 'F');
-      doc.setFontSize(14);
-      doc.setFont('helvetica', 'bold');
-      const scoreColor = metrics.securityScore >= 80 ? [34, 139, 34] : metrics.securityScore >= 50 ? [218, 165, 32] : [220, 20, 60];
-      doc.setTextColor(...scoreColor);
-      doc.text(`Security Score: ${metrics.securityScore}/100`, pageWidth / 2, y + 12, { align: 'center' });
-      doc.setTextColor(100, 100, 100);
-      doc.setFontSize(9);
-      const scoreLabel = metrics.securityScore >= 90 ? 'Excellent' : metrics.securityScore >= 70 ? 'Good' : metrics.securityScore >= 50 ? 'Needs Improvement' : 'Critical';
-      doc.text(scoreLabel, pageWidth / 2, y + 20, { align: 'center' });
-      doc.setTextColor(0, 0, 0);
-      y += 38;
-
-      doc.setFontSize(13);
-      doc.setFont('helvetica', 'bold');
-      doc.text('Key Metrics', margin, y);
-      y += 6;
-
-      doc.autoTable({
-        startY: y,
-        margin: { left: margin, right: margin },
-        head: [['Metric', 'Value']],
-        body: [
-          ['Protected Accounts', `${metrics.protectedAccounts} / ${metrics.totalAccounts}`],
-          ['Failed Logins (24h)', String(metrics.failedLogins24h)],
-          ['Locked Accounts', String(metrics.lockedAccounts)],
-          ['Encryption', `${metrics.encryptedData}%`],
-          ['Password Policy', metrics.passwordPolicyStrength],
-          ['Logging Coverage', `${metrics.loggingCoverage}%`],
-          ['Total Backups', String(metrics.totalBackups)],
-          ['Last Backup', metrics.lastBackup ? new Date(metrics.lastBackup).toLocaleString('en-US') : 'N/A'],
-        ],
-        styles: { fontSize: 9, cellPadding: 3 },
-        headStyles: { fillColor: [41, 65, 100], textColor: [255, 255, 255] },
-        alternateRowStyles: { fillColor: [245, 247, 250] },
-      });
-      y = doc.lastAutoTable.finalY + 10;
-
-      if (scoreFactors.length > 0) {
-        doc.setFontSize(13);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Score Factors', margin, y);
-        y += 6;
-        doc.autoTable({
-          startY: y,
-          margin: { left: margin, right: margin },
-          head: [['Factor', 'Score', 'Weight']],
-          body: scoreFactors.map(f => [f.label_en || f.id, `${f.value}%`, `${f.weight}%`]),
-          styles: { fontSize: 9, cellPadding: 3 },
-          headStyles: { fillColor: [41, 65, 100], textColor: [255, 255, 255] },
-          alternateRowStyles: { fillColor: [245, 247, 250] },
-        });
-        y = doc.lastAutoTable.finalY + 10;
-      }
-
-      if (securityAlerts.length > 0) {
-        if (y > 240) { doc.addPage(); y = 20; }
-        doc.setFontSize(13);
-        doc.setFont('helvetica', 'bold');
-        doc.text(`Active Alerts (${securityAlerts.length})`, margin, y);
-        y += 6;
-        doc.autoTable({
-          startY: y,
-          margin: { left: margin, right: margin },
-          head: [['Priority', 'Alert', 'Time']],
-          body: securityAlerts.map(a => [
-            a.type.toUpperCase(),
-            a.title_en || a.title_ar,
-            a.timestamp ? new Date(a.timestamp).toLocaleString('en-US') : '',
-          ]),
-          styles: { fontSize: 9, cellPadding: 3 },
-          headStyles: { fillColor: [180, 40, 40], textColor: [255, 255, 255] },
-          alternateRowStyles: { fillColor: [255, 245, 245] },
-        });
-        y = doc.lastAutoTable.finalY + 10;
-      }
-
-      if (aiRecommendations.length > 0) {
-        if (y > 240) { doc.addPage(); y = 20; }
-        doc.setFontSize(13);
-        doc.setFont('helvetica', 'bold');
-        doc.text('AI Recommendations', margin, y);
-        y += 6;
-        doc.autoTable({
-          startY: y,
-          margin: { left: margin, right: margin },
-          head: [['#', 'Priority', 'Recommendation']],
-          body: aiRecommendations.map((r, i) => [
-            String(i + 1),
-            r.priority || 'medium',
-            r.title_en || r.title_ar || r.title || '',
-          ]),
-          styles: { fontSize: 9, cellPadding: 3 },
-          headStyles: { fillColor: [41, 65, 100], textColor: [255, 255, 255] },
-          alternateRowStyles: { fillColor: [245, 247, 250] },
-        });
-      }
-
-      const pageCount = doc.internal.getNumberOfPages();
-      for (let i = 1; i <= pageCount; i++) {
-        doc.setPage(i);
-        doc.setFontSize(8);
-        doc.setTextColor(150, 150, 150);
-        doc.text(`NASSAQ Platform — Security Report — Page ${i}/${pageCount}`, pageWidth / 2, doc.internal.pageSize.getHeight() - 8, { align: 'center' });
+      if (imgHeight <= pageHeight) {
+        doc.addImage(imgData, 'JPEG', pdfMargin, pdfMargin, contentWidth, imgHeight);
+      } else {
+        let remainingHeight = canvas.height;
+        let srcY = 0;
+        let page = 0;
+        while (remainingHeight > 0) {
+          if (page > 0) doc.addPage();
+          const sliceHeight = Math.min(remainingHeight, (pageHeight / contentWidth) * canvas.width);
+          const sliceCanvas = document.createElement('canvas');
+          sliceCanvas.width = canvas.width;
+          sliceCanvas.height = sliceHeight;
+          const ctx = sliceCanvas.getContext('2d');
+          ctx.drawImage(canvas, 0, srcY, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
+          const sliceData = sliceCanvas.toDataURL('image/jpeg', 0.95);
+          const sliceImgH = (sliceHeight * contentWidth) / canvas.width;
+          doc.addImage(sliceData, 'JPEG', pdfMargin, pdfMargin, contentWidth, sliceImgH);
+          srcY += sliceHeight;
+          remainingHeight -= sliceHeight;
+          page++;
+        }
       }
 
       doc.save(`security_report_${new Date().toISOString().split('T')[0]}.pdf`);
