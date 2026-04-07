@@ -432,31 +432,141 @@ export default function SecurityCenterPage() {
   
   // ============= END NEW SECURITY API FUNCTIONS =============
 
-  const handleDownloadReport = () => {
+  const handleDownloadReport = async () => {
     setLoading(true);
-    // إنشاء تقرير أمان حقيقي
-    const report = {
-      generated_at: new Date().toISOString(),
-      security_score: metrics.securityScore,
-      metrics: metrics,
-      alerts: securityAlerts,
-      recent_events: securityEvents.slice(0, 20),
-      recommendations: [
-        'تفعيل المصادقة الثنائية لجميع المستخدمين',
-        'مراجعة الحسابات غير النشطة',
-        'تحديث سياسات كلمات المرور',
-        'فحص سجلات الدخول المشبوهة',
-      ],
-    };
-    
-    const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `security_report_${new Date().toISOString().split('T')[0]}.json`;
-    link.click();
-    
-    setLoading(false);
-    toast.success(t('securityReportDownloaded'));
+    try {
+      const { default: jsPDF } = await import('jspdf');
+      await import('jspdf-autotable');
+
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 15;
+      let y = 20;
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(18);
+      doc.text('NASSAQ Security Report', pageWidth / 2, y, { align: 'center' });
+      y += 8;
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Generated: ${new Date().toLocaleString('en-US')}`, pageWidth / 2, y, { align: 'center' });
+      y += 12;
+
+      doc.setFillColor(240, 240, 245);
+      doc.roundedRect(margin, y, pageWidth - 2 * margin, 30, 3, 3, 'F');
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      const scoreColor = metrics.securityScore >= 80 ? [34, 139, 34] : metrics.securityScore >= 50 ? [218, 165, 32] : [220, 20, 60];
+      doc.setTextColor(...scoreColor);
+      doc.text(`Security Score: ${metrics.securityScore}/100`, pageWidth / 2, y + 12, { align: 'center' });
+      doc.setTextColor(100, 100, 100);
+      doc.setFontSize(9);
+      const scoreLabel = metrics.securityScore >= 90 ? 'Excellent' : metrics.securityScore >= 70 ? 'Good' : metrics.securityScore >= 50 ? 'Needs Improvement' : 'Critical';
+      doc.text(scoreLabel, pageWidth / 2, y + 20, { align: 'center' });
+      doc.setTextColor(0, 0, 0);
+      y += 38;
+
+      doc.setFontSize(13);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Key Metrics', margin, y);
+      y += 6;
+
+      doc.autoTable({
+        startY: y,
+        margin: { left: margin, right: margin },
+        head: [['Metric', 'Value']],
+        body: [
+          ['Protected Accounts', `${metrics.protectedAccounts} / ${metrics.totalAccounts}`],
+          ['Failed Logins (24h)', String(metrics.failedLogins24h)],
+          ['Locked Accounts', String(metrics.lockedAccounts)],
+          ['Encryption', `${metrics.encryptedData}%`],
+          ['Password Policy', metrics.passwordPolicyStrength],
+          ['Logging Coverage', `${metrics.loggingCoverage}%`],
+          ['Total Backups', String(metrics.totalBackups)],
+          ['Last Backup', metrics.lastBackup ? new Date(metrics.lastBackup).toLocaleString('en-US') : 'N/A'],
+        ],
+        styles: { fontSize: 9, cellPadding: 3 },
+        headStyles: { fillColor: [41, 65, 100], textColor: [255, 255, 255] },
+        alternateRowStyles: { fillColor: [245, 247, 250] },
+      });
+      y = doc.lastAutoTable.finalY + 10;
+
+      if (scoreFactors.length > 0) {
+        doc.setFontSize(13);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Score Factors', margin, y);
+        y += 6;
+        doc.autoTable({
+          startY: y,
+          margin: { left: margin, right: margin },
+          head: [['Factor', 'Score', 'Weight']],
+          body: scoreFactors.map(f => [f.label_en || f.id, `${f.value}%`, `${f.weight}%`]),
+          styles: { fontSize: 9, cellPadding: 3 },
+          headStyles: { fillColor: [41, 65, 100], textColor: [255, 255, 255] },
+          alternateRowStyles: { fillColor: [245, 247, 250] },
+        });
+        y = doc.lastAutoTable.finalY + 10;
+      }
+
+      if (securityAlerts.length > 0) {
+        if (y > 240) { doc.addPage(); y = 20; }
+        doc.setFontSize(13);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`Active Alerts (${securityAlerts.length})`, margin, y);
+        y += 6;
+        doc.autoTable({
+          startY: y,
+          margin: { left: margin, right: margin },
+          head: [['Priority', 'Alert', 'Time']],
+          body: securityAlerts.map(a => [
+            a.type.toUpperCase(),
+            a.title_en || a.title_ar,
+            a.timestamp ? new Date(a.timestamp).toLocaleString('en-US') : '',
+          ]),
+          styles: { fontSize: 9, cellPadding: 3 },
+          headStyles: { fillColor: [180, 40, 40], textColor: [255, 255, 255] },
+          alternateRowStyles: { fillColor: [255, 245, 245] },
+        });
+        y = doc.lastAutoTable.finalY + 10;
+      }
+
+      if (aiRecommendations.length > 0) {
+        if (y > 240) { doc.addPage(); y = 20; }
+        doc.setFontSize(13);
+        doc.setFont('helvetica', 'bold');
+        doc.text('AI Recommendations', margin, y);
+        y += 6;
+        doc.autoTable({
+          startY: y,
+          margin: { left: margin, right: margin },
+          head: [['#', 'Priority', 'Recommendation']],
+          body: aiRecommendations.map((r, i) => [
+            String(i + 1),
+            r.priority || 'medium',
+            r.title_en || r.title_ar || r.title || '',
+          ]),
+          styles: { fontSize: 9, cellPadding: 3 },
+          headStyles: { fillColor: [41, 65, 100], textColor: [255, 255, 255] },
+          alternateRowStyles: { fillColor: [245, 247, 250] },
+        });
+      }
+
+      const pageCount = doc.internal.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor(150, 150, 150);
+        doc.text(`NASSAQ Platform — Security Report — Page ${i}/${pageCount}`, pageWidth / 2, doc.internal.pageSize.getHeight() - 8, { align: 'center' });
+      }
+
+      doc.save(`security_report_${new Date().toISOString().split('T')[0]}.pdf`);
+      toast.success(t('securityReportDownloaded'));
+    } catch (err) {
+      console.error('PDF generation error:', err);
+      nassaqError(t('actionFailed'));
+    } finally {
+      setLoading(false);
+    }
   };
   
   const handleGenerateAIReport = async () => {
@@ -779,7 +889,7 @@ export default function SecurityCenterPage() {
                     <SelectItem value="account_locked">{t('accountLocked')}</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button variant="outline" onClick={async () => { try { const res = await api.get('/audit/export', { params: { format: 'json', days: 7 } }); const blob = new Blob([JSON.stringify(res.data?.data || [], null, 2)], { type: 'application/json' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `security_logs_${new Date().toISOString().split('T')[0]}.json`; link.click(); toast.success(t('exported')); } catch { nassaqError(t('actionFailed')); } }}><Download className="h-4 w-4 me-2" />{t('export')}</Button>
+                <Button variant="outline" onClick={async () => { try { const res = await api.get('/audit/export', { params: { format: 'csv', days: 30 } }); const csvData = res.data?.data || ''; const bom = '\uFEFF'; const blob = new Blob([bom + csvData], { type: 'text/csv;charset=utf-8' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `security_logs_${new Date().toISOString().split('T')[0]}.csv`; link.click(); toast.success(t('exported')); } catch { nassaqError(t('actionFailed')); } }}><Download className="h-4 w-4 me-2" />{t('export')}</Button>
               </div>
               <Card>
                 <CardContent className="p-0">
@@ -1218,6 +1328,123 @@ export default function SecurityCenterPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        <Sheet open={showAlertDetailsSheet} onOpenChange={setShowAlertDetailsSheet}>
+          <SheetContent side={isRTL ? 'left' : 'right'} className="w-[400px] sm:w-[480px]">
+            <SheetHeader>
+              <SheetTitle className="flex items-center gap-2">
+                <ShieldAlert className="h-5 w-5 text-brand-navy" />
+                {t('alertDetails') || 'Alert Details'}
+              </SheetTitle>
+            </SheetHeader>
+            {selectedAlert && (() => {
+              const pInfo = getAlertPriorityInfo(selectedAlert.type);
+              const PIcon = pInfo.icon;
+              return (
+                <div className="mt-6 space-y-5">
+                  <div className={`p-4 rounded-xl border ${pInfo.color}`}>
+                    <div className="flex items-center gap-3 mb-2">
+                      <PIcon className="h-6 w-6" />
+                      <Badge variant={selectedAlert.type === 'high' ? 'destructive' : selectedAlert.type === 'medium' ? 'default' : 'secondary'}>
+                        {selectedAlert.type === 'high' ? (t('highPriority') || 'High') : selectedAlert.type === 'medium' ? (t('mediumPriority') || 'Medium') : (t('lowPriority') || 'Low')}
+                      </Badge>
+                      <Badge variant="outline">{selectedAlert.status}</Badge>
+                    </div>
+                    <h3 className="font-bold text-lg">{isRTL ? selectedAlert.title_ar : selectedAlert.title_en}</h3>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-3">
+                      <FileText className="h-4 w-4 mt-1 text-muted-foreground" />
+                      <div>
+                        <p className="text-xs text-muted-foreground font-medium">{t('description') || 'Description'}</p>
+                        <p className="text-sm">{isRTL ? selectedAlert.description_ar : selectedAlert.description_en}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3">
+                      <Clock className="h-4 w-4 mt-1 text-muted-foreground" />
+                      <div>
+                        <p className="text-xs text-muted-foreground font-medium">{t('timestamp') || 'Timestamp'}</p>
+                        <p className="text-sm">{selectedAlert.timestamp ? new Date(selectedAlert.timestamp).toLocaleString(isRTL ? 'ar-SA' : 'en-US', { dateStyle: 'full', timeStyle: 'medium' }) : '-'}</p>
+                      </div>
+                    </div>
+
+                    {selectedAlert.source_user && (
+                      <div className="flex items-start gap-3">
+                        <Users className="h-4 w-4 mt-1 text-muted-foreground" />
+                        <div>
+                          <p className="text-xs text-muted-foreground font-medium">{t('user') || 'User'}</p>
+                          <p className="text-sm">{selectedAlert.source_user}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedAlert.source_ip && (
+                      <div className="flex items-start gap-3">
+                        <Wifi className="h-4 w-4 mt-1 text-muted-foreground" />
+                        <div>
+                          <p className="text-xs text-muted-foreground font-medium">IP</p>
+                          <p className="text-sm font-mono">{selectedAlert.source_ip}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedAlert.action && (
+                      <div className="flex items-start gap-3">
+                        <Activity className="h-4 w-4 mt-1 text-muted-foreground" />
+                        <div>
+                          <p className="text-xs text-muted-foreground font-medium">{t('action') || 'Action'}</p>
+                          <p className="text-sm font-mono">{selectedAlert.action}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedAlert.alert_key && (
+                      <div className="flex items-start gap-3">
+                        <Key className="h-4 w-4 mt-1 text-muted-foreground" />
+                        <div>
+                          <p className="text-xs text-muted-foreground font-medium">{t('alertId') || 'Alert ID'}</p>
+                          <p className="text-sm font-mono text-muted-foreground">{selectedAlert.alert_key}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex gap-2 pt-4 border-t">
+                    <Button
+                      variant="outline"
+                      className="flex-1"
+                      onClick={async () => {
+                        try {
+                          await api.post(`/security/dismiss-alert/${selectedAlert.id}?alert_key=${encodeURIComponent(selectedAlert.alert_key || selectedAlert.id)}`);
+                          setSecurityAlerts(prev => prev.filter(a => a.id !== selectedAlert.id));
+                          setShowAlertDetailsSheet(false);
+                          toast.success(t('alertDismissed'));
+                        } catch { nassaqError(t('actionFailed')); }
+                      }}
+                    >
+                      <EyeOff className="h-4 w-4 me-2" />{t('dismiss')}
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      className="flex-1"
+                      onClick={async () => {
+                        try {
+                          await api.post(`/security/escalate-alert/${selectedAlert.id}`);
+                          toast.success(t('alertEscalatedToTechTeam'));
+                          setShowAlertDetailsSheet(false);
+                        } catch { nassaqError(t('actionFailed')); }
+                      }}
+                    >
+                      <AlertTriangle className="h-4 w-4 me-2" />{t('escalate')}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })()}
+          </SheetContent>
+        </Sheet>
       </div>
     </Sidebar>
   );

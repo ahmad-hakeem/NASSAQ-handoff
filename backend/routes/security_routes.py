@@ -677,27 +677,64 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
 
             severity_rank = {"high": 0, "medium": 1, "low": 2}
 
+            routine_actions = {
+                "auth.login", "login", "auth.logout", "logout",
+                "auth.register", "data.exported", "data.imported",
+                "report.generated", "system.accessed",
+                "security.accessed", "admin.accessed", "platform.accessed",
+            }
+
             high_severity_events = await gd_find(db.session, "audit_logs", {
                 "severity": {"$in": ["high", "critical"]},
                 "timestamp": {"$gte": cutoff_7d},
-            }, order_by="timestamp", desc_order=True, limit=20)
+            }, order_by="timestamp", desc_order=True, limit=50)
 
             for ev in high_severity_events:
+                action = ev.get("action", "unknown")
+                if action in routine_actions:
+                    continue
+                details = ev.get("details", {})
+                status_code = details.get("status_code", 200)
+                if 200 <= status_code < 400 and action in routine_actions:
+                    continue
                 alert_id += 1
                 alert_key = f"severity-{ev.get('id', alert_id)}"
                 if alert_key in dismissed_ids:
                     continue
-                action = ev.get("action", "unknown")
+                action_labels = {
+                    "auth.login_failed": ("محاولة دخول فاشلة", "Failed login attempt"),
+                    "auth.password_changed": ("تغيير كلمة مرور", "Password changed"),
+                    "account_locked": ("قفل حساب", "Account locked"),
+                    "account_unlocked": ("فتح حساب", "Account unlocked"),
+                    "user.deleted": ("حذف مستخدم", "User deleted"),
+                    "user.suspended": ("تعليق مستخدم", "User suspended"),
+                    "security.updated": ("تحديث إعدادات الأمان", "Security settings updated"),
+                    "security.created": ("إنشاء إعدادات أمنية", "Security settings created"),
+                }
+                label_ar, label_en = action_labels.get(action, (f"حدث أمني: {action}", f"Security event: {action}"))
+                ip_addr = ev.get("ip_address", "")
+                actor = ev.get("actor_name") or ev.get("actor_email") or ev.get("performed_by") or ""
+                desc_ar = f"{label_ar}"
+                desc_en = f"{label_en}"
+                if actor:
+                    desc_ar += f" — المستخدم: {actor}"
+                    desc_en += f" — User: {actor}"
+                if ip_addr:
+                    desc_ar += f" (IP: {ip_addr})"
+                    desc_en += f" (IP: {ip_addr})"
                 alerts.append({
                     "id": f"alert-sev-{alert_id}",
                     "type": "high",
                     "status": "active",
-                    "title_ar": f"حدث أمني عالي الخطورة: {action}",
-                    "title_en": f"High severity security event: {action}",
-                    "description_ar": ev.get("details", {}).get("description", f"حدث أمني بمستوى خطورة عالي: {action}"),
-                    "description_en": ev.get("details", {}).get("description", f"Security event with high severity: {action}"),
+                    "title_ar": label_ar,
+                    "title_en": label_en,
+                    "description_ar": desc_ar,
+                    "description_en": desc_en,
                     "timestamp": ev.get("timestamp", now.isoformat()),
                     "alert_key": alert_key,
+                    "source_user": actor,
+                    "source_ip": ip_addr,
+                    "action": action,
                 })
 
             alerts.sort(key=lambda a: a.get("timestamp", ""), reverse=True)
