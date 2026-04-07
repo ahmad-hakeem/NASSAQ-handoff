@@ -22,6 +22,8 @@ from dependencies import (
     hakim_engine, reporting_engine, export_engine, session_engine,
     REPORT_TYPES, generate_student_qr_code
 )
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
+
 
 from shared_models import (
     TeacherCreate, TeacherUpdate, TeacherResponse, StudentCreate, StudentUpdate, StudentResponse, ClassCreate, ClassUpdate, ClassResponse, SubjectCreate, SubjectResponse
@@ -99,7 +101,7 @@ async def seed_default_stages(
     
     count = 0
     for stage in default_stages:
-        existing = await db.educational_stages.find_one({"code": stage["code"], "is_global": True})
+        existing = await gd_find_one(db.session, "educational_stages", {"code": stage["code"], "is_global": True})
         if not existing:
             stage["id"] = str(uuid.uuid4())
             stage["tenant_id"] = None
@@ -107,7 +109,7 @@ async def seed_default_stages(
             stage["is_active"] = True
             stage["created_at"] = datetime.now(timezone.utc).isoformat()
             stage["created_by"] = current_user["id"]
-            await db.educational_stages.insert_one(stage)
+            await gd_insert(db.session, "educational_stages", stage)
             count += 1
     
     return {"message": f"تم إضافة {count} مرحلة تعليمية", "added": count}
@@ -130,7 +132,7 @@ async def get_educational_stages(
     else:
         query["is_global"] = True
     
-    stages = await db.educational_stages.find(query, {"_id": 0}).sort("order", 1).to_list(100)
+    stages = await gd_find(db.session, "educational_stages", query, order_by="order", desc_order=False, limit=100)
     return {"stages": stages, "total": len(stages)}
 
 
@@ -140,10 +142,7 @@ async def seed_default_grades(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
     """Seed default grades for a school"""
-    stages = await db.educational_stages.find(
-        {"$or": [{"tenant_id": school_id}, {"is_global": True}], "is_active": True},
-        {"_id": 0}
-    ).to_list(100)
+    stages = await gd_find(db.session, "educational_stages", {"$or": [{"tenant_id": school_id}, {"is_global": True}], "is_active": True}, limit=100)
     
     grade_names_ar = {1: "الأول", 2: "الثاني", 3: "الثالث", 4: "الرابع", 5: "الخامس", 6: "السادس"}
     
@@ -153,7 +152,7 @@ async def seed_default_grades(
         grades_count = stage.get("grades_count", 3)
         
         for i in range(1, grades_count + 1):
-            existing = await db.grades.find_one({
+            existing = await gd_find_one(db.session, "grades", {
                 "tenant_id": school_id,
                 "stage_code": stage_code,
                 "grade_number": i
@@ -182,7 +181,7 @@ async def seed_default_grades(
                     "created_at": datetime.now(timezone.utc).isoformat(),
                     "created_by": current_user["id"]
                 }
-                await db.grades.insert_one(grade_doc)
+                await gd_insert(db.session, "grades", grade_doc)
                 count += 1
     
     return {"message": f"تم إضافة {count} صف دراسي", "added": count}
@@ -199,7 +198,7 @@ async def get_grades(
     if stage_code:
         query["stage_code"] = stage_code
     
-    grades = await db.grades.find(query, {"_id": 0}).sort("display_order", 1).to_list(100)
+    grades = await gd_find(db.session, "grades", query, order_by="display_order", desc_order=False, limit=100)
     return {"grades": grades, "total": len(grades)}
 
 
@@ -211,7 +210,7 @@ async def create_grade(
 ):
     """Create a new grade"""
     # Get stage info
-    stage = await db.educational_stages.find_one({
+    stage = await gd_find_one(db.session, "educational_stages", {
         "$or": [{"code": data.stage_code, "tenant_id": school_id}, {"code": data.stage_code, "is_global": True}]
     })
     
@@ -234,7 +233,7 @@ async def create_grade(
         "created_by": current_user["id"]
     }
     
-    await db.grades.insert_one(grade_doc)
+    await gd_insert(db.session, "grades", grade_doc)
     grade_doc.pop("_id", None)
     return grade_doc
 
@@ -247,7 +246,7 @@ async def create_section(
 ):
     """Create a new section/class"""
     # Get grade info
-    grade = await db.grades.find_one({"id": data.grade_id, "tenant_id": school_id}, {"_id": 0})
+    grade = await gd_find_one(db.session, "grades", {"id": data.grade_id, "tenant_id": school_id})
     if not grade:
         raise HTTPException(status_code=404, detail="الصف غير موجود")
     
@@ -269,7 +268,7 @@ async def create_section(
         "created_by": current_user["id"]
     }
     
-    await db.sections.insert_one(section_doc)
+    await gd_insert(db.session, "sections", section_doc)
     section_doc.pop("_id", None)
     return section_doc
 
@@ -288,7 +287,7 @@ async def get_sections(
     if stage_code:
         query["stage_code"] = stage_code
     
-    sections = await db.sections.find(query, {"_id": 0}).sort("full_name_ar", 1).to_list(1000)
+    sections = await gd_find(db.session, "sections", query, order_by="full_name_ar", desc_order=False, limit=1000)
     return {"sections": sections, "total": len(sections)}
 
 
@@ -306,8 +305,8 @@ async def update_section(
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
     updates["updated_by"] = current_user["id"]
     
-    await db.sections.update_one({"id": section_id}, {"$set": updates})
-    return await db.sections.find_one({"id": section_id}, {"_id": 0})
+    await gd_update_one(db.session, "sections", {"id": section_id}, updates)
+    return await gd_find_one(db.session, "sections", {"id": section_id})
 
 
 @router.post("/academic/sections/{section_id}/assign-teacher")
@@ -319,16 +318,13 @@ async def assign_homeroom_teacher(
     """Assign homeroom teacher to section"""
     now = datetime.now(timezone.utc).isoformat()
     
-    await db.sections.update_one(
-        {"id": section_id},
-        {"$set": {
+    await gd_update_one(db.session, "sections", {"id": section_id}, {
             "homeroom_teacher_id": teacher_id,
             "homeroom_assigned_at": now,
             "homeroom_assigned_by": current_user["id"]
-        }}
-    )
+        })
     
-    return await db.sections.find_one({"id": section_id}, {"_id": 0})
+    return await gd_find_one(db.session, "sections", {"id": section_id})
 
 
 @router.post("/academic/classrooms")
@@ -355,7 +351,7 @@ async def create_classroom(
         "created_by": current_user["id"]
     }
     
-    await db.physical_classrooms.insert_one(classroom_doc)
+    await gd_insert(db.session, "physical_classrooms", classroom_doc)
     classroom_doc.pop("_id", None)
     return classroom_doc
 
@@ -374,7 +370,7 @@ async def get_classrooms(
     if available_only:
         query["is_available"] = True
     
-    classrooms = await db.physical_classrooms.find(query, {"_id": 0}).sort("name", 1).to_list(1000)
+    classrooms = await gd_find(db.session, "physical_classrooms", query, order_by="name", desc_order=False, limit=1000)
     return {"classrooms": classrooms, "total": len(classrooms)}
 
 
@@ -392,8 +388,8 @@ async def update_classroom(
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
     updates["updated_by"] = current_user["id"]
     
-    await db.physical_classrooms.update_one({"id": classroom_id}, {"$set": updates})
-    return await db.physical_classrooms.find_one({"id": classroom_id}, {"_id": 0})
+    await gd_update_one(db.session, "physical_classrooms", {"id": classroom_id}, updates)
+    return await gd_find_one(db.session, "physical_classrooms", {"id": classroom_id})
 
 
 @router.post("/academic/subjects/seed-defaults")
@@ -419,7 +415,7 @@ async def seed_default_subjects(
     
     count = 0
     for subject in default_subjects:
-        existing = await db.subjects.find_one({"code": subject["code"], "is_global": True})
+        existing = await gd_find_one(db.session, "subjects", {"code": subject["code"], "is_global": True})
         if not existing:
             subject["id"] = str(uuid.uuid4())
             subject["tenant_id"] = None
@@ -427,7 +423,7 @@ async def seed_default_subjects(
             subject["is_active"] = True
             subject["created_at"] = datetime.now(timezone.utc).isoformat()
             subject["created_by"] = current_user["id"]
-            await db.subjects.insert_one(subject)
+            await gd_insert(db.session, "subjects", subject)
             count += 1
     
     return {"message": f"تم إضافة {count} مادة دراسية", "added": count}
@@ -455,7 +451,7 @@ async def get_subjects(
     if category:
         query["category"] = category
     
-    subjects = await db.subjects.find(query, {"_id": 0}).sort("name_ar", 1).to_list(1000)
+    subjects = await gd_find(db.session, "subjects", query, order_by="name_ar", desc_order=False, limit=1000)
     
     # Filter by stage if specified
     if stage_code:
@@ -486,7 +482,7 @@ async def create_subject(
         "created_by": current_user["id"]
     }
     
-    await db.subjects.insert_one(subject_doc)
+    await gd_insert(db.session, "subjects", subject_doc)
     subject_doc.pop("_id", None)
     return subject_doc
 
@@ -497,18 +493,12 @@ async def get_academic_structure(
     current_user: dict = Depends(get_current_user)
 ):
     """Get complete academic structure for a school"""
-    stages = await db.educational_stages.find(
-        {"$or": [{"tenant_id": school_id}, {"is_global": True}], "is_active": True},
-        {"_id": 0}
-    ).sort("order", 1).to_list(100)
+    stages = await gd_find(db.session, "educational_stages", {"$or": [{"tenant_id": school_id}, {"is_global": True}], "is_active": True}, order_by="order", desc_order=False, limit=100)
     
-    grades = await db.grades.find({"tenant_id": school_id, "is_active": True}, {"_id": 0}).to_list(100)
-    sections = await db.sections.find({"tenant_id": school_id, "is_active": True}, {"_id": 0}).to_list(1000)
-    classrooms = await db.physical_classrooms.find({"tenant_id": school_id}, {"_id": 0}).to_list(1000)
-    subjects = await db.subjects.find(
-        {"$or": [{"tenant_id": school_id}, {"is_global": True}], "is_active": True},
-        {"_id": 0}
-    ).to_list(1000)
+    grades = await gd_find(db.session, "grades", {"tenant_id": school_id, "is_active": True}, limit=100)
+    sections = await gd_find(db.session, "sections", {"tenant_id": school_id, "is_active": True}, limit=1000)
+    classrooms = await gd_find(db.session, "physical_classrooms", {"tenant_id": school_id}, limit=1000)
+    subjects = await gd_find(db.session, "subjects", {"$or": [{"tenant_id": school_id}, {"is_global": True}], "is_active": True}, limit=1000)
     
     structure = {
         "school_id": school_id,
@@ -564,7 +554,7 @@ async def get_school_stages(
     if not school_id:
         raise HTTPException(status_code=400, detail="School context required")
     
-    stages = await db.school_stages.find({"school_id": school_id}, {"_id": 0}).sort("order", 1).to_list(50)
+    stages = await gd_find(db.session, "school_stages", {"school_id": school_id}, order_by="order", desc_order=False, limit=50)
     return {"stages": stages}
 
 
@@ -591,7 +581,7 @@ async def create_school_stage(
         "created_by": current_user["id"]
     }
     
-    await db.school_stages.insert_one(stage)
+    await gd_insert(db.session, "school_stages", stage)
     stage.pop("_id", None)
     
     return {"message": "تم إضافة المرحلة التعليمية", "stage": stage}
@@ -610,11 +600,11 @@ async def delete_school_stage(
         raise HTTPException(status_code=400, detail="School context required")
     
     # Check for dependencies (grades in this stage)
-    grades_count = await db.school_grades.count_documents({"stage_id": stage_id, "school_id": school_id})
+    grades_count = await gd_count(db.session, "school_grades", {"stage_id": stage_id, "school_id": school_id})
     if grades_count > 0:
         raise HTTPException(status_code=400, detail=f"لا يمكن حذف المرحلة لأنها تحتوي على {grades_count} صفوف")
     
-    await db.school_stages.delete_one({"id": stage_id, "school_id": school_id})
+    await gd_delete_one(db.session, "school_stages", {"id": stage_id, "school_id": school_id})
     
     # Audit log
     audit_log = {
@@ -627,7 +617,7 @@ async def delete_school_stage(
         "performed_by_name": current_user.get("full_name", ""),
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
-    await db.audit_logs.insert_one(audit_log)
+    await gd_insert(db.session, "audit_logs", audit_log)
     
     return {"message": "تم حذف المرحلة التعليمية"}
 
@@ -653,12 +643,9 @@ async def update_school_stage(
         "updated_by": current_user["id"]
     }
     
-    result = await db.school_stages.update_one(
-        {"id": stage_id, "school_id": school_id},
-        {"$set": update_data}
-    )
+    result = await gd_update_one(db.session, "school_stages", {"id": stage_id, "school_id": school_id}, update_data)
     
-    if result.matched_count == 0:
+    if result == 0:
         raise HTTPException(status_code=404, detail="المرحلة غير موجودة")
     
     # Audit log
@@ -673,7 +660,7 @@ async def update_school_stage(
         "performed_by_name": current_user.get("full_name", ""),
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
-    await db.audit_logs.insert_one(audit_log)
+    await gd_insert(db.session, "audit_logs", audit_log)
     
     return {"message": "تم تحديث المرحلة التعليمية", "stage": update_data}
 
@@ -694,7 +681,7 @@ async def get_school_grades(
     if not school_id:
         raise HTTPException(status_code=400, detail="School context required")
     
-    grades = await db.school_grades.find({"school_id": school_id}, {"_id": 0}).to_list(100)
+    grades = await gd_find(db.session, "school_grades", {"school_id": school_id}, limit=100)
     return {"grades": grades}
 
 
@@ -721,7 +708,7 @@ async def create_school_grade(
         "created_by": current_user["id"]
     }
     
-    await db.school_grades.insert_one(grade)
+    await gd_insert(db.session, "school_grades", grade)
     grade.pop("_id", None)
     
     return {"message": "تم إضافة الصف الدراسي", "grade": grade}
@@ -740,11 +727,11 @@ async def delete_school_grade(
         raise HTTPException(status_code=400, detail="School context required")
     
     # Check for dependencies (classes in this grade)
-    classes_count = await db.classes.count_documents({"grade_id": grade_id, "school_id": school_id})
+    classes_count = await gd_count(db.session, "classes", {"grade_id": grade_id, "school_id": school_id})
     if classes_count > 0:
         raise HTTPException(status_code=400, detail=f"لا يمكن حذف الصف لأنه يحتوي على {classes_count} فصل")
     
-    await db.school_grades.delete_one({"id": grade_id, "school_id": school_id})
+    await gd_delete_one(db.session, "school_grades", {"id": grade_id, "school_id": school_id})
     
     # Audit log
     audit_log = {
@@ -757,7 +744,7 @@ async def delete_school_grade(
         "performed_by_name": current_user.get("full_name", ""),
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
-    await db.audit_logs.insert_one(audit_log)
+    await gd_insert(db.session, "audit_logs", audit_log)
     
     return {"message": "تم حذف الصف الدراسي"}
 
@@ -783,12 +770,9 @@ async def update_school_grade(
         "updated_by": current_user["id"]
     }
     
-    result = await db.school_grades.update_one(
-        {"id": grade_id, "school_id": school_id},
-        {"$set": update_data}
-    )
+    result = await gd_update_one(db.session, "school_grades", {"id": grade_id, "school_id": school_id}, update_data)
     
-    if result.matched_count == 0:
+    if result == 0:
         raise HTTPException(status_code=404, detail="الصف غير موجود")
     
     # Audit log
@@ -803,7 +787,7 @@ async def update_school_grade(
         "performed_by_name": current_user.get("full_name", ""),
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
-    await db.audit_logs.insert_one(audit_log)
+    await gd_insert(db.session, "audit_logs", audit_log)
     
     return {"message": "تم تحديث الصف الدراسي", "grade": update_data}
 
@@ -824,7 +808,7 @@ async def get_school_sections(
     if not school_id:
         raise HTTPException(status_code=400, detail="School context required")
     
-    sections = await db.school_sections.find({"school_id": school_id}, {"_id": 0}).to_list(200)
+    sections = await gd_find(db.session, "school_sections", {"school_id": school_id}, limit=200)
     return {"sections": sections}
 
 
@@ -851,7 +835,7 @@ async def create_school_section(
         "created_by": current_user["id"]
     }
     
-    await db.school_sections.insert_one(section)
+    await gd_insert(db.session, "school_sections", section)
     section.pop("_id", None)
     
     return {"message": "تم إضافة الشعبة", "section": section}
@@ -869,7 +853,7 @@ async def delete_school_section(
     if not school_id:
         raise HTTPException(status_code=400, detail="School context required")
     
-    await db.school_sections.delete_one({"id": section_id, "school_id": school_id})
+    await gd_delete_one(db.session, "school_sections", {"id": section_id, "school_id": school_id})
     
     return {"message": "تم حذف الشعبة"}
 
@@ -890,7 +874,7 @@ async def get_academic_terms(
     if not school_id:
         raise HTTPException(status_code=400, detail="School context required")
     
-    terms = await db.academic_terms.find({"school_id": school_id}, {"_id": 0}).sort("start_date", 1).to_list(10)
+    terms = await gd_find(db.session, "academic_terms", {"school_id": school_id}, order_by="start_date", desc_order=False, limit=10)
     return {"terms": terms}
 
 
@@ -918,7 +902,7 @@ async def create_academic_term(
         "created_by": current_user["id"]
     }
     
-    await db.academic_terms.insert_one(term)
+    await gd_insert(db.session, "academic_terms", term)
     term.pop("_id", None)
     
     return {"message": "تم إضافة الفصل الدراسي", "term": term}
@@ -937,19 +921,14 @@ async def update_academic_term(
     if not school_id:
         raise HTTPException(status_code=400, detail="School context required")
     
-    await db.academic_terms.update_one(
-        {"id": term_id, "school_id": school_id},
-        {
-            "$set": {
+    await gd_update_one(db.session, "academic_terms", {"id": term_id, "school_id": school_id}, {
                 "name": data.name,
                 "name_en": data.name_en,
                 "start_date": data.start_date,
                 "end_date": data.end_date,
                 "is_active": data.is_active,
                 "updated_at": datetime.now(timezone.utc).isoformat()
-            }
-        }
-    )
+            })
     
     return {"message": "تم تحديث الفصل الدراسي"}
 
@@ -966,7 +945,7 @@ async def delete_academic_term(
     if not school_id:
         raise HTTPException(status_code=400, detail="School context required")
     
-    await db.academic_terms.delete_one({"id": term_id, "school_id": school_id})
+    await gd_delete_one(db.session, "academic_terms", {"id": term_id, "school_id": school_id})
     
     return {"message": "تم حذف الفصل الدراسي"}
 

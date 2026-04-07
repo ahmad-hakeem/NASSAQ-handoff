@@ -22,6 +22,8 @@ from dependencies import (
     hakim_engine, reporting_engine, export_engine, session_engine,
     REPORT_TYPES, generate_student_qr_code
 )
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
+
 
 router = APIRouter()
 
@@ -110,7 +112,7 @@ async def create_behaviour_type(
         "created_by": current_user["id"],
     }
     
-    await db.behaviour_types.insert_one(type_doc)
+    await gd_insert(db.session, "behaviour_types", type_doc)
     type_doc.pop("_id", None)
     return type_doc
 
@@ -139,7 +141,7 @@ async def get_behaviour_types(
     if category:
         query["category"] = category
     
-    types = await db.behaviour_types.find(query, {"_id": 0}).to_list(1000)
+    types = await gd_find(db.session, "behaviour_types", query, limit=1000)
     return {"behaviour_types": types, "total": len(types)}
 
 
@@ -164,7 +166,7 @@ async def seed_default_behaviour_types(
     
     count = 0
     for bt in default_types:
-        existing = await db.behaviour_types.find_one({"name_ar": bt["name_ar"], "is_global": True})
+        existing = await gd_find_one(db.session, "behaviour_types", {"name_ar": bt["name_ar"], "is_global": True})
         if not existing:
             bt["id"] = str(uuid.uuid4())
             bt["tenant_id"] = None
@@ -172,7 +174,7 @@ async def seed_default_behaviour_types(
             bt["is_active"] = True
             bt["created_at"] = datetime.now(timezone.utc).isoformat()
             bt["created_by"] = current_user["id"]
-            await db.behaviour_types.insert_one(bt)
+            await gd_insert(db.session, "behaviour_types", bt)
             count += 1
     
     return {"message": f"تم إضافة {count} نوع سلوك افتراضي", "added": count}
@@ -189,12 +191,12 @@ async def create_behaviour_record(
     now = datetime.now(timezone.utc).isoformat()
     
     # Get behaviour type
-    behaviour_type = await db.behaviour_types.find_one({"id": data.behaviour_type_id}, {"_id": 0})
+    behaviour_type = await gd_find_one(db.session, "behaviour_types", {"id": data.behaviour_type_id})
     if not behaviour_type:
         raise HTTPException(status_code=404, detail="نوع السلوك غير موجود")
     
     # Get student
-    student = await db.students.find_one({"id": data.student_id}, {"_id": 0})
+    student = await gd_find_one(db.session, "students", {"id": data.student_id})
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
     
@@ -231,13 +233,13 @@ async def create_behaviour_record(
         "editable_until": edit_until,
     }
     
-    await db.behaviour_records.insert_one(record_doc)
+    await gd_insert(db.session, "behaviour_records", record_doc)
     
     # Auto-escalation check
     if behaviour_type.get("auto_escalate"):
         from datetime import timedelta
         thirty_days_ago = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
-        count = await db.behaviour_records.count_documents({
+        count = await gd_count(db.session, "behaviour_records", {
             "tenant_id": school_id,
             "student_id": data.student_id,
             "behaviour_type_id": data.behaviour_type_id,
@@ -245,15 +247,12 @@ async def create_behaviour_record(
         })
         threshold = behaviour_type.get("escalation_threshold", 3)
         if count >= threshold:
-            await db.behaviour_records.update_one(
-                {"id": record_id},
-                {"$set": {"status": "escalated", "requires_follow_up": True}}
-            )
+            await gd_update_one(db.session, "behaviour_records", {"id": record_id}, {"status": "escalated", "requires_follow_up": True})
             record_doc["status"] = "escalated"
             record_doc["requires_follow_up"] = True
     
     # Audit log
-    await db.audit_logs.insert_one({
+    await gd_insert(db.session, "audit_logs", {
         "id": str(uuid.uuid4()),
         "action": "behaviour_recorded",
         "action_category": "behaviour",
@@ -295,14 +294,11 @@ async def get_student_behaviour_history(
         if end_date:
             query["incident_date"]["$lte"] = end_date
     
-    total = await db.behaviour_records.count_documents(query)
-    records = await db.behaviour_records.find(query, {"_id": 0}).sort("incident_date", -1).skip(skip).limit(limit).to_list(limit)
+    total = await gd_count(db.session, "behaviour_records", query)
+    records = await gd_find(db.session, "behaviour_records", query, order_by="incident_date", desc_order=True, offset=skip, limit=limit)
     
     # Summary
-    all_records = await db.behaviour_records.find(
-        {"tenant_id": school_id, "student_id": student_id},
-        {"category": 1, "points": 1, "severity": 1, "_id": 0}
-    ).to_list(10000)
+    all_records = await gd_find(db.session, "behaviour_records", {"tenant_id": school_id, "student_id": student_id}, limit=10000)
     
     summary = {
         "total_records": len(all_records),
@@ -332,7 +328,7 @@ async def get_class_behaviour_summary(
         if end_date:
             query["incident_date"]["$lte"] = end_date
     
-    records = await db.behaviour_records.find(query, {"_id": 0}).to_list(10000)
+    records = await gd_find(db.session, "behaviour_records", query, limit=10000)
     
     # Group by student
     student_stats = {}
@@ -380,7 +376,7 @@ async def get_pending_follow_ups(
         "status": {"$nin": ["resolved", "archived"]}
     }
 
-    records = await db.behaviour_records.find(query, {"_id": 0}).sort("follow_up_date", 1).to_list(100)
+    records = await gd_find(db.session, "behaviour_records", query, order_by="follow_up_date", desc_order=False, limit=100)
 
     overdue = []
     upcoming = []
@@ -407,7 +403,7 @@ async def get_behaviour_record(
     current_user: dict = Depends(get_current_user)
 ):
     """Get a single behaviour record"""
-    record = await db.behaviour_records.find_one({"id": record_id}, {"_id": 0})
+    record = await gd_find_one(db.session, "behaviour_records", {"id": record_id})
     if not record:
         raise HTTPException(status_code=404, detail="سجل السلوك غير موجود")
     return record
@@ -423,7 +419,7 @@ async def update_behaviour_record(
     """Update a behaviour record"""
     now = datetime.now(timezone.utc).isoformat()
     
-    record = await db.behaviour_records.find_one({"id": record_id}, {"_id": 0})
+    record = await gd_find_one(db.session, "behaviour_records", {"id": record_id})
     if not record:
         raise HTTPException(status_code=404, detail="سجل السلوك غير موجود")
     
@@ -440,9 +436,9 @@ async def update_behaviour_record(
     updates["updated_at"] = now
     updates["updated_by"] = current_user["id"]
     
-    await db.behaviour_records.update_one({"id": record_id}, {"$set": updates})
+    await gd_update_one(db.session, "behaviour_records", {"id": record_id}, updates)
     
-    return await db.behaviour_records.find_one({"id": record_id}, {"_id": 0})
+    return await gd_find_one(db.session, "behaviour_records", {"id": record_id})
 
 
 @router.delete("/behaviour-records/{record_id}")
@@ -451,10 +447,10 @@ async def delete_behaviour_record(
     current_user: dict = Depends(require_roles([UserRole.TEACHER, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
     tenant_id = current_user.get("tenant_id")
-    record = await db.behaviour_records.find_one({"id": record_id, "tenant_id": tenant_id}, {"_id": 0})
+    record = await gd_find_one(db.session, "behaviour_records", {"id": record_id, "tenant_id": tenant_id})
     if not record:
         raise HTTPException(status_code=404, detail="سجل السلوك غير موجود")
-    await db.behaviour_records.delete_one({"id": record_id, "tenant_id": tenant_id})
+    await gd_delete_one(db.session, "behaviour_records", {"id": record_id, "tenant_id": tenant_id})
     return {"detail": "تم حذف السجل بنجاح", "id": record_id}
 
 
@@ -468,26 +464,21 @@ async def principal_review_behaviour(
     """Principal reviews a behaviour record"""
     now = datetime.now(timezone.utc).isoformat()
     
-    record = await db.behaviour_records.find_one({"id": record_id}, {"_id": 0})
+    record = await gd_find_one(db.session, "behaviour_records", {"id": record_id})
     if not record:
         raise HTTPException(status_code=404, detail="سجل السلوك غير موجود")
     
-    await db.behaviour_records.update_one(
-        {"id": record_id},
-        {
-            "$set": {
+    await gd_update_one(db.session, "behaviour_records", {"id": record_id}, {
                 "principal_reviewed": True,
                 "principal_reviewed_by": current_user["id"],
                 "principal_reviewed_at": now,
                 "principal_notes": notes,
                 "status": new_status,
                 "updated_at": now
-            }
-        }
-    )
+            })
     
     # Audit log
-    await db.audit_logs.insert_one({
+    await gd_insert(db.session, "audit_logs", {
         "id": str(uuid.uuid4()),
         "action": "behaviour_reviewed",
         "action_category": "behaviour",
@@ -501,7 +492,7 @@ async def principal_review_behaviour(
         "timestamp": now
     })
     
-    return await db.behaviour_records.find_one({"id": record_id}, {"_id": 0})
+    return await gd_find_one(db.session, "behaviour_records", {"id": record_id})
 
 
 @router.post("/behaviour-records/{record_id}/notify-parent")
@@ -512,16 +503,11 @@ async def notify_parent_about_behaviour(
     """Mark parent as notified about behaviour"""
     now = datetime.now(timezone.utc).isoformat()
     
-    await db.behaviour_records.update_one(
-        {"id": record_id},
-        {
-            "$set": {
+    await gd_update_one(db.session, "behaviour_records", {"id": record_id}, {
                 "parent_notified": True,
                 "parent_notified_at": now,
                 "parent_notified_by": current_user["id"]
-            }
-        }
-    )
+            })
     
     return {"message": "تم تسجيل إشعار ولي الأمر"}
 
@@ -553,25 +539,20 @@ async def create_disciplinary_action(
         "created_at": now,
     }
     
-    await db.disciplinary_actions.insert_one(action_doc)
+    await gd_insert(db.session, "disciplinary_actions", action_doc)
     
     # Update behaviour record
-    await db.behaviour_records.update_one(
-        {"id": data.behaviour_record_id},
-        {
-            "$set": {
+    await gd_update_one(db.session, "behaviour_records", {"id": data.behaviour_record_id}, {
                 "disciplinary_action": data.action_type,
                 "disciplinary_action_date": now,
                 "status": "resolved"
-            }
-        }
-    )
+            })
     
     # Get student for audit
-    student = await db.students.find_one({"id": data.student_id}, {"full_name": 1, "_id": 0})
+    student = await gd_find_one(db.session, "students", {"id": data.student_id})
     
     # Audit log
-    await db.audit_logs.insert_one({
+    await gd_insert(db.session, "audit_logs", {
         "id": str(uuid.uuid4()),
         "action": "disciplinary_action",
         "action_category": "behaviour",
@@ -604,7 +585,7 @@ async def get_student_disciplinary_actions(
         query["is_active"] = True
         query["is_completed"] = False
     
-    actions = await db.disciplinary_actions.find(query, {"_id": 0}).sort("created_at", -1).to_list(100)
+    actions = await gd_find(db.session, "disciplinary_actions", query, order_by="created_at", desc_order=True, limit=100)
     return {"actions": actions, "total": len(actions)}
 
 
@@ -615,15 +596,12 @@ async def get_student_behaviour_profile(
     current_user: dict = Depends(get_current_user)
 ):
     """Get comprehensive behaviour profile for a student"""
-    student = await db.students.find_one({"id": student_id}, {"_id": 0})
+    student = await gd_find_one(db.session, "students", {"id": student_id})
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
     
     # Get all records
-    records = await db.behaviour_records.find(
-        {"tenant_id": school_id, "student_id": student_id},
-        {"_id": 0}
-    ).to_list(10000)
+    records = await gd_find(db.session, "behaviour_records", {"tenant_id": school_id, "student_id": student_id}, limit=10000)
     
     # Calculate metrics
     total_points = sum(r.get("points", 0) for r in records)
@@ -631,7 +609,7 @@ async def get_student_behaviour_profile(
     negative_count = sum(1 for r in records if r.get("category") == "negative")
     
     # Active disciplinary actions
-    active_actions = await db.disciplinary_actions.count_documents({
+    active_actions = await gd_count(db.session, "disciplinary_actions", {
         "tenant_id": school_id,
         "student_id": student_id,
         "is_active": True,
@@ -696,7 +674,7 @@ async def get_behaviour_statistics(
     if class_id:
         query["class_id"] = class_id
 
-    records = await db.behaviour_records.find(query, {"_id": 0}).to_list(10000)
+    records = await gd_find(db.session, "behaviour_records", query, limit=10000)
 
     total = len(records)
     positive = sum(1 for r in records if r.get("category") == "positive")
@@ -785,15 +763,9 @@ async def get_class_behaviour_detailed_summary(
     else:
         start = (now - timedelta(days=120)).isoformat()
 
-    records = await db.behaviour_records.find(
-        {"tenant_id": tenant, "class_id": class_id, "recorded_at": {"$gte": start}},
-        {"_id": 0}
-    ).to_list(10000)
+    records = await gd_find(db.session, "behaviour_records", {"tenant_id": tenant, "class_id": class_id, "recorded_at": {"$gte": start}}, limit=10000)
 
-    students = await db.students.find(
-        {"tenant_id": school_id, "class_id": class_id},
-        {"_id": 0, "id": 1, "full_name": 1}
-    ).to_list(100)
+    students = await gd_find(db.session, "students", {"tenant_id": school_id, "class_id": class_id}, limit=100)
 
     student_data = {}
     for s in students:

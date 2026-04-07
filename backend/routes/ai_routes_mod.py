@@ -21,6 +21,8 @@ from dependencies import (
     hakim_engine, reporting_engine, export_engine, session_engine,
     REPORT_TYPES, generate_student_qr_code
 )
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_aggregate
+
 
 from shared_models import (
     HakimMessage, HakimResponse
@@ -64,10 +66,10 @@ _hakim_sessions: Dict[str, list] = {}
 async def ai_system_diagnosis(current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))):
     """تشخيص النظام بالذكاء الاصطناعي"""
     # Gather system metrics
-    total_schools = await db.schools.count_documents({})
-    active_schools = await db.schools.count_documents({"status": "active"})
-    total_users = await db.users.count_documents({})
-    active_users = await db.users.count_documents({"is_active": True})
+    total_schools = await gd_count(db.session, "schools", {})
+    active_schools = await gd_count(db.session, "schools", {"status": "active"})
+    total_users = await gd_count(db.session, "users", {})
+    active_users = await gd_count(db.session, "users", {"is_active": True})
     
     # Calculate health score
     health_score = 100
@@ -89,7 +91,7 @@ async def ai_system_diagnosis(current_user: dict = Depends(require_roles([UserRo
             recommendations.append("مراجعة حسابات المستخدمين غير النشطين")
     
     # Check pending requests
-    pending = await db.registration_requests.count_documents({"status": "pending"})
+    pending = await gd_count(db.session, "registration_requests", {"status": "pending"})
     if pending > 10:
         health_score -= 5
         issues.append(f"{pending} طلب تسجيل معلق")
@@ -121,29 +123,29 @@ async def ai_data_quality_scan(current_user: dict = Depends(require_roles([UserR
     issues = []
     
     # Check students with missing data
-    students_missing_phone = await db.students.count_documents({
+    students_missing_phone = await gd_count(db.session, "students", {
         "$or": [{"parent_phone": None}, {"parent_phone": ""}]
     })
     if students_missing_phone > 0:
         issues.append({"type": "missing_data", "entity": "students", "count": students_missing_phone, "field": "parent_phone"})
     
     # Check teachers without rank
-    teachers_no_rank = await db.teachers.count_documents({
+    teachers_no_rank = await gd_count(db.session, "teachers", {
         "$or": [{"rank": None}, {"rank": ""}]
     })
     if teachers_no_rank > 0:
         issues.append({"type": "missing_data", "entity": "teachers", "count": teachers_no_rank, "field": "rank"})
     
     # Check classes without teachers
-    classes_no_teacher = await db.classes.count_documents({
+    classes_no_teacher = await gd_count(db.session, "classes", {
         "$or": [{"teacher_id": None}, {"teacher_id": ""}]
     })
     if classes_no_teacher > 0:
         issues.append({"type": "incomplete", "entity": "classes", "count": classes_no_teacher, "issue": "no_teacher"})
     
-    total_students_count = await db.students.count_documents({})
-    total_teachers_count = await db.teachers.count_documents({})
-    total_classes_count = await db.classes.count_documents({})
+    total_students_count = await gd_count(db.session, "students", {})
+    total_teachers_count = await gd_count(db.session, "teachers", {})
+    total_classes_count = await gd_count(db.session, "classes", {})
     total_records = total_students_count + total_teachers_count + total_classes_count
     total_issues = sum(i.get("count", 0) for i in issues)
     quality_score = max(0, 100 - (total_issues / max(1, total_records) * 100))
@@ -166,7 +168,7 @@ async def ai_data_quality_scan(current_user: dict = Depends(require_roles([UserR
 @router.post("/ai/tenant-health")
 async def ai_tenant_health_check(current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))):
     """فحص صحة المدارس"""
-    schools = await db.schools.find({}, {"_id": 0, "id": 1, "name": 1, "status": 1}).to_list(1000)
+    schools = await gd_find(db.session, "schools", {}, limit=1000)
     
     healthy = []
     warning = []
@@ -187,9 +189,9 @@ async def ai_tenant_health_check(current_user: dict = Depends(require_roles([Use
         {"$group": {"_id": "$school_id", "count": {"$sum": 1}}}
     ]
     
-    student_counts_raw = await db.students.aggregate(student_pipeline).to_list(1000)
-    teacher_counts_raw = await db.teachers.aggregate(teacher_pipeline).to_list(1000)
-    class_counts_raw = await db.classes.aggregate(class_pipeline).to_list(1000)
+    student_counts_raw = await _gd_aggregate(db.session, "students", student_pipeline)
+    teacher_counts_raw = await _gd_aggregate(db.session, "teachers", teacher_pipeline)
+    class_counts_raw = await _gd_aggregate(db.session, "classes", class_pipeline)
     
     student_counts = {r["_id"]: r["count"] for r in student_counts_raw}
     teacher_counts = {r["_id"]: r["count"] for r in teacher_counts_raw}
@@ -231,16 +233,16 @@ async def ai_tenant_health_check(current_user: dict = Depends(require_roles([Use
 async def ai_executive_summary(current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))):
     """الملخص التنفيذي الذكي"""
     # Gather all stats
-    total_schools = await db.schools.count_documents({})
-    active_schools = await db.schools.count_documents({"status": "active"})
-    total_students = await db.students.count_documents({})
-    total_teachers = await db.teachers.count_documents({})
-    total_classes = await db.classes.count_documents({})
-    pending_requests = await db.registration_requests.count_documents({"status": "pending"})
+    total_schools = await gd_count(db.session, "schools", {})
+    active_schools = await gd_count(db.session, "schools", {"status": "active"})
+    total_students = await gd_count(db.session, "students", {})
+    total_teachers = await gd_count(db.session, "teachers", {})
+    total_classes = await gd_count(db.session, "classes", {})
+    pending_requests = await gd_count(db.session, "registration_requests", {"status": "pending"})
     
     # Today's activity
     today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-    today_events = await db.events.count_documents({"created_at": {"$gte": today_start.isoformat()}})
+    today_events = await gd_count(db.session, "events", {"created_at": {"$gte": today_start.isoformat()}})
     
     summary_ar = f"""ملخص تنفيذي لمنصة نَسَّق
 
@@ -293,7 +295,7 @@ async def hakim_contextual_message(req: HakimContextualRequest, current_user: di
         school_id = current_user.get("tenant_id") or req.tenant_id
         school_context = ""
         if school_id:
-            school = await db.schools.find_one({"id": school_id}, {"_id": 0, "name": 1, "name_ar": 1})
+            school = await gd_find_one(db.session, "schools", {"id": school_id})
             school_name = school.get("name_ar") or school.get("name", "") if school else ""
             if school_name:
                 school_context = f"\nاسم المدرسة: {school_name}"
@@ -394,13 +396,13 @@ async def chat_with_hakim(message: HakimChatRequest, current_user: dict = Depend
         school_id = current_user.get("tenant_id") or message.tenant_id
         school_context = ""
         if school_id:
-            school = await db.schools.find_one({"id": school_id}, {"_id": 0, "name": 1, "name_ar": 1})
-            total_students = await db.students.count_documents({"school_id": school_id})
-            total_teachers = await db.teachers.count_documents({"school_id": school_id})
-            total_classes = await db.classes.count_documents({"school_id": school_id})
+            school = await gd_find_one(db.session, "schools", {"id": school_id})
+            total_students = await gd_count(db.session, "students", {"school_id": school_id})
+            total_teachers = await gd_count(db.session, "teachers", {"school_id": school_id})
+            total_classes = await gd_count(db.session, "classes", {"school_id": school_id})
             attendance_query = {"school_id": school_id}
-            total_att = await db.attendance.count_documents(attendance_query)
-            present_att = await db.attendance.count_documents({**attendance_query, "status": "present"})
+            total_att = await gd_count(db.session, "attendance", attendance_query)
+            present_att = await gd_count(db.session, "attendance", {**attendance_query, "status": "present"})
             att_rate = round((present_att / total_att) * 100, 1) if total_att > 0 else 0
             school_name = school.get("name_ar") or school.get("name", "") if school else ""
             school_context = f"""
@@ -561,14 +563,14 @@ async def get_ai_insights_overview(
     school_id = current_user.get("tenant_id")
     
     # Calculate overall performance score
-    total_students = await db.students.count_documents({"school_id": school_id}) if school_id else 0
-    total_teachers = await db.teachers.count_documents({"school_id": school_id}) if school_id else 0
+    total_students = await gd_count(db.session, "students", {"school_id": school_id}) if school_id else 0
+    total_teachers = await gd_count(db.session, "teachers", {"school_id": school_id}) if school_id else 0
     
     # Get attendance data
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     attendance_query = {"school_id": school_id} if school_id else {}
-    attendance_count = await db.attendance.count_documents({**attendance_query, "status": "present"})
-    total_attendance = await db.attendance.count_documents(attendance_query)
+    attendance_count = await gd_count(db.session, "attendance", {**attendance_query, "status": "present"})
+    total_attendance = await gd_count(db.session, "attendance", attendance_query)
     attendance_rate = round((attendance_count / total_attendance) * 100, 1) if total_attendance > 0 else 85
     
     # Calculate score based on multiple factors
@@ -613,10 +615,10 @@ async def get_ai_predictions(
 
     q = {"school_id": school_id} if school_id else {}
 
-    this_week_total = await db.attendance.count_documents({**q, "date": {"$gte": week_ago_str}})
-    this_week_present = await db.attendance.count_documents({**q, "date": {"$gte": week_ago_str}, "status": "present"})
-    last_week_total = await db.attendance.count_documents({**q, "date": {"$gte": two_weeks_ago_str, "$lt": week_ago_str}})
-    last_week_present = await db.attendance.count_documents({**q, "date": {"$gte": two_weeks_ago_str, "$lt": week_ago_str}, "status": "present"})
+    this_week_total = await gd_count(db.session, "attendance", {**q, "date": {"$gte": week_ago_str}})
+    this_week_present = await gd_count(db.session, "attendance", {**q, "date": {"$gte": week_ago_str}, "status": "present"})
+    last_week_total = await gd_count(db.session, "attendance", {**q, "date": {"$gte": two_weeks_ago_str, "$lt": week_ago_str}})
+    last_week_present = await gd_count(db.session, "attendance", {**q, "date": {"$gte": two_weeks_ago_str, "$lt": week_ago_str}, "status": "present"})
 
     this_rate = round((this_week_present / this_week_total) * 100, 1) if this_week_total > 0 else 0
     last_rate = round((last_week_present / last_week_total) * 100, 1) if last_week_total > 0 else 0
@@ -651,8 +653,8 @@ async def get_ai_predictions(
             "category": "attendance"
         })
 
-    recent_grades = await db.grades.find({**q, "created_at": {"$gte": week_ago.isoformat()}}).to_list(500)
-    older_grades = await db.grades.find({**q, "created_at": {"$gte": two_weeks_ago.isoformat(), "$lt": week_ago.isoformat()}}).to_list(500)
+    recent_grades = await gd_find(db.session, "grades", {**q, "created_at": {"$gte": week_ago.isoformat()}}, limit=500)
+    older_grades = await gd_find(db.session, "grades", {**q, "created_at": {"$gte": two_weeks_ago.isoformat(), "$lt": week_ago.isoformat()}}, limit=500)
     if recent_grades:
         recent_avg = sum(g.get("percentage", 0) for g in recent_grades) / len(recent_grades)
         older_avg = sum(g.get("percentage", 0) for g in older_grades) / len(older_grades) if older_grades else recent_avg
@@ -692,7 +694,7 @@ async def get_ai_predictions(
         {"$match": {"count": {"$gte": 3}}},
         {"$count": "total"}
     ]
-    absent_result = await db.attendance.aggregate(absent_pipeline).to_list(1)
+    absent_result = await _gd_aggregate(db.session, "attendance", absent_pipeline)
     chronic_absent = absent_result[0]["total"] if absent_result else 0
     if chronic_absent > 0:
         pred_id += 1
@@ -721,8 +723,8 @@ async def get_ai_recommendations(
     month_ago = today - timedelta(days=30)
     month_ago_str = month_ago.strftime("%Y-%m-%d")
 
-    total_att = await db.attendance.count_documents({**q, "date": {"$gte": month_ago_str}})
-    present_att = await db.attendance.count_documents({**q, "date": {"$gte": month_ago_str}, "status": "present"})
+    total_att = await gd_count(db.session, "attendance", {**q, "date": {"$gte": month_ago_str}})
+    present_att = await gd_count(db.session, "attendance", {**q, "date": {"$gte": month_ago_str}, "status": "present"})
     att_rate = round((present_att / total_att) * 100, 1) if total_att > 0 else 100
 
     if att_rate < 85:
@@ -736,7 +738,7 @@ async def get_ai_recommendations(
             "expected_impact": int(85 - att_rate)
         })
 
-    late_count = await db.attendance.count_documents({**q, "date": {"$gte": month_ago_str}, "status": "late"})
+    late_count = await gd_count(db.session, "attendance", {**q, "date": {"$gte": month_ago_str}, "status": "late"})
     if total_att > 0 and (late_count / total_att * 100) > 5:
         rec_id += 1
         late_pct = round(late_count / total_att * 100, 1)
@@ -749,8 +751,8 @@ async def get_ai_recommendations(
             "expected_impact": 10
         })
 
-    total_students = await db.students.count_documents(q)
-    total_teachers = await db.teachers.count_documents(q)
+    total_students = await gd_count(db.session, "students", q)
+    total_teachers = await gd_count(db.session, "teachers", q)
     if total_teachers > 0:
         ratio = total_students / total_teachers
         if ratio > 25:
@@ -764,8 +766,7 @@ async def get_ai_recommendations(
                 "expected_impact": 20
             })
 
-    classes_cursor = db.classes.find(q, {"_id": 0, "id": 1, "name": 1})
-    classes_list = await classes_cursor.to_list(100)
+    classes_list = await gd_find(db.session, "classes", q, limit=100)
     class_ids_all = [c["id"] for c in classes_list]
     cls_name_map = {c["id"]: c.get("name", c["id"]) for c in classes_list}
 
@@ -776,7 +777,7 @@ async def get_ai_recommendations(
             "count": {"$sum": 1}
         }}
     ]
-    cls_att_raw = await db.attendance.aggregate(cls_att_pipeline).to_list(2000)
+    cls_att_raw = await _gd_aggregate(db.session, "attendance", cls_att_pipeline)
     cls_att_data = {}
     for r in cls_att_raw:
         cid = r["_id"]["class_id"]
@@ -805,7 +806,7 @@ async def get_ai_recommendations(
             "expected_impact": 15
         })
 
-    recent_assessments = await db.assessments.count_documents({**q, "created_at": {"$gte": month_ago.isoformat()}})
+    recent_assessments = await gd_count(db.session, "assessments", {**q, "created_at": {"$gte": month_ago.isoformat()}})
     if recent_assessments == 0 and total_students > 0:
         rec_id += 1
         recommendations.append({
@@ -847,7 +848,7 @@ async def get_ai_alerts(
         {"$match": {"days": {"$gte": 3}}},
         {"$count": "total"}
     ]
-    cons_result = await db.attendance.aggregate(consecutive_pipeline).to_list(1)
+    cons_result = await _gd_aggregate(db.session, "attendance", consecutive_pipeline)
     chronic_count = cons_result[0]["total"] if cons_result else 0
     if chronic_count > 0:
         alerts.append({
@@ -860,8 +861,8 @@ async def get_ai_alerts(
             "route": "/admin/attendance"
         })
 
-    today_total = await db.attendance.count_documents({**q, "date": today_str})
-    today_present = await db.attendance.count_documents({**q, "date": today_str, "status": "present"})
+    today_total = await gd_count(db.session, "attendance", {**q, "date": today_str})
+    today_present = await gd_count(db.session, "attendance", {**q, "date": today_str, "status": "present"})
     if today_total > 0:
         today_rate = round((today_present / today_total) * 100, 1)
         if today_rate < 80:
@@ -885,7 +886,7 @@ async def get_ai_alerts(
                 "route": "/admin/attendance"
             })
 
-    unassigned_sessions = await db.timetable_sessions.count_documents({**q, "$or": [{"teacher_id": None}, {"teacher_id": ""}]})
+    unassigned_sessions = await gd_count(db.session, "timetable_sessions", {**q, "$or": [{"teacher_id": None}, {"teacher_id": ""}]})
     if unassigned_sessions > 0:
         alerts.append({
             "id": str(uuid.uuid4())[:8],
@@ -897,7 +898,7 @@ async def get_ai_alerts(
             "route": "/school/schedule"
         })
 
-    recent_behaviour = await db.behaviour_records.count_documents({
+    recent_behaviour = await gd_count(db.session, "behaviour_records", {
         **q,
         "type": "negative",
         "created_at": {"$gte": (today - timedelta(days=7)).isoformat()}
@@ -935,7 +936,7 @@ async def get_at_risk_students(
     q = {"school_id": school_id} if school_id else {}
     at_risk = []
 
-    students = await db.students.find(q, {"_id": 0, "id": 1, "full_name": 1, "class_id": 1}).to_list(500)
+    students = await gd_find(db.session, "students", q, limit=500)
     month_ago_str = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%d")
     month_ago_iso = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
 
@@ -948,7 +949,7 @@ async def get_at_risk_students(
             "count": {"$sum": 1}
         }}
     ]
-    att_raw = await db.attendance.aggregate(att_pipeline).to_list(5000)
+    att_raw = await _gd_aggregate(db.session, "attendance", att_pipeline)
     att_data = {}
     for r in att_raw:
         sid = r["_id"]["student_id"]
@@ -963,7 +964,7 @@ async def get_at_risk_students(
         {"$match": {"student_id": {"$in": student_ids}, "type": "negative", "created_at": {"$gte": month_ago_iso}}},
         {"$group": {"_id": "$student_id", "count": {"$sum": 1}}}
     ]
-    behaviour_raw = await db.behaviour_records.aggregate(behaviour_pipeline).to_list(5000)
+    behaviour_raw = await _gd_aggregate(db.session, "behaviour_records", behaviour_pipeline)
     behaviour_counts = {r["_id"]: r["count"] for r in behaviour_raw}
 
     grades_pipeline = [
@@ -974,7 +975,7 @@ async def get_at_risk_students(
             "count": {"$sum": 1}
         }}
     ]
-    grades_raw = await db.grades.aggregate(grades_pipeline).to_list(5000)
+    grades_raw = await _gd_aggregate(db.session, "grades", grades_pipeline)
     grades_data = {r["_id"]: r for r in grades_raw}
 
     for student in students:
@@ -1031,9 +1032,7 @@ async def get_at_risk_students(
 
     class_ids_needed = list(set(r.get("class_id") for r in at_risk if r.get("class_id")))
     if class_ids_needed:
-        classes_docs = await db.classes.find(
-            {"id": {"$in": class_ids_needed}}, {"_id": 0, "id": 1, "name": 1}
-        ).to_list(200)
+        classes_docs = await gd_find(db.session, "classes", {"id": {"$in": class_ids_needed}}, limit=200)
         class_name_map = {c["id"]: c.get("name", "") for c in classes_docs}
     else:
         class_name_map = {}
@@ -1064,7 +1063,7 @@ async def hakim_student_risk(
     school_id = current_user.get("tenant_id")
     if not school_id:
         raise HTTPException(400, "لم يتم تحديد المدرسة")
-    student = await db.students.find_one({"id": student_id, "school_id": school_id})
+    student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id})
     if not student:
         raise HTTPException(404, "الطالب غير موجود في هذه المدرسة")
     return await hakim_engine.analyze_student_risk(student_id, school_id, days)
@@ -1078,7 +1077,7 @@ async def hakim_class_participation(
     school_id = current_user.get("tenant_id")
     if not school_id:
         raise HTTPException(400, "لم يتم تحديد المدرسة")
-    cls = await db.classes.find_one({"id": class_id, "school_id": school_id})
+    cls = await gd_find_one(db.session, "classes", {"id": class_id, "school_id": school_id})
     if not cls:
         raise HTTPException(404, "الفصل غير موجود في هذه المدرسة")
     return await hakim_engine.analyze_class_participation(class_id, school_id, days)
@@ -1092,7 +1091,7 @@ async def hakim_student_behaviour(
     school_id = current_user.get("tenant_id")
     if not school_id:
         raise HTTPException(400, "لم يتم تحديد المدرسة")
-    student = await db.students.find_one({"id": student_id, "school_id": school_id})
+    student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id})
     if not student:
         raise HTTPException(404, "الطالب غير موجود في هذه المدرسة")
     return await hakim_engine.analyze_student_behaviour_patterns(student_id, school_id, days)
@@ -1106,9 +1105,9 @@ async def hakim_teacher_analytics(
     school_id = current_user.get("tenant_id")
     if not school_id:
         raise HTTPException(400, "لم يتم تحديد المدرسة")
-    teacher = await db.teachers.find_one({"id": teacher_id, "school_id": school_id})
+    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id, "school_id": school_id})
     if not teacher:
-        teacher_user = await db.users.find_one({"teacher_id": teacher_id, "tenant_id": school_id})
+        teacher_user = await gd_find_one(db.session, "users", {"teacher_id": teacher_id, "tenant_id": school_id})
         if not teacher_user:
             raise HTTPException(404, "المعلم غير موجود في هذه المدرسة")
     role = current_user.get("role", "")
@@ -1125,7 +1124,7 @@ async def hakim_class_health(
     school_id = current_user.get("tenant_id")
     if not school_id:
         raise HTTPException(400, "لم يتم تحديد المدرسة")
-    cls = await db.classes.find_one({"id": class_id, "school_id": school_id})
+    cls = await gd_find_one(db.session, "classes", {"id": class_id, "school_id": school_id})
     if not cls:
         raise HTTPException(404, "الفصل غير موجود في هذه المدرسة")
     return await hakim_engine.analyze_class_health(class_id, school_id, days)
@@ -1155,7 +1154,7 @@ async def hakim_full_analysis_by_id(
         user_school = current_user.get("tenant_id")
         if user_school != school_id:
             raise HTTPException(403, "لا يمكنك تحليل مدرسة أخرى")
-    school = await db.schools.find_one({"id": school_id})
+    school = await gd_find_one(db.session, "schools", {"id": school_id})
     if not school:
         raise HTTPException(404, "المدرسة غير موجودة")
     return await hakim_engine.run_full_analysis(school_id, days)
@@ -1197,7 +1196,7 @@ async def hakim_auto_interventions_by_school(
     days: int = Query(30, ge=7, le=365),
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
 ):
-    school = await db.schools.find_one({"id": school_id})
+    school = await gd_find_one(db.session, "schools", {"id": school_id})
     if not school:
         raise HTTPException(404, "المدرسة غير موجودة")
     return await hakim_engine.execute_auto_interventions(school_id, days)
@@ -1215,9 +1214,7 @@ async def hakim_get_interventions(
     query = {"school_id": school_id}
     if status:
         query["status"] = status
-    interventions = await db.ai_interventions.find(
-        query, {"_id": 0}
-    ).sort("created_at", -1).to_list(limit)
+    interventions = await gd_find(db.session, "ai_interventions", query, order_by="created_at", desc_order=True, limit=limit)
     return {"interventions": interventions, "total": len(interventions)}
 
 
@@ -1231,9 +1228,7 @@ async def hakim_update_intervention_status(
     ])),
 ):
     school_id = current_user.get("tenant_id")
-    intervention = await db.ai_interventions.find_one(
-        {"id": intervention_id, "school_id": school_id}
-    )
+    intervention = await gd_find_one(db.session, "ai_interventions", {"id": intervention_id, "school_id": school_id})
     if not intervention:
         raise HTTPException(404, "خطة التدخل غير موجودة")
 
@@ -1244,10 +1239,9 @@ async def hakim_update_intervention_status(
     if notes:
         follow_up["notes"] = notes
 
-    await db.ai_interventions.update_one(
-        {"id": intervention_id},
-        {"$set": update, "$push": {"follow_ups": follow_up}}
-    )
+    update["follow_ups"] = (await gd_find_one(db.session, "ai_interventions", {"id": intervention_id}) or {}).get("follow_ups", []) or []
+    update["follow_ups"].append(follow_up)
+    await gd_update_one(db.session, "ai_interventions", {"id": intervention_id}, update)
     return {"success": True, "message": "تم تحديث حالة خطة التدخل"}
 
 
@@ -1262,7 +1256,7 @@ async def hakim_student_improvement_plan(
     school_id = current_user.get("tenant_id")
     if not school_id:
         raise HTTPException(400, "لم يتم تحديد المدرسة")
-    student = await db.students.find_one({"id": student_id, "school_id": school_id})
+    student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id})
     if not student:
         raise HTTPException(404, "الطالب غير موجود في هذه المدرسة")
     return await hakim_engine.generate_improvement_plan(student_id, school_id, days)
@@ -1276,7 +1270,7 @@ async def hakim_student_ai_plans(
     school_id = current_user.get("tenant_id")
     if not school_id:
         raise HTTPException(400, "لم يتم تحديد المدرسة")
-    student = await db.students.find_one({"id": student_id, "school_id": school_id})
+    student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id})
     if not student:
         raise HTTPException(404, "الطالب غير موجود في هذه المدرسة")
 
@@ -1376,7 +1370,7 @@ async def hakim_student_ai_plans(
         "generated_at": generated_at,
     }
     try:
-        await db.plan_history.insert_one(history_doc)
+        await gd_insert(db.session, "plan_history", history_doc)
     except Exception as e:
         print(f"[WARN] Failed to save plan history: {e}")
 
@@ -1400,9 +1394,7 @@ async def get_student_plan_history(
     school_id = current_user.get("tenant_id")
     if not school_id:
         raise HTTPException(400, "لم يتم تحديد المدرسة")
-    records = await db.plan_history.find(
-        {"student_id": student_id, "school_id": school_id}
-    ).sort("generated_at", -1).to_list(50)
+    records = await gd_find(db.session, "plan_history", {"student_id": student_id, "school_id": school_id}, order_by="generated_at", desc_order=True, limit=50)
     for r in records:
         r.pop("_id", None)
     return records
@@ -1434,28 +1426,28 @@ async def export_student_plans_docx(
         raise HTTPException(400, "لا توجد خطط للتصدير")
 
     school_id = current_user.get("tenant_id")
-    student = await db.students.find_one({"id": student_id, "school_id": school_id}, {"_id": 0})
+    student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id})
     if not student:
         raise HTTPException(404, "الطالب غير موجود")
 
-    school = await db.schools.find_one({"id": school_id}, {"_id": 0})
+    school = await gd_find_one(db.session, "schools", {"id": school_id})
     school_name = school.get("name", "") if school else ""
 
     class_name = ""
     class_id = student.get("class_id")
     if class_id:
-        class_doc = await db.classes.find_one({"id": class_id}, {"_id": 0})
+        class_doc = await gd_find_one(db.session, "classes", {"id": class_id})
         class_name = class_doc.get("name", "") if class_doc else ""
 
     academic_year_name = ""
-    ay_doc = await db.academic_years.find_one({"school_id": school_id, "is_current": True}, {"_id": 0})
+    ay_doc = await gd_find_one(db.session, "academic_years", {"school_id": school_id, "is_current": True})
     if ay_doc:
         academic_year_name = ay_doc.get("name", "")
 
     teacher_name = ""
     user_role = current_user.get("role", "")
     if user_role == "teacher":
-        teacher_doc = await db.teachers.find_one({"user_id": current_user.get("sub")}, {"_id": 0})
+        teacher_doc = await gd_find_one(db.session, "teachers", {"user_id": current_user.get("sub")})
         teacher_name = teacher_doc.get("full_name", "") if teacher_doc else current_user.get("full_name", "")
     else:
         teacher_name = current_user.get("full_name", user_role)
@@ -1727,28 +1719,28 @@ async def export_student_plans_pdf(
         raise HTTPException(400, "لا توجد خطط للتصدير")
 
     school_id = current_user.get("tenant_id")
-    student = await db.students.find_one({"id": student_id, "school_id": school_id}, {"_id": 0})
+    student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id})
     if not student:
         raise HTTPException(404, "الطالب غير موجود")
 
-    school = await db.schools.find_one({"id": school_id}, {"_id": 0})
+    school = await gd_find_one(db.session, "schools", {"id": school_id})
     school_name = school.get("name", "") if school else ""
 
     class_name = ""
     class_id = student.get("class_id")
     if class_id:
-        class_doc = await db.classes.find_one({"id": class_id}, {"_id": 0})
+        class_doc = await gd_find_one(db.session, "classes", {"id": class_id})
         class_name = class_doc.get("name", "") if class_doc else ""
 
     academic_year_name = ""
-    ay_doc = await db.academic_years.find_one({"school_id": school_id, "is_current": True}, {"_id": 0})
+    ay_doc = await gd_find_one(db.session, "academic_years", {"school_id": school_id, "is_current": True})
     if ay_doc:
         academic_year_name = ay_doc.get("name", "")
 
     teacher_name = ""
     user_role = current_user.get("role", "")
     if user_role == "teacher":
-        teacher_doc = await db.teachers.find_one({"user_id": current_user.get("sub")}, {"_id": 0})
+        teacher_doc = await gd_find_one(db.session, "teachers", {"user_id": current_user.get("sub")})
         teacher_name = teacher_doc.get("full_name", "") if teacher_doc else current_user.get("full_name", "")
     else:
         teacher_name = current_user.get("full_name", user_role)
@@ -1991,7 +1983,7 @@ async def hakim_periodic_scan_by_school(
     days: int = Query(30, ge=7, le=365),
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
 ):
-    school = await db.schools.find_one({"id": school_id})
+    school = await gd_find_one(db.session, "schools", {"id": school_id})
     if not school:
         raise HTTPException(404, "المدرسة غير موجودة")
     return await hakim_engine.run_periodic_scan(school_id, days)
@@ -2003,38 +1995,26 @@ async def get_student_longitudinal(
     current_user: dict = Depends(get_current_user),
 ):
     school_id = current_user.get("tenant_id")
-    student = await db.students.find_one({"id": student_id, "school_id": school_id}, {"_id": 0})
+    student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id})
     if not student:
         raise HTTPException(404, "الطالب غير موجود")
 
-    attendance_records = await db.attendance.find(
-        {"student_id": student_id, "school_id": school_id}
-    ).to_list(10000)
+    attendance_records = await gd_find(db.session, "attendance", {"student_id": student_id, "school_id": school_id}, limit=10000)
 
-    behaviour_records = await db.behaviour_records.find(
-        {"student_id": student_id, "school_id": school_id}
-    ).to_list(5000)
+    behaviour_records = await gd_find(db.session, "behaviour_records", {"student_id": student_id, "school_id": school_id}, limit=5000)
 
-    activities = await db.student_activities.find(
-        {"student_id": student_id, "school_id": school_id}
-    ).to_list(500)
+    activities = await gd_find(db.session, "student_activities", {"student_id": student_id, "school_id": school_id}, limit=500)
 
-    certificates = await db.student_certificates.find(
-        {"student_id": student_id, "school_id": school_id}
-    ).to_list(500)
+    certificates = await gd_find(db.session, "student_certificates", {"student_id": student_id, "school_id": school_id}, limit=500)
 
-    grades_records = await db.grades.find(
-        {"student_id": student_id, "school_id": school_id}
-    ).to_list(5000)
+    grades_records = await gd_find(db.session, "grades", {"student_id": student_id, "school_id": school_id}, limit=5000)
 
-    skill_records = await db.student_skills.find(
-        {"student_id": student_id, "school_id": school_id}
-    ).to_list(2000)
+    skill_records = await gd_find(db.session, "student_skills", {"student_id": student_id, "school_id": school_id}, limit=2000)
 
-    classes = await db.classes.find({"school_id": school_id}, {"_id": 0}).to_list(500)
+    classes = await gd_find(db.session, "classes", {"school_id": school_id}, limit=500)
     class_map = {c["id"]: c.get("name", "") for c in classes}
 
-    teachers = await db.teachers.find({"school_id": school_id}, {"_id": 0}).to_list(500)
+    teachers = await gd_find(db.session, "teachers", {"school_id": school_id}, limit=500)
     teacher_map = {t.get("id", ""): t.get("full_name", "") for t in teachers}
 
     def extract_year(date_str):
@@ -2224,15 +2204,15 @@ async def export_student_full_profile_docx(
     sections = body.get("sections", [])
 
     school_id = current_user.get("tenant_id")
-    student = await db.students.find_one({"id": student_id, "school_id": school_id}, {"_id": 0})
+    student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id})
     if not student:
         raise HTTPException(404, "الطالب غير موجود")
 
-    school = await db.schools.find_one({"id": school_id}, {"_id": 0})
+    school = await gd_find_one(db.session, "schools", {"id": school_id})
     school_name = school.get("name", "") if school else ""
     class_name = ""
     if student.get("class_id"):
-        cls = await db.classes.find_one({"id": student["class_id"], "school_id": school_id}, {"_id": 0})
+        cls = await gd_find_one(db.session, "classes", {"id": student["class_id"], "school_id": school_id})
         class_name = cls.get("name", "") if cls else ""
 
     export_date = datetime.now().strftime("%Y-%m-%d")
@@ -2323,13 +2303,13 @@ async def export_student_full_profile_docx(
 
     if "academic" in sections:
         add_section_title("الأداء الأكاديمي — Academic Performance")
-        att_records = await db.attendance.find({"student_id": student_id, "school_id": school_id}).to_list(5000)
+        att_records = await gd_find(db.session, "attendance", {"student_id": student_id, "school_id": school_id}, limit=5000)
         total_att = len(att_records)
         present_c = sum(1 for r in att_records if r.get("status") in ("present", "late"))
         att_rate = round((present_c / max(total_att, 1)) * 100, 1)
         add_key_value("نسبة الحضور", f"{att_rate}%")
 
-        gr = await db.grades.find({"student_id": student_id, "school_id": school_id}).to_list(5000)
+        gr = await gd_find(db.session, "grades", {"student_id": student_id, "school_id": school_id}, limit=5000)
         if gr:
             percs = [g.get("percentage", 0) for g in gr if g.get("percentage") is not None]
             avg = round(sum(percs) / max(len(percs), 1), 1) if percs else 0
@@ -2351,7 +2331,7 @@ async def export_student_full_profile_docx(
 
     if "behaviour" in sections:
         add_section_title("السلوك — Behavior Record")
-        beh = await db.behaviour_records.find({"student_id": student_id, "school_id": school_id}).sort("incident_date", -1).to_list(500)
+        beh = await gd_find(db.session, "behaviour_records", {"student_id": student_id, "school_id": school_id}, order_by="incident_date", desc_order=True, limit=500)
         pos = sum(1 for b in beh if b.get("category") == "positive")
         neg = sum(1 for b in beh if b.get("category") == "negative")
         add_key_value("إجمالي السجلات", len(beh))
@@ -2385,8 +2365,8 @@ async def export_student_full_profile_docx(
 
     if "activities" in sections:
         add_section_title("الأنشطة والإنجازات — Activities & Achievements")
-        acts = await db.student_activities.find({"student_id": student_id, "school_id": school_id}).to_list(200)
-        certs = await db.student_certificates.find({"student_id": student_id, "school_id": school_id}).to_list(200)
+        acts = await gd_find(db.session, "student_activities", {"student_id": student_id, "school_id": school_id}, limit=200)
+        certs = await gd_find(db.session, "student_certificates", {"student_id": student_id, "school_id": school_id}, limit=200)
         add_key_value("عدد الأنشطة", len(acts))
         add_key_value("عدد الشهادات", len(certs))
         if acts:
@@ -2407,7 +2387,7 @@ async def export_student_full_profile_docx(
 
     if "plans" in sections:
         add_section_title("الخطط العلاجية والإثرائية — Plans")
-        plans = await db.student_ai_plans.find_one({"student_id": student_id, "school_id": school_id}, {"_id": 0})
+        plans = await gd_find_one(db.session, "student_ai_plans", {"student_id": student_id, "school_id": school_id})
         if plans:
             rp = plans.get("remedial_plan")
             ep = plans.get("enrichment_plan")
@@ -2509,15 +2489,15 @@ async def export_student_full_profile_pdf(
     sections = body.get("sections", [])
 
     school_id = current_user.get("tenant_id")
-    student = await db.students.find_one({"id": student_id, "school_id": school_id}, {"_id": 0})
+    student = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id})
     if not student:
         raise HTTPException(404, "الطالب غير موجود")
 
-    school = await db.schools.find_one({"id": school_id}, {"_id": 0})
+    school = await gd_find_one(db.session, "schools", {"id": school_id})
     school_name = school.get("name", "") if school else ""
     class_name = ""
     if student.get("class_id"):
-        cls = await db.classes.find_one({"id": student["class_id"], "school_id": school_id}, {"_id": 0})
+        cls = await gd_find_one(db.session, "classes", {"id": student["class_id"], "school_id": school_id})
         class_name = cls.get("name", "") if cls else ""
 
     export_date = datetime.now().strftime("%Y-%m-%d")
@@ -2575,12 +2555,12 @@ async def export_student_full_profile_pdf(
 
     if "academic" in sections:
         pdf_section("الأداء الأكاديمي")
-        att_records = await db.attendance.find({"student_id": student_id, "school_id": school_id}).to_list(5000)
+        att_records = await gd_find(db.session, "attendance", {"student_id": student_id, "school_id": school_id}, limit=5000)
         total_att = len(att_records)
         present_c = sum(1 for r in att_records if r.get("status") in ("present", "late"))
         att_rate = round((present_c / max(total_att, 1)) * 100, 1)
         pdf_kv("نسبة الحضور", f"{att_rate}%")
-        gr = await db.grades.find({"student_id": student_id, "school_id": school_id}).to_list(5000)
+        gr = await gd_find(db.session, "grades", {"student_id": student_id, "school_id": school_id}, limit=5000)
         if gr:
             percs = [g.get("percentage", 0) for g in gr if g.get("percentage") is not None]
             avg = round(sum(percs) / max(len(percs), 1), 1) if percs else 0
@@ -2596,7 +2576,7 @@ async def export_student_full_profile_pdf(
 
     if "behaviour" in sections:
         pdf_section("السلوك")
-        beh = await db.behaviour_records.find({"student_id": student_id, "school_id": school_id}).to_list(500)
+        beh = await gd_find(db.session, "behaviour_records", {"student_id": student_id, "school_id": school_id}, limit=500)
         pos = sum(1 for b in beh if b.get("category") == "positive")
         neg = sum(1 for b in beh if b.get("category") == "negative")
         pdf_kv("إجمالي السجلات", len(beh))
@@ -2605,8 +2585,8 @@ async def export_student_full_profile_pdf(
 
     if "activities" in sections:
         pdf_section("الأنشطة والإنجازات")
-        acts = await db.student_activities.find({"student_id": student_id, "school_id": school_id}).to_list(200)
-        certs = await db.student_certificates.find({"student_id": student_id, "school_id": school_id}).to_list(200)
+        acts = await gd_find(db.session, "student_activities", {"student_id": student_id, "school_id": school_id}, limit=200)
+        certs = await gd_find(db.session, "student_certificates", {"student_id": student_id, "school_id": school_id}, limit=200)
         pdf_kv("عدد الأنشطة", len(acts))
         pdf_kv("عدد الشهادات", len(certs))
         for a in acts:
@@ -2616,7 +2596,7 @@ async def export_student_full_profile_pdf(
 
     if "plans" in sections:
         pdf_section("الخطط العلاجية والإثرائية")
-        plans = await db.student_ai_plans.find_one({"student_id": student_id, "school_id": school_id}, {"_id": 0})
+        plans = await gd_find_one(db.session, "student_ai_plans", {"student_id": student_id, "school_id": school_id})
         if plans:
             rp = plans.get("remedial_plan")
             ep = plans.get("enrichment_plan")

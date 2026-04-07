@@ -10,6 +10,8 @@ from fastapi import APIRouter, HTTPException, Query
 from typing import List, Optional
 from pydantic import BaseModel
 import logging
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
+
 
 logger = logging.getLogger("nassaq.official_curriculum_routes")
 
@@ -112,12 +114,12 @@ async def get_curriculum_stats():
     if db is None:
         raise HTTPException(status_code=500, detail="Database not configured")
     
-    stages = await db.official_curriculum_stages.count_documents({})
-    tracks = await db.official_curriculum_tracks.count_documents({})
-    grades = await db.official_curriculum_grades.count_documents({})
-    subjects = await db.official_curriculum_subjects.count_documents({})
-    details = await db.official_curriculum_grade_subjects.count_documents({})
-    ranks = await db.official_teacher_rank_loads.count_documents({})
+    stages = await gd_count(db.session, "official_curriculum_stages", {})
+    tracks = await gd_count(db.session, "official_curriculum_tracks", {})
+    grades = await gd_count(db.session, "official_curriculum_grades", {})
+    subjects = await gd_count(db.session, "official_curriculum_subjects", {})
+    details = await gd_count(db.session, "official_curriculum_grade_subjects", {})
+    ranks = await gd_count(db.session, "official_teacher_rank_loads", {})
     
     return {
         "stages": stages,
@@ -141,9 +143,7 @@ async def get_stages():
     if db is None:
         raise HTTPException(status_code=500, detail="Database not configured")
     
-    stages = await db.official_curriculum_stages.find(
-        {}, {"_id": 0}
-    ).sort("order", 1).to_list(length=10)
+    stages = await gd_find(db.session, "official_curriculum_stages", {}, order_by="order", desc_order=False, limit=10)
     
     return stages
 
@@ -161,9 +161,7 @@ async def get_tracks(stage_id: Optional[str] = None):
     if stage_id:
         query["applicable_stages"] = stage_id
     
-    tracks = await db.official_curriculum_tracks.find(
-        query, {"_id": 0}
-    ).sort("order", 1).to_list(length=20)
+    tracks = await gd_find(db.session, "official_curriculum_tracks", query, order_by="order", desc_order=False, limit=20)
     
     return tracks
 
@@ -186,19 +184,17 @@ async def get_grades(
     if track_id:
         query["track_id"] = track_id
     
-    grades = await db.official_curriculum_grades.find(
-        query, {"_id": 0}
-    ).sort("order", 1).to_list(length=100)
+    grades = await gd_find(db.session, "official_curriculum_grades", query, order_by="order", desc_order=False, limit=100)
     
     # Enrich with stage and track names
     stages_map = {}
     tracks_map = {}
     
-    stages = await db.official_curriculum_stages.find({}, {"_id": 0}).to_list(length=10)
+    stages = await gd_find(db.session, "official_curriculum_stages", {}, limit=10)
     for s in stages:
         stages_map[s["id"]] = s["name_ar"]
     
-    tracks = await db.official_curriculum_tracks.find({}, {"_id": 0}).to_list(length=20)
+    tracks = await gd_find(db.session, "official_curriculum_tracks", {}, limit=20)
     for t in tracks:
         tracks_map[t["id"]] = t["name_ar"]
     
@@ -222,9 +218,7 @@ async def get_subjects(category: Optional[str] = None):
     if category:
         query["category"] = category
     
-    subjects = await db.official_curriculum_subjects.find(
-        query, {"_id": 0}
-    ).sort("name_ar", 1).to_list(length=200)
+    subjects = await gd_find(db.session, "official_curriculum_subjects", query, order_by="name_ar", desc_order=False, limit=200)
     
     return subjects
 
@@ -238,7 +232,7 @@ async def get_subject_categories():
     if db is None:
         raise HTTPException(status_code=500, detail="Database not configured")
     
-    categories = await db.official_curriculum_subjects.distinct("category")
+    categories = await gd_distinct(db.session, "official_curriculum_subjects", "category")
     
     category_names = {
         "islamic": "التربية الإسلامية",
@@ -275,19 +269,15 @@ async def get_grade_subjects(grade_id: str):
         raise HTTPException(status_code=500, detail="Database not configured")
     
     # Get the grade info
-    grade = await db.official_curriculum_grades.find_one(
-        {"id": grade_id}, {"_id": 0}
-    )
+    grade = await gd_find_one(db.session, "official_curriculum_grades", {"id": grade_id})
     if not grade:
         raise HTTPException(status_code=404, detail="Grade not found")
     
     # Get subject details for this grade
-    details = await db.official_curriculum_grade_subjects.find(
-        {"grade_id": grade_id}, {"_id": 0}
-    ).sort("display_order", 1).to_list(length=50)
+    details = await gd_find(db.session, "official_curriculum_grade_subjects", {"grade_id": grade_id}, order_by="display_order", desc_order=False, limit=50)
     
     # Get subjects map
-    subjects = await db.official_curriculum_subjects.find({}, {"_id": 0}).to_list(length=200)
+    subjects = await gd_find(db.session, "official_curriculum_subjects", {}, limit=200)
     subjects_map = {s["id"]: s for s in subjects}
     
     # Enrich details with subject names
@@ -331,9 +321,7 @@ async def get_teacher_rank_loads():
     if db is None:
         raise HTTPException(status_code=500, detail="Database not configured")
     
-    ranks = await db.official_teacher_rank_loads.find(
-        {}, {"_id": 0}
-    ).sort("order", 1).to_list(length=20)
+    ranks = await gd_find(db.session, "official_teacher_rank_loads", {}, order_by="order", desc_order=False, limit=20)
     
     # Normalize field names for frontend compatibility
     normalized = []
@@ -356,24 +344,18 @@ async def get_stage_full_curriculum(stage_id: str):
         raise HTTPException(status_code=500, detail="Database not configured")
     
     # Get stage
-    stage = await db.official_curriculum_stages.find_one(
-        {"id": stage_id}, {"_id": 0}
-    )
+    stage = await gd_find_one(db.session, "official_curriculum_stages", {"id": stage_id})
     if not stage:
         raise HTTPException(status_code=404, detail="Stage not found")
     
     # Get tracks for this stage
-    tracks = await db.official_curriculum_tracks.find(
-        {"stage_id": stage_id}, {"_id": 0}
-    ).sort("order", 1).to_list(length=20)
+    tracks = await gd_find(db.session, "official_curriculum_tracks", {"stage_id": stage_id}, order_by="order", desc_order=False, limit=20)
     
     # Get all grades for this stage
-    grades = await db.official_curriculum_grades.find(
-        {"stage_id": stage_id}, {"_id": 0}
-    ).sort("order", 1).to_list(length=50)
+    grades = await gd_find(db.session, "official_curriculum_grades", {"stage_id": stage_id}, order_by="order", desc_order=False, limit=50)
     
     # Get subjects map
-    subjects = await db.official_curriculum_subjects.find({}, {"_id": 0}).to_list(length=200)
+    subjects = await gd_find(db.session, "official_curriculum_subjects", {}, limit=200)
     subjects_map = {s["id"]: s for s in subjects}
     
     # Build curriculum by track
@@ -385,9 +367,7 @@ async def get_stage_full_curriculum(stage_id: str):
         grades_with_subjects = []
         for grade in track_grades:
             # Get subject details for this grade
-            details = await db.official_curriculum_grade_subjects.find(
-                {"grade_id": grade["id"]}, {"_id": 0}
-            ).sort("display_order", 1).to_list(length=50)
+            details = await gd_find(db.session, "official_curriculum_grade_subjects", {"grade_id": grade["id"]}, order_by="display_order", desc_order=False, limit=50)
             
             # Enrich with subject names
             enriched_subjects = []
@@ -435,9 +415,7 @@ async def get_complete_curriculum():
         raise HTTPException(status_code=500, detail="Database not configured")
     
     # Get all stages
-    stages = await db.official_curriculum_stages.find(
-        {}, {"_id": 0}
-    ).sort("order", 1).to_list(length=10)
+    stages = await gd_find(db.session, "official_curriculum_stages", {}, order_by="order", desc_order=False, limit=10)
     
     result = []
     

@@ -22,6 +22,8 @@ from dependencies import (
     hakim_engine, reporting_engine, export_engine, session_engine,
     REPORT_TYPES, generate_student_qr_code
 )
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_aggregate
+
 from engines.attendance_engine import AttendanceEngine
 
 _attendance_engine = AttendanceEngine(db)
@@ -126,23 +128,23 @@ async def create_attendance(
         raise HTTPException(status_code=403, detail="Not authorized to record attendance")
     
     # Get student info
-    student = await db.students.find_one({"id": attendance.student_id}, {"_id": 0})
+    student = await gd_find_one(db.session, "students", {"id": attendance.student_id})
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
     
     # Get class info
-    class_info = await db.classes.find_one({"id": attendance.class_id}, {"_id": 0})
+    class_info = await gd_find_one(db.session, "classes", {"id": attendance.class_id})
     
     # Get subject info if provided
     subject_name = None
     if attendance.subject_id:
-        subject = await db.subjects.find_one({"id": attendance.subject_id}, {"_id": 0})
+        subject = await gd_find_one(db.session, "subjects", {"id": attendance.subject_id})
         subject_name = subject.get('name') if subject else None
     
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     
     # Check if attendance already exists for this student, class, date
-    existing = await db.attendance.find_one({
+    existing = await gd_find_one(db.session, "attendance", {
         "student_id": attendance.student_id,
         "class_id": attendance.class_id,
         "date": today,
@@ -151,15 +153,12 @@ async def create_attendance(
     
     if existing:
         old_status = existing.get('status')
-        await db.attendance.update_one(
-            {"id": existing['id']},
-            {"$set": {
+        await gd_update_one(db.session, "attendance", {"id": existing['id']}, {
                 "status": attendance.status,
                 "notes": attendance.notes,
                 "recorded_by": current_user['id'],
                 "recorded_at": datetime.now(timezone.utc).isoformat()
-            }}
-        )
+            })
         
         await audit_engine.log(
             action=AuditAction.ATTENDANCE_RECORDED.value,
@@ -179,7 +178,7 @@ async def create_attendance(
             actor_email=current_user.get("email"),
         )
         
-        updated = await db.attendance.find_one({"id": existing['id']}, {"_id": 0})
+        updated = await gd_find_one(db.session, "attendance", {"id": existing['id']})
         updated['student_name'] = student.get('full_name')
         updated['class_name'] = class_info.get('name') if class_info else None
         updated['subject_name'] = subject_name
@@ -203,7 +202,7 @@ async def create_attendance(
         "tenant_id": current_user.get('tenant_id')
     }
     
-    await db.attendance.insert_one(attendance_doc)
+    await gd_insert(db.session, "attendance", attendance_doc)
     
     # Create attendance event for notifications/analytics
     event_doc = {
@@ -217,7 +216,7 @@ async def create_attendance(
         "created_at": datetime.now(timezone.utc).isoformat(),
         "tenant_id": current_user.get('tenant_id')
     }
-    await db.events.insert_one(event_doc)
+    await gd_insert(db.session, "events", event_doc)
     
     await audit_engine.log(
         action=AuditAction.ATTENDANCE_RECORDED.value,
@@ -279,15 +278,13 @@ async def create_bulk_attendance(
     absent_late = result.get("absent_late", [])
     if absent_late:
         al_ids = [s[0] for s in absent_late]
-        students_list = await db.students.find(
-            {"id": {"$in": al_ids}, "tenant_id": t_id}, {"_id": 0, "id": 1, "full_name": 1, "parent_phone": 1}
-        ).to_list(len(al_ids))
+        students_list = await gd_find(db.session, "students", {"id": {"$in": al_ids}, "tenant_id": t_id}, limit=len(al_ids))
         student_map = {s["id"]: s for s in students_list}
 
-        principal = await db.users.find_one({
+        principal = await gd_find_one(db.session, "users", {
             "role": "school_principal",
             "tenant_id": t_id,
-        }, {"_id": 0, "id": 1})
+        })
 
         for student_id, att_status in absent_late:
             try:
@@ -315,9 +312,9 @@ async def create_bulk_attendance(
                     )
 
                 if si.get('parent_phone'):
-                    parent_user = await db.users.find_one({
+                    parent_user = await gd_find_one(db.session, "users", {
                         "phone": si['parent_phone'], "role": "parent"
-                    }, {"_id": 0, "id": 1})
+                    })
                     if parent_user:
                         await create_notification_internal(
                             title=f"تنبيه حضور ابنك/ابنتك",
@@ -391,7 +388,7 @@ async def get_class_attendance(
         query['tenant_id'] = current_user['tenant_id']
     
     limit = 10000 if (start_date or end_date) else 1000
-    records = await db.attendance.find(query, {"_id": 0}).to_list(limit)
+    records = await gd_find(db.session, "attendance", query, limit=limit)
     
     student_ids = list({r['student_id'] for r in records if r.get('student_id')})
     class_ids = list({r['class_id'] for r in records if r.get('class_id')})
@@ -403,10 +400,10 @@ async def get_class_attendance(
     async def _empty_list():
         return []
     
-    students_coro = db.students.find({"id": {"$in": student_ids}}, {"_id": 0, "id": 1, "full_name": 1}).to_list(len(student_ids)) if student_ids else _empty_list()
-    classes_coro = db.classes.find({"id": {"$in": class_ids}}, {"_id": 0, "id": 1, "name": 1}).to_list(len(class_ids)) if class_ids else _empty_list()
-    teachers_coro = db.users.find({"id": {"$in": teacher_ids}}, {"_id": 0, "id": 1, "full_name": 1}).to_list(len(teacher_ids)) if teacher_ids else _empty_list()
-    subjects_coro = db.subjects.find({"id": {"$in": subject_ids}}, {"_id": 0, "id": 1, "name": 1}).to_list(len(subject_ids)) if subject_ids else _empty_list()
+    students_coro = gd_find(db.session, "students", {"id": {"$in": student_ids}}, limit=len(student_ids)) if student_ids else _empty_list()
+    classes_coro = gd_find(db.session, "classes", {"id": {"$in": class_ids}}, limit=len(class_ids)) if class_ids else _empty_list()
+    teachers_coro = gd_find(db.session, "users", {"id": {"$in": teacher_ids}}, limit=len(teacher_ids)) if teacher_ids else _empty_list()
+    subjects_coro = gd_find(db.session, "subjects", {"id": {"$in": subject_ids}}, limit=len(subject_ids)) if subject_ids else _empty_list()
     
     students_list, classes_list, teachers_list, subjects_list = await asyncio.gather(
         students_coro, classes_coro, teachers_coro, subjects_coro
@@ -436,7 +433,7 @@ async def get_student_attendance_history(
     current_user: dict = Depends(get_current_user)
 ):
     """Get attendance history for a specific student"""
-    student = await db.students.find_one({"id": student_id}, {"_id": 0})
+    student = await gd_find_one(db.session, "students", {"id": student_id})
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
     
@@ -449,7 +446,7 @@ async def get_student_attendance_history(
         else:
             query['date'] = {"$lte": end_date}
     
-    records = await db.attendance.find(query, {"_id": 0}).sort("date", -1).to_list(1000)
+    records = await gd_find(db.session, "attendance", query, order_by="date", desc_order=True, limit=1000)
     
     # Calculate statistics
     total_days = len(set(r['date'] for r in records))
@@ -463,8 +460,8 @@ async def get_student_attendance_history(
     # Enrich records
     enriched_records = []
     for record in records:
-        class_info = await db.classes.find_one({"id": record['class_id']}, {"_id": 0})
-        teacher = await db.users.find_one({"id": record.get('teacher_id')}, {"_id": 0})
+        class_info = await gd_find_one(db.session, "classes", {"id": record['class_id']})
+        teacher = await gd_find_one(db.session, "users", {"id": record.get('teacher_id')})
         
         record['student_name'] = student.get('full_name')
         record['class_name'] = class_info.get('name') if class_info else None
@@ -494,16 +491,16 @@ async def get_daily_attendance_report(
     if not date:
         date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     
-    class_info = await db.classes.find_one({"id": class_id}, {"_id": 0})
+    class_info = await gd_find_one(db.session, "classes", {"id": class_id})
     if not class_info:
         raise HTTPException(status_code=404, detail="Class not found")
     
     # Get all students in this class
-    students = await db.students.find({"class_id": class_id}, {"_id": 0}).to_list(100)
+    students = await gd_find(db.session, "students", {"class_id": class_id}, limit=100)
     total_students = len(students)
     
     # Get attendance records for this date
-    records = await db.attendance.find({"class_id": class_id, "date": date}, {"_id": 0}).to_list(100)
+    records = await gd_find(db.session, "attendance", {"class_id": class_id, "date": date}, limit=100)
     
     # Calculate summary
     present = len([r for r in records if r['status'] == 'present'])
@@ -517,8 +514,8 @@ async def get_daily_attendance_report(
     # Enrich records
     enriched_records = []
     for record in records:
-        student = await db.students.find_one({"id": record['student_id']}, {"_id": 0})
-        teacher = await db.users.find_one({"id": record.get('teacher_id')}, {"_id": 0})
+        student = await gd_find_one(db.session, "students", {"id": record['student_id']})
+        teacher = await gd_find_one(db.session, "users", {"id": record.get('teacher_id')})
         
         record['student_name'] = student.get('full_name') if student else None
         record['class_name'] = class_info.get('name')
@@ -565,7 +562,7 @@ async def get_attendance_summary(
         else:
             query['date'] = {"$lte": end_date}
     
-    records = await db.attendance.find(query, {"_id": 0}).to_list(10000)
+    records = await gd_find(db.session, "attendance", query, limit=10000)
     
     # Group by date
     dates = list(set(r['date'] for r in records))
@@ -624,18 +621,15 @@ async def get_students_for_attendance(
         date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     
     # Get class info
-    class_info = await db.classes.find_one({"id": class_id}, {"_id": 0})
+    class_info = await gd_find_one(db.session, "classes", {"id": class_id})
     if not class_info:
         raise HTTPException(status_code=404, detail="Class not found")
     
     # Get all students in this class
-    students = await db.students.find({"class_id": class_id}, {"_id": 0}).to_list(100)
+    students = await gd_find(db.session, "students", {"class_id": class_id}, limit=100)
     
     # Get existing attendance records for today
-    existing_records = await db.attendance.find(
-        {"class_id": class_id, "date": date},
-        {"_id": 0}
-    ).to_list(100)
+    existing_records = await gd_find(db.session, "attendance", {"class_id": class_id, "date": date}, limit=100)
     
     # Create a map of student_id -> status
     attendance_map = {r['student_id']: r for r in existing_records}
@@ -696,7 +690,7 @@ async def create_excuse(
     """Create an attendance excuse request"""
     school_id = current_user.get("tenant_id")
 
-    student = await db.students.find_one({"id": data.student_id, "school_id": school_id}, {"_id": 0})
+    student = await gd_find_one(db.session, "students", {"id": data.student_id, "school_id": school_id})
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
 
@@ -716,7 +710,7 @@ async def create_excuse(
         "reviewed_by": None,
         "reviewed_at": None
     }
-    await db.attendance_excuses.insert_one(excuse_doc)
+    await gd_insert(db.session, "attendance_excuses", excuse_doc)
     excuse_doc.pop("_id", None)
     return excuse_doc
 
@@ -732,7 +726,7 @@ async def approve_excuse(
         raise HTTPException(status_code=403, detail="ليس لديك صلاحية للموافقة على الأعذار")
 
     school_id = current_user.get("tenant_id")
-    excuse = await db.attendance_excuses.find_one({"id": excuse_id, "school_id": school_id}, {"_id": 0})
+    excuse = await gd_find_one(db.session, "attendance_excuses", {"id": excuse_id, "school_id": school_id})
     if not excuse:
         raise HTTPException(status_code=404, detail="العذر غير موجود")
 
@@ -740,15 +734,9 @@ async def approve_excuse(
         raise HTTPException(status_code=400, detail="تم مراجعة هذا العذر مسبقاً")
 
     now = datetime.now(timezone.utc).isoformat()
-    await db.attendance_excuses.update_one(
-        {"id": excuse_id},
-        {"$set": {"status": ExcuseStatus.APPROVED.value, "reviewed_by": current_user["id"], "reviewed_at": now}}
-    )
+    await gd_update_one(db.session, "attendance_excuses", {"id": excuse_id}, {"status": ExcuseStatus.APPROVED.value, "reviewed_by": current_user["id"], "reviewed_at": now})
 
-    await db.attendance.update_many(
-        {"student_id": excuse["student_id"], "date": excuse["date"], "status": "absent", "school_id": school_id},
-        {"$set": {"status": "excused", "excuse_id": excuse_id, "updated_at": now}}
-    )
+    await gd_update_many(db.session, "attendance", {"student_id": excuse["student_id"], "date": excuse["date"], "status": "absent", "school_id": school_id}, {"status": "excused", "excuse_id": excuse_id, "updated_at": now})
 
     return {"message": "تمت الموافقة على العذر وتحديث سجل الحضور", "excuse_id": excuse_id}
 
@@ -765,15 +753,12 @@ async def reject_excuse(
         raise HTTPException(status_code=403, detail="ليس لديك صلاحية لرفض الأعذار")
 
     school_id = current_user.get("tenant_id")
-    excuse = await db.attendance_excuses.find_one({"id": excuse_id, "school_id": school_id}, {"_id": 0})
+    excuse = await gd_find_one(db.session, "attendance_excuses", {"id": excuse_id, "school_id": school_id})
     if not excuse:
         raise HTTPException(status_code=404, detail="العذر غير موجود")
 
     now = datetime.now(timezone.utc).isoformat()
-    await db.attendance_excuses.update_one(
-        {"id": excuse_id, "school_id": school_id},
-        {"$set": {"status": ExcuseStatus.REJECTED.value, "reviewed_by": current_user["id"], "reviewed_at": now, "rejection_reason": reason}}
-    )
+    await gd_update_one(db.session, "attendance_excuses", {"id": excuse_id, "school_id": school_id}, {"status": ExcuseStatus.REJECTED.value, "reviewed_by": current_user["id"], "reviewed_at": now, "rejection_reason": reason})
 
     return {"message": "تم رفض العذر", "excuse_id": excuse_id}
 
@@ -793,10 +778,10 @@ async def list_excuses(
     if student_id:
         query["student_id"] = student_id
 
-    excuses = await db.attendance_excuses.find(query, {"_id": 0}).sort("created_at", -1).to_list(100)
+    excuses = await gd_find(db.session, "attendance_excuses", query, order_by="created_at", desc_order=True, limit=100)
 
     for excuse in excuses:
-        student = await db.students.find_one({"id": excuse["student_id"]}, {"_id": 0, "full_name": 1, "class_id": 1})
+        student = await gd_find_one(db.session, "students", {"id": excuse["student_id"]})
         if student:
             excuse["student_name"] = student.get("full_name")
             excuse["class_id"] = student.get("class_id")
@@ -825,11 +810,11 @@ async def get_attendance_alerts(
         {"$sort": {"count": -1}},
         {"$limit": 20}
     ]
-    chronic_students = await db.attendance.aggregate(consecutive_pipeline).to_list(20)
+    chronic_students = await _gd_aggregate(db.session, "attendance", consecutive_pipeline)
 
     for cs in chronic_students:
-        student = await db.students.find_one({"id": cs["_id"]}, {"_id": 0, "full_name": 1, "class_id": 1})
-        class_info = await db.classes.find_one({"id": student.get("class_id")}, {"_id": 0, "name": 1}) if student else None
+        student = await gd_find_one(db.session, "students", {"id": cs["_id"]})
+        class_info = await gd_find_one(db.session, "classes", {"id": student.get("class_id")}) if student else None
         alerts.append({
             "id": str(uuid.uuid4())[:8],
             "type": "consecutive_absence",
@@ -854,13 +839,13 @@ async def get_attendance_alerts(
         {"$sort": {"rate": 1}},
         {"$limit": 20}
     ]
-    low_students = await db.attendance.aggregate(low_att_pipeline).to_list(20)
+    low_students = await _gd_aggregate(db.session, "attendance", low_att_pipeline)
 
     for ls in low_students:
         if any(a["student_id"] == ls["_id"] for a in alerts):
             continue
-        student = await db.students.find_one({"id": ls["_id"]}, {"_id": 0, "full_name": 1, "class_id": 1})
-        class_info = await db.classes.find_one({"id": student.get("class_id")}, {"_id": 0, "name": 1}) if student else None
+        student = await gd_find_one(db.session, "students", {"id": ls["_id"]})
+        class_info = await gd_find_one(db.session, "classes", {"id": student.get("class_id")}) if student else None
         rate = round(ls["rate"], 1)
         alerts.append({
             "id": str(uuid.uuid4())[:8],
@@ -907,11 +892,11 @@ async def get_attendance_statistics(
 
     q["date"] = {"$gte": start}
 
-    total = await db.attendance.count_documents(q)
-    present = await db.attendance.count_documents({**q, "status": "present"})
-    absent = await db.attendance.count_documents({**q, "status": "absent"})
-    late = await db.attendance.count_documents({**q, "status": "late"})
-    excused = await db.attendance.count_documents({**q, "status": "excused"})
+    total = await gd_count(db.session, "attendance", q)
+    present = await gd_count(db.session, "attendance", {**q, "status": "present"})
+    absent = await gd_count(db.session, "attendance", {**q, "status": "absent"})
+    late = await gd_count(db.session, "attendance", {**q, "status": "late"})
+    excused = await gd_count(db.session, "attendance", {**q, "status": "excused"})
 
     daily_pipeline = [
         {"$match": q},
@@ -923,7 +908,7 @@ async def get_attendance_statistics(
         }},
         {"$sort": {"_id": 1}}
     ]
-    daily_stats = await db.attendance.aggregate(daily_pipeline).to_list(90)
+    daily_stats = await _gd_aggregate(db.session, "attendance", daily_pipeline)
 
     return {
         "period": period,

@@ -22,6 +22,8 @@ from dependencies import (
     hakim_engine, reporting_engine, export_engine, session_engine,
     REPORT_TYPES, generate_student_qr_code
 )
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
+
 
 from shared_models import (
     StatusCheck, StatusCheckCreate, TeacherRankEnum, SessionStatusEnum, ScheduleStatusEnum, TimeSlotCreate, TimeSlotResponse, TeacherAssignmentCreate, TeacherAssignmentResponse, SchoolScheduleCreate, SchoolScheduleResponse, ScheduleSessionCreate, ScheduleSessionResponse
@@ -167,7 +169,7 @@ async def generate_timetable_smart(
         school_id = str(school_id).strip()
         
         # Get school settings
-        settings = await db.school_settings.find_one({"school_id": school_id}, {"_id": 0})
+        settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
         if not settings:
             raise HTTPException(status_code=404, detail="لم يتم العثور على إعدادات المدرسة")
         
@@ -229,10 +231,7 @@ async def get_timetable_versions(
         raise HTTPException(status_code=400, detail="معرف المدرسة مطلوب")
     
     # Fetch all timetables
-    timetables = await db.timetables.find(
-        {"school_id": school_id},
-        {"_id": 0}
-    ).sort("created_at", -1).to_list(100)
+    timetables = await gd_find(db.session, "timetables", {"school_id": school_id}, order_by="created_at", desc_order=True, limit=100)
     
     versions = []
     for tt in timetables:
@@ -280,16 +279,10 @@ async def get_active_timetable_sessions(
         raise HTTPException(status_code=400, detail="معرف المدرسة مطلوب")
     
     # Find active (published) timetable first, then draft
-    timetable = await db.timetables.find_one(
-        {"school_id": school_id, "status": "published"},
-        {"_id": 0, "id": 1}
-    )
+    timetable = await gd_find_one(db.session, "timetables", {"school_id": school_id, "status": "published"})
     
     if not timetable:
-        timetable = await db.timetables.find_one(
-            {"school_id": school_id, "status": "draft"},
-            {"_id": 0, "id": 1}
-        )
+        timetable = await gd_find_one(db.session, "timetables", {"school_id": school_id, "status": "draft"})
     
     if not timetable:
         return {"sessions": [], "total": 0, "message": "لا يوجد جدول نشط"}
@@ -302,17 +295,17 @@ async def get_active_timetable_sessions(
         query["teacher_id"] = teacher_id
     
     # Fetch sessions
-    sessions = await db.timetable_sessions.find(query, {"_id": 0}).to_list(1000)
+    sessions = await gd_find(db.session, "timetable_sessions", query, limit=1000)
     
     # Enrich sessions
     enriched_sessions = []
     for session in sessions:
         # Get teacher name
-        teacher = await db.teachers.find_one({"id": session.get("teacher_id")}, {"_id": 0, "full_name": 1})
+        teacher = await gd_find_one(db.session, "teachers", {"id": session.get("teacher_id")})
         # Get class name
-        cls = await db.classes.find_one({"id": session.get("class_id")}, {"_id": 0, "name": 1})
+        cls = await gd_find_one(db.session, "classes", {"id": session.get("class_id")})
         # Get grade
-        grade = await db.grades.find_one({"id": cls.get("grade_id") if cls else None}, {"_id": 0, "name_ar": 1})
+        grade = await gd_find_one(db.session, "grades", {"id": cls.get("grade_id") if cls else None})
         
         session["teacher_name"] = teacher.get("full_name") if teacher else ""
         session["class_name"] = f"{grade.get('name_ar', '')} - {cls.get('section', '') if cls else ''}" if grade else (cls.get("name", "") if cls else "")
@@ -366,13 +359,13 @@ async def smart_get_timetable_sessions(
     enriched_sessions = []
     for session in sessions:
         # Get teacher name
-        teacher = await db.teachers.find_one({"id": session.get("teacher_id")}, {"_id": 0, "full_name": 1, "full_name_ar": 1})
+        teacher = await gd_find_one(db.session, "teachers", {"id": session.get("teacher_id")})
         # Get class name
-        cls = await db.classes.find_one({"id": session.get("class_id")}, {"_id": 0, "name": 1, "name_ar": 1})
+        cls = await gd_find_one(db.session, "classes", {"id": session.get("class_id")})
         # Get subject name
-        subject = await db.subjects.find_one({"id": session.get("subject_id")}, {"_id": 0, "name_ar": 1, "name_en": 1})
+        subject = await gd_find_one(db.session, "subjects", {"id": session.get("subject_id")})
         if not subject:
-            subject = await db.reference_subjects.find_one({"id": session.get("subject_id")}, {"_id": 0, "name_ar": 1, "name_en": 1})
+            subject = await gd_find_one(db.session, "reference_subjects", {"id": session.get("subject_id")})
         
         session["teacher_name"] = teacher.get("full_name") or teacher.get("full_name_ar") if teacher else ""
         session["class_name"] = cls.get("name") or cls.get("name_ar") if cls else ""
@@ -536,9 +529,9 @@ async def smart_get_academic_demand(
         # Get subjects with names
         subjects_with_names = []
         for subj in demand.subjects:
-            subject_doc = await db.subjects.find_one({"id": subj.get("subject_id")}, {"_id": 0, "name_ar": 1})
+            subject_doc = await gd_find_one(db.session, "subjects", {"id": subj.get("subject_id")})
             if not subject_doc:
-                subject_doc = await db.reference_subjects.find_one({"id": subj.get("subject_id")}, {"_id": 0, "name_ar": 1})
+                subject_doc = await gd_find_one(db.session, "reference_subjects", {"id": subj.get("subject_id")})
             
             subjects_with_names.append({
                 **subj,
@@ -605,7 +598,7 @@ async def smart_delete_timetable(
     Delete timetable and all its sessions
     """
     # Get timetable first
-    timetable = await db.timetables.find_one({"id": timetable_id}, {"_id": 0})
+    timetable = await gd_find_one(db.session, "timetables", {"id": timetable_id})
     if not timetable:
         raise HTTPException(status_code=404, detail="الجدول غير موجود")
     
@@ -614,16 +607,16 @@ async def smart_delete_timetable(
         raise HTTPException(status_code=400, detail="لا يمكن حذف جدول منشور - قم بأرشفته أولاً")
     
     # Delete sessions
-    await db.timetable_sessions.delete_many({"timetable_id": timetable_id})
+    await gd_delete_many(db.session, "timetable_sessions", {"timetable_id": timetable_id})
     
     # Delete conflicts
-    await db.timetable_conflicts.delete_many({"timetable_id": timetable_id})
+    await gd_delete_many(db.session, "timetable_conflicts", {"timetable_id": timetable_id})
     
     # Delete unscheduled demands
-    await db.timetable_unscheduled_demands.delete_many({"timetable_id": timetable_id})
+    await gd_delete_many(db.session, "timetable_unscheduled_demands", {"timetable_id": timetable_id})
     
     # Delete timetable
-    await db.timetables.delete_one({"id": timetable_id})
+    await gd_delete_one(db.session, "timetables", {"id": timetable_id})
     
     return {
         "success": True,

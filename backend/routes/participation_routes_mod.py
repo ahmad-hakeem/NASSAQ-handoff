@@ -12,6 +12,8 @@ import uuid, logging
 from dependencies import (
     db, get_current_user, require_roles, UserRole, logger
 )
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
+
 
 router = APIRouter()
 
@@ -81,9 +83,7 @@ async def record_participation(
     if not school_id:
         raise HTTPException(status_code=400, detail="معرف المدرسة مطلوب")
 
-    student = await db.students.find_one(
-        {"id": data.student_id, "tenant_id": school_id}, {"_id": 0, "full_name": 1}
-    )
+    student = await gd_find_one(db.session, "students", {"id": data.student_id, "tenant_id": school_id})
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
 
@@ -111,7 +111,7 @@ async def record_participation(
         "updated_at": now
     }
 
-    await db.participation_records.insert_one(record)
+    await gd_insert(db.session, "participation_records", record)
     record.pop("_id", None)
     return record
 
@@ -137,9 +137,7 @@ async def record_bulk_participation(
             errors.append({"error": "missing student_id"})
             continue
 
-        student = await db.students.find_one(
-            {"id": student_id, "tenant_id": school_id}, {"_id": 0, "full_name": 1}
-        )
+        student = await gd_find_one(db.session, "students", {"id": student_id, "tenant_id": school_id})
         if not student:
             errors.append({"student_id": student_id, "error": "student not found"})
             continue
@@ -163,7 +161,7 @@ async def record_bulk_participation(
             "created_at": now,
             "updated_at": now
         }
-        await db.participation_records.insert_one(record)
+        await gd_insert(db.session, "participation_records", record)
         created += 1
 
     return {"created": created, "errors": errors, "total_submitted": len(data.records)}
@@ -193,11 +191,9 @@ async def get_student_participation_history(
     if end_date:
         query.setdefault("date", {})["$lte"] = end_date
 
-    records = await db.participation_records.find(
-        query, {"_id": 0}
-    ).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+    records = await gd_find(db.session, "participation_records", query, order_by="created_at", desc_order=True, offset=skip, limit=limit)
 
-    total = await db.participation_records.count_documents(query)
+    total = await gd_count(db.session, "participation_records", query)
 
     return {"records": records, "total": total}
 
@@ -224,9 +220,7 @@ async def get_class_participation(
     if end_date:
         query.setdefault("date", {})["$lte"] = end_date
 
-    records = await db.participation_records.find(
-        query, {"_id": 0}
-    ).sort("created_at", -1).to_list(5000)
+    records = await gd_find(db.session, "participation_records", query, order_by="created_at", desc_order=True, limit=5000)
 
     student_summary = {}
     for r in records:
@@ -267,9 +261,7 @@ async def get_participation_record(
 ):
     """Get a specific participation record"""
     school_id = current_user.get("tenant_id")
-    record = await db.participation_records.find_one(
-        {"id": record_id, "tenant_id": school_id}, {"_id": 0}
-    )
+    record = await gd_find_one(db.session, "participation_records", {"id": record_id, "tenant_id": school_id})
     if not record:
         raise HTTPException(status_code=404, detail="السجل غير موجود")
     return record
@@ -283,9 +275,7 @@ async def update_participation_record(
 ):
     """Update a participation record"""
     school_id = current_user.get("tenant_id")
-    record = await db.participation_records.find_one(
-        {"id": record_id, "tenant_id": school_id}, {"_id": 0}
-    )
+    record = await gd_find_one(db.session, "participation_records", {"id": record_id, "tenant_id": school_id})
     if not record:
         raise HTTPException(status_code=404, detail="السجل غير موجود")
 
@@ -299,10 +289,7 @@ async def update_participation_record(
     if data.notes is not None:
         updates["notes"] = data.notes
 
-    await db.participation_records.update_one(
-        {"id": record_id, "tenant_id": school_id},
-        {"$set": updates}
-    )
+    await gd_update_one(db.session, "participation_records", {"id": record_id, "tenant_id": school_id}, updates)
 
     return {"message": "تم تحديث السجل بنجاح", "id": record_id}
 
@@ -314,10 +301,8 @@ async def delete_participation_record(
 ):
     """Delete a participation record"""
     school_id = current_user.get("tenant_id")
-    result = await db.participation_records.delete_one(
-        {"id": record_id, "tenant_id": school_id}
-    )
-    if result.deleted_count == 0:
+    result = await gd_delete_one(db.session, "participation_records", {"id": record_id, "tenant_id": school_id})
+    if result == 0:
         raise HTTPException(status_code=404, detail="السجل غير موجود")
     return {"message": "تم حذف السجل بنجاح"}
 
@@ -348,7 +333,7 @@ async def get_student_participation_statistics(
 
     query["date"] = {"$gte": start}
 
-    records = await db.participation_records.find(query, {"_id": 0}).to_list(5000)
+    records = await gd_find(db.session, "participation_records", query, limit=5000)
 
     total_points = sum(r.get("points", 0) for r in records)
     total_count = len(records)
@@ -434,12 +419,9 @@ async def get_class_participation_statistics(
 
     query["date"] = {"$gte": start}
 
-    records = await db.participation_records.find(query, {"_id": 0}).to_list(10000)
+    records = await gd_find(db.session, "participation_records", query, limit=10000)
 
-    class_students = await db.students.find(
-        {"tenant_id": school_id, "class_id": class_id},
-        {"_id": 0, "id": 1, "full_name": 1}
-    ).to_list(100)
+    class_students = await gd_find(db.session, "students", {"tenant_id": school_id, "class_id": class_id}, limit=100)
     all_student_ids = {s["id"] for s in class_students}
 
     student_stats = {}
@@ -496,17 +478,11 @@ async def get_student_participation_report(
     """Generate a comprehensive participation report for a student"""
     school_id = current_user.get("tenant_id")
 
-    student = await db.students.find_one(
-        {"id": student_id, "tenant_id": school_id},
-        {"_id": 0, "full_name": 1, "class_id": 1}
-    )
+    student = await gd_find_one(db.session, "students", {"id": student_id, "tenant_id": school_id})
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
 
-    all_records = await db.participation_records.find(
-        {"tenant_id": school_id, "student_id": student_id},
-        {"_id": 0}
-    ).sort("date", -1).to_list(10000)
+    all_records = await gd_find(db.session, "participation_records", {"tenant_id": school_id, "student_id": student_id}, order_by="date", desc_order=True, limit=10000)
 
     now = datetime.now(timezone.utc)
     week_start = (now - timedelta(days=7)).strftime("%Y-%m-%d")
@@ -523,10 +499,7 @@ async def get_student_participation_report(
     class_id = student.get("class_id")
     class_rank = None
     if class_id:
-        class_records = await db.participation_records.find(
-            {"tenant_id": school_id, "class_id": class_id, "date": {"$gte": month_start}},
-            {"_id": 0, "student_id": 1, "points": 1}
-        ).to_list(10000)
+        class_records = await gd_find(db.session, "participation_records", {"tenant_id": school_id, "class_id": class_id, "date": {"$gte": month_start}}, limit=10000)
 
         student_points = {}
         for r in class_records:
@@ -575,10 +548,7 @@ async def get_participation_leaderboard(
     else:
         start = (now - timedelta(days=120)).strftime("%Y-%m-%d")
 
-    records = await db.participation_records.find(
-        {"tenant_id": school_id, "class_id": class_id, "date": {"$gte": start}},
-        {"_id": 0}
-    ).to_list(10000)
+    records = await gd_find(db.session, "participation_records", {"tenant_id": school_id, "class_id": class_id, "date": {"$gte": start}}, limit=10000)
 
     student_scores = {}
     for r in records:

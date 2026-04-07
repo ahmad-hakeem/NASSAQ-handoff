@@ -21,6 +21,8 @@ from dependencies import (
     hakim_engine, reporting_engine, export_engine, session_engine,
     REPORT_TYPES, generate_student_qr_code
 )
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
+
 
 from shared_models import (
     SessionStatusEnum, ScheduleStatusEnum
@@ -53,15 +55,15 @@ async def get_teacher_dashboard(
     """
     _verify_teacher_access(teacher_id, current_user)
     # First try to find in teachers collection by id
-    teacher = await db.teachers.find_one({"id": teacher_id}, {"_id": 0})
+    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
     
     # If not found, try to find by user_id
     if not teacher:
-        teacher = await db.teachers.find_one({"user_id": teacher_id}, {"_id": 0})
+        teacher = await gd_find_one(db.session, "teachers", {"user_id": teacher_id})
     
     # If still not found, try to find in users and then match to teachers
     if not teacher:
-        user = await db.users.find_one({"id": teacher_id, "role": "teacher"}, {"_id": 0})
+        user = await gd_find_one(db.session, "users", {"id": teacher_id, "role": "teacher"})
         if user:
             tenant_id = user.get("tenant_id")
             if not tenant_id:
@@ -73,15 +75,15 @@ async def get_teacher_dashboard(
                     {"full_name": user.get("full_name")}
                 ]
             }
-            teacher = await db.teachers.find_one(lookup_filter, {"_id": 0})
+            teacher = await gd_find_one(db.session, "teachers", lookup_filter)
     
     if not teacher:
         # Return default data if teacher not found in teachers collection
         # This allows the dashboard to work even if data is only in users collection
-        user = await db.users.find_one({"id": teacher_id}, {"_id": 0})
+        user = await gd_find_one(db.session, "users", {"id": teacher_id})
         if user and user.get("role") == "teacher":
             fb_school_id = user.get("tenant_id") or ""
-            fb_school = await db.schools.find_one({"id": fb_school_id}, {"_id": 0}) if fb_school_id else None
+            fb_school = await gd_find_one(db.session, "schools", {"id": fb_school_id}) if fb_school_id else None
             fb_school = fb_school or {}
             return {
                 "teacher": {
@@ -121,23 +123,23 @@ async def get_teacher_dashboard(
     school_id = teacher.get("school_id")
     
     # Get teacher assignments using actual_teacher_id
-    assignments = await db.teacher_assignments.find({
+    assignments = await gd_find(db.session, "teacher_assignments", {
         "teacher_id": actual_teacher_id,
         "is_active": True
-    }, {"_id": 0}).to_list(100)
+    }, limit=100)
     
     class_ids = list(set(a.get("class_id") for a in assignments if a.get("class_id")))
     subject_ids = list(set(a.get("subject_id") for a in assignments if a.get("subject_id")))
     
-    classes = await db.classes.find({"id": {"$in": class_ids}}, {"_id": 0, "id": 1, "name": 1}).to_list(50)
+    classes = await gd_find(db.session, "classes", {"id": {"$in": class_ids}}, limit=50)
     total_students = 0
     for cls_item in classes:
-        count = await db.students.count_documents({"class_id": cls_item.get("id"), "is_active": True})
+        count = await gd_count(db.session, "students", {"class_id": cls_item.get("id"), "is_active": True})
         cls_item["student_count"] = count
         total_students += count
     
     # Get subjects
-    subjects = await db.subjects.find({"id": {"$in": subject_ids}}, {"_id": 0, "id": 1, "name_ar": 1, "name_en": 1}).to_list(50)
+    subjects = await gd_find(db.session, "subjects", {"id": {"$in": subject_ids}}, limit=50)
     
     # Get today's schedule
     today_day = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"][datetime.now().weekday()]
@@ -146,26 +148,26 @@ async def get_teacher_dashboard(
     today_day = day_map.get(datetime.now().weekday(), "sunday")
     
     # Get current schedule
-    schedule = await db.schedules.find_one({
+    schedule = await gd_find_one(db.session, "schedules", {
         "school_id": school_id,
         "status": {"$in": [ScheduleStatusEnum.DRAFT.value, ScheduleStatusEnum.PUBLISHED.value]}
-    }, {"_id": 0, "id": 1})
+    })
     
     today_lessons = []
 
     # Try schedule_sessions first (manual scheduling system)
     schedule_sessions_today = []
     if schedule:
-        schedule_sessions_today = await db.schedule_sessions.find({
+        schedule_sessions_today = await gd_find(db.session, "schedule_sessions", {
             "schedule_id": schedule.get("id"),
             "teacher_id": actual_teacher_id,
             "day_of_week": today_day
-        }, {"_id": 0}).to_list(20)
+        }, limit=20)
 
     if schedule_sessions_today:
         # Get time slots
         slot_ids = [s.get("time_slot_id") for s in schedule_sessions_today if s.get("time_slot_id")]
-        slots = await db.time_slots.find({"id": {"$in": slot_ids}}, {"_id": 0}).to_list(20) if slot_ids else []
+        slots = await gd_find(db.session, "time_slots", {"id": {"$in": slot_ids}}, limit=20) if slot_ids else []
         slot_map = {s.get("id"): s for s in slots}
 
         for session in schedule_sessions_today:
@@ -190,22 +192,16 @@ async def get_teacher_dashboard(
                 "subject_id": subject_info.get("id") or session.get("subject_id"),
             })
     else:
-        timetable = await db.timetables.find_one(
-            {"school_id": school_id, "status": "published"},
-            sort=[("updated_at", -1), ("created_at", -1)]
-        ) or await db.timetables.find_one(
-            {"school_id": school_id},
-            sort=[("created_at", -1)]
-        )
+        timetable = await gd_find_one(db.session, "timetables", {"school_id": school_id, "status": "published"},
+            sort=[("updated_at", -1), ("created_at", -1)]) or await gd_find_one(db.session, "timetables", {"school_id": school_id},
+            sort=[("created_at", -1)])
         tt_query = {
             "teacher_id": actual_teacher_id,
             "day_of_week": today_day
         }
         if timetable:
             tt_query["timetable_id"] = timetable.get("id")
-        timetable_sessions_today = await db.timetable_sessions.find(
-            tt_query, {"_id": 0}
-        ).to_list(20)
+        timetable_sessions_today = await gd_find(db.session, "timetable_sessions", tt_query, limit=20)
 
         seen_periods = set()
         for session in timetable_sessions_today:
@@ -213,8 +209,8 @@ async def get_teacher_dashboard(
             if period_key in seen_periods:
                 continue
             seen_periods.add(period_key)
-            class_info = await db.classes.find_one({"id": session.get("class_id")}, {"_id": 0}) or {}
-            subject_info = await db.subjects.find_one({"id": session.get("subject_id")}, {"_id": 0}) or {}
+            class_info = await gd_find_one(db.session, "classes", {"id": session.get("class_id")}) or {}
+            subject_info = await gd_find_one(db.session, "subjects", {"id": session.get("subject_id")}) or {}
             today_lessons.append({
                 "id": session.get("id"),
                 "schedule_session_id": session.get("id"),
@@ -234,20 +230,20 @@ async def get_teacher_dashboard(
     
     # Get pending attendance (classes where attendance not recorded today)
     today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    recorded_attendance = await db.attendance.find({
+    recorded_attendance = await gd_find(db.session, "attendance", {
         "teacher_id": actual_teacher_id,
         "date": today_str
-    }, {"_id": 0, "class_id": 1}).to_list(50)
+    }, limit=50)
     recorded_class_ids = [a.get("class_id") for a in recorded_attendance]
     pending_attendance = len([c for c in class_ids if c not in recorded_class_ids])
     
     # Recent activities
-    recent_activities = await db.audit_log.find({
+    recent_activities = await gd_find(db.session, "audit_log", {
         "user_id": current_user.get("id"),
         "school_id": school_id
-    }, {"_id": 0}).sort("timestamp", -1).limit(5).to_list(5)
+    }, order_by="timestamp", desc_order=True, limit=5)
     
-    school = await db.schools.find_one({"id": school_id}, {"_id": 0}) or {}
+    school = await gd_find_one(db.session, "schools", {"id": school_id}) or {}
     school_name = school.get("name_ar") or school.get("name") or school.get("name_en") or ""
     school_city = school.get("city") or ""
     school_type = school.get("type") or school.get("school_type") or ""
@@ -255,7 +251,7 @@ async def get_teacher_dashboard(
     primary_subject = None
     primary_sub_id = teacher.get("primary_subject_id") or teacher.get("specialization")
     if primary_sub_id:
-        sub_doc = await db.subjects.find_one({"id": primary_sub_id}, {"_id": 0, "name_ar": 1, "name_en": 1})
+        sub_doc = await gd_find_one(db.session, "subjects", {"id": primary_sub_id})
         if sub_doc:
             primary_subject = sub_doc.get("name_ar") or sub_doc.get("name_en")
         elif not primary_sub_id.startswith("sub-"):
@@ -314,7 +310,7 @@ async def get_student_dashboard(
     - نسبة الحضور
     - الإشعارات
     """
-    student = await db.students.find_one({"id": student_id}, {"_id": 0})
+    student = await gd_find_one(db.session, "students", {"id": student_id})
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
 
@@ -328,34 +324,34 @@ async def get_student_dashboard(
     class_id = student.get("class_id")
     
     # Get class info
-    class_info = await db.classes.find_one({"id": class_id}, {"_id": 0, "name": 1, "grade_id": 1})
+    class_info = await gd_find_one(db.session, "classes", {"id": class_id})
     
     # Get today's schedule for the class
     day_map = {0: "monday", 1: "tuesday", 2: "wednesday", 3: "thursday", 4: "friday", 5: "saturday", 6: "sunday"}
     today_day = day_map.get(datetime.now().weekday(), "sunday")
     
-    schedule = await db.schedules.find_one({
+    schedule = await gd_find_one(db.session, "schedules", {
         "school_id": school_id,
         "status": {"$in": [ScheduleStatusEnum.DRAFT.value, ScheduleStatusEnum.PUBLISHED.value]}
-    }, {"_id": 0, "id": 1})
+    })
     
     today_lessons = []
     if schedule:
-        sessions = await db.schedule_sessions.find({
+        sessions = await gd_find(db.session, "schedule_sessions", {
             "schedule_id": schedule.get("id"),
             "class_id": class_id,
             "day_of_week": today_day,
             "status": SessionStatusEnum.SCHEDULED.value
-        }, {"_id": 0}).to_list(20)
+        }, limit=20)
         
         # Get details
         slot_ids = list(set(s.get("time_slot_id") for s in sessions))
         teacher_ids = list(set(s.get("teacher_id") for s in sessions if s.get("teacher_id")))
         subject_ids = list(set(s.get("subject_id") for s in sessions if s.get("subject_id")))
         
-        slots = await db.time_slots.find({"id": {"$in": slot_ids}}, {"_id": 0}).to_list(20)
-        teachers = await db.teachers.find({"id": {"$in": teacher_ids}}, {"_id": 0, "id": 1, "full_name": 1}).to_list(20)
-        subjects = await db.subjects.find({"id": {"$in": subject_ids}}, {"_id": 0}).to_list(20)
+        slots = await gd_find(db.session, "time_slots", {"id": {"$in": slot_ids}}, limit=20)
+        teachers = await gd_find(db.session, "teachers", {"id": {"$in": teacher_ids}}, limit=20)
+        subjects = await gd_find(db.session, "subjects", {"id": {"$in": subject_ids}}, limit=20)
         
         slot_map = {s.get("id"): s for s in slots}
         teacher_map = {t.get("id"): t for t in teachers}
@@ -377,24 +373,24 @@ async def get_student_dashboard(
         today_lessons.sort(key=lambda x: x.get("period", 0))
     
     # Get attendance summary
-    attendance_records = await db.attendance.find({
+    attendance_records = await gd_find(db.session, "attendance", {
         "student_id": student_id,
         "school_id": school_id
-    }, {"_id": 0, "status": 1}).to_list(200)
+    }, limit=200)
     
     total_days = len(attendance_records)
     present_days = len([a for a in attendance_records if a.get("status") == "present"])
     attendance_rate = round((present_days / total_days * 100) if total_days > 0 else 100, 1)
     
     recent_grades = []
-    submissions = await db.assessment_submissions.find({
+    submissions = await gd_find(db.session, "assessment_submissions", {
         "student_id": student_id
-    }).sort("submitted_at", -1).limit(10).to_list(10)
+    }, order_by="submitted_at", desc_order=True, limit=10)
     for sub in submissions:
-        assessment = await db.assessments.find_one({"id": sub.get("assessment_id")}, {"_id": 0, "title": 1, "subject_id": 1})
+        assessment = await gd_find_one(db.session, "assessments", {"id": sub.get("assessment_id")})
         subject_name = ""
         if assessment and assessment.get("subject_id"):
-            subj = await db.subjects.find_one({"id": assessment["subject_id"]}, {"_id": 0, "name_ar": 1, "name": 1})
+            subj = await gd_find_one(db.session, "subjects", {"id": assessment["subject_id"]})
             subject_name = subj.get("name_ar", subj.get("name", "")) if subj else assessment.get("title", "")
         elif assessment:
             subject_name = assessment.get("title", "")
@@ -408,12 +404,12 @@ async def get_student_dashboard(
     average_grade = sum(g.get("grade", 0) for g in recent_grades) / len(recent_grades) if recent_grades else 0
     
     # Get notifications
-    notifications = await db.notifications.find({
+    notifications = await gd_find(db.session, "notifications", {
         "$or": [
             {"target_id": student_id},
             {"target_type": "all", "school_id": school_id}
         ]
-    }, {"_id": 0}).sort("created_at", -1).limit(5).to_list(5)
+    }, order_by="created_at", desc_order=True, limit=5)
     
     return {
         "student": {
@@ -452,7 +448,7 @@ async def get_parent_dashboard(
     - قائمة الأبناء
     - ملخص كل ابن (حضور، درجات، سلوك)
     """
-    parent = await db.parents.find_one({"id": parent_id}, {"_id": 0})
+    parent = await gd_find_one(db.session, "parents", {"id": parent_id})
     if not parent:
         raise HTTPException(status_code=404, detail="ولي الأمر غير موجود")
     
@@ -463,16 +459,16 @@ async def get_parent_dashboard(
     children_data = []
     
     for student_id in student_ids:
-        student = await db.students.find_one({"id": student_id}, {"_id": 0})
+        student = await gd_find_one(db.session, "students", {"id": student_id})
         if not student:
             continue
         
-        class_info = await db.classes.find_one({"id": student.get("class_id")}, {"_id": 0, "name": 1})
+        class_info = await gd_find_one(db.session, "classes", {"id": student.get("class_id")})
         
         # Get attendance summary
-        attendance_records = await db.attendance.find({
+        attendance_records = await gd_find(db.session, "attendance", {
             "student_id": student_id
-        }, {"_id": 0, "status": 1}).to_list(200)
+        }, limit=200)
         
         total_days = len(attendance_records)
         present_days = len([a for a in attendance_records if a.get("status") == "present"])
@@ -480,9 +476,9 @@ async def get_parent_dashboard(
         late_days = len([a for a in attendance_records if a.get("status") == "late"])
         attendance_rate = round((present_days / total_days * 100) if total_days > 0 else 100, 1)
         
-        grade_records = await db.grades.find({
+        grade_records = await gd_find(db.session, "grades", {
             "student_id": student_id
-        }, {"_id": 0, "subject_name": 1, "score": 1, "recorded_at": 1}).sort("recorded_at", -1).limit(10).to_list(10)
+        }, order_by="recorded_at", desc_order=True, limit=10)
         recent_grades = [
             {
                 "subject": g.get("subject_name", "غير محدد"),
@@ -497,9 +493,9 @@ async def get_parent_dashboard(
             else 0
         )
 
-        behaviour_records = await db.behaviour_records.find({
+        behaviour_records = await gd_find(db.session, "behaviour_records", {
             "student_id": student_id
-        }, {"_id": 0, "type": 1, "note": 1, "created_at": 1}).sort("created_at", -1).limit(5).to_list(5)
+        }, order_by="created_at", desc_order=True, limit=5)
         behaviour_notes = [
             {
                 "type": b.get("type", "info"),
@@ -513,23 +509,23 @@ async def get_parent_dashboard(
         day_map = {0: "monday", 1: "tuesday", 2: "wednesday", 3: "thursday", 4: "friday", 5: "saturday", 6: "sunday"}
         today_day = day_map.get(datetime.now().weekday(), "sunday")
         
-        schedule = await db.schedules.find_one({
+        schedule = await gd_find_one(db.session, "schedules", {
             "school_id": school_id,
             "status": {"$in": [ScheduleStatusEnum.DRAFT.value, ScheduleStatusEnum.PUBLISHED.value]}
-        }, {"_id": 0, "id": 1})
+        })
         
         today_schedule = []
         if schedule:
-            sessions = await db.schedule_sessions.find({
+            sessions = await gd_find(db.session, "schedule_sessions", {
                 "schedule_id": schedule.get("id"),
                 "class_id": student.get("class_id"),
                 "day_of_week": today_day
-            }, {"_id": 0}).to_list(10)
+            }, limit=10)
             
             for session in sessions:
-                slot = await db.time_slots.find_one({"id": session.get("time_slot_id")}, {"_id": 0})
-                teacher = await db.teachers.find_one({"id": session.get("teacher_id")}, {"_id": 0, "full_name": 1})
-                subject = await db.subjects.find_one({"id": session.get("subject_id")}, {"_id": 0})
+                slot = await gd_find_one(db.session, "time_slots", {"id": session.get("time_slot_id")})
+                teacher = await gd_find_one(db.session, "teachers", {"id": session.get("teacher_id")})
+                subject = await gd_find_one(db.session, "subjects", {"id": session.get("subject_id")})
                 
                 today_schedule.append({
                     "time": slot.get("start_time", "") if slot else "",
@@ -554,13 +550,13 @@ async def get_parent_dashboard(
         })
     
     # Get notifications for parent
-    notifications = await db.notifications.find({
+    notifications = await gd_find(db.session, "notifications", {
         "$or": [
             {"target_id": parent_id},
             {"target_id": {"$in": student_ids}},
             {"target_type": "all", "school_id": school_id}
         ]
-    }, {"_id": 0}).sort("created_at", -1).limit(10).to_list(10)
+    }, order_by="created_at", desc_order=True, limit=10)
     
     return {
         "parent": {
@@ -596,12 +592,12 @@ async def parent_contact_teacher(
     parent_id = current_user.get("id")
     
     # Verify parent has this student
-    parent = await db.parents.find_one({"id": parent_id}, {"_id": 0})
+    parent = await gd_find_one(db.session, "parents", {"id": parent_id})
     if not parent or student_id not in parent.get("student_ids", []):
         raise HTTPException(status_code=403, detail="غير مصرح لك بالتواصل بشأن هذا الطالب")
     
     # Get teacher
-    teacher = await db.teachers.find_one({"id": teacher_id}, {"_id": 0, "full_name": 1, "user_id": 1})
+    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
     if not teacher:
         raise HTTPException(status_code=404, detail="المعلم غير موجود")
     
@@ -624,10 +620,10 @@ async def parent_contact_teacher(
         "read": False
     }
     
-    await db.messages.insert_one(msg_doc)
+    await gd_insert(db.session, "messages", msg_doc)
     
     # Create notification for teacher
-    await db.notifications.insert_one({
+    await gd_insert(db.session, "notifications", {
         "id": str(uuid.uuid4()),
         "type": "parent_message",
         "title": f"رسالة من ولي أمر: {parent.get('full_name')}",
@@ -658,17 +654,14 @@ async def get_teacher_sessions_list(
     current_user: dict = Depends(get_current_user)
 ):
     _verify_teacher_access(teacher_id, current_user)
-    sessions_list = await db.teacher_sessions.find(
-        {"teacher_id": teacher_id},
-        {"_id": 0}
-    ).sort("created_at", -1).to_list(200)
+    sessions_list = await gd_find(db.session, "teacher_sessions", {"teacher_id": teacher_id}, order_by="created_at", desc_order=True, limit=200)
 
     for s in sessions_list:
         if not s.get("class_name") and s.get("class_id"):
-            cls = await db.classes.find_one({"id": s["class_id"]}, {"_id": 0, "name": 1})
+            cls = await gd_find_one(db.session, "classes", {"id": s["class_id"]})
             s["class_name"] = cls.get("name", "") if cls else ""
         if not s.get("subject_name") and s.get("subject_id"):
-            subj = await db.subjects.find_one({"id": s["subject_id"]}, {"_id": 0, "name": 1})
+            subj = await gd_find_one(db.session, "subjects", {"id": s["subject_id"]})
             s["subject_name"] = subj.get("name", "") if subj else ""
 
     return {"sessions": sessions_list}
@@ -685,42 +678,33 @@ async def get_teacher_classes(
     """
     _verify_teacher_access(teacher_id, current_user)
 
-    teacher = await db.teachers.find_one({"id": teacher_id}, {"_id": 0, "school_id": 1})
+    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
     school_id = teacher.get("school_id") if teacher else None
 
-    assignments = await db.teacher_assignments.find({
+    assignments = await gd_find(db.session, "teacher_assignments", {
         "teacher_id": teacher_id,
         "is_active": True
-    }, {"_id": 0}).to_list(200)
+    }, limit=200)
 
     class_ids_from_assignments = set(a.get("class_id") for a in assignments if a.get("class_id"))
 
-    tca_docs = await db.teacher_class_assignments.find({
+    tca_docs = await gd_find(db.session, "teacher_class_assignments", {
         "teacher_id": teacher_id
-    }, {"_id": 0, "class_id": 1}).to_list(200)
+    }, limit=200)
     class_ids_from_tca = set(d.get("class_id") for d in tca_docs if d.get("class_id"))
 
     all_class_ids = list(class_ids_from_assignments | class_ids_from_tca)
     if not all_class_ids:
         return []
 
-    classes = await db.classes.find({"id": {"$in": all_class_ids}}, {"_id": 0}).to_list(100)
+    classes = await gd_find(db.session, "classes", {"id": {"$in": all_class_ids}}, limit=100)
 
-    schedule = await db.schedules.find_one(
-        {"school_id": school_id, "status": {"$in": ["draft", "published"]}},
-        {"_id": 0, "id": 1}
-    ) if school_id else None
+    schedule = await gd_find_one(db.session, "schedules", {"school_id": school_id, "status": {"$in": ["draft", "published"]}}) if school_id else None
     schedule_sessions = []
     time_slots_map = {}
     if schedule:
-        schedule_sessions = await db.schedule_sessions.find(
-            {"schedule_id": schedule["id"], "teacher_id": teacher_id, "status": "scheduled"},
-            {"_id": 0}
-        ).to_list(500)
-        ts_docs = await db.time_slots.find(
-            {"school_id": school_id, "is_break": {"$ne": True}},
-            {"_id": 0}
-        ).to_list(50)
+        schedule_sessions = await gd_find(db.session, "schedule_sessions", {"schedule_id": schedule["id"], "teacher_id": teacher_id, "status": "scheduled"}, limit=500)
+        ts_docs = await gd_find(db.session, "time_slots", {"school_id": school_id, "is_break": {"$ne": True}}, limit=50)
         for ts in ts_docs:
             ts_id = ts.get("id") or ts.get("slot_number")
             if ts_id is not None:
@@ -736,7 +720,7 @@ async def get_teacher_classes(
         cls_id = cls.get("id")
         class_assignments = [a for a in assignments if a.get("class_id") == cls_id]
 
-        student_count = await db.students.count_documents({"class_id": cls_id, "is_active": True})
+        student_count = await gd_count(db.session, "students", {"class_id": cls_id, "is_active": True})
 
         subject_ids = list(set(a.get("subject_id") for a in class_assignments if a.get("subject_id")))
         if not subject_ids and schedule_sessions:
@@ -745,20 +729,14 @@ async def get_teacher_classes(
                 if s.get("class_id") == cls_id and s.get("subject_id")
             ))
         if not subject_ids:
-            ta_for_class = await db.teacher_assignments.find(
-                {"class_id": cls_id, "is_active": True},
-                {"_id": 0, "subject_id": 1}
-            ).to_list(20)
+            ta_for_class = await gd_find(db.session, "teacher_assignments", {"class_id": cls_id, "is_active": True}, limit=20)
             subject_ids = list(set(a.get("subject_id") for a in ta_for_class if a.get("subject_id")))
         if not subject_ids:
             subject_ids = list(set(a.get("subject_id") for a in assignments if a.get("subject_id")))
 
         subjects = []
         if subject_ids:
-            subjects = await db.subjects.find(
-                {"id": {"$in": subject_ids}},
-                {"_id": 0, "id": 1, "name_ar": 1, "name_en": 1}
-            ).to_list(20)
+            subjects = await gd_find(db.session, "subjects", {"id": {"$in": subject_ids}}, limit=20)
         subject_names = [s.get("name_ar") or s.get("name_en") or "مادة" for s in subjects]
 
         class_schedule = [s for s in schedule_sessions if s.get("class_id") == cls_id]
@@ -834,7 +812,7 @@ async def get_teacher_schedule(
     جلب جدول المعلم
     """
     _verify_teacher_access(teacher_id, current_user)
-    teacher = await db.teachers.find_one({"id": teacher_id}, {"_id": 0, "school_id": 1})
+    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
     if not teacher:
         return []
     
@@ -842,31 +820,28 @@ async def get_teacher_schedule(
     
     schedule_sessions_list = []
 
-    schedule = await db.schedules.find_one({
+    schedule = await gd_find_one(db.session, "schedules", {
         "school_id": school_id,
         "status": {"$in": ["draft", "published"]}
-    }, {"_id": 0, "id": 1})
+    })
 
     if schedule:
-        schedule_sessions_list = await db.schedule_sessions.find({
+        schedule_sessions_list = await gd_find(db.session, "schedule_sessions", {
             "schedule_id": schedule.get("id"),
             "teacher_id": teacher_id,
             "status": "scheduled"
-        }, {"_id": 0}).to_list(100)
+        }, limit=100)
 
     if schedule_sessions_list:
         for session in schedule_sessions_list:
-            assignment = await db.teacher_assignments.find_one(
-                {"id": session.get("assignment_id")}, 
-                {"_id": 0, "class_id": 1, "subject_id": 1}
-            )
+            assignment = await gd_find_one(db.session, "teacher_assignments", {"id": session.get("assignment_id")})
             if assignment:
-                cls = await db.classes.find_one({"id": assignment.get("class_id")}, {"_id": 0, "name": 1})
-                subject = await db.subjects.find_one({"id": assignment.get("subject_id")}, {"_id": 0, "name_ar": 1, "name_en": 1})
+                cls = await gd_find_one(db.session, "classes", {"id": assignment.get("class_id")})
+                subject = await gd_find_one(db.session, "subjects", {"id": assignment.get("subject_id")})
                 session["class_name"] = cls.get("name") if cls else "غير محدد"
                 session["class_id"] = assignment.get("class_id")
                 session["subject_name"] = subject.get("name_ar") or subject.get("name_en") if subject else "غير محدد"
-            slot = await db.time_slots.find_one({"id": session.get("time_slot_id")}, {"_id": 0, "slot_number": 1, "start_time": 1, "end_time": 1})
+            slot = await gd_find_one(db.session, "time_slots", {"id": session.get("time_slot_id")})
             if slot:
                 session["slot_number"] = slot.get("slot_number")
                 session["start_time"] = slot.get("start_time")
@@ -877,19 +852,13 @@ async def get_teacher_schedule(
                 session["subject_id"] = assignment.get("subject_id")
         return schedule_sessions_list
 
-    timetable = await db.timetables.find_one(
-        {"school_id": school_id, "status": "published"},
-        sort=[("updated_at", -1), ("created_at", -1)]
-    ) or await db.timetables.find_one(
-        {"school_id": school_id},
-        sort=[("created_at", -1)]
-    )
+    timetable = await gd_find_one(db.session, "timetables", {"school_id": school_id, "status": "published"},
+        sort=[("updated_at", -1), ("created_at", -1)]) or await gd_find_one(db.session, "timetables", {"school_id": school_id},
+        sort=[("created_at", -1)])
     timetable_query = {"teacher_id": teacher_id, "school_id": school_id}
     if timetable:
         timetable_query["timetable_id"] = timetable.get("id")
-    timetable_sessions = await db.timetable_sessions.find(
-        timetable_query, {"_id": 0}
-    ).sort([("day_of_week", 1), ("period_number", 1)]).to_list(200)
+    timetable_sessions = await gd_find(db.session, "timetable_sessions", timetable_query, order_by="day_of_week", desc_order=False, limit=200)
 
     seen_slots = set()
     unique_sessions = []
@@ -903,8 +872,8 @@ async def get_teacher_schedule(
     day_order = {"sunday": 0, "monday": 1, "tuesday": 2, "wednesday": 3, "thursday": 4}
     enriched = []
     for ts in timetable_sessions:
-        cls = await db.classes.find_one({"id": ts.get("class_id")}, {"_id": 0, "name": 1}) or {}
-        subject = await db.subjects.find_one({"id": ts.get("subject_id")}, {"_id": 0, "name_ar": 1, "name_en": 1}) or {}
+        cls = await gd_find_one(db.session, "classes", {"id": ts.get("class_id")}) or {}
+        subject = await gd_find_one(db.session, "subjects", {"id": ts.get("subject_id")}) or {}
         enriched.append({
             "id": ts.get("id"),
             "schedule_session_id": ts.get("id"),
@@ -934,14 +903,14 @@ async def get_teacher_assessments(
     جلب تقييمات المعلم
     """
     _verify_teacher_access(teacher_id, current_user)
-    assessments = await db.assessments.find({
+    assessments = await gd_find(db.session, "assessments", {
         "teacher_id": teacher_id
-    }, {"_id": 0}).sort("created_at", -1).to_list(100)
+    }, order_by="created_at", desc_order=True, limit=100)
     
     # Enrich with class names
     for assessment in assessments:
         if assessment.get("class_id"):
-            cls = await db.classes.find_one({"id": assessment.get("class_id")}, {"_id": 0, "name": 1})
+            cls = await gd_find_one(db.session, "classes", {"id": assessment.get("class_id")})
             assessment["class_name"] = cls.get("name") if cls else ""
     
     return assessments
@@ -953,7 +922,7 @@ async def get_assessment_grades(
     current_user: dict = Depends(get_current_user)
 ):
     """Get grades for an assessment"""
-    grades = await db.grades.find({"assessment_id": assessment_id}, {"_id": 0}).to_list(200)
+    grades = await gd_find(db.session, "grades", {"assessment_id": assessment_id}, limit=200)
     return grades
 
 
@@ -978,17 +947,10 @@ async def save_assessment_grades(
         }
         
         # Upsert grade
-        await db.grades.update_one(
-            {"assessment_id": assessment_id, "student_id": grade.get("student_id")},
-            {"$set": grade_record},
-            upsert=True
-        )
+        await gd_update_one(db.session, "grades", {"assessment_id": assessment_id, "student_id": grade.get("student_id")}, grade_record)
     
     # Update assessment status
-    await db.assessments.update_one(
-        {"id": assessment_id},
-        {"$set": {"status": "graded", "graded_at": datetime.now(timezone.utc).isoformat()}}
-    )
+    await gd_update_one(db.session, "assessments", {"id": assessment_id}, {"status": "graded", "graded_at": datetime.now(timezone.utc).isoformat()})
     
     return {"message": "تم حفظ الدرجات"}
 
@@ -999,14 +961,11 @@ async def get_student_grades(
     current_user: dict = Depends(get_current_user)
 ):
     """Get all grades for a student"""
-    grades = await db.grades.find({"student_id": student_id}, {"_id": 0}).to_list(100)
+    grades = await gd_find(db.session, "grades", {"student_id": student_id}, limit=100)
     
     # Enrich with assessment info
     for grade in grades:
-        assessment = await db.assessments.find_one(
-            {"id": grade.get("assessment_id")}, 
-            {"_id": 0, "name": 1, "type": 1, "max_score": 1}
-        )
+        assessment = await gd_find_one(db.session, "assessments", {"id": grade.get("assessment_id")})
         if assessment:
             grade["assessment_name"] = assessment.get("name")
             grade["type"] = assessment.get("type")
@@ -1021,10 +980,10 @@ async def get_student_attendance_stats(
     current_user: dict = Depends(get_current_user)
 ):
     """Get attendance statistics for a student"""
-    total = await db.attendance.count_documents({"student_id": student_id})
-    present = await db.attendance.count_documents({"student_id": student_id, "status": "present"})
-    absent = await db.attendance.count_documents({"student_id": student_id, "status": "absent"})
-    late = await db.attendance.count_documents({"student_id": student_id, "status": "late"})
+    total = await gd_count(db.session, "attendance", {"student_id": student_id})
+    present = await gd_count(db.session, "attendance", {"student_id": student_id, "status": "present"})
+    absent = await gd_count(db.session, "attendance", {"student_id": student_id, "status": "absent"})
+    late = await gd_count(db.session, "attendance", {"student_id": student_id, "status": "late"})
     
     rate = (present / total * 100) if total > 0 else 0
     
@@ -1050,7 +1009,7 @@ async def get_behavior_records(
     if student_id:
         query["student_id"] = student_id
     
-    records = await db.behavior.find(query, {"_id": 0}).sort("date", -1).to_list(200)
+    records = await gd_find(db.session, "behavior", query, order_by="date", desc_order=True, limit=200)
     return records
 
 
@@ -1067,7 +1026,7 @@ async def create_behavior_record(
         "created_by": current_user["id"]
     }
     
-    await db.behavior.insert_one(record)
+    await gd_insert(db.session, "behavior", record)
     record.pop("_id", None)
     
     return {"message": "تم تسجيل الملاحظة السلوكية", "record": record}
@@ -1081,15 +1040,13 @@ async def get_class_student_stats(
     """Get aggregated stats (attendance, grades, behavior) for all students in a class"""
     if current_user.get("role") not in ADMIN_ROLES:
         teacher_id = current_user.get("teacher_id") or current_user.get("id")
-        assignment = await db.teacher_assignments.find_one({"teacher_id": teacher_id, "class_id": class_id})
+        assignment = await gd_find_one(db.session, "teacher_assignments", {"teacher_id": teacher_id, "class_id": class_id})
         if not assignment:
-            class_session = await db.class_sessions.find_one({"teacher_id": teacher_id, "class_id": class_id})
+            class_session = await gd_find_one(db.session, "class_sessions", {"teacher_id": teacher_id, "class_id": class_id})
             if not class_session:
                 raise HTTPException(status_code=403, detail="ليس لديك صلاحية لعرض هذا الفصل")
 
-    students = await db.students.find(
-        {"class_id": class_id}, {"_id": 0, "id": 1, "full_name": 1, "student_id": 1}
-    ).to_list(100)
+    students = await gd_find(db.session, "students", {"class_id": class_id}, limit=100)
 
     student_ids = [s["id"] for s in students]
     if not student_ids:
@@ -1106,7 +1063,8 @@ async def get_class_student_stats(
             "present": {"$sum": {"$cond": [{"$eq": ["$status", "present"]}, 1, 0]}},
         }}
     ]
-    async for doc in db.attendance.aggregate(attendance_pipeline):
+    __doc_list = await _gd_aggregate(db.session, "attendance", attendance_pipeline)
+    for doc in __doc_list:
         sid = doc["_id"]
         att_totals[sid] = doc["total"]
         att_present[sid] = doc["present"]
@@ -1119,7 +1077,8 @@ async def get_class_student_stats(
             "present": {"$sum": {"$cond": [{"$eq": ["$status", "present"]}, 1, 0]}},
         }}
     ]
-    async for doc in db.session_attendance.aggregate(session_att_pipeline):
+    __doc_list = await _gd_aggregate(db.session, "session_attendance", session_att_pipeline)
+    for doc in __doc_list:
         sid = doc["_id"]
         att_totals[sid] = att_totals.get(sid, 0) + doc["total"]
         att_present[sid] = att_present.get(sid, 0) + doc["present"]
@@ -1139,7 +1098,8 @@ async def get_class_student_stats(
         }}
     ]
     grades_results = {}
-    async for doc in db.grades.aggregate(grades_pipeline):
+    __doc_list = await _gd_aggregate(db.session, "grades", grades_pipeline)
+    for doc in __doc_list:
         grades_results[doc["_id"]] = round(doc["avg_score"] or 0, 1)
 
     behavior_pipeline = [
@@ -1150,7 +1110,8 @@ async def get_class_student_stats(
         }}
     ]
     behavior_results = {}
-    async for doc in db.behavior.aggregate(behavior_pipeline):
+    __doc_list = await _gd_aggregate(db.session, "behavior", behavior_pipeline)
+    for doc in __doc_list:
         behavior_results[doc["_id"]] = doc.get("total_points", 0)
 
     session_behavior_pipeline = [
@@ -1160,7 +1121,8 @@ async def get_class_student_stats(
             "count": {"$sum": 1},
         }}
     ]
-    async for doc in db.session_interactions.aggregate(session_behavior_pipeline):
+    __doc_list = await _gd_aggregate(db.session, "session_interactions", session_behavior_pipeline)
+    for doc in __doc_list:
         sid = doc["_id"]
         behavior_results[sid] = behavior_results.get(sid, 0) + doc.get("count", 0)
 
@@ -1183,23 +1145,18 @@ async def get_student_analytics(
     """Get comprehensive analytics for a single student"""
     if current_user.get("role") not in ADMIN_ROLES:
         teacher_id = current_user.get("teacher_id") or current_user.get("id")
-        student = await db.students.find_one({"id": student_id}, {"_id": 0, "class_id": 1})
+        student = await gd_find_one(db.session, "students", {"id": student_id})
         if student:
             class_id = student.get("class_id")
-            assignment = await db.teacher_assignments.find_one({"teacher_id": teacher_id, "class_id": class_id})
+            assignment = await gd_find_one(db.session, "teacher_assignments", {"teacher_id": teacher_id, "class_id": class_id})
             if not assignment:
-                session_check = await db.class_sessions.find_one({"teacher_id": teacher_id, "class_id": class_id})
+                session_check = await gd_find_one(db.session, "class_sessions", {"teacher_id": teacher_id, "class_id": class_id})
                 if not session_check:
                     raise HTTPException(status_code=403, detail="ليس لديك صلاحية لعرض بيانات هذا الطالب")
 
-    attendance_records = await db.attendance.find(
-        {"student_id": student_id}, {"_id": 0, "date": 1, "status": 1}
-    ).sort("date", -1).to_list(100)
+    attendance_records = await gd_find(db.session, "attendance", {"student_id": student_id}, order_by="date", desc_order=True, limit=100)
 
-    session_att_raw = await db.session_attendance.find(
-        {"student_id": student_id, "is_draft": {"$ne": True}},
-        {"_id": 0, "recorded_at": 1, "status": 1, "session_id": 1}
-    ).sort("recorded_at", -1).to_list(100)
+    session_att_raw = await gd_find(db.session, "session_attendance", {"student_id": student_id, "is_draft": {"$ne": True}}, order_by="recorded_at", desc_order=True, limit=100)
 
     session_att = []
     for r in session_att_raw:
@@ -1231,16 +1188,10 @@ async def get_student_analytics(
         for k, v in sorted(monthly_attendance.items())
     ]
 
-    grades = await db.grades.find(
-        {"student_id": student_id}, {"_id": 0}
-    ).sort("created_at", -1).to_list(50)
+    grades = await gd_find(db.session, "grades", {"student_id": student_id}, order_by="created_at", desc_order=True, limit=50)
     avg_grade = round(sum(g.get("score", 0) for g in grades) / len(grades), 1) if grades else 0
 
-    interactions = await db.session_interactions.find(
-        {"student_id": student_id},
-        {"_id": 0, "interaction_type": 1, "participation_type": 1, "behaviour_category": 1,
-         "behaviour_type": 1, "behaviour_details": 1, "answer_result": 1, "recorded_at": 1}
-    ).sort("recorded_at", -1).to_list(50)
+    interactions = await gd_find(db.session, "session_interactions", {"student_id": student_id}, order_by="recorded_at", desc_order=True, limit=50)
 
     participation_count = sum(1 for i in interactions if i.get("interaction_type") == "participation")
     behavior_interactions = [i for i in interactions if i.get("interaction_type") == "behaviour"]
@@ -1261,13 +1212,9 @@ async def get_student_analytics(
             "created_at": i.get("recorded_at", "")
         })
 
-    skills = await db.student_skills.find(
-        {"student_id": student_id}, {"_id": 0, "skill_name": 1, "level": 1, "recorded_at": 1}
-    ).sort("recorded_at", -1).to_list(50)
+    skills = await gd_find(db.session, "student_skills", {"student_id": student_id}, order_by="recorded_at", desc_order=True, limit=50)
 
-    behavior_records = await db.behavior.find(
-        {"student_id": student_id}, {"_id": 0, "points": 1, "note": 1, "date": 1}
-    ).sort("date", -1).to_list(20)
+    behavior_records = await gd_find(db.session, "behavior", {"student_id": student_id}, order_by="date", desc_order=True, limit=20)
 
     total_behavior = sum(r.get("points", 0) for r in behavior_records) + len(behavior_interactions)
 
@@ -1318,7 +1265,7 @@ async def get_resources(
     if teacher_id:
         query["teacher_id"] = teacher_id
     
-    resources = await db.resources.find(query, {"_id": 0}).sort("created_at", -1).to_list(100)
+    resources = await gd_find(db.session, "resources", query, order_by="created_at", desc_order=True, limit=100)
     return resources
 
 
@@ -1335,7 +1282,7 @@ async def create_resource(
         "created_by": current_user["id"]
     }
     
-    await db.resources.insert_one(resource)
+    await gd_insert(db.session, "resources", resource)
     resource.pop("_id", None)
     
     return {"message": "تمت إضافة المصدر", "resource": resource}
@@ -1347,7 +1294,7 @@ async def delete_resource(
     current_user: dict = Depends(get_current_user)
 ):
     """Delete resource"""
-    await db.resources.delete_one({"id": resource_id})
+    await gd_delete_one(db.session, "resources", {"id": resource_id})
     return {"message": "تم حذف المصدر"}
 
 
@@ -1371,7 +1318,7 @@ async def get_messages(
     else:
         query["$or"] = [{"sender_id": caller_id}, {"recipient_ids": caller_id}, {"recipient_id": caller_id}]
 
-    messages = await db.messages.find(query, {"_id": 0}).sort("created_at", -1).to_list(100)
+    messages = await gd_find(db.session, "messages", query, order_by="created_at", desc_order=True, limit=100)
     return messages
 
 
@@ -1388,7 +1335,7 @@ async def send_message(
         "status": "sent"
     }
     
-    await db.messages.insert_one(message)
+    await gd_insert(db.session, "messages", message)
     message.pop("_id", None)
     
     # TODO: Send actual notifications (email/SMS) to parents
@@ -1406,13 +1353,13 @@ async def get_grades(
     query = {}
     if class_id:
         # Get assessments for this class first
-        assessments = await db.assessments.find({"class_id": class_id}, {"_id": 0, "id": 1}).to_list(100)
+        assessments = await gd_find(db.session, "assessments", {"class_id": class_id}, limit=100)
         assessment_ids = [a.get("id") for a in assessments]
         query["assessment_id"] = {"$in": assessment_ids}
     if student_id:
         query["student_id"] = student_id
     
-    grades = await db.grades.find(query, {"_id": 0}).to_list(500)
+    grades = await gd_find(db.session, "grades", query, limit=500)
     return grades
 
 
@@ -1425,7 +1372,7 @@ async def get_notification_settings(
     caller_id = current_user.get("id")
     if user_id != caller_id and current_user.get("role") not in ("platform_admin", "school_principal", "school_admin"):
         raise HTTPException(status_code=403, detail="غير مصرح بالوصول لإعدادات مستخدم آخر")
-    settings = await db.notification_settings.find_one({"user_id": user_id}, {"_id": 0})
+    settings = await gd_find_one(db.session, "notification_settings", {"user_id": user_id})
     return settings or {}
 
 
@@ -1439,11 +1386,7 @@ async def update_notification_settings(
     caller_id = current_user.get("id")
     if user_id != caller_id and current_user.get("role") not in ("platform_admin", "school_principal", "school_admin"):
         raise HTTPException(status_code=403, detail="غير مصرح بتعديل إعدادات مستخدم آخر")
-    await db.notification_settings.update_one(
-        {"user_id": user_id},
-        {"$set": {**data, "updated_at": datetime.now(timezone.utc).isoformat()}},
-        upsert=True
-    )
+    await gd_update_one(db.session, "notification_settings", {"user_id": user_id}, {**data, "updated_at": datetime.now(timezone.utc).isoformat()})
     return {"message": "تم حفظ الإعدادات"}
 
 
@@ -1458,7 +1401,7 @@ async def change_user_password(
         raise HTTPException(status_code=403, detail="Not authorized")
     
     # Verify current password
-    user = await db.users.find_one({"id": user_id})
+    user = await gd_find_one(db.session, "users", {"id": user_id})
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
@@ -1467,10 +1410,7 @@ async def change_user_password(
     
     # Update password
     new_hash = pwd_context.hash(data.get("new_password"))
-    await db.users.update_one(
-        {"id": user_id},
-        {"$set": {"password_hash": new_hash, "updated_at": datetime.now(timezone.utc).isoformat()}}
-    )
+    await gd_update_one(db.session, "users", {"id": user_id}, {"password_hash": new_hash, "updated_at": datetime.now(timezone.utc).isoformat()})
     
     return {"message": "تم تغيير كلمة المرور"}
 
@@ -1487,7 +1427,7 @@ async def get_teacher_activity_log(
     if teacher_id != caller_id and caller_role not in ("platform_admin", "school_principal", "school_admin"):
         raise HTTPException(status_code=403, detail="غير مصرح")
 
-    user = await db.users.find_one({"$or": [{"id": teacher_id}, {"teacher_id": teacher_id}]})
+    user = await gd_find_one(db.session, "users", {"$or": [{"id": teacher_id}, {"teacher_id": teacher_id}]})
 
     if teacher_id != caller_id and caller_role in ("school_principal", "school_admin"):
         caller_tenant = current_user.get("tenant_id")
@@ -1496,15 +1436,12 @@ async def get_teacher_activity_log(
             raise HTTPException(status_code=403, detail="غير مصرح بالوصول لبيانات مدرسة أخرى")
     user_id = user.get("id") if user else teacher_id
 
-    activities = await db.audit_logs.find(
-        {"$or": [
+    activities = await gd_find(db.session, "audit_logs", {"$or": [
             {"performed_by": user_id},
             {"action_by": user_id},
             {"performed_by": teacher_id},
             {"action_by": teacher_id},
-        ]},
-        {"_id": 0}
-    ).sort("timestamp", -1).limit(limit).to_list(limit)
+        ]}, order_by="timestamp", desc_order=True, limit=limit)
 
     action_labels = {
         "auth.login": {"ar": "تسجيل دخول", "en": "Login", "icon": "login"},
@@ -1546,7 +1483,7 @@ async def get_teacher_activity_log(
 ADMIN_ROLES = {"admin", "super_admin", "platform_admin", "school_admin"}
 
 async def _verify_session_owner(session_id: str, current_user: dict):
-    session = await db.class_sessions.find_one({"id": session_id}, {"_id": 0, "teacher_id": 1})
+    session = await gd_find_one(db.session, "class_sessions", {"id": session_id})
     if not session:
         raise HTTPException(status_code=404, detail="الجلسة غير موجودة")
     caller_teacher = current_user.get("teacher_id") or current_user.get("id")
@@ -1604,21 +1541,21 @@ async def get_current_session(
         }
         if teacher_id:
             query["teacher_id"] = teacher_id
-        session = await db.class_sessions.find_one(query, {"_id": 0})
+        session = await gd_find_one(db.session, "class_sessions", query)
     else:
-        session = await db.class_sessions.find_one({
+        session = await gd_find_one(db.session, "class_sessions", {
             "teacher_id": teacher_id,
             "status": {"$in": active_statuses}
-        }, {"_id": 0})
+        })
     
     if not session:
         raise HTTPException(status_code=404, detail="لا توجد جلسة جارية")
     
-    class_info = await db.classes.find_one({"id": session.get("class_id")}, {"_id": 0, "name": 1})
-    subject = await db.subjects.find_one({"id": session.get("subject_id")}, {"_id": 0, "name_ar": 1, "name": 1})
-    teacher = await db.teachers.find_one({"id": session.get("teacher_id")}, {"_id": 0, "full_name": 1})
+    class_info = await gd_find_one(db.session, "classes", {"id": session.get("class_id")})
+    subject = await gd_find_one(db.session, "subjects", {"id": session.get("subject_id")})
+    teacher = await gd_find_one(db.session, "teachers", {"id": session.get("teacher_id")})
     
-    student_count = await db.session_attendance.count_documents({"session_id": session.get("id")})
+    student_count = await gd_count(db.session, "session_attendance", {"session_id": session.get("id")})
     
     return {
         "session_record_id": session.get("id"),
@@ -1642,7 +1579,7 @@ async def get_session_info(
 ):
     """Get session information"""
     await _verify_session_owner(session_id, current_user)
-    session = await db.class_sessions.find_one({"id": session_id}, {"_id": 0})
+    session = await gd_find_one(db.session, "class_sessions", {"id": session_id})
     if not session:
         raise HTTPException(status_code=404, detail="الجلسة غير موجودة")
     return session
@@ -1654,7 +1591,7 @@ async def get_session_by_schedule_id(
     current_user: dict = Depends(get_current_user)
 ):
     """Get session information by schedule session ID"""
-    session = await db.class_sessions.find_one({"schedule_session_id": schedule_session_id}, {"_id": 0})
+    session = await gd_find_one(db.session, "class_sessions", {"schedule_session_id": schedule_session_id})
     if not session:
         raise HTTPException(status_code=404, detail="الجلسة غير موجودة")
     return session
@@ -1988,16 +1925,10 @@ async def get_teacher_class_metrics(
     Get real class metrics for a teacher (attendance, participation, performance)
     """
     _verify_teacher_access(teacher_id, current_user)
-    assignments = await db.teacher_assignments.find(
-        {"teacher_id": teacher_id, "is_active": True},
-        {"_id": 0, "class_id": 1}
-    ).to_list(200)
+    assignments = await gd_find(db.session, "teacher_assignments", {"teacher_id": teacher_id, "is_active": True}, limit=200)
     class_ids_from_ta = set(a.get("class_id") for a in assignments if a.get("class_id"))
 
-    tca_docs = await db.teacher_class_assignments.find(
-        {"teacher_id": teacher_id},
-        {"_id": 0, "class_id": 1}
-    ).to_list(200)
+    tca_docs = await gd_find(db.session, "teacher_class_assignments", {"teacher_id": teacher_id}, limit=200)
     class_ids_from_tca = set(d.get("class_id") for d in tca_docs if d.get("class_id"))
 
     all_class_ids = list(class_ids_from_ta | class_ids_from_tca)
@@ -2015,20 +1946,20 @@ async def get_skills_types(
     جلب أنواع المهارات المتاحة
     Get all available skill types
     """
-    skills = await db.skills_types.find({}, {"_id": 0}).to_list(100)
+    skills = await gd_find(db.session, "skills_types", {}, limit=100)
     if not skills:
         from engines.session_engine import DEFAULT_SKILLS_TYPES
         now = datetime.now(timezone.utc).isoformat()
         for s in DEFAULT_SKILLS_TYPES:
             s["created_at"] = now
-        await db.skills_types.insert_many([dict(s) for s in DEFAULT_SKILLS_TYPES])
+        await gd_insert_many(db.session, "skills_types", [dict(s) for s in DEFAULT_SKILLS_TYPES])
         if audit_engine:
             await audit_engine.log(
                 action=AuditAction.SYSTEM_CONFIG,
                 performed_by="system",
                 details={"event": "skills_types_seeded", "count": len(DEFAULT_SKILLS_TYPES)}
             )
-        skills = await db.skills_types.find({}, {"_id": 0}).to_list(100)
+        skills = await gd_find(db.session, "skills_types", {}, limit=100)
     return skills
 
 
@@ -2050,7 +1981,7 @@ async def create_skill_type(
         "category": data.get("category", "general"),
         "created_at": now.isoformat()
     }
-    await db.skills_types.insert_one(skill)
+    await gd_insert(db.session, "skills_types", skill)
     if audit_engine:
         await audit_engine.log(
             action=AuditAction.SYSTEM_CONFIG,
@@ -2196,49 +2127,46 @@ async def get_teacher_achievements(
     current_user: dict = Depends(get_current_user)
 ):
     _verify_teacher_access(teacher_id, current_user)
-    teacher = await db.teachers.find_one({"id": teacher_id}, {"_id": 0})
+    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
     school_id = teacher.get("school_id") if teacher else current_user.get("tenant_id")
 
-    assignments = await db.teacher_assignments.find({"teacher_id": teacher_id, "is_active": True}, {"_id": 0, "class_id": 1}).to_list(200)
-    tca_docs = await db.teacher_class_assignments.find({"teacher_id": teacher_id}, {"_id": 0, "class_id": 1}).to_list(200)
+    assignments = await gd_find(db.session, "teacher_assignments", {"teacher_id": teacher_id, "is_active": True}, limit=200)
+    tca_docs = await gd_find(db.session, "teacher_class_assignments", {"teacher_id": teacher_id}, limit=200)
     class_ids = list(set(a.get("class_id") for a in assignments if a.get("class_id")) | set(d.get("class_id") for d in tca_docs if d.get("class_id")))
 
     total_classes = len(class_ids)
     total_students = 0
     if class_ids:
         for cid in class_ids:
-            count = await db.students.count_documents({"class_id": cid})
+            count = await gd_count(db.session, "students", {"class_id": cid})
             total_students += count
 
-    sessions = await db.teacher_sessions.find({"teacher_id": teacher_id}, {"_id": 0, "status": 1, "created_at": 1, "class_id": 1, "subject_name": 1, "ended_at": 1}).to_list(500)
+    sessions = await gd_find(db.session, "teacher_sessions", {"teacher_id": teacher_id}, limit=500)
     completed_sessions = [s for s in sessions if s.get("status") in ("completed", "ended")]
     total_sessions = len(completed_sessions)
 
     att_total = 0
     att_present = 0
     if class_ids:
-        att_total = await db.attendance.count_documents({"class_id": {"$in": class_ids}})
-        att_present = await db.attendance.count_documents({"class_id": {"$in": class_ids}, "status": "present"})
+        att_total = await gd_count(db.session, "attendance", {"class_id": {"$in": class_ids}})
+        att_present = await gd_count(db.session, "attendance", {"class_id": {"$in": class_ids}, "status": "present"})
     attendance_rate = round((att_present / att_total) * 100) if att_total > 0 else 0
 
-    behavior_records = await db.behaviour_records.find({"teacher_id": teacher_id}, {"_id": 0, "type": 1, "points": 1}).to_list(1000)
+    behavior_records = await gd_find(db.session, "behaviour_records", {"teacher_id": teacher_id}, limit=1000)
     if not behavior_records:
-        behavior_records = await db.behaviour_records.find({"recorded_by": teacher_id}, {"_id": 0, "type": 1, "points": 1}).to_list(1000)
+        behavior_records = await gd_find(db.session, "behaviour_records", {"recorded_by": teacher_id}, limit=1000)
     positive_behavior = len([b for b in behavior_records if b.get("type") == "positive" or (b.get("points") or 0) > 0])
     negative_behavior = len([b for b in behavior_records if b.get("type") == "negative" or (b.get("points") or 0) < 0])
 
-    teacher_assessments = await db.assessments.find({"teacher_id": teacher_id}, {"_id": 0, "id": 1}).to_list(500)
+    teacher_assessments = await gd_find(db.session, "assessments", {"teacher_id": teacher_id}, limit=500)
     if not teacher_assessments and class_ids:
-        teacher_assessments = await db.assessments.find({"class_id": {"$in": class_ids}}, {"_id": 0, "id": 1}).to_list(500)
+        teacher_assessments = await gd_find(db.session, "assessments", {"class_id": {"$in": class_ids}}, limit=500)
     total_assessments = len(teacher_assessments)
 
     avg_performance = 0
     assessment_ids = [a["id"] for a in teacher_assessments if a.get("id")]
     if assessment_ids:
-        submissions = await db.assessment_submissions.find(
-            {"assessment_id": {"$in": assessment_ids}},
-            {"_id": 0, "score": 1, "percentage": 1}
-        ).to_list(2000)
+        submissions = await gd_find(db.session, "assessment_submissions", {"assessment_id": {"$in": assessment_ids}}, limit=2000)
         if submissions:
             scores = [s.get("percentage") or s.get("score") or 0 for s in submissions]
             avg_performance = round(sum(scores) / len(scores)) if scores else 0
@@ -2246,11 +2174,11 @@ async def get_teacher_achievements(
     participation_total = 0
     participation_active = 0
     if class_ids:
-        participation_total = await db.participation.count_documents({"class_id": {"$in": class_ids}})
-        participation_active = await db.participation.count_documents({"class_id": {"$in": class_ids}, "status": {"$in": ["active", "participated"]}})
+        participation_total = await gd_count(db.session, "participation", {"class_id": {"$in": class_ids}})
+        participation_active = await gd_count(db.session, "participation", {"class_id": {"$in": class_ids}, "status": {"$in": ["active", "participated"]}})
     if participation_total == 0:
-        participation_total = await db.session_interactions.count_documents({"teacher_id": teacher_id, "type": "participation"})
-        participation_active = await db.session_interactions.count_documents({"teacher_id": teacher_id, "type": "participation", "response": {"$ne": "no_answer"}})
+        participation_total = await gd_count(db.session, "session_interactions", {"teacher_id": teacher_id, "type": "participation"})
+        participation_active = await gd_count(db.session, "session_interactions", {"teacher_id": teacher_id, "type": "participation", "response": {"$ne": "no_answer"}})
     participation_rate = round((participation_active / participation_total) * 100) if participation_total > 0 else 0
 
     regularity_rate = 0
@@ -2306,10 +2234,10 @@ async def get_teacher_achievements(
 
     school_avg = {}
     if school_id:
-        all_teachers = await db.teachers.find({"school_id": school_id}, {"_id": 0, "id": 1}).to_list(200)
+        all_teachers = await gd_find(db.session, "teachers", {"school_id": school_id}, limit=200)
         if len(all_teachers) > 1:
             all_t_ids = [t["id"] for t in all_teachers]
-            all_sessions = await db.teacher_sessions.count_documents({"teacher_id": {"$in": all_t_ids}, "status": {"$in": ["completed", "ended"]}})
+            all_sessions = await gd_count(db.session, "teacher_sessions", {"teacher_id": {"$in": all_t_ids}, "status": {"$in": ["completed", "ended"]}})
             school_avg["avg_sessions"] = round(all_sessions / len(all_teachers))
             school_avg["teacher_count"] = len(all_teachers)
 

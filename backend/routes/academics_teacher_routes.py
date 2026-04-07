@@ -22,6 +22,8 @@ from dependencies import (
     hakim_engine, reporting_engine, export_engine, session_engine,
     REPORT_TYPES, generate_student_qr_code
 )
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_inc
+
 
 from shared_models import (
     TeacherCreate, TeacherUpdate, TeacherResponse, StudentCreate, StudentUpdate, StudentResponse, ClassCreate, ClassUpdate, ClassResponse, SubjectCreate, SubjectResponse
@@ -43,16 +45,10 @@ async def get_teacher_subjects_options(current_user: dict = Depends(get_current_
     """Get available subjects from reference database - unique subjects only"""
     
     # Get subjects from reference_subjects collection first, then fallback to subjects
-    subjects = await db.reference_subjects.find(
-        {"is_active": True},
-        {"_id": 0, "id": 1, "name_ar": 1, "name_en": 1, "code": 1, "color": 1}
-    ).to_list(300)
+    subjects = await gd_find(db.session, "reference_subjects", {"is_active": True}, limit=300)
     
     if not subjects:
-        subjects = await db.subjects.find(
-            {"is_active": True},
-            {"_id": 0, "id": 1, "name_ar": 1, "name_en": 1, "code": 1, "color": 1}
-        ).to_list(300)
+        subjects = await gd_find(db.session, "subjects", {"is_active": True}, limit=300)
     
     # Remove duplicates by name_ar (keep first occurrence)
     seen_names = set()
@@ -129,7 +125,7 @@ async def create_school_constraint(
     }
     
     # Insert into school_constraints collection (not admin_constraints)
-    await db.school_constraints.insert_one(constraint_doc)
+    await gd_insert(db.session, "school_constraints", constraint_doc)
     
     # Remove _id from response
     if "_id" in constraint_doc:
@@ -151,10 +147,7 @@ async def update_school_constraint(
         raise HTTPException(status_code=400, detail="School context required")
     
     # Check constraint exists in school_constraints collection
-    constraint = await db.school_constraints.find_one(
-        {"id": constraint_id, "school_id": school_id},
-        {"_id": 0}
-    )
+    constraint = await gd_find_one(db.session, "school_constraints", {"id": constraint_id, "school_id": school_id})
     
     if not constraint:
         raise HTTPException(status_code=404, detail="القيد غير موجود")
@@ -180,10 +173,7 @@ async def update_school_constraint(
     if constraint_data.is_active is not None:
         update_data["is_active"] = constraint_data.is_active
     
-    await db.school_constraints.update_one(
-        {"id": constraint_id, "school_id": school_id}, 
-        {"$set": update_data}
-    )
+    await gd_update_one(db.session, "school_constraints", {"id": constraint_id, "school_id": school_id}, update_data)
     
     return {"message": "تم تحديث القيد بنجاح"}
 
@@ -200,19 +190,13 @@ async def delete_school_constraint(
         raise HTTPException(status_code=400, detail="School context required")
     
     # Check constraint exists in school_constraints collection
-    constraint = await db.school_constraints.find_one(
-        {"id": constraint_id, "school_id": school_id}, 
-        {"_id": 0}
-    )
+    constraint = await gd_find_one(db.session, "school_constraints", {"id": constraint_id, "school_id": school_id})
     
     if not constraint:
         raise HTTPException(status_code=404, detail="القيد غير موجود")
     
     # Soft delete
-    await db.school_constraints.update_one(
-        {"id": constraint_id, "school_id": school_id},
-        {"$set": {"is_active": False, "deleted_at": datetime.now(timezone.utc).isoformat()}}
-    )
+    await gd_update_one(db.session, "school_constraints", {"id": constraint_id, "school_id": school_id}, {"is_active": False, "deleted_at": datetime.now(timezone.utc).isoformat()})
     
     return {"message": "تم حذف القيد بنجاح"}
 
@@ -225,17 +209,11 @@ async def get_school_constraints(
     school_id = await get_school_id_from_context(current_user, x_school_context)
     
     # Get school-specific constraints first
-    school_constraints = await db.school_constraints.find(
-        {"school_id": school_id},
-        {"_id": 0}
-    ).to_list(100)
+    school_constraints = await gd_find(db.session, "school_constraints", {"school_id": school_id}, limit=100)
     
     # If no school-specific constraints, get reference constraints as starting point
     if not school_constraints:
-        ref_constraints = await db.admin_constraints.find(
-            {"is_active": True},
-            {"_id": 0}
-        ).to_list(100)
+        ref_constraints = await gd_find(db.session, "admin_constraints", {"is_active": True}, limit=100)
         
         # Copy reference constraints to school-specific collection
         for c in ref_constraints:
@@ -253,7 +231,7 @@ async def get_school_constraints(
                 "is_system": True,  # Mark as system-generated
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
-            await db.school_constraints.insert_one(school_constraint)
+            await gd_insert(db.session, "school_constraints", school_constraint)
             school_constraint.pop("_id", None)
             school_constraints.append(school_constraint)
     
@@ -264,13 +242,10 @@ async def get_school_constraints(
 async def get_teacher_grades_options(current_user: dict = Depends(get_current_user)):
     """Get available grade levels from reference database or school classes"""
     
-    grades = await db.academic_grades.find(
-        {"is_active": True},
-        {"_id": 0}
-    ).sort("order", 1).to_list(100)
+    grades = await gd_find(db.session, "academic_grades", {"is_active": True}, order_by="order", desc_order=False, limit=100)
     
     if grades:
-        stages = await db.academic_stages.find({"is_active": True}, {"_id": 0}).sort("order", 1).to_list(10)
+        stages = await gd_find(db.session, "academic_stages", {"is_active": True}, order_by="order", desc_order=False, limit=10)
         stages_map = {s["id"]: s for s in stages}
         
         formatted_grades = []
@@ -290,7 +265,7 @@ async def get_teacher_grades_options(current_user: dict = Depends(get_current_us
     
     school_id = current_user.get("school_id") or current_user.get("tenant_id")
     query = {"school_id": school_id} if school_id else {}
-    classes = await db.classes.find(query, {"_id": 0, "name": 1, "name_ar": 1, "grade": 1, "grade_level": 1}).to_list(500)
+    classes = await gd_find(db.session, "classes", query, limit=500)
     
     import re
     grade_map = {}
@@ -325,10 +300,7 @@ async def get_teacher_grades_options(current_user: dict = Depends(get_current_us
 @router.get("/teachers/options/academic-degrees")
 async def get_academic_degrees_options(current_user: dict = Depends(get_current_user)):
     """Get available academic degrees from DB or defaults"""
-    db_degrees = await db.lookup_options.find(
-        {"type": "academic_degree", "is_active": {"$ne": False}},
-        {"_id": 0}
-    ).to_list(20)
+    db_degrees = await gd_find(db.session, "lookup_options", {"type": "academic_degree", "is_active": {"$ne": False}}, limit=20)
     if db_degrees:
         degrees = [{"id": r.get("code", r.get("id")), "name": r.get("name_ar"), "name_en": r.get("name_en")} for r in db_degrees]
     else:
@@ -343,13 +315,10 @@ async def get_academic_degrees_options(current_user: dict = Depends(get_current_
 @router.get("/teachers/options/teacher-ranks")
 async def get_teacher_ranks_options(current_user: dict = Depends(get_current_user)):
     """Get available teacher ranks from database or defaults"""
-    ranks = await db.lookup_options.find(
-        {"type": "teacher_rank", "is_active": {"$ne": False}},
-        {"_id": 0}
-    ).sort("order", 1).to_list(100)
+    ranks = await gd_find(db.session, "lookup_options", {"type": "teacher_rank", "is_active": {"$ne": False}}, order_by="order", desc_order=False, limit=100)
     
     if not ranks:
-        ranks = await db.teacher_ranks.find({"is_active": True}, {"_id": 0}).sort("order", 1).to_list(100)
+        ranks = await gd_find(db.session, "teacher_ranks", {"is_active": True}, order_by="order", desc_order=False, limit=100)
     
     if not ranks:
         ranks = [
@@ -374,10 +343,7 @@ async def get_teacher_ranks_options(current_user: dict = Depends(get_current_use
 @router.get("/teachers/options/contract-types")
 async def get_contract_types_options(current_user: dict = Depends(get_current_user)):
     """Get available contract types from DB or defaults"""
-    db_types = await db.lookup_options.find(
-        {"type": "contract_type", "is_active": {"$ne": False}},
-        {"_id": 0}
-    ).to_list(20)
+    db_types = await gd_find(db.session, "lookup_options", {"type": "contract_type", "is_active": {"$ne": False}}, limit=20)
     if db_types:
         types = [{"id": r.get("code", r.get("id")), "name": r.get("name_ar"), "name_en": r.get("name_en")} for r in db_types]
     else:
@@ -391,10 +357,7 @@ async def get_contract_types_options(current_user: dict = Depends(get_current_us
 @router.get("/teachers/options/nationalities")
 async def get_nationalities_options(current_user: dict = Depends(get_current_user)):
     """Get available nationalities from DB or defaults"""
-    db_nations = await db.lookup_options.find(
-        {"type": "nationality", "is_active": {"$ne": False}},
-        {"_id": 0}
-    ).to_list(100)
+    db_nations = await gd_find(db.session, "lookup_options", {"type": "nationality", "is_active": {"$ne": False}}, limit=100)
     if db_nations:
         nationalities = [{"id": r.get("code", r.get("id")), "name": r.get("name_ar"), "name_en": r.get("name_en")} for r in db_nations]
     else:
@@ -514,12 +477,12 @@ async def create_teacher_wizard(
         raise HTTPException(status_code=400, detail="رقم الهاتف مطلوب")
     
     # Check if email exists
-    existing = await db.users.find_one({"email": email})
+    existing = await gd_find_one(db.session, "users", {"email": email})
     if existing:
         raise HTTPException(status_code=400, detail="البريد الإلكتروني مسجل مسبقاً")
     
     # Get school info
-    school = await db.schools.find_one({"id": school_id}, {"_id": 0, "code": 1})
+    school = await gd_find_one(db.session, "schools", {"id": school_id})
     school_code = school.get("code", "NSS") if school else "NSS"
     
     # Generate IDs and password
@@ -580,14 +543,11 @@ async def create_teacher_wizard(
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
     
-    await db.teachers.insert_one(teacher_doc)
-    await db.users.insert_one(user_doc)
+    await gd_insert(db.session, "teachers", teacher_doc)
+    await gd_insert(db.session, "users", user_doc)
     
     # Update school teacher count
-    await db.schools.update_one(
-        {"id": school_id},
-        {"$inc": {"current_teachers": 1}}
-    )
+    await _gd_inc(db.session, "schools", {"id": school_id}, {"current_teachers": 1})
     
     return {
         "success": True,
@@ -623,7 +583,7 @@ async def create_teacher(
     teacher_data.school_id = school_id
 
     # Check if email already exists
-    existing = await db.users.find_one({"email": teacher_data.email})
+    existing = await gd_find_one(db.session, "users", {"email": teacher_data.email})
     if existing:
         raise HTTPException(status_code=400, detail="البريد الإلكتروني مسجل مسبقاً")
     
@@ -665,14 +625,11 @@ async def create_teacher(
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
     
-    await db.users.insert_one(user_doc)
-    await db.teachers.insert_one(teacher_doc)
+    await gd_insert(db.session, "users", user_doc)
+    await gd_insert(db.session, "teachers", teacher_doc)
     
     # Update school teacher count
-    await db.schools.update_one(
-        {"id": teacher_data.school_id},
-        {"$inc": {"current_teachers": 1}}
-    )
+    await _gd_inc(db.session, "schools", {"id": teacher_data.school_id}, {"current_teachers": 1})
 
     try:
         from routes.school_settings_mod import _ensure_teacher_linked_to_all_classes
@@ -694,7 +651,7 @@ async def get_teachers(
     elif current_user.get("role") != UserRole.PLATFORM_ADMIN.value:
         query["school_id"] = current_user.get("tenant_id")
     
-    teachers = await db.teachers.find(query, {"_id": 0}).to_list(1000)
+    teachers = await gd_find(db.session, "teachers", query, limit=1000)
     
     # Normalize field names for consistency
     result = []
@@ -711,7 +668,7 @@ async def get_teachers(
 @router.get("/teachers/{teacher_id}", response_model=TeacherResponse)
 async def get_teacher(teacher_id: str, current_user: dict = Depends(get_current_user)):
     """Get teacher by ID"""
-    teacher = await db.teachers.find_one({"id": teacher_id}, {"_id": 0})
+    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
     if not teacher:
         raise HTTPException(status_code=404, detail="المعلم غير موجود")
     # Normalize field names
@@ -750,23 +707,14 @@ async def update_teacher(
     if teacher_data.is_active is not None:
         update_fields["is_active"] = teacher_data.is_active
     
-    result = await db.teachers.update_one(
-        {"id": teacher_id},
-        {"$set": update_fields}
-    )
-    if result.matched_count == 0:
+    result = await gd_update_one(db.session, "teachers", {"id": teacher_id}, update_fields)
+    if result == 0:
         raise HTTPException(status_code=404, detail="المعلم غير موجود")
 
     if "full_name" in update_fields:
         new_name = update_fields["full_name"]
-        await db.teacher_assignments.update_many(
-            {"teacher_id": teacher_id},
-            {"$set": {"teacher_name": new_name}}
-        )
-        await db.schedule_sessions.update_many(
-            {"teacher_id": teacher_id},
-            {"$set": {"teacher_name": new_name}}
-        )
+        await gd_update_many(db.session, "teacher_assignments", {"teacher_id": teacher_id}, {"teacher_name": new_name})
+        await gd_update_many(db.session, "schedule_sessions", {"teacher_id": teacher_id}, {"teacher_name": new_name})
 
     return {"message": "تم تحديث بيانات المعلم", "success": True}
 
@@ -776,7 +724,7 @@ async def delete_teacher(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
     """Delete teacher — full removal from system"""
-    teacher = await db.teachers.find_one({"id": teacher_id}, {"_id": 0})
+    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
     if not teacher:
         raise HTTPException(status_code=404, detail="المعلم غير موجود")
     
@@ -784,34 +732,31 @@ async def delete_teacher(
     user_id = teacher.get("user_id")
 
     cleanup = {}
-    await db.teachers.delete_one({"id": teacher_id})
+    await gd_delete_one(db.session, "teachers", {"id": teacher_id})
 
-    await db.schools.update_one(
-        {"id": school_id},
-        {"$inc": {"current_teachers": -1}}
-    )
+    await _gd_inc(db.session, "schools", {"id": school_id}, {"current_teachers": -1})
 
-    r = await db.teacher_assignments.delete_many({"teacher_id": teacher_id})
-    cleanup["teacher_assignments"] = r.deleted_count
-    r = await db.teacher_class_assignments.delete_many({"teacher_id": teacher_id})
-    cleanup["teacher_class_assignments"] = r.deleted_count
-    r = await db.teacher_subjects.delete_many({"teacher_id": teacher_id})
-    cleanup["teacher_subjects"] = r.deleted_count
-    r = await db.teacher_attendance.delete_many({"teacher_id": teacher_id})
-    cleanup["teacher_attendance"] = r.deleted_count
-    r = await db.timetable_sessions.delete_many({"teacher_id": teacher_id})
-    cleanup["timetable_sessions"] = r.deleted_count
-    r = await db.class_sessions.delete_many({"teacher_id": teacher_id})
-    cleanup["class_sessions"] = r.deleted_count
-    r = await db.session_event_log.delete_many({"teacher_id": teacher_id})
-    cleanup["session_event_log"] = r.deleted_count
-    r = await db.user_relationships.delete_many({"$or": [{"source_id": teacher_id}, {"target_id": teacher_id}]})
-    cleanup["user_relationships"] = r.deleted_count
+    r = await gd_delete_many(db.session, "teacher_assignments", {"teacher_id": teacher_id})
+    cleanup["teacher_assignments"] = r
+    r = await gd_delete_many(db.session, "teacher_class_assignments", {"teacher_id": teacher_id})
+    cleanup["teacher_class_assignments"] = r
+    r = await gd_delete_many(db.session, "teacher_subjects", {"teacher_id": teacher_id})
+    cleanup["teacher_subjects"] = r
+    r = await gd_delete_many(db.session, "teacher_attendance", {"teacher_id": teacher_id})
+    cleanup["teacher_attendance"] = r
+    r = await gd_delete_many(db.session, "timetable_sessions", {"teacher_id": teacher_id})
+    cleanup["timetable_sessions"] = r
+    r = await gd_delete_many(db.session, "class_sessions", {"teacher_id": teacher_id})
+    cleanup["class_sessions"] = r
+    r = await gd_delete_many(db.session, "session_event_log", {"teacher_id": teacher_id})
+    cleanup["session_event_log"] = r
+    r = await gd_delete_many(db.session, "user_relationships", {"$or": [{"source_id": teacher_id}, {"target_id": teacher_id}]})
+    cleanup["user_relationships"] = r
 
     if user_id:
-        await db.users.delete_one({"id": user_id})
-        await db.user_roles.delete_many({"user_id": user_id})
-        await db.user_identities.delete_many({"user_id": user_id})
+        await gd_delete_one(db.session, "users", {"id": user_id})
+        await gd_delete_many(db.session, "user_roles", {"user_id": user_id})
+        await gd_delete_many(db.session, "user_identities", {"user_id": user_id})
         cleanup["user_account"] = 1
 
     return {"message": "تم حذف المعلم وجميع بياناته من النظام بالكامل", "success": True, "cleanup": cleanup}
@@ -824,29 +769,26 @@ async def delete_parent(
 ):
     """Delete parent — full removal from system"""
     tenant_id = current_user.get("tenant_id")
-    parent = await db.parents.find_one({"id": parent_id, "tenant_id": tenant_id}, {"_id": 0})
+    parent = await gd_find_one(db.session, "parents", {"id": parent_id, "tenant_id": tenant_id})
     if not parent:
         raise HTTPException(status_code=404, detail="ولي الأمر غير موجود")
 
     user_id = parent.get("user_id")
 
     cleanup = {}
-    await db.parents.delete_one({"id": parent_id})
+    await gd_delete_one(db.session, "parents", {"id": parent_id})
 
-    r = await db.guardian_links.delete_many({"parent_id": parent_id})
-    cleanup["guardian_links"] = r.deleted_count
-    r = await db.user_relationships.delete_many({"$or": [{"source_id": parent_id}, {"target_id": parent_id}]})
-    cleanup["user_relationships"] = r.deleted_count
+    r = await gd_delete_many(db.session, "guardian_links", {"parent_id": parent_id})
+    cleanup["guardian_links"] = r
+    r = await gd_delete_many(db.session, "user_relationships", {"$or": [{"source_id": parent_id}, {"target_id": parent_id}]})
+    cleanup["user_relationships"] = r
 
-    await db.students.update_many(
-        {"parent_ids": parent_id},
-        {"$pull": {"parent_ids": parent_id}}
-    )
+    await gd_update_many(db.session, "students", {"parent_ids": parent_id}, {"$pull": {"parent_ids": parent_id}})
 
     if user_id:
-        await db.users.delete_one({"id": user_id})
-        await db.user_roles.delete_many({"user_id": user_id})
-        await db.user_identities.delete_many({"user_id": user_id})
+        await gd_delete_one(db.session, "users", {"id": user_id})
+        await gd_delete_many(db.session, "user_roles", {"user_id": user_id})
+        await gd_delete_many(db.session, "user_identities", {"user_id": user_id})
         cleanup["user_account"] = 1
 
     return {"message": "تم حذف ولي الأمر وجميع بياناته من النظام بالكامل", "success": True, "cleanup": cleanup}
@@ -862,7 +804,7 @@ async def get_global_talents(
     query = {"$or": [{"is_global": True}]}
     if tenant_id:
         query["$or"].append({"tenant_id": tenant_id})
-    talents = await db.global_talents.find(query, {"_id": 0}).sort("name_ar", 1).to_list(500)
+    talents = await gd_find(db.session, "global_talents", query, order_by="name_ar", desc_order=False, limit=500)
     return {"talents": talents}
 
 
@@ -877,7 +819,7 @@ async def create_custom_talent(
         raise HTTPException(400, "اسم الموهبة بالعربية مطلوب")
     tenant_id = current_user.get("tenant_id")
     value_key = re.sub(r'\s+', '_', name_ar).lower()
-    existing = await db.global_talents.find_one({
+    existing = await gd_find_one(db.session, "global_talents", {
         "$or": [
             {"name_ar": name_ar, "$or": [{"is_global": True}, {"tenant_id": tenant_id}]},
             {"value": value_key, "$or": [{"is_global": True}, {"tenant_id": tenant_id}]}
@@ -895,6 +837,6 @@ async def create_custom_talent(
         "created_at": datetime.now(timezone.utc).isoformat(),
         "created_by": current_user["id"]
     }
-    await db.global_talents.insert_one(talent_doc)
+    await gd_insert(db.session, "global_talents", talent_doc)
     talent_doc.pop("_id", None)
     return talent_doc

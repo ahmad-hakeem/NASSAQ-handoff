@@ -22,6 +22,8 @@ from dependencies import (
     hakim_engine, reporting_engine, export_engine, session_engine,
     REPORT_TYPES, generate_student_qr_code
 )
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
+
 
 from shared_models import (
     TeacherCreate, TeacherUpdate, TeacherResponse, StudentCreate, StudentUpdate, StudentResponse, ClassCreate, ClassUpdate, ClassResponse, SubjectCreate, SubjectResponse
@@ -91,7 +93,7 @@ async def create_school_subject(
         "created_by": current_user.get("id")
     }
     
-    await db.subjects.insert_one(subject_doc)
+    await gd_insert(db.session, "subjects", subject_doc)
     
     # Remove _id from response
     if "_id" in subject_doc:
@@ -113,7 +115,7 @@ async def update_school_subject(
         raise HTTPException(status_code=400, detail="School context required")
     
     # Check if subject exists for this school
-    subject = await db.subjects.find_one({"id": subject_id, "school_id": school_id}, {"_id": 0})
+    subject = await gd_find_one(db.session, "subjects", {"id": subject_id, "school_id": school_id})
     
     if not subject:
         raise HTTPException(status_code=404, detail="المادة غير موجودة")
@@ -135,7 +137,7 @@ async def update_school_subject(
     if subject_data.is_active is not None:
         update_data["is_active"] = subject_data.is_active
     
-    await db.subjects.update_one({"id": subject_id}, {"$set": update_data})
+    await gd_update_one(db.session, "subjects", {"id": subject_id}, update_data)
     
     return {"message": "تم تحديث المادة بنجاح"}
 
@@ -153,13 +155,13 @@ async def delete_school_subject(
         raise HTTPException(status_code=400, detail="School context required")
     
     # Check if subject exists for this school
-    subject = await db.subjects.find_one({"id": subject_id, "school_id": school_id}, {"_id": 0})
+    subject = await gd_find_one(db.session, "subjects", {"id": subject_id, "school_id": school_id})
     
     if not subject:
         raise HTTPException(status_code=404, detail="المادة غير موجودة")
     
     # Check for dependencies (teacher assignments)
-    assignments_count = await db.teacher_assignments.count_documents({"subject_id": subject_id, "school_id": school_id})
+    assignments_count = await gd_count(db.session, "teacher_assignments", {"subject_id": subject_id, "school_id": school_id})
     
     if assignments_count > 0 and not force:
         return {
@@ -172,10 +174,7 @@ async def delete_school_subject(
         }
     
     # Soft delete
-    await db.subjects.update_one(
-        {"id": subject_id},
-        {"$set": {"is_active": False, "deleted_at": datetime.now(timezone.utc).isoformat(), "deleted_by": current_user["id"]}}
-    )
+    await gd_update_one(db.session, "subjects", {"id": subject_id}, {"is_active": False, "deleted_at": datetime.now(timezone.utc).isoformat(), "deleted_by": current_user["id"]})
     
     # Audit log
     audit_log = {
@@ -191,7 +190,7 @@ async def delete_school_subject(
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "ip_address": None
     }
-    await db.audit_logs.insert_one(audit_log)
+    await gd_insert(db.session, "audit_logs", audit_log)
     
     return {"message": "تم حذف المادة بنجاح"}
 
@@ -206,10 +205,7 @@ async def get_school_subjects(
     if not school_id:
         raise HTTPException(status_code=400, detail="School context required")
     
-    subjects = await db.subjects.find(
-        {"school_id": school_id, "is_active": True},
-        {"_id": 0}
-    ).to_list(100)
+    subjects = await gd_find(db.session, "subjects", {"school_id": school_id, "is_active": True}, limit=100)
     
     return subjects
 
@@ -227,10 +223,7 @@ async def get_unique_school_subjects(
     subjects_dict = {}
     
     # 1. Get subjects from school's subjects collection
-    school_subjects = await db.subjects.find(
-        {"school_id": school_id, "is_active": {"$ne": False}},
-        {"_id": 0}
-    ).to_list(500)
+    school_subjects = await gd_find(db.session, "subjects", {"school_id": school_id, "is_active": {"$ne": False}}, limit=500)
     
     for s in school_subjects:
         name = s.get("name") or s.get("name_ar") or "مادة بدون اسم"
@@ -245,10 +238,7 @@ async def get_unique_school_subjects(
     
     # 2. Get subjects from reference_subjects (if not enough)
     if len(subjects_dict) < 10:
-        ref_subjects = await db.reference_subjects.find(
-            {},
-            {"_id": 0}
-        ).to_list(500)
+        ref_subjects = await gd_find(db.session, "reference_subjects", {}, limit=500)
         
         for s in ref_subjects:
             name = s.get("name") or s.get("name_ar") or "مادة بدون اسم"
@@ -263,10 +253,7 @@ async def get_unique_school_subjects(
     
     # 3. If still not enough, get from official curriculum
     if len(subjects_dict) < 10:
-        official_subjects = await db.official_curriculum_subjects.find(
-            {},
-            {"_id": 0}
-        ).to_list(500)
+        official_subjects = await gd_find(db.session, "official_curriculum_subjects", {}, limit=500)
         
         for s in official_subjects:
             name = s.get("name_ar") or s.get("name") or "مادة بدون اسم"
@@ -311,7 +298,7 @@ async def create_subject(
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
     
-    await db.subjects.insert_one(subject_doc)
+    await gd_insert(db.session, "subjects", subject_doc)
     return SubjectResponse(**subject_doc)
 
 @router.get("/subjects", response_model=List[SubjectResponse])
@@ -326,7 +313,7 @@ async def get_subjects(
     elif current_user.get("role") != UserRole.PLATFORM_ADMIN.value:
         query["school_id"] = current_user.get("tenant_id")
     
-    subjects = await db.subjects.find(query, {"_id": 0}).to_list(1000)
+    subjects = await gd_find(db.session, "subjects", query, limit=1000)
     result = []
     for s in subjects:
         if "name" not in s and "name_ar" in s:
@@ -342,7 +329,7 @@ async def get_subjects(
 @router.get("/subjects/{subject_id}", response_model=SubjectResponse)
 async def get_subject(subject_id: str, current_user: dict = Depends(get_current_user)):
     """Get subject by ID"""
-    subject = await db.subjects.find_one({"id": subject_id}, {"_id": 0})
+    subject = await gd_find_one(db.session, "subjects", {"id": subject_id})
     if not subject:
         raise HTTPException(status_code=404, detail="المادة غير موجودة")
     return SubjectResponse(**subject)
@@ -354,10 +341,8 @@ async def update_subject(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN]))
 ):
     """Update subject"""
-    old_subject = await db.subjects.find_one({"id": subject_id}, {"_id": 0, "name": 1})
-    result = await db.subjects.update_one(
-        {"id": subject_id},
-        {"$set": {
+    old_subject = await gd_find_one(db.session, "subjects", {"id": subject_id})
+    result = await gd_update_one(db.session, "subjects", {"id": subject_id}, {
             "name": subject_data.name,
             "name_en": subject_data.name_en,
             "code": subject_data.code,
@@ -365,20 +350,13 @@ async def update_subject(
             "weekly_hours": subject_data.weekly_hours,
             "grade_levels": subject_data.grade_levels,
             "updated_at": datetime.now(timezone.utc).isoformat()
-        }}
-    )
-    if result.modified_count == 0:
+        })
+    if result == 0:
         raise HTTPException(status_code=404, detail="المادة غير موجودة")
 
     if old_subject and subject_data.name != old_subject.get("name"):
-        await db.teacher_assignments.update_many(
-            {"subject_id": subject_id},
-            {"$set": {"subject_name": subject_data.name}}
-        )
-        await db.schedule_sessions.update_many(
-            {"subject_id": subject_id},
-            {"$set": {"subject_name": subject_data.name}}
-        )
+        await gd_update_many(db.session, "teacher_assignments", {"subject_id": subject_id}, {"subject_name": subject_data.name})
+        await gd_update_many(db.session, "schedule_sessions", {"subject_id": subject_id}, {"subject_name": subject_data.name})
 
     return {"message": "تم تحديث بيانات المادة"}
 
@@ -388,11 +366,11 @@ async def delete_subject(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
     """Delete subject (soft delete)"""
-    subject = await db.subjects.find_one({"id": subject_id}, {"_id": 0})
+    subject = await gd_find_one(db.session, "subjects", {"id": subject_id})
     if not subject:
         raise HTTPException(status_code=404, detail="المادة غير موجودة")
     
-    await db.subjects.update_one({"id": subject_id}, {"$set": {"is_active": False}})
+    await gd_update_one(db.session, "subjects", {"id": subject_id}, {"is_active": False})
     return {"message": "تم حذف المادة"}
 
 
@@ -411,7 +389,7 @@ async def get_school_subjects(
     if not school_id:
         raise HTTPException(status_code=400, detail="School context required")
     
-    subjects = await db.subjects.find({"tenant_id": school_id}, {"_id": 0}).to_list(100)
+    subjects = await gd_find(db.session, "subjects", {"tenant_id": school_id}, limit=100)
     return {"subjects": subjects}
 
 
@@ -439,7 +417,7 @@ async def create_school_subject(
         "created_by": current_user["id"]
     }
     
-    await db.subjects.insert_one(subject)
+    await gd_insert(db.session, "subjects", subject)
     subject.pop("_id", None)
     
     return {"message": "تم إضافة المادة الدراسية", "subject": subject}
@@ -457,7 +435,7 @@ async def delete_school_subject(
     if not school_id:
         raise HTTPException(status_code=400, detail="School context required")
     
-    await db.subjects.delete_one({"id": subject_id, "tenant_id": school_id})
+    await gd_delete_one(db.session, "subjects", {"id": subject_id, "tenant_id": school_id})
     
     return {"message": "تم حذف المادة الدراسية"}
 

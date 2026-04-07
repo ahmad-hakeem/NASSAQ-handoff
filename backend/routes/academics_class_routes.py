@@ -22,6 +22,8 @@ from dependencies import (
     hakim_engine, reporting_engine, export_engine, session_engine,
     REPORT_TYPES, generate_student_qr_code
 )
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
+
 
 from shared_models import (
     TeacherCreate, TeacherUpdate, TeacherResponse, StudentCreate, StudentUpdate, StudentResponse, ClassCreate, ClassUpdate, ClassResponse, SubjectCreate, SubjectResponse
@@ -60,7 +62,7 @@ async def create_class_wizard(
     class_id = str(uuid.uuid4())
     
     # Get grade level info
-    grade_level = await db.grade_levels.find_one({"id": data.grade_id}, {"_id": 0})
+    grade_level = await gd_find_one(db.session, "grade_levels", {"id": data.grade_id})
     
     # Derive grade number from grade_level if not provided
     grade_number = data.grade
@@ -100,23 +102,20 @@ async def create_class_wizard(
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
     
-    await db.classes.insert_one(class_doc)
+    await gd_insert(db.session, "classes", class_doc)
     
     # Assign students to class
     if data.student_ids:
-        await db.students.update_many(
-            {"id": {"$in": data.student_ids}},
-            {"$set": {
+        await gd_update_many(db.session, "students", {"id": {"$in": data.student_ids}}, {
                 "class_id": class_id,
                 "grade": data.grade,
                 "section": data.section,
-            }}
-        )
+            })
     
     # Get homeroom teacher name
     teacher_name = None
     if data.homeroom_teacher_id:
-        teacher = await db.teachers.find_one({"id": data.homeroom_teacher_id}, {"_id": 0, "full_name": 1})
+        teacher = await gd_find_one(db.session, "teachers", {"id": data.homeroom_teacher_id})
         if teacher:
             teacher_name = teacher.get("full_name")
     
@@ -165,12 +164,12 @@ async def create_class(
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
     
-    await db.classes.insert_one(class_doc)
+    await gd_insert(db.session, "classes", class_doc)
     
     # Get homeroom teacher name
     teacher_name = None
     if class_doc["homeroom_teacher_id"]:
-        teacher = await db.teachers.find_one({"id": class_doc["homeroom_teacher_id"]}, {"_id": 0})
+        teacher = await gd_find_one(db.session, "teachers", {"id": class_doc["homeroom_teacher_id"]})
         if teacher:
             teacher_name = teacher.get("full_name")
     
@@ -192,11 +191,11 @@ async def get_classes(
     if grade_level:
         query["grade_level"] = grade_level
     
-    classes = await db.classes.find(query, {"_id": 0}).to_list(1000)
+    classes = await gd_find(db.session, "classes", query, limit=1000)
     
     # Get teacher names
     teacher_ids = list(set([c.get("homeroom_teacher_id") for c in classes if c.get("homeroom_teacher_id")]))
-    teachers = await db.teachers.find({"id": {"$in": teacher_ids}}, {"_id": 0}).to_list(100)
+    teachers = await gd_find(db.session, "teachers", {"id": {"$in": teacher_ids}}, limit=100)
     teacher_map = {t.get("id"): t.get("full_name") or t.get("full_name_ar") for t in teachers}
     
     result = []
@@ -215,13 +214,13 @@ async def get_classes(
 @router.get("/classes/{class_id}", response_model=ClassResponse)
 async def get_class(class_id: str, current_user: dict = Depends(get_current_user)):
     """Get class by ID"""
-    class_doc = await db.classes.find_one({"id": class_id}, {"_id": 0})
+    class_doc = await gd_find_one(db.session, "classes", {"id": class_id})
     if not class_doc:
         raise HTTPException(status_code=404, detail="الفصل غير موجود")
     
     teacher_name = None
     if class_doc.get("homeroom_teacher_id"):
-        teacher = await db.teachers.find_one({"id": class_doc.get("homeroom_teacher_id")}, {"_id": 0})
+        teacher = await gd_find_one(db.session, "teachers", {"id": class_doc.get("homeroom_teacher_id")})
         if teacher:
             teacher_name = teacher.get("full_name")
     
@@ -252,23 +251,14 @@ async def update_class(
     if class_data.is_active is not None:
         update_fields["is_active"] = class_data.is_active
     
-    result = await db.classes.update_one(
-        {"id": class_id},
-        {"$set": update_fields}
-    )
-    if result.matched_count == 0:
+    result = await gd_update_one(db.session, "classes", {"id": class_id}, update_fields)
+    if result == 0:
         raise HTTPException(status_code=404, detail="الفصل غير موجود")
 
     if "name" in update_fields:
         new_name = update_fields["name"]
-        await db.teacher_assignments.update_many(
-            {"class_id": class_id},
-            {"$set": {"class_name": new_name}}
-        )
-        await db.schedule_sessions.update_many(
-            {"class_id": class_id},
-            {"$set": {"class_name": new_name}}
-        )
+        await gd_update_many(db.session, "teacher_assignments", {"class_id": class_id}, {"class_name": new_name})
+        await gd_update_many(db.session, "schedule_sessions", {"class_id": class_id}, {"class_name": new_name})
 
     return {"message": "تم تحديث بيانات الفصل", "success": True}
 
@@ -278,11 +268,11 @@ async def delete_class(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
     """Delete class — full removal from system"""
-    class_doc = await db.classes.find_one({"id": class_id}, {"_id": 0})
+    class_doc = await gd_find_one(db.session, "classes", {"id": class_id})
     if not class_doc:
         raise HTTPException(status_code=404, detail="الفصل غير موجود")
     
-    student_count = await db.students.count_documents({"class_id": class_id, "is_active": {"$ne": False}})
+    student_count = await gd_count(db.session, "students", {"class_id": class_id, "is_active": {"$ne": False}})
     if student_count > 0:
         raise HTTPException(
             status_code=409,
@@ -291,27 +281,27 @@ async def delete_class(
     
     school_id = class_doc.get("school_id")
     cleanup = {}
-    await db.classes.delete_one({"id": class_id})
-    r = await db.teacher_assignments.delete_many({"class_id": class_id})
-    cleanup["teacher_assignments"] = r.deleted_count
-    r = await db.teacher_class_assignments.delete_many({"class_id": class_id})
-    cleanup["teacher_class_assignments"] = r.deleted_count
-    r = await db.class_subjects.delete_many({"class_id": class_id})
-    cleanup["class_subjects"] = r.deleted_count
-    r = await db.timetable_sessions.delete_many({"class_id": class_id})
-    cleanup["timetable_sessions"] = r.deleted_count
-    r = await db.class_sessions.delete_many({"class_id": class_id})
-    cleanup["class_sessions"] = r.deleted_count
-    r = await db.attendance.delete_many({"class_id": class_id})
-    cleanup["attendance"] = r.deleted_count
-    r = await db.session_attendance.delete_many({"class_id": class_id})
-    cleanup["session_attendance"] = r.deleted_count
-    r = await db.assessments.delete_many({"class_id": class_id})
-    cleanup["assessments"] = r.deleted_count
-    r = await db.grades.delete_many({"class_id": class_id})
-    cleanup["grades"] = r.deleted_count
-    r = await db.behaviour_records.delete_many({"class_id": class_id})
-    cleanup["behaviour_records"] = r.deleted_count
+    await gd_delete_one(db.session, "classes", {"id": class_id})
+    r = await gd_delete_many(db.session, "teacher_assignments", {"class_id": class_id})
+    cleanup["teacher_assignments"] = r
+    r = await gd_delete_many(db.session, "teacher_class_assignments", {"class_id": class_id})
+    cleanup["teacher_class_assignments"] = r
+    r = await gd_delete_many(db.session, "class_subjects", {"class_id": class_id})
+    cleanup["class_subjects"] = r
+    r = await gd_delete_many(db.session, "timetable_sessions", {"class_id": class_id})
+    cleanup["timetable_sessions"] = r
+    r = await gd_delete_many(db.session, "class_sessions", {"class_id": class_id})
+    cleanup["class_sessions"] = r
+    r = await gd_delete_many(db.session, "attendance", {"class_id": class_id})
+    cleanup["attendance"] = r
+    r = await gd_delete_many(db.session, "session_attendance", {"class_id": class_id})
+    cleanup["session_attendance"] = r
+    r = await gd_delete_many(db.session, "assessments", {"class_id": class_id})
+    cleanup["assessments"] = r
+    r = await gd_delete_many(db.session, "grades", {"class_id": class_id})
+    cleanup["grades"] = r
+    r = await gd_delete_many(db.session, "behaviour_records", {"class_id": class_id})
+    cleanup["behaviour_records"] = r
 
     return {"message": "تم حذف الفصل وجميع البيانات المرتبطة به بنجاح", "success": True, "cleanup": cleanup}
 

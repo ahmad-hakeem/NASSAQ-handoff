@@ -22,6 +22,8 @@ from dependencies import (
     hakim_engine, reporting_engine, export_engine, session_engine,
     REPORT_TYPES, generate_student_qr_code
 )
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
+
 
 from shared_models import (
     TeacherCreate, TeacherUpdate, TeacherResponse, StudentCreate, StudentUpdate, StudentResponse, ClassCreate, ClassUpdate, ClassResponse, SubjectCreate, SubjectResponse
@@ -83,10 +85,7 @@ async def create_academic_year(
         raise HTTPException(status_code=400, detail="لم يتم تحديد المدرسة")
     
     if data.is_current:
-        await db.academic_years.update_many(
-            {"school_id": school_id, "is_current": True},
-            {"$set": {"is_current": False}}
-        )
+        await gd_update_many(db.session, "academic_years", {"school_id": school_id, "is_current": True}, {"is_current": False})
     
     academic_year_doc = {
         "id": academic_year_id,
@@ -103,7 +102,7 @@ async def create_academic_year(
         "created_by": current_user.get("id")
     }
     
-    await db.academic_years.insert_one(academic_year_doc)
+    await gd_insert(db.session, "academic_years", academic_year_doc)
     
     return AcademicYearResponse(**academic_year_doc)
 
@@ -119,7 +118,7 @@ async def get_academic_years(
     elif current_user.get("tenant_id"):
         query["school_id"] = current_user["tenant_id"]
     
-    academic_years = await db.academic_years.find(query, {"_id": 0}).sort("start_date", -1).to_list(100)
+    academic_years = await gd_find(db.session, "academic_years", query, order_by="start_date", desc_order=True, limit=100)
     return [AcademicYearResponse(**normalize_academic_year(ay)) for ay in academic_years]
 
 @router.get("/academic-years/{academic_year_id}", response_model=AcademicYearResponse)
@@ -128,7 +127,7 @@ async def get_academic_year(
     current_user: dict = Depends(get_current_user)
 ):
     """Get a single academic year"""
-    academic_year = await db.academic_years.find_one({"id": academic_year_id}, {"_id": 0})
+    academic_year = await gd_find_one(db.session, "academic_years", {"id": academic_year_id})
     if not academic_year:
         raise HTTPException(status_code=404, detail="العام الدراسي غير موجود")
     return AcademicYearResponse(**normalize_academic_year(academic_year))
@@ -140,17 +139,14 @@ async def update_academic_year(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
     """Update an academic year"""
-    academic_year = await db.academic_years.find_one({"id": academic_year_id})
+    academic_year = await gd_find_one(db.session, "academic_years", {"id": academic_year_id})
     if not academic_year:
         raise HTTPException(status_code=404, detail="العام الدراسي غير موجود")
     
     school_id = current_user.get("tenant_id") or data.school_id or academic_year.get("school_id")
     
     if data.is_current:
-        await db.academic_years.update_many(
-            {"school_id": school_id, "is_current": True, "id": {"$ne": academic_year_id}},
-            {"$set": {"is_current": False}}
-        )
+        await gd_update_many(db.session, "academic_years", {"school_id": school_id, "is_current": True, "id": {"$ne": academic_year_id}}, {"is_current": False})
     
     update_data = {
         "name": data.name,
@@ -162,9 +158,9 @@ async def update_academic_year(
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
     
-    await db.academic_years.update_one({"id": academic_year_id}, {"$set": update_data})
+    await gd_update_one(db.session, "academic_years", {"id": academic_year_id}, update_data)
     
-    updated = await db.academic_years.find_one({"id": academic_year_id}, {"_id": 0})
+    updated = await gd_find_one(db.session, "academic_years", {"id": academic_year_id})
     return AcademicYearResponse(**normalize_academic_year(updated))
 
 @router.delete("/academic-years/{academic_year_id}")
@@ -173,8 +169,8 @@ async def delete_academic_year(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
     """Delete an academic year"""
-    result = await db.academic_years.delete_one({"id": academic_year_id})
-    if result.deleted_count == 0:
+    result = await gd_delete_one(db.session, "academic_years", {"id": academic_year_id})
+    if result == 0:
         raise HTTPException(status_code=404, detail="العام الدراسي غير موجود")
     return {"message": "تم حذف العام الدراسي بنجاح"}
 
@@ -215,10 +211,7 @@ async def create_term(
     
     # If setting as current, unset other current terms for this school
     if data.is_current:
-        await db.terms.update_many(
-            {"school_id": data.school_id, "is_current": True},
-            {"$set": {"is_current": False}}
-        )
+        await gd_update_many(db.session, "terms", {"school_id": data.school_id, "is_current": True}, {"is_current": False})
     
     term_doc = {
         "id": term_id,
@@ -234,7 +227,7 @@ async def create_term(
         "created_by": current_user.get("id")
     }
     
-    await db.terms.insert_one(term_doc)
+    await gd_insert(db.session, "terms", term_doc)
     
     return TermResponse(**term_doc)
 
@@ -254,7 +247,7 @@ async def get_terms(
     if academic_year_id:
         query["academic_year_id"] = academic_year_id
     
-    terms = await db.terms.find(query, {"_id": 0}).sort("start_date", -1).to_list(100)
+    terms = await gd_find(db.session, "terms", query, order_by="start_date", desc_order=True, limit=100)
     return [TermResponse(**t) for t in terms]
 
 @router.get("/terms/{term_id}", response_model=TermResponse)
@@ -263,7 +256,7 @@ async def get_term(
     current_user: dict = Depends(get_current_user)
 ):
     """Get a single term"""
-    term = await db.terms.find_one({"id": term_id}, {"_id": 0})
+    term = await gd_find_one(db.session, "terms", {"id": term_id})
     if not term:
         raise HTTPException(status_code=404, detail="الفصل الدراسي غير موجود")
     return TermResponse(**term)
@@ -275,16 +268,13 @@ async def update_term(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
     """Update a term"""
-    term = await db.terms.find_one({"id": term_id})
+    term = await gd_find_one(db.session, "terms", {"id": term_id})
     if not term:
         raise HTTPException(status_code=404, detail="الفصل الدراسي غير موجود")
     
     # If setting as current, unset other current terms
     if data.is_current:
-        await db.terms.update_many(
-            {"school_id": data.school_id, "is_current": True, "id": {"$ne": term_id}},
-            {"$set": {"is_current": False}}
-        )
+        await gd_update_many(db.session, "terms", {"school_id": data.school_id, "is_current": True, "id": {"$ne": term_id}}, {"is_current": False})
     
     update_data = {
         "name": data.name,
@@ -296,9 +286,9 @@ async def update_term(
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
     
-    await db.terms.update_one({"id": term_id}, {"$set": update_data})
+    await gd_update_one(db.session, "terms", {"id": term_id}, update_data)
     
-    updated = await db.terms.find_one({"id": term_id}, {"_id": 0})
+    updated = await gd_find_one(db.session, "terms", {"id": term_id})
     return TermResponse(**updated)
 
 @router.delete("/terms/{term_id}")
@@ -307,8 +297,8 @@ async def delete_term(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
     """Delete a term"""
-    result = await db.terms.delete_one({"id": term_id})
-    if result.deleted_count == 0:
+    result = await gd_delete_one(db.session, "terms", {"id": term_id})
+    if result == 0:
         raise HTTPException(status_code=404, detail="الفصل الدراسي غير موجود")
     return {"message": "تم حذف الفصل الدراسي بنجاح"}
 
@@ -355,7 +345,7 @@ async def create_grade_level(
         "created_by": current_user.get("id")
     }
     
-    await db.grade_levels.insert_one(grade_doc)
+    await gd_insert(db.session, "grade_levels", grade_doc)
     
     return GradeLevelResponse(**grade_doc)
 
@@ -371,7 +361,7 @@ async def get_grade_levels(
     elif current_user.get("tenant_id"):
         query["school_id"] = current_user["tenant_id"]
     
-    grade_levels = await db.grade_levels.find(query, {"_id": 0}).sort("order", 1).to_list(100)
+    grade_levels = await gd_find(db.session, "grade_levels", query, order_by="order", desc_order=False, limit=100)
     return [GradeLevelResponse(**gl) for gl in grade_levels]
 
 @router.get("/grade-levels/{grade_id}", response_model=GradeLevelResponse)
@@ -380,7 +370,7 @@ async def get_grade_level(
     current_user: dict = Depends(get_current_user)
 ):
     """Get a single grade level"""
-    grade = await db.grade_levels.find_one({"id": grade_id}, {"_id": 0})
+    grade = await gd_find_one(db.session, "grade_levels", {"id": grade_id})
     if not grade:
         raise HTTPException(status_code=404, detail="المرحلة الدراسية غير موجودة")
     return GradeLevelResponse(**grade)
@@ -392,7 +382,7 @@ async def update_grade_level(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
     """Update a grade level"""
-    grade = await db.grade_levels.find_one({"id": grade_id})
+    grade = await gd_find_one(db.session, "grade_levels", {"id": grade_id})
     if not grade:
         raise HTTPException(status_code=404, detail="المرحلة الدراسية غير موجودة")
     
@@ -404,9 +394,9 @@ async def update_grade_level(
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
     
-    await db.grade_levels.update_one({"id": grade_id}, {"$set": update_data})
+    await gd_update_one(db.session, "grade_levels", {"id": grade_id}, update_data)
     
-    updated = await db.grade_levels.find_one({"id": grade_id}, {"_id": 0})
+    updated = await gd_find_one(db.session, "grade_levels", {"id": grade_id})
     return GradeLevelResponse(**updated)
 
 @router.delete("/grade-levels/{grade_id}")
@@ -415,8 +405,8 @@ async def delete_grade_level(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
     """Delete a grade level"""
-    result = await db.grade_levels.delete_one({"id": grade_id})
-    if result.deleted_count == 0:
+    result = await gd_delete_one(db.session, "grade_levels", {"id": grade_id})
+    if result == 0:
         raise HTTPException(status_code=404, detail="المرحلة الدراسية غير موجودة")
     return {"message": "تم حذف المرحلة الدراسية بنجاح"}
 

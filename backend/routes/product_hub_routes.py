@@ -44,6 +44,8 @@ from engines.product_hub_rbac import (
     require_hub_action, get_user_id, resolve_hub_role,
     is_main_admin, is_super_admin, MAIN_ADMIN_EMAILS,
 )
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_aggregate
+
 from engines.product_hub_events import (
     HubEvent, emit_event,
     validate_status_transition, get_transition_error,
@@ -108,11 +110,7 @@ async def _run_hakim_analysis(issue: dict) -> dict:
 
         client = OpenAI(api_key=api_key, base_url=base_url if base_url else None)
 
-        all_issues = await db.product_issues.find(
-            {"status": {"$nin": ["rejected"]}},
-            {"_id": 0, "id": 1, "title": 1, "issue_type": 1, "section": 1, "page": 1,
-             "current_behavior": 1, "status": 1}
-        ).sort("created_at", -1).to_list(50)
+        all_issues = await gd_find(db.session, "product_issues", {"status": {"$nin": ["rejected"]}}, order_by="created_at", desc_order=True, limit=50)
 
         existing_summaries = []
         for ex in all_issues[:30]:
@@ -348,43 +346,31 @@ async def _ensure_issue_counter():
 async def _ensure_data_integrity():
     results = {"backfilled_is_deleted": 0, "fixed_missing_numbers": 0, "resequenced": 0}
 
-    backfill = await db.product_issues.update_many(
-        {"is_deleted": {"$exists": False}},
-        {"$set": {"is_deleted": False}}
-    )
-    results["backfilled_is_deleted"] = backfill.modified_count
+    backfill = await gd_update_many(db.session, "product_issues", {"is_deleted": {"$exists": False}}, {"is_deleted": False})
+    results["backfilled_is_deleted"] = backfill
 
-    missing_num = await db.product_issues.find(
-        {"issue_number": {"$exists": False}},
-        {"id": 1, "_id": 0}
-    ).to_list(1000)
+    missing_num = await gd_find(db.session, "product_issues", {"issue_number": {"$exists": False}}, limit=1000)
     for doc in missing_num:
         next_num = await _next_issue_number()
-        await db.product_issues.update_one(
-            {"id": doc["id"]},
-            {"$set": {"issue_number": next_num}}
-        )
+        await gd_update_one(db.session, "product_issues", {"id": doc["id"]}, {"issue_number": next_num})
         results["fixed_missing_numbers"] += 1
 
     pipeline = [
         {"$group": {"_id": "$issue_number", "count": {"$sum": 1}, "ids": {"$push": "$id"}}},
         {"$match": {"count": {"$gt": 1}}}
     ]
-    dupes = await db.product_issues.aggregate(pipeline).to_list(100)
+    dupes = await _gd_aggregate(db.session, "product_issues", pipeline)
     for dupe in dupes:
         for extra_id in dupe["ids"][1:]:
             next_num = await _next_issue_number()
-            await db.product_issues.update_one(
-                {"id": extra_id},
-                {"$set": {"issue_number": next_num}}
-            )
+            await gd_update_one(db.session, "product_issues", {"id": extra_id}, {"issue_number": next_num})
             results["resequenced"] += 1
 
     return results
 
 
 async def _get_issue_or_404(issue_id: str) -> dict:
-    issue = await db.product_issues.find_one({"id": issue_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+    issue = await gd_find_one(db.session, "product_issues", {"id": issue_id, "is_deleted": {"$ne": True}})
     if not issue:
         _hub_error(404, "ISSUE_NOT_FOUND", "المشكلة غير موجودة", {"issue_id": issue_id})
     return issue
@@ -403,7 +389,7 @@ async def get_hub_config(current_user: dict = Depends(get_current_user)):
         ]
         reporters = [
             {"value": r["_id"], "label": r["name"] or r["_id"]}
-            for r in await db.product_issues.aggregate(pipeline).to_list(200)
+            for r in await _gd_aggregate(db.session, "product_issues", pipeline)
         ]
 
     return {
@@ -485,12 +471,12 @@ async def create_issue(data: IssueCreate, current_user: dict = Depends(get_curre
                 "detected_by": "hakim",
                 "created_at": now.isoformat(),
             }
-            await db.issue_duplicates_map.insert_one(dup_entry)
+            await gd_insert(db.session, "issue_duplicates_map", dup_entry)
             await audit_duplicate_detected(issue_id, current_user, dup_id)
 
     issue["system"]["last_status_changed_at"] = now.isoformat()
 
-    await db.product_issues.insert_one({**issue, "_id": issue_id})
+    await gd_insert(db.session, "product_issues", {**issue, "_id": issue_id})
 
     await handle_issue_created(issue_id, issue, current_user)
     await audit_issue_created(issue_id, current_user, issue)
@@ -559,11 +545,9 @@ async def list_issues(
             {"page": {"$regex": search, "$options": "i"}},
         ]
 
-    total = await db.product_issues.count_documents(query)
+    total = await gd_count(db.session, "product_issues", query)
     skip = (page - 1) * limit
-    issues = await db.product_issues.find(
-        query, {"_id": 0}
-    ).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+    issues = await gd_find(db.session, "product_issues", query, order_by="created_at", desc_order=True, offset=skip, limit=limit)
 
     issue_ids = [i.get("id") for i in issues if i.get("id")]
     comment_counts = {}
@@ -573,7 +557,8 @@ async def list_issues(
             {"$match": {"issue_id": {"$in": issue_ids}}},
             {"$group": {"_id": "$issue_id", "count": {"$sum": 1}}}
         ]
-        async for doc in db.issue_comments.aggregate(pipeline):
+        count_results = await _gd_aggregate(db.session, "issue_comments", pipeline)
+        for doc in count_results:
             comment_counts[doc["_id"]] = doc["count"]
 
         recent_pipeline = [
@@ -588,10 +573,10 @@ async def list_issues(
                     "created_by": "$created_by",
                 }},
             }},
-            {"$project": {"comments": {"$slice": ["$comments", 3]}}},
         ]
-        async for doc in db.issue_comments.aggregate(recent_pipeline):
-            recent_comments_map[doc["_id"]] = doc["comments"]
+        recent_results = await _gd_aggregate(db.session, "issue_comments", recent_pipeline)
+        for doc in recent_results:
+            recent_comments_map[doc["_id"]] = doc["comments"][:3]
 
     for issue in issues:
         enrich_sla_state(issue)
@@ -611,19 +596,13 @@ async def get_issue(issue_id: str, current_user: dict = Depends(get_current_user
     if not admin:
         enforce_ownership_or_admin(current_user, issue, HubAction.VIEW_OWN_ISSUE)
 
-    activity = await db.issue_activity_log.find(
-        {"issue_id": issue_id}, {"_id": 0}
-    ).sort("timestamp", -1).to_list(100)
+    activity = await gd_find(db.session, "issue_activity_log", {"issue_id": issue_id}, order_by="timestamp", desc_order=True, limit=100)
 
-    comments = await db.issue_comments.find(
-        {"issue_id": issue_id}, {"_id": 0}
-    ).sort("timestamp", 1).to_list(200)
+    comments = await gd_find(db.session, "issue_comments", {"issue_id": issue_id}, order_by="timestamp", desc_order=False, limit=200)
 
     duplicates = []
     if is_main_admin(current_user):
-        duplicates = await db.issue_duplicates_map.find(
-            {"$or": [{"issue_id": issue_id}, {"duplicate_of": issue_id}]}, {"_id": 0}
-        ).to_list(20)
+        duplicates = await gd_find(db.session, "issue_duplicates_map", {"$or": [{"issue_id": issue_id}, {"duplicate_of": issue_id}]}, limit=20)
 
     enrich_sla_state(issue)
     await check_sla_warning(issue_id, issue, current_user)
@@ -698,7 +677,7 @@ async def update_issue(
     if "reproducibility" in changes:
         changes["description.reproducible"] = changes["reproducibility"]
 
-    await db.product_issues.update_one({"id": issue_id}, {"$set": changes})
+    await gd_update_one(db.session, "product_issues", {"id": issue_id}, changes)
     await handle_issue_updated(issue_id, current_user, changes)
     await audit_issue_updated(issue_id, current_user, changes)
 
@@ -749,11 +728,8 @@ async def update_issue_status(
         update_fields["feedback_response"] = None
         update_fields["sla_warning_emitted"] = False
 
-    result = await db.product_issues.update_one(
-        {"id": issue_id, "status": current_status},
-        {"$set": update_fields}
-    )
-    if result.modified_count == 0:
+    result = await gd_update_one(db.session, "product_issues", {"id": issue_id, "status": current_status}, update_fields)
+    if result == 0:
         _hub_error(409, "CONCURRENT_MODIFICATION", "الحالة تغيّرت — يرجى تحديث الصفحة")
 
     await handle_status_changed(issue_id, current_user, current_status, new_status, data.note or "")
@@ -774,15 +750,13 @@ async def assign_issue(
     issue = await _get_issue_or_404(issue_id)
 
     if data.assigned_to:
-        assignee = await db.users.find_one({"id": data.assigned_to}, {"_id": 0, "id": 1, "full_name": 1})
+        assignee = await gd_find_one(db.session, "users", {"id": data.assigned_to})
         if not assignee:
             _hub_error(422, "ASSIGNEE_NOT_FOUND", "المستخدم المعيّن غير موجود",
                        {"assigned_to": data.assigned_to})
 
     now = _now_iso()
-    await db.product_issues.update_one(
-        {"id": issue_id},
-        {"$set": {
+    await gd_update_one(db.session, "product_issues", {"id": issue_id}, {
             "assigned_team": data.assigned_team,
             "assigned_to": data.assigned_to,
             "assigned_at": now,
@@ -790,8 +764,7 @@ async def assign_issue(
             "assignment.team": data.assigned_team.lower() if data.assigned_team else None,
             "assignment.assigned_to": data.assigned_to,
             "system.updated_at": now,
-        }}
-    )
+        })
 
     await handle_issue_assigned(
         issue_id, current_user, data.assigned_team,
@@ -840,7 +813,7 @@ async def add_comment(
         "edited": False,
     }
 
-    await db.issue_comments.insert_one(comment)
+    await gd_insert(db.session, "issue_comments", comment)
     await handle_comment_added(issue_id, current_user, comment["id"])
     await audit_comment_added(issue_id, current_user, comment["id"], data.comment_type)
     comment.pop("_id", None)
@@ -875,9 +848,7 @@ async def get_comments(
     if not can_access_comments(current_user, issue):
         raise HTTPException(status_code=403, detail={"success": False, "error_code": "FORBIDDEN_COMMENTS", "message": "ليس لديك صلاحية الوصول للتعليقات"})
 
-    comments = await db.issue_comments.find(
-        {"issue_id": issue_id}, {"_id": 0}
-    ).sort("timestamp", 1).to_list(200)
+    comments = await gd_find(db.session, "issue_comments", {"issue_id": issue_id}, order_by="timestamp", desc_order=False, limit=200)
 
     return {"comments": comments, "total": len(comments)}
 
@@ -887,23 +858,19 @@ async def _get_allowed_mention_ids(current_user: dict) -> set:
     caller_is_main = is_main_admin(current_user)
 
     if caller_is_main:
-        all_admins = await db.users.find(
-            {"is_active": True, "role": {"$in": [
+        all_admins = await gd_find(db.session, "users", {"is_active": True, "role": {"$in": [
                 "platform_admin", "platform_operations_manager",
                 "platform_technical_admin", "platform_support_specialist",
             ]}},
-            {"id": 1}
-        ).to_list(200)
+            {"id": 1}, limit=200)
         ids = {u["id"] for u in all_admins if u.get("id")}
         own_id = get_user_id(current_user)
         ids.discard(own_id)
         return ids
 
     if is_platform_admin(current_user):
-        main_users = await db.users.find(
-            {"is_active": True, "email": {"$in": list(MAIN_ADMIN_EMAILS)}},
-            {"id": 1}
-        ).to_list(10)
+        main_users = await gd_find(db.session, "users", {"is_active": True, "email": {"$in": list(MAIN_ADMIN_EMAILS)}},
+            {"id": 1}, limit=10)
         return {u["id"] for u in main_users if u.get("id")}
 
     return set()
@@ -929,10 +896,7 @@ async def get_mentionable_users(
     if not allowed_ids:
         return {"users": []}
 
-    users = await db.users.find(
-        {"is_active": True, "id": {"$in": list(allowed_ids)}},
-        {"_id": 0, "id": 1, "full_name": 1, "email": 1, "role": 1, "avatar_url": 1}
-    ).sort("full_name", 1).to_list(200)
+    users = await gd_find(db.session, "users", {"is_active": True, "id": {"$in": list(allowed_ids)}}, order_by="full_name", desc_order=False, limit=200)
 
     return {"users": [
         {"id": u.get("id", ""), "name": u.get("full_name", ""), "email": u.get("email", ""), "role": u.get("role", ""), "avatar": u.get("avatar_url")}
@@ -976,12 +940,9 @@ async def submit_feedback(
         update_fields["resolved_at"] = None
         update_fields["sla_warning_emitted"] = False
 
-    result = await db.product_issues.update_one(
-        {"id": issue_id, "status": "done"},
-        {"$set": update_fields}
-    )
+    result = await gd_update_one(db.session, "product_issues", {"id": issue_id, "status": "done"}, update_fields)
 
-    if result.modified_count == 0:
+    if result == 0:
         _hub_error(409, "CONCURRENT_MODIFICATION",
                    "تم تعديل حالة المشكلة بواسطة مستخدم آخر — يرجى إعادة تحميل الصفحة",
                    {"expected_status": "done"})
@@ -1028,10 +989,7 @@ async def regenerate_prompt(
         update_set["status"] = "in_progress"
         update_set["system.last_status_changed_at"] = now
 
-    await db.product_issues.update_one(
-        {"id": issue_id},
-        {"$set": update_set}
-    )
+    await gd_update_one(db.session, "product_issues", {"id": issue_id}, update_set)
 
     if current_status != "in_progress":
         await handle_status_changed(issue_id, current_user, current_status, "in_progress", "")
@@ -1078,10 +1036,7 @@ async def delete_issue(
     issue = await _get_issue_or_404(issue_id)
 
     now = _now_iso()
-    await db.product_issues.update_one(
-        {"id": issue_id},
-        {"$set": {"is_deleted": True, "deleted_at": now, "deleted_by": get_user_id(current_user)}}
-    )
+    await gd_update_one(db.session, "product_issues", {"id": issue_id}, {"is_deleted": True, "deleted_at": now, "deleted_by": get_user_id(current_user)})
     await audit_issue_updated(issue_id, current_user, {"action": "delete_issue", "deleted_at": now})
     logger.info(f"[ProductHub] Issue {issue_id[:8]} deleted by {current_user.get('email', 'unknown')}")
     return {"success": True, "issue_id": issue_id}
@@ -1092,10 +1047,7 @@ TRACKED_SNAPSHOT_FIELDS = ["status", "priority", "assigned_team", "is_deleted", 
 
 
 async def _capture_before_states(issue_ids: list) -> dict:
-    issues = await db.product_issues.find(
-        {"id": {"$in": issue_ids}, "is_deleted": {"$ne": True}},
-        {"_id": 0, "id": 1, **{f: 1 for f in TRACKED_SNAPSHOT_FIELDS}}
-    ).to_list(200)
+    issues = await gd_find(db.session, "product_issues", {"id": {"$in": issue_ids}, "is_deleted": {"$ne": True}}, limit=200)
     return {iss["id"]: {k: iss.get(k) for k in TRACKED_SNAPSHOT_FIELDS} for iss in issues}
 
 
@@ -1117,7 +1069,7 @@ async def _save_action_history(action_type: str, user: dict, issue_ids: list, be
         "undo_expiry": expiry,
         "status": "active",
     }
-    await db.bulk_action_history.insert_one(record)
+    await gd_insert(db.session, "bulk_action_history", record)
     return action_id
 
 
@@ -1154,10 +1106,7 @@ async def bulk_update_issues(
         update_fields["assigned_team"] = data.assigned_team
         after_snapshot["assigned_team"] = data.assigned_team
 
-    result = await db.product_issues.update_many(
-        {"id": {"$in": data.issue_ids}, "is_deleted": {"$ne": True}},
-        {"$set": update_fields}
-    )
+    result = await gd_update_many(db.session, "product_issues", {"id": {"$in": data.issue_ids}, "is_deleted": {"$ne": True}}, update_fields)
 
     action_id = await _save_action_history("bulk_edit", current_user, data.issue_ids, before_states, after_snapshot)
 
@@ -1171,10 +1120,10 @@ async def bulk_update_issues(
             changes_log["assigned_team"] = data.assigned_team
         await audit_issue_updated(issue_id, current_user, {"action": "bulk_update", **changes_log})
 
-    logger.info(f"[ProductHub] Bulk update {result.modified_count}/{len(data.issue_ids)} issues by {current_user.get('email', 'unknown')}")
+    logger.info(f"[ProductHub] Bulk update {result}/{len(data.issue_ids)} issues by {current_user.get('email', 'unknown')}")
     return {
         "success": True,
-        "modified_count": result.modified_count,
+        "modified_count": result,
         "requested_count": len(data.issue_ids),
         "action_id": action_id,
     }
@@ -1191,20 +1140,17 @@ async def bulk_delete_issues(
     before_states = await _capture_before_states(data.issue_ids)
 
     now = _now_iso()
-    result = await db.product_issues.update_many(
-        {"id": {"$in": data.issue_ids}, "is_deleted": {"$ne": True}},
-        {"$set": {"is_deleted": True, "deleted_at": now, "deleted_by": get_user_id(current_user)}}
-    )
+    result = await gd_update_many(db.session, "product_issues", {"id": {"$in": data.issue_ids}, "is_deleted": {"$ne": True}}, {"is_deleted": True, "deleted_at": now, "deleted_by": get_user_id(current_user)})
 
     action_id = await _save_action_history("bulk_delete", current_user, data.issue_ids, before_states, {"is_deleted": True})
 
     for issue_id in data.issue_ids:
         await audit_issue_updated(issue_id, current_user, {"action": "bulk_delete", "deleted_at": now})
 
-    logger.info(f"[ProductHub] Bulk delete {result.modified_count}/{len(data.issue_ids)} issues by {current_user.get('email', 'unknown')}")
+    logger.info(f"[ProductHub] Bulk delete {result}/{len(data.issue_ids)} issues by {current_user.get('email', 'unknown')}")
     return {
         "success": True,
-        "deleted_count": result.modified_count,
+        "deleted_count": result,
         "requested_count": len(data.issue_ids),
         "action_id": action_id,
     }
@@ -1221,11 +1167,9 @@ async def get_action_history(
 
     now = datetime.now(timezone.utc).isoformat()
 
-    records = await db.bulk_action_history.find(
-        {}, {"_id": 0}
-    ).sort("timestamp", -1).skip(offset).limit(limit).to_list(limit)
+    records = await gd_find(db.session, "bulk_action_history", {}, order_by="timestamp", desc_order=True, offset=offset, limit=limit)
 
-    total = await db.bulk_action_history.count_documents({})
+    total = await gd_count(db.session, "bulk_action_history", {})
 
     for r in records:
         if r.get("status") == "active" and r.get("is_undoable"):
@@ -1248,7 +1192,7 @@ async def undo_action(
     if not is_main_admin(current_user):
         _hub_error(403, "FORBIDDEN", "هذه العملية متاحة فقط للمسؤولين الرئيسيين")
 
-    record = await db.bulk_action_history.find_one({"action_id": action_id}, {"_id": 0})
+    record = await gd_find_one(db.session, "bulk_action_history", {"action_id": action_id})
     if not record:
         _hub_error(404, "NOT_FOUND", "العملية غير موجودة")
 
@@ -1257,10 +1201,7 @@ async def undo_action(
 
     now_dt = datetime.now(timezone.utc)
     if record.get("undo_expiry", "") < now_dt.isoformat():
-        await db.bulk_action_history.update_one(
-            {"action_id": action_id},
-            {"$set": {"status": "expired", "is_undoable": False}}
-        )
+        await gd_update_one(db.session, "bulk_action_history", {"action_id": action_id}, {"status": "expired", "is_undoable": False})
         _hub_error(400, "EXPIRED", "انتهت مهلة التراجع")
 
     before_states = record.get("before_state", {})
@@ -1270,11 +1211,8 @@ async def undo_action(
 
     if action_type == "bulk_delete":
         for issue_id, prev in before_states.items():
-            res = await db.product_issues.update_one(
-                {"id": issue_id},
-                {"$set": {"is_deleted": False, "deleted_at": None, "deleted_by": None, "updated_at": now}}
-            )
-            if res.modified_count > 0:
+            res = await gd_update_one(db.session, "product_issues", {"id": issue_id}, {"is_deleted": False, "deleted_at": None, "deleted_by": None, "updated_at": now})
+            if res > 0:
                 restored_count += 1
             await audit_issue_updated(issue_id, current_user, {"action": "undo_bulk_delete"})
 
@@ -1282,27 +1220,21 @@ async def undo_action(
         for issue_id, prev in before_states.items():
             restore_fields = {k: v for k, v in prev.items() if v is not None}
             restore_fields["updated_at"] = now
-            res = await db.product_issues.update_one(
-                {"id": issue_id, "is_deleted": {"$ne": True}},
-                {"$set": restore_fields}
-            )
-            if res.modified_count > 0:
+            res = await gd_update_one(db.session, "product_issues", {"id": issue_id, "is_deleted": {"$ne": True}}, restore_fields)
+            if res > 0:
                 restored_count += 1
             await audit_issue_updated(issue_id, current_user, {"action": "undo_bulk_edit", "restored_fields": list(restore_fields.keys())})
 
     else:
         _hub_error(400, "UNSUPPORTED", f"نوع العملية غير مدعوم للتراجع: {action_type}")
 
-    await db.bulk_action_history.update_one(
-        {"action_id": action_id},
-        {"$set": {
+    await gd_update_one(db.session, "bulk_action_history", {"action_id": action_id}, {
             "status": "undone",
             "is_undoable": False,
             "undone_at": now,
             "undone_by": current_user.get("email", "unknown"),
             "restored_count": restored_count,
-        }}
-    )
+        })
 
     logger.info(f"[ProductHub] Undo {action_type} ({action_id[:8]}): restored {restored_count} issues by {current_user.get('email', 'unknown')}")
     return {
@@ -1321,10 +1253,7 @@ async def reanalyze_issue(
     enforce_permission(current_user, HubAction.REANALYZE_ISSUE)
     issue = await _get_issue_or_404(issue_id)
     hakim_analysis = await _run_hakim_analysis(issue)
-    await db.product_issues.update_one(
-        {"id": issue_id},
-        {"$set": {"hakim_analysis": hakim_analysis, "updated_at": _now_iso()}}
-    )
+    await gd_update_one(db.session, "product_issues", {"id": issue_id}, {"hakim_analysis": hakim_analysis, "updated_at": _now_iso()})
     await handle_hakim_analysis(issue_id, current_user, hakim_analysis, source="manual_reanalyze")
     await audit_ai_analyzed(issue_id, current_user, hakim_analysis)
     return {
@@ -1363,9 +1292,7 @@ async def get_duplicates(
 
     await _get_issue_or_404(issue_id)
 
-    duplicates = await db.issue_duplicates_map.find(
-        {"$or": [{"issue_id": issue_id}, {"duplicate_of": issue_id}]}, {"_id": 0}
-    ).to_list(50)
+    duplicates = await gd_find(db.session, "issue_duplicates_map", {"$or": [{"issue_id": issue_id}, {"duplicate_of": issue_id}]}, limit=50)
 
     return {"duplicates": duplicates, "total": len(duplicates), "issue_id": issue_id}
 
@@ -1374,16 +1301,12 @@ async def get_duplicates(
 async def resequence_issue_numbers(current_user: dict = Depends(get_current_user)):
     if not is_main_admin(current_user):
         raise HTTPException(status_code=403, detail="Main admin only")
-    issues = await db.product_issues.find(
-        {"is_deleted": {"$ne": True}}, {"id": 1, "issue_number": 1, "_id": 0}
-    ).sort("created_at", 1).to_list(10000)
+    issues = await gd_find(db.session, "product_issues", {"is_deleted": {"$ne": True}}, order_by="created_at", desc_order=False, limit=10000)
     updates = []
     for idx, issue in enumerate(issues, start=1):
         if issue.get("issue_number") != idx:
             updates.append({"id": issue["id"], "old": issue.get("issue_number"), "new": idx})
-            await db.product_issues.update_one(
-                {"id": issue["id"]}, {"$set": {"issue_number": idx}}
-            )
+            await gd_update_one(db.session, "product_issues", {"id": issue["id"]}, {"issue_number": idx})
     from db import engine as _engine
     from sqlalchemy import text
     async with _engine.connect() as conn:
@@ -1405,41 +1328,36 @@ async def get_dashboard(current_user: dict = Depends(get_current_user)):
         active_filter,
         {"$group": {"_id": "$status", "count": {"$sum": 1}}}
     ]
-    status_counts_raw = await db.product_issues.aggregate(pipeline_status).to_list(20)
+    status_counts_raw = await _gd_aggregate(db.session, "product_issues", pipeline_status)
     status_counts = {s["_id"]: s["count"] for s in status_counts_raw}
 
     total = sum(status_counts.values())
     total_open = sum(status_counts.get(s, 0) for s in OPEN_STATUSES)
 
     pipeline_type = [active_filter, {"$group": {"_id": "$issue_type", "count": {"$sum": 1}}}]
-    type_counts_raw = await db.product_issues.aggregate(pipeline_type).to_list(20)
+    type_counts_raw = await _gd_aggregate(db.session, "product_issues", pipeline_type)
     by_type = [{"type": t["_id"], "label": ISSUE_TYPE_LABELS.get(t["_id"], t["_id"]), "count": t["count"]} for t in type_counts_raw]
 
     pipeline_priority = [active_filter, {"$group": {"_id": "$priority", "count": {"$sum": 1}}}]
-    priority_counts_raw = await db.product_issues.aggregate(pipeline_priority).to_list(10)
+    priority_counts_raw = await _gd_aggregate(db.session, "product_issues", pipeline_priority)
     by_priority = [{"priority": p["_id"], "label": PRIORITY_LABELS.get(p["_id"], p["_id"] or ""), "count": p["count"]} for p in priority_counts_raw]
 
     pipeline_team = [
         {"$match": {"assigned_team": {"$ne": None}, "is_deleted": {"$ne": True}}},
         {"$group": {"_id": "$assigned_team", "count": {"$sum": 1}}}
     ]
-    team_counts_raw = await db.product_issues.aggregate(pipeline_team).to_list(10)
+    team_counts_raw = await _gd_aggregate(db.session, "product_issues", pipeline_team)
     by_team = [{"team": t["_id"], "count": t["count"]} for t in team_counts_raw]
 
-    new_this_week = await db.product_issues.count_documents({"created_at": {"$gte": week_ago}, "is_deleted": {"$ne": True}})
-    critical_open = await db.product_issues.count_documents(
-        {"priority": "critical", "status": {"$in": list(OPEN_STATUSES)}, "is_deleted": {"$ne": True}}
-    )
-    sla_exceeded = await db.product_issues.count_documents({
+    new_this_week = await gd_count(db.session, "product_issues", {"created_at": {"$gte": week_ago}, "is_deleted": {"$ne": True}})
+    critical_open = await gd_count(db.session, "product_issues", {"priority": "critical", "status": {"$in": list(OPEN_STATUSES)}, "is_deleted": {"$ne": True}})
+    sla_exceeded = await gd_count(db.session, "product_issues", {
         "sla_deadline": {"$lte": now.isoformat()},
         "status": {"$in": list(OPEN_STATUSES)},
         "is_deleted": {"$ne": True},
     })
 
-    resolved = await db.product_issues.find(
-        {"resolved_at": {"$ne": None}, "is_deleted": {"$ne": True}},
-        {"created_at": 1, "resolved_at": 1, "_id": 0}
-    ).to_list(500)
+    resolved = await gd_find(db.session, "product_issues", {"resolved_at": {"$ne": None}, "is_deleted": {"$ne": True}}, limit=500)
     avg_resolution = 0
     if resolved:
         total_hours = 0
@@ -1461,9 +1379,9 @@ async def get_dashboard(current_user: dict = Depends(get_current_user)):
         {"$sort": {"count": -1}},
         {"$limit": 10}
     ]
-    top_sections = await db.product_issues.aggregate(pipeline_section).to_list(10)
+    top_sections = await _gd_aggregate(db.session, "product_issues", pipeline_section)
 
-    dup_count = await db.issue_duplicates_map.count_documents({})
+    dup_count = await gd_count(db.session, "issue_duplicates_map", {})
 
     pipeline_contributors = [
         active_filter,
@@ -1471,7 +1389,7 @@ async def get_dashboard(current_user: dict = Depends(get_current_user)):
         {"$sort": {"count": -1}},
         {"$limit": 10}
     ]
-    contributors_raw = await db.product_issues.aggregate(pipeline_contributors).to_list(10)
+    contributors_raw = await _gd_aggregate(db.session, "product_issues", pipeline_contributors)
     top_contributors = [{"name": c["_id"]["name"], "count": c["count"]} for c in contributors_raw]
 
     pipeline_accuracy = [
@@ -1490,7 +1408,7 @@ async def get_dashboard(current_user: dict = Depends(get_current_user)):
         {"$sort": {"accuracy": -1}},
         {"$limit": 10}
     ]
-    accuracy_raw = await db.product_issues.aggregate(pipeline_accuracy).to_list(10)
+    accuracy_raw = await _gd_aggregate(db.session, "product_issues", pipeline_accuracy)
     most_accurate = [
         {"name": a["name"], "total": a["total"], "valid": a["valid"],
          "accuracy": round(a.get("accuracy", 0), 1)}
@@ -1503,11 +1421,11 @@ async def get_dashboard(current_user: dict = Depends(get_current_user)):
         {"$sort": {"count": -1}},
         {"$limit": 10}
     ]
-    dept_raw = await db.product_issues.aggregate(pipeline_dept).to_list(10)
+    dept_raw = await _gd_aggregate(db.session, "product_issues", pipeline_dept)
     by_department = [{"department": d["_id"], "count": d["count"]} for d in dept_raw]
 
-    hakim_analyzed = await db.product_issues.count_documents({"hakim_analysis": {"$exists": True, "$ne": {}}, "is_deleted": {"$ne": True}})
-    hakim_priority_changed = await db.product_issues.count_documents({
+    hakim_analyzed = await gd_count(db.session, "product_issues", {"hakim_analysis": {"$exists": True, "$ne": {}}, "is_deleted": {"$ne": True}})
+    hakim_priority_changed = await gd_count(db.session, "product_issues", {
         "hakim_analysis.suggested_priority": {"$exists": True},
         "$expr": {"$ne": ["$priority", "$hakim_analysis.suggested_priority"]},
         "is_deleted": {"$ne": True},
@@ -1518,15 +1436,10 @@ async def get_dashboard(current_user: dict = Depends(get_current_user)):
         {"$sort": {"count": -1}},
         {"$limit": 5}
     ]
-    hakim_teams_raw = await db.product_issues.aggregate(pipeline_hakim_teams).to_list(5)
+    hakim_teams_raw = await _gd_aggregate(db.session, "product_issues", pipeline_hakim_teams)
     hakim_top_teams = [{"team": t["_id"], "count": t["count"]} for t in hakim_teams_raw]
 
-    recent_hakim = await db.product_issues.find(
-        {"hakim_analysis.impact_assessment": {"$exists": True, "$ne": ""}, "is_deleted": {"$ne": True}},
-        {"_id": 0, "id": 1, "title": 1, "issue_number": 1, "priority": 1,
-         "hakim_analysis.impact_assessment": 1, "hakim_analysis.suggested_priority": 1,
-         "hakim_analysis.suggested_team": 1, "hakim_analysis.priority_reasoning": 1}
-    ).sort("created_at", -1).limit(5).to_list(5)
+    recent_hakim = await gd_find(db.session, "product_issues", {"hakim_analysis.impact_assessment": {"$exists": True, "$ne": ""}, "is_deleted": {"$ne": True}}, order_by="created_at", desc_order=True, limit=5)
     hakim_recent_insights = []
     for ri in recent_hakim:
         ha = ri.get("hakim_analysis", {})
@@ -1600,10 +1513,7 @@ async def update_issue_title(
 
     old_title = issue.get("title", "")
     now = _now_iso()
-    await db.product_issues.update_one(
-        {"id": issue_id},
-        {"$set": {"title": title, "updated_at": now, "system.updated_at": now}}
-    )
+    await gd_update_one(db.session, "product_issues", {"id": issue_id}, {"title": title, "updated_at": now, "system.updated_at": now})
     changes = {"title": {"from": old_title, "to": title}}
     await handle_issue_updated(issue_id, current_user, changes)
     await audit_issue_updated(issue_id, current_user, changes)
@@ -1640,7 +1550,7 @@ async def update_issue_priority(
         update_fields["sla_status"] = sla["sla_status"]
         update_fields["sla_warning_emitted"] = False
 
-    await db.product_issues.update_one({"id": issue_id}, {"$set": update_fields})
+    await gd_update_one(db.session, "product_issues", {"id": issue_id}, update_fields)
     changes = {"priority": {"from": old_priority, "to": priority}}
     await handle_issue_updated(issue_id, current_user, changes)
     await audit_issue_updated(issue_id, current_user, changes)

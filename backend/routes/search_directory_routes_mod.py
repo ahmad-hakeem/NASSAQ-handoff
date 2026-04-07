@@ -10,6 +10,8 @@ import re
 from dependencies import (
     db, get_current_user, require_roles, UserRole, logger
 )
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
+
 
 router = APIRouter()
 
@@ -32,47 +34,32 @@ async def global_search(
     tenant_filter = {"tenant_id": school_id} if school_id else {}
 
     if not entity_type or entity_type == "student":
-        students = await db.students.find(
-            {**tenant_filter, "$or": [
+        students = await gd_find(db.session, "students", {**tenant_filter, "$or": [
                 {"full_name": pattern}, {"national_id": pattern},
                 {"email": pattern}, {"student_number": pattern}
-            ]},
-            {"_id": 0, "id": 1, "full_name": 1, "class_id": 1, "grade_level": 1, "gender": 1, "email": 1}
-        ).limit(limit).to_list(limit)
+            ]}, limit=limit)
         results["students"] = [dict(s, entity_type="student") for s in students]
 
     if not entity_type or entity_type == "teacher":
-        teachers = await db.users.find(
-            {**tenant_filter, "role": "teacher", "$or": [
+        teachers = await gd_find(db.session, "users", {**tenant_filter, "role": "teacher", "$or": [
                 {"full_name": pattern}, {"email": pattern}, {"phone": pattern}
-            ]},
-            {"_id": 0, "id": 1, "full_name": 1, "email": 1, "phone": 1, "specialization": 1}
-        ).limit(limit).to_list(limit)
+            ]}, limit=limit)
         results["teachers"] = [dict(t, entity_type="teacher") for t in teachers]
 
     parent_filter = {"school_id": school_id} if school_id else {}
     if not entity_type or entity_type == "parent":
-        parents = await db.parents.find(
-            {**parent_filter, "$or": [
+        parents = await gd_find(db.session, "parents", {**parent_filter, "$or": [
                 {"full_name": pattern}, {"phone": pattern},
                 {"email": pattern}, {"national_id": pattern}
-            ]},
-            {"_id": 0, "id": 1, "full_name": 1, "phone": 1, "email": 1, "relationship": 1}
-        ).limit(limit).to_list(limit)
+            ]}, limit=limit)
         results["parents"] = [dict(p, entity_type="parent") for p in parents]
 
     if not entity_type or entity_type == "class":
-        classes = await db.classes.find(
-            {**tenant_filter, "$or": [{"name": pattern}, {"name_en": pattern}]},
-            {"_id": 0, "id": 1, "name": 1, "name_en": 1, "grade_level": 1, "capacity": 1}
-        ).limit(limit).to_list(limit)
+        classes = await gd_find(db.session, "classes", {**tenant_filter, "$or": [{"name": pattern}, {"name_en": pattern}]}, limit=limit)
         results["classes"] = [dict(c, entity_type="class") for c in classes]
 
     if not entity_type or entity_type == "subject":
-        subjects = await db.subjects.find(
-            {**tenant_filter, "$or": [{"name": pattern}, {"name_en": pattern}]},
-            {"_id": 0, "id": 1, "name": 1, "name_en": 1, "code": 1}
-        ).limit(limit).to_list(limit)
+        subjects = await gd_find(db.session, "subjects", {**tenant_filter, "$or": [{"name": pattern}, {"name_en": pattern}]}, limit=limit)
         results["subjects"] = [dict(s, entity_type="subject") for s in subjects]
 
     results["total"] = sum(len(v) for k, v in results.items() if isinstance(v, list))
@@ -93,24 +80,15 @@ async def autocomplete_search(
     suggestions = []
 
     if entity_type in ("all", "student"):
-        students = await db.students.find(
-            {"tenant_id": school_id, "full_name": pattern},
-            {"_id": 0, "id": 1, "full_name": 1}
-        ).limit(limit).to_list(limit)
+        students = await gd_find(db.session, "students", {"tenant_id": school_id, "full_name": pattern}, limit=limit)
         suggestions.extend([{"id": s["id"], "label": s["full_name"], "type": "student"} for s in students])
 
     if entity_type in ("all", "teacher"):
-        teachers = await db.users.find(
-            {"tenant_id": school_id, "role": "teacher", "full_name": pattern},
-            {"_id": 0, "id": 1, "full_name": 1}
-        ).limit(limit).to_list(limit)
+        teachers = await gd_find(db.session, "users", {"tenant_id": school_id, "role": "teacher", "full_name": pattern}, limit=limit)
         suggestions.extend([{"id": t["id"], "label": t["full_name"], "type": "teacher"} for t in teachers])
 
     if entity_type in ("all", "parent"):
-        parents = await db.parents.find(
-            {"school_id": school_id, "full_name": pattern},
-            {"_id": 0, "id": 1, "full_name": 1}
-        ).limit(limit).to_list(limit)
+        parents = await gd_find(db.session, "parents", {"school_id": school_id, "full_name": pattern}, limit=limit)
         suggestions.extend([{"id": p["id"], "label": p["full_name"], "type": "parent"} for p in parents])
 
     return {"suggestions": suggestions[:limit], "query": q}
@@ -138,15 +116,10 @@ async def directory_students(
     if gender:
         query["gender"] = gender
 
-    total = await db.students.count_documents(query)
+    total = await gd_count(db.session, "students", query)
     skip = (page - 1) * per_page
 
-    students = await db.students.find(
-        query,
-        {"_id": 0, "id": 1, "full_name": 1, "email": 1, "gender": 1,
-         "class_id": 1, "class_name": 1, "grade_level": 1, "national_id": 1,
-         "date_of_birth": 1, "parent_phone": 1, "is_active": 1}
-    ).sort(sort_by, 1).skip(skip).limit(per_page).to_list(per_page)
+    students = await gd_find(db.session, "students", query, order_by=sort_by, desc_order=False, offset=skip, limit=per_page)
 
     return {
         "students": students,
@@ -171,20 +144,13 @@ async def directory_teachers(
     if school_id:
         query["tenant_id"] = school_id
 
-    total = await db.users.count_documents(query)
+    total = await gd_count(db.session, "users", query)
     skip = (page - 1) * per_page
 
-    teachers = await db.users.find(
-        query,
-        {"_id": 0, "id": 1, "full_name": 1, "email": 1, "phone": 1,
-         "specialization": 1, "is_active": 1, "created_at": 1}
-    ).sort(sort_by, 1).skip(skip).limit(per_page).to_list(per_page)
+    teachers = await gd_find(db.session, "users", query, order_by=sort_by, desc_order=False, offset=skip, limit=per_page)
 
     if subject_id:
-        assignments = await db.teacher_assignments.find(
-            {"tenant_id": school_id, "subject_id": subject_id, "is_active": True},
-            {"_id": 0, "teacher_id": 1}
-        ).to_list(500)
+        assignments = await gd_find(db.session, "teacher_assignments", {"tenant_id": school_id, "subject_id": subject_id, "is_active": True}, limit=500)
         teacher_ids = {a["teacher_id"] for a in assignments}
         teachers = [t for t in teachers if t["id"] in teacher_ids]
 
@@ -208,21 +174,16 @@ async def directory_parents(
     if school_id:
         query["school_id"] = school_id
 
-    total = await db.parents.count_documents(query)
+    total = await gd_count(db.session, "parents", query)
     skip = (page - 1) * per_page
 
-    parents = await db.parents.find(
-        query, {"_id": 0}
-    ).sort("full_name", 1).skip(skip).limit(per_page).to_list(per_page)
+    parents = await gd_find(db.session, "parents", query, order_by="full_name", desc_order=False, offset=skip, limit=per_page)
 
     for p in parents:
-        children = await db.students.find(
-            {"tenant_id": school_id, "$or": [
+        children = await gd_find(db.session, "students", {"tenant_id": school_id, "$or": [
                 {"parent_id": p["id"]},
                 {"parent_user_id": p.get("user_id")}
-            ]},
-            {"_id": 0, "id": 1, "full_name": 1, "class_name": 1}
-        ).to_list(20)
+            ]}, limit=20)
         p["children"] = children
         p["children_count"] = len(children)
 
@@ -247,15 +208,11 @@ async def directory_classes(
     if grade_level:
         query["grade_level"] = grade_level
 
-    classes = await db.classes.find(query, {"_id": 0}).sort("name", 1).to_list(200)
+    classes = await gd_find(db.session, "classes", query, order_by="name", desc_order=False, limit=200)
 
     for c in classes:
-        c["student_count"] = await db.students.count_documents(
-            {"tenant_id": school_id, "class_id": c["id"]}
-        )
-        c["teacher_count"] = await db.teacher_assignments.count_documents(
-            {"tenant_id": school_id, "class_id": c["id"], "is_active": True}
-        )
+        c["student_count"] = await gd_count(db.session, "students", {"tenant_id": school_id, "class_id": c["id"]})
+        c["teacher_count"] = await gd_count(db.session, "teacher_assignments", {"tenant_id": school_id, "class_id": c["id"], "is_active": True})
 
     return {"classes": classes, "total": len(classes)}
 
@@ -269,16 +226,16 @@ async def directory_statistics(
     t_filter = {"tenant_id": school_id} if school_id else {}
     s_filter = {"school_id": school_id} if school_id else {}
 
-    students_total = await db.students.count_documents(t_filter)
-    students_active = await db.students.count_documents({**t_filter, "is_active": {"$ne": False}})
-    teachers_total = await db.users.count_documents({**t_filter, "role": "teacher"})
-    parents_total = await db.parents.count_documents(s_filter)
-    classes_total = await db.classes.count_documents(t_filter)
-    subjects_total = await db.subjects.count_documents(t_filter)
+    students_total = await gd_count(db.session, "students", t_filter)
+    students_active = await gd_count(db.session, "students", {**t_filter, "is_active": {"$ne": False}})
+    teachers_total = await gd_count(db.session, "users", {**t_filter, "role": "teacher"})
+    parents_total = await gd_count(db.session, "parents", s_filter)
+    classes_total = await gd_count(db.session, "classes", t_filter)
+    subjects_total = await gd_count(db.session, "subjects", t_filter)
 
     gender_dist = {}
     for g in ["male", "female"]:
-        gender_dist[g] = await db.students.count_documents({**t_filter, "gender": g})
+        gender_dist[g] = await gd_count(db.session, "students", {**t_filter, "gender": g})
 
     return {
         "students": {"total": students_total, "active": students_active, "by_gender": gender_dist},

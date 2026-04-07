@@ -22,6 +22,8 @@ from dependencies import (
     hakim_engine, reporting_engine, export_engine, session_engine,
     REPORT_TYPES, generate_student_qr_code
 )
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
+
 
 from shared_models import (
     TeacherCreate, TeacherUpdate, TeacherResponse, StudentCreate, StudentUpdate, StudentResponse, ClassCreate, ClassUpdate, ClassResponse, SubjectCreate, SubjectResponse
@@ -34,19 +36,19 @@ router = APIRouter()
 async def get_academic_structure(current_user: dict = Depends(get_current_user)):
     """Get complete academic structure (stages, grades, tracks)"""
     # Try reference_* collections first (new naming), fall back to old names
-    stages = await db.reference_stages.find({}, {"_id": 0}).sort("order", 1).to_list(10)
+    stages = await gd_find(db.session, "reference_stages", {}, order_by="order", desc_order=False, limit=10)
     if not stages:
-        stages = await db.academic_stages.find({"is_active": True}, {"_id": 0}).sort("order", 1).to_list(10)
+        stages = await gd_find(db.session, "academic_stages", {"is_active": True}, order_by="order", desc_order=False, limit=10)
     
-    grades = await db.reference_grades.find({}, {"_id": 0}).sort("order", 1).to_list(50)
+    grades = await gd_find(db.session, "reference_grades", {}, order_by="order", desc_order=False, limit=50)
     if not grades:
-        grades = await db.academic_grades.find({"is_active": True}, {"_id": 0}).sort("order", 1).to_list(50)
+        grades = await gd_find(db.session, "academic_grades", {"is_active": True}, order_by="order", desc_order=False, limit=50)
     
-    tracks = await db.reference_tracks.find({}, {"_id": 0}).to_list(10)
+    tracks = await gd_find(db.session, "reference_tracks", {}, limit=10)
     if not tracks:
-        tracks = await db.education_tracks.find({"is_active": True}, {"_id": 0}).to_list(10)
+        tracks = await gd_find(db.session, "education_tracks", {"is_active": True}, limit=10)
     
-    subject_mappings = await db.subject_mappings.find({}, {"_id": 0}).to_list(50)
+    subject_mappings = await gd_find(db.session, "subject_mappings", {}, limit=50)
     
     return {
         "stages": stages,
@@ -58,56 +60,56 @@ async def get_academic_structure(current_user: dict = Depends(get_current_user))
 @router.get("/reference/stages")
 async def get_reference_stages(current_user: dict = Depends(get_current_user)):
     """Get all academic stages"""
-    stages = await db.reference_stages.find({}, {"_id": 0}).sort("order", 1).to_list(10)
+    stages = await gd_find(db.session, "reference_stages", {}, order_by="order", desc_order=False, limit=10)
     if not stages:
-        stages = await db.academic_stages.find({"is_active": True}, {"_id": 0}).sort("order", 1).to_list(10)
+        stages = await gd_find(db.session, "academic_stages", {"is_active": True}, order_by="order", desc_order=False, limit=10)
     return stages
 
 @router.get("/reference/grades")
 async def get_reference_grades(current_user: dict = Depends(get_current_user)):
     """Get all grades"""
-    grades = await db.reference_grades.find({}, {"_id": 0}).sort("order", 1).to_list(50)
+    grades = await gd_find(db.session, "reference_grades", {}, order_by="order", desc_order=False, limit=50)
     if not grades:
-        grades = await db.academic_grades.find({"is_active": True}, {"_id": 0}).sort("order", 1).to_list(50)
+        grades = await gd_find(db.session, "academic_grades", {"is_active": True}, order_by="order", desc_order=False, limit=50)
     return grades
 
 @router.get("/reference/tracks")
 async def get_reference_tracks(current_user: dict = Depends(get_current_user)):
     """Get all education tracks"""
-    tracks = await db.reference_tracks.find({}, {"_id": 0}).to_list(10)
+    tracks = await gd_find(db.session, "reference_tracks", {}, limit=10)
     if not tracks:
-        tracks = await db.education_tracks.find({"is_active": True}, {"_id": 0}).to_list(10)
+        tracks = await gd_find(db.session, "education_tracks", {"is_active": True}, limit=10)
     return tracks
 
 @router.get("/reference/subjects")
 async def get_reference_subjects(current_user: dict = Depends(get_current_user)):
     """Get all reference subjects"""
-    subjects = await db.reference_subjects.find({"is_active": True}, {"_id": 0}).to_list(500)
+    subjects = await gd_find(db.session, "reference_subjects", {"is_active": True}, limit=500)
     if not subjects:
-        subjects = await db.subjects.find({"is_active": True}, {"_id": 0}).to_list(100)
+        subjects = await gd_find(db.session, "subjects", {"is_active": True}, limit=100)
     return subjects
 
 @router.get("/reference/teacher-ranks")
 async def get_reference_teacher_ranks(current_user: dict = Depends(get_current_user)):
     """Get all teacher ranks with teaching loads"""
-    ranks = await db.reference_teacher_ranks.find({}, {"_id": 0}).sort("order", 1).to_list(20)
+    ranks = await gd_find(db.session, "reference_teacher_ranks", {}, order_by="order", desc_order=False, limit=20)
     if not ranks:
-        ranks = await db.teacher_ranks.find({"is_active": True}, {"_id": 0}).sort("order", 1).to_list(20)
+        ranks = await gd_find(db.session, "teacher_ranks", {"is_active": True}, order_by="order", desc_order=False, limit=20)
     return ranks
 
 @router.get("/reference/admin-constraints")
 async def get_reference_admin_constraints(current_user: dict = Depends(get_current_user)):
     """Get all administrative scheduling constraints"""
-    constraints = await db.reference_admin_constraints.find({"is_active": True}, {"_id": 0}).to_list(50)
+    constraints = await gd_find(db.session, "reference_admin_constraints", {"is_active": True}, limit=50)
     if not constraints:
-        constraints = await db.admin_constraints.find({"is_active": True}, {"_id": 0}).to_list(50)
+        constraints = await gd_find(db.session, "admin_constraints", {"is_active": True}, limit=50)
     return constraints
 
 @router.get("/reference/default-settings")
 async def get_reference_default_settings(current_user: dict = Depends(get_current_user)):
     """Get default school settings template"""
-    settings = await db.default_school_settings.find_one({}, {"_id": 0})
+    settings = await gd_find_one(db.session, "default_school_settings", {})
     if not settings:
-        settings = await db.default_settings.find_one({"id": "default-school-settings"}, {"_id": 0})
+        settings = await gd_find_one(db.session, "default_settings", {"id": "default-school-settings"})
     return settings or {}
 

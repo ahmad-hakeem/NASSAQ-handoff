@@ -22,6 +22,8 @@ from dependencies import (
     hakim_engine, reporting_engine, export_engine, session_engine,
     REPORT_TYPES, generate_student_qr_code
 )
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
+
 
 from shared_models import (
     StatusCheck, StatusCheckCreate, TeacherRankEnum, SessionStatusEnum, ScheduleStatusEnum, TimeSlotCreate, TimeSlotResponse, TeacherAssignmentCreate, TeacherAssignmentResponse, SchoolScheduleCreate, SchoolScheduleResponse, ScheduleSessionCreate, ScheduleSessionResponse
@@ -56,7 +58,7 @@ async def update_smart_session(
     Update a session in the smart timetable
     """
     # Get current session
-    session = await db.timetable_sessions.find_one({"id": session_id}, {"_id": 0})
+    session = await gd_find_one(db.session, "timetable_sessions", {"id": session_id})
     if not session:
         raise HTTPException(status_code=404, detail="الحصة غير موجودة")
     
@@ -74,13 +76,13 @@ async def update_smart_session(
     # Check for conflicts if moving to new slot
     if request.day_of_week or request.period_number:
         # Check teacher conflict
-        teacher_conflict = await db.timetable_sessions.find_one({
+        teacher_conflict = await gd_find_one(db.session, "timetable_sessions", {
             "timetable_id": timetable_id,
             "teacher_id": new_teacher,
             "day_of_week": new_day,
             "period_number": new_period,
             "id": {"$ne": session_id}
-        }, {"_id": 0})
+        })
         
         if teacher_conflict:
             conflicts.append({
@@ -90,13 +92,13 @@ async def update_smart_session(
             })
         
         # Check class conflict
-        class_conflict = await db.timetable_sessions.find_one({
+        class_conflict = await gd_find_one(db.session, "timetable_sessions", {
             "timetable_id": timetable_id,
             "class_id": session.get("class_id"),
             "day_of_week": new_day,
             "period_number": new_period,
             "id": {"$ne": session_id}
-        }, {"_id": 0})
+        })
         
         if class_conflict:
             conflicts.append({
@@ -113,13 +115,13 @@ async def update_smart_session(
         
         # Check teacher conflict with new teacher
         if not request.day_of_week and not request.period_number:
-            teacher_conflict = await db.timetable_sessions.find_one({
+            teacher_conflict = await gd_find_one(db.session, "timetable_sessions", {
                 "timetable_id": timetable_id,
                 "teacher_id": request.teacher_id,
                 "day_of_week": session.get("day_of_week"),
                 "period_number": session.get("period_number"),
                 "id": {"$ne": session_id}
-            }, {"_id": 0})
+            })
             
             if teacher_conflict:
                 conflicts.append({
@@ -142,7 +144,7 @@ async def update_smart_session(
         }
     
     # Apply update
-    await db.timetable_sessions.update_one({"id": session_id}, {"$set": update_data})
+    await gd_update_one(db.session, "timetable_sessions", {"id": session_id}, update_data)
     
     return {
         "success": True,
@@ -163,7 +165,7 @@ async def force_update_smart_session(
     تعديل حصة بالقوة (تجاهل التعارضات)
     Force update a session (ignore conflicts)
     """
-    session = await db.timetable_sessions.find_one({"id": session_id}, {"_id": 0})
+    session = await gd_find_one(db.session, "timetable_sessions", {"id": session_id})
     if not session:
         raise HTTPException(status_code=404, detail="الحصة غير موجودة")
     
@@ -178,7 +180,7 @@ async def force_update_smart_session(
     if request.subject_id:
         update_data["subject_id"] = request.subject_id
     
-    await db.timetable_sessions.update_one({"id": session_id}, {"$set": update_data})
+    await gd_update_one(db.session, "timetable_sessions", {"id": session_id}, update_data)
     
     return {
         "success": True,
@@ -197,8 +199,8 @@ async def swap_smart_sessions(
     تبديل حصتين
     Swap two sessions
     """
-    session1 = await db.timetable_sessions.find_one({"id": request.session_id_1}, {"_id": 0})
-    session2 = await db.timetable_sessions.find_one({"id": request.session_id_2}, {"_id": 0})
+    session1 = await gd_find_one(db.session, "timetable_sessions", {"id": request.session_id_1})
+    session2 = await gd_find_one(db.session, "timetable_sessions", {"id": request.session_id_2})
     
     if not session1 or not session2:
         raise HTTPException(status_code=404, detail="إحدى الحصتين غير موجودة")
@@ -213,7 +215,7 @@ async def swap_smart_sessions(
     if user_tenant and school_id != user_tenant and user_role != UserRole.PLATFORM_ADMIN.value:
         raise HTTPException(status_code=403, detail="غير مصرح بالتعديل على هذه المدرسة")
 
-    tt = await db.timetables.find_one({"id": tt_id}, {"_id": 0, "status": 1})
+    tt = await gd_find_one(db.session, "timetables", {"id": tt_id})
     if tt and tt.get("status") == "published":
         raise HTTPException(status_code=400, detail="لا يمكن تعديل جدول منشور")
 
@@ -231,7 +233,7 @@ async def swap_smart_sessions(
 
     exclude_ids = [request.session_id_1, request.session_id_2]
 
-    t1_conflict = await db.timetable_sessions.find_one({
+    t1_conflict = await gd_find_one(db.session, "timetable_sessions", {
         "timetable_id": tt_id,
         "teacher_id": session1.get("teacher_id"),
         "day_of_week": s2_day, "period_number": s2_period,
@@ -240,7 +242,7 @@ async def swap_smart_sessions(
     if t1_conflict:
         raise HTTPException(status_code=409, detail=f"تعارض: المعلم {session1.get('teacher_name', '')} لديه حصة أخرى في الخانة المستهدفة")
 
-    c1_conflict = await db.timetable_sessions.find_one({
+    c1_conflict = await gd_find_one(db.session, "timetable_sessions", {
         "timetable_id": tt_id,
         "class_id": session1.get("class_id"),
         "day_of_week": s2_day, "period_number": s2_period,
@@ -249,7 +251,7 @@ async def swap_smart_sessions(
     if c1_conflict:
         raise HTTPException(status_code=409, detail=f"تعارض: الفصل {session1.get('class_name', '')} لديه حصة أخرى في الخانة المستهدفة")
 
-    t2_conflict = await db.timetable_sessions.find_one({
+    t2_conflict = await gd_find_one(db.session, "timetable_sessions", {
         "timetable_id": tt_id,
         "teacher_id": session2.get("teacher_id"),
         "day_of_week": s1_day, "period_number": s1_period,
@@ -258,7 +260,7 @@ async def swap_smart_sessions(
     if t2_conflict:
         raise HTTPException(status_code=409, detail=f"تعارض: المعلم {session2.get('teacher_name', '')} لديه حصة أخرى في الخانة المستهدفة")
 
-    c2_conflict = await db.timetable_sessions.find_one({
+    c2_conflict = await gd_find_one(db.session, "timetable_sessions", {
         "timetable_id": tt_id,
         "class_id": session2.get("class_id"),
         "day_of_week": s1_day, "period_number": s1_period,
@@ -269,29 +271,23 @@ async def swap_smart_sessions(
 
     now = datetime.now(timezone.utc).isoformat()
     
-    await db.timetable_sessions.update_one(
-        {"id": request.session_id_1},
-        {"$set": {
+    await gd_update_one(db.session, "timetable_sessions", {"id": request.session_id_1}, {
             "day_of_week": s2_day, "day": s2_day,
             "period_number": s2_period,
             "time_slot_id": s2_slot,
             "start_time": s2_start, "end_time": s2_end,
             "source_type": "hybrid_adjusted",
             "updated_at": now
-        }}
-    )
+        })
     
-    await db.timetable_sessions.update_one(
-        {"id": request.session_id_2},
-        {"$set": {
+    await gd_update_one(db.session, "timetable_sessions", {"id": request.session_id_2}, {
             "day_of_week": s1_day, "day": s1_day,
             "period_number": s1_period,
             "time_slot_id": s1_slot,
             "start_time": s1_start, "end_time": s1_end,
             "source_type": "hybrid_adjusted",
             "updated_at": now
-        }}
-    )
+        })
     
     return {
         "success": True,
@@ -310,7 +306,7 @@ async def move_smart_session(
     request: SmartMoveRequest,
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
-    session = await db.timetable_sessions.find_one({"id": request.session_id}, {"_id": 0})
+    session = await gd_find_one(db.session, "timetable_sessions", {"id": request.session_id})
     if not session:
         raise HTTPException(status_code=404, detail="الحصة غير موجودة")
 
@@ -322,11 +318,11 @@ async def move_smart_session(
     if user_tenant and school_id != user_tenant and user_role != UserRole.PLATFORM_ADMIN.value:
         raise HTTPException(status_code=403, detail="غير مصرح بالتعديل على هذه المدرسة")
 
-    tt = await db.timetables.find_one({"id": tt_id}, {"_id": 0, "status": 1})
+    tt = await gd_find_one(db.session, "timetables", {"id": tt_id})
     if tt and tt.get("status") == "published":
         raise HTTPException(status_code=400, detail="لا يمكن تعديل جدول منشور")
 
-    teacher_conflict = await db.timetable_sessions.find_one({
+    teacher_conflict = await gd_find_one(db.session, "timetable_sessions", {
         "timetable_id": tt_id,
         "teacher_id": session.get("teacher_id"),
         "day_of_week": request.new_day,
@@ -336,7 +332,7 @@ async def move_smart_session(
     if teacher_conflict:
         raise HTTPException(status_code=409, detail=f"تعارض: المعلم {session.get('teacher_name', '')} لديه حصة في نفس الوقت")
 
-    class_conflict = await db.timetable_sessions.find_one({
+    class_conflict = await gd_find_one(db.session, "timetable_sessions", {
         "timetable_id": tt_id,
         "class_id": session.get("class_id"),
         "day_of_week": request.new_day,
@@ -346,19 +342,19 @@ async def move_smart_session(
     if class_conflict:
         raise HTTPException(status_code=409, detail=f"تعارض: الفصل {session.get('class_name', '')} لديه حصة في نفس الوقت")
 
-    slot = await db.time_slots.find_one({
+    slot = await gd_find_one(db.session, "time_slots", {
         "school_id": school_id,
         "period_number": request.new_period,
         "is_break": {"$ne": True},
         "is_prayer": {"$ne": True}
-    }, {"_id": 0})
+    })
     if not slot:
-        slot = await db.time_slots.find_one({
+        slot = await gd_find_one(db.session, "time_slots", {
             "school_id": school_id,
             "slot_number": request.new_period,
             "is_break": {"$ne": True},
             "is_prayer": {"$ne": True}
-        }, {"_id": 0})
+        })
 
     now = datetime.now(timezone.utc).isoformat()
     update_fields = {
@@ -373,10 +369,7 @@ async def move_smart_session(
         update_fields["start_time"] = slot.get("start_time")
         update_fields["end_time"] = slot.get("end_time")
 
-    await db.timetable_sessions.update_one(
-        {"id": request.session_id},
-        {"$set": update_fields}
-    )
+    await gd_update_one(db.session, "timetable_sessions", {"id": request.session_id}, update_fields)
 
     return {
         "success": True,
@@ -394,11 +387,11 @@ async def delete_smart_session(
     حذف حصة من الجدول
     Delete a session from the timetable
     """
-    session = await db.timetable_sessions.find_one({"id": session_id}, {"_id": 0})
+    session = await gd_find_one(db.session, "timetable_sessions", {"id": session_id})
     if not session:
         raise HTTPException(status_code=404, detail="الحصة غير موجودة")
     
-    await db.timetable_sessions.delete_one({"id": session_id})
+    await gd_delete_one(db.session, "timetable_sessions", {"id": session_id})
     
     return {
         "success": True,
@@ -424,26 +417,26 @@ async def add_smart_session(
     import uuid
     
     # Get timetable
-    timetable = await db.timetables.find_one({"id": timetable_id}, {"_id": 0})
+    timetable = await gd_find_one(db.session, "timetables", {"id": timetable_id})
     if not timetable:
         raise HTTPException(status_code=404, detail="الجدول غير موجود")
     
     school_id = timetable.get("school_id")
     
     # Get class info
-    cls = await db.classes.find_one({"id": class_id}, {"_id": 0})
+    cls = await gd_find_one(db.session, "classes", {"id": class_id})
     grade_id = cls.get("grade_id", "") if cls else ""
     
     # Check for conflicts
     conflicts = []
     
     # Teacher conflict
-    teacher_conflict = await db.timetable_sessions.find_one({
+    teacher_conflict = await gd_find_one(db.session, "timetable_sessions", {
         "timetable_id": timetable_id,
         "teacher_id": teacher_id,
         "day_of_week": day_of_week,
         "period_number": period_number
-    }, {"_id": 0})
+    })
     
     if teacher_conflict:
         conflicts.append({
@@ -452,12 +445,12 @@ async def add_smart_session(
         })
     
     # Class conflict
-    class_conflict = await db.timetable_sessions.find_one({
+    class_conflict = await gd_find_one(db.session, "timetable_sessions", {
         "timetable_id": timetable_id,
         "class_id": class_id,
         "day_of_week": day_of_week,
         "period_number": period_number
-    }, {"_id": 0})
+    })
     
     if class_conflict:
         conflicts.append({
@@ -492,7 +485,7 @@ async def add_smart_session(
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     
-    await db.timetable_sessions.insert_one(session_doc)
+    await gd_insert(db.session, "timetable_sessions", session_doc)
     
     return {
         "success": True,
@@ -516,12 +509,12 @@ async def create_status_check(input: StatusCheckCreate):
     status_obj = StatusCheck(**status_dict)
     doc = status_obj.model_dump()
     doc['timestamp'] = doc['timestamp'].isoformat()
-    await db.status_checks.insert_one(doc)
+    await gd_insert(db.session, "status_checks", doc)
     return status_obj
 
 @router.get("/status", response_model=List[StatusCheck])
 async def get_status_checks():
-    status_checks = await db.status_checks.find({}, {"_id": 0}).to_list(1000)
+    status_checks = await gd_find(db.session, "status_checks", {}, limit=1000)
     for check in status_checks:
         if isinstance(check['timestamp'], str):
             check['timestamp'] = datetime.fromisoformat(check['timestamp'])
@@ -570,7 +563,7 @@ async def move_schedule_session(
     - hard_conflict: تم رفض النقل وإرجاع الحصة
     """
     # Get the session
-    session = await db.schedule_sessions.find_one({"id": session_id}, {"_id": 0})
+    session = await gd_find_one(db.session, "schedule_sessions", {"id": session_id})
     if not session:
         raise HTTPException(status_code=404, detail="الحصة غير موجودة")
     
@@ -580,7 +573,7 @@ async def move_schedule_session(
     assignment_id = session.get("assignment_id")
     
     # Get assignment details
-    assignment = await db.teacher_assignments.find_one({"id": assignment_id}, {"_id": 0})
+    assignment = await gd_find_one(db.session, "teacher_assignments", {"id": assignment_id})
     if not assignment:
         raise HTTPException(status_code=404, detail="الإسناد غير موجود")
     
@@ -588,7 +581,7 @@ async def move_schedule_session(
     class_id = assignment.get("class_id")
     
     # Validate the new time slot exists
-    new_slot = await db.time_slots.find_one({"id": move_data.new_time_slot_id}, {"_id": 0})
+    new_slot = await gd_find_one(db.session, "time_slots", {"id": move_data.new_time_slot_id})
     if not new_slot:
         raise HTTPException(status_code=400, detail="الفترة الزمنية غير موجودة")
     
@@ -597,25 +590,23 @@ async def move_schedule_session(
     is_hard_conflict = False
     
     # 1. Check teacher conflict
-    teacher_conflict = await db.schedule_sessions.find_one({
+    teacher_conflict = await gd_find_one(db.session, "schedule_sessions", {
         "schedule_id": schedule_id,
         "day_of_week": move_data.new_day_of_week,
         "time_slot_id": move_data.new_time_slot_id,
         "id": {"$ne": session_id},
         "status": {"$ne": SessionStatusEnum.CANCELLED.value}
-    }, {"_id": 0})
+    })
     
     if teacher_conflict:
-        conflict_assignment = await db.teacher_assignments.find_one(
-            {"id": teacher_conflict.get("assignment_id")}, {"_id": 0}
-        )
+        conflict_assignment = await gd_find_one(db.session, "teacher_assignments", {"id": teacher_conflict.get("assignment_id")})
         if conflict_assignment:
             conflict_teacher_id = conflict_assignment.get("teacher_id")
             conflict_class_id = conflict_assignment.get("class_id")
             
             # Check if same teacher
             if conflict_teacher_id == teacher_id:
-                teacher_doc = await db.teachers.find_one({"id": teacher_id}, {"_id": 0})
+                teacher_doc = await gd_find_one(db.session, "teachers", {"id": teacher_id})
                 teacher_name = teacher_doc.get("full_name", "المعلم") if teacher_doc else "المعلم"
                 conflicts.append({
                     "type": "teacher_double_booking",
@@ -628,7 +619,7 @@ async def move_schedule_session(
             
             # Check if same class
             if conflict_class_id == class_id:
-                class_doc = await db.classes.find_one({"id": class_id}, {"_id": 0})
+                class_doc = await gd_find_one(db.session, "classes", {"id": class_id})
                 class_name = class_doc.get("name", "الفصل") if class_doc else "الفصل"
                 conflicts.append({
                     "type": "class_double_booking",
@@ -655,14 +646,11 @@ async def move_schedule_session(
         )
     
     # Perform the move
-    await db.schedule_sessions.update_one(
-        {"id": session_id},
-        {"$set": {
+    await gd_update_one(db.session, "schedule_sessions", {"id": session_id}, {
             "day_of_week": move_data.new_day_of_week,
             "time_slot_id": move_data.new_time_slot_id,
             "updated_at": datetime.now(timezone.utc).isoformat()
-        }}
-    )
+        })
     
     # Determine response status
     if conflicts:

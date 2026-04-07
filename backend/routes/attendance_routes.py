@@ -19,6 +19,8 @@ import logging
 from dependencies import audit_engine, AuditAction
 
 logger = logging.getLogger("nassaq.attendance_routes")
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
+
 
 
 # ============== MODELS ==============
@@ -528,7 +530,7 @@ def create_attendance_router(db, get_current_user, require_roles, UserRole):
         if date:
             query["date"] = date
         
-        records = await db.teacher_attendance.find(query, {"_id": 0}).to_list(1000)
+        records = await gd_find(db.session, "teacher_attendance", query, limit=1000)
         return records
     
     @router.post("/teacher-attendance/bulk")
@@ -556,7 +558,7 @@ def create_attendance_router(db, get_current_user, require_roles, UserRole):
         saved = []
         for record in records:
             # Check if record exists for this teacher on this date
-            existing = await db.teacher_attendance.find_one({
+            existing = await gd_find_one(db.session, "teacher_attendance", {
                 "school_id": tenant_id,
                 "teacher_id": record["teacher_id"],
                 "date": record["date"]
@@ -575,13 +577,10 @@ def create_attendance_router(db, get_current_user, require_roles, UserRole):
             }
             
             if existing:
-                await db.teacher_attendance.update_one(
-                    {"id": existing["id"]},
-                    {"$set": attendance_data}
-                )
+                await gd_update_one(db.session, "teacher_attendance", {"id": existing["id"]}, attendance_data)
             else:
                 attendance_data["created_at"] = datetime.now(timezone.utc).isoformat()
-                await db.teacher_attendance.insert_one(attendance_data)
+                await gd_insert(db.session, "teacher_attendance", attendance_data)
             
             saved.append(attendance_data)
         
@@ -618,10 +617,7 @@ def create_attendance_router(db, get_current_user, require_roles, UserRole):
             raise HTTPException(status_code=400, detail="يجب تحديد المدرسة")
         
         # Get all records for this school
-        records = await db.teacher_attendance.find(
-            {"school_id": tenant_id}, 
-            {"_id": 0}
-        ).to_list(10000)
+        records = await gd_find(db.session, "teacher_attendance", {"school_id": tenant_id}, limit=10000)
         
         # Calculate summary
         present = len([r for r in records if r.get("status") == "present"])

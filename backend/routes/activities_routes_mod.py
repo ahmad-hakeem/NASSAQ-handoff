@@ -10,6 +10,8 @@ import uuid
 from dependencies import db, get_current_user, logger
 
 router = APIRouter(prefix="/activities", tags=["activities"])
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
+
 
 ACTIVITY_TYPES = ["academic", "sports", "arts", "community", "scientific", "cultural", "other"]
 
@@ -59,9 +61,7 @@ async def list_student_activities(
     tenant = current_user.get("tenant_id")
     if tenant and tenant != school_id:
         raise HTTPException(403, "غير مصرح")
-    records = await db.student_activities.find(
-        {"student_id": student_id, "school_id": school_id}
-    ).sort("date", -1).to_list(500)
+    records = await gd_find(db.session, "student_activities", {"student_id": student_id, "school_id": school_id}, order_by="date", desc_order=True, limit=500)
     for r in records:
         r.pop("_id", None)
     return records
@@ -94,7 +94,7 @@ async def create_student_activity(
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
-    await db.student_activities.insert_one(doc)
+    await gd_insert(db.session, "student_activities", doc)
     doc.pop("_id", None)
     return doc
 
@@ -116,10 +116,8 @@ async def update_activity(
         val = getattr(data, field, None)
         if val is not None:
             update_fields[field] = val
-    result = await db.student_activities.update_one(
-        {"id": activity_id, "school_id": tenant}, {"$set": update_fields}
-    )
-    if result.matched_count == 0:
+    result = await gd_update_one(db.session, "student_activities", {"id": activity_id, "school_id": tenant}, update_fields)
+    if result == 0:
         raise HTTPException(404, "النشاط غير موجود")
     return {"success": True, "message": "تم تحديث النشاط"}
 
@@ -135,8 +133,8 @@ async def delete_activity(
     tenant = current_user.get("tenant_id")
     if not tenant:
         raise HTTPException(400, "لم يتم تحديد المدرسة")
-    result = await db.student_activities.delete_one({"id": activity_id, "school_id": tenant})
-    if result.deleted_count == 0:
+    result = await gd_delete_one(db.session, "student_activities", {"id": activity_id, "school_id": tenant})
+    if result == 0:
         raise HTTPException(404, "النشاط غير موجود")
     return {"success": True, "message": "تم حذف النشاط"}
 
@@ -150,9 +148,7 @@ async def list_student_certificates(
     tenant = current_user.get("tenant_id")
     if tenant and tenant != school_id:
         raise HTTPException(403, "غير مصرح")
-    records = await db.student_certificates.find(
-        {"student_id": student_id, "school_id": school_id}
-    ).sort("date", -1).to_list(500)
+    records = await gd_find(db.session, "student_certificates", {"student_id": student_id, "school_id": school_id}, order_by="date", desc_order=True, limit=500)
     for r in records:
         r.pop("_id", None)
     return records
@@ -185,7 +181,7 @@ async def create_student_certificate(
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
-    await db.student_certificates.insert_one(doc)
+    await gd_insert(db.session, "student_certificates", doc)
     doc.pop("_id", None)
     return doc
 
@@ -207,10 +203,8 @@ async def update_certificate(
         val = getattr(data, field, None)
         if val is not None:
             update_fields[field] = val
-    result = await db.student_certificates.update_one(
-        {"id": certificate_id, "school_id": tenant}, {"$set": update_fields}
-    )
-    if result.matched_count == 0:
+    result = await gd_update_one(db.session, "student_certificates", {"id": certificate_id, "school_id": tenant}, update_fields)
+    if result == 0:
         raise HTTPException(404, "الشهادة غير موجودة")
     return {"success": True, "message": "تم تحديث الشهادة"}
 
@@ -226,7 +220,7 @@ async def delete_certificate(
     tenant = current_user.get("tenant_id")
     if not tenant:
         raise HTTPException(400, "لم يتم تحديد المدرسة")
-    result = await db.student_certificates.delete_one({"id": certificate_id, "school_id": tenant})
-    if result.deleted_count == 0:
+    result = await gd_delete_one(db.session, "student_certificates", {"id": certificate_id, "school_id": tenant})
+    if result == 0:
         raise HTTPException(404, "الشهادة غير موجودة")
     return {"success": True, "message": "تم حذف الشهادة"}

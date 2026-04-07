@@ -7,6 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional, List
 from datetime import datetime, timezone, timedelta
 import uuid
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
+
 import logging
 
 logger = logging.getLogger("nassaq.parent_portal_routes")
@@ -30,7 +32,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         query = {"parent_ref": parent_id, "is_active": True}
         if school_id:
             query["tenant_id"] = school_id
-        links = await db.guardian_links.find(query, {"_id": 0, "student_id": 1}).to_list(20)
+        links = await gd_find(db.session, "guardian_links", query, limit=20)
         return [l["student_id"] for l in links]
 
     async def _find_children(parent_id: str, parent_phone: Optional[str], school_id: Optional[str] = None):
@@ -38,7 +40,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         student_query = {"$or": or_conditions}
         if school_id:
             student_query["school_id"] = school_id
-        children = await db.students.find(student_query, {"_id": 0}).to_list(50)
+        children = await gd_find(db.session, "students", student_query, limit=50)
         found_ids = {c.get("id") for c in children}
         linked_ids = await _get_linked_student_ids(parent_id, school_id)
         missing_ids = [sid for sid in linked_ids if sid not in found_ids]
@@ -46,7 +48,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             extra_q = {"id": {"$in": missing_ids}}
             if school_id:
                 extra_q["school_id"] = school_id
-            extra = await db.students.find(extra_q, {"_id": 0}).to_list(50)
+            extra = await gd_find(db.session, "students", extra_q, limit=50)
             children.extend(extra)
         return children
 
@@ -68,19 +70,19 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         for child in children:
             child_id = child.get("id")
 
-            total_days = await db.attendance.count_documents({"student_id": child_id})
-            present_days = await db.attendance.count_documents({"student_id": child_id, "status": "present"})
+            total_days = await gd_count(db.session, "attendance", {"student_id": child_id})
+            present_days = await gd_count(db.session, "attendance", {"student_id": child_id, "status": "present"})
             attendance_rate = (present_days / total_days * 100) if total_days > 0 else 100
 
-            recent_grades = await db.grades.find({"student_id": child_id}).sort("date", -1).limit(3).to_list(3)
-            all_grades = await db.grades.find({"student_id": child_id}).to_list(500)
+            recent_grades = await gd_find(db.session, "grades", {"student_id": child_id}, order_by="date", desc_order=True, limit=3)
+            all_grades = await gd_find(db.session, "grades", {"student_id": child_id}, limit=500)
             avg_score = sum(g.get("percentage", 0) for g in all_grades) / len(all_grades) if all_grades else 0
 
             child_school_name = child.get("school_name")
             if not child_school_name:
                 sid = child.get("school_id") or school_id
                 if sid and sid not in school_name_cache:
-                    s_doc = await db.schools.find_one({"id": sid}, {"_id": 0, "name": 1})
+                    s_doc = await gd_find_one(db.session, "schools", {"id": sid})
                     school_name_cache[sid] = s_doc.get("name") if s_doc else sid
                 child_school_name = school_name_cache.get(sid, "")
 
@@ -105,12 +107,12 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
                 ]
             })
 
-        unread_notifications = await db.notifications.count_documents({
+        unread_notifications = await gd_count(db.session, "notifications", {
             "recipient_id": parent_id,
             "read_status": False
         })
 
-        unread_messages = await db.messages.count_documents({
+        unread_messages = await gd_count(db.session, "messages", {
             "receiver_id": parent_id,
             "read_status": False
         })
@@ -146,11 +148,11 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         for s in students:
             child_id = s.get("id")
 
-            total_days = await db.attendance.count_documents({"student_id": child_id})
-            present_days = await db.attendance.count_documents({"student_id": child_id, "status": "present"})
+            total_days = await gd_count(db.session, "attendance", {"student_id": child_id})
+            present_days = await gd_count(db.session, "attendance", {"student_id": child_id, "status": "present"})
             att_rate = round((present_days / total_days * 100), 1) if total_days > 0 else 0
 
-            all_grades = await db.grades.find({"student_id": child_id}).to_list(500)
+            all_grades = await gd_find(db.session, "grades", {"student_id": child_id}, limit=500)
             avg_score = 0
             if all_grades:
                 avg_score = round(sum(g.get("percentage", 0) for g in all_grades) / len(all_grades), 1)
@@ -159,7 +161,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             if not child_school_name:
                 sid = s.get("school_id") or school_id
                 if sid and sid not in school_name_cache:
-                    s_doc = await db.schools.find_one({"id": sid}, {"_id": 0, "name": 1})
+                    s_doc = await gd_find_one(db.session, "schools", {"id": sid})
                     school_name_cache[sid] = s_doc.get("name") if s_doc else sid
                 child_school_name = school_name_cache.get(sid, "")
 
@@ -187,18 +189,18 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         student_query = {"id": child_id, "$or": _parent_or_conditions(parent_id, parent_phone)}
         if school_id:
             student_query["school_id"] = school_id
-        child = await db.students.find_one(student_query, {"_id": 0})
+        child = await gd_find_one(db.session, "students", student_query)
         if child:
             return child
         link_query = {"parent_ref": parent_id, "student_id": child_id, "is_active": True}
         if school_id:
             link_query["tenant_id"] = school_id
-        link = await db.guardian_links.find_one(link_query)
+        link = await gd_find_one(db.session, "guardian_links", link_query)
         if link:
             fallback_q = {"id": child_id}
             if school_id:
                 fallback_q["school_id"] = school_id
-            return await db.students.find_one(fallback_q, {"_id": 0})
+            return await gd_find_one(db.session, "students", fallback_q)
         return None
 
     @router.get("/child/{child_id}")
@@ -219,7 +221,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         if not child_school_name:
             sid = child.get("school_id") or current_user.get("tenant_id")
             if sid:
-                s_doc = await db.schools.find_one({"id": sid}, {"_id": 0, "name": 1})
+                s_doc = await gd_find_one(db.session, "schools", {"id": sid})
                 child_school_name = s_doc.get("name") if s_doc else None
 
         return {
@@ -258,7 +260,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         if subject:
             query["subject"] = subject
 
-        grades = await db.grades.find(query).sort("date", -1).to_list(500)
+        grades = await gd_find(db.session, "grades", query, order_by="date", desc_order=True, limit=500)
 
         subjects_data = {}
         for grade in grades:
@@ -318,7 +320,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
                 end_date = f"{year}-{month + 1:02d}-01"
             query["date"] = {"$gte": start_date, "$lt": end_date}
 
-        records = await db.attendance.find(query).sort("date", -1).to_list(500)
+        records = await gd_find(db.session, "attendance", query, order_by="date", desc_order=True, limit=500)
 
         total = len(records)
         present = sum(1 for r in records if r.get("status") == "present")
@@ -374,25 +376,18 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         schedule_by_day = {day: [] for day in days_order}
 
         if child.get("class_id"):
-            timetable = await db.timetables.find_one(
-                {"school_id": school_id, "status": "published"}
-            ) or await db.timetables.find_one(
-                {"school_id": school_id},
-                sort=[("created_at", -1)]
-            )
+            timetable = await gd_find_one(db.session, "timetables", {"school_id": school_id, "status": "published"}) or await gd_find_one(db.session, "timetables", {"school_id": school_id},
+                sort=[("created_at", -1)])
             if timetable:
-                all_sessions = await db.timetable_sessions.find(
-                    {
+                all_sessions = await gd_find(db.session, "timetable_sessions", {
                         "timetable_id": timetable.get("id"),
                         "class_id": child.get("class_id")
-                    },
-                    {"_id": 0}
-                ).to_list(500)
+                    }, limit=500)
 
                 sub_ids = list(set(s.get("subject_id") for s in all_sessions if s.get("subject_id")))
                 tch_ids = list(set(s.get("teacher_id") for s in all_sessions if s.get("teacher_id")))
-                subs = await db.subjects.find({"id": {"$in": sub_ids}}, {"_id": 0, "id": 1, "name_ar": 1}).to_list(100)
-                tchs = await db.teachers.find({"id": {"$in": tch_ids}}, {"_id": 0, "id": 1, "full_name": 1}).to_list(100)
+                subs = await gd_find(db.session, "subjects", {"id": {"$in": sub_ids}}, limit=100)
+                tchs = await gd_find(db.session, "teachers", {"id": {"$in": tch_ids}}, limit=100)
                 sub_map = {s["id"]: s.get("name_ar", "") for s in subs}
                 tch_map = {t["id"]: t.get("full_name", "") for t in tchs}
 
@@ -426,13 +421,13 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         """رسائل ولي الأمر"""
         parent_id = current_user.get("id")
 
-        messages = await db.messages.find({
+        messages = await gd_find(db.session, "messages", {
             "$or": [
                 {"sender_id": parent_id},
                 {"receiver_id": parent_id},
                 {"recipient_ids": parent_id}
             ]
-        }).sort("created_at", -1).limit(50).to_list(50)
+        }, order_by="created_at", desc_order=True, limit=50)
 
         return {
             "messages": [
@@ -464,9 +459,9 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         current_user: dict = Depends(require_roles([UserRole.PARENT]))
     ):
         """إرسال رسالة من ولي الأمر"""
-        receiver = await db.users.find_one({"id": receiver_id})
+        receiver = await gd_find_one(db.session, "users", {"id": receiver_id})
         if not receiver:
-            receiver = await db.teachers.find_one({"id": receiver_id})
+            receiver = await gd_find_one(db.session, "teachers", {"id": receiver_id})
 
         if not receiver:
             raise HTTPException(status_code=404, detail="المستلم غير موجود")
@@ -485,9 +480,9 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             "created_at": datetime.now(timezone.utc).isoformat()
         }
 
-        await db.messages.insert_one(message)
+        await gd_insert(db.session, "messages", message)
 
-        await db.notifications.insert_one({
+        await gd_insert(db.session, "notifications", {
             "id": str(uuid.uuid4()),
             "recipient_id": receiver_id,
             "notification_type": "message",
@@ -519,20 +514,13 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         teachers = []
 
         if child.get("class_id"):
-            timetable = await db.timetables.find_one(
-                {"school_id": school_id, "status": "published"}
-            ) or await db.timetables.find_one(
-                {"school_id": school_id},
-                sort=[("created_at", -1)]
-            )
+            timetable = await gd_find_one(db.session, "timetables", {"school_id": school_id, "status": "published"}) or await gd_find_one(db.session, "timetables", {"school_id": school_id},
+                sort=[("created_at", -1)])
             if timetable:
-                sessions = await db.timetable_sessions.find(
-                    {
+                sessions = await gd_find(db.session, "timetable_sessions", {
                         "timetable_id": timetable.get("id"),
                         "class_id": child.get("class_id")
-                    },
-                    {"_id": 0, "teacher_id": 1, "subject_id": 1}
-                ).to_list(500)
+                    }, limit=500)
 
                 teacher_subject_map = {}
                 for s in sessions:
@@ -546,13 +534,10 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
 
                 if teacher_subject_map:
                     sub_ids = list(set(sid for sids in teacher_subject_map.values() for sid in sids))
-                    subs = await db.subjects.find({"id": {"$in": sub_ids}}, {"_id": 0, "id": 1, "name_ar": 1}).to_list(100)
+                    subs = await gd_find(db.session, "subjects", {"id": {"$in": sub_ids}}, limit=100)
                     sub_name_map = {s["id"]: s.get("name_ar", "") for s in subs}
 
-                    teacher_docs = await db.teachers.find(
-                        {"id": {"$in": list(teacher_subject_map.keys())}, "school_id": school_id},
-                        {"_id": 0}
-                    ).to_list(100)
+                    teacher_docs = await gd_find(db.session, "teachers", {"id": {"$in": list(teacher_subject_map.keys())}, "school_id": school_id}, limit=100)
 
                     for t in teacher_docs:
                         tid = t.get("id")
@@ -583,13 +568,13 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         if not child:
             raise HTTPException(status_code=403, detail="غير مصرح لك بالوصول لهذا الطالب")
 
-        total_attendance = await db.attendance.count_documents({"student_id": child_id})
-        present = await db.attendance.count_documents({"student_id": child_id, "status": "present"})
-        absent = await db.attendance.count_documents({"student_id": child_id, "status": "absent"})
-        late = await db.attendance.count_documents({"student_id": child_id, "status": "late"})
+        total_attendance = await gd_count(db.session, "attendance", {"student_id": child_id})
+        present = await gd_count(db.session, "attendance", {"student_id": child_id, "status": "present"})
+        absent = await gd_count(db.session, "attendance", {"student_id": child_id, "status": "absent"})
+        late = await gd_count(db.session, "attendance", {"student_id": child_id, "status": "late"})
         attendance_rate = round((present / total_attendance * 100), 1) if total_attendance > 0 else 100
 
-        grades = await db.grades.find({"student_id": child_id}, {"_id": 0}).to_list(500)
+        grades = await gd_find(db.session, "grades", {"student_id": child_id}, limit=500)
         subjects_grades = {}
         for g in grades:
             subj = g.get("subject_name") or g.get("subject_id", "عام")
@@ -603,13 +588,11 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
 
         overall_avg = round(sum(subject_averages.values()) / len(subject_averages), 1) if subject_averages else 0
 
-        behaviour_pos = await db.behaviour_records.count_documents({"student_id": child_id, "type": "positive"})
-        behaviour_neg = await db.behaviour_records.count_documents({"student_id": child_id, "type": "negative"})
+        behaviour_pos = await gd_count(db.session, "behaviour_records", {"student_id": child_id, "type": "positive"})
+        behaviour_neg = await gd_count(db.session, "behaviour_records", {"student_id": child_id, "type": "negative"})
         behaviour_total = behaviour_pos + behaviour_neg
 
-        participation = await db.participation_records.find(
-            {"student_id": child_id}, {"_id": 0, "quality": 1, "points": 1}
-        ).to_list(500)
+        participation = await gd_find(db.session, "participation_records", {"student_id": child_id}, limit=500)
         total_participation_points = sum(p.get("points", 0) for p in participation)
 
         return {
@@ -657,10 +640,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         if not child:
             raise HTTPException(status_code=403, detail="غير مصرح")
 
-        records = await db.behaviour_records.find(
-            {"student_id": child_id},
-            {"_id": 0}
-        ).sort("created_at", -1).limit(limit).to_list(limit)
+        records = await gd_find(db.session, "behaviour_records", {"student_id": child_id}, order_by="created_at", desc_order=True, limit=limit)
 
         return {"records": records, "total": len(records)}
 
@@ -690,11 +670,9 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
                 {"grade_id": grade_id}
             ]
 
-        assignments = await db.student_assignments.find(query, {"_id": 0}).sort("due_date", -1).to_list(100)
+        assignments = await gd_find(db.session, "student_assignments", query, order_by="due_date", desc_order=True, limit=100)
 
-        submissions = await db.assignment_submissions.find(
-            {"student_id": child_id}, {"_id": 0}
-        ).to_list(500)
+        submissions = await gd_find(db.session, "assignment_submissions", {"student_id": child_id}, limit=500)
         submission_map = {s.get("assignment_id"): s for s in submissions}
 
         now = datetime.now(timezone.utc)
@@ -745,10 +723,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         current_user: dict = Depends(require_roles([UserRole.PARENT]))
     ):
         """إعدادات ولي الأمر"""
-        settings = await db.user_preferences.find_one(
-            {"user_id": current_user["id"]},
-            {"_id": 0}
-        ) or {}
+        settings = await gd_find_one(db.session, "user_preferences", {"user_id": current_user["id"]}) or {}
 
         return {
             "notification_preferences": settings.get("notification_preferences", {
@@ -771,11 +746,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         """تحديث إعدادات ولي الأمر"""
         now = datetime.now(timezone.utc).isoformat()
 
-        await db.user_preferences.update_one(
-            {"user_id": current_user["id"]},
-            {"$set": {**data, "updated_at": now}},
-            upsert=True
-        )
+        await gd_update_one(db.session, "user_preferences", {"user_id": current_user["id"]}, {**data, "updated_at": now})
 
         return {"message": "تم تحديث الإعدادات بنجاح"}
 
@@ -790,13 +761,9 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         if unread_only:
             query["read_status"] = False
 
-        notifications = await db.notifications.find(
-            query, {"_id": 0}
-        ).sort("created_at", -1).limit(limit).to_list(limit)
+        notifications = await gd_find(db.session, "notifications", query, order_by="created_at", desc_order=True, limit=limit)
 
-        unread_count = await db.notifications.count_documents(
-            {"recipient_id": current_user["id"], "read_status": False}
-        )
+        unread_count = await gd_count(db.session, "notifications", {"recipient_id": current_user["id"], "read_status": False})
 
         return {"notifications": notifications, "unread_count": unread_count}
 
@@ -817,18 +784,18 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         for s in students:
             sid = s.get("id")
 
-            total_att = await db.attendance.count_documents({"student_id": sid})
-            present = await db.attendance.count_documents({"student_id": sid, "status": "present"})
-            absent = await db.attendance.count_documents({"student_id": sid, "status": "absent"})
-            late = await db.attendance.count_documents({"student_id": sid, "status": "late"})
+            total_att = await gd_count(db.session, "attendance", {"student_id": sid})
+            present = await gd_count(db.session, "attendance", {"student_id": sid, "status": "present"})
+            absent = await gd_count(db.session, "attendance", {"student_id": sid, "status": "absent"})
+            late = await gd_count(db.session, "attendance", {"student_id": sid, "status": "late"})
             att_rate = round((present / total_att * 100), 1) if total_att > 0 else 0
 
-            grades = await db.grades.find({"student_id": sid}, {"_id": 0}).to_list(500)
+            grades = await gd_find(db.session, "grades", {"student_id": sid}, limit=500)
             avg_grade = 0
             if grades:
                 avg_grade = round(sum(g.get("percentage", 0) for g in grades) / len(grades), 1)
 
-            behaviour_records = await db.behaviour_records.find({"student_id": sid}).to_list(200)
+            behaviour_records = await gd_find(db.session, "behaviour_records", {"student_id": sid}, limit=200)
             positive = sum(1 for b in behaviour_records if b.get("category") in ["positive", "إيجابي"])
             negative = sum(1 for b in behaviour_records if b.get("category") in ["negative", "سلبي"])
 
@@ -896,7 +863,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             "created_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
-        await db.absence_excuses.insert_one(excuse)
+        await gd_insert(db.session, "absence_excuses", excuse)
         excuse.pop("_id", None)
         return {"message": "تم إرسال العذر بنجاح", "excuse": excuse}
 
@@ -905,10 +872,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         current_user: dict = Depends(require_roles([UserRole.PARENT]))
     ):
         parent_id = current_user.get("id")
-        excuses = await db.absence_excuses.find(
-            {"parent_id": parent_id},
-            {"_id": 0}
-        ).sort("created_at", -1).to_list(100)
+        excuses = await gd_find(db.session, "absence_excuses", {"parent_id": parent_id}, order_by="created_at", desc_order=True, limit=100)
         return {"excuses": excuses, "total": len(excuses)}
 
     # ============= MEETING REQUESTS =============
@@ -946,7 +910,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             "created_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
-        await db.meeting_requests.insert_one(meeting)
+        await gd_insert(db.session, "meeting_requests", meeting)
         meeting.pop("_id", None)
         return {"message": "تم إرسال طلب الاجتماع بنجاح", "meeting": meeting}
 
@@ -955,10 +919,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         current_user: dict = Depends(require_roles([UserRole.PARENT]))
     ):
         parent_id = current_user.get("id")
-        meetings = await db.meeting_requests.find(
-            {"parent_id": parent_id},
-            {"_id": 0}
-        ).sort("created_at", -1).to_list(100)
+        meetings = await gd_find(db.session, "meeting_requests", {"parent_id": parent_id}, order_by="created_at", desc_order=True, limit=100)
         return {"meetings": meetings, "total": len(meetings)}
 
     return router

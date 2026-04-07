@@ -8,6 +8,8 @@ from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from datetime import datetime, timezone
 import uuid
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_inc, _gd_addtoset
+
 import qrcode
 import io
 import base64
@@ -102,33 +104,30 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
         
         # Search by national_id first
         if parent_data.get("national_id"):
-            existing_parent = await db.parents.find_one({
+            existing_parent = await gd_find_one(db.session, "parents", {
                 "national_id": parent_data["national_id"],
                 "school_id": school_id
-            }, {"_id": 0})
+            })
         
         # Search by phone if not found
         if not existing_parent and parent_data.get("phone"):
-            existing_parent = await db.parents.find_one({
+            existing_parent = await gd_find_one(db.session, "parents", {
                 "phone": parent_data["phone"],
                 "school_id": school_id
-            }, {"_id": 0})
+            })
         
         # Search by email if not found
         if not existing_parent and parent_data.get("email"):
-            existing_parent = await db.parents.find_one({
+            existing_parent = await gd_find_one(db.session, "parents", {
                 "email": parent_data["email"],
                 "school_id": school_id
-            }, {"_id": 0})
+            })
         
         if existing_parent:
             # Get linked students (siblings)
             student_ids = existing_parent.get("student_ids", [])
             if student_ids:
-                siblings = await db.students.find(
-                    {"id": {"$in": student_ids}},
-                    {"_id": 0, "id": 1, "full_name": 1, "class_id": 1}
-                ).to_list(20)
+                siblings = await gd_find(db.session, "students", {"id": {"$in": student_ids}}, limit=20)
                 linked_students = siblings
             
             return {
@@ -161,7 +160,7 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
             "created_at": now,
             "created_by": created_by
         }
-        await db.users.insert_one(user_doc)
+        await gd_insert(db.session, "users", user_doc)
         
         parent_doc = {
             "id": parent_id,
@@ -179,7 +178,7 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
             "created_by": created_by,
         }
         
-        await db.parents.insert_one(parent_doc)
+        await gd_insert(db.session, "parents", parent_doc)
         
         return {
             "parent": parent_doc,
@@ -206,14 +205,14 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
             raise HTTPException(status_code=400, detail="لم يتم تحديد المدرسة")
         
         # Get school info for student ID generation
-        school = await db.schools.find_one({"id": school_id}, {"_id": 0, "code": 1, "city_code": 1, "name_ar": 1})
+        school = await gd_find_one(db.session, "schools", {"id": school_id})
         school_code = school.get("code", "SCH") if school else "SCH"
         city_code = school.get("city_code", "CIT") if school else "CIT"
         school_name = school.get("name_ar", "المدرسة") if school else "المدرسة"
         
         # Check for duplicate student
         if request.national_id:
-            existing = await db.students.find_one({
+            existing = await gd_find_one(db.session, "students", {
                 "national_id": request.national_id,
                 "school_id": school_id
             })
@@ -221,16 +220,16 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
                 raise HTTPException(status_code=400, detail="الطالب موجود مسبقاً برقم الهوية هذا")
         
         if request.email:
-            existing = await db.users.find_one({"email": request.email})
+            existing = await gd_find_one(db.session, "users", {"email": request.email})
             if existing:
                 raise HTTPException(status_code=400, detail="البريد الإلكتروني مستخدم مسبقاً")
         
         # Check if linking to existing parent
         if request.link_to_parent_id:
-            existing_parent = await db.parents.find_one({"id": request.link_to_parent_id, "school_id": school_id}, {"_id": 0})
+            existing_parent = await gd_find_one(db.session, "parents", {"id": request.link_to_parent_id, "school_id": school_id})
             if existing_parent:
                 student_ids = existing_parent.get("student_ids", [])
-                siblings = await db.students.find({"id": {"$in": student_ids}}, {"_id": 0, "id": 1, "full_name": 1}).to_list(20)
+                siblings = await gd_find(db.session, "students", {"id": {"$in": student_ids}}, limit=20)
                 parent_result = {
                     "parent": existing_parent,
                     "is_new": False,
@@ -252,7 +251,7 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
         
         # Generate student ID
         year = datetime.now().strftime("%Y")
-        student_count = await db.students.count_documents({"school_id": school_id}) + 1
+        student_count = await gd_count(db.session, "students", {"school_id": school_id}) + 1
         student_id_code = generate_student_id(school_code, city_code, year, student_count)
         
         # Create student
@@ -277,7 +276,7 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
             "created_at": now,
             "created_by": current_user.get("id")
         }
-        await db.users.insert_one(user_doc)
+        await gd_insert(db.session, "users", user_doc)
         
         student_doc = {
             "id": student_id,
@@ -307,40 +306,31 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
         qr_code = generate_qr_code(student_doc)
         student_doc["qr_code"] = qr_code
         
-        await db.students.insert_one(student_doc)
+        await gd_insert(db.session, "students", student_doc)
         
         # Link student to parent
-        await db.parents.update_one(
-            {"id": parent.get("id")},
-            {"$addToSet": {"student_ids": student_id}}
-        )
+        await _gd_addtoset(db.session, "parents", {"id": parent.get("id")}, {"student_ids": student_id})
         
         # Link siblings
         if siblings:
             sibling_ids = [s.get("id") for s in siblings]
             # Update siblings to include new student
-            await db.students.update_many(
-                {"id": {"$in": sibling_ids}},
-                {"$addToSet": {"sibling_ids": student_id}}
-            )
+            await gd_update_many(db.session, "students", {"id": {"$in": sibling_ids}}, {"$addToSet": {"sibling_ids": student_id}})
         
         # Update class student count
         if request.class_id:
-            await db.classes.update_one(
-                {"id": request.class_id},
-                {"$inc": {"student_count": 1}}
-            )
+            await _gd_inc(db.session, "classes", {"id": request.class_id}, {"student_count": 1})
         
         # Get class and grade info for response
         class_info = None
         grade_info = None
         if request.class_id:
-            class_info = await db.classes.find_one({"id": request.class_id}, {"_id": 0, "name": 1})
+            class_info = await gd_find_one(db.session, "classes", {"id": request.class_id})
         if request.grade_id:
-            grade_info = await db.grades.find_one({"id": request.grade_id}, {"_id": 0, "name": 1})
+            grade_info = await gd_find_one(db.session, "grades", {"id": request.grade_id})
         
         # Log action
-        await db.audit_logs.insert_one({
+        await gd_insert(db.session, "audit_logs", {
             "id": str(uuid.uuid4()),
             "action": "student_created_with_parent",
             "action_by": current_user.get("id"),
@@ -419,7 +409,7 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
             return {"found": False, "parent": None, "students": []}
         
         query = {"school_id": school_id, "$or": or_conditions}
-        parent = await db.parents.find_one(query, {"_id": 0})
+        parent = await gd_find_one(db.session, "parents", query)
         
         if not parent:
             return {"found": False, "parent": None, "students": []}
@@ -428,10 +418,7 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
         student_ids = parent.get("student_ids", [])
         students = []
         if student_ids:
-            students = await db.students.find(
-                {"id": {"$in": student_ids}},
-                {"_id": 0, "id": 1, "full_name": 1, "class_id": 1, "grade_id": 1}
-            ).to_list(20)
+            students = await gd_find(db.session, "students", {"id": {"$in": student_ids}}, limit=20)
         
         return {
             "found": True,
@@ -523,11 +510,11 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
                         results["linked_to_existing_parents"] += 1
                 
                 # Generate student ID
-                school = await db.schools.find_one({"id": school_id}, {"_id": 0, "code": 1, "city_code": 1})
+                school = await gd_find_one(db.session, "schools", {"id": school_id})
                 school_code = school.get("code", "SCH") if school else "SCH"
                 city_code = school.get("city_code", "CIT") if school else "CIT"
                 year = datetime.now().strftime("%Y")
-                student_count = await db.students.count_documents({"school_id": school_id}) + results["new_students"] + 1
+                student_count = await gd_count(db.session, "students", {"school_id": school_id}) + results["new_students"] + 1
                 student_id_code = generate_student_id(school_code, city_code, year, student_count)
                 
                 # Create student
@@ -549,7 +536,7 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
                     "created_at": now,
                     "created_by": current_user.get("id")
                 }
-                await db.users.insert_one(user_doc)
+                await gd_insert(db.session, "users", user_doc)
                 
                 student_doc = {
                     "id": student_id,
@@ -574,13 +561,10 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
                 qr_code = generate_qr_code(student_doc)
                 student_doc["qr_code"] = qr_code
                 
-                await db.students.insert_one(student_doc)
+                await gd_insert(db.session, "students", student_doc)
                 
                 # Link to parent
-                await db.parents.update_one(
-                    {"id": parent_result["parent"].get("id")},
-                    {"$addToSet": {"student_ids": student_id}}
-                )
+                await _gd_addtoset(db.session, "parents", {"id": parent_result["parent"].get("id")}, {"student_ids": student_id})
                 
                 results["success"] += 1
                 results["new_students"] += 1

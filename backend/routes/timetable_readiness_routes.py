@@ -16,6 +16,8 @@ from pydantic import BaseModel
 from datetime import datetime, timezone
 from enum import Enum
 import logging, os
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_aggregate
+
 
 _JWT_SECRET = os.environ.get('JWT_SECRET_KEY', '')
 _JWT_ALGORITHM = os.environ.get('JWT_ALGORITHM', 'HS256')
@@ -108,7 +110,7 @@ async def _extract_school_id(x_school_context, authorization):
             if not school_id:
                 user_id = payload.get("sub")
                 if user_id:
-                    user = await db.users.find_one({"id": user_id}, {"_id": 0, "school_id": 1, "tenant_id": 1})
+                    user = await gd_find_one(db.session, "users", {"id": user_id})
                     if user:
                         school_id = user.get("tenant_id") or user.get("school_id")
         except Exception as e:
@@ -117,7 +119,7 @@ async def _extract_school_id(x_school_context, authorization):
 
 
 async def _run_readiness_checks(school_id: str):
-    settings = await db.school_settings.find_one({"school_id": school_id}, {"_id": 0}) or {}
+    settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id}) or {}
 
     active_days = _parse_working_days_from_settings(settings)
     periods_per_day = settings.get("periods_per_day") or settings.get("periodsPerDay") or 0
@@ -126,13 +128,13 @@ async def _run_readiness_checks(school_id: str):
     academic_year = settings.get("academic_year") or settings.get("academicYear") or ""
     current_semester = settings.get("current_semester") or settings.get("currentSemester") or ""
 
-    ts_count = await db.time_slots.count_documents({"school_id": school_id, "type": {"$ne": "break"}})
-    classes_count = await db.classes.count_documents({"school_id": school_id, "is_active": {"$ne": False}})
-    teachers_count = await db.users.count_documents({"school_id": school_id, "role": "teacher", "is_active": {"$ne": False}})
-    subjects_count = await db.subjects.count_documents({"school_id": school_id})
-    teacher_subject_count = await db.teacher_subjects.count_documents({"school_id": school_id})
-    class_subject_count = await db.class_subjects.count_documents({"school_id": school_id})
-    grade_subject_count = await db.grade_subjects.count_documents({"school_id": school_id})
+    ts_count = await gd_count(db.session, "time_slots", {"school_id": school_id, "type": {"$ne": "break"}})
+    classes_count = await gd_count(db.session, "classes", {"school_id": school_id, "is_active": {"$ne": False}})
+    teachers_count = await gd_count(db.session, "users", {"school_id": school_id, "role": "teacher", "is_active": {"$ne": False}})
+    subjects_count = await gd_count(db.session, "subjects", {"school_id": school_id})
+    teacher_subject_count = await gd_count(db.session, "teacher_subjects", {"school_id": school_id})
+    class_subject_count = await gd_count(db.session, "class_subjects", {"school_id": school_id})
+    grade_subject_count = await gd_count(db.session, "grade_subjects", {"school_id": school_id})
 
     phases = {}
     all_issues = []
@@ -292,8 +294,8 @@ async def _run_readiness_checks(school_id: str):
 
     # ─── PHASE 5: Constraints & Validation ───
     p5_score, p5_issues = 0, []
-    hard_count = await db.timetable_hard_constraints.count_documents({"is_active": True})
-    soft_count = await db.timetable_soft_constraints.count_documents({"is_active": True})
+    hard_count = await gd_count(db.session, "timetable_hard_constraints", {"is_active": True})
+    soft_count = await gd_count(db.session, "timetable_soft_constraints", {"is_active": True})
 
     if hard_count > 0:
         p5_score += 4
@@ -325,12 +327,12 @@ async def _run_readiness_checks(school_id: str):
 
     total_required = 0
     if class_subject_count > 0:
-        cs_cursor = db.class_subjects.find({"school_id": school_id}, {"_id": 0, "weekly_periods": 1, "weekly_sessions": 1})
-        async for cs in cs_cursor:
+        cs_list = await gd_find(db.session, "class_subjects", {"school_id": school_id})
+        for cs in cs_list:
             total_required += cs.get("weekly_periods") or cs.get("weekly_sessions") or 4
     elif grade_subject_count > 0:
-        gs_cursor = db.grade_subjects.find({"school_id": school_id}, {"_id": 0, "weekly_periods": 1, "periods_per_week": 1})
-        async for gs in gs_cursor:
+        gs_list = await gd_find(db.session, "grade_subjects", {"school_id": school_id})
+        for gs in gs_list:
             total_required += gs.get("weekly_periods") or gs.get("periods_per_week") or 4
 
     if total_available_slots > 0:
@@ -345,19 +347,19 @@ async def _run_readiness_checks(school_id: str):
                 message_en=f"Required periods ({total_required}) exceed available slots ({total_available_slots}). Reduce required periods by {deficit} or increase daily periods/working days.",
                 fix_link="/school/settings?tab=curriculum", fix_action="مراجعة توزيع المواد"))
 
-    teacher_assignments_cursor = db.teacher_assignments.aggregate([
+    ta_agg_results = await _gd_aggregate(db.session, "teacher_assignments", [
         {"$match": {"school_id": school_id}},
         {"$group": {"_id": "$teacher_id", "total": {"$sum": {"$ifNull": ["$weekly_sessions", 4]}}}}
     ])
     overloaded_teachers = []
     max_load = 24
-    async for ta in teacher_assignments_cursor:
+    for ta in ta_agg_results:
         if not ta["_id"]:
             continue
         if ta["total"] > max_load:
-            teacher_user = await db.users.find_one({"id": ta["_id"], "school_id": school_id, "role": "teacher"}, {"_id": 0, "name": 1, "name_ar": 1})
+            teacher_user = await gd_find_one(db.session, "users", {"id": ta["_id"], "school_id": school_id, "role": "teacher"})
             if not teacher_user:
-                teacher_user = await db.teachers.find_one({"id": ta["_id"], "school_id": school_id}, {"_id": 0, "name": 1, "name_ar": 1})
+                teacher_user = await gd_find_one(db.session, "teachers", {"id": ta["_id"], "school_id": school_id})
             t_name = (teacher_user.get("name_ar") or teacher_user.get("name")) if teacher_user else str(ta["_id"])[:8]
             overloaded_teachers.append({"id": str(ta["_id"]), "name": t_name, "load": ta["total"], "max": max_load})
 

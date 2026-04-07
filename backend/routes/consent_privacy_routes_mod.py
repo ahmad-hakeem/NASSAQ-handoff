@@ -12,6 +12,8 @@ import uuid
 from dependencies import (
     db, get_current_user, require_roles, UserRole, logger
 )
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
+
 
 router = APIRouter()
 
@@ -84,7 +86,7 @@ async def record_consent(
         "updated_at": now
     }
 
-    await db.consent_records.insert_one(consent_doc)
+    await gd_insert(db.session, "consent_records", consent_doc)
     consent_doc.pop("_id", None)
     return consent_doc
 
@@ -101,7 +103,7 @@ async def get_user_consents(
     if consent_type:
         query["consent_type"] = consent_type
 
-    records = await db.consent_records.find(query, {"_id": 0}).sort("created_at", -1).to_list(100)
+    records = await gd_find(db.session, "consent_records", query, order_by="created_at", desc_order=True, limit=100)
 
     active_consents = {}
     for r in records:
@@ -119,10 +121,7 @@ async def get_student_consents(
 ):
     """Get all consent records for a student (given by parent/guardian)"""
     school_id = current_user.get("tenant_id")
-    records = await db.consent_records.find(
-        {"tenant_id": school_id, "student_id": student_id},
-        {"_id": 0}
-    ).sort("created_at", -1).to_list(100)
+    records = await gd_find(db.session, "consent_records", {"tenant_id": school_id, "student_id": student_id}, order_by="created_at", desc_order=True, limit=100)
 
     return {"records": records, "total": len(records)}
 
@@ -137,20 +136,15 @@ async def withdraw_consent(
     consent_id = data.get("consent_id")
     reason = data.get("reason", "")
 
-    consent = await db.consent_records.find_one(
-        {"id": consent_id, "tenant_id": school_id}
-    )
+    consent = await gd_find_one(db.session, "consent_records", {"id": consent_id, "tenant_id": school_id})
     if not consent:
         raise HTTPException(status_code=404, detail="سجل الموافقة غير موجود")
 
     now = datetime.now(timezone.utc).isoformat()
 
-    await db.consent_records.update_one(
-        {"id": consent_id},
-        {"$set": {"status": "withdrawn", "updated_at": now}}
-    )
+    await gd_update_one(db.session, "consent_records", {"id": consent_id}, {"status": "withdrawn", "updated_at": now})
 
-    await db.consent_records.insert_one({
+    await gd_insert(db.session, "consent_records", {
         "id": str(uuid.uuid4()),
         "tenant_id": school_id,
         "consent_type": consent["consent_type"],
@@ -178,11 +172,8 @@ async def check_consent(
     """Check if a specific consent is active for a user"""
     school_id = current_user.get("tenant_id")
 
-    latest = await db.consent_records.find_one(
-        {"tenant_id": school_id, "target_user": user_id, "consent_type": consent_type},
-        {"_id": 0},
-        sort=[("created_at", -1)]
-    )
+    latest = await gd_find_one(db.session, "consent_records", {"tenant_id": school_id, "target_user": user_id, "consent_type": consent_type},
+        sort=[("created_at", -1)])
 
     if not latest:
         return {"has_consent": False, "status": "not_found", "consent_type": consent_type}
@@ -211,10 +202,7 @@ async def get_pending_consents(
     all_types = [e.value for e in ConsentTypeEnum]
     required_types = ["terms_of_service", "privacy_policy", "data_collection"]
 
-    user_consents = await db.consent_records.find(
-        {"tenant_id": school_id, "target_user": current_user["id"], "status": "granted"},
-        {"_id": 0, "consent_type": 1}
-    ).to_list(100)
+    user_consents = await gd_find(db.session, "consent_records", {"tenant_id": school_id, "target_user": current_user["id"], "status": "granted"}, limit=100)
 
     granted_types = {c["consent_type"] for c in user_consents}
     pending = [t for t in required_types if t not in granted_types]
@@ -256,7 +244,7 @@ async def request_data_deletion(
         "completed_at": None
     }
 
-    await db.data_deletion_requests.insert_one(deletion_request)
+    await gd_insert(db.session, "data_deletion_requests", deletion_request)
     deletion_request.pop("_id", None)
     return {"message": "تم تقديم طلب الحذف بنجاح وسيتم مراجعته", "request_id": request_id}
 
@@ -276,7 +264,7 @@ async def get_data_deletion_requests(
     if status:
         query["status"] = status
 
-    requests = await db.data_deletion_requests.find(query, {"_id": 0}).sort("requested_at", -1).to_list(100)
+    requests = await gd_find(db.session, "data_deletion_requests", query, order_by="requested_at", desc_order=True, limit=100)
     return {"requests": requests, "total": len(requests)}
 
 
@@ -296,22 +284,19 @@ async def review_deletion_request(
     if action not in ("approve", "reject"):
         raise HTTPException(status_code=400, detail="الإجراء يجب أن يكون approve أو reject")
 
-    req = await db.data_deletion_requests.find_one({"id": request_id})
+    req = await gd_find_one(db.session, "data_deletion_requests", {"id": request_id})
     if not req:
         raise HTTPException(status_code=404, detail="الطلب غير موجود")
 
     now = datetime.now(timezone.utc).isoformat()
     new_status = "approved" if action == "approve" else "rejected"
 
-    await db.data_deletion_requests.update_one(
-        {"id": request_id},
-        {"$set": {
+    await gd_update_one(db.session, "data_deletion_requests", {"id": request_id}, {
             "status": new_status,
             "reviewed_by": current_user["id"],
             "reviewed_at": now,
             "review_notes": notes
-        }}
-    )
+        })
 
     if action == "approve":
         entity_type = req.get("entity_type")
@@ -319,9 +304,7 @@ async def review_deletion_request(
         tenant = req.get("tenant_id")
 
         if entity_type == "student":
-            await db.students.update_one(
-                {"id": entity_id, "tenant_id": tenant},
-                {"$set": {
+            await gd_update_one(db.session, "students", {"id": entity_id, "tenant_id": tenant}, {
                     "full_name": "محذوف",
                     "email": None,
                     "phone": None,
@@ -330,13 +313,9 @@ async def review_deletion_request(
                     "address": None,
                     "is_anonymized": True,
                     "anonymized_at": now
-                }}
-            )
+                })
 
-        await db.data_deletion_requests.update_one(
-            {"id": request_id},
-            {"$set": {"completed_at": now, "status": "completed"}}
-        )
+        await gd_update_one(db.session, "data_deletion_requests", {"id": request_id}, {"completed_at": now, "status": "completed"})
 
     return {"message": f"تم {action} طلب الحذف", "status": new_status}
 
@@ -352,20 +331,20 @@ async def export_user_data(
     if current_user["id"] != user_id and current_user["role"] not in ["platform_admin", "school_principal"]:
         raise HTTPException(status_code=403, detail="غير مصرح")
 
-    user_data = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
-    consents = await db.consent_records.find({"target_user": user_id, "tenant_id": school_id}, {"_id": 0}).to_list(100)
-    notifications = await db.notifications.find({"recipient_id": user_id}, {"_id": 0}).to_list(500)
-    audit_logs = await db.audit_logs.find({"actor_id": user_id, "tenant_id": school_id}, {"_id": 0}).to_list(500)
+    user_data = await gd_find_one(db.session, "users", {"id": user_id})
+    consents = await gd_find(db.session, "consent_records", {"target_user": user_id, "tenant_id": school_id}, limit=100)
+    notifications = await gd_find(db.session, "notifications", {"recipient_id": user_id}, limit=500)
+    audit_logs = await gd_find(db.session, "audit_logs", {"actor_id": user_id, "tenant_id": school_id}, limit=500)
 
     student_data = None
-    student = await db.students.find_one({"id": user_id, "tenant_id": school_id}, {"_id": 0})
+    student = await gd_find_one(db.session, "students", {"id": user_id, "tenant_id": school_id})
     if student:
         student_data = {
             "profile": student,
-            "attendance": await db.attendance.find({"student_id": user_id, "tenant_id": school_id}, {"_id": 0}).to_list(1000),
-            "grades": await db.grades.find({"student_id": user_id}, {"_id": 0}).to_list(500),
-            "behaviour": await db.behaviour_records.find({"student_id": user_id, "tenant_id": school_id}, {"_id": 0}).to_list(500),
-            "participation": await db.participation_records.find({"student_id": user_id, "tenant_id": school_id}, {"_id": 0}).to_list(500)
+            "attendance": await gd_find(db.session, "attendance", {"student_id": user_id, "tenant_id": school_id}, limit=1000),
+            "grades": await gd_find(db.session, "grades", {"student_id": user_id}, limit=500),
+            "behaviour": await gd_find(db.session, "behaviour_records", {"student_id": user_id, "tenant_id": school_id}, limit=500),
+            "participation": await gd_find(db.session, "participation_records", {"student_id": user_id, "tenant_id": school_id}, limit=500)
         }
 
     return {
@@ -389,19 +368,13 @@ async def get_consent_report(
     """Get consent compliance report"""
     school_id = current_user.get("tenant_id")
 
-    total_users = await db.users.count_documents({"tenant_id": school_id})
+    total_users = await gd_count(db.session, "users", {"tenant_id": school_id})
 
     consent_stats = {}
     for ct in ConsentTypeEnum:
-        granted = await db.consent_records.count_documents(
-            {"tenant_id": school_id, "consent_type": ct.value, "status": "granted"}
-        )
-        denied = await db.consent_records.count_documents(
-            {"tenant_id": school_id, "consent_type": ct.value, "status": "denied"}
-        )
-        withdrawn = await db.consent_records.count_documents(
-            {"tenant_id": school_id, "consent_type": ct.value, "status": "withdrawn"}
-        )
+        granted = await gd_count(db.session, "consent_records", {"tenant_id": school_id, "consent_type": ct.value, "status": "granted"})
+        denied = await gd_count(db.session, "consent_records", {"tenant_id": school_id, "consent_type": ct.value, "status": "denied"})
+        withdrawn = await gd_count(db.session, "consent_records", {"tenant_id": school_id, "consent_type": ct.value, "status": "withdrawn"})
         consent_stats[ct.value] = {
             "granted": granted,
             "denied": denied,
@@ -409,9 +382,7 @@ async def get_consent_report(
             "compliance_rate": round(granted / max(1, total_users) * 100, 1)
         }
 
-    pending_deletions = await db.data_deletion_requests.count_documents(
-        {"tenant_id": school_id, "status": "pending"}
-    )
+    pending_deletions = await gd_count(db.session, "data_deletion_requests", {"tenant_id": school_id, "status": "pending"})
 
     return {
         "total_users": total_users,

@@ -9,6 +9,8 @@ from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
 from datetime import datetime, timezone
 import uuid, os, logging
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_aggregate
+
 
 logger = logging.getLogger("nassaq.principal_timetable")
 
@@ -42,22 +44,22 @@ def _resolve_working_days(raw) -> list:
 
 
 async def _count_real_conflicts(timetable_id: str) -> int:
-    teacher_conflicts = await db.timetable_sessions.aggregate([
+    teacher_conflicts = await _gd_aggregate(db.session, "timetable_sessions", [
         {"$match": {"timetable_id": timetable_id, "teacher_id": {"$nin": [None, ""]}}},
         {"$group": {
             "_id": {"teacher_id": "$teacher_id", "day": "$day_of_week", "period": "$period_number"},
             "count": {"$sum": 1}
         }},
         {"$match": {"count": {"$gt": 1}}}
-    ]).to_list(500)
-    class_conflicts = await db.timetable_sessions.aggregate([
+    ])
+    class_conflicts = await _gd_aggregate(db.session, "timetable_sessions", [
         {"$match": {"timetable_id": timetable_id, "class_id": {"$nin": [None, ""]}}},
         {"$group": {
             "_id": {"class_id": "$class_id", "day": "$day_of_week", "period": "$period_number"},
             "count": {"$sum": 1}
         }},
         {"$match": {"count": {"$gt": 1}}}
-    ]).to_list(500)
+    ])
     return len(teacher_conflicts) + len(class_conflicts)
 
 
@@ -67,7 +69,7 @@ async def _get_conflict_details(timetable_id: str, school_id: str) -> list:
         "wednesday": "الأربعاء", "thursday": "الخميس", "saturday": "السبت"
     }
 
-    teacher_conflicts = await db.timetable_sessions.aggregate([
+    teacher_conflicts = await _gd_aggregate(db.session, "timetable_sessions", [
         {"$match": {"timetable_id": timetable_id, "teacher_id": {"$nin": [None, ""]}}},
         {"$group": {
             "_id": {"teacher_id": "$teacher_id", "day": "$day_of_week", "period": "$period_number"},
@@ -75,9 +77,9 @@ async def _get_conflict_details(timetable_id: str, school_id: str) -> list:
             "sessions": {"$push": {"class_id": "$class_id", "subject_name": "$subject_name", "session_id": "$id"}}
         }},
         {"$match": {"count": {"$gt": 1}}}
-    ]).to_list(500)
+    ])
 
-    class_conflicts = await db.timetable_sessions.aggregate([
+    class_conflicts = await _gd_aggregate(db.session, "timetable_sessions", [
         {"$match": {"timetable_id": timetable_id, "class_id": {"$nin": [None, ""]}}},
         {"$group": {
             "_id": {"class_id": "$class_id", "day": "$day_of_week", "period": "$period_number"},
@@ -85,7 +87,7 @@ async def _get_conflict_details(timetable_id: str, school_id: str) -> list:
             "sessions": {"$push": {"teacher_id": "$teacher_id", "subject_name": "$subject_name", "session_id": "$id"}}
         }},
         {"$match": {"count": {"$gt": 1}}}
-    ]).to_list(500)
+    ])
 
     details = []
 
@@ -104,12 +106,14 @@ async def _get_conflict_details(timetable_id: str, school_id: str) -> list:
 
     teachers_map = {}
     if teacher_ids:
-        async for u in db.users.find({"id": {"$in": list(teacher_ids)}}, {"id": 1, "name": 1, "full_name": 1}):
+        __u_list = await gd_find(db.session, "users", {"id": {"$in": list(teacher_ids)}})
+        for u in __u_list:
             teachers_map[u["id"]] = u.get("full_name") or u.get("name", "معلم")
 
     classes_map = {}
     if class_ids:
-        async for c in db.classes.find({"id": {"$in": list(class_ids)}}, {"id": 1, "name": 1}):
+        __c_list = await gd_find(db.session, "classes", {"id": {"$in": list(class_ids)}})
+        for c in __c_list:
             classes_map[c["id"]] = c.get("name", "فصل")
 
     for c in teacher_conflicts:
@@ -178,7 +182,7 @@ async def get_school_id(x_school_context: str = Header(default=None, alias="X-Sc
                 return school_id
             user_id = payload.get("sub")
             if user_id and db is not None:
-                user = await db.users.find_one({"id": user_id}, {"_id": 0, "school_id": 1, "tenant_id": 1})
+                user = await gd_find_one(db.session, "users", {"id": user_id})
                 if user:
                     return user.get("tenant_id") or user.get("school_id")
         except Exception as e:
@@ -186,12 +190,12 @@ async def get_school_id(x_school_context: str = Header(default=None, alias="X-Sc
     return None
 
 async def _get_school_data(school_id: str) -> Dict[str, Any]:
-    school = await db.schools.find_one({"id": school_id}, {"_id": 0}) or {}
-    settings = await db.school_settings.find_one({"school_id": school_id}, {"_id": 0}) or {}
-    classes_count = await db.classes.count_documents({"school_id": school_id, "is_active": {"$ne": False}})
-    teachers_count = await db.users.count_documents({"school_id": school_id, "role": "teacher", "is_active": {"$ne": False}})
-    subjects_count = await db.subjects.count_documents({"school_id": school_id, "is_active": {"$ne": False}})
-    ts_count = await db.time_slots.count_documents({"school_id": school_id})
+    school = await gd_find_one(db.session, "schools", {"id": school_id}) or {}
+    settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id}) or {}
+    classes_count = await gd_count(db.session, "classes", {"school_id": school_id, "is_active": {"$ne": False}})
+    teachers_count = await gd_count(db.session, "users", {"school_id": school_id, "role": "teacher", "is_active": {"$ne": False}})
+    subjects_count = await gd_count(db.session, "subjects", {"school_id": school_id, "is_active": {"$ne": False}})
+    ts_count = await gd_count(db.session, "time_slots", {"school_id": school_id})
     return {
         "school": school,
         "settings": settings,
@@ -202,16 +206,10 @@ async def _get_school_data(school_id: str) -> Dict[str, Any]:
     }
 
 async def _get_active_timetable(school_id: str) -> Optional[Dict]:
-    published = await db.timetables.find_one(
-        {"school_id": school_id, "status": "published"},
-        {"_id": 0}, sort=[("created_at", -1)]
-    )
+    published = await gd_find_one(db.session, "timetables", {"school_id": school_id, "status": "published"}, sort=[("created_at", -1)])
     if published:
         return published
-    draft = await db.timetables.find_one(
-        {"school_id": school_id, "status": "draft"},
-        {"_id": 0}, sort=[("created_at", -1)]
-    )
+    draft = await gd_find_one(db.session, "timetables", {"school_id": school_id, "status": "draft"}, sort=[("created_at", -1)])
     return draft
 
 
@@ -263,10 +261,7 @@ async def get_timetable_summary(
     academic_year_label = settings.get("academic_year", "")
     current_semester = settings.get("current_semester", "")
     if not academic_year_label:
-        ay = await db.academic_years.find_one(
-            {"school_id": school_id, "status": {"$in": ["active", "published"]}},
-            {"_id": 0, "name": 1, "name_ar": 1}
-        )
+        ay = await gd_find_one(db.session, "academic_years", {"school_id": school_id, "status": {"$in": ["active", "published"]}})
         if ay:
             academic_year_label = ay.get("name_ar") or ay.get("name", "")
 
@@ -382,19 +377,17 @@ async def get_versions(
     if not school_id:
         raise HTTPException(status_code=400, detail="School context required")
 
-    cursor = db.timetables.find(
+    tt_list = await gd_find(db.session, "timetables",
         {"school_id": school_id, "status": {"$ne": "archived"}},
-        {"_id": 0},
-        sort=[("created_at", -1)]
-    ).limit(20)
+        order_by="created_at", desc_order=True, limit=20)
     timetables = []
-    async for tt in cursor:
+    for tt in tt_list:
         tt_id = tt.get("id")
         stats = tt.get("statistics", {})
         sessions_count = (
             stats.get("total_sessions")
             or tt.get("sessions_count")
-            or await db.timetable_sessions.count_documents({"timetable_id": tt_id})
+            or await gd_count(db.session, "timetable_sessions", {"timetable_id": tt_id})
         )
         quality = stats.get("optimization_score") or tt.get("quality_score", 0)
         real_conflicts = await _count_real_conflicts(tt_id)
@@ -438,24 +431,29 @@ async def get_filter_options(
         raise HTTPException(status_code=400, detail="School context required")
 
     classes = []
-    async for c in db.classes.find({"school_id": school_id, "is_active": {"$ne": False}}, {"_id": 0}):
+    __c_list = await gd_find(db.session, "classes", {"school_id": school_id, "is_active": {"$ne": False}})
+    for c in __c_list:
         classes.append({"id": c.get("id"), "name": c.get("name_ar") or c.get("name"), "grade_level": c.get("grade_level")})
 
     teachers = []
-    async for t in db.users.find({"school_id": school_id, "role": "teacher", "is_active": {"$ne": False}}, {"_id": 0}):
+    __t_list = await gd_find(db.session, "users", {"school_id": school_id, "role": "teacher", "is_active": {"$ne": False}})
+    for t in __t_list:
         tid = t.get("teacher_id") or t.get("id")
         teachers.append({"id": tid, "name": t.get("full_name") or t.get("name", "")})
 
     grades = []
-    async for g in db.grade_levels.find({"school_id": school_id, "is_active": {"$ne": False}}, {"_id": 0}):
+    __g_list = await gd_find(db.session, "grade_levels", {"school_id": school_id, "is_active": {"$ne": False}})
+    for g in __g_list:
         grades.append({"id": g.get("id"), "name": g.get("name_ar"), "grade_number": g.get("grade_number")})
 
     subjects = []
-    async for s in db.subjects.find({"school_id": school_id, "is_active": {"$ne": False}}, {"_id": 0}):
+    __s_list = await gd_find(db.session, "subjects", {"school_id": school_id, "is_active": {"$ne": False}})
+    for s in __s_list:
         subjects.append({"id": s.get("id"), "name": s.get("name_ar") or s.get("name", "")})
 
     raw_time_slots = []
-    async for ts in db.time_slots.find({"school_id": school_id}, {"_id": 0}):
+    __ts_list = await gd_find(db.session, "time_slots", {"school_id": school_id})
+    for ts in __ts_list:
         slot_num = ts.get("slot_number") or ts.get("period_number")
         is_break = ts.get("is_break", False)
         is_prayer = ts.get("is_prayer", False)
@@ -496,7 +494,7 @@ async def get_filter_options(
             slot["period_number"] = None
         time_slots.append(slot)
 
-    settings = await db.school_settings.find_one({"school_id": school_id}, {"_id": 0}) or {}
+    settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id}) or {}
     working_days_config = settings.get("working_days", {})
     day_names = {"sunday": "الأحد", "monday": "الاثنين", "tuesday": "الثلاثاء",
                  "wednesday": "الأربعاء", "thursday": "الخميس", "friday": "الجمعة", "saturday": "السبت"}
@@ -557,7 +555,7 @@ async def get_timetable_grid(
         raise HTTPException(status_code=400, detail="School context required")
 
     if timetable_id:
-        tt = await db.timetables.find_one({"id": timetable_id, "school_id": school_id}, {"_id": 0})
+        tt = await gd_find_one(db.session, "timetables", {"id": timetable_id, "school_id": school_id})
     else:
         tt = await _get_active_timetable(school_id)
 
@@ -565,21 +563,25 @@ async def get_timetable_grid(
         return {"success": True, "data": {"sessions": [], "timetable": None, "total": 0}}
 
     classes_map = {}
-    async for c in db.classes.find({"school_id": school_id}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1}):
+    __c_list = await gd_find(db.session, "classes", {"school_id": school_id})
+    for c in __c_list:
         classes_map[c["id"]] = c.get("name_ar") or c.get("name", "")
 
     subjects_map = {}
-    async for s in db.subjects.find({"school_id": school_id}, {"_id": 0, "id": 1, "name_ar": 1, "name": 1}):
+    __s_list = await gd_find(db.session, "subjects", {"school_id": school_id})
+    for s in __s_list:
         subjects_map[s["id"]] = s.get("name_ar") or s.get("name", "")
 
     teachers_map = {}
-    async for t in db.users.find({"school_id": school_id, "role": "teacher"}, {"_id": 0, "id": 1, "full_name": 1, "name": 1, "teacher_id": 1}):
+    __t_list = await gd_find(db.session, "users", {"school_id": school_id, "role": "teacher"})
+    for t in __t_list:
         name = t.get("full_name") or t.get("name", "")
         if name:
             teachers_map[t["id"]] = name
             if t.get("teacher_id"):
                 teachers_map[t["teacher_id"]] = name
-    async for t in db.teachers.find({"school_id": school_id}, {"_id": 0, "id": 1, "full_name": 1, "name": 1, "name_ar": 1}):
+    __t_list = await gd_find(db.session, "teachers", {"school_id": school_id})
+    for t in __t_list:
         name = t.get("full_name") or t.get("name_ar") or t.get("name", "")
         if name and (t["id"] not in teachers_map or not teachers_map[t["id"]]):
             teachers_map[t["id"]] = name
@@ -609,7 +611,8 @@ async def get_timetable_grid(
             query["$or"] = [{"day_of_week": filter_id}, {"day": filter_id}]
 
     sessions = []
-    async for s in db.timetable_sessions.find(query, {"_id": 0}):
+    __s_list = await gd_find(db.session, "timetable_sessions", query)
+    for s in __s_list:
         cid = s.get("class_id", "")
         sid = s.get("subject_id", "")
         tid = s.get("teacher_id", "")
@@ -664,7 +667,7 @@ async def get_insights(
         raise HTTPException(status_code=400, detail="School context required")
 
     if timetable_id:
-        tt = await db.timetables.find_one({"id": timetable_id}, {"_id": 0})
+        tt = await gd_find_one(db.session, "timetables", {"id": timetable_id})
     else:
         tt = await _get_active_timetable(school_id)
 
@@ -672,22 +675,25 @@ async def get_insights(
         return {"success": True, "data": {"insights": None}}
 
     tt_id = tt.get("id")
-    total_sessions = await db.timetable_sessions.count_documents({"timetable_id": tt_id})
-    assigned = await db.timetable_sessions.count_documents({"timetable_id": tt_id, "teacher_id": {"$ne": None}})
+    total_sessions = await gd_count(db.session, "timetable_sessions", {"timetable_id": tt_id})
+    assigned = await gd_count(db.session, "timetable_sessions", {"timetable_id": tt_id, "teacher_id": {"$ne": None}})
 
     conflicts = await _count_real_conflicts(tt_id)
 
     day_dist = {}
-    async for s in db.timetable_sessions.find({"timetable_id": tt_id}, {"_id": 0, "day_of_week": 1}):
+    __s_list = await gd_find(db.session, "timetable_sessions", {"timetable_id": tt_id})
+    for s in __s_list:
         day = s.get("day_of_week") or s.get("day", "")
         day_dist[day] = day_dist.get(day, 0) + 1
 
     subject_dist = {}
     subjects_map = {}
-    async for sub in db.subjects.find({"school_id": school_id}, {"_id": 0, "id": 1, "name_ar": 1, "name": 1}):
+    __sub_list = await gd_find(db.session, "subjects", {"school_id": school_id})
+    for sub in __sub_list:
         subjects_map[sub["id"]] = sub.get("name_ar") or sub.get("name", "")
 
-    async for s in db.timetable_sessions.find({"timetable_id": tt_id}, {"_id": 0, "subject_id": 1, "subject_name": 1}):
+    __s_list = await gd_find(db.session, "timetable_sessions", {"timetable_id": tt_id})
+    for s in __s_list:
         subj = s.get("subject_name") or subjects_map.get(s.get("subject_id", ""), "")
         if subj:
             subject_dist[subj] = subject_dist.get(subj, 0) + 1
@@ -727,7 +733,7 @@ async def get_issues(
         raise HTTPException(status_code=400, detail="School context required")
 
     if timetable_id:
-        tt = await db.timetables.find_one({"id": timetable_id}, {"_id": 0})
+        tt = await gd_find_one(db.session, "timetables", {"id": timetable_id})
     else:
         tt = await _get_active_timetable(school_id)
 
@@ -735,7 +741,8 @@ async def get_issues(
     if tt and tt.get("school_id") == school_id:
         tt_id = tt.get("id")
         try:
-            async for c in db.timetable_conflicts.find({"timetable_id": tt_id}, {"_id": 0}).limit(50):
+            __c_list = await gd_find(db.session, "timetable_conflicts", {"timetable_id": tt_id})
+            for c in __c_list:
                 issues.append({
                     "id": c.get("id", str(uuid.uuid4())),
                     "type": c.get("severity", "warning"),
@@ -749,7 +756,8 @@ async def get_issues(
 
         try:
             unscheduled = []
-            async for u in db.timetable_unscheduled_demands.find({"timetable_id": tt_id}, {"_id": 0}).limit(20):
+            __u_list = await gd_find(db.session, "timetable_unscheduled_demands", {"timetable_id": tt_id})
+            for u in __u_list:
                 unscheduled.append(u)
             if unscheduled:
                 issues.append({
@@ -768,7 +776,8 @@ async def get_issues(
             teachers_map = {}
             if underutilized:
                 teacher_ids = [t.get("teacher_id") for t in underutilized if t.get("teacher_id")]
-                async for t in db.teachers.find({"id": {"$in": teacher_ids}}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1}):
+                __t_list = await gd_find(db.session, "teachers", {"id": {"$in": teacher_ids}})
+                for t in __t_list:
                     teachers_map[t["id"]] = t.get("name_ar") or t.get("name", "")
 
             zero_session_teachers = [t for t in underutilized if t.get("assigned_sessions", 0) == 0]
@@ -780,7 +789,8 @@ async def get_issues(
                 for sid in t.get("subject_ids", []):
                     all_subject_ids.add(sid)
             if all_subject_ids:
-                async for s in db.subjects.find({"id": {"$in": list(all_subject_ids)}}, {"_id": 0, "id": 1, "name_ar": 1, "name": 1}):
+                __s_list = await gd_find(db.session, "subjects", {"id": {"$in": list(all_subject_ids)}})
+                for s in __s_list:
                     subject_names_map[s["id"]] = s.get("name_ar") or s.get("name", "")
 
             if zero_session_teachers:
@@ -907,20 +917,17 @@ async def generate_timetable(
             raise HTTPException(status_code=422, detail=message_ar)
 
         if timetable_id:
-            school_settings = await db.school_settings.find_one({"school_id": school_id})
+            school_settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
             active_days = _resolve_working_days(school_settings.get("working_days") if school_settings else None)
-            deleted_off_days = await db.timetable_sessions.delete_many({
+            deleted_off_days = await gd_delete_many(db.session, "timetable_sessions", {
                 "timetable_id": timetable_id,
                 "day_of_week": {"$nin": active_days}
             })
-            if deleted_off_days.deleted_count > 0:
-                sessions_count = await db.timetable_sessions.count_documents({"timetable_id": timetable_id})
+            if deleted_off_days > 0:
+                sessions_count = await gd_count(db.session, "timetable_sessions", {"timetable_id": timetable_id})
 
             real_conflicts = await _count_real_conflicts(timetable_id)
-            await db.timetables.update_one(
-                {"id": timetable_id},
-                {"$set": {"statistics.conflicts_count": real_conflicts}}
-            )
+            await gd_update_one(db.session, "timetables", {"id": timetable_id}, {"statistics.conflicts_count": real_conflicts})
             conflicts_count = real_conflicts
 
         return {
@@ -955,23 +962,22 @@ async def validate_before_publish(
     if not school_id:
         raise HTTPException(status_code=400, detail="School context required")
 
-    tt = await db.timetables.find_one({"id": version_id, "school_id": school_id})
+    tt = await gd_find_one(db.session, "timetables", {"id": version_id, "school_id": school_id})
     if not tt:
         raise HTTPException(status_code=404, detail="Timetable version not found")
 
     validation_errors = []
     validation_warnings = []
 
-    hard_constraints = await db.timetable_hard_constraints.find(
-        {"is_system": True, "is_active": True}, {"_id": 0, "code": 1, "name_ar": 1, "validation_key": 1}
-    ).to_list(50)
+    hard_constraints = await gd_find(db.session, "timetable_hard_constraints", {"is_system": True, "is_active": True}, limit=50)
     hc_keys = {hc["validation_key"] for hc in hard_constraints}
 
-    school_settings = await db.school_settings.find_one({"school_id": school_id})
+    school_settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
     periods_per_day = school_settings.get("periods_per_day", 7) if school_settings else 7
 
     time_slots = []
-    async for slot in db.time_slots.find({"school_id": school_id}).sort("period_number", 1):
+    __slot_list = await gd_find(db.session, "time_slots", {"school_id": school_id}).sort("period_number")
+    for slot in __slot_list:
         time_slots.append(slot)
     teaching_slots = [s for s in time_slots if not s.get("is_break") and not s.get("is_prayer")]
 
@@ -988,7 +994,7 @@ async def validate_before_publish(
     if not prayer_slots:
         validation_warnings.append({"code": "NO_PRAYER", "message": "لم يتم تحديد فترة صلاة في الجدول"})
 
-    sessions = await db.timetable_sessions.count_documents({"timetable_id": version_id})
+    sessions = await gd_count(db.session, "timetable_sessions", {"timetable_id": version_id})
     if sessions == 0:
         validation_errors.append({"code": "NO_SESSIONS", "message": "الجدول لا يحتوي على أي حصص"})
 
@@ -1021,7 +1027,7 @@ async def validate_before_publish(
             "details": class_conflict_details
         })
 
-    classes = await db.classes.find({"school_id": school_id}).to_list(500)
+    classes = await gd_find(db.session, "classes", {"school_id": school_id}, limit=500)
     working_days = _resolve_working_days(school_settings.get("working_days") if school_settings else None)
     teaching_period_numbers = [s.get("period_number") for s in teaching_slots]
 
@@ -1029,7 +1035,7 @@ async def validate_before_publish(
     for cls in classes:
         for day in working_days:
             for pn in teaching_period_numbers:
-                has = await db.timetable_sessions.find_one({
+                has = await gd_find_one(db.session, "timetable_sessions", {
                     "timetable_id": version_id,
                     "class_id": cls.get("id"),
                     "day_of_week": day,
@@ -1057,7 +1063,8 @@ async def validate_before_publish(
         names = []
         teacher_ids = [t.get("teacher_id") for t in zero_session]
         teachers_map = {}
-        async for t in db.teachers.find({"id": {"$in": teacher_ids}}, {"_id": 0, "id": 1, "full_name": 1, "name_ar": 1}):
+        __t_list = await gd_find(db.session, "teachers", {"id": {"$in": teacher_ids}})
+        for t in __t_list:
             teachers_map[t["id"]] = t.get("full_name") or t.get("name_ar", "")
         for t in zero_session:
             tname = teachers_map.get(t["teacher_id"], t.get("teacher_name", ""))
@@ -1099,47 +1106,45 @@ async def publish_version(
     if not school_id:
         raise HTTPException(status_code=400, detail="School context required")
 
-    tt = await db.timetables.find_one({"id": version_id, "school_id": school_id})
+    tt = await gd_find_one(db.session, "timetables", {"id": version_id, "school_id": school_id})
     if not tt:
         raise HTTPException(status_code=404, detail="Timetable version not found")
 
-    sessions_count = await db.timetable_sessions.count_documents({"timetable_id": version_id})
+    sessions_count = await gd_count(db.session, "timetable_sessions", {"timetable_id": version_id})
     if sessions_count == 0:
         raise HTTPException(status_code=422, detail="لا يمكن نشر جدول فارغ بدون حصص")
 
-    teacher_conflicts = await db.timetable_sessions.aggregate([
+    teacher_conflicts = await _gd_aggregate(db.session, "timetable_sessions", [
         {"$match": {"timetable_id": version_id}},
         {"$group": {
             "_id": {"teacher_id": "$teacher_id", "day": "$day_of_week", "period": "$period_number"},
             "count": {"$sum": 1}
         }},
         {"$match": {"count": {"$gt": 1}}}
-    ]).to_list(100)
+    ])
     if teacher_conflicts:
         raise HTTPException(status_code=422, detail=f"يوجد {len(teacher_conflicts)} تعارض في جدول المعلمين، يجب حلها قبل النشر")
 
-    class_conflicts = await db.timetable_sessions.aggregate([
+    class_conflicts = await _gd_aggregate(db.session, "timetable_sessions", [
         {"$match": {"timetable_id": version_id}},
         {"$group": {
             "_id": {"class_id": "$class_id", "day": "$day_of_week", "period": "$period_number"},
             "count": {"$sum": 1}
         }},
         {"$match": {"count": {"$gt": 1}}}
-    ]).to_list(100)
+    ])
     if class_conflicts:
         raise HTTPException(status_code=422, detail=f"يوجد {len(class_conflicts)} تعارض في جدول الفصول، يجب حلها قبل النشر")
 
     now = utcnow()
 
     previously_published = []
-    async for prev in db.timetables.find({"school_id": school_id, "status": "published", "id": {"$ne": version_id}}, {"id": 1, "_id": 0}):
+    __prev_list = await gd_find(db.session, "timetables", {"school_id": school_id, "status": "published", "id": {"$ne": version_id}})
+    for prev in __prev_list:
         previously_published.append(prev.get("id"))
 
     if previously_published:
-        await db.timetables.update_many(
-            {"school_id": school_id, "status": "published", "id": {"$ne": version_id}},
-            {"$set": {"status": "archived", "archived_at": now, "archived_by": "system_auto_archive"}}
-        )
+        await gd_update_many(db.session, "timetables", {"school_id": school_id, "status": "published", "id": {"$ne": version_id}}, {"status": "archived", "archived_at": now, "archived_by": "system_auto_archive"})
 
     publisher_info = "principal"
     publisher_name = "المدير"
@@ -1149,42 +1154,35 @@ async def publish_version(
             token = authorization.replace("Bearer ", "")
             payload = jwt.decode(token, _JWT_SECRET, algorithms=[_JWT_ALGORITHM])
             publisher_info = payload.get("sub") or "principal"
-            user_doc = await db.users.find_one({"id": publisher_info})
+            user_doc = await gd_find_one(db.session, "users", {"id": publisher_info})
             if user_doc:
                 publisher_name = user_doc.get("full_name") or user_doc.get("name") or publisher_info
         except Exception as e:
             logger.warning(f"Failed to resolve publisher info from token: {e}")
 
-    school_settings = await db.school_settings.find_one({"school_id": school_id})
+    school_settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
     working_days = _resolve_working_days(school_settings.get("working_days") if school_settings else None)
 
     time_slots_list = []
-    async for slot in db.time_slots.find({"school_id": school_id}, {"_id": 0}).sort("period_number", 1):
+    __slot_list = await gd_find(db.session, "time_slots", {"school_id": school_id})
+    for slot in __slot_list:
         time_slots_list.append(slot)
     teaching_periods = [s for s in time_slots_list if not s.get("is_break") and not s.get("is_prayer")]
     break_positions = [s.get("period_number") for s in time_slots_list if s.get("is_break")]
     prayer_positions = [s.get("period_number") for s in time_slots_list if s.get("is_prayer")]
 
-    all_sessions = await db.timetable_sessions.find(
-        {"timetable_id": version_id}, {"_id": 0}
-    ).to_list(50000)  # full fetch required: snapshot captures complete timetable state
+    all_sessions = await gd_find(db.session, "timetable_sessions", {"timetable_id": version_id}, limit=50000)  # full fetch required: snapshot captures complete timetable state
 
-    classes_list = await db.classes.find({"school_id": school_id}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "grade": 1, "section": 1}).to_list(500)
+    classes_list = await gd_find(db.session, "classes", {"school_id": school_id}, limit=500)
 
     teacher_ids_in_tt = list(set(s.get("teacher_id") for s in all_sessions if s.get("teacher_id")))
-    teachers_list = await db.teachers.find(
-        {"id": {"$in": teacher_ids_in_tt}},
-        {"_id": 0, "id": 1, "full_name": 1, "name": 1, "email": 1}
-    ).to_list(2000)
+    teachers_list = await gd_find(db.session, "teachers", {"id": {"$in": teacher_ids_in_tt}}, limit=2000)
 
     subject_ids_in_tt = list(set(s.get("subject_id") for s in all_sessions if s.get("subject_id")))
-    subjects_list = await db.subjects.find(
-        {"id": {"$in": subject_ids_in_tt}},
-        {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "code": 1}
-    ).to_list(500)
+    subjects_list = await gd_find(db.session, "subjects", {"id": {"$in": subject_ids_in_tt}}, limit=500)
 
-    academic_year_doc = await db.academic_years.find_one({"school_id": school_id, "is_current": True}, {"_id": 0})
-    academic_term_doc = await db.academic_terms.find_one({"school_id": school_id, "is_current": True}, {"_id": 0})
+    academic_year_doc = await gd_find_one(db.session, "academic_years", {"school_id": school_id, "is_current": True})
+    academic_term_doc = await gd_find_one(db.session, "academic_terms", {"school_id": school_id, "is_current": True})
 
     snapshot = {
         "id": str(uuid.uuid4()),
@@ -1219,7 +1217,7 @@ async def publish_version(
 
     snapshot_saved = False
     try:
-        await db.published_timetables.insert_one(snapshot)
+        await gd_insert(db.session, "published_timetables", snapshot)
         snapshot_saved = True
     except Exception as e:
         import logging
@@ -1238,31 +1236,19 @@ async def publish_version(
         try:
             engine_result = await smart_engine.publish_timetable(version_id, publisher_info)
             if not engine_result:
-                await db.timetables.update_one(
-                    {"id": version_id},
-                    {"$set": publish_update}
-                )
+                await gd_update_one(db.session, "timetables", {"id": version_id}, publish_update)
         except Exception as e:
             logger.warning(f"Smart engine publish_timetable failed for {version_id}, falling back to direct update: {e}")
-            await db.timetables.update_one(
-                {"id": version_id},
-                {"$set": publish_update}
-            )
+            await gd_update_one(db.session, "timetables", {"id": version_id}, publish_update)
     else:
-        await db.timetables.update_one(
-            {"id": version_id},
-            {"$set": publish_update}
-        )
+        await gd_update_one(db.session, "timetables", {"id": version_id}, publish_update)
 
-    verified = await db.timetables.find_one({"id": version_id}, {"_id": 0, "status": 1})
+    verified = await gd_find_one(db.session, "timetables", {"id": version_id})
     if not verified or verified.get("status") != "published":
-        await db.timetables.update_one(
-            {"id": version_id},
-            {"$set": publish_update}
-        )
+        await gd_update_one(db.session, "timetables", {"id": version_id}, publish_update)
 
     try:
-        await db.audit_logs.insert_one({
+        await gd_insert(db.session, "audit_logs", {
             "id": str(uuid.uuid4()),
             "event_type": "timetable_published",
             "school_id": school_id,
@@ -1310,23 +1296,17 @@ async def get_previous_timetables(
         raise HTTPException(status_code=400, detail="School context required")
 
     snapshots_map = {}
-    async for snap in db.published_timetables.find(
-        {"school_id": school_id},
-        {"_id": 0, "timetable_id": 1, "published_by_name": 1, "academic_year": 1,
-         "academic_term": 1, "sessions_count": 1, "classes_count": 1, "teachers_count": 1,
-         "subjects_count": 1, "coverage_percent": 1, "total_slots": 1}
-    ):
+    snap_list = await gd_find(db.session, "published_timetables", {"school_id": school_id})
+    for snap in snap_list:
         snapshots_map[snap.get("timetable_id")] = snap
 
-    cursor = db.timetables.find(
+    tt_list = await gd_find(db.session, "timetables",
         {"school_id": school_id, "status": "archived"},
-        {"_id": 0},
-        sort=[("published_at", -1)]
-    ).limit(50)
+        order_by="published_at", desc_order=True, limit=50)
 
     previous = []
     idx = 0
-    async for tt in cursor:
+    for tt in tt_list:
         idx += 1
         tt_id = tt.get("id")
         stats = tt.get("statistics", {})
@@ -1381,11 +1361,8 @@ async def view_previous_timetable(
     if not school_id:
         raise HTTPException(status_code=400, detail="School context required")
 
-    snapshot = await db.published_timetables.find_one(
-        {"timetable_id": timetable_id, "school_id": school_id},
-        {"_id": 0},
-        sort=[("published_at", -1)]
-    )
+    snapshot = await gd_find_one(db.session, "published_timetables", {"timetable_id": timetable_id, "school_id": school_id},
+        sort=[("published_at", -1)])
 
     if snapshot:
         all_sessions = snapshot.get("sessions", [])
@@ -1422,30 +1399,29 @@ async def view_previous_timetable(
             }
         }
 
-    tt = await db.timetables.find_one({"id": timetable_id, "school_id": school_id})
+    tt = await gd_find_one(db.session, "timetables", {"id": timetable_id, "school_id": school_id})
     if not tt:
         raise HTTPException(status_code=404, detail="الجدول غير موجود")
 
-    total_sessions = await db.timetable_sessions.count_documents({"timetable_id": timetable_id})
+    total_sessions = await gd_count(db.session, "timetable_sessions", {"timetable_id": timetable_id})
     skip = (page - 1) * page_size
-    sessions = await db.timetable_sessions.find(
-        {"timetable_id": timetable_id}, {"_id": 0}
-    ).skip(skip).limit(page_size).to_list(page_size)
+    sessions = await gd_find(db.session, "timetable_sessions", {"timetable_id": timetable_id}, offset=skip, limit=page_size)
 
-    school_settings_doc = await db.school_settings.find_one({"school_id": school_id})
+    school_settings_doc = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
     w_days = _resolve_working_days(school_settings_doc.get("working_days") if school_settings_doc else None)
 
     slots = []
-    async for slot in db.time_slots.find({"school_id": school_id}, {"_id": 0}).sort("period_number", 1):
+    __slot_list = await gd_find(db.session, "time_slots", {"school_id": school_id})
+    for slot in __slot_list:
         slots.append(slot)
 
     teacher_ids = list(set(s.get("teacher_id") for s in sessions if s.get("teacher_id")))
     subject_ids = list(set(s.get("subject_id") for s in sessions if s.get("subject_id")))
     class_ids = list(set(s.get("class_id") for s in sessions if s.get("class_id")))
 
-    teachers_data = await db.teachers.find({"id": {"$in": teacher_ids}}, {"_id": 0, "id": 1, "full_name": 1, "name": 1}).to_list(2000)
-    subjects_data = await db.subjects.find({"id": {"$in": subject_ids}}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "code": 1}).to_list(500)
-    classes_data = await db.classes.find({"id": {"$in": class_ids}}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "grade": 1}).to_list(500)
+    teachers_data = await gd_find(db.session, "teachers", {"id": {"$in": teacher_ids}}, limit=2000)
+    subjects_data = await gd_find(db.session, "subjects", {"id": {"$in": subject_ids}}, limit=500)
+    classes_data = await gd_find(db.session, "classes", {"id": {"$in": class_ids}}, limit=500)
 
     return {
         "success": True,
@@ -1486,18 +1462,19 @@ async def get_empty_slots_details(
     if not school_id:
         raise HTTPException(status_code=400, detail="School context required")
 
-    school_settings = await db.school_settings.find_one({"school_id": school_id})
+    school_settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
     working_days = _resolve_working_days(school_settings.get("working_days") if school_settings else None)
 
     time_slots = []
-    async for slot in db.time_slots.find({"school_id": school_id}).sort("period_number", 1):
+    __slot_list = await gd_find(db.session, "time_slots", {"school_id": school_id}).sort("period_number")
+    for slot in __slot_list:
         time_slots.append(slot)
     teaching_slots = [s for s in time_slots if not s.get("is_break") and not s.get("is_prayer")]
     teaching_period_numbers = [s.get("period_number") for s in teaching_slots]
 
     DAY_NAMES_AR = {"sunday": "الأحد", "monday": "الاثنين", "tuesday": "الثلاثاء", "wednesday": "الأربعاء", "thursday": "الخميس", "saturday": "السبت", "friday": "الجمعة"}
 
-    classes = await db.classes.find({"school_id": school_id}).to_list(500)
+    classes = await gd_find(db.session, "classes", {"school_id": school_id}, limit=500)
     class_map = {c.get("id"): c.get("name") or c.get("name_ar") or c.get("id") for c in classes}
 
     empty_by_class = {}
@@ -1510,7 +1487,7 @@ async def get_empty_slots_details(
 
         for day in working_days:
             for pn in teaching_period_numbers:
-                has = await db.timetable_sessions.find_one({
+                has = await gd_find_one(db.session, "timetable_sessions", {
                     "timetable_id": version_id,
                     "class_id": cls_id,
                     "day_of_week": day,
@@ -1556,24 +1533,25 @@ async def fill_timetable_gaps(
     if not school_id:
         raise HTTPException(status_code=400, detail="School context required")
 
-    tt = await db.timetables.find_one({"id": version_id, "school_id": school_id})
+    tt = await gd_find_one(db.session, "timetables", {"id": version_id, "school_id": school_id})
     if not tt:
         raise HTTPException(status_code=404, detail="Timetable version not found")
 
-    school_settings = await db.school_settings.find_one({"school_id": school_id})
+    school_settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
     working_days = _resolve_working_days(school_settings.get("working_days") if school_settings else None)
 
     time_slots_raw = []
-    async for slot in db.time_slots.find({"school_id": school_id}).sort("period_number", 1):
+    __slot_list = await gd_find(db.session, "time_slots", {"school_id": school_id}).sort("period_number")
+    for slot in __slot_list:
         time_slots_raw.append(slot)
     teaching_slots = [s for s in time_slots_raw if not s.get("is_break") and not s.get("is_prayer")]
     teaching_period_numbers = [s.get("period_number") for s in teaching_slots]
     slot_lookup = {s.get("period_number"): {"start_time": s.get("start_time", ""), "end_time": s.get("end_time", "")} for s in time_slots_raw}
 
-    classes = await db.classes.find({"school_id": school_id}).to_list(500)
-    teachers = await db.teachers.find({"school_id": school_id, "is_active": {"$ne": False}}).to_list(500)
+    classes = await gd_find(db.session, "classes", {"school_id": school_id}, limit=500)
+    teachers = await gd_find(db.session, "teachers", {"school_id": school_id, "is_active": {"$ne": False}}, limit=500)
     teacher_map = {t.get("id"): t for t in teachers}
-    assignments = await db.teacher_assignments.find({"school_id": school_id}).to_list(5000)
+    assignments = await gd_find(db.session, "teacher_assignments", {"school_id": school_id}, limit=5000)
 
     class_subject_teachers = {}
     for a in assignments:
@@ -1593,7 +1571,8 @@ async def fill_timetable_gaps(
                 class_subject_teachers[key].add(tid_a)
 
     existing_sessions = []
-    async for s in db.timetable_sessions.find({"timetable_id": version_id}):
+    __s_list = await gd_find(db.session, "timetable_sessions", {"timetable_id": version_id})
+    for s in __s_list:
         existing_sessions.append(s)
 
     for s in existing_sessions:
@@ -1631,7 +1610,7 @@ async def fill_timetable_gaps(
         explicit = t.get("weekly_periods") or t.get("max_weekly_periods")
         teacher_max_load[t.get("id")] = explicit if explicit else max_possible_weekly
 
-    subjects = await db.subjects.find({"school_id": school_id}).to_list(500)
+    subjects = await gd_find(db.session, "subjects", {"school_id": school_id}, limit=500)
     subject_map = {s.get("id"): s for s in subjects}
 
     filled_count = 0
@@ -1735,17 +1714,14 @@ async def fill_timetable_gaps(
     new_sessions = teacher_safe_sessions
 
     if new_sessions:
-        await db.timetable_sessions.insert_many(new_sessions)
+        await gd_insert_many(db.session, "timetable_sessions", new_sessions)
 
-        total_sessions = await db.timetable_sessions.count_documents({"timetable_id": version_id})
-        await db.timetables.update_one(
-            {"id": version_id},
-            {"$set": {
+        total_sessions = await gd_count(db.session, "timetable_sessions", {"timetable_id": version_id})
+        await gd_update_one(db.session, "timetables", {"id": version_id}, {
                 "sessions_count": total_sessions,
                 "statistics.total_sessions": total_sessions,
                 "updated_at": utcnow()
-            }}
-        )
+            })
 
     return {
         "success": True,
@@ -1781,8 +1757,8 @@ async def swap_sessions(
     if not school_id:
         raise HTTPException(status_code=400, detail="School context required")
 
-    s1 = await db.timetable_sessions.find_one({"id": data.session_id_1, "school_id": school_id}, {"_id": 0})
-    s2 = await db.timetable_sessions.find_one({"id": data.session_id_2, "school_id": school_id}, {"_id": 0})
+    s1 = await gd_find_one(db.session, "timetable_sessions", {"id": data.session_id_1, "school_id": school_id})
+    s2 = await gd_find_one(db.session, "timetable_sessions", {"id": data.session_id_2, "school_id": school_id})
 
     if not s1 or not s2:
         raise HTTPException(status_code=404, detail="One or both sessions not found")
@@ -1793,7 +1769,7 @@ async def swap_sessions(
         raise HTTPException(status_code=400, detail="Cannot swap sessions from different timetable versions")
 
     timetable_id = tt_id_1
-    tt = await db.timetables.find_one({"id": timetable_id, "school_id": school_id}, {"_id": 0, "status": 1})
+    tt = await gd_find_one(db.session, "timetables", {"id": timetable_id, "school_id": school_id})
     if tt and tt.get("status") == "published":
         raise HTTPException(status_code=400, detail="Cannot modify a published timetable")
 
@@ -1811,7 +1787,7 @@ async def swap_sessions(
 
     exclude_ids = [data.session_id_1, data.session_id_2]
 
-    s1_teacher_conflict = await db.timetable_sessions.find_one({
+    s1_teacher_conflict = await gd_find_one(db.session, "timetable_sessions", {
         "timetable_id": timetable_id, "school_id": school_id,
         "teacher_id": s1.get("teacher_id"),
         "day_of_week": s2_day, "period_number": s2_period,
@@ -1820,7 +1796,7 @@ async def swap_sessions(
     if s1_teacher_conflict:
         raise HTTPException(status_code=409, detail=f"تعارض: المعلم {s1.get('teacher_name', '')} لديه حصة أخرى في الخانة المستهدفة")
 
-    s1_class_conflict = await db.timetable_sessions.find_one({
+    s1_class_conflict = await gd_find_one(db.session, "timetable_sessions", {
         "timetable_id": timetable_id, "school_id": school_id,
         "class_id": s1.get("class_id"),
         "day_of_week": s2_day, "period_number": s2_period,
@@ -1829,7 +1805,7 @@ async def swap_sessions(
     if s1_class_conflict:
         raise HTTPException(status_code=409, detail=f"تعارض: الفصل {s1.get('class_name', '')} لديه حصة أخرى في الخانة المستهدفة")
 
-    s2_teacher_conflict = await db.timetable_sessions.find_one({
+    s2_teacher_conflict = await gd_find_one(db.session, "timetable_sessions", {
         "timetable_id": timetable_id, "school_id": school_id,
         "teacher_id": s2.get("teacher_id"),
         "day_of_week": s1_day, "period_number": s1_period,
@@ -1838,7 +1814,7 @@ async def swap_sessions(
     if s2_teacher_conflict:
         raise HTTPException(status_code=409, detail=f"تعارض: المعلم {s2.get('teacher_name', '')} لديه حصة أخرى في الخانة المستهدفة")
 
-    s2_class_conflict = await db.timetable_sessions.find_one({
+    s2_class_conflict = await gd_find_one(db.session, "timetable_sessions", {
         "timetable_id": timetable_id, "school_id": school_id,
         "class_id": s2.get("class_id"),
         "day_of_week": s1_day, "period_number": s1_period,
@@ -1848,28 +1824,22 @@ async def swap_sessions(
         raise HTTPException(status_code=409, detail=f"تعارض: الفصل {s2.get('class_name', '')} لديه حصة أخرى في الخانة المستهدفة")
 
     now = utcnow()
-    await db.timetable_sessions.update_one(
-        {"id": data.session_id_1, "school_id": school_id, "timetable_id": timetable_id},
-        {"$set": {
+    await gd_update_one(db.session, "timetable_sessions", {"id": data.session_id_1, "school_id": school_id, "timetable_id": timetable_id}, {
             "day_of_week": s2_day, "day": s2_day,
             "period_number": s2_period,
             "time_slot_id": s2_slot,
             "start_time": s2_start, "end_time": s2_end,
             "source_type": "manual_adjusted",
             "updated_at": now
-        }}
-    )
-    await db.timetable_sessions.update_one(
-        {"id": data.session_id_2, "school_id": school_id, "timetable_id": timetable_id},
-        {"$set": {
+        })
+    await gd_update_one(db.session, "timetable_sessions", {"id": data.session_id_2, "school_id": school_id, "timetable_id": timetable_id}, {
             "day_of_week": s1_day, "day": s1_day,
             "period_number": s1_period,
             "time_slot_id": s1_slot,
             "start_time": s1_start, "end_time": s1_end,
             "source_type": "manual_adjusted",
             "updated_at": now
-        }}
-    )
+        })
 
     return {
         "success": True,
@@ -1891,11 +1861,11 @@ async def move_session(
     if not school_id:
         raise HTTPException(status_code=400, detail="School context required")
 
-    session = await db.timetable_sessions.find_one({"id": data.session_id, "school_id": school_id}, {"_id": 0})
+    session = await gd_find_one(db.session, "timetable_sessions", {"id": data.session_id, "school_id": school_id})
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    tt = await db.timetables.find_one({"id": session.get("timetable_id"), "school_id": school_id}, {"_id": 0, "status": 1})
+    tt = await gd_find_one(db.session, "timetables", {"id": session.get("timetable_id"), "school_id": school_id})
     if tt and tt.get("status") == "published":
         raise HTTPException(status_code=400, detail="Cannot modify a published timetable")
 
@@ -1903,7 +1873,7 @@ async def move_session(
     class_id = session.get("class_id")
     timetable_id = session.get("timetable_id")
 
-    teacher_conflict = await db.timetable_sessions.find_one({
+    teacher_conflict = await gd_find_one(db.session, "timetable_sessions", {
         "timetable_id": timetable_id, "school_id": school_id,
         "teacher_id": teacher_id,
         "day_of_week": data.new_day,
@@ -1911,7 +1881,7 @@ async def move_session(
         "id": {"$ne": data.session_id}
     })
 
-    class_conflict = await db.timetable_sessions.find_one({
+    class_conflict = await gd_find_one(db.session, "timetable_sessions", {
         "timetable_id": timetable_id, "school_id": school_id,
         "class_id": class_id,
         "day_of_week": data.new_day,
@@ -1927,14 +1897,15 @@ async def move_session(
         c_name = class_conflict.get("class_name", "")
         raise HTTPException(status_code=409, detail=f"تعارض: الفصل {c_name} لديه حصة في نفس الوقت")
 
-    slot = await db.time_slots.find_one({
+    slot = await gd_find_one(db.session, "time_slots", {
         "school_id": school_id,
         "period_number": data.new_period,
         "type": {"$nin": ["break", "prayer"]}
-    }, {"_id": 0})
+    })
     if not slot:
         all_slots = []
-        async for ts in db.time_slots.find({"school_id": school_id}, {"_id": 0}):
+        __ts_list = await gd_find(db.session, "time_slots", {"school_id": school_id})
+        for ts in __ts_list:
             all_slots.append(ts)
         all_slots.sort(key=lambda x: x.get("start_time") or "99:99")
         teaching_counter = 0
@@ -1960,10 +1931,7 @@ async def move_session(
         "updated_at": utcnow()
     }
 
-    await db.timetable_sessions.update_one(
-        {"id": data.session_id, "school_id": school_id, "timetable_id": timetable_id},
-        {"$set": update_fields}
-    )
+    await gd_update_one(db.session, "timetable_sessions", {"id": data.session_id, "school_id": school_id, "timetable_id": timetable_id}, update_fields)
 
     return {
         "success": True,
@@ -1982,7 +1950,7 @@ async def get_session_details(
     if not school_id:
         raise HTTPException(status_code=400, detail="School context required")
 
-    session = await db.timetable_sessions.find_one({"id": session_id}, {"_id": 0})
+    session = await gd_find_one(db.session, "timetable_sessions", {"id": session_id})
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 

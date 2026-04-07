@@ -22,6 +22,8 @@ from dependencies import (
     hakim_engine, reporting_engine, export_engine, session_engine,
     REPORT_TYPES, generate_student_qr_code
 )
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
+
 
 from shared_models import (
     StatusCheck, StatusCheckCreate, TeacherRankEnum, SessionStatusEnum, ScheduleStatusEnum, TimeSlotCreate, TimeSlotResponse, TeacherAssignmentCreate, TeacherAssignmentResponse, SchoolScheduleCreate, SchoolScheduleResponse, ScheduleSessionCreate, ScheduleSessionResponse
@@ -53,7 +55,7 @@ async def generate_schedule_auto(
     
     start_time = datetime.now(timezone.utc)
     
-    schedule = await db.schedules.find_one({"id": schedule_id}, {"_id": 0})
+    schedule = await gd_find_one(db.session, "schedules", {"id": schedule_id})
     if not schedule:
         raise HTTPException(status_code=404, detail="الجدول غير موجود")
     
@@ -61,10 +63,7 @@ async def generate_schedule_auto(
     working_days = schedule.get("working_days", ["sunday", "monday", "tuesday", "wednesday", "thursday"])
     
     # Get time slots
-    time_slots = await db.time_slots.find(
-        {"school_id": school_id, "is_active": True, "is_break": False},
-        {"_id": 0}
-    ).sort("slot_number", 1).to_list(20)
+    time_slots = await gd_find(db.session, "time_slots", {"school_id": school_id, "is_active": True, "is_break": False}, order_by="slot_number", desc_order=False, limit=20)
     
     if not time_slots:
         raise HTTPException(status_code=400, detail="لم يتم تعريف الفترات الزمنية")
@@ -73,26 +72,26 @@ async def generate_schedule_auto(
     schedule_academic_year = schedule.get("academic_year")
     schedule_semester = schedule.get("semester")
     
-    assignments = await db.teacher_assignments.find({
+    assignments = await gd_find(db.session, "teacher_assignments", {
         "school_id": school_id,
         "is_active": True,
         "academic_year": schedule_academic_year,
         "semester": schedule_semester
-    }, {"_id": 0}).to_list(500)
+    }, limit=500)
     
     # If no assignments found with exact match, try without year/semester filter
     if not assignments:
-        assignments = await db.teacher_assignments.find({
+        assignments = await gd_find(db.session, "teacher_assignments", {
             "school_id": school_id,
             "is_active": True
-        }, {"_id": 0}).to_list(500)
+        }, limit=500)
     
     if not assignments:
         raise HTTPException(status_code=400, detail="لم يتم العثور على إسنادات للمعلمين. يرجى إضافة إسنادات من صفحة الإعدادات -> تبويب الإسنادات")
     
     # Get teacher info for workload calculation
     teacher_ids = list(set(a.get("teacher_id") for a in assignments if a.get("teacher_id")))
-    teachers = await db.teachers.find({"id": {"$in": teacher_ids}}, {"_id": 0, "id": 1, "rank": 1, "full_name": 1}).to_list(500)
+    teachers = await gd_find(db.session, "teachers", {"id": {"$in": teacher_ids}}, limit=500)
     teacher_map = {t.get("id"): t for t in teachers}
     
     # Workload limits by rank
@@ -104,7 +103,7 @@ async def generate_schedule_auto(
     }
     
     # Clear existing sessions
-    await db.schedule_sessions.delete_many({"schedule_id": schedule_id})
+    await gd_delete_many(db.session, "schedule_sessions", {"schedule_id": schedule_id})
     
     # Build sessions to place with smart grouping
     sessions_to_place = []
@@ -214,7 +213,7 @@ async def generate_schedule_auto(
                     "created_at": datetime.now(timezone.utc).isoformat(),
                     "updated_at": datetime.now(timezone.utc).isoformat()
                 }
-                await db.schedule_sessions.insert_one(session_doc)
+                await gd_insert(db.session, "schedule_sessions", session_doc)
                 
                 # Update tracking
                 teacher_schedule[day][slot_id] = teacher_id
@@ -248,9 +247,7 @@ async def generate_schedule_auto(
         }
     
     # Update schedule
-    await db.schedules.update_one(
-        {"id": schedule_id},
-        {"$set": {
+    await gd_update_one(db.session, "schedules", {"id": schedule_id}, {
             "total_sessions": sessions_created,
             "status": ScheduleStatusEnum.DRAFT.value,
             "generation_stats": {
@@ -261,8 +258,7 @@ async def generate_schedule_auto(
                 "conflicts_avoided": conflicts_avoided
             },
             "updated_at": end_time.isoformat()
-        }}
-    )
+        })
     
     # Generate recommendations based on results
     recommendations = []
@@ -338,10 +334,10 @@ async def check_schedule_conflicts(
         "sessions_with_conflicts": 0
     }
     
-    sessions = await db.schedule_sessions.find({
+    sessions = await gd_find(db.session, "schedule_sessions", {
         "schedule_id": schedule_id,
         "status": {"$ne": SessionStatusEnum.CANCELLED.value}
-    }, {"_id": 0}).to_list(1000)
+    }, limit=1000)
     
     statistics["total_sessions"] = len(sessions)
     
@@ -360,9 +356,7 @@ async def check_schedule_conflicts(
             continue
         
         assignment_ids = [s.get("assignment_id") for s in slot_sessions]
-        assignments = await db.teacher_assignments.find(
-            {"id": {"$in": assignment_ids}}, {"_id": 0}
-        ).to_list(100)
+        assignments = await gd_find(db.session, "teacher_assignments", {"id": {"$in": assignment_ids}}, limit=100)
         assignment_map = {a.get("id"): a for a in assignments}
         
         teachers_seen = {}
@@ -370,7 +364,7 @@ async def check_schedule_conflicts(
         rooms_seen = {}
         
         # Get time slot info
-        time_slot = await db.time_slots.find_one({"id": slot_id}, {"_id": 0, "start_time": 1, "end_time": 1, "slot_number": 1})
+        time_slot = await gd_find_one(db.session, "time_slots", {"id": slot_id})
         period_info = f"الحصة {time_slot.get('slot_number', '?')}" if time_slot else ""
         
         for session in slot_sessions:
@@ -383,7 +377,7 @@ async def check_schedule_conflicts(
             # Check teacher conflict
             if teacher_id:
                 if teacher_id in teachers_seen:
-                    teacher = await db.teachers.find_one({"id": teacher_id}, {"_id": 0, "full_name": 1})
+                    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
                     teacher_name = teacher.get("full_name") if teacher else "غير معروف"
                     conflicts.append({
                         "id": str(uuid.uuid4()),
@@ -407,7 +401,7 @@ async def check_schedule_conflicts(
             # Check class conflict
             if class_id:
                 if class_id in classes_seen:
-                    class_doc = await db.classes.find_one({"id": class_id}, {"_id": 0, "name": 1})
+                    class_doc = await gd_find_one(db.session, "classes", {"id": class_id})
                     class_name = class_doc.get("name") if class_doc else "غير معروف"
                     conflicts.append({
                         "id": str(uuid.uuid4()),
@@ -431,7 +425,7 @@ async def check_schedule_conflicts(
             # Check room/hall conflict (NEW)
             if room_id:
                 if room_id in rooms_seen:
-                    room_doc = await db.classrooms.find_one({"id": room_id}, {"_id": 0, "name": 1, "name_ar": 1})
+                    room_doc = await gd_find_one(db.session, "classrooms", {"id": room_id})
                     room_name = room_doc.get("name_ar") or room_doc.get("name") if room_doc else "غير معروف"
                     conflicts.append({
                         "id": str(uuid.uuid4()),
@@ -485,7 +479,7 @@ async def get_conflict_resolution_suggestions(
     """
     
     # Get schedule info
-    schedule = await db.schedules.find_one({"id": schedule_id}, {"_id": 0})
+    schedule = await gd_find_one(db.session, "schedules", {"id": schedule_id})
     if not schedule:
         raise HTTPException(status_code=404, detail="الجدول غير موجود")
     
@@ -493,16 +487,13 @@ async def get_conflict_resolution_suggestions(
     working_days = schedule.get("working_days") or ["sunday", "monday", "tuesday", "wednesday", "thursday"]
     
     # Get all sessions
-    sessions = await db.schedule_sessions.find({
+    sessions = await gd_find(db.session, "schedule_sessions", {
         "schedule_id": schedule_id,
         "status": {"$ne": SessionStatusEnum.CANCELLED.value}
-    }, {"_id": 0}).to_list(1000)
+    }, limit=1000)
     
     # Get time slots
-    time_slots = await db.time_slots.find(
-        {"school_id": school_id, "is_active": True, "is_break": False},
-        {"_id": 0}
-    ).sort("slot_number", 1).to_list(20)
+    time_slots = await gd_find(db.session, "time_slots", {"school_id": school_id, "is_active": True, "is_break": False}, order_by="slot_number", desc_order=False, limit=20)
     
     slot_map = {s.get("id"): s for s in time_slots}
     
@@ -563,7 +554,7 @@ async def get_conflict_resolution_suggestions(
             # Teacher conflict
             if teacher_id and teacher_id in teachers_seen:
                 # Find alternative slots for this session
-                teacher = await db.teachers.find_one({"id": teacher_id}, {"_id": 0, "full_name": 1})
+                teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
                 teacher_name = teacher.get("full_name") if teacher else "غير معروف"
                 
                 alternative_slots = []
@@ -642,7 +633,7 @@ async def get_conflict_resolution_suggestions(
             
             # Class conflict
             if class_id and class_id in classes_seen:
-                class_doc = await db.classes.find_one({"id": class_id}, {"_id": 0, "name": 1})
+                class_doc = await gd_find_one(db.session, "classes", {"id": class_id})
                 class_name = class_doc.get("name") if class_doc else "غير معروف"
                 
                 alternative_slots = []
@@ -719,12 +710,12 @@ async def apply_conflict_suggestion(
     """
     
     # Validate schedule
-    schedule = await db.schedules.find_one({"id": schedule_id}, {"_id": 0})
+    schedule = await gd_find_one(db.session, "schedules", {"id": schedule_id})
     if not schedule:
         raise HTTPException(status_code=404, detail="الجدول غير موجود")
     
     # Get session
-    session = await db.schedule_sessions.find_one({"id": session_id, "schedule_id": schedule_id}, {"_id": 0})
+    session = await gd_find_one(db.session, "schedule_sessions", {"id": session_id, "schedule_id": schedule_id})
     if not session:
         raise HTTPException(status_code=404, detail="الحصة غير موجودة")
     
@@ -736,7 +727,7 @@ async def apply_conflict_suggestion(
         raise HTTPException(status_code=400, detail="اليوم المحدد غير صالح")
     
     # Validate target slot exists
-    target_slot = await db.time_slots.find_one({"id": target_slot_id, "school_id": school_id}, {"_id": 0})
+    target_slot = await gd_find_one(db.session, "time_slots", {"id": target_slot_id, "school_id": school_id})
     if not target_slot:
         raise HTTPException(status_code=400, detail="الفترة الزمنية غير موجودة")
     
@@ -747,7 +738,7 @@ async def apply_conflict_suggestion(
     
     # Check if target slot is free for teacher
     if teacher_id:
-        teacher_conflict = await db.schedule_sessions.find_one({
+        teacher_conflict = await gd_find_one(db.session, "schedule_sessions", {
             "schedule_id": schedule_id,
             "teacher_id": teacher_id,
             "day_of_week": target_day,
@@ -760,7 +751,7 @@ async def apply_conflict_suggestion(
     
     # Check if target slot is free for class
     if class_id:
-        class_conflict = await db.schedule_sessions.find_one({
+        class_conflict = await gd_find_one(db.session, "schedule_sessions", {
             "schedule_id": schedule_id,
             "class_id": class_id,
             "day_of_week": target_day,
@@ -773,9 +764,7 @@ async def apply_conflict_suggestion(
     
     # Apply the move
     now = datetime.now(timezone.utc).isoformat()
-    await db.schedule_sessions.update_one(
-        {"id": session_id},
-        {"$set": {
+    await gd_update_one(db.session, "schedule_sessions", {"id": session_id}, {
             "day_of_week": target_day,
             "time_slot_id": target_slot_id,
             "updated_at": now,
@@ -788,11 +777,10 @@ async def apply_conflict_suggestion(
                 "to_slot_id": target_slot_id,
                 "moved_at": now
             }
-        }}
-    )
+        })
     
     # Get updated slot info for response
-    old_slot = await db.time_slots.find_one({"id": old_slot_id}, {"_id": 0, "slot_number": 1})
+    old_slot = await gd_find_one(db.session, "time_slots", {"id": old_slot_id})
     
     DAYS_AR = {
         "sunday": "الأحد", "monday": "الاثنين", "tuesday": "الثلاثاء",
@@ -891,11 +879,8 @@ async def update_teacher_rank(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
     """تحديث رتبة المعلم"""
-    result = await db.teachers.update_one(
-        {"id": teacher_id},
-        {"$set": {"rank": rank.value, "updated_at": datetime.now(timezone.utc).isoformat()}}
-    )
-    if result.modified_count == 0:
+    result = await gd_update_one(db.session, "teachers", {"id": teacher_id}, {"rank": rank.value, "updated_at": datetime.now(timezone.utc).isoformat()})
+    if result == 0:
         raise HTTPException(status_code=404, detail="المعلم غير موجود")
     return {"message": "تم تحديث رتبة المعلم"}
 
@@ -910,7 +895,7 @@ async def get_teacher_workload(
     current_user: dict = Depends(get_current_user)
 ):
     """الحصول على نصاب المعلم"""
-    teacher = await db.teachers.find_one({"id": teacher_id}, {"_id": 0})
+    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
     if not teacher:
         raise HTTPException(status_code=404, detail="المعلم غير موجود")
     
@@ -927,9 +912,7 @@ async def get_teacher_workload(
     limits = workload_limits.get(rank_str, workload_limits[TeacherRankEnum.PRACTITIONER.value])
     
     # Get assignments
-    assignments = await db.teacher_assignments.find(
-        {"teacher_id": teacher_id, "is_active": True}, {"_id": 0}
-    ).to_list(50)
+    assignments = await gd_find(db.session, "teacher_assignments", {"teacher_id": teacher_id, "is_active": True}, limit=50)
     
     total_weekly_sessions = sum(a.get("weekly_sessions", 0) for a in assignments)
     
@@ -938,11 +921,11 @@ async def get_teacher_workload(
     sessions_by_day = {}
     if schedule_id:
         assignment_ids = [a.get("id") for a in assignments]
-        sessions = await db.schedule_sessions.find({
+        sessions = await gd_find(db.session, "schedule_sessions", {
             "schedule_id": schedule_id,
             "assignment_id": {"$in": assignment_ids},
             "status": {"$ne": SessionStatusEnum.CANCELLED.value}
-        }, {"_id": 0}).to_list(200)
+        }, limit=200)
         
         actual_sessions = len(sessions)
         for s in sessions:
@@ -977,7 +960,7 @@ async def seed_time_slots(
 ):
     """إنشاء فترات زمنية افتراضية للمدرسة"""
     # Check if slots already exist
-    existing = await db.time_slots.count_documents({"school_id": school_id})
+    existing = await gd_count(db.session, "time_slots", {"school_id": school_id})
     if existing > 0:
         return {"message": "الفترات الزمنية موجودة بالفعل", "count": existing}
     
@@ -1006,7 +989,7 @@ async def seed_time_slots(
             "updated_at": datetime.now(timezone.utc).isoformat(),
             **slot
         }
-        await db.time_slots.insert_one(slot_doc)
+        await gd_insert(db.session, "time_slots", slot_doc)
         created += 1
     
     return {"message": f"تم إنشاء {created} فترة زمنية", "count": created}

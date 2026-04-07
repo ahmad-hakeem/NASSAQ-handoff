@@ -7,6 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional, List
 from datetime import datetime, timezone, timedelta
 import uuid
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
+
 import logging
 
 logger = logging.getLogger("nassaq.student_portal_routes")
@@ -28,9 +30,9 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
         school_id = current_user.get("tenant_id")
         
         # Get student info
-        student = await db.students.find_one({"id": student_id})
+        student = await gd_find_one(db.session, "students", {"id": student_id})
         if not student:
-            student = await db.students.find_one({"user_id": current_user.get("id")})
+            student = await gd_find_one(db.session, "students", {"user_id": current_user.get("id")})
         
         # Get today's schedule
         today = datetime.now().strftime("%A")
@@ -43,25 +45,18 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
         schedule_entries = []
         if student and student.get("class_id"):
             today_en = datetime.now().strftime("%A").lower()
-            timetable = await db.timetables.find_one(
-                {"school_id": school_id, "status": "published"}
-            ) or await db.timetables.find_one(
-                {"school_id": school_id},
-                sort=[("created_at", -1)]
-            )
+            timetable = await gd_find_one(db.session, "timetables", {"school_id": school_id, "status": "published"}) or await gd_find_one(db.session, "timetables", {"school_id": school_id},
+                sort=[("created_at", -1)])
             if timetable:
-                sessions = await db.timetable_sessions.find(
-                    {
+                sessions = await gd_find(db.session, "timetable_sessions", {
                         "timetable_id": timetable.get("id"),
                         "class_id": student.get("class_id"),
                         "day_of_week": today_en
-                    },
-                    {"_id": 0}
-                ).to_list(20)
+                    }, limit=20)
                 sub_ids = list(set(s.get("subject_id") for s in sessions if s.get("subject_id")))
                 tch_ids = list(set(s.get("teacher_id") for s in sessions if s.get("teacher_id")))
-                subs = await db.subjects.find({"id": {"$in": sub_ids}}, {"_id": 0, "id": 1, "name_ar": 1}).to_list(100)
-                tchs = await db.teachers.find({"id": {"$in": tch_ids}}, {"_id": 0, "id": 1, "full_name": 1}).to_list(100)
+                subs = await gd_find(db.session, "subjects", {"id": {"$in": sub_ids}}, limit=100)
+                tchs = await gd_find(db.session, "teachers", {"id": {"$in": tch_ids}}, limit=100)
                 sub_map = {s["id"]: s.get("name_ar", "غير محدد") for s in subs}
                 tch_map = {t["id"]: t.get("full_name", "غير محدد") for t in tchs}
                 for session in sorted(sessions, key=lambda x: x.get("period_number", 0)):
@@ -75,10 +70,10 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
         
         # Get recent grades
         recent_grades = []
-        grades_cursor = db.grades.find({
-            "student_id": student_id
-        }).sort("date", -1).limit(5)
-        async for grade in grades_cursor:
+        grades_list = await gd_find(db.session, "grades",
+            {"student_id": student_id},
+            order_by="date", desc_order=True, limit=5)
+        for grade in grades_list:
             recent_grades.append({
                 "subject": grade.get("subject"),
                 "score": grade.get("score"),
@@ -89,26 +84,26 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
             })
         
         # Calculate attendance stats
-        total_days = await db.attendance.count_documents({"student_id": student_id})
-        present_days = await db.attendance.count_documents({"student_id": student_id, "status": "present"})
-        absent_days = await db.attendance.count_documents({"student_id": student_id, "status": "absent"})
-        late_days = await db.attendance.count_documents({"student_id": student_id, "status": "late"})
+        total_days = await gd_count(db.session, "attendance", {"student_id": student_id})
+        present_days = await gd_count(db.session, "attendance", {"student_id": student_id, "status": "present"})
+        absent_days = await gd_count(db.session, "attendance", {"student_id": student_id, "status": "absent"})
+        late_days = await gd_count(db.session, "attendance", {"student_id": student_id, "status": "late"})
         
         attendance_rate = (present_days / total_days * 100) if total_days > 0 else 100
         
-        unread_notifications = await db.notifications.count_documents({
+        unread_notifications = await gd_count(db.session, "notifications", {
             "recipient_id": current_user.get("id"),
             "read_status": False
         })
         
         # Calculate GPA/average
-        all_grades = await db.grades.find({"student_id": student_id}).to_list(1000)
+        all_grades = await gd_find(db.session, "grades", {"student_id": student_id}, limit=1000)
         total_score = sum(g.get("percentage", 0) for g in all_grades)
         avg_score = total_score / len(all_grades) if all_grades else 0
         
         school_name = current_user.get("school_name")
         if not school_name and school_id:
-            school_doc = await db.schools.find_one({"id": school_id}, {"_id": 0, "name": 1})
+            school_doc = await gd_find_one(db.session, "schools", {"id": school_id})
             school_name = school_doc.get("name") if school_doc else school_id
 
         return {
@@ -151,7 +146,7 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
         if assessment_type:
             query["assessment_type"] = assessment_type
         
-        grades = await db.grades.find(query).sort("date", -1).to_list(500)
+        grades = await gd_find(db.session, "grades", query, order_by="date", desc_order=True, limit=500)
         
         # Group by subject
         subjects_data = {}
@@ -220,7 +215,7 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
                 end_date = f"{year}-{month + 1:02d}-01"
             query["date"] = {"$gte": start_date, "$lt": end_date}
         
-        records = await db.attendance.find(query).sort("date", -1).to_list(500)
+        records = await gd_find(db.session, "attendance", query, order_by="date", desc_order=True, limit=500)
         
         # Statistics
         total = len(records)
@@ -265,9 +260,9 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
         school_id = current_user.get("tenant_id")
         
         # Get student info
-        student = await db.students.find_one({"id": student_id})
+        student = await gd_find_one(db.session, "students", {"id": student_id})
         if not student:
-            student = await db.students.find_one({"user_id": current_user.get("id")})
+            student = await gd_find_one(db.session, "students", {"user_id": current_user.get("id")})
         
         if not student:
             return {"schedule": {}, "days": []}
@@ -281,24 +276,17 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
         schedule_by_day = {day: [] for day in days_order}
         
         if student.get("class_id"):
-            timetable = await db.timetables.find_one(
-                {"school_id": school_id, "status": "published"}
-            ) or await db.timetables.find_one(
-                {"school_id": school_id},
-                sort=[("created_at", -1)]
-            )
+            timetable = await gd_find_one(db.session, "timetables", {"school_id": school_id, "status": "published"}) or await gd_find_one(db.session, "timetables", {"school_id": school_id},
+                sort=[("created_at", -1)])
             if timetable:
-                all_sessions = await db.timetable_sessions.find(
-                    {
+                all_sessions = await gd_find(db.session, "timetable_sessions", {
                         "timetable_id": timetable.get("id"),
                         "class_id": student.get("class_id")
-                    },
-                    {"_id": 0}
-                ).to_list(500)
+                    }, limit=500)
                 sub_ids = list(set(s.get("subject_id") for s in all_sessions if s.get("subject_id")))
                 tch_ids = list(set(s.get("teacher_id") for s in all_sessions if s.get("teacher_id")))
-                subs = await db.subjects.find({"id": {"$in": sub_ids}}, {"_id": 0, "id": 1, "name_ar": 1}).to_list(100)
-                tchs = await db.teachers.find({"id": {"$in": tch_ids}}, {"_id": 0, "id": 1, "full_name": 1}).to_list(100)
+                subs = await gd_find(db.session, "subjects", {"id": {"$in": sub_ids}}, limit=100)
+                tchs = await gd_find(db.session, "teachers", {"id": {"$in": tch_ids}}, limit=100)
                 sub_map = {s["id"]: s.get("name_ar", "غير محدد") for s in subs}
                 tch_map = {t["id"]: t.get("full_name", "غير محدد") for t in tchs}
                 for session in all_sessions:
@@ -335,12 +323,12 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
         user_id = current_user.get("id")
         
         # Get messages where student is sender or receiver
-        messages = await db.messages.find({
+        messages = await gd_find(db.session, "messages", {
             "$or": [
                 {"sender_id": user_id},
                 {"receiver_id": user_id}
             ]
-        }).sort("created_at", -1).limit(50).to_list(50)
+        }, order_by="created_at", desc_order=True, limit=50)
         
         return {
             "messages": [
@@ -369,9 +357,9 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
     ):
         """إرسال رسالة من الطالب"""
         tenant_id = current_user.get("tenant_id")
-        receiver = await db.users.find_one({"id": receiver_id})
+        receiver = await gd_find_one(db.session, "users", {"id": receiver_id})
         if not receiver:
-            receiver = await db.teachers.find_one({"id": receiver_id})
+            receiver = await gd_find_one(db.session, "teachers", {"id": receiver_id})
         
         if not receiver:
             raise HTTPException(status_code=404, detail="المستلم غير موجود")
@@ -391,10 +379,10 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
             "created_at": datetime.now(timezone.utc).isoformat()
         }
         
-        await db.messages.insert_one(message)
+        await gd_insert(db.session, "messages", message)
         
         # Create notification for receiver
-        await db.notifications.insert_one({
+        await gd_insert(db.session, "notifications", {
             "id": str(uuid.uuid4()),
             "recipient_id": receiver_id,
             "notification_type": "message",
@@ -417,29 +405,22 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
         school_id = current_user.get("tenant_id")
         
         # Get student info
-        student = await db.students.find_one({"id": student_id})
+        student = await gd_find_one(db.session, "students", {"id": student_id})
         if not student:
-            student = await db.students.find_one({"user_id": current_user.get("id")})
+            student = await gd_find_one(db.session, "students", {"user_id": current_user.get("id")})
         
         # Get teachers via timetable_sessions for this student's class
         teachers = []
         if student and student.get("class_id"):
-            timetable = await db.timetables.find_one(
-                {"school_id": school_id, "status": "published"}
-            ) or await db.timetables.find_one(
-                {"school_id": school_id},
-                sort=[("created_at", -1)]
-            )
+            timetable = await gd_find_one(db.session, "timetables", {"school_id": school_id, "status": "published"}) or await gd_find_one(db.session, "timetables", {"school_id": school_id},
+                sort=[("created_at", -1)])
             teacher_ids_set = set()
             teacher_subject_map = {}
             if timetable:
-                sessions = await db.timetable_sessions.find(
-                    {
+                sessions = await gd_find(db.session, "timetable_sessions", {
                         "timetable_id": timetable.get("id"),
                         "class_id": student.get("class_id")
-                    },
-                    {"_id": 0, "teacher_id": 1, "subject_id": 1}
-                ).to_list(500)
+                    }, limit=500)
                 for s in sessions:
                     tid = s.get("teacher_id")
                     sid = s.get("subject_id")
@@ -453,13 +434,10 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
             if teacher_ids_set:
                 teacher_ids_list = list(teacher_ids_set)
                 sub_ids = list(set(sid for sids in teacher_subject_map.values() for sid in sids))
-                subs = await db.subjects.find({"id": {"$in": sub_ids}}, {"_id": 0, "id": 1, "name_ar": 1}).to_list(100)
+                subs = await gd_find(db.session, "subjects", {"id": {"$in": sub_ids}}, limit=100)
                 sub_name_map = {s["id"]: s.get("name_ar", "") for s in subs}
                 
-                teacher_docs = await db.teachers.find(
-                    {"id": {"$in": teacher_ids_list}, "school_id": school_id},
-                    {"_id": 0}
-                ).to_list(100)
+                teacher_docs = await gd_find(db.session, "teachers", {"id": {"$in": teacher_ids_list}, "school_id": school_id}, limit=100)
                 
                 for t in teacher_docs:
                     tid = t.get("id")
@@ -483,23 +461,21 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
         student_id = current_user.get("student_id") or current_user.get("id")
         school_id = current_user.get("tenant_id")
         
-        student = await db.students.find_one({"id": student_id})
+        student = await gd_find_one(db.session, "students", {"id": student_id})
         if not student:
-            student = await db.students.find_one({"user_id": current_user.get("id")})
+            student = await gd_find_one(db.session, "students", {"user_id": current_user.get("id")})
         
-        total_days = await db.attendance.count_documents({"student_id": student_id})
-        present_days = await db.attendance.count_documents({"student_id": student_id, "status": "present"})
+        total_days = await gd_count(db.session, "attendance", {"student_id": student_id})
+        present_days = await gd_count(db.session, "attendance", {"student_id": student_id, "status": "present"})
         attendance_rate = round((present_days / total_days * 100), 1) if total_days > 0 else 100
         
-        all_grades = await db.grades.find({"student_id": student_id}).to_list(1000)
+        all_grades = await gd_find(db.session, "grades", {"student_id": student_id}, limit=1000)
         avg_score = round(sum(g.get("percentage", 0) for g in all_grades) / len(all_grades), 1) if all_grades else 0
         
-        behaviour_pos = await db.behaviour_records.count_documents({"student_id": student_id, "type": "positive"})
-        behaviour_neg = await db.behaviour_records.count_documents({"student_id": student_id, "type": "negative"})
+        behaviour_pos = await gd_count(db.session, "behaviour_records", {"student_id": student_id, "type": "positive"})
+        behaviour_neg = await gd_count(db.session, "behaviour_records", {"student_id": student_id, "type": "negative"})
         
-        participation = await db.participation_records.find(
-            {"student_id": student_id}, {"_id": 0, "points": 1}
-        ).to_list(500)
+        participation = await gd_find(db.session, "participation_records", {"student_id": student_id}, limit=500)
         total_points = sum(p.get("points", 0) for p in participation)
         
         points_from_grades = len([g for g in all_grades if g.get("percentage", 0) >= 80]) * 5
@@ -509,14 +485,11 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
         
         class_students = []
         if student and student.get("class_id"):
-            class_students = await db.students.find(
-                {"class_id": student.get("class_id"), "school_id": school_id},
-                {"_id": 0, "id": 1}
-            ).to_list(100)
+            class_students = await gd_find(db.session, "students", {"class_id": student.get("class_id"), "school_id": school_id}, limit=100)
         
         profile_school_name = current_user.get("school_name")
         if not profile_school_name and school_id:
-            school_doc = await db.schools.find_one({"id": school_id}, {"_id": 0, "name": 1})
+            school_doc = await gd_find_one(db.session, "schools", {"id": school_id})
             profile_school_name = school_doc.get("name") if school_doc else None
 
         return {
@@ -558,9 +531,7 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
         if school_id:
             query["school_id"] = school_id
 
-        raw = await db.student_activities.find(
-            query, {"_id": 0}
-        ).sort("date", -1).to_list(100)
+        raw = await gd_find(db.session, "student_activities", query, order_by="date", desc_order=True, limit=100)
 
         activities = []
         for a in raw:
@@ -583,25 +554,23 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
         student_id = current_user.get("student_id") or current_user.get("id")
         school_id = current_user.get("tenant_id")
         
-        student = await db.students.find_one({"id": student_id})
+        student = await gd_find_one(db.session, "students", {"id": student_id})
         if not student:
-            student = await db.students.find_one({"user_id": current_user.get("id")})
+            student = await gd_find_one(db.session, "students", {"user_id": current_user.get("id")})
         if not student:
             raise HTTPException(status_code=404, detail="سجل الطالب غير موجود")
         
-        participation = await db.participation_records.find(
-            {"student_id": student_id}, {"_id": 0}
-        ).to_list(500)
+        participation = await gd_find(db.session, "participation_records", {"student_id": student_id}, limit=500)
         participation_points = sum(p.get("points", 0) for p in participation)
         
-        all_grades = await db.grades.find({"student_id": student_id}).to_list(1000)
+        all_grades = await gd_find(db.session, "grades", {"student_id": student_id}, limit=1000)
         grade_points = len([g for g in all_grades if g.get("percentage", 0) >= 80]) * 5
         
-        total_days = await db.attendance.count_documents({"student_id": student_id})
-        present_days = await db.attendance.count_documents({"student_id": student_id, "status": "present"})
+        total_days = await gd_count(db.session, "attendance", {"student_id": student_id})
+        present_days = await gd_count(db.session, "attendance", {"student_id": student_id, "status": "present"})
         attendance_points = present_days * 2
         
-        behaviour_pos = await db.behaviour_records.count_documents({"student_id": student_id, "type": "positive"})
+        behaviour_pos = await gd_count(db.session, "behaviour_records", {"student_id": student_id, "type": "positive"})
         behaviour_points = behaviour_pos * 10
         
         total_score = participation_points + grade_points + attendance_points + behaviour_points
@@ -630,40 +599,37 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
         rank = 1
         class_size = 1
         if student and student.get("class_id"):
-            classmates = await db.students.find(
-                {"class_id": student.get("class_id"), "school_id": school_id},
-                {"_id": 0, "id": 1}
-            ).to_list(100)
+            classmates = await gd_find(db.session, "students", {"class_id": student.get("class_id"), "school_id": school_id}, limit=100)
             class_size = len(classmates)
             cm_ids = [cm.get("id") for cm in classmates]
 
             from collections import defaultdict
             part_map = defaultdict(int)
-            async for doc in db.participation_records.aggregate([
-                {"$match": {"student_id": {"$in": cm_ids}}},
+            __doc_list = await _gd_aggregate(db.session, "participation_records", [                {"$match": {"student_id": {"$in": cm_ids}}},
                 {"$group": {"_id": "$student_id", "total": {"$sum": "$points"}}}
-            ]):
+            ])
+            for doc in __doc_list:
                 part_map[doc["_id"]] = doc["total"]
 
             grade_map = defaultdict(int)
-            async for doc in db.grades.aggregate([
-                {"$match": {"student_id": {"$in": cm_ids}, "percentage": {"$gte": 80}}},
+            __doc_list = await _gd_aggregate(db.session, "grades", [                {"$match": {"student_id": {"$in": cm_ids}, "percentage": {"$gte": 80}}},
                 {"$group": {"_id": "$student_id", "count": {"$sum": 1}}}
-            ]):
+            ])
+            for doc in __doc_list:
                 grade_map[doc["_id"]] = doc["count"] * 5
 
             attend_map = defaultdict(int)
-            async for doc in db.attendance.aggregate([
-                {"$match": {"student_id": {"$in": cm_ids}, "status": "present"}},
+            __doc_list = await _gd_aggregate(db.session, "attendance", [                {"$match": {"student_id": {"$in": cm_ids}, "status": "present"}},
                 {"$group": {"_id": "$student_id", "count": {"$sum": 1}}}
-            ]):
+            ])
+            for doc in __doc_list:
                 attend_map[doc["_id"]] = doc["count"]
 
             beh_map = defaultdict(int)
-            async for doc in db.behaviour_records.aggregate([
-                {"$match": {"student_id": {"$in": cm_ids}, "type": "positive"}},
+            __doc_list = await _gd_aggregate(db.session, "behaviour_records", [                {"$match": {"student_id": {"$in": cm_ids}, "type": "positive"}},
                 {"$group": {"_id": "$student_id", "count": {"$sum": 1}}}
-            ]):
+            ])
+            for doc in __doc_list:
                 beh_map[doc["_id"]] = doc["count"]
 
             classmate_scores = []
@@ -704,13 +670,13 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
     ):
         student_id = current_user.get("student_id") or current_user.get("id")
         
-        total_days = await db.attendance.count_documents({"student_id": student_id})
-        present_days = await db.attendance.count_documents({"student_id": student_id, "status": "present"})
-        absent_days = await db.attendance.count_documents({"student_id": student_id, "status": "absent"})
-        late_days = await db.attendance.count_documents({"student_id": student_id, "status": "late"})
+        total_days = await gd_count(db.session, "attendance", {"student_id": student_id})
+        present_days = await gd_count(db.session, "attendance", {"student_id": student_id, "status": "present"})
+        absent_days = await gd_count(db.session, "attendance", {"student_id": student_id, "status": "absent"})
+        late_days = await gd_count(db.session, "attendance", {"student_id": student_id, "status": "late"})
         attendance_rate = round((present_days / total_days * 100), 1) if total_days > 0 else 100
         
-        all_grades = await db.grades.find({"student_id": student_id}).to_list(1000)
+        all_grades = await gd_find(db.session, "grades", {"student_id": student_id}, limit=1000)
         avg_score = round(sum(g.get("percentage", 0) for g in all_grades) / len(all_grades), 1) if all_grades else 0
         
         subjects_data = {}
@@ -725,20 +691,16 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
         
         tenant_id = current_user.get("tenant_id")
         assignment_filter = {"school_id": tenant_id} if tenant_id else {"school_id": "__none__"}
-        total_assignments = await db.student_assignments.count_documents(assignment_filter)
-        submissions = await db.assignment_submissions.find(
-            {"student_id": student_id}, {"_id": 0}
-        ).to_list(500)
+        total_assignments = await gd_count(db.session, "student_assignments", assignment_filter)
+        submissions = await gd_find(db.session, "assignment_submissions", {"student_id": student_id}, limit=500)
         homework_rate = round((len(submissions) / max(1, total_assignments)) * 100, 1)
         
-        participation = await db.participation_records.find(
-            {"student_id": student_id}, {"_id": 0}
-        ).to_list(500)
+        participation = await gd_find(db.session, "participation_records", {"student_id": student_id}, limit=500)
         participation_count = len(participation)
         participation_rate = min(100, participation_count * 10)
         
-        behaviour_pos = await db.behaviour_records.count_documents({"student_id": student_id, "type": "positive"})
-        behaviour_neg = await db.behaviour_records.count_documents({"student_id": student_id, "type": "negative"})
+        behaviour_pos = await gd_count(db.session, "behaviour_records", {"student_id": student_id, "type": "positive"})
+        behaviour_neg = await gd_count(db.session, "behaviour_records", {"student_id": student_id, "type": "negative"})
         behaviour_total = behaviour_pos + behaviour_neg
         behaviour_quality = round(behaviour_pos / max(1, behaviour_total) * 100, 1)
         
@@ -795,22 +757,18 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
     ):
         student_id = current_user.get("student_id") or current_user.get("id")
         
-        total_days = await db.attendance.count_documents({"student_id": student_id})
-        present_days = await db.attendance.count_documents({"student_id": student_id, "status": "present"})
+        total_days = await gd_count(db.session, "attendance", {"student_id": student_id})
+        present_days = await gd_count(db.session, "attendance", {"student_id": student_id, "status": "present"})
         attendance_rate = round((present_days / total_days * 100), 1) if total_days > 0 else 100
         
-        all_grades = await db.grades.find({"student_id": student_id}).to_list(1000)
+        all_grades = await gd_find(db.session, "grades", {"student_id": student_id}, limit=1000)
         avg_score = round(sum(g.get("percentage", 0) for g in all_grades) / len(all_grades), 1) if all_grades else 0
         
-        submissions = await db.assignment_submissions.find(
-            {"student_id": student_id}, {"_id": 0}
-        ).to_list(500)
+        submissions = await gd_find(db.session, "assignment_submissions", {"student_id": student_id}, limit=500)
         
-        participation = await db.participation_records.find(
-            {"student_id": student_id}, {"_id": 0}
-        ).to_list(500)
+        participation = await gd_find(db.session, "participation_records", {"student_id": student_id}, limit=500)
         
-        behaviour_pos = await db.behaviour_records.count_documents({"student_id": student_id, "type": "positive"})
+        behaviour_pos = await gd_count(db.session, "behaviour_records", {"student_id": student_id, "type": "positive"})
         
         achievements = []
         
@@ -918,9 +876,9 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
         student_id = current_user.get("student_id") or current_user.get("id")
         school_id = current_user.get("tenant_id")
         
-        student = await db.students.find_one({"id": student_id}, {"_id": 0})
+        student = await gd_find_one(db.session, "students", {"id": student_id})
         if not student:
-            student = await db.students.find_one({"user_id": current_user.get("id")}, {"_id": 0})
+            student = await gd_find_one(db.session, "students", {"user_id": current_user.get("id")})
         
         class_id = student.get("class_id") if student else None
         grade_id = student.get("grade_id") or student.get("grade") if student else None
@@ -933,11 +891,9 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
                 {"grade_id": grade_id}
             ]
         
-        assignments = await db.student_assignments.find(query, {"_id": 0}).sort("due_date", -1).to_list(100)
+        assignments = await gd_find(db.session, "student_assignments", query, order_by="due_date", desc_order=True, limit=100)
         
-        submissions = await db.assignment_submissions.find(
-            {"student_id": student_id}, {"_id": 0}
-        ).to_list(200)
+        submissions = await gd_find(db.session, "assignment_submissions", {"student_id": student_id}, limit=200)
         sub_map = {s.get("assignment_id"): s for s in submissions}
         
         result = []
@@ -974,12 +930,12 @@ async def create_test_student_account(db):
     import uuid
     
     # Check if test student already exists
-    existing = await db.users.find_one({"email": "student@nassaq.com"})
+    existing = await gd_find_one(db.session, "users", {"email": "student@nassaq.com"})
     if existing:
         return existing
     
     # Get first school
-    school = await db.schools.find_one({"status": "active"})
+    school = await gd_find_one(db.session, "schools", {"status": "active"})
     if not school:
         return None
     
@@ -1005,7 +961,7 @@ async def create_test_student_account(db):
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
-    await db.users.insert_one(user_doc)
+    await gd_insert(db.session, "users", user_doc)
     
     # Create student record
     student_doc = {
@@ -1026,7 +982,7 @@ async def create_test_student_account(db):
         "parent_name": "ولي أمر تجريبي",
         "created_at": datetime.now(timezone.utc).isoformat()
     }
-    await db.students.insert_one(student_doc)
+    await gd_insert(db.session, "students", student_doc)
     
     # Add some test grades
     subjects = ["الرياضيات", "اللغة العربية", "العلوم", "اللغة الإنجليزية"]
@@ -1043,7 +999,7 @@ async def create_test_student_account(db):
                 "date": f"2026-03-{10 - i}",
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
-            await db.grades.insert_one(grade_doc)
+            await gd_insert(db.session, "grades", grade_doc)
     
     # Add some test attendance
     for i in range(20):
@@ -1056,7 +1012,7 @@ async def create_test_student_account(db):
             "check_in_time": "07:30" if status == "present" else "08:00",
             "created_at": datetime.now(timezone.utc).isoformat()
         }
-        await db.attendance.insert_one(attendance_doc)
+        await gd_insert(db.session, "attendance", attendance_doc)
     
     return user_doc
 
@@ -1068,13 +1024,13 @@ async def create_test_parent_account(db):
     import uuid
     
     # Check if test parent already exists
-    existing = await db.users.find_one({"email": "parent@nassaq.com"})
+    existing = await gd_find_one(db.session, "users", {"email": "parent@nassaq.com"})
     if existing:
         return existing
     
     # Get test student
-    test_student = await db.students.find_one({"email": "student@nassaq.com"})
-    school = await db.schools.find_one({"status": "active"})
+    test_student = await gd_find_one(db.session, "students", {"email": "student@nassaq.com"})
+    school = await gd_find_one(db.session, "schools", {"status": "active"})
     
     if not school:
         return None
@@ -1101,19 +1057,16 @@ async def create_test_parent_account(db):
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
-    await db.users.insert_one(user_doc)
+    await gd_insert(db.session, "users", user_doc)
     
     # Link parent to student
     if test_student:
-        await db.students.update_one(
-            {"id": test_student.get("id")},
-            {"$set": {
+        await gd_update_one(db.session, "students", {"id": test_student.get("id")}, {
                 "parent_id": parent_id,
                 "parent_user_id": parent_user_id,
                 "parent_phone": "0509876543",
                 "parent_name": "ولي أمر تجريبي"
-            }}
-        )
+            })
     
     return user_doc
 
@@ -1136,9 +1089,9 @@ def setup_homework_routes(router, db, get_current_user, require_roles, UserRole)
         school_id = current_user.get("tenant_id")
         
         # Get student info for class
-        student = await db.students.find_one({"id": student_id}, {"_id": 0})
+        student = await gd_find_one(db.session, "students", {"id": student_id})
         if not student:
-            student = await db.students.find_one({"user_id": current_user.get("id")}, {"_id": 0})
+            student = await gd_find_one(db.session, "students", {"user_id": current_user.get("id")})
         
         class_id = student.get("class_id") if student else None
         grade_id = student.get("grade_id") or student.get("grade") if student else None
@@ -1154,13 +1107,10 @@ def setup_homework_routes(router, db, get_current_user, require_roles, UserRole)
             ]
         
         # Get assignments
-        assignments = await db.student_assignments.find(query, {"_id": 0}).sort("due_date", -1).to_list(100)
+        assignments = await gd_find(db.session, "student_assignments", query, order_by="due_date", desc_order=True, limit=100)
         
         # Get student submissions
-        submissions = await db.assignment_submissions.find(
-            {"student_id": student_id},
-            {"_id": 0}
-        ).to_list(500)
+        submissions = await gd_find(db.session, "assignment_submissions", {"student_id": student_id}, limit=500)
         
         submission_map = {s.get("assignment_id"): s for s in submissions}
         
@@ -1197,12 +1147,12 @@ def setup_homework_routes(router, db, get_current_user, require_roles, UserRole)
                 continue
             
             # Get subject name
-            subject = await db.subjects.find_one({"id": a.get("subject_id")}, {"_id": 0, "name_ar": 1})
+            subject = await gd_find_one(db.session, "subjects", {"id": a.get("subject_id")})
             if not subject:
-                subject = await db.reference_subjects.find_one({"id": a.get("subject_id")}, {"_id": 0, "name_ar": 1})
+                subject = await gd_find_one(db.session, "reference_subjects", {"id": a.get("subject_id")})
             
             # Get teacher name
-            teacher = await db.teachers.find_one({"id": a.get("teacher_id")}, {"_id": 0, "full_name": 1, "full_name_ar": 1})
+            teacher = await gd_find_one(db.session, "teachers", {"id": a.get("teacher_id")})
             
             result.append({
                 "id": assignment_id,
@@ -1245,12 +1195,12 @@ def setup_homework_routes(router, db, get_current_user, require_roles, UserRole)
         student_id = current_user.get("student_id") or current_user.get("id")
         
         # Check assignment exists
-        assignment = await db.student_assignments.find_one({"id": assignment_id}, {"_id": 0})
+        assignment = await gd_find_one(db.session, "student_assignments", {"id": assignment_id})
         if not assignment:
             raise HTTPException(status_code=404, detail="الواجب غير موجود")
         
         # Check not already submitted
-        existing = await db.assignment_submissions.find_one({
+        existing = await gd_find_one(db.session, "assignment_submissions", {
             "assignment_id": assignment_id,
             "student_id": student_id
         })
@@ -1270,7 +1220,7 @@ def setup_homework_routes(router, db, get_current_user, require_roles, UserRole)
             "feedback": None
         }
         
-        await db.assignment_submissions.insert_one(submission_doc)
+        await gd_insert(db.session, "assignment_submissions", submission_doc)
         
         return {
             "success": True,
@@ -1287,15 +1237,15 @@ def setup_homework_routes(router, db, get_current_user, require_roles, UserRole)
         """تفاصيل الواجب"""
         student_id = current_user.get("student_id") or current_user.get("id")
         
-        assignment = await db.student_assignments.find_one({"id": assignment_id}, {"_id": 0})
+        assignment = await gd_find_one(db.session, "student_assignments", {"id": assignment_id})
         if not assignment:
             raise HTTPException(status_code=404, detail="الواجب غير موجود")
         
         # Get submission
-        submission = await db.assignment_submissions.find_one({
+        submission = await gd_find_one(db.session, "assignment_submissions", {
             "assignment_id": assignment_id,
             "student_id": student_id
-        }, {"_id": 0})
+        })
         
         return {
             **assignment,

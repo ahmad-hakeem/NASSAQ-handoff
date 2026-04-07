@@ -7,6 +7,8 @@ from typing import Optional, List
 from datetime import datetime, timezone
 from pydantic import BaseModel
 import uuid
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
+
 import logging
 
 logger = logging.getLogger("nassaq.teacher_attendance_routes")
@@ -43,7 +45,7 @@ def create_teacher_attendance_routes(db, get_current_user, require_roles, UserRo
         if school_id:
             query["school_id"] = school_id
         
-        records = await db.teacher_attendance.find(query, {"_id": 0}).to_list(1000)
+        records = await gd_find(db.session, "teacher_attendance", query, limit=1000)
         return records
     
     @router.post("/bulk")
@@ -61,7 +63,7 @@ def create_teacher_attendance_routes(db, get_current_user, require_roles, UserRo
         
         for record in data.records:
             # Check if record already exists
-            existing = await db.teacher_attendance.find_one({
+            existing = await gd_find_one(db.session, "teacher_attendance", {
                 "teacher_id": record.teacher_id,
                 "date": record.date,
                 "school_id": school_id
@@ -79,15 +81,12 @@ def create_teacher_attendance_routes(db, get_current_user, require_roles, UserRo
             }
             
             if existing:
-                await db.teacher_attendance.update_one(
-                    {"_id": existing["_id"]},
-                    {"$set": attendance_doc}
-                )
+                await gd_update_one(db.session, "teacher_attendance", {"_id": existing["_id"]}, attendance_doc)
                 updated_count += 1
             else:
                 attendance_doc["id"] = str(uuid.uuid4())
                 attendance_doc["created_at"] = datetime.now(timezone.utc).isoformat()
-                await db.teacher_attendance.insert_one(attendance_doc)
+                await gd_insert(db.session, "teacher_attendance", attendance_doc)
                 saved_count += 1
         
         return {
@@ -110,7 +109,7 @@ def create_teacher_attendance_routes(db, get_current_user, require_roles, UserRo
             query["school_id"] = school_id
         
         # Get all records for this school
-        all_records = await db.teacher_attendance.find(query, {"_id": 0}).to_list(10000)
+        all_records = await gd_find(db.session, "teacher_attendance", query, limit=10000)
         
         # Calculate stats
         present = sum(1 for r in all_records if r.get("status") == "present")
@@ -171,10 +170,7 @@ def create_teacher_attendance_routes(db, get_current_user, require_roles, UserRo
         if school_id:
             query["school_id"] = school_id
         
-        records = await db.teacher_attendance.find(
-            query, 
-            {"_id": 0}
-        ).sort("date", -1).to_list(100)
+        records = await gd_find(db.session, "teacher_attendance", query, order_by="date", desc_order=True, limit=100)
         
         # Calculate stats
         present = sum(1 for r in records if r.get("status") == "present")

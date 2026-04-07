@@ -14,6 +14,8 @@ import string
 from dependencies import (
     db, get_current_user, require_roles, UserRole, logger, hash_password
 )
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_unset
+
 
 router = APIRouter(prefix="/principal", tags=["Principal Management"])
 
@@ -69,7 +71,7 @@ class TransferClassRequest(BaseModel):
 
 
 async def _write_audit(tenant_id, action, entity_type, entity_id, changes, performed_by):
-    await db.audit_logs.insert_one({
+    await gd_insert(db.session, "audit_logs", {
         "id": str(uuid.uuid4()),
         "tenant_id": tenant_id,
         "action": action,
@@ -89,40 +91,25 @@ async def get_teacher_full_profile(
     current_user: dict = Depends(require_roles(ADMIN_ROLES))
 ):
     tenant_id = current_user.get("tenant_id")
-    teacher = await db.teachers.find_one(
-        {"id": teacher_id, **_entity_tenant_filter(tenant_id)}, {"_id": 0}
-    )
+    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id, **_entity_tenant_filter(tenant_id)})
     if not teacher:
         raise HTTPException(status_code=404, detail="المعلم غير موجود")
 
     user_or_conditions = [{"linked_entity_id": teacher_id}, {"id": teacher_id}]
     if teacher.get("user_id"):
         user_or_conditions.append({"id": teacher.get("user_id")})
-    user_account = await db.users.find_one(
-        {"$or": user_or_conditions, "role": "teacher", "tenant_id": tenant_id},
-        {"_id": 0, "password_hash": 0}
-    )
+    user_account = await gd_find_one(db.session, "users", {"$or": user_or_conditions, "role": "teacher", "tenant_id": tenant_id})
 
-    assignments = await db.teacher_assignments.find(
-        {**_entity_tenant_filter(tenant_id), "teacher_id": teacher_id, "is_active": True},
-        {"_id": 0}
-    ).to_list(30)
+    assignments = await gd_find(db.session, "teacher_assignments", {**_entity_tenant_filter(tenant_id), "teacher_id": teacher_id, "is_active": True}, limit=30)
 
-    session_count = await db.teacher_sessions.count_documents(
-        {**_entity_tenant_filter(tenant_id), "teacher_id": teacher_id}
-    )
+    session_count = await gd_count(db.session, "teacher_sessions", {**_entity_tenant_filter(tenant_id), "teacher_id": teacher_id})
 
     attendance_stats = {}
-    total_sessions = await db.teacher_sessions.count_documents(
-        {**_entity_tenant_filter(tenant_id), "teacher_id": teacher_id}
-    )
+    total_sessions = await gd_count(db.session, "teacher_sessions", {**_entity_tenant_filter(tenant_id), "teacher_id": teacher_id})
     if total_sessions > 0:
         attendance_stats["total_sessions"] = total_sessions
 
-    recent_activity = await db.audit_logs.find(
-        {"tenant_id": tenant_id, "entity_id": teacher_id},
-        {"_id": 0}
-    ).sort("performed_at", -1).limit(10).to_list(10)
+    recent_activity = await gd_find(db.session, "audit_logs", {"tenant_id": tenant_id, "entity_id": teacher_id}, order_by="performed_at", desc_order=True, limit=10)
 
     return {
         "success": True,
@@ -185,7 +172,7 @@ async def update_teacher_basic_info(
     current_user: dict = Depends(require_roles(ADMIN_ROLES))
 ):
     tenant_id = current_user.get("tenant_id")
-    teacher = await db.teachers.find_one({"id": teacher_id, **_entity_tenant_filter(tenant_id)})
+    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id, **_entity_tenant_filter(tenant_id)})
     if not teacher:
         raise HTTPException(status_code=404, detail="المعلم غير موجود")
 
@@ -203,32 +190,20 @@ async def update_teacher_basic_info(
         return {"success": True, "message": "لا توجد تغييرات"}
 
     if "email" in updates:
-        dup = await db.teachers.find_one({
+        dup = await gd_find_one(db.session, "teachers", {
             "email": updates["email"], **_entity_tenant_filter(tenant_id), "id": {"$ne": teacher_id}
         })
         if dup:
             raise HTTPException(status_code=400, detail="البريد الإلكتروني مستخدم بالفعل")
-        await db.users.update_one(
-            {"$or": [{"linked_entity_id": teacher_id}, {"id": teacher_id}], "role": "teacher", "tenant_id": tenant_id},
-            {"$set": {"email": updates["email"], "updated_at": datetime.now(timezone.utc).isoformat()}}
-        )
+        await gd_update_one(db.session, "users", {"$or": [{"linked_entity_id": teacher_id}, {"id": teacher_id}], "role": "teacher", "tenant_id": tenant_id}, {"email": updates["email"], "updated_at": datetime.now(timezone.utc).isoformat()})
 
     if "full_name" in updates:
-        await db.users.update_one(
-            {"$or": [{"linked_entity_id": teacher_id}, {"id": teacher_id}], "role": "teacher", "tenant_id": tenant_id},
-            {"$set": {"full_name": updates["full_name"], "updated_at": datetime.now(timezone.utc).isoformat()}}
-        )
-        await db.teacher_assignments.update_many(
-            {**_entity_tenant_filter(tenant_id), "teacher_id": teacher_id},
-            {"$set": {"teacher_name": updates["full_name"]}}
-        )
-        await db.schedule_sessions.update_many(
-            {**_entity_tenant_filter(tenant_id), "teacher_id": teacher_id},
-            {"$set": {"teacher_name": updates["full_name"]}}
-        )
+        await gd_update_one(db.session, "users", {"$or": [{"linked_entity_id": teacher_id}, {"id": teacher_id}], "role": "teacher", "tenant_id": tenant_id}, {"full_name": updates["full_name"], "updated_at": datetime.now(timezone.utc).isoformat()})
+        await gd_update_many(db.session, "teacher_assignments", {**_entity_tenant_filter(tenant_id), "teacher_id": teacher_id}, {"teacher_name": updates["full_name"]})
+        await gd_update_many(db.session, "schedule_sessions", {**_entity_tenant_filter(tenant_id), "teacher_id": teacher_id}, {"teacher_name": updates["full_name"]})
 
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
-    await db.teachers.update_one({"id": teacher_id, **_entity_tenant_filter(tenant_id)}, {"$set": updates})
+    await gd_update_one(db.session, "teachers", {"id": teacher_id, **_entity_tenant_filter(tenant_id)}, updates)
     await _write_audit(tenant_id, "update_teacher_profile", "teacher", teacher_id, changes, current_user["id"])
 
     return {"success": True, "message": "تم تحديث بيانات المعلم بنجاح", "changes": changes}
@@ -241,7 +216,7 @@ async def update_teacher_professional_info(
     current_user: dict = Depends(require_roles(ADMIN_ROLES))
 ):
     tenant_id = current_user.get("tenant_id")
-    teacher = await db.teachers.find_one({"id": teacher_id, **_entity_tenant_filter(tenant_id)})
+    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id, **_entity_tenant_filter(tenant_id)})
     if not teacher:
         raise HTTPException(status_code=404, detail="المعلم غير موجود")
 
@@ -258,7 +233,7 @@ async def update_teacher_professional_info(
         return {"success": True, "message": "لا توجد تغييرات"}
 
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
-    await db.teachers.update_one({"id": teacher_id, **_entity_tenant_filter(tenant_id)}, {"$set": updates})
+    await gd_update_one(db.session, "teachers", {"id": teacher_id, **_entity_tenant_filter(tenant_id)}, updates)
     await _write_audit(tenant_id, "update_teacher_professional", "teacher", teacher_id, changes, current_user["id"])
 
     return {"success": True, "message": "تم تحديث البيانات المهنية بنجاح", "changes": changes}
@@ -272,18 +247,16 @@ async def update_teacher_credentials(
 ):
     tenant_id = current_user.get("tenant_id")
 
-    teacher = await db.teachers.find_one({"id": teacher_id, **_entity_tenant_filter(tenant_id)})
+    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id, **_entity_tenant_filter(tenant_id)})
     if not teacher:
         raise HTTPException(status_code=404, detail="المعلم غير موجود")
 
     user_or = [{"linked_entity_id": teacher_id}, {"id": teacher_id}]
     if teacher.get("user_id"):
         user_or.append({"id": teacher.get("user_id")})
-    user = await db.users.find_one(
-        {"$or": user_or, "role": "teacher", "tenant_id": tenant_id}
-    )
+    user = await gd_find_one(db.session, "users", {"$or": user_or, "role": "teacher", "tenant_id": tenant_id})
     if data.new_email:
-        dup = await db.users.find_one({"email": data.new_email, "id": {"$ne": (user or {}).get("id", "")}})
+        dup = await gd_find_one(db.session, "users", {"email": data.new_email, "id": {"$ne": (user or {}).get("id", "")}})
         if dup:
             raise HTTPException(status_code=400, detail="البريد الإلكتروني مستخدم بالفعل")
     if data.new_password and len(data.new_password) < 6:
@@ -300,9 +273,9 @@ async def update_teacher_credentials(
             "role": "teacher", "tenant_id": tenant_id, "linked_entity_id": teacher_id,
             "is_active": True, "must_change_password": True, "created_at": now, "updated_at": now
         }
-        await db.users.insert_one({**user, "_id": None})
-        await db.users.update_one({"id": new_user_id}, {"$unset": {"_id": ""}})
-        await db.teachers.update_one({"id": teacher_id, **_entity_tenant_filter(tenant_id)}, {"$set": {"user_id": new_user_id}})
+        await gd_insert(db.session, "users", {**user, "_id": None})
+        await _gd_unset(db.session, "users", {"id": new_user_id}, {"_id": ""})
+        await gd_update_one(db.session, "teachers", {"id": teacher_id, **_entity_tenant_filter(tenant_id)}, {"user_id": new_user_id})
         await _write_audit(tenant_id, "create_teacher_account", "teacher", teacher_id, {"user_id": new_user_id, "email": email}, current_user["id"])
         return {"success": True, "message": "تم إنشاء حساب دخول للمعلم بنجاح", "account_created": True, "email": email}
 
@@ -312,10 +285,7 @@ async def update_teacher_credentials(
     if data.new_email:
         updates["email"] = data.new_email
         changes["email"] = {"old": user.get("email"), "new": data.new_email}
-        await db.teachers.update_one(
-            {"id": teacher_id, **_entity_tenant_filter(tenant_id)},
-            {"$set": {"email": data.new_email}}
-        )
+        await gd_update_one(db.session, "teachers", {"id": teacher_id, **_entity_tenant_filter(tenant_id)}, {"email": data.new_email})
 
     if data.new_password:
         updates["password_hash"] = hash_password(data.new_password)
@@ -325,7 +295,7 @@ async def update_teacher_credentials(
         return {"success": True, "message": "لا توجد تغييرات"}
 
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
-    await db.users.update_one({"id": user["id"]}, {"$set": updates})
+    await gd_update_one(db.session, "users", {"id": user["id"]}, updates)
     await _write_audit(tenant_id, "update_teacher_credentials", "teacher", teacher_id, changes, current_user["id"])
 
     return {"success": True, "message": "تم تحديث بيانات الدخول بنجاح"}
@@ -343,24 +313,18 @@ async def update_teacher_account_status(
     if data.status not in valid_statuses:
         raise HTTPException(status_code=400, detail=f"الحالة غير صالحة. الحالات المتاحة: {', '.join(valid_statuses)}")
 
-    teacher = await db.teachers.find_one({"id": teacher_id, **_entity_tenant_filter(tenant_id)})
+    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id, **_entity_tenant_filter(tenant_id)})
     if not teacher:
         raise HTTPException(status_code=404, detail="المعلم غير موجود")
 
     old_status = teacher.get("status", "active")
     now = datetime.now(timezone.utc).isoformat()
 
-    await db.teachers.update_one(
-        {"id": teacher_id, **_entity_tenant_filter(tenant_id)},
-        {"$set": {"status": data.status, "is_active": data.status == "active", "status_reason": data.reason, "status_updated_at": now, "updated_at": now}}
-    )
+    await gd_update_one(db.session, "teachers", {"id": teacher_id, **_entity_tenant_filter(tenant_id)}, {"status": data.status, "is_active": data.status == "active", "status_reason": data.reason, "status_updated_at": now, "updated_at": now})
     user_or = [{"linked_entity_id": teacher_id}, {"id": teacher_id}]
     if teacher.get("user_id"):
         user_or.append({"id": teacher.get("user_id")})
-    await db.users.update_one(
-        {"$or": user_or, "role": "teacher", "tenant_id": tenant_id},
-        {"$set": {"status": data.status, "is_active": data.status == "active", "updated_at": now}}
-    )
+    await gd_update_one(db.session, "users", {"$or": user_or, "role": "teacher", "tenant_id": tenant_id}, {"status": data.status, "is_active": data.status == "active", "updated_at": now})
 
     await _write_audit(tenant_id, f"teacher_status_{data.status}", "teacher", teacher_id,
                        {"old_status": old_status, "new_status": data.status, "reason": data.reason},
@@ -377,15 +341,9 @@ async def get_teacher_activity_log(
     current_user: dict = Depends(require_roles(ADMIN_ROLES))
 ):
     tenant_id = current_user.get("tenant_id")
-    logs = await db.audit_logs.find(
-        {"tenant_id": tenant_id, "$or": [{"entity_id": teacher_id}, {"performed_by": teacher_id}]},
-        {"_id": 0}
-    ).sort("performed_at", -1).limit(limit).to_list(limit)
+    logs = await gd_find(db.session, "audit_logs", {"tenant_id": tenant_id, "$or": [{"entity_id": teacher_id}, {"performed_by": teacher_id}]}, order_by="performed_at", desc_order=True, limit=limit)
 
-    login_history = await db.users.find_one(
-        {"$or": [{"linked_entity_id": teacher_id}, {"id": teacher_id}], "tenant_id": tenant_id},
-        {"_id": 0, "last_login": 1, "login_count": 1}
-    )
+    login_history = await gd_find_one(db.session, "users", {"$or": [{"linked_entity_id": teacher_id}, {"id": teacher_id}], "tenant_id": tenant_id})
 
     return {
         "success": True,
@@ -403,27 +361,19 @@ async def get_student_full_profile(
     current_user: dict = Depends(require_roles(ADMIN_ROLES))
 ):
     tenant_id = current_user.get("tenant_id")
-    student = await db.students.find_one(
-        {"id": student_id, **_entity_tenant_filter(tenant_id)}, {"_id": 0}
-    )
+    student = await gd_find_one(db.session, "students", {"id": student_id, **_entity_tenant_filter(tenant_id)})
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
 
     student_user_or = [{"linked_entity_id": student_id}, {"id": student_id}]
     if student.get("user_id"):
         student_user_or.append({"id": student.get("user_id")})
-    user_account = await db.users.find_one(
-        {"$or": student_user_or, "role": "student", "tenant_id": tenant_id},
-        {"_id": 0, "password_hash": 0}
-    )
+    user_account = await gd_find_one(db.session, "users", {"$or": student_user_or, "role": "student", "tenant_id": tenant_id})
 
-    guardians = await db.guardian_links.find(
-        {**_entity_tenant_filter(tenant_id), "student_id": student_id, "is_active": True},
-        {"_id": 0}
-    ).to_list(10)
+    guardians = await gd_find(db.session, "guardian_links", {**_entity_tenant_filter(tenant_id), "student_id": student_id, "is_active": True}, limit=10)
 
     if not guardians and student.get("parent_id"):
-        parent = await db.parents.find_one({"id": student["parent_id"]}, {"_id": 0})
+        parent = await gd_find_one(db.session, "parents", {"id": student["parent_id"]})
         if parent:
             guardians = [{
                 "parent_ref": parent.get("id"),
@@ -437,9 +387,9 @@ async def get_student_full_profile(
     for g in guardians:
         pref = g.get("parent_ref") or g.get("parent_id")
         if pref:
-            p = await db.parents.find_one({"id": pref}, {"_id": 0, "id": 1, "full_name": 1, "phone": 1, "email": 1})
+            p = await gd_find_one(db.session, "parents", {"id": pref})
             if not p:
-                p = await db.users.find_one({"id": pref}, {"_id": 0, "id": 1, "full_name": 1, "phone": 1, "email": 1})
+                p = await gd_find_one(db.session, "users", {"id": pref})
             if p:
                 parent_details.append({
                     **p,
@@ -449,20 +399,13 @@ async def get_student_full_profile(
                     "permissions": g.get("permissions", {})
                 })
 
-    behaviour_records = await db.behaviour_records.find(
-        {**_entity_tenant_filter(tenant_id), "student_id": student_id},
-        {"_id": 0}
-    ).sort("created_at", -1).limit(10).to_list(10)
+    behaviour_records = await gd_find(db.session, "behaviour_records", {**_entity_tenant_filter(tenant_id), "student_id": student_id}, order_by="created_at", desc_order=True, limit=10)
 
     attendance_stats = {}
-    total_attendance = await db.attendance.count_documents({**_entity_tenant_filter(tenant_id), "student_id": student_id})
+    total_attendance = await gd_count(db.session, "attendance", {**_entity_tenant_filter(tenant_id), "student_id": student_id})
     if total_attendance > 0:
-        present = await db.attendance.count_documents(
-            {**_entity_tenant_filter(tenant_id), "student_id": student_id, "status": "present"}
-        )
-        absent = await db.attendance.count_documents(
-            {**_entity_tenant_filter(tenant_id), "student_id": student_id, "status": "absent"}
-        )
+        present = await gd_count(db.session, "attendance", {**_entity_tenant_filter(tenant_id), "student_id": student_id, "status": "present"})
+        absent = await gd_count(db.session, "attendance", {**_entity_tenant_filter(tenant_id), "student_id": student_id, "status": "absent"})
         attendance_stats = {
             "total_days": total_attendance,
             "present": present,
@@ -470,10 +413,7 @@ async def get_student_full_profile(
             "rate": round((present / total_attendance) * 100, 1) if total_attendance > 0 else 0
         }
 
-    interactions = await db.session_interactions.find(
-        {**_entity_tenant_filter(tenant_id), "student_id": student_id},
-        {"_id": 0}
-    ).sort("recorded_at", -1).limit(20).to_list(20)
+    interactions = await gd_find(db.session, "session_interactions", {**_entity_tenant_filter(tenant_id), "student_id": student_id}, order_by="recorded_at", desc_order=True, limit=20)
 
     interaction_stats = {}
     if interactions:
@@ -488,29 +428,17 @@ async def get_student_full_profile(
             "participation": participation
         }
 
-    assessments = await db.assessment_submissions.find(
-        {"student_id": student_id},
-        {"_id": 0, "assessment_id": 1, "score": 1, "total_marks": 1, "submitted_at": 1}
-    ).sort("submitted_at", -1).limit(10).to_list(10)
+    assessments = await gd_find(db.session, "assessment_submissions", {"student_id": student_id}, order_by="submitted_at", desc_order=True, limit=10)
 
-    recent_activity = await db.audit_logs.find(
-        {"tenant_id": tenant_id, "entity_id": student_id},
-        {"_id": 0}
-    ).sort("performed_at", -1).limit(10).to_list(10)
+    recent_activity = await gd_find(db.session, "audit_logs", {"tenant_id": tenant_id, "entity_id": student_id}, order_by="performed_at", desc_order=True, limit=10)
 
     siblings = []
     parent_refs = [g.get("parent_ref") or g.get("parent_id") for g in guardians if g.get("parent_ref") or g.get("parent_id")]
     if parent_refs:
-        sibling_links = await db.guardian_links.find(
-            {**_entity_tenant_filter(tenant_id), "parent_ref": {"$in": parent_refs}, "is_active": True, "student_id": {"$ne": student_id}},
-            {"_id": 0, "student_id": 1}
-        ).to_list(20)
+        sibling_links = await gd_find(db.session, "guardian_links", {**_entity_tenant_filter(tenant_id), "parent_ref": {"$in": parent_refs}, "is_active": True, "student_id": {"$ne": student_id}}, limit=20)
         sib_ids = list({s["student_id"] for s in sibling_links})
         for sid in sib_ids[:10]:
-            sib = await db.students.find_one(
-                {"id": sid, **_entity_tenant_filter(tenant_id)},
-                {"_id": 0, "id": 1, "full_name": 1, "class_name": 1, "grade_level": 1}
-            )
+            sib = await gd_find_one(db.session, "students", {"id": sid, **_entity_tenant_filter(tenant_id)})
             if sib:
                 siblings.append(sib)
 
@@ -566,7 +494,7 @@ async def update_student_basic_info(
     current_user: dict = Depends(require_roles(ADMIN_ROLES))
 ):
     tenant_id = current_user.get("tenant_id")
-    student = await db.students.find_one({"id": student_id, **_entity_tenant_filter(tenant_id)})
+    student = await gd_find_one(db.session, "students", {"id": student_id, **_entity_tenant_filter(tenant_id)})
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
 
@@ -583,24 +511,18 @@ async def update_student_basic_info(
         return {"success": True, "message": "لا توجد تغييرات"}
 
     if "email" in updates:
-        dup = await db.students.find_one({
+        dup = await gd_find_one(db.session, "students", {
             "email": updates["email"], **_entity_tenant_filter(tenant_id), "id": {"$ne": student_id}
         })
         if dup:
             raise HTTPException(status_code=400, detail="البريد الإلكتروني مستخدم بالفعل")
-        await db.users.update_one(
-            {"$or": [{"linked_entity_id": student_id}, {"id": student_id}], "role": "student", "tenant_id": tenant_id},
-            {"$set": {"email": updates["email"], "updated_at": datetime.now(timezone.utc).isoformat()}}
-        )
+        await gd_update_one(db.session, "users", {"$or": [{"linked_entity_id": student_id}, {"id": student_id}], "role": "student", "tenant_id": tenant_id}, {"email": updates["email"], "updated_at": datetime.now(timezone.utc).isoformat()})
 
     if "full_name" in updates:
-        await db.users.update_one(
-            {"$or": [{"linked_entity_id": student_id}, {"id": student_id}], "role": "student", "tenant_id": tenant_id},
-            {"$set": {"full_name": updates["full_name"], "updated_at": datetime.now(timezone.utc).isoformat()}}
-        )
+        await gd_update_one(db.session, "users", {"$or": [{"linked_entity_id": student_id}, {"id": student_id}], "role": "student", "tenant_id": tenant_id}, {"full_name": updates["full_name"], "updated_at": datetime.now(timezone.utc).isoformat()})
 
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
-    await db.students.update_one({"id": student_id, **_entity_tenant_filter(tenant_id)}, {"$set": updates})
+    await gd_update_one(db.session, "students", {"id": student_id, **_entity_tenant_filter(tenant_id)}, updates)
     await _write_audit(tenant_id, "update_student_profile", "student", student_id, changes, current_user["id"])
 
     return {"success": True, "message": "تم تحديث بيانات الطالب بنجاح", "changes": changes}
@@ -614,18 +536,16 @@ async def update_student_credentials(
 ):
     tenant_id = current_user.get("tenant_id")
 
-    student = await db.students.find_one({"id": student_id, **_entity_tenant_filter(tenant_id)})
+    student = await gd_find_one(db.session, "students", {"id": student_id, **_entity_tenant_filter(tenant_id)})
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
 
     user_or = [{"linked_entity_id": student_id}, {"id": student_id}]
     if student.get("user_id"):
         user_or.append({"id": student.get("user_id")})
-    user = await db.users.find_one(
-        {"$or": user_or, "role": "student", "tenant_id": tenant_id}
-    )
+    user = await gd_find_one(db.session, "users", {"$or": user_or, "role": "student", "tenant_id": tenant_id})
     if data.new_email:
-        dup = await db.users.find_one({"email": data.new_email, "id": {"$ne": (user or {}).get("id", "")}})
+        dup = await gd_find_one(db.session, "users", {"email": data.new_email, "id": {"$ne": (user or {}).get("id", "")}})
         if dup:
             raise HTTPException(status_code=400, detail="البريد الإلكتروني مستخدم بالفعل")
     if data.new_password and len(data.new_password) < 6:
@@ -642,9 +562,9 @@ async def update_student_credentials(
             "role": "student", "tenant_id": tenant_id, "linked_entity_id": student_id,
             "is_active": True, "must_change_password": True, "created_at": now, "updated_at": now
         }
-        await db.users.insert_one({**user, "_id": None})
-        await db.users.update_one({"id": new_user_id}, {"$unset": {"_id": ""}})
-        await db.students.update_one({"id": student_id, **_entity_tenant_filter(tenant_id)}, {"$set": {"user_id": new_user_id}})
+        await gd_insert(db.session, "users", {**user, "_id": None})
+        await _gd_unset(db.session, "users", {"id": new_user_id}, {"_id": ""})
+        await gd_update_one(db.session, "students", {"id": student_id, **_entity_tenant_filter(tenant_id)}, {"user_id": new_user_id})
         await _write_audit(tenant_id, "create_student_account", "student", student_id, {"user_id": new_user_id, "email": email}, current_user["id"])
         return {"success": True, "message": "تم إنشاء حساب دخول للطالب بنجاح", "account_created": True, "email": email}
 
@@ -654,7 +574,7 @@ async def update_student_credentials(
     if data.new_email:
         updates["email"] = data.new_email
         changes["email"] = {"old": user.get("email"), "new": data.new_email}
-        await db.students.update_one({"id": student_id, **_entity_tenant_filter(tenant_id)}, {"$set": {"email": data.new_email}})
+        await gd_update_one(db.session, "students", {"id": student_id, **_entity_tenant_filter(tenant_id)}, {"email": data.new_email})
 
     if data.new_password:
         updates["password_hash"] = hash_password(data.new_password)
@@ -664,7 +584,7 @@ async def update_student_credentials(
         return {"success": True, "message": "لا توجد تغييرات"}
 
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
-    await db.users.update_one({"id": user["id"]}, {"$set": updates})
+    await gd_update_one(db.session, "users", {"id": user["id"]}, updates)
     await _write_audit(tenant_id, "update_student_credentials", "student", student_id, changes, current_user["id"])
 
     return {"success": True, "message": "تم تحديث بيانات الدخول بنجاح"}
@@ -681,24 +601,18 @@ async def update_student_account_status(
     if data.status not in valid_statuses:
         raise HTTPException(status_code=400, detail=f"الحالة غير صالحة")
 
-    student = await db.students.find_one({"id": student_id, **_entity_tenant_filter(tenant_id)})
+    student = await gd_find_one(db.session, "students", {"id": student_id, **_entity_tenant_filter(tenant_id)})
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
 
     old_status = student.get("status", "active")
     now = datetime.now(timezone.utc).isoformat()
 
-    await db.students.update_one(
-        {"id": student_id, **_entity_tenant_filter(tenant_id)},
-        {"$set": {"status": data.status, "is_active": data.status == "active", "status_reason": data.reason, "status_updated_at": now, "updated_at": now}}
-    )
+    await gd_update_one(db.session, "students", {"id": student_id, **_entity_tenant_filter(tenant_id)}, {"status": data.status, "is_active": data.status == "active", "status_reason": data.reason, "status_updated_at": now, "updated_at": now})
     user_or = [{"linked_entity_id": student_id}, {"id": student_id}]
     if student.get("user_id"):
         user_or.append({"id": student.get("user_id")})
-    await db.users.update_one(
-        {"$or": user_or, "role": "student", "tenant_id": tenant_id},
-        {"$set": {"status": data.status, "is_active": data.status == "active", "updated_at": now}}
-    )
+    await gd_update_one(db.session, "users", {"$or": user_or, "role": "student", "tenant_id": tenant_id}, {"status": data.status, "is_active": data.status == "active", "updated_at": now})
 
     await _write_audit(tenant_id, f"student_status_{data.status}", "student", student_id,
                        {"old_status": old_status, "new_status": data.status, "reason": data.reason},
@@ -715,17 +629,15 @@ async def transfer_student_class(
     current_user: dict = Depends(require_roles(ADMIN_ROLES))
 ):
     tenant_id = current_user.get("tenant_id")
-    student = await db.students.find_one({"id": student_id, **_entity_tenant_filter(tenant_id)})
+    student = await gd_find_one(db.session, "students", {"id": student_id, **_entity_tenant_filter(tenant_id)})
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
 
-    new_class = await db.classes.find_one({"id": data.new_class_id, "tenant_id": tenant_id})
+    new_class = await gd_find_one(db.session, "classes", {"id": data.new_class_id, "tenant_id": tenant_id})
     if not new_class:
         raise HTTPException(status_code=404, detail="الفصل غير موجود")
 
-    current_count = await db.students.count_documents(
-        {"class_id": data.new_class_id, **_entity_tenant_filter(tenant_id), "status": {"$ne": "deleted"}}
-    )
+    current_count = await gd_count(db.session, "students", {"class_id": data.new_class_id, **_entity_tenant_filter(tenant_id), "status": {"$ne": "deleted"}})
     capacity = new_class.get("capacity", 30)
     if current_count >= capacity:
         raise HTTPException(status_code=400, detail=f"الفصل ممتلئ ({current_count}/{capacity})")
@@ -741,11 +653,11 @@ async def transfer_student_class(
     }
     if data.new_grade_id:
         update_fields["grade_id"] = data.new_grade_id
-        grade = await db.classes.find_one({"id": data.new_class_id}, {"_id": 0, "grade_level": 1})
+        grade = await gd_find_one(db.session, "classes", {"id": data.new_class_id})
         if grade:
             update_fields["grade_level"] = grade.get("grade_level")
 
-    await db.students.update_one({"id": student_id, **_entity_tenant_filter(tenant_id)}, {"$set": update_fields})
+    await gd_update_one(db.session, "students", {"id": student_id, **_entity_tenant_filter(tenant_id)}, update_fields)
 
     await _write_audit(tenant_id, "transfer_student_class", "student", student_id,
                        {"old_class": old_class_name, "old_class_id": old_class_id,
@@ -765,7 +677,7 @@ async def add_student_behaviour(
     current_user: dict = Depends(require_roles(ADMIN_ROLES))
 ):
     tenant_id = current_user.get("tenant_id")
-    student = await db.students.find_one({"id": student_id, **_entity_tenant_filter(tenant_id)})
+    student = await gd_find_one(db.session, "students", {"id": student_id, **_entity_tenant_filter(tenant_id)})
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
 
@@ -785,7 +697,7 @@ async def add_student_behaviour(
         "created_at": now,
         "updated_at": now
     }
-    await db.behaviour_records.insert_one(record)
+    await gd_insert(db.session, "behaviour_records", record)
 
     return {"success": True, "message": "تم إضافة السجل السلوكي بنجاح", "record_id": record["id"]}
 
@@ -797,10 +709,7 @@ async def get_student_activity_log(
     current_user: dict = Depends(require_roles(ADMIN_ROLES))
 ):
     tenant_id = current_user.get("tenant_id")
-    logs = await db.audit_logs.find(
-        {"tenant_id": tenant_id, "$or": [{"entity_id": student_id}, {"performed_by": student_id}]},
-        {"_id": 0}
-    ).sort("performed_at", -1).limit(limit).to_list(limit)
+    logs = await gd_find(db.session, "audit_logs", {"tenant_id": tenant_id, "$or": [{"entity_id": student_id}, {"performed_by": student_id}]}, order_by="performed_at", desc_order=True, limit=limit)
 
     return {"success": True, "activity_log": logs}
 
@@ -814,37 +723,24 @@ async def get_parent_full_profile(
 ):
     tenant_id = current_user.get("tenant_id")
 
-    parent = await db.parents.find_one({"id": parent_id, **_entity_tenant_filter(tenant_id)}, {"_id": 0})
+    parent = await gd_find_one(db.session, "parents", {"id": parent_id, **_entity_tenant_filter(tenant_id)})
     if not parent:
-        parent = await db.users.find_one(
-            {"id": parent_id, "role": "parent", "tenant_id": tenant_id},
-            {"_id": 0, "password_hash": 0}
-        )
+        parent = await gd_find_one(db.session, "users", {"id": parent_id, "role": "parent", "tenant_id": tenant_id})
     if not parent:
         raise HTTPException(status_code=404, detail="ولي الأمر غير موجود")
 
     parent_user_or = [{"linked_entity_id": parent_id}, {"id": parent_id}]
     if parent.get("user_id"):
         parent_user_or.append({"id": parent.get("user_id")})
-    user_account = await db.users.find_one(
-        {"$or": parent_user_or, "role": "parent", "tenant_id": tenant_id},
-        {"_id": 0, "password_hash": 0}
-    )
+    user_account = await gd_find_one(db.session, "users", {"$or": parent_user_or, "role": "parent", "tenant_id": tenant_id})
 
-    children_links = await db.guardian_links.find(
-        {**_entity_tenant_filter(tenant_id), "parent_ref": parent_id, "is_active": True},
-        {"_id": 0}
-    ).to_list(20)
+    children_links = await gd_find(db.session, "guardian_links", {**_entity_tenant_filter(tenant_id), "parent_ref": parent_id, "is_active": True}, limit=20)
 
     children = []
     if children_links:
         link_student_ids = [link["student_id"] for link in children_links if link.get("student_id")]
         if link_student_ids:
-            children_docs = await db.students.find(
-                {"id": {"$in": link_student_ids}, **_entity_tenant_filter(tenant_id)},
-                {"_id": 0, "id": 1, "full_name": 1, "class_name": 1, "grade_level": 1,
-                 "gender": 1, "status": 1, "education_level": 1, "student_number": 1}
-            ).to_list(100)
+            children_docs = await gd_find(db.session, "students", {"id": {"$in": link_student_ids}, **_entity_tenant_filter(tenant_id)}, limit=100)
             child_map = {c["id"]: c for c in children_docs}
             for link in children_links:
                 child = child_map.get(link["student_id"])
@@ -860,28 +756,16 @@ async def get_parent_full_profile(
     if not children and parent.get("children"):
         child_ids = parent.get("children", [])
         if child_ids:
-            fallback_docs = await db.students.find(
-                {"id": {"$in": child_ids}, **_entity_tenant_filter(tenant_id)},
-                {"_id": 0, "id": 1, "full_name": 1, "class_name": 1, "grade_level": 1, "gender": 1, "status": 1}
-            ).to_list(100)
+            fallback_docs = await gd_find(db.session, "students", {"id": {"$in": child_ids}, **_entity_tenant_filter(tenant_id)}, limit=100)
             children = fallback_docs
 
     if not children:
-        linked_students = await db.students.find(
-            {"$and": [_entity_tenant_filter(tenant_id), {"$or": [{"parent_id": parent_id}, {"parent_user_id": parent_id}]}]},
-            {"_id": 0, "id": 1, "full_name": 1, "class_name": 1, "grade_level": 1, "gender": 1, "status": 1}
-        ).to_list(20)
+        linked_students = await gd_find(db.session, "students", {"$and": [_entity_tenant_filter(tenant_id), {"$or": [{"parent_id": parent_id}, {"parent_user_id": parent_id}]}]}, limit=20)
         children = linked_students
 
-    notifications = await db.notifications.find(
-        {**_entity_tenant_filter(tenant_id), "user_id": parent_id},
-        {"_id": 0}
-    ).sort("created_at", -1).limit(10).to_list(10)
+    notifications = await gd_find(db.session, "notifications", {**_entity_tenant_filter(tenant_id), "user_id": parent_id}, order_by="created_at", desc_order=True, limit=10)
 
-    recent_activity = await db.audit_logs.find(
-        {"tenant_id": tenant_id, "$or": [{"entity_id": parent_id}, {"performed_by": parent_id}]},
-        {"_id": 0}
-    ).sort("performed_at", -1).limit(10).to_list(10)
+    recent_activity = await gd_find(db.session, "audit_logs", {"tenant_id": tenant_id, "$or": [{"entity_id": parent_id}, {"performed_by": parent_id}]}, order_by="performed_at", desc_order=True, limit=10)
 
     return {
         "success": True,
@@ -926,7 +810,7 @@ async def update_parent_basic_info(
     current_user: dict = Depends(require_roles(ADMIN_ROLES))
 ):
     tenant_id = current_user.get("tenant_id")
-    parent = await db.parents.find_one({"id": parent_id, **_entity_tenant_filter(tenant_id)})
+    parent = await gd_find_one(db.session, "parents", {"id": parent_id, **_entity_tenant_filter(tenant_id)})
     if not parent:
         raise HTTPException(status_code=404, detail="ولي الأمر غير موجود")
 
@@ -943,31 +827,22 @@ async def update_parent_basic_info(
         return {"success": True, "message": "لا توجد تغييرات"}
 
     if "email" in updates:
-        dup = await db.parents.find_one({"email": updates["email"], "id": {"$ne": parent_id}, **_entity_tenant_filter(tenant_id)})
+        dup = await gd_find_one(db.session, "parents", {"email": updates["email"], "id": {"$ne": parent_id}, **_entity_tenant_filter(tenant_id)})
         if dup:
             raise HTTPException(status_code=400, detail="البريد الإلكتروني مستخدم بالفعل")
-        await db.users.update_one(
-            {"$or": [{"linked_entity_id": parent_id}, {"id": parent_id}], "role": "parent", "tenant_id": tenant_id},
-            {"$set": {"email": updates["email"], "updated_at": datetime.now(timezone.utc).isoformat()}}
-        )
+        await gd_update_one(db.session, "users", {"$or": [{"linked_entity_id": parent_id}, {"id": parent_id}], "role": "parent", "tenant_id": tenant_id}, {"email": updates["email"], "updated_at": datetime.now(timezone.utc).isoformat()})
 
     if "phone" in updates:
-        dup = await db.parents.find_one({"phone": updates["phone"], "id": {"$ne": parent_id}, **_entity_tenant_filter(tenant_id)})
+        dup = await gd_find_one(db.session, "parents", {"phone": updates["phone"], "id": {"$ne": parent_id}, **_entity_tenant_filter(tenant_id)})
         if dup:
             raise HTTPException(status_code=400, detail="رقم الجوال مستخدم بالفعل")
 
     if "full_name" in updates:
-        await db.users.update_one(
-            {"$or": [{"linked_entity_id": parent_id}, {"id": parent_id}], "role": "parent", "tenant_id": tenant_id},
-            {"$set": {"full_name": updates["full_name"], "updated_at": datetime.now(timezone.utc).isoformat()}}
-        )
-        await db.guardian_links.update_many(
-            {"parent_ref": parent_id, **_entity_tenant_filter(tenant_id)},
-            {"$set": {"parent_name": updates["full_name"]}}
-        )
+        await gd_update_one(db.session, "users", {"$or": [{"linked_entity_id": parent_id}, {"id": parent_id}], "role": "parent", "tenant_id": tenant_id}, {"full_name": updates["full_name"], "updated_at": datetime.now(timezone.utc).isoformat()})
+        await gd_update_many(db.session, "guardian_links", {"parent_ref": parent_id, **_entity_tenant_filter(tenant_id)}, {"parent_name": updates["full_name"]})
 
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
-    await db.parents.update_one({"id": parent_id, **_entity_tenant_filter(tenant_id)}, {"$set": updates})
+    await gd_update_one(db.session, "parents", {"id": parent_id, **_entity_tenant_filter(tenant_id)}, updates)
     await _write_audit(tenant_id, "update_parent_profile", "parent", parent_id, changes, current_user["id"])
 
     return {"success": True, "message": "تم تحديث بيانات ولي الأمر بنجاح", "changes": changes}
@@ -981,18 +856,16 @@ async def update_parent_credentials(
 ):
     tenant_id = current_user.get("tenant_id")
 
-    parent = await db.parents.find_one({"id": parent_id, **_entity_tenant_filter(tenant_id)})
+    parent = await gd_find_one(db.session, "parents", {"id": parent_id, **_entity_tenant_filter(tenant_id)})
     if not parent:
         raise HTTPException(status_code=404, detail="ولي الأمر غير موجود")
 
     user_or = [{"linked_entity_id": parent_id}, {"id": parent_id}]
     if parent.get("user_id"):
         user_or.append({"id": parent.get("user_id")})
-    user = await db.users.find_one(
-        {"$or": user_or, "role": "parent", "tenant_id": tenant_id}
-    )
+    user = await gd_find_one(db.session, "users", {"$or": user_or, "role": "parent", "tenant_id": tenant_id})
     if data.new_email:
-        dup = await db.users.find_one({"email": data.new_email, "id": {"$ne": (user or {}).get("id", "")}})
+        dup = await gd_find_one(db.session, "users", {"email": data.new_email, "id": {"$ne": (user or {}).get("id", "")}})
         if dup:
             raise HTTPException(status_code=400, detail="البريد الإلكتروني مستخدم بالفعل")
     if data.new_password and len(data.new_password) < 6:
@@ -1009,9 +882,9 @@ async def update_parent_credentials(
             "role": "parent", "tenant_id": tenant_id, "linked_entity_id": parent_id,
             "is_active": True, "must_change_password": True, "created_at": now, "updated_at": now
         }
-        await db.users.insert_one({**user, "_id": None})
-        await db.users.update_one({"id": new_user_id}, {"$unset": {"_id": ""}})
-        await db.parents.update_one({"id": parent_id, **_entity_tenant_filter(tenant_id)}, {"$set": {"user_id": new_user_id}})
+        await gd_insert(db.session, "users", {**user, "_id": None})
+        await _gd_unset(db.session, "users", {"id": new_user_id}, {"_id": ""})
+        await gd_update_one(db.session, "parents", {"id": parent_id, **_entity_tenant_filter(tenant_id)}, {"user_id": new_user_id})
         await _write_audit(tenant_id, "create_parent_account", "parent", parent_id, {"user_id": new_user_id, "email": email}, current_user["id"])
         return {"success": True, "message": "تم إنشاء حساب دخول لولي الأمر بنجاح", "account_created": True, "email": email}
 
@@ -1021,7 +894,7 @@ async def update_parent_credentials(
     if data.new_email:
         updates["email"] = data.new_email
         changes["email"] = {"old": user.get("email"), "new": data.new_email}
-        await db.parents.update_one({"id": parent_id, **_entity_tenant_filter(tenant_id)}, {"$set": {"email": data.new_email}})
+        await gd_update_one(db.session, "parents", {"id": parent_id, **_entity_tenant_filter(tenant_id)}, {"email": data.new_email})
 
     if data.new_password:
         updates["password_hash"] = hash_password(data.new_password)
@@ -1031,7 +904,7 @@ async def update_parent_credentials(
         return {"success": True, "message": "لا توجد تغييرات"}
 
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
-    await db.users.update_one({"id": user["id"]}, {"$set": updates})
+    await gd_update_one(db.session, "users", {"id": user["id"]}, updates)
     await _write_audit(tenant_id, "update_parent_credentials", "parent", parent_id, changes, current_user["id"])
 
     return {"success": True, "message": "تم تحديث بيانات الدخول بنجاح"}
@@ -1048,24 +921,18 @@ async def update_parent_account_status(
     if data.status not in valid_statuses:
         raise HTTPException(status_code=400, detail="الحالة غير صالحة")
 
-    parent = await db.parents.find_one({"id": parent_id, **_entity_tenant_filter(tenant_id)})
+    parent = await gd_find_one(db.session, "parents", {"id": parent_id, **_entity_tenant_filter(tenant_id)})
     if not parent:
         raise HTTPException(status_code=404, detail="ولي الأمر غير موجود")
 
     old_status = parent.get("status", "active")
     now = datetime.now(timezone.utc).isoformat()
 
-    await db.parents.update_one(
-        {"id": parent_id, **_entity_tenant_filter(tenant_id)},
-        {"$set": {"status": data.status, "is_active": data.status == "active", "status_reason": data.reason, "status_updated_at": now, "updated_at": now}}
-    )
+    await gd_update_one(db.session, "parents", {"id": parent_id, **_entity_tenant_filter(tenant_id)}, {"status": data.status, "is_active": data.status == "active", "status_reason": data.reason, "status_updated_at": now, "updated_at": now})
     user_or = [{"linked_entity_id": parent_id}, {"id": parent_id}]
     if parent.get("user_id"):
         user_or.append({"id": parent.get("user_id")})
-    await db.users.update_one(
-        {"$or": user_or, "role": "parent", "tenant_id": tenant_id},
-        {"$set": {"status": data.status, "is_active": data.status == "active", "updated_at": now}}
-    )
+    await gd_update_one(db.session, "users", {"$or": user_or, "role": "parent", "tenant_id": tenant_id}, {"status": data.status, "is_active": data.status == "active", "updated_at": now})
 
     await _write_audit(tenant_id, f"parent_status_{data.status}", "parent", parent_id,
                        {"old_status": old_status, "new_status": data.status, "reason": data.reason},
@@ -1082,10 +949,7 @@ async def get_parent_activity_log(
     current_user: dict = Depends(require_roles(ADMIN_ROLES))
 ):
     tenant_id = current_user.get("tenant_id")
-    logs = await db.audit_logs.find(
-        {"tenant_id": tenant_id, "$or": [{"entity_id": parent_id}, {"performed_by": parent_id}]},
-        {"_id": 0}
-    ).sort("performed_at", -1).limit(limit).to_list(limit)
+    logs = await gd_find(db.session, "audit_logs", {"tenant_id": tenant_id, "$or": [{"entity_id": parent_id}, {"performed_by": parent_id}]}, order_by="performed_at", desc_order=True, limit=limit)
 
     return {"success": True, "activity_log": logs}
 
@@ -1097,7 +961,7 @@ async def send_message_to_parent(
     current_user: dict = Depends(require_roles(ADMIN_ROLES))
 ):
     tenant_id = current_user.get("tenant_id")
-    parent = await db.parents.find_one({"id": parent_id, **_entity_tenant_filter(tenant_id)})
+    parent = await gd_find_one(db.session, "parents", {"id": parent_id, **_entity_tenant_filter(tenant_id)})
     if not parent:
         raise HTTPException(status_code=404, detail="ولي الأمر غير موجود")
 
@@ -1115,7 +979,7 @@ async def send_message_to_parent(
         "is_read": False,
         "created_at": now
     }
-    await db.notifications.insert_one(message)
+    await gd_insert(db.session, "notifications", message)
 
     return {"success": True, "message": "تم إرسال الرسالة بنجاح", "message_id": message["id"]}
 
@@ -1144,7 +1008,7 @@ async def search_users_for_linking(
     current_user: dict = Depends(require_roles(ADMIN_ROLES))
 ):
     tenant_id = current_user.get("tenant_id")
-    collection = db.students if user_type == "student" else db.parents if user_type == "parent" else db.teachers
+    coll_name = "students" if user_type == "student" else "parents" if user_type == "parent" else "teachers"
 
     query = {
         "$and": [
@@ -1158,9 +1022,6 @@ async def search_users_for_linking(
         ]
     }
 
-    results = await collection.find(
-        query, {"_id": 0, "id": 1, "full_name": 1, "email": 1, "phone": 1,
-                "class_name": 1, "grade_level": 1, "national_id": 1, "student_number": 1}
-    ).limit(20).to_list(20)
+    results = await gd_find(db.session, coll_name, query, limit=20)
 
     return {"success": True, "results": results, "total": len(results)}

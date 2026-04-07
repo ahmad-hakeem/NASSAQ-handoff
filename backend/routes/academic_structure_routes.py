@@ -13,6 +13,8 @@ from dependencies import db, get_current_user, require_roles, UserRole
 import logging
 
 logger = logging.getLogger("nassaq.academic_structure_routes")
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
+
 
 router = APIRouter(tags=["Academic Structure"])
 
@@ -99,7 +101,7 @@ async def get_school_id_from_year(year_id: str, current_user: dict) -> str:
     sid = get_school_id(current_user)
     if sid:
         return sid
-    year = await db.academic_years.find_one({"id": year_id}, {"school_id": 1})
+    year = await gd_find_one(db.session, "academic_years", {"id": year_id}, {"school_id": 1})
     if year:
         return year.get("school_id", "")
     return ""
@@ -119,22 +121,16 @@ async def get_academic_overview(
     if not school_id:
         raise HTTPException(status_code=400, detail="لم يتم تحديد المدرسة")
 
-    current_year = await db.academic_years.find_one(
-        {"school_id": school_id, "is_current": True}, {"_id": 0}
-    )
+    current_year = await gd_find_one(db.session, "academic_years", {"school_id": school_id, "is_current": True})
 
-    all_years = await db.academic_years.find(
-        {"school_id": school_id}, {"_id": 0}
-    ).sort("start_date", -1).to_list(50)
+    all_years = await gd_find(db.session, "academic_years", {"school_id": school_id}, order_by="start_date", desc_order=True, limit=50)
 
     current_term = None
     terms_count = 0
     remaining_days = 0
 
     if current_year:
-        terms = await db.terms.find(
-            {"school_id": school_id, "academic_year_id": current_year["id"]}, {"_id": 0}
-        ).sort("start_date", 1).to_list(10)
+        terms = await gd_find(db.session, "terms", {"school_id": school_id, "academic_year_id": current_year["id"]}, order_by="start_date", desc_order=False, limit=10)
         terms_count = len(terms)
 
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -180,50 +176,36 @@ async def publish_academic_year(
     school_id = await get_school_id_from_year(year_id, current_user)
     if not school_id:
         raise HTTPException(status_code=400, detail="لم يتم تحديد المدرسة")
-    year = await db.academic_years.find_one({"id": year_id, "school_id": school_id})
+    year = await gd_find_one(db.session, "academic_years", {"id": year_id, "school_id": school_id})
     if not year:
         raise HTTPException(status_code=404, detail="العام الدراسي غير موجود")
 
     if year.get("status") == "active" and year.get("is_current"):
         raise HTTPException(status_code=400, detail="العام الدراسي منشور بالفعل")
 
-    terms = await db.terms.find(
-        {"academic_year_id": year_id, "school_id": school_id}
-    ).to_list(10)
+    terms = await gd_find(db.session, "terms", {"academic_year_id": year_id, "school_id": school_id}, limit=10)
     if not terms:
         raise HTTPException(status_code=400, detail="يجب إضافة فصول دراسية قبل النشر")
 
-    await db.academic_years.update_many(
-        {"school_id": school_id, "is_current": True},
-        {"$set": {"is_current": False}}
-    )
+    await gd_update_many(db.session, "academic_years", {"school_id": school_id, "is_current": True}, {"is_current": False})
 
     now = datetime.now(timezone.utc).isoformat()
-    await db.academic_years.update_one(
-        {"id": year_id, "school_id": school_id},
-        {"$set": {
+    await gd_update_one(db.session, "academic_years", {"id": year_id, "school_id": school_id}, {
             "status": "active",
             "is_current": True,
             "published_at": now,
             "published_by": current_user.get("id"),
             "updated_at": now,
-        }}
-    )
+        })
 
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     for t in terms:
         if t.get("start_date", "") <= today <= t.get("end_date", ""):
-            await db.terms.update_many(
-                {"academic_year_id": year_id, "school_id": school_id},
-                {"$set": {"is_current": False}}
-            )
-            await db.terms.update_one(
-                {"id": t["id"]},
-                {"$set": {"is_current": True}}
-            )
+            await gd_update_many(db.session, "terms", {"academic_year_id": year_id, "school_id": school_id}, {"is_current": False})
+            await gd_update_one(db.session, "terms", {"id": t["id"]}, {"is_current": True})
             break
 
-    await db.audit_logs.insert_one({
+    await gd_insert(db.session, "audit_logs", {
         "id": str(uuid.uuid4()),
         "school_id": school_id,
         "entity_type": "academic_year",
@@ -246,22 +228,16 @@ async def close_academic_year(
     school_id = await get_school_id_from_year(year_id, current_user)
     if not school_id:
         raise HTTPException(status_code=400, detail="لم يتم تحديد المدرسة")
-    year = await db.academic_years.find_one({"id": year_id, "school_id": school_id})
+    year = await gd_find_one(db.session, "academic_years", {"id": year_id, "school_id": school_id})
     if not year:
         raise HTTPException(status_code=404, detail="العام الدراسي غير موجود")
 
     now = datetime.now(timezone.utc).isoformat()
-    await db.academic_years.update_one(
-        {"id": year_id, "school_id": school_id},
-        {"$set": {"status": "closed", "is_current": False, "closed_at": now, "updated_at": now}}
-    )
+    await gd_update_one(db.session, "academic_years", {"id": year_id, "school_id": school_id}, {"status": "closed", "is_current": False, "closed_at": now, "updated_at": now})
 
-    await db.terms.update_many(
-        {"academic_year_id": year_id, "school_id": school_id},
-        {"$set": {"is_current": False}}
-    )
+    await gd_update_many(db.session, "terms", {"academic_year_id": year_id, "school_id": school_id}, {"is_current": False})
 
-    await db.audit_logs.insert_one({
+    await gd_insert(db.session, "audit_logs", {
         "id": str(uuid.uuid4()),
         "school_id": school_id,
         "entity_type": "academic_year",
@@ -283,7 +259,7 @@ async def archive_academic_year(
     school_id = await get_school_id_from_year(year_id, current_user)
     if not school_id:
         raise HTTPException(status_code=400, detail="لم يتم تحديد المدرسة")
-    year = await db.academic_years.find_one({"id": year_id, "school_id": school_id})
+    year = await gd_find_one(db.session, "academic_years", {"id": year_id, "school_id": school_id})
     if not year:
         raise HTTPException(status_code=404, detail="العام الدراسي غير موجود")
 
@@ -291,10 +267,7 @@ async def archive_academic_year(
         raise HTTPException(status_code=400, detail="لا يمكن أرشفة عام دراسي نشط")
 
     now = datetime.now(timezone.utc).isoformat()
-    await db.academic_years.update_one(
-        {"id": year_id, "school_id": school_id},
-        {"$set": {"status": "archived", "is_current": False, "archived_at": now, "updated_at": now}}
-    )
+    await gd_update_one(db.session, "academic_years", {"id": year_id, "school_id": school_id}, {"status": "archived", "is_current": False, "archived_at": now, "updated_at": now})
 
     return {"message": "تم أرشفة العام الدراسي", "status": "archived"}
 
@@ -311,11 +284,11 @@ async def auto_create_terms(
     school_id = await get_school_id_from_year(year_id, current_user)
     if not school_id:
         raise HTTPException(status_code=400, detail="لم يتم تحديد المدرسة")
-    year = await db.academic_years.find_one({"id": year_id, "school_id": school_id}, {"_id": 0})
+    year = await gd_find_one(db.session, "academic_years", {"id": year_id, "school_id": school_id})
     if not year:
         raise HTTPException(status_code=404, detail="العام الدراسي غير موجود")
 
-    existing = await db.terms.count_documents({"academic_year_id": year_id, "school_id": school_id})
+    existing = await gd_count(db.session, "terms", {"academic_year_id": year_id, "school_id": school_id})
     if existing > 0:
         raise HTTPException(status_code=400, detail="توجد فصول دراسية بالفعل لهذا العام")
 
@@ -356,7 +329,7 @@ async def auto_create_terms(
             "updated_at": now,
             "created_by": current_user.get("id"),
         }
-        await db.terms.insert_one(term_doc)
+        await gd_insert(db.session, "terms", term_doc)
         term_doc.pop("_id", None)
         created_terms.append(term_doc)
 
@@ -386,7 +359,7 @@ async def create_holiday(
         "created_at": now,
         "created_by": current_user.get("id"),
     }
-    await db.holidays.insert_one(holiday_doc)
+    await gd_insert(db.session, "holidays", holiday_doc)
     holiday_doc.pop("_id", None)
     return HolidayResponse(**holiday_doc)
 
@@ -404,7 +377,7 @@ async def get_holidays(
     if term_id:
         query["term_id"] = term_id
 
-    holidays = await db.holidays.find(query, {"_id": 0}).sort("start_date", 1).to_list(200)
+    holidays = await gd_find(db.session, "holidays", query, order_by="start_date", desc_order=False, limit=200)
     return [HolidayResponse(**h) for h in holidays]
 
 
@@ -415,7 +388,7 @@ async def update_holiday(
     current_user: dict = Depends(require_roles(ADMIN_ROLES))
 ):
     school_id = get_school_id(current_user)
-    holiday = await db.holidays.find_one({"id": holiday_id, "school_id": school_id})
+    holiday = await gd_find_one(db.session, "holidays", {"id": holiday_id, "school_id": school_id})
     if not holiday:
         raise HTTPException(status_code=404, detail="الإجازة غير موجودة")
 
@@ -428,8 +401,8 @@ async def update_holiday(
         "term_id": data.term_id,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
-    await db.holidays.update_one({"id": holiday_id}, {"$set": update_data})
-    updated = await db.holidays.find_one({"id": holiday_id}, {"_id": 0})
+    await gd_update_one(db.session, "holidays", {"id": holiday_id}, update_data)
+    updated = await gd_find_one(db.session, "holidays", {"id": holiday_id})
     return HolidayResponse(**updated)
 
 
@@ -439,8 +412,8 @@ async def delete_holiday(
     current_user: dict = Depends(require_roles(ADMIN_ROLES))
 ):
     school_id = get_school_id(current_user)
-    result = await db.holidays.delete_one({"id": holiday_id, "school_id": school_id})
-    if result.deleted_count == 0:
+    result = await gd_delete_one(db.session, "holidays", {"id": holiday_id, "school_id": school_id})
+    if result == 0:
         raise HTTPException(status_code=404, detail="الإجازة غير موجودة")
     return {"message": "تم حذف الإجازة بنجاح"}
 
@@ -468,7 +441,7 @@ async def create_exam_period(
         "created_at": now,
         "created_by": current_user.get("id"),
     }
-    await db.exam_periods.insert_one(exam_doc)
+    await gd_insert(db.session, "exam_periods", exam_doc)
     exam_doc.pop("_id", None)
     return ExamPeriodResponse(**exam_doc)
 
@@ -486,7 +459,7 @@ async def get_exam_periods(
     if term_id:
         query["term_id"] = term_id
 
-    periods = await db.exam_periods.find(query, {"_id": 0}).sort("start_date", 1).to_list(100)
+    periods = await gd_find(db.session, "exam_periods", query, order_by="start_date", desc_order=False, limit=100)
     return [ExamPeriodResponse(**p) for p in periods]
 
 
@@ -497,7 +470,7 @@ async def update_exam_period(
     current_user: dict = Depends(require_roles(ADMIN_ROLES))
 ):
     school_id = get_school_id(current_user)
-    period = await db.exam_periods.find_one({"id": period_id, "school_id": school_id})
+    period = await gd_find_one(db.session, "exam_periods", {"id": period_id, "school_id": school_id})
     if not period:
         raise HTTPException(status_code=404, detail="فترة الاختبارات غير موجودة")
 
@@ -510,8 +483,8 @@ async def update_exam_period(
         "term_id": data.term_id,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
-    await db.exam_periods.update_one({"id": period_id}, {"$set": update_data})
-    updated = await db.exam_periods.find_one({"id": period_id}, {"_id": 0})
+    await gd_update_one(db.session, "exam_periods", {"id": period_id}, update_data)
+    updated = await gd_find_one(db.session, "exam_periods", {"id": period_id})
     return ExamPeriodResponse(**updated)
 
 
@@ -521,8 +494,8 @@ async def delete_exam_period(
     current_user: dict = Depends(require_roles(ADMIN_ROLES))
 ):
     school_id = get_school_id(current_user)
-    result = await db.exam_periods.delete_one({"id": period_id, "school_id": school_id})
-    if result.deleted_count == 0:
+    result = await gd_delete_one(db.session, "exam_periods", {"id": period_id, "school_id": school_id})
+    if result == 0:
         raise HTTPException(status_code=404, detail="فترة الاختبارات غير موجودة")
     return {"message": "تم حذف فترة الاختبارات بنجاح"}
 
@@ -537,7 +510,7 @@ async def create_promotion_rule(
     school_id = await get_school_id_from_year(data.academic_year_id, current_user)
     now = datetime.now(timezone.utc).isoformat()
 
-    existing = await db.promotion_rules.find_one({
+    existing = await gd_find_one(db.session, "promotion_rules", {
         "school_id": school_id,
         "academic_year_id": data.academic_year_id
     })
@@ -557,7 +530,7 @@ async def create_promotion_rule(
         "updated_at": now,
         "created_by": current_user.get("id"),
     }
-    await db.promotion_rules.insert_one(rule_doc)
+    await gd_insert(db.session, "promotion_rules", rule_doc)
     rule_doc.pop("_id", None)
     return PromotionRuleResponse(**rule_doc)
 
@@ -572,7 +545,7 @@ async def get_promotion_rules(
     if academic_year_id:
         query["academic_year_id"] = academic_year_id
 
-    rules = await db.promotion_rules.find(query, {"_id": 0}).to_list(50)
+    rules = await gd_find(db.session, "promotion_rules", query, limit=50)
     return rules
 
 
@@ -583,7 +556,7 @@ async def update_promotion_rule(
     current_user: dict = Depends(require_roles(ADMIN_ROLES))
 ):
     school_id = get_school_id(current_user)
-    rule = await db.promotion_rules.find_one({"id": rule_id, "school_id": school_id})
+    rule = await gd_find_one(db.session, "promotion_rules", {"id": rule_id, "school_id": school_id})
     if not rule:
         raise HTTPException(status_code=404, detail="قواعد الترقية غير موجودة")
 
@@ -595,8 +568,8 @@ async def update_promotion_rule(
         "rules": data.rules or {},
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
-    await db.promotion_rules.update_one({"id": rule_id}, {"$set": update_data})
-    updated = await db.promotion_rules.find_one({"id": rule_id}, {"_id": 0})
+    await gd_update_one(db.session, "promotion_rules", {"id": rule_id}, update_data)
+    updated = await gd_find_one(db.session, "promotion_rules", {"id": rule_id})
     return PromotionRuleResponse(**updated)
 
 
@@ -606,8 +579,8 @@ async def delete_promotion_rule(
     current_user: dict = Depends(require_roles(ADMIN_ROLES))
 ):
     school_id = get_school_id(current_user)
-    result = await db.promotion_rules.delete_one({"id": rule_id, "school_id": school_id})
-    if result.deleted_count == 0:
+    result = await gd_delete_one(db.session, "promotion_rules", {"id": rule_id, "school_id": school_id})
+    if result == 0:
         raise HTTPException(status_code=404, detail="قواعد الترقية غير موجودة")
     return {"message": "تم حذف قواعد الترقية بنجاح"}
 
@@ -620,22 +593,16 @@ async def get_academic_calendar(
     current_user: dict = Depends(get_current_user)
 ):
     school_id = await get_school_id_from_year(year_id, current_user)
-    year = await db.academic_years.find_one({"id": year_id}, {"_id": 0})
+    year = await gd_find_one(db.session, "academic_years", {"id": year_id})
     if not year:
         raise HTTPException(status_code=404, detail="العام الدراسي غير موجود")
     school_id = school_id or year.get("school_id", "")
 
-    terms = await db.terms.find(
-        {"academic_year_id": year_id, "school_id": school_id}, {"_id": 0}
-    ).sort("start_date", 1).to_list(10)
+    terms = await gd_find(db.session, "terms", {"academic_year_id": year_id, "school_id": school_id}, order_by="start_date", desc_order=False, limit=10)
 
-    holidays = await db.holidays.find(
-        {"academic_year_id": year_id, "school_id": school_id}, {"_id": 0}
-    ).sort("start_date", 1).to_list(200)
+    holidays = await gd_find(db.session, "holidays", {"academic_year_id": year_id, "school_id": school_id}, order_by="start_date", desc_order=False, limit=200)
 
-    exam_periods = await db.exam_periods.find(
-        {"academic_year_id": year_id, "school_id": school_id}, {"_id": 0}
-    ).sort("start_date", 1).to_list(100)
+    exam_periods = await gd_find(db.session, "exam_periods", {"academic_year_id": year_id, "school_id": school_id}, order_by="start_date", desc_order=False, limit=100)
 
     total_holiday_days = 0
     for h in holidays:
@@ -688,22 +655,16 @@ async def hakim_academic_analysis(
     current_user: dict = Depends(get_current_user)
 ):
     school_id = await get_school_id_from_year(year_id, current_user)
-    year = await db.academic_years.find_one({"id": year_id}, {"_id": 0})
+    year = await gd_find_one(db.session, "academic_years", {"id": year_id})
     if not year:
         raise HTTPException(status_code=404, detail="العام الدراسي غير موجود")
     school_id = school_id or year.get("school_id", "")
 
-    terms = await db.terms.find(
-        {"academic_year_id": year_id, "school_id": school_id}, {"_id": 0}
-    ).sort("start_date", 1).to_list(10)
+    terms = await gd_find(db.session, "terms", {"academic_year_id": year_id, "school_id": school_id}, order_by="start_date", desc_order=False, limit=10)
 
-    holidays = await db.holidays.find(
-        {"academic_year_id": year_id, "school_id": school_id}, {"_id": 0}
-    ).to_list(200)
+    holidays = await gd_find(db.session, "holidays", {"academic_year_id": year_id, "school_id": school_id}, limit=200)
 
-    exam_periods = await db.exam_periods.find(
-        {"academic_year_id": year_id, "school_id": school_id}, {"_id": 0}
-    ).to_list(100)
+    exam_periods = await gd_find(db.session, "exam_periods", {"academic_year_id": year_id, "school_id": school_id}, limit=100)
 
     insights = []
     severity_map = {"warning": "تحذير", "info": "معلومة", "suggestion": "اقتراح"}

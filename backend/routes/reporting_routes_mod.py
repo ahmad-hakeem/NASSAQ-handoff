@@ -21,6 +21,8 @@ from dependencies import (
     hakim_engine, reporting_engine, export_engine, session_engine,
     REPORT_TYPES, generate_student_qr_code
 )
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
+
 
 router = APIRouter()
 
@@ -44,11 +46,11 @@ async def get_school_overview_report(
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     
     total_students, total_teachers, total_classes, attendance_records, grades = await asyncio.gather(
-        db.students.count_documents({"school_id": school_id}),
-        db.teachers.count_documents({"school_id": school_id}),
-        db.classes.count_documents({"school_id": school_id}),
-        db.attendance.find({"school_id": school_id, "date": today}, {"_id": 0}).to_list(10000),
-        db.grades.find({"school_id": school_id}, {"_id": 0, "grade": 1}).to_list(10000),
+        gd_count(db.session, "students", {"school_id": school_id}),
+        gd_count(db.session, "teachers", {"school_id": school_id}),
+        gd_count(db.session, "classes", {"school_id": school_id}),
+        gd_find(db.session, "attendance", {"school_id": school_id, "date": today}, limit=10000),
+        gd_find(db.session, "grades", {"school_id": school_id}, limit=10000),
     )
     
     present_count = len([a for a in attendance_records if a.get("status") == "present"])
@@ -91,12 +93,12 @@ async def get_school_attendance_report(
     if class_id:
         class_query["id"] = class_id
     
-    classes = await db.classes.find(class_query, {"_id": 0}).to_list(100)
+    classes = await gd_find(db.session, "classes", class_query, limit=100)
     
     att_query = {"school_id": school_id}
     if class_id:
         att_query["class_id"] = class_id
-    all_attendance = await db.attendance.find(att_query, {"_id": 0, "class_id": 1, "status": 1}).to_list(100000)
+    all_attendance = await gd_find(db.session, "attendance", att_query, limit=100000)
     
     att_by_class = {}
     for a in all_attendance:
@@ -140,12 +142,12 @@ async def get_school_grades_report(
     if subject_id:
         subject_query["id"] = subject_id
     
-    subjects = await db.subjects.find(subject_query, {"_id": 0}).to_list(100)
+    subjects = await gd_find(db.session, "subjects", subject_query, limit=100)
     
     grade_query = {"school_id": school_id}
     if subject_id:
         grade_query["subject_id"] = subject_id
-    all_grades = await db.grades.find(grade_query, {"_id": 0, "grade": 1, "subject_id": 1}).to_list(100000)
+    all_grades = await gd_find(db.session, "grades", grade_query, limit=100000)
     
     grades_by_subject = {}
     for g in all_grades:
@@ -193,10 +195,7 @@ async def get_school_behavior_report(
     if not school_id:
         raise HTTPException(status_code=400, detail="المستخدم غير مرتبط بمدرسة")
     
-    behavior_records = await db.behavior.find(
-        {"school_id": school_id},
-        {"_id": 0}
-    ).sort("created_at", -1).to_list(1000)
+    behavior_records = await gd_find(db.session, "behavior", {"school_id": school_id}, order_by="created_at", desc_order=True, limit=1000)
     
     positive_count = len([b for b in behavior_records if b.get("type") == "positive" or b.get("behavior_type") == "positive"])
     negative_count = len([b for b in behavior_records if b.get("type") == "negative" or b.get("behavior_type") == "negative"])
@@ -207,7 +206,7 @@ async def get_school_behavior_report(
     student_ids = list({r.get("student_id") for r in recent_records if r.get("student_id")})
     student_map = {}
     if student_ids:
-        students = await db.students.find({"id": {"$in": student_ids}}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1}).to_list(len(student_ids))
+        students = await gd_find(db.session, "students", {"id": {"$in": student_ids}}, limit=len(student_ids))
         student_map = {s["id"]: s.get("name_ar") or s.get("name", "طالب") for s in students}
     
     recent_notes = []
@@ -246,11 +245,9 @@ async def get_top_performing_classes(
     if not school_id:
         raise HTTPException(status_code=400, detail="المستخدم غير مرتبط بمدرسة")
     
-    classes = await db.classes.find({"school_id": school_id}, {"_id": 0}).to_list(100)
+    classes = await gd_find(db.session, "classes", {"school_id": school_id}, limit=100)
     
-    all_attendance = await db.attendance.find(
-        {"school_id": school_id}, {"_id": 0, "class_id": 1, "status": 1}
-    ).to_list(100000)
+    all_attendance = await gd_find(db.session, "attendance", {"school_id": school_id}, limit=100000)
     
     att_by_class = {}
     for a in all_attendance:
@@ -261,7 +258,7 @@ async def get_top_performing_classes(
         if a.get("status") == "present":
             att_by_class[cid]["present"] += 1
     
-    all_positive_behavior = await db.behavior.find({
+    all_positive_behavior = await gd_find(db.session, "behavior", {
         "school_id": school_id,
         "$or": [
             {"type": "positive"},
@@ -269,7 +266,7 @@ async def get_top_performing_classes(
             {"type": "appreciation"},
             {"behavior_type": "appreciation"}
         ]
-    }, {"_id": 0, "class_id": 1}).to_list(100000)
+    }, limit=100000)
     
     behavior_by_class = {}
     for b in all_positive_behavior:
@@ -317,17 +314,17 @@ async def export_school_report(
     # Get data based on report type
     if report_type == "overview":
         # Get counts
-        total_students = await db.students.count_documents({"school_id": school_id})
-        total_teachers = await db.teachers.count_documents({"school_id": school_id})
-        total_classes = await db.classes.count_documents({"school_id": school_id})
+        total_students = await gd_count(db.session, "students", {"school_id": school_id})
+        total_teachers = await gd_count(db.session, "teachers", {"school_id": school_id})
+        total_classes = await gd_count(db.session, "classes", {"school_id": school_id})
         
         # Get attendance
-        attendance = await db.attendance.find({"school_id": school_id}, {"_id": 0}).to_list(10000)
+        attendance = await gd_find(db.session, "attendance", {"school_id": school_id}, limit=10000)
         present = len([a for a in attendance if a.get("status") == "present"])
         attendance_rate = round((present / len(attendance)) * 100, 1) if attendance else 0
         
         # Get positive behavior
-        positive_behavior = await db.behavior.count_documents({
+        positive_behavior = await gd_count(db.session, "behavior", {
             "school_id": school_id,
             "$or": [{"type": "positive"}, {"behavior_type": "positive"}]
         })
@@ -347,11 +344,11 @@ async def export_school_report(
     
     elif report_type == "attendance":
         # Get attendance by class
-        classes = await db.classes.find({"school_id": school_id}, {"_id": 0}).to_list(100)
+        classes = await gd_find(db.session, "classes", {"school_id": school_id}, limit=100)
         attendance_data = []
         
         for cls in classes:
-            attendance = await db.attendance.find({"class_id": cls.get("id")}, {"_id": 0}).to_list(10000)
+            attendance = await gd_find(db.session, "attendance", {"class_id": cls.get("id")}, limit=10000)
             present = len([a for a in attendance if a.get("status") == "present"])
             absent = len([a for a in attendance if a.get("status") == "absent"])
             late = len([a for a in attendance if a.get("status") == "late"])
@@ -374,7 +371,7 @@ async def export_school_report(
         }
     
     elif report_type == "behavior":
-        behavior_records = await db.behavior.find({"school_id": school_id}, {"_id": 0}).to_list(1000)
+        behavior_records = await gd_find(db.session, "behavior", {"school_id": school_id}, limit=1000)
         
         data = {
             "report_type": "تقرير السلوك",
@@ -497,7 +494,7 @@ async def generate_report(
     if report_type.startswith("student_"):
         if not student_id:
             raise HTTPException(400, "student_id مطلوب لتقارير الطالب")
-        stu = await db.students.find_one({"id": student_id, "school_id": school_id})
+        stu = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id})
         if not stu:
             raise HTTPException(404, "الطالب غير موجود في هذه المدرسة")
         allowed_roles = ADMIN_ROLES_SET | {UserRole.TEACHER.value}
@@ -575,7 +572,7 @@ async def export_report_file(
     if report_type.startswith("student_"):
         if not student_id:
             raise HTTPException(400, "student_id مطلوب لتقارير الطالب")
-        stu = await db.students.find_one({"id": student_id, "school_id": school_id})
+        stu = await gd_find_one(db.session, "students", {"id": student_id, "school_id": school_id})
         if not stu:
             raise HTTPException(404, "الطالب غير موجود في هذه المدرسة")
         allowed_roles = ADMIN_ROLES_SET | {UserRole.TEACHER.value}

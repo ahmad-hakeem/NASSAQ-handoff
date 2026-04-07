@@ -12,6 +12,8 @@ import uuid
 from dependencies import (
     db, get_current_user, require_roles, UserRole, logger
 )
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_inc
+
 
 router = APIRouter()
 
@@ -86,7 +88,7 @@ async def create_event(
         "created_at": now
     }
 
-    await db.system_events.insert_one(event_doc)
+    await gd_insert(db.session, "system_events", event_doc)
 
     await _process_workflow_triggers(school_id, data.event_type, event_doc)
 
@@ -123,11 +125,9 @@ async def get_events(
     if end_date:
         query.setdefault("created_at", {})["$lte"] = end_date
 
-    events = await db.system_events.find(
-        query, {"_id": 0}
-    ).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+    events = await gd_find(db.session, "system_events", query, order_by="created_at", desc_order=True, offset=skip, limit=limit)
 
-    total = await db.system_events.count_documents(query)
+    total = await gd_count(db.session, "system_events", query)
 
     return {"events": events, "total": total}
 
@@ -151,7 +151,7 @@ async def get_event_statistics(
         start = (now - timedelta(days=365)).isoformat()
 
     query = {"tenant_id": school_id, "created_at": {"$gte": start}}
-    events = await db.system_events.find(query, {"_id": 0, "event_type": 1, "severity": 1, "created_at": 1}).to_list(10000)
+    events = await gd_find(db.session, "system_events", query, limit=10000)
 
     by_type = {}
     for e in events:
@@ -185,9 +185,7 @@ async def get_event(
 ):
     """Get a specific event"""
     school_id = current_user.get("tenant_id")
-    event = await db.system_events.find_one(
-        {"id": event_id, "tenant_id": school_id}, {"_id": 0}
-    )
+    event = await gd_find_one(db.session, "system_events", {"id": event_id, "tenant_id": school_id})
     if not event:
         raise HTTPException(status_code=404, detail="الحدث غير موجود")
     return event
@@ -220,7 +218,7 @@ async def create_workflow_rule(
         "updated_at": now
     }
 
-    await db.workflow_rules.insert_one(rule_doc)
+    await gd_insert(db.session, "workflow_rules", rule_doc)
     rule_doc.pop("_id", None)
     return rule_doc
 
@@ -239,7 +237,7 @@ async def get_workflow_rules(
     if is_active is not None:
         query["is_active"] = is_active
 
-    rules = await db.workflow_rules.find(query, {"_id": 0}).sort("created_at", -1).to_list(100)
+    rules = await gd_find(db.session, "workflow_rules", query, order_by="created_at", desc_order=True, limit=100)
     return {"rules": rules, "total": len(rules)}
 
 
@@ -251,7 +249,7 @@ async def update_workflow_rule(
 ):
     """Update a workflow rule"""
     school_id = current_user.get("tenant_id")
-    rule = await db.workflow_rules.find_one({"id": rule_id, "tenant_id": school_id})
+    rule = await gd_find_one(db.session, "workflow_rules", {"id": rule_id, "tenant_id": school_id})
     if not rule:
         raise HTTPException(status_code=404, detail="القاعدة غير موجودة")
 
@@ -260,7 +258,7 @@ async def update_workflow_rule(
         if field in data:
             updates[field] = data[field]
 
-    await db.workflow_rules.update_one({"id": rule_id}, {"$set": updates})
+    await gd_update_one(db.session, "workflow_rules", {"id": rule_id}, updates)
     return {"message": "تم تحديث القاعدة بنجاح", "id": rule_id}
 
 
@@ -271,8 +269,8 @@ async def delete_workflow_rule(
 ):
     """Delete a workflow rule"""
     school_id = current_user.get("tenant_id")
-    result = await db.workflow_rules.delete_one({"id": rule_id, "tenant_id": school_id})
-    if result.deleted_count == 0:
+    result = await gd_delete_one(db.session, "workflow_rules", {"id": rule_id, "tenant_id": school_id})
+    if result == 0:
         raise HTTPException(status_code=404, detail="القاعدة غير موجودة")
     return {"message": "تم حذف القاعدة بنجاح"}
 
@@ -284,15 +282,12 @@ async def toggle_workflow_rule(
 ):
     """Toggle a workflow rule on/off"""
     school_id = current_user.get("tenant_id")
-    rule = await db.workflow_rules.find_one({"id": rule_id, "tenant_id": school_id}, {"_id": 0, "is_active": 1})
+    rule = await gd_find_one(db.session, "workflow_rules", {"id": rule_id, "tenant_id": school_id})
     if not rule:
         raise HTTPException(status_code=404, detail="القاعدة غير موجودة")
 
     new_status = not rule.get("is_active", True)
-    await db.workflow_rules.update_one(
-        {"id": rule_id},
-        {"$set": {"is_active": new_status, "updated_at": datetime.now(timezone.utc).isoformat()}}
-    )
+    await gd_update_one(db.session, "workflow_rules", {"id": rule_id}, {"is_active": new_status, "updated_at": datetime.now(timezone.utc).isoformat()})
     return {"message": "تم تغيير حالة القاعدة", "is_active": new_status}
 
 
@@ -311,9 +306,7 @@ async def get_workflow_executions(
     if status:
         query["status"] = status
 
-    executions = await db.workflow_executions.find(
-        query, {"_id": 0}
-    ).sort("executed_at", -1).limit(limit).to_list(limit)
+    executions = await gd_find(db.session, "workflow_executions", query, order_by="executed_at", desc_order=True, limit=limit)
 
     return {"executions": executions, "total": len(executions)}
 
@@ -386,10 +379,7 @@ async def get_workflow_templates(
 
 async def _process_workflow_triggers(school_id: str, event_type: str, event_data: dict):
     """Process matching workflow rules for an event"""
-    rules = await db.workflow_rules.find(
-        {"tenant_id": school_id, "trigger_event": event_type, "is_active": True},
-        {"_id": 0}
-    ).to_list(50)
+    rules = await gd_find(db.session, "workflow_rules", {"tenant_id": school_id, "trigger_event": event_type, "is_active": True}, limit=50)
 
     for rule in rules:
         exec_id = str(uuid.uuid4())
@@ -407,9 +397,8 @@ async def _process_workflow_triggers(school_id: str, event_type: str, event_data
             "executed_at": now
         }
 
-        await db.workflow_executions.insert_one(execution)
+        await gd_insert(db.session, "workflow_executions", execution)
 
-        await db.workflow_rules.update_one(
-            {"id": rule["id"]},
-            {"$inc": {"execution_count": 1}, "$set": {"last_executed_at": now}}
-        )
+        rule_doc = await gd_find_one(db.session, "workflow_rules", {"id": rule["id"]})
+        cur_count = int(rule_doc.get("execution_count", 0) or 0) if rule_doc else 0
+        await gd_update_one(db.session, "workflow_rules", {"id": rule["id"]}, {"execution_count": cur_count + 1, "last_executed_at": now})

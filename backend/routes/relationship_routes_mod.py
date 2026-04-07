@@ -12,6 +12,8 @@ import uuid
 from dependencies import (
     db, get_current_user, require_roles, UserRole, logger
 )
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_addtoset
+
 
 router = APIRouter()
 
@@ -72,23 +74,21 @@ async def link_guardian_to_student(
     if not school_id:
         raise HTTPException(status_code=400, detail="معرف المدرسة مطلوب")
 
-    student = await db.students.find_one(
-        {"id": data.student_id, "tenant_id": school_id}, {"_id": 0, "full_name": 1}
-    )
+    student = await gd_find_one(db.session, "students", {"id": data.student_id, "tenant_id": school_id})
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
 
     parent = None
     if data.parent_id:
-        parent = await db.parents.find_one({"id": data.parent_id}, {"_id": 0, "full_name": 1, "id": 1})
+        parent = await gd_find_one(db.session, "parents", {"id": data.parent_id})
     elif data.parent_user_id:
-        parent = await db.users.find_one({"id": data.parent_user_id}, {"_id": 0, "full_name": 1, "id": 1})
+        parent = await gd_find_one(db.session, "users", {"id": data.parent_user_id})
 
     if not parent:
         raise HTTPException(status_code=404, detail="ولي الأمر غير موجود")
 
     parent_ref = data.parent_id or data.parent_user_id
-    existing = await db.guardian_links.find_one({
+    existing = await gd_find_one(db.session, "guardian_links", {
         "tenant_id": school_id,
         "student_id": data.student_id,
         "parent_ref": parent_ref,
@@ -101,10 +101,7 @@ async def link_guardian_to_student(
     now = datetime.now(timezone.utc).isoformat()
 
     if data.is_primary:
-        await db.guardian_links.update_many(
-            {"tenant_id": school_id, "student_id": data.student_id, "is_primary": True},
-            {"$set": {"is_primary": False}}
-        )
+        await gd_update_many(db.session, "guardian_links", {"tenant_id": school_id, "student_id": data.student_id, "is_primary": True}, {"is_primary": False})
 
     link_doc = {
         "id": link_id,
@@ -130,17 +127,11 @@ async def link_guardian_to_student(
         "updated_at": now
     }
 
-    await db.guardian_links.insert_one(link_doc)
+    await gd_insert(db.session, "guardian_links", link_doc)
 
-    await db.students.update_one(
-        {"id": data.student_id},
-        {"$addToSet": {"guardian_ids": parent_ref}}
-    )
+    await _gd_addtoset(db.session, "students", {"id": data.student_id}, {"guardian_ids": parent_ref})
     if data.parent_id:
-        await db.parents.update_one(
-            {"id": data.parent_id},
-            {"$addToSet": {"student_ids": data.student_id}}
-        )
+        await _gd_addtoset(db.session, "parents", {"id": data.parent_id}, {"student_ids": data.student_id})
 
     link_doc.pop("_id", None)
     return link_doc
@@ -156,18 +147,15 @@ async def unlink_guardian(
 ):
     """Unlink a guardian from a student (soft delete)"""
     school_id = current_user.get("tenant_id")
-    link = await db.guardian_links.find_one({"id": link_id, "tenant_id": school_id})
+    link = await gd_find_one(db.session, "guardian_links", {"id": link_id, "tenant_id": school_id})
     if not link:
         raise HTTPException(status_code=404, detail="الربط غير موجود")
 
-    await db.guardian_links.update_one(
-        {"id": link_id},
-        {"$set": {
+    await gd_update_one(db.session, "guardian_links", {"id": link_id}, {
             "is_active": False,
             "unlinked_by": current_user["id"],
             "unlinked_at": datetime.now(timezone.utc).isoformat()
-        }}
-    )
+        })
 
     return {"message": "تم فك الربط بنجاح", "id": link_id}
 
@@ -183,7 +171,7 @@ async def update_guardian_link(
 ):
     """Update guardian link permissions and details"""
     school_id = current_user.get("tenant_id")
-    link = await db.guardian_links.find_one({"id": link_id, "tenant_id": school_id})
+    link = await gd_find_one(db.session, "guardian_links", {"id": link_id, "tenant_id": school_id})
     if not link:
         raise HTTPException(status_code=404, detail="الربط غير موجود")
 
@@ -192,10 +180,7 @@ async def update_guardian_link(
         updates["relationship"] = data.relationship
     if data.is_primary is not None:
         if data.is_primary:
-            await db.guardian_links.update_many(
-                {"tenant_id": school_id, "student_id": link["student_id"], "is_primary": True},
-                {"$set": {"is_primary": False}}
-            )
+            await gd_update_many(db.session, "guardian_links", {"tenant_id": school_id, "student_id": link["student_id"], "is_primary": True}, {"is_primary": False})
         updates["is_primary"] = data.is_primary
     if data.notes is not None:
         updates["notes"] = data.notes
@@ -210,10 +195,7 @@ async def update_guardian_link(
     if data.can_communicate is not None:
         perm_updates["permissions.can_communicate"] = data.can_communicate
 
-    await db.guardian_links.update_one(
-        {"id": link_id},
-        {"$set": {**updates, **perm_updates}}
-    )
+    await gd_update_one(db.session, "guardian_links", {"id": link_id}, {**updates, **perm_updates})
 
     return {"message": "تم تحديث الربط بنجاح", "id": link_id}
 
@@ -230,7 +212,7 @@ async def get_student_guardians(
     if not include_inactive:
         query["is_active"] = True
 
-    links = await db.guardian_links.find(query, {"_id": 0}).sort("is_primary", -1).to_list(20)
+    links = await gd_find(db.session, "guardian_links", query, order_by="is_primary", desc_order=True, limit=20)
     return {"guardians": links, "total": len(links)}
 
 
@@ -241,17 +223,11 @@ async def get_parent_children(
 ):
     """Get all children linked to a parent/guardian"""
     school_id = current_user.get("tenant_id")
-    links = await db.guardian_links.find(
-        {"tenant_id": school_id, "parent_ref": parent_ref, "is_active": True},
-        {"_id": 0}
-    ).to_list(20)
+    links = await gd_find(db.session, "guardian_links", {"tenant_id": school_id, "parent_ref": parent_ref, "is_active": True}, limit=20)
 
     children = []
     for link in links:
-        student = await db.students.find_one(
-            {"id": link["student_id"], "tenant_id": school_id},
-            {"_id": 0, "id": 1, "full_name": 1, "class_name": 1, "grade_level": 1, "gender": 1}
-        )
+        student = await gd_find_one(db.session, "students", {"id": link["student_id"], "tenant_id": school_id})
         if student:
             children.append({
                 **student,
@@ -281,11 +257,11 @@ async def transfer_custody(
     if not all([student_id, from_parent, to_parent]):
         raise HTTPException(status_code=400, detail="جميع الحقول مطلوبة")
 
-    from_link = await db.guardian_links.find_one({
+    from_link = await gd_find_one(db.session, "guardian_links", {
         "tenant_id": school_id, "student_id": student_id,
         "parent_ref": from_parent, "is_active": True
     })
-    to_link = await db.guardian_links.find_one({
+    to_link = await gd_find_one(db.session, "guardian_links", {
         "tenant_id": school_id, "student_id": student_id,
         "parent_ref": to_parent, "is_active": True
     })
@@ -297,16 +273,10 @@ async def transfer_custody(
 
     now = datetime.now(timezone.utc).isoformat()
 
-    await db.guardian_links.update_one(
-        {"id": from_link["id"]},
-        {"$set": {"is_primary": False, "updated_at": now}}
-    )
-    await db.guardian_links.update_one(
-        {"id": to_link["id"]},
-        {"$set": {"is_primary": True, "updated_at": now}}
-    )
+    await gd_update_one(db.session, "guardian_links", {"id": from_link["id"]}, {"is_primary": False, "updated_at": now})
+    await gd_update_one(db.session, "guardian_links", {"id": to_link["id"]}, {"is_primary": True, "updated_at": now})
 
-    await db.custody_transfers.insert_one({
+    await gd_insert(db.session, "custody_transfers", {
         "id": str(uuid.uuid4()),
         "tenant_id": school_id,
         "student_id": student_id,
@@ -328,47 +298,32 @@ async def get_relationship_graph(
     """Get relationship graph for any entity (student, teacher, parent)"""
     school_id = current_user.get("tenant_id")
 
-    student = await db.students.find_one(
-        {"id": entity_id, "school_id": school_id},
-        {"_id": 0, "id": 1, "full_name": 1, "class_id": 1, "class_name": 1, "school_id": 1, "grade_level": 1}
-    )
+    student = await gd_find_one(db.session, "students", {"id": entity_id, "school_id": school_id})
 
     if student:
-        guardians = await db.guardian_links.find(
-            {"tenant_id": school_id, "student_id": entity_id, "is_active": True},
-            {"_id": 0}
-        ).to_list(10)
+        guardians = await gd_find(db.session, "guardian_links", {"tenant_id": school_id, "student_id": entity_id, "is_active": True}, limit=10)
 
-        teacher_assignments_raw = await db.teacher_assignments.find(
-            {"school_id": school_id, "class_id": student.get("class_id"), "is_active": True},
-            {"_id": 0, "teacher_id": 1, "teacher_name": 1, "subject_name": 1, "subject_id": 1}
-        ).to_list(20)
+        teacher_assignments_raw = await gd_find(db.session, "teacher_assignments", {"school_id": school_id, "class_id": student.get("class_id"), "is_active": True}, limit=20)
 
         ta_teacher_ids = list({a.get("teacher_id") for a in teacher_assignments_raw if a.get("teacher_id")})
         ta_subject_ids = list({a.get("subject_id") for a in teacher_assignments_raw if a.get("subject_id")})
         ta_teachers = {}
         if ta_teacher_ids:
-            tch_docs = await db.teachers.find({"id": {"$in": ta_teacher_ids}}, {"_id": 0, "id": 1, "full_name": 1}).to_list(50)
+            tch_docs = await gd_find(db.session, "teachers", {"id": {"$in": ta_teacher_ids}}, limit=50)
             ta_teachers = {t["id"]: t.get("full_name", "") for t in tch_docs}
         ta_subjects = {}
         if ta_subject_ids:
-            sub_docs = await db.subjects.find({"id": {"$in": ta_subject_ids}}, {"_id": 0, "id": 1, "name_ar": 1}).to_list(50)
+            sub_docs = await gd_find(db.session, "subjects", {"id": {"$in": ta_subject_ids}}, limit=50)
             ta_subjects = {s["id"]: s.get("name_ar", "") for s in sub_docs}
 
-        classmates = await db.students.find(
-            {"school_id": school_id, "class_id": student.get("class_id"), "id": {"$ne": entity_id}},
-            {"_id": 0, "id": 1, "full_name": 1}
-        ).limit(50).to_list(50)
+        classmates = await gd_find(db.session, "students", {"school_id": school_id, "class_id": student.get("class_id"), "id": {"$ne": entity_id}}, limit=50)
 
-        siblings_rels = await db.user_relationships.find(
-            {"$or": [
+        siblings_rels = await gd_find(db.session, "user_relationships", {"$or": [
                 {"from_entity_id": entity_id, "relationship_type": "sibling", "status": "active"},
                 {"to_entity_id": entity_id, "relationship_type": "sibling", "status": "active"},
                 {"user_id_1": entity_id, "relationship_type": "sibling", "is_active": True},
                 {"user_id_2": entity_id, "relationship_type": "sibling", "is_active": True},
-            ]},
-            {"_id": 0, "user_id_1": 1, "user_id_2": 1, "from_entity_id": 1, "to_entity_id": 1}
-        ).to_list(20)
+            ]}, limit=20)
         sibling_ids = set()
         for r in siblings_rels:
             fid = r.get("from_entity_id") or r.get("user_id_1")
@@ -380,10 +335,7 @@ async def get_relationship_graph(
         sibling_ids = list(sibling_ids)
         siblings = []
         if sibling_ids:
-            siblings = await db.students.find(
-                {"id": {"$in": sibling_ids}},
-                {"_id": 0, "id": 1, "full_name": 1, "class_name": 1, "grade_level": 1}
-            ).to_list(20)
+            siblings = await gd_find(db.session, "students", {"id": {"$in": sibling_ids}}, limit=20)
 
         return {
             "entity_type": "student",
@@ -402,40 +354,31 @@ async def get_relationship_graph(
             "class_name": student.get("class_name")
         }
 
-    teacher = await db.users.find_one(
-        {"id": entity_id, "tenant_id": school_id, "role": "teacher"},
-        {"_id": 0, "id": 1, "full_name": 1, "email": 1, "teacher_id": 1}
-    )
+    teacher = await gd_find_one(db.session, "users", {"id": entity_id, "tenant_id": school_id, "role": "teacher"})
 
     if teacher:
         teacher_record_id = teacher.get("teacher_id") or entity_id
-        teacher_rec = await db.teachers.find_one(
-            {"$or": [{"id": entity_id}, {"user_id": entity_id}, {"id": teacher_record_id}], "school_id": school_id},
-            {"_id": 0, "id": 1}
-        )
+        teacher_rec = await gd_find_one(db.session, "teachers", {"$or": [{"id": entity_id}, {"user_id": entity_id}, {"id": teacher_record_id}], "school_id": school_id})
         lookup_id = teacher_rec["id"] if teacher_rec else teacher_record_id
 
-        assignments = await db.teacher_assignments.find(
-            {"school_id": school_id, "teacher_id": lookup_id, "is_active": True},
-            {"_id": 0, "class_id": 1, "class_name": 1, "subject_name": 1, "subject_id": 1}
-        ).to_list(30)
+        assignments = await gd_find(db.session, "teacher_assignments", {"school_id": school_id, "teacher_id": lookup_id, "is_active": True}, limit=30)
 
         sub_ids = list({a.get("subject_id") for a in assignments if a.get("subject_id")})
         sub_names = {}
         if sub_ids:
-            subs = await db.subjects.find({"id": {"$in": sub_ids}}, {"_id": 0, "id": 1, "name_ar": 1}).to_list(50)
+            subs = await gd_find(db.session, "subjects", {"id": {"$in": sub_ids}}, limit=50)
             sub_names = {s["id"]: s.get("name_ar", "") for s in subs}
 
         cls_ids = list({a.get("class_id") for a in assignments if a.get("class_id")})
         cls_names = {}
         if cls_ids:
-            classes_docs = await db.classes.find({"id": {"$in": cls_ids}}, {"_id": 0, "id": 1, "name": 1}).to_list(50)
+            classes_docs = await gd_find(db.session, "classes", {"id": {"$in": cls_ids}}, limit=50)
             cls_names = {c["id"]: c.get("name", "") for c in classes_docs}
 
         classes = list({a["class_id"] for a in assignments if a.get("class_id")})
         student_count = 0
         for cid in classes:
-            student_count += await db.students.count_documents({"school_id": school_id, "class_id": cid})
+            student_count += await gd_count(db.session, "students", {"school_id": school_id, "class_id": cid})
 
         return {
             "entity_type": "teacher",
@@ -455,28 +398,19 @@ async def get_relationship_graph(
     parent_query = {"id": entity_id, "role": "parent"}
     if school_id:
         parent_query["tenant_id"] = school_id
-    parent = await db.users.find_one(
-        parent_query,
-        {"_id": 0, "id": 1, "full_name": 1, "email": 1, "phone": 1}
-    )
+    parent = await gd_find_one(db.session, "users", parent_query)
     if parent:
         link_query = {"parent_ref": entity_id, "is_active": True}
         if school_id:
             link_query["tenant_id"] = school_id
-        children_links = await db.guardian_links.find(
-            link_query,
-            {"_id": 0}
-        ).to_list(20)
+        children_links = await gd_find(db.session, "guardian_links", link_query, limit=20)
 
         children = []
         for link in children_links:
             child_query = {"id": link["student_id"]}
             if school_id:
                 child_query["school_id"] = school_id
-            child = await db.students.find_one(
-                child_query,
-                {"_id": 0, "id": 1, "full_name": 1, "class_name": 1, "grade_level": 1}
-            )
+            child = await gd_find_one(db.session, "students", child_query)
             if child:
                 children.append({**child, "relationship": link.get("relationship")})
 
@@ -498,14 +432,11 @@ async def get_siblings(
     """Get siblings of a student (shared parents)"""
     school_id = current_user.get("tenant_id")
 
-    links = await db.guardian_links.find(
-        {"tenant_id": school_id, "student_id": student_id, "is_active": True},
-        {"_id": 0, "parent_ref": 1}
-    ).to_list(10)
+    links = await gd_find(db.session, "guardian_links", {"tenant_id": school_id, "student_id": student_id, "is_active": True}, limit=10)
 
     parent_refs = [l["parent_ref"] for l in links]
     if not parent_refs:
-        parent = await db.students.find_one({"id": student_id}, {"_id": 0, "parent_id": 1, "parent_user_id": 1})
+        parent = await gd_find_one(db.session, "students", {"id": student_id})
         if parent:
             if parent.get("parent_id"):
                 parent_refs.append(parent["parent_id"])
@@ -517,29 +448,20 @@ async def get_siblings(
 
     sibling_ids = set()
     for pref in parent_refs:
-        sibling_links = await db.guardian_links.find(
-            {"tenant_id": school_id, "parent_ref": pref, "is_active": True},
-            {"_id": 0, "student_id": 1}
-        ).to_list(20)
+        sibling_links = await gd_find(db.session, "guardian_links", {"tenant_id": school_id, "parent_ref": pref, "is_active": True}, limit=20)
         for sl in sibling_links:
             if sl["student_id"] != student_id:
                 sibling_ids.add(sl["student_id"])
 
-    also_siblings = await db.students.find(
-        {"school_id": school_id,
+    also_siblings = await gd_find(db.session, "students", {"school_id": school_id,
          "$or": [{"parent_id": {"$in": parent_refs}}, {"parent_user_id": {"$in": parent_refs}}],
-         "id": {"$ne": student_id}},
-        {"_id": 0, "id": 1}
-    ).to_list(20)
+         "id": {"$ne": student_id}}, limit=20)
     for s in also_siblings:
         sibling_ids.add(s["id"])
 
     siblings = []
     for sid in sibling_ids:
-        s = await db.students.find_one(
-            {"id": sid, "school_id": school_id},
-            {"_id": 0, "id": 1, "full_name": 1, "class_name": 1, "grade_level": 1}
-        )
+        s = await gd_find_one(db.session, "students", {"id": sid, "school_id": school_id})
         if s:
             siblings.append(s)
 

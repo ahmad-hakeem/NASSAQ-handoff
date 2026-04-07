@@ -22,6 +22,8 @@ from dependencies import (
     hakim_engine, reporting_engine, export_engine, session_engine,
     REPORT_TYPES, generate_student_qr_code
 )
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_inc
+
 
 from shared_models import (
     StatusCheck, StatusCheckCreate, TeacherRankEnum, SessionStatusEnum, ScheduleStatusEnum, TimeSlotCreate, TimeSlotResponse, TeacherAssignmentCreate, TeacherAssignmentResponse, SchoolScheduleCreate, SchoolScheduleResponse, ScheduleSessionCreate, ScheduleSessionResponse
@@ -51,7 +53,7 @@ async def create_time_slot(
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
-    await db.time_slots.insert_one(slot_doc)
+    await gd_insert(db.session, "time_slots", slot_doc)
     return TimeSlotResponse(**slot_doc)
 
 @router.get("/time-slots", response_model=List[TimeSlotResponse])
@@ -66,7 +68,7 @@ async def get_time_slots(
     elif current_user.get("role") != UserRole.PLATFORM_ADMIN.value:
         query["school_id"] = current_user.get("tenant_id")
     
-    slots = await db.time_slots.find(query, {"_id": 0}).sort([("start_time", 1), ("slot_number", 1)]).to_list(50)
+    slots = await gd_find(db.session, "time_slots", query, order_by="start_time", desc_order=False, limit=50)
     overall_counter = 0
     period_counter = 0
     for s in slots:
@@ -88,8 +90,8 @@ async def delete_time_slot(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
     """حذف فترة زمنية"""
-    result = await db.time_slots.update_one({"id": slot_id}, {"$set": {"is_active": False}})
-    if result.modified_count == 0:
+    result = await gd_update_one(db.session, "time_slots", {"id": slot_id}, {"is_active": False})
+    if result == 0:
         raise HTTPException(status_code=404, detail="الفترة الزمنية غير موجودة")
     return {"message": "تم حذف الفترة الزمنية"}
 
@@ -112,12 +114,12 @@ async def create_teacher_assignment(
         "is_active": True
     }
     
-    existing = await db.teacher_assignments.find_one(duplicate_check)
+    existing = await gd_find_one(db.session, "teacher_assignments", duplicate_check)
     if existing:
-        teacher_doc = await db.teachers.find_one({"id": assignment_data.teacher_id}, {"_id": 0, "full_name": 1, "full_name_ar": 1})
-        subject_doc = await db.subjects.find_one({"id": assignment_data.subject_id}, {"_id": 0, "name_ar": 1, "name": 1})
+        teacher_doc = await gd_find_one(db.session, "teachers", {"id": assignment_data.teacher_id})
+        subject_doc = await gd_find_one(db.session, "subjects", {"id": assignment_data.subject_id})
         if not subject_doc:
-            subject_doc = await db.reference_subjects.find_one({"id": assignment_data.subject_id}, {"_id": 0, "name_ar": 1, "name": 1})
+            subject_doc = await gd_find_one(db.session, "reference_subjects", {"id": assignment_data.subject_id})
         teacher_name = (teacher_doc.get("full_name_ar") or teacher_doc.get("full_name")) if teacher_doc else "المعلم"
         subject_name = (subject_doc.get("name_ar") or subject_doc.get("name")) if subject_doc else "المادة"
         raise HTTPException(
@@ -140,7 +142,7 @@ async def create_teacher_assignment(
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
     try:
-        await db.teacher_assignments.insert_one(assignment_doc)
+        await gd_insert(db.session, "teacher_assignments", assignment_doc)
     except Exception as e:
         if "duplicate key" in str(e).lower() or "E11000" in str(e):
             raise HTTPException(
@@ -150,20 +152,20 @@ async def create_teacher_assignment(
         raise
     
     # Get names for response (support both naming conventions)
-    teacher = await db.teachers.find_one({"id": assignment_data.teacher_id}, {"_id": 0, "full_name": 1, "full_name_ar": 1})
+    teacher = await gd_find_one(db.session, "teachers", {"id": assignment_data.teacher_id})
     class_doc = None
     if assignment_data.class_id:
-        class_doc = await db.classes.find_one({"id": assignment_data.class_id}, {"_id": 0, "name": 1, "name_ar": 1})
+        class_doc = await gd_find_one(db.session, "classes", {"id": assignment_data.class_id})
     
     # Try to get subject from multiple collections
-    subject = await db.subjects.find_one({"id": assignment_data.subject_id}, {"_id": 0, "name": 1, "name_ar": 1})
+    subject = await gd_find_one(db.session, "subjects", {"id": assignment_data.subject_id})
     if not subject:
-        subject = await db.reference_subjects.find_one({"id": assignment_data.subject_id}, {"_id": 0, "name": 1, "name_ar": 1})
+        subject = await gd_find_one(db.session, "reference_subjects", {"id": assignment_data.subject_id})
     if not subject:
-        subject = await db.official_curriculum_subjects.find_one({"id": assignment_data.subject_id}, {"_id": 0, "name": 1, "name_ar": 1})
+        subject = await gd_find_one(db.session, "official_curriculum_subjects", {"id": assignment_data.subject_id})
     
     # Audit log
-    await db.audit_logs.insert_one({
+    await gd_insert(db.session, "audit_logs", {
         "id": str(uuid.uuid4()),
         "school_id": school_id,
         "action": "CREATE",
@@ -210,20 +212,20 @@ async def get_teacher_assignments(
     if class_id:
         query["class_id"] = class_id
     
-    assignments = await db.teacher_assignments.find(query, {"_id": 0}).to_list(500)
+    assignments = await gd_find(db.session, "teacher_assignments", query, limit=500)
     
     # Get all related entities
     teacher_ids = list(set(a.get("teacher_id") for a in assignments))
     class_ids = list(set(a.get("class_id") for a in assignments))
     subject_ids = list(set(a.get("subject_id") for a in assignments))
     
-    teachers = await db.teachers.find({"id": {"$in": teacher_ids}}, {"_id": 0}).to_list(100)
-    classes = await db.classes.find({"id": {"$in": class_ids}}, {"_id": 0}).to_list(100)
+    teachers = await gd_find(db.session, "teachers", {"id": {"$in": teacher_ids}}, limit=100)
+    classes = await gd_find(db.session, "classes", {"id": {"$in": class_ids}}, limit=100)
     
     # Try both subjects collection and reference_subjects
-    subjects = await db.subjects.find({"id": {"$in": subject_ids}}, {"_id": 0}).to_list(100)
+    subjects = await gd_find(db.session, "subjects", {"id": {"$in": subject_ids}}, limit=100)
     if not subjects:
-        subjects = await db.reference_subjects.find({"id": {"$in": subject_ids}}, {"_id": 0}).to_list(100)
+        subjects = await gd_find(db.session, "reference_subjects", {"id": {"$in": subject_ids}}, limit=100)
     
     # Support both naming conventions
     teacher_map = {t.get("id"): t.get("full_name") or t.get("full_name_ar") for t in teachers}
@@ -266,7 +268,7 @@ async def update_teacher_assignment(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
     """تحديث إسناد معلم"""
-    assignment = await db.teacher_assignments.find_one({"id": assignment_id}, {"_id": 0})
+    assignment = await gd_find_one(db.session, "teacher_assignments", {"id": assignment_id})
     if not assignment:
         raise HTTPException(status_code=404, detail="الإسناد غير موجود")
     
@@ -282,7 +284,7 @@ async def update_teacher_assignment(
     if update_data.is_active is not None:
         update_dict["is_active"] = update_data.is_active
     
-    await db.teacher_assignments.update_one({"id": assignment_id}, {"$set": update_dict})
+    await gd_update_one(db.session, "teacher_assignments", {"id": assignment_id}, update_dict)
     
     return {"message": "تم تحديث الإسناد بنجاح"}
 
@@ -293,16 +295,13 @@ async def delete_teacher_assignment(
 ):
     """حذف إسناد معلم"""
     # Fetch before soft-deleting for audit log
-    old_assignment = await db.teacher_assignments.find_one({"id": assignment_id}, {"_id": 0})
-    result = await db.teacher_assignments.update_one(
-        {"id": assignment_id},
-        {"$set": {"is_active": False, "updated_at": datetime.now(timezone.utc).isoformat()}}
-    )
-    if result.modified_count == 0:
+    old_assignment = await gd_find_one(db.session, "teacher_assignments", {"id": assignment_id})
+    result = await gd_update_one(db.session, "teacher_assignments", {"id": assignment_id}, {"is_active": False, "updated_at": datetime.now(timezone.utc).isoformat()})
+    if result == 0:
         raise HTTPException(status_code=404, detail="الإسناد غير موجود")
     # Audit log
     if old_assignment:
-        await db.audit_logs.insert_one({
+        await gd_insert(db.session, "audit_logs", {
             "id": str(uuid.uuid4()),
             "school_id": old_assignment.get("school_id"),
             "action": "DELETE",
@@ -345,7 +344,7 @@ async def create_schedule(
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
-    await db.schedules.insert_one(schedule_doc)
+    await gd_insert(db.session, "schedules", schedule_doc)
     return SchoolScheduleResponse(**schedule_doc)
 
 @router.get("/schedules", response_model=List[SchoolScheduleResponse])
@@ -364,13 +363,13 @@ async def get_schedules(
     if status:
         query["status"] = status
     
-    schedules = await db.schedules.find(query, {"_id": 0}).to_list(100)
+    schedules = await gd_find(db.session, "schedules", query, limit=100)
     return [SchoolScheduleResponse(**s) for s in schedules]
 
 @router.get("/schedules/{schedule_id}", response_model=SchoolScheduleResponse)
 async def get_schedule(schedule_id: str, current_user: dict = Depends(get_current_user)):
     """الحصول على جدول محدد"""
-    schedule = await db.schedules.find_one({"id": schedule_id}, {"_id": 0})
+    schedule = await gd_find_one(db.session, "schedules", {"id": schedule_id})
     if not schedule:
         raise HTTPException(status_code=404, detail="الجدول غير موجود")
     return SchoolScheduleResponse(**schedule)
@@ -381,11 +380,8 @@ async def publish_schedule(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
     """نشر الجدول المدرسي"""
-    result = await db.schedules.update_one(
-        {"id": schedule_id},
-        {"$set": {"status": ScheduleStatusEnum.PUBLISHED.value, "updated_at": datetime.now(timezone.utc).isoformat()}}
-    )
-    if result.modified_count == 0:
+    result = await gd_update_one(db.session, "schedules", {"id": schedule_id}, {"status": ScheduleStatusEnum.PUBLISHED.value, "updated_at": datetime.now(timezone.utc).isoformat()})
+    if result == 0:
         raise HTTPException(status_code=404, detail="الجدول غير موجود")
     return {"message": "تم نشر الجدول"}
 
@@ -396,13 +392,10 @@ async def delete_schedule(
 ):
     """حذف جدول مدرسي"""
     # Delete all sessions first
-    await db.schedule_sessions.delete_many({"schedule_id": schedule_id})
+    await gd_delete_many(db.session, "schedule_sessions", {"schedule_id": schedule_id})
     
-    result = await db.schedules.update_one(
-        {"id": schedule_id},
-        {"$set": {"status": ScheduleStatusEnum.ARCHIVED.value, "updated_at": datetime.now(timezone.utc).isoformat()}}
-    )
-    if result.modified_count == 0:
+    result = await gd_update_one(db.session, "schedules", {"id": schedule_id}, {"status": ScheduleStatusEnum.ARCHIVED.value, "updated_at": datetime.now(timezone.utc).isoformat()})
+    if result == 0:
         raise HTTPException(status_code=404, detail="الجدول غير موجود")
     return {"message": "تم حذف الجدول"}
 
@@ -417,7 +410,7 @@ async def create_schedule_session(
 ):
     """إضافة حصة للجدول"""
     # Check for conflicts
-    existing = await db.schedule_sessions.find_one({
+    existing = await gd_find_one(db.session, "schedule_sessions", {
         "schedule_id": session_data.schedule_id,
         "day_of_week": session_data.day_of_week,
         "time_slot_id": session_data.time_slot_id,
@@ -428,7 +421,7 @@ async def create_schedule_session(
         raise HTTPException(status_code=400, detail="هذه الحصة موجودة بالفعل")
     
     # Get assignment details
-    assignment = await db.teacher_assignments.find_one({"id": session_data.assignment_id}, {"_id": 0})
+    assignment = await gd_find_one(db.session, "teacher_assignments", {"id": session_data.assignment_id})
     if not assignment:
         raise HTTPException(status_code=404, detail="الإسناد غير موجود")
     
@@ -445,19 +438,16 @@ async def create_schedule_session(
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
-    await db.schedule_sessions.insert_one(session_doc)
+    await gd_insert(db.session, "schedule_sessions", session_doc)
     
     # Update schedule session count
-    await db.schedules.update_one(
-        {"id": session_data.schedule_id},
-        {"$inc": {"total_sessions": 1}}
-    )
+    await _gd_inc(db.session, "schedules", {"id": session_data.schedule_id}, {"total_sessions": 1})
     
     # Get names for response
-    teacher = await db.teachers.find_one({"id": assignment.get("teacher_id")}, {"_id": 0})
-    class_doc = await db.classes.find_one({"id": assignment.get("class_id")}, {"_id": 0})
-    subject = await db.subjects.find_one({"id": assignment.get("subject_id")}, {"_id": 0})
-    time_slot = await db.time_slots.find_one({"id": session_data.time_slot_id}, {"_id": 0})
+    teacher = await gd_find_one(db.session, "teachers", {"id": assignment.get("teacher_id")})
+    class_doc = await gd_find_one(db.session, "classes", {"id": assignment.get("class_id")})
+    subject = await gd_find_one(db.session, "subjects", {"id": assignment.get("subject_id")})
+    time_slot = await gd_find_one(db.session, "time_slots", {"id": session_data.time_slot_id})
     
     return ScheduleSessionResponse(
         **session_doc,
@@ -487,15 +477,15 @@ async def get_schedule_sessions(
         # Support both 'day' and 'day_of_week' field names
         query["$or"] = [{"day_of_week": day_of_week}, {"day": day_of_week}]
     
-    sessions = await db.schedule_sessions.find(query, {"_id": 0}).to_list(1000)
+    sessions = await gd_find(db.session, "schedule_sessions", query, limit=1000)
     
     if sessions and sessions[0].get("assignment_id"):
         # New format - get related data from assignments
         assignment_ids = list(set(s.get("assignment_id") for s in sessions if s.get("assignment_id")))
         time_slot_ids = list(set(s.get("time_slot_id") for s in sessions if s.get("time_slot_id")))
         
-        assignments = await db.teacher_assignments.find({"id": {"$in": assignment_ids}}, {"_id": 0}).to_list(100)
-        time_slots = await db.time_slots.find({"id": {"$in": time_slot_ids}}, {"_id": 0}).to_list(20)
+        assignments = await gd_find(db.session, "teacher_assignments", {"id": {"$in": assignment_ids}}, limit=100)
+        time_slots = await gd_find(db.session, "time_slots", {"id": {"$in": time_slot_ids}}, limit=20)
         
         assignment_map = {a.get("id"): a for a in assignments}
         slot_map = {s.get("id"): s for s in time_slots}
@@ -504,9 +494,9 @@ async def get_schedule_sessions(
         class_ids_list = list(set(a.get("class_id") for a in assignments if a))
         subject_ids = list(set(a.get("subject_id") for a in assignments if a))
         
-        teachers = await db.teachers.find({"id": {"$in": teacher_ids}}, {"_id": 0}).to_list(100)
-        classes = await db.classes.find({"id": {"$in": class_ids_list}}, {"_id": 0}).to_list(100)
-        subjects = await db.subjects.find({"id": {"$in": subject_ids}}, {"_id": 0}).to_list(100)
+        teachers = await gd_find(db.session, "teachers", {"id": {"$in": teacher_ids}}, limit=100)
+        classes = await gd_find(db.session, "classes", {"id": {"$in": class_ids_list}}, limit=100)
+        subjects = await gd_find(db.session, "subjects", {"id": {"$in": subject_ids}}, limit=100)
         
         teacher_map = {t.get("id"): t.get("full_name") or t.get("full_name_ar") for t in teachers}
         class_map = {c.get("id"): c.get("name") or c.get("name_ar") for c in classes}
@@ -554,7 +544,7 @@ async def get_schedule_sessions(
         ts_ids = list(set(s.get("time_slot_id") for s in sessions if s.get("time_slot_id")))
         ts_map = {}
         if ts_ids:
-            ts_docs = await db.time_slots.find({"id": {"$in": ts_ids}}, {"_id": 0}).to_list(len(ts_ids) + 5)
+            ts_docs = await gd_find(db.session, "time_slots", {"id": {"$in": ts_ids}}, limit=len(ts_ids) + 5)
             ts_map = {t["id"]: t for t in ts_docs}
         
         result = []
@@ -597,20 +587,14 @@ async def delete_schedule_session(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
     """حذف حصة من الجدول"""
-    session = await db.schedule_sessions.find_one({"id": session_id}, {"_id": 0})
+    session = await gd_find_one(db.session, "schedule_sessions", {"id": session_id})
     if not session:
         raise HTTPException(status_code=404, detail="الحصة غير موجودة")
     
-    await db.schedule_sessions.update_one(
-        {"id": session_id},
-        {"$set": {"status": SessionStatusEnum.CANCELLED.value, "updated_at": datetime.now(timezone.utc).isoformat()}}
-    )
+    await gd_update_one(db.session, "schedule_sessions", {"id": session_id}, {"status": SessionStatusEnum.CANCELLED.value, "updated_at": datetime.now(timezone.utc).isoformat()})
     
     # Update schedule session count
-    await db.schedules.update_one(
-        {"id": session.get("schedule_id")},
-        {"$inc": {"total_sessions": -1}}
-    )
+    await _gd_inc(db.session, "schedules", {"id": session.get("schedule_id")}, {"total_sessions": -1})
     
     return {"message": "تم حذف الحصة"}
 
