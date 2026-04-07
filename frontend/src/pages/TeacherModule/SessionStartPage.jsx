@@ -74,7 +74,7 @@ export default function SessionStartPage() {
       try { setLessonData(JSON.parse(stored)?.lesson); return; } catch (e) { console.error('Error parsing stored lesson:', e); }
     }
     const timer = setTimeout(() => { nassaqError('لم يتم تحديد الحصة'); navigate('/teacher/home'); }, 600);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [location.state, navigate]);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -439,6 +439,7 @@ export default function SessionStartPage() {
                 gender={isRTL ? 'male' : 'female'}
                 label={isRTL ? 'طلاب' : 'طالبات'}
                 theme={theme}
+                themeStyles={themeStyles}
                 t={t}
                 isDark={isDark}
                 onUpdate={updateAttendance}
@@ -448,6 +449,7 @@ export default function SessionStartPage() {
                 gender={isRTL ? 'female' : 'male'}
                 label={t('key_mf5bvm')}
                 theme={theme}
+                themeStyles={themeStyles}
                 t={t}
                 isDark={isDark}
                 onUpdate={updateAttendance}
@@ -467,7 +469,7 @@ export default function SessionStartPage() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {students.map((student, idx) => (
-                  <StudentCard key={student.id} student={student} index={idx} onUpdate={updateAttendance} theme={theme} t={t} isDark={isDark} />
+                  <StudentCard key={student.id} student={student} index={idx} onUpdate={updateAttendance} theme={theme} themeStyles={themeStyles} t={t} isDark={isDark} />
                 ))}
               </div>
             </div>
@@ -507,7 +509,7 @@ export default function SessionStartPage() {
   );
 }
 
-function GenderSection({ students, gender, label, theme, t, isDark, onUpdate }) {
+function GenderSection({ students, gender, label, theme, themeStyles, t, isDark, onUpdate }) {
   const isMale = gender === 'male';
 
   const accentGradient = isMale ? 'from-sky-500 to-blue-600' : 'from-pink-500 to-rose-600';
@@ -533,14 +535,14 @@ function GenderSection({ students, gender, label, theme, t, isDark, onUpdate }) 
       </div>
       <div className="p-4 space-y-3">
         {students.map((student, idx) => (
-          <StudentCard key={student.id} student={student} index={idx} onUpdate={onUpdate} theme={theme} t={t} isDark={isDark} />
+          <StudentCard key={student.id} student={student} index={idx} onUpdate={onUpdate} theme={theme} themeStyles={themeStyles} t={t} isDark={isDark} />
         ))}
       </div>
     </div>
   );
 }
 
-function StudentCard({ student, index, onUpdate, theme, t, isDark }) {
+function StudentCard({ student, index, onUpdate, theme, themeStyles, t, isDark }) {
   const status = student.attendance_status || 'present';
   const isAbsent = status === 'absent';
   const cfg = STATUS_CONFIG[isAbsent ? 'absent' : 'present'];
