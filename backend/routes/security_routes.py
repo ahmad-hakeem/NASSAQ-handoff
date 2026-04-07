@@ -9,6 +9,7 @@ from typing import Optional, List
 from datetime import datetime, timezone
 import uuid
 import logging
+import os
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
 logger = logging.getLogger("nassaq")
 
@@ -462,7 +463,8 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
             pw_policy_score = max(0, 100 - (pw_no_change * 5))
             pw_policy_score = min(100, pw_policy_score)
 
-            encryption_score = 100
+            https_enabled = bool(os.environ.get("REPLIT_DEV_DOMAIN") or os.environ.get("REPL_SLUG"))
+            encryption_score = 100 if https_enabled else 50
 
             logging_score = 100 if total_audit_events > 0 else 50
             account_security_score = max(0, 100 - (locked_accounts * 5) - (failed_logins_24h * 2))
@@ -507,7 +509,7 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
                 "failedLogins24h": failed_logins_24h,
                 "lockedAccounts": locked_accounts,
                 "encryptedData": encryption_score,
-                "passwordPolicyStrength": "strong",
+                "passwordPolicyStrength": "strong" if pw_policy_score >= 80 else ("moderate" if pw_policy_score >= 50 else "weak"),
                 "lastBackup": last_backup,
                 "totalBackups": total_backups,
                 "loggingCoverage": logging_score,
@@ -519,7 +521,7 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
             return {
                 "securityScore": 0, "protectedAccounts": 0, "totalAccounts": 0,
                 "applicationSecurity": 0, "failedLogins24h": 0, "lockedAccounts": 0,
-                "encryptedData": 100, "passwordPolicyStrength": "strong",
+                "encryptedData": 0, "passwordPolicyStrength": "unknown",
                 "lastBackup": datetime.now(timezone.utc).isoformat(),
                 "totalBackups": 0, "loggingCoverage": 0, "mustChangePassword": 0,
                 "scoreFactors": [],
@@ -656,8 +658,32 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
                     "alert_key": alert_key,
                 })
 
-            alerts.sort(key=lambda a: ({"high": 0, "medium": 1, "low": 2}.get(a["type"], 3), a.get("timestamp", "")), reverse=False)
-            alerts.sort(key=lambda a: a.get("timestamp", ""), reverse=True)
+            severity_rank = {"high": 0, "medium": 1, "low": 2}
+
+            high_severity_events = await gd_find(db.session, "audit_logs", {
+                "severity": {"$in": ["high", "critical"]},
+                "timestamp": {"$gte": cutoff_7d},
+            }, order_by="timestamp", desc_order=True, limit=20)
+
+            for ev in high_severity_events:
+                alert_id += 1
+                alert_key = f"severity-{ev.get('id', alert_id)}"
+                if alert_key in dismissed_ids:
+                    continue
+                action = ev.get("action", "unknown")
+                alerts.append({
+                    "id": f"alert-sev-{alert_id}",
+                    "type": "high",
+                    "status": "active",
+                    "title_ar": f"حدث أمني عالي الخطورة: {action}",
+                    "title_en": f"High severity security event: {action}",
+                    "description_ar": ev.get("details", {}).get("description", f"حدث أمني بمستوى خطورة عالي: {action}"),
+                    "description_en": ev.get("details", {}).get("description", f"Security event with high severity: {action}"),
+                    "timestamp": ev.get("timestamp", now.isoformat()),
+                    "alert_key": alert_key,
+                })
+
+            alerts.sort(key=lambda a: (severity_rank.get(a["type"], 3), a.get("timestamp", "")), reverse=False)
 
             return alerts
         except Exception as e:
