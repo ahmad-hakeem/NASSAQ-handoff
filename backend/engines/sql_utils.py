@@ -11,6 +11,180 @@ TENANT_ALIAS = {"tenant_id": "school_id", "school_id": "tenant_id"}
 _SKIP_KEYS = frozenset({"_collection"})
 
 
+def _get_orm_model(collection: str):
+    from pg_models import (
+        User, School, Teacher, Student, Parent, Class, Subject,
+        TeacherAssignment, TimeSlot, Timetable, TimetableRun,
+        ScheduleSession, Attendance, ProductIssue, IssueComment,
+        IssueDuplicateMap, IssueActivityLog, BulkActionHistory,
+        AuditLog, Notification, Assessment, AssessmentSubmission,
+        BehaviourRecord, SchoolSettings, RegistrationRequest,
+        TeacherSession, HakimInsight, PlatformSettings,
+        AcademicYear, AcademicTerm, Counter, LookupOption,
+        Message, ApprovalEvent, SkillType, StudentSkill,
+        SessionInteraction, AIInsight, AIIntervention,
+        SessionNote, SessionEventLog, TeacherClassAssignment,
+        GradeLevel, EducationalStage, PhysicalClassroom,
+        BehaviourType, TimetableConstraint, ApprovalRequest,
+        Event, SystemSetting,
+    )
+    _ORM_REGISTRY = {
+        "users": User,
+        "schools": School,
+        "teachers": Teacher,
+        "students": Student,
+        "parents": Parent,
+        "classes": Class,
+        "subjects": Subject,
+        "teacher_assignments": TeacherAssignment,
+        "time_slots": TimeSlot,
+        "timetables": Timetable,
+        "timetable_runs": TimetableRun,
+        "schedule_sessions": ScheduleSession,
+        "attendance": Attendance,
+        "product_issues": ProductIssue,
+        "issue_comments": IssueComment,
+        "issue_duplicates_map": IssueDuplicateMap,
+        "issue_activity_log": IssueActivityLog,
+        "bulk_action_history": BulkActionHistory,
+        "audit_logs": AuditLog,
+        "notifications": Notification,
+        "assessments": Assessment,
+        "assessment_submissions": AssessmentSubmission,
+        "behaviour_records": BehaviourRecord,
+        "school_settings": SchoolSettings,
+        "registration_requests": RegistrationRequest,
+        "teacher_sessions": TeacherSession,
+        "hakim_insights": HakimInsight,
+        "platform_settings": PlatformSettings,
+        "academic_years": AcademicYear,
+        "academic_terms": AcademicTerm,
+        "counters": Counter,
+        "lookup_options": LookupOption,
+        "messages": Message,
+        "approval_events": ApprovalEvent,
+        "skills_types": SkillType,
+        "student_skills": StudentSkill,
+        "session_interactions": SessionInteraction,
+        "ai_insights": AIInsight,
+        "ai_interventions": AIIntervention,
+        "session_notes": SessionNote,
+        "session_event_log": SessionEventLog,
+        "teacher_class_assignments": TeacherClassAssignment,
+        "grade_levels": GradeLevel,
+        "educational_stages": EducationalStage,
+        "physical_classrooms": PhysicalClassroom,
+        "behaviour_types": BehaviourType,
+        "timetable_constraints": TimetableConstraint,
+        "approval_requests": ApprovalRequest,
+        "events": Event,
+        "system_settings": SystemSetting,
+    }
+    return _ORM_REGISTRY.get(collection)
+
+
+def _build_orm_filter_conditions(model_cls, filters: dict):
+    conds = []
+    if not filters:
+        return conds
+    cols = _col_keys(model_cls)
+    has_data = "data" in cols
+    for k, v in filters.items():
+        if k in ("_id",):
+            k = "id"
+        if k == "$or":
+            or_conds = []
+            for sub in v:
+                sub_conds = _build_orm_filter_conditions(model_cls, sub)
+                if sub_conds:
+                    or_conds.append(and_(*sub_conds) if len(sub_conds) > 1 else sub_conds[0])
+            if or_conds:
+                conds.append(or_(*or_conds))
+        elif k == "$and":
+            for sub in v:
+                sub_conds = _build_orm_filter_conditions(model_cls, sub)
+                conds.extend(sub_conds)
+        elif k in cols:
+            col = getattr(model_cls, k)
+            if isinstance(v, dict):
+                for op, val in v.items():
+                    if op == "$gte":
+                        conds.append(col >= val)
+                    elif op == "$lte":
+                        conds.append(col <= val)
+                    elif op == "$gt":
+                        conds.append(col > val)
+                    elif op == "$lt":
+                        conds.append(col < val)
+                    elif op == "$ne":
+                        if val is None:
+                            conds.append(col.isnot(None))
+                        else:
+                            conds.append(col != val)
+                    elif op == "$in":
+                        conds.append(col.in_(val))
+                    elif op == "$nin":
+                        conds.append(~col.in_(val))
+                    elif op == "$regex":
+                        conds.append(col.op("~")(str(val)))
+                    elif op == "$exists":
+                        if val:
+                            conds.append(col.isnot(None))
+                        else:
+                            conds.append(col.is_(None))
+            elif isinstance(v, list):
+                conds.append(col.in_(v))
+            else:
+                conds.append(col == v)
+        elif TENANT_ALIAS.get(k) in cols:
+            real_key = TENANT_ALIAS[k]
+            col = getattr(model_cls, real_key)
+            if isinstance(v, dict):
+                for op, val in v.items():
+                    if op == "$in":
+                        conds.append(col.in_(val))
+                    elif op == "$ne":
+                        conds.append(col != val)
+            elif isinstance(v, list):
+                conds.append(col.in_(v))
+            else:
+                conds.append(col == v)
+        elif has_data:
+            json_expr = model_cls.data[k]
+            col_expr = json_expr.astext
+            if isinstance(v, dict):
+                for op, val in v.items():
+                    if op == "$gte":
+                        conds.append(col_expr >= str(val))
+                    elif op == "$lte":
+                        conds.append(col_expr <= str(val))
+                    elif op == "$gt":
+                        conds.append(col_expr > str(val))
+                    elif op == "$lt":
+                        conds.append(col_expr < str(val))
+                    elif op == "$ne":
+                        if val is None:
+                            conds.append(col_expr.isnot(None))
+                        else:
+                            conds.append(col_expr != str(val))
+                    elif op == "$in":
+                        conds.append(col_expr.in_([str(x) for x in val]))
+                    elif op == "$regex":
+                        conds.append(col_expr.op("~")(str(val)))
+                    elif op == "$exists":
+                        if val:
+                            conds.append(json_expr.isnot(None))
+                        else:
+                            conds.append(json_expr.is_(None))
+            elif isinstance(v, bool):
+                conds.append(col_expr == str(v).lower())
+            elif v is None:
+                conds.append(json_expr.is_(None))
+            else:
+                conds.append(col_expr == str(v))
+    return conds
+
+
 def model_to_dict(obj) -> Optional[dict]:
     if obj is None:
         return None
@@ -219,6 +393,9 @@ def _build_filter_conditions(model_cls, filters: dict):
 async def gd_find(session, collection: str, filters: dict = None,
                   order_by: str = None, desc_order: bool = True,
                   limit: int = None, offset: int = None) -> List[dict]:
+    orm_model = _get_orm_model(collection)
+    if orm_model is not None:
+        return await _orm_find(session, orm_model, filters, order_by, desc_order, limit, offset)
     from pg_models import GenericDocument
     stmt = select(GenericDocument).where(GenericDocument._collection == collection)
     conds = _build_filter_conditions(GenericDocument, filters)
@@ -240,6 +417,31 @@ async def gd_find(session, collection: str, filters: dict = None,
     return models_to_dicts(result.scalars().all())
 
 
+async def _orm_find(session, model_cls, filters, order_by, desc_order, limit, offset):
+    stmt = select(model_cls)
+    conds = _build_orm_filter_conditions(model_cls, filters)
+    if conds:
+        stmt = stmt.where(and_(*conds))
+    if order_by:
+        cols = _col_keys(model_cls)
+        if order_by in cols:
+            col = getattr(model_cls, order_by)
+        elif TENANT_ALIAS.get(order_by) in cols:
+            col = getattr(model_cls, TENANT_ALIAS[order_by])
+        elif hasattr(model_cls, "data"):
+            col = model_cls.data[order_by].astext
+        else:
+            col = None
+        if col is not None:
+            stmt = stmt.order_by(col.desc() if desc_order else col.asc())
+    if offset:
+        stmt = stmt.offset(offset)
+    if limit:
+        stmt = stmt.limit(limit)
+    result = await session.execute(stmt)
+    return models_to_dicts(result.scalars().all())
+
+
 async def gd_find_one(session, collection: str, filters: dict = None, sort=None) -> Optional[dict]:
     order_by = None
     desc_order = True
@@ -252,6 +454,15 @@ async def gd_find_one(session, collection: str, filters: dict = None, sort=None)
 
 
 async def gd_insert(session, collection: str, doc: dict) -> str:
+    orm_model = _get_orm_model(collection)
+    if orm_model is not None:
+        doc_id = doc.get("id") or str(uuid.uuid4())
+        insert_data = {**doc, "id": doc_id}
+        insert_data.pop("_id", None)
+        obj = dict_to_model(orm_model, insert_data)
+        session.add(obj)
+        await session.flush()
+        return doc_id
     from pg_models import GenericDocument
     doc_id = doc.get("id") or str(uuid.uuid4())
     data = {k: v for k, v in doc.items() if k not in ("id", "_id")}
@@ -311,6 +522,9 @@ def _set_nested(data: dict, key: str, value) -> None:
         data[key] = value
 
 async def gd_update_one(session, collection: str, filters: dict, updates: dict) -> int:
+    orm_model = _get_orm_model(collection)
+    if orm_model is not None:
+        return await _orm_update_one(session, orm_model, filters, updates)
     from pg_models import GenericDocument
     stmt = select(GenericDocument).where(GenericDocument._collection == collection)
     conds = _build_filter_conditions(GenericDocument, filters)
@@ -328,7 +542,60 @@ async def gd_update_one(session, collection: str, filters: dict, updates: dict) 
     return 1
 
 
+async def _orm_update_one(session, model_cls, filters, updates):
+    stmt = select(model_cls)
+    conds = _build_orm_filter_conditions(model_cls, filters)
+    if conds:
+        stmt = stmt.where(and_(*conds))
+    stmt = stmt.limit(1)
+    result = await session.execute(stmt)
+    obj = result.scalars().first()
+    if not obj:
+        return 0
+    flat_updates = _flatten_update_operators(updates)
+    apply_updates(obj, flat_updates, model_cls)
+    await session.flush()
+    return 1
+
+
+def _flatten_update_operators(updates: dict) -> dict:
+    if "$set" in updates or "$inc" in updates or "$unset" in updates:
+        flat = {}
+        if "$set" in updates:
+            flat.update(updates["$set"])
+        if "$inc" in updates:
+            for k, v in updates["$inc"].items():
+                flat[k] = v
+        if "$unset" in updates:
+            for k in updates["$unset"]:
+                flat[k] = None
+        if "$push" in updates:
+            flat["$push"] = updates["$push"]
+        if "$pull" in updates:
+            flat["$pull"] = updates["$pull"]
+        return flat
+    return updates
+
+
 async def gd_upsert(session, collection: str, filters: dict, updates: dict) -> int:
+    orm_model = _get_orm_model(collection)
+    if orm_model is not None:
+        stmt = select(orm_model)
+        conds = _build_orm_filter_conditions(orm_model, filters)
+        if conds:
+            stmt = stmt.where(and_(*conds))
+        stmt = stmt.limit(1)
+        result = await session.execute(stmt)
+        obj = result.scalars().first()
+        if obj:
+            flat_updates = _flatten_update_operators(updates)
+            apply_updates(obj, flat_updates, orm_model)
+            await session.flush()
+            return 1
+        else:
+            merged = dict(filters)
+            merged.update(updates)
+            return await gd_insert(session, collection, merged)
     from pg_models import GenericDocument
     stmt = select(GenericDocument).where(GenericDocument._collection == collection)
     conds = _build_filter_conditions(GenericDocument, filters)
@@ -350,6 +617,22 @@ async def gd_upsert(session, collection: str, filters: dict, updates: dict) -> i
 
 
 async def gd_update_many(session, collection: str, filters: dict, updates: dict) -> int:
+    orm_model = _get_orm_model(collection)
+    if orm_model is not None:
+        stmt = select(orm_model)
+        conds = _build_orm_filter_conditions(orm_model, filters)
+        if conds:
+            stmt = stmt.where(and_(*conds))
+        result = await session.execute(stmt)
+        objs = result.scalars().all()
+        flat_updates = _flatten_update_operators(updates)
+        count = 0
+        for obj in objs:
+            apply_updates(obj, flat_updates, orm_model)
+            count += 1
+        if count:
+            await session.flush()
+        return count
     from pg_models import GenericDocument
     stmt = select(GenericDocument).where(GenericDocument._collection == collection)
     conds = _build_filter_conditions(GenericDocument, filters)
@@ -369,6 +652,14 @@ async def gd_update_many(session, collection: str, filters: dict, updates: dict)
 
 
 async def gd_count(session, collection: str, filters: dict = None) -> int:
+    orm_model = _get_orm_model(collection)
+    if orm_model is not None:
+        stmt = select(func.count(orm_model.id))
+        conds = _build_orm_filter_conditions(orm_model, filters)
+        if conds:
+            stmt = stmt.where(and_(*conds))
+        result = await session.execute(stmt)
+        return result.scalar() or 0
     from pg_models import GenericDocument
     stmt = select(func.count(GenericDocument.id)).where(
         GenericDocument._collection == collection
@@ -381,6 +672,20 @@ async def gd_count(session, collection: str, filters: dict = None) -> int:
 
 
 async def gd_delete_one(session, collection: str, filters: dict) -> int:
+    orm_model = _get_orm_model(collection)
+    if orm_model is not None:
+        stmt = select(orm_model)
+        conds = _build_orm_filter_conditions(orm_model, filters)
+        if conds:
+            stmt = stmt.where(and_(*conds))
+        stmt = stmt.limit(1)
+        result = await session.execute(stmt)
+        obj = result.scalars().first()
+        if not obj:
+            return 0
+        await session.delete(obj)
+        await session.flush()
+        return 1
     from pg_models import GenericDocument
     stmt = select(GenericDocument).where(GenericDocument._collection == collection)
     conds = _build_filter_conditions(GenericDocument, filters)
@@ -397,6 +702,16 @@ async def gd_delete_one(session, collection: str, filters: dict) -> int:
 
 
 async def gd_delete_many(session, collection: str, filters: dict) -> int:
+    orm_model = _get_orm_model(collection)
+    if orm_model is not None:
+        sub = select(orm_model.id)
+        conds = _build_orm_filter_conditions(orm_model, filters)
+        if conds:
+            sub = sub.where(and_(*conds))
+        stmt = sa_delete(orm_model).where(orm_model.id.in_(sub.scalar_subquery()))
+        result = await session.execute(stmt)
+        await session.flush()
+        return result.rowcount
     from pg_models import GenericDocument
     sub = select(GenericDocument.id).where(GenericDocument._collection == collection)
     conds = _build_filter_conditions(GenericDocument, filters)
@@ -409,6 +724,23 @@ async def gd_delete_many(session, collection: str, filters: dict) -> int:
 
 
 async def gd_distinct(session, collection: str, field: str, filters: dict = None) -> List:
+    orm_model = _get_orm_model(collection)
+    if orm_model is not None:
+        cols = _col_keys(orm_model)
+        if field in cols:
+            col_expr = getattr(orm_model, field)
+        elif TENANT_ALIAS.get(field) in cols:
+            col_expr = getattr(orm_model, TENANT_ALIAS[field])
+        elif hasattr(orm_model, "data"):
+            col_expr = orm_model.data[field].astext
+        else:
+            return []
+        stmt = select(func.distinct(col_expr))
+        conds = _build_orm_filter_conditions(orm_model, filters)
+        if conds:
+            stmt = stmt.where(and_(*conds))
+        result = await session.execute(stmt)
+        return [row[0] for row in result.fetchall()]
     from pg_models import GenericDocument
     col_expr = GenericDocument.data[field].astext
     stmt = select(func.distinct(col_expr)).where(
