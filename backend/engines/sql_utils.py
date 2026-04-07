@@ -1,10 +1,12 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any, Type
 
+from dateutil.parser import isoparse
 from sqlalchemy import select, and_, or_, func, delete as sa_delete
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.types import DateTime, Date
 
 TENANT_ALIAS = {"tenant_id": "school_id", "school_id": "tenant_id"}
 
@@ -83,6 +85,21 @@ def _get_orm_model(collection: str):
     return _ORM_REGISTRY.get(collection)
 
 
+def _coerce_value(col_attr, val):
+    if val is None:
+        return None
+    col_type = getattr(col_attr.property.columns[0], "type", None) if hasattr(col_attr, "property") else None
+    if col_type is not None and isinstance(col_type, (DateTime, Date)):
+        if isinstance(val, str):
+            try:
+                return isoparse(val)
+            except (ValueError, TypeError):
+                return val
+        if isinstance(val, (int, float)):
+            return datetime.fromtimestamp(val, tz=timezone.utc)
+    return val
+
+
 def _build_orm_filter_conditions(model_cls, filters: dict):
     conds = []
     if not filters:
@@ -108,6 +125,7 @@ def _build_orm_filter_conditions(model_cls, filters: dict):
             col = getattr(model_cls, k)
             if isinstance(v, dict):
                 for op, val in v.items():
+                    val = _coerce_value(col, val)
                     if op == "$gte":
                         conds.append(col >= val)
                     elif op == "$lte":
@@ -135,6 +153,7 @@ def _build_orm_filter_conditions(model_cls, filters: dict):
             elif isinstance(v, list):
                 conds.append(col.in_(v))
             else:
+                v = _coerce_value(col, v)
                 conds.append(col == v)
         elif TENANT_ALIAS.get(k) in cols:
             real_key = TENANT_ALIAS[k]
