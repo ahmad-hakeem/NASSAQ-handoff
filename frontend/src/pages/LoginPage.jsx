@@ -103,14 +103,10 @@ export const LoginPage = () => {
     setLoading(true);
 
     try {
-      const result = await login(email, password);
+      const result = await login(email, password, rememberMe);
 
       if (result.success) {
         toast.success(isRTL ? 'تم تسجيل الدخول بنجاح' : 'Login successful');
-
-        if (rememberMe) {
-          localStorage.setItem('rememberMe', 'true');
-        }
 
         switch (result.user.role) {
           case 'platform_admin':

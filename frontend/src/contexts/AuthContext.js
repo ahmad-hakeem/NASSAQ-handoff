@@ -11,6 +11,37 @@ const RETRY_STATUS_CODES = new Set([502, 503]);
 const MAX_RETRIES = 2;
 const BASE_DELAY_MS = 500;
 
+async function attemptTokenRefresh() {
+  const refreshToken = localStorage.getItem('nassaq_refresh_token') || sessionStorage.getItem('nassaq_refresh_token');
+  if (!refreshToken) return null;
+
+  try {
+    const response = await axios.post(`${API_URL}/api/auth/refresh`, { refresh_token: refreshToken });
+    const { access_token: newAccess, refresh_token: newRefresh } = response.data;
+
+    localStorage.setItem('nassaq_token', newAccess);
+
+    if (newRefresh) {
+      if (localStorage.getItem('nassaq_refresh_token')) {
+        localStorage.setItem('nassaq_refresh_token', newRefresh);
+      } else {
+        sessionStorage.setItem('nassaq_refresh_token', newRefresh);
+      }
+    }
+
+    return newAccess;
+  } catch {
+    return null;
+  }
+}
+
+function clearAllAuthTokens() {
+  localStorage.removeItem('nassaq_token');
+  localStorage.removeItem('nassaq_refresh_token');
+  localStorage.removeItem('rememberMe');
+  sessionStorage.removeItem('nassaq_refresh_token');
+}
+
 async function retryRequest(axiosInstance, config, retryCount) {
   const delay = BASE_DELAY_MS * Math.pow(2, retryCount);
   await new Promise((r) => setTimeout(r, delay));
@@ -69,12 +100,27 @@ export const AuthProvider = ({ children }) => {
         return retryRequest(api, config, retryCount);
       }
 
-      if (status === 401 && !config.url?.includes('/auth/me') && !config.url?.includes('/auth/login')) {
-        localStorage.removeItem('nassaq_token');
-        setToken(null);
-        setUser(null);
-        window.location.href = '/login';
-        return Promise.reject(error);
+      if (status === 401 && !config.url?.includes('/auth/me') && !config.url?.includes('/auth/login') && !config.url?.includes('/auth/refresh')) {
+        if (config._isRetryAfterRefresh) {
+          clearAllAuthTokens();
+          setToken(null);
+          setUser(null);
+          window.location.href = '/login';
+          return Promise.reject(error);
+        }
+
+        const newAccess = await attemptTokenRefresh();
+        if (newAccess) {
+          setToken(newAccess);
+          const retryCfg = { ...config, _isRetryAfterRefresh: true, headers: { ...config.headers, Authorization: `Bearer ${newAccess}` } };
+          return api.request(retryCfg);
+        } else {
+          clearAllAuthTokens();
+          setToken(null);
+          setUser(null);
+          window.location.href = '/login';
+          return Promise.reject(error);
+        }
       }
 
       if (status === 429) {
@@ -113,7 +159,16 @@ export const AuthProvider = ({ children }) => {
         console.error('fetchUser timed out after 10s');
         toast.error('انتهت مهلة الاتصال — يرجى تحديث الصفحة');
       } else if (error.response?.status === 401) {
-        localStorage.removeItem('nassaq_token');
+        const newAccess = await attemptTokenRefresh();
+        if (newAccess) {
+          setToken(newAccess);
+          try {
+            const retryResponse = await api.get('/auth/me');
+            setUser(retryResponse.data);
+            return;
+          } catch {}
+        }
+        clearAllAuthTokens();
         setToken(null);
         setUser(null);
       } else {
@@ -131,14 +186,24 @@ export const AuthProvider = ({ children }) => {
     fetchUser();
   }, [fetchUser]);
 
-  const login = async (email, password) => {
+  const login = async (email, password, rememberMe = false) => {
     try {
-      const response = await api.post('/auth/login', { email, password });
-      const { access_token, user: userData } = response.data;
+      const response = await api.post('/auth/login', { email, password, remember_me: rememberMe });
+      const { access_token, refresh_token: refreshToken, user: userData } = response.data;
       
       localStorage.setItem('nassaq_token', access_token);
       setToken(access_token);
       setUser(userData);
+
+      if (refreshToken) {
+        if (rememberMe) {
+          localStorage.setItem('nassaq_refresh_token', refreshToken);
+          sessionStorage.removeItem('nassaq_refresh_token');
+        } else {
+          sessionStorage.setItem('nassaq_refresh_token', refreshToken);
+          localStorage.removeItem('nassaq_refresh_token');
+        }
+      }
       
       if (userData?.preferred_theme) {
         localStorage.setItem('nassaq_theme', userData.preferred_theme);
@@ -186,7 +251,15 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = useCallback(() => {
-    localStorage.removeItem('nassaq_token');
+    try {
+      const currentToken = localStorage.getItem('nassaq_token');
+      if (currentToken) {
+        axios.post(`${API_URL}/api/auth/logout`, null, {
+          headers: { Authorization: `Bearer ${currentToken}` }
+        }).catch(() => {});
+      }
+    } catch {}
+    clearAllAuthTokens();
     sessionStorage.removeItem('nassaq_school_context');
     sessionStorage.removeItem('nassaq_impersonating');
     setToken(null);
@@ -198,6 +271,7 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const handleStorageChange = (e) => {
       if (e.key === 'nassaq_token' && !e.newValue) {
+        clearAllAuthTokens();
         logout();
         window.location.replace('/login');
       }

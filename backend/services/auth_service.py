@@ -1,6 +1,8 @@
 """
 NASSAQ - Auth Service
-Authentication and authorization utilities
+Authentication and authorization utilities.
+Token creation is consolidated in dependencies.py — this module re-exports
+the canonical helpers so that existing callers continue to work.
 """
 import bcrypt
 import jwt
@@ -9,10 +11,12 @@ from fastapi import HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import List
 
-from dependencies import JWT_SECRET, JWT_ALGORITHM
+from dependencies import (
+    JWT_SECRET, JWT_ALGORITHM, ACCESS_TOKEN_EXPIRE,
+    create_access_token, create_refresh_token,
+    REFRESH_TOKEN_EXPIRE_DAYS, REFRESH_TOKEN_SHORT_HOURS,
+)
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
-
-ACCESS_TOKEN_EXPIRE = 30
 
 security = HTTPBearer()
 
@@ -25,17 +29,6 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, hashed: str) -> bool:
     """Verify a password against its hash"""
     return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
-
-
-def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
-    """Create a JWT access token"""
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
-    else:
-        expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE)
-    to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
 def decode_token(token: str) -> dict:
@@ -54,6 +47,8 @@ def create_get_current_user(db):
     async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
         try:
             payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            if payload.get("type") == "refresh":
+                raise HTTPException(status_code=401, detail="Invalid token type")
             user_id = payload.get("sub")
             if not user_id:
                 raise HTTPException(status_code=401, detail="Invalid token")

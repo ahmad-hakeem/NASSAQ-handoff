@@ -10,11 +10,11 @@ from pydantic import BaseModel, Field, ConfigDict, EmailStr, model_validator, fi
 from typing import List, Optional, Any, Dict
 from datetime import datetime, timezone, timedelta
 
-import uuid, os, logging, json, random, re, io, base64
+import uuid, os, logging, json, random, re, io, base64, jwt
 
 from dependencies import (
     db, get_current_user, require_roles, UserRole, SchoolStatus,
-    hash_password, verify_password, create_access_token,
+    hash_password, verify_password, create_access_token, create_refresh_token,
     JWT_SECRET, JWT_ALGORITHM, ACCESS_TOKEN_EXPIRE, security, logger,
     audit_engine, AuditAction, AuditSeverity,
     smart_scheduling_engine, TimetableRunStatus, TimetableStatus,
@@ -129,6 +129,7 @@ async def login(credentials: UserLogin):
     if user.get("school_id"):
         token_payload["school_id"] = user["school_id"]
     token = create_access_token(token_payload)
+    refresh = create_refresh_token(token_payload, remember_me=credentials.remember_me)
     
     # Log successful login
     await audit_engine.log_auth_event(
@@ -159,7 +160,68 @@ async def login(credentials: UserLogin):
         parent_id=user.get("parent_id")
     )
     
-    return TokenResponse(access_token=token, user=user_response)
+    return TokenResponse(access_token=token, refresh_token=refresh, user=user_response)
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+
+@router.post("/auth/refresh", response_model=TokenResponse)
+async def refresh_token(body: RefreshTokenRequest):
+    try:
+        payload = jwt.decode(body.refresh_token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Refresh token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+
+    if payload.get("type") != "refresh":
+        raise HTTPException(status_code=401, detail="Invalid token type")
+
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+
+    user = await gd_find_one(db.session, "users", {"id": user_id})
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    if not user.get("is_active", True):
+        raise HTTPException(status_code=401, detail="Account disabled")
+
+    token_payload = {"sub": user_id, "role": user["role"]}
+    if user.get("tenant_id"):
+        token_payload["tenant_id"] = user["tenant_id"]
+    if user.get("school_id"):
+        token_payload["school_id"] = user["school_id"]
+
+    new_access = create_access_token(token_payload)
+
+    is_remember_me = payload.get("rm", False)
+    new_refresh = create_refresh_token(token_payload, remember_me=is_remember_me)
+
+    from engines.name_validation import is_generic_name
+    user_response = UserResponse(
+        id=user_id,
+        email=user["email"],
+        full_name=user["full_name"],
+        full_name_en=user.get("full_name_en"),
+        role=UserRole(user["role"]),
+        tenant_id=user.get("tenant_id"),
+        phone=user.get("phone"),
+        avatar_url=user.get("avatar_url"),
+        is_active=user.get("is_active", True),
+        has_generic_name=is_generic_name(user.get("full_name")),
+        preferred_language=user.get("preferred_language", "ar"),
+        preferred_theme=user.get("preferred_theme", "light"),
+        created_at=user.get("created_at", ""),
+        teacher_id=user.get("teacher_id"),
+        student_id=user.get("student_id"),
+        parent_id=user.get("parent_id")
+    )
+
+    return TokenResponse(access_token=new_access, refresh_token=new_refresh, user=user_response)
+
 
 @router.post("/auth/logout")
 async def logout(
