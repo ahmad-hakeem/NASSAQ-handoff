@@ -135,17 +135,17 @@ export const SystemMonitoringPage = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoRefresh]);
   
-  // Fetch system monitoring data from API
   const fetchMonitoringData = useCallback(async () => {
     try {
       setLoadingData(true);
-      const [errorsRes, jobsRes, integrationsRes, alertsRes, metricsRes, healthRes] = await Promise.allSettled([
+      const [errorsRes, jobsRes, integrationsRes, alertsRes, metricsRes, healthRes, historyRes] = await Promise.allSettled([
         api.get('/system/errors'),
         api.get('/system/jobs'),
         api.get('/integrations'),
         api.get('/system/alerts'),
         api.get('/system/metrics'),
         api.get('/admin/command-center/system-health'),
+        api.get('/system/metrics/history'),
       ]);
       
       if (errorsRes.status === 'fulfilled') {
@@ -173,27 +173,79 @@ export const SystemMonitoringPage = () => {
       }
       if (metricsRes.status === 'fulfilled') {
         const m = metricsRes.value.data;
-        if (m && m.process) {
-          setMetrics(prev => ({
-            ...prev,
-            cpu: m.process.cpu_percent || 0,
-            memory: m.process.memory_rss_mb ? Math.min(100, Math.round((m.process.memory_rss_mb / (m.process.memory_vms_mb || 1)) * 100)) : 0,
-            totalOperations: m.database_counts?.audit_logs || 0,
-            activeUsers: m.database_counts?.sessions || 0,
-          }));
+        if (m) {
+          const totalReqs = m.response_metrics?.total_requests || 0;
+          const totalErrs = m.response_metrics?.total_errors || 0;
+          const successRate = totalReqs > 0 ? Math.round(((totalReqs - totalErrs) / totalReqs) * 1000) / 10 : 100;
+          const netSentKbps = m.network?.sent_kbps || 0;
+          const netRecvKbps = m.network?.recv_kbps || 0;
+
+          setMetrics({
+            cpu: m.process?.cpu_percent || 0,
+            memory: m.system_memory?.percent || 0,
+            disk: m.disk?.percent || 0,
+            network: Math.round(netSentKbps + netRecvKbps),
+            netSentKbps: netSentKbps,
+            netRecvKbps: netRecvKbps,
+            dbConnections: m.pool_stats?.checked_out || 0,
+            dbQueryTime: m.db_latency_ms || 0,
+            dbSlowQueries: 0,
+            apiResponseTime: m.response_metrics?.avg_response_ms || 0,
+            apiRequestsPerMin: m.requests_per_min || 0,
+            apiSuccessRate: successRate,
+            apiFailedRequests: totalErrs,
+            totalOperations: totalReqs,
+            activeUsers: m.active_users_24h || 0,
+            errors: totalErrs,
+            jobsRunning: 0,
+            jobsPending: 0,
+            jobsCompleted: 0,
+            jobsFailed: 0,
+            aiOperations: 0,
+            aiModelsActive: 0,
+            poolSize: m.pool_stats?.pool_size || 0,
+            poolCheckedIn: m.pool_stats?.checked_in || 0,
+            cacheHits: m.cache_metrics?.hits || 0,
+            cacheMisses: m.cache_metrics?.misses || 0,
+            cacheHitRate: m.cache_metrics?.hit_rate_percent || 0,
+            memoryRssMb: m.process?.memory_rss_mb || 0,
+            diskUsedGb: m.disk?.used_gb || 0,
+            diskTotalGb: m.disk?.total_gb || 0,
+            netSentMb: m.network?.bytes_sent_mb || 0,
+            netRecvMb: m.network?.bytes_recv_mb || 0,
+            uptimeSeconds: m.uptime_seconds || 0,
+            dbUsers: m.database_counts?.users || 0,
+            dbSchools: m.database_counts?.schools || 0,
+            dbTeachers: m.database_counts?.teachers || 0,
+            dbStudents: m.database_counts?.students || 0,
+            dbClasses: m.database_counts?.classes || 0,
+            dbSessions: m.database_counts?.sessions || 0,
+            dbAuditLogs: m.database_counts?.audit_logs || 0,
+            p95ResponseMs: m.response_metrics?.p95_response_ms || 0,
+            p99ResponseMs: m.response_metrics?.p99_response_ms || 0,
+          });
         }
       }
       if (healthRes.status === 'fulfilled') {
         const h = healthRes.value.data;
         if (h) {
-          const dbConnections = h.database?.collections || 0;
           setMetrics(prev => ({
             ...prev,
-            dbConnections,
-            apiSuccessRate: h.api?.status === 'healthy' ? 99.9 : 0,
             aiOperations: h.engines?.ai_engine === 'active' ? 1 : 0,
             aiModelsActive: h.engines?.ai_engine === 'active' ? 1 : 0,
           }));
+        }
+      }
+      if (historyRes.status === 'fulfilled') {
+        const history = historyRes.value.data;
+        if (Array.isArray(history) && history.length > 0) {
+          setPerformanceData(history.map((snap, idx) => ({
+            time: new Date(snap.timestamp).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }),
+            cpu: snap.cpu || 0,
+            memory: snap.memory || 0,
+            responseTime: snap.avg_response_ms || 0,
+            requests: snap.requests_per_min || 0,
+          })));
         }
       }
     } catch (error) {
@@ -410,11 +462,14 @@ export const SystemMonitoringPage = () => {
                         </div>
                         <span className="font-medium">{t('networkUsage')}</span>
                       </div>
-                      <span className={`text-2xl font-bold ${getMetricColor(metrics.network)}`}>
-                        {metrics.network}%
+                      <span className="text-2xl font-bold text-cyan-600">
+                        {metrics.network} KB/s
                       </span>
                     </div>
-                    <Progress value={metrics.network} className={`h-2 ${getProgressColor(metrics.network)}`} />
+                    <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                      <span>↑ {metrics.netSentKbps || 0} KB/s</span>
+                      <span>↓ {metrics.netRecvKbps || 0} KB/s</span>
+                    </div>
                   </CardContent>
                 </Card>
               </div>
@@ -443,7 +498,7 @@ export const SystemMonitoringPage = () => {
                         />
                         <Area type="monotone" dataKey="cpu" stroke="#3B82F6" fill="#3B82F6" fillOpacity={0.2} name={t('cpuUsage')} />
                         <Area type="monotone" dataKey="memory" stroke="#8B5CF6" fill="#8B5CF6" fillOpacity={0.2} name={t('memoryUsage')} />
-                        <Area type="monotone" dataKey="network" stroke="#06B6D4" fill="#06B6D4" fillOpacity={0.2} name={t('networkUsage')} />
+                        <Area type="monotone" dataKey="responseTime" stroke="#06B6D4" fill="#06B6D4" fillOpacity={0.2} name={t('avgResponseTime')} />
                       </AreaChart>
                     </ResponsiveContainer>
                   </div>

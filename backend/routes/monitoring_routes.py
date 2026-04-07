@@ -1,9 +1,10 @@
 """
 NASSAQ Monitoring & Health Endpoints
-Provides /system/health, /system/status, /system/metrics
+Provides /system/health, /system/status, /system/metrics, /system/metrics/history
 """
 from fastapi import APIRouter, Depends
 from datetime import datetime, timezone
+import collections
 import time
 import os
 import platform
@@ -19,6 +20,8 @@ logger = logging.getLogger("nassaq.monitoring_routes")
 router = APIRouter(prefix="/system", tags=["Monitoring"])
 
 _start_time = time.time()
+_metrics_history: collections.deque = collections.deque(maxlen=30)
+_last_net_snapshot: dict = {"bytes_sent": 0, "bytes_recv": 0, "ts": 0}
 
 
 async def _pg_ping(db_ref):
@@ -253,20 +256,94 @@ async def system_alerts(current_user: dict = Depends(require_roles([UserRole.PLA
 @router.get("/metrics")
 async def system_metrics(current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))):
     process_info = {}
+    system_memory = {}
+    disk_info = {}
+    network_info = {}
     try:
         import psutil
-        process = psutil.Process()
-        mem = process.memory_info()
-        process_info = {
-            "memory_rss_mb": round(mem.rss / 1024 / 1024, 2),
-            "memory_vms_mb": round(mem.vms / 1024 / 1024, 2),
-            "cpu_percent": process.cpu_percent(),
-            "threads": process.num_threads(),
-        }
+        try:
+            process = psutil.Process()
+            mem = process.memory_info()
+            cpu_pct = psutil.cpu_percent(interval=None)
+            process_info = {
+                "memory_rss_mb": round(mem.rss / 1024 / 1024, 2),
+                "memory_vms_mb": round(mem.vms / 1024 / 1024, 2),
+                "cpu_percent": cpu_pct,
+                "threads": process.num_threads(),
+            }
+        except Exception:
+            process_info = {"cpu_percent": 0, "memory_rss_mb": 0, "memory_vms_mb": 0, "threads": 0}
+        try:
+            vm = psutil.virtual_memory()
+            system_memory = {
+                "total_mb": round(vm.total / 1024 / 1024, 1),
+                "available_mb": round(vm.available / 1024 / 1024, 1),
+                "used_mb": round(vm.used / 1024 / 1024, 1),
+                "percent": vm.percent,
+            }
+        except Exception:
+            system_memory = {"percent": 0, "total_mb": 0, "available_mb": 0, "used_mb": 0}
+        try:
+            du = psutil.disk_usage("/")
+            disk_info = {
+                "total_gb": round(du.total / 1024 / 1024 / 1024, 2),
+                "used_gb": round(du.used / 1024 / 1024 / 1024, 2),
+                "free_gb": round(du.free / 1024 / 1024 / 1024, 2),
+                "percent": du.percent,
+            }
+        except Exception:
+            disk_info = {"percent": 0}
+        try:
+            net = psutil.net_io_counters()
+            now_ts = time.time()
+            elapsed = max(now_ts - _last_net_snapshot["ts"], 1) if _last_net_snapshot["ts"] > 0 else 0
+            sent_rate = round((net.bytes_sent - _last_net_snapshot["bytes_sent"]) / 1024 / max(elapsed, 1), 1) if elapsed > 0 else 0
+            recv_rate = round((net.bytes_recv - _last_net_snapshot["bytes_recv"]) / 1024 / max(elapsed, 1), 1) if elapsed > 0 else 0
+            _last_net_snapshot["bytes_sent"] = net.bytes_sent
+            _last_net_snapshot["bytes_recv"] = net.bytes_recv
+            _last_net_snapshot["ts"] = now_ts
+            network_info = {
+                "bytes_sent_mb": round(net.bytes_sent / 1024 / 1024, 2),
+                "bytes_recv_mb": round(net.bytes_recv / 1024 / 1024, 2),
+                "sent_kbps": sent_rate,
+                "recv_kbps": recv_rate,
+                "packets_sent": net.packets_sent,
+                "packets_recv": net.packets_recv,
+            }
+        except Exception:
+            network_info = {"bytes_sent_mb": 0, "bytes_recv_mb": 0, "sent_kbps": 0, "recv_kbps": 0}
     except ImportError:
         process_info = {"error": "psutil not installed"}
 
+    response_metrics = {}
+    try:
+        from middleware.request_tracing import get_response_metrics
+        response_metrics = get_response_metrics()
+    except Exception as e:
+        logger.debug(f"Response metrics unavailable: {e}")
+
+    cache_metrics = {}
+    try:
+        from middleware.cache_metrics import get_cache_metrics
+        cache_metrics = get_cache_metrics()
+    except Exception as e:
+        logger.debug(f"Cache metrics unavailable: {e}")
+
+    pool_stats = {}
+    db_latency_ms = 0
+    try:
+        from db import get_sync_engine
+        from middleware.query_monitor import get_pool_stats
+        pool_stats = get_pool_stats(get_sync_engine())
+    except Exception as e:
+        logger.debug(f"Pool stats unavailable: {e}")
+    try:
+        _, db_latency_ms = await _pg_ping(db)
+    except Exception:
+        pass
+
     db_counts = {}
+    active_users_24h = 0
     try:
         db_counts = {
             "users": await gd_count(db.session, "users", {}),
@@ -277,6 +354,9 @@ async def system_metrics(current_user: dict = Depends(require_roles([UserRole.PL
             "sessions": await gd_count(db.session, "teacher_sessions", {}),
             "audit_logs": await gd_count(db.session, "audit_logs", {}),
         }
+        from datetime import timedelta
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+        active_users_24h = await gd_count(db.session, "users", {"last_login": {"$gte": cutoff.isoformat()}})
     except (SQLAlchemyError, ConnectionError, OSError) as e:
         logger.error(f"System metrics DB query failed: {e}")
         db_counts = {"error": "database unavailable"}
@@ -284,9 +364,38 @@ async def system_metrics(current_user: dict = Depends(require_roles([UserRole.PL
         logger.error(f"System metrics unexpected error: {e}")
         db_counts = {"error": "database unavailable"}
 
-    return {
+    uptime_seconds = round(time.time() - _start_time)
+    total_reqs = response_metrics.get("total_requests", 0)
+    reqs_per_min = round(total_reqs / max(uptime_seconds / 60, 1), 1) if total_reqs else 0
+
+    snapshot = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "uptime_seconds": round(time.time() - _start_time),
-        "process": process_info,
-        "database_counts": db_counts,
+        "cpu": process_info.get("cpu_percent", 0),
+        "memory": system_memory.get("percent", 0),
+        "disk": disk_info.get("percent", 0),
+        "avg_response_ms": response_metrics.get("avg_response_ms", 0),
+        "requests_per_min": reqs_per_min,
+        "db_latency_ms": db_latency_ms,
     }
+    _metrics_history.append(snapshot)
+
+    return {
+        "timestamp": snapshot["timestamp"],
+        "uptime_seconds": uptime_seconds,
+        "process": process_info,
+        "system_memory": system_memory,
+        "disk": disk_info,
+        "network": network_info,
+        "database_counts": db_counts,
+        "active_users_24h": active_users_24h,
+        "response_metrics": response_metrics,
+        "cache_metrics": cache_metrics,
+        "pool_stats": pool_stats,
+        "db_latency_ms": db_latency_ms,
+        "requests_per_min": reqs_per_min,
+    }
+
+
+@router.get("/metrics/history")
+async def system_metrics_history(current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))):
+    return list(_metrics_history)
