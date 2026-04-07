@@ -215,8 +215,9 @@ def create_websocket_routes(db, decode_token):
                     except json.JSONDecodeError:
                         pass
                         
-            except WebSocketDisconnect:
-                # Clean up connection
+            except (WebSocketDisconnect, Exception) as e:
+                if not isinstance(e, WebSocketDisconnect):
+                    logger.warning(f"WebSocket error: {e}")
                 if user_id in manager.active_connections:
                     if websocket in manager.active_connections[user_id]:
                         manager.active_connections[user_id].remove(websocket)
@@ -227,8 +228,6 @@ def create_websocket_routes(db, decode_token):
                         if tenant_id and tenant_id in manager.tenant_connections:
                             manager.tenant_connections[tenant_id].discard(user_id)
                 logger.info(f"WebSocket disconnected: user={user_id}")
-            except Exception as e:
-                logger.warning(f"WebSocket error: {e}")
                 
         except Exception as e:
             logger.warning(f"WebSocket connection error: {e}")

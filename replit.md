@@ -97,6 +97,13 @@ Each fix report must include: root cause, why it wasn't caught before, what chan
 - **Structured Logging**: JSON-formatted logs via `StructuredJsonFormatter` with fields: ts, level, logger, msg, request_id, user_id, tenant_id, method, path, status_code, duration_ms
 - **Request Tracing**: `RequestTracingMiddleware` generates UUID per request, propagated via ContextVar, emitted as `X-Request-Id` response header
 - **Slow Query Detection**: SQLAlchemy event listeners log queries >500ms with SQL (truncated 500 chars) + params (truncated 300 chars)
+- **Session Rollback Safety**: All `session.flush()` calls in `repositories/base.py` (create, update_by_id, update_one, update_many, find_one_and_update) wrapped with try/except that calls `session.rollback()` before re-raising — prevents PendingRollbackError cascades
+- **Middleware Session Guard**: `pg_session_middleware` checks `session.is_active` before committing; rolls back failed sessions gracefully
+- **Entity Creation Validation**: `create_class`, `create_student`, `create_teacher` all validate `school_id` is present before DB insert — returns 400 with bilingual error if missing
+- **Tenant Isolation in Dashboards**: Teacher dashboard fallback query (email/name search) includes `school_id` filter; Student dashboard validates `school_id` matches user's `tenant_id`
+- **Frontend Error Handling**: Axios interceptor handles 401 (auto-logout + redirect), 429 (rate limit toast), 500+ (server error toast), 502/503 (retry with backoff)
+- **WebSocket Cleanup**: Both `WebSocketDisconnect` and generic `Exception` handlers clean up connection manager state (active_connections, role_connections, tenant_connections)
+- **Pydantic Models**: `TeacherCreate`, `StudentCreate`, `ClassCreate` include all fields used by routes (school_id, full_name_en, gender, etc.) with `extra="ignore"` config
 - **Pool Monitoring**: Background asyncio task logs pool stats every 60s; `/system/health` returns pool_size, checked_out, overflow, checked_in
 - **Integration Tests**: `backend/tests/test_integration_phase5.py` — 17 tests covering health, auth, school CRUD, tenant isolation, monitoring
 - **Tenant Isolation (BOLA)**: All cross-tenant data access paths fixed — assessment grades, student grade history, student portal assignments, and student messaging all enforce `tenant_id` checks. No user can access another school's data through any API endpoint.

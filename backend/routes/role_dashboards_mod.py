@@ -63,13 +63,16 @@ async def get_teacher_dashboard(
     if not teacher:
         user = await db.users.find_one({"id": teacher_id, "role": "teacher"}, {"_id": 0})
         if user:
-            # Find teacher by email or full_name
-            teacher = await db.teachers.find_one({
+            tenant_id = user.get("tenant_id")
+            lookup_filter = {
                 "$or": [
                     {"email": user.get("email")},
                     {"full_name": user.get("full_name")}
                 ]
-            }, {"_id": 0})
+            }
+            if tenant_id:
+                lookup_filter["school_id"] = tenant_id
+            teacher = await db.teachers.find_one(lookup_filter, {"_id": 0})
     
     if not teacher:
         # Return default data if teacher not found in teachers collection
@@ -313,8 +316,13 @@ async def get_student_dashboard(
     student = await db.students.find_one({"id": student_id}, {"_id": 0})
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
+
+    user_tenant = current_user.get("tenant_id")
+    student_school = student.get("school_id")
+    if user_tenant and student_school and user_tenant != student_school:
+        raise HTTPException(status_code=403, detail="لا يمكنك الوصول إلى بيانات طالب من مدرسة أخرى")
     
-    school_id = student.get("school_id")
+    school_id = student_school
     class_id = student.get("class_id")
     
     # Get class info

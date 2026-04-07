@@ -42,6 +42,13 @@ async def create_student(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN]))
 ):
     """Create a new student"""
+    school_id = getattr(student_data, 'school_id', None) or current_user.get("tenant_id")
+    if not school_id:
+        raise HTTPException(status_code=400, detail="يجب تحديد المدرسة / School context is required")
+    user_tenant = current_user.get("tenant_id")
+    if user_tenant and school_id != user_tenant:
+        raise HTTPException(status_code=403, detail="لا يمكنك إنشاء طالب في مدرسة أخرى / Cannot create student in another school")
+
     student_id = str(uuid.uuid4())
     
     student_doc = {
@@ -51,7 +58,7 @@ async def create_student(
         "full_name_en": getattr(student_data, 'full_name_en', None),
         "email": student_data.email,
         "phone": student_data.phone,
-        "school_id": getattr(student_data, 'school_id', None) or current_user.get("tenant_id"),
+        "school_id": school_id,
         "class_id": student_data.class_id,
         "student_number": student_data.student_number,
         "date_of_birth": getattr(student_data, 'date_of_birth', None),

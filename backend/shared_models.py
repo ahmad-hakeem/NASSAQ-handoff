@@ -331,14 +331,18 @@ class TeacherApprovalResult(BaseModel):
     school_name: Optional[str] = None
 
 class TeacherCreate(BaseModel):
+    model_config = ConfigDict(extra="ignore")
     full_name: str
+    full_name_en: Optional[str] = None
     email: EmailStr
     phone: Optional[str] = None
+    school_id: Optional[str] = None
     specialization: Optional[str] = None
     rank: Optional[str] = None
     subject: Optional[str] = None
     qualification: Optional[str] = None
     years_of_experience: Optional[int] = None
+    gender: Optional[str] = None
 
 class TeacherUpdate(BaseModel):
     full_name: Optional[str] = None
@@ -369,12 +373,17 @@ class TeacherResponse(BaseModel):
     max_daily_periods: Optional[int] = None
 
 class StudentCreate(BaseModel):
+    model_config = ConfigDict(extra="ignore")
     full_name: str
+    full_name_en: Optional[str] = None
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
+    school_id: Optional[str] = None
     student_number: Optional[str] = None
     grade: Optional[str] = None
     class_id: Optional[str] = None
+    date_of_birth: Optional[str] = None
+    gender: Optional[str] = None
     parent_phone: Optional[str] = None
     parent_email: Optional[EmailStr] = None
     parent_name: Optional[str] = None
@@ -415,11 +424,16 @@ class StudentResponse(BaseModel):
     emergency_phone: Optional[str] = None
 
 class ClassCreate(BaseModel):
+    model_config = ConfigDict(extra="ignore")
     name: str
+    name_en: Optional[str] = None
+    school_id: Optional[str] = None
     grade: Optional[str] = None
+    grade_level: Optional[str] = None
     section: Optional[str] = None
     capacity: int = 30
     class_teacher_id: Optional[str] = None
+    homeroom_teacher_id: Optional[str] = None
     grade_id: Optional[str] = None
     academic_year_id: Optional[str] = None
 

@@ -141,13 +141,20 @@ async def create_class(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN]))
 ):
     """Create a new class"""
+    school_id = getattr(class_data, 'school_id', None) or current_user.get("tenant_id")
+    if not school_id:
+        raise HTTPException(status_code=400, detail="يجب تحديد المدرسة / School context is required")
+    user_tenant = current_user.get("tenant_id")
+    if user_tenant and school_id != user_tenant:
+        raise HTTPException(status_code=403, detail="لا يمكنك إنشاء فصل في مدرسة أخرى / Cannot create class in another school")
+
     class_id = str(uuid.uuid4())
     
     class_doc = {
         "id": class_id,
         "name": class_data.name,
         "name_en": getattr(class_data, 'name_en', None),
-        "school_id": getattr(class_data, 'school_id', None) or current_user.get("tenant_id"),
+        "school_id": school_id,
         "grade_level": getattr(class_data, 'grade_level', None) or getattr(class_data, 'grade', None),
         "section": class_data.section,
         "capacity": class_data.capacity,

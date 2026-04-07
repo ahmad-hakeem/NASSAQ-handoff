@@ -699,7 +699,11 @@ class BaseRepository:
             else:
                 setattr(obj, "data", extra)
         self.session.add(obj)
-        await self.session.flush()
+        try:
+            await self.session.flush()
+        except Exception:
+            await self.session.rollback()
+            raise
         return doc_id
 
     async def insert_one(self, document: dict) -> InsertOneResult:
@@ -748,7 +752,11 @@ class BaseRepository:
             current = dict(current) if isinstance(current, dict) else {}
             current.update(extra)
             setattr(obj, "data", current)
-        await self.session.flush()
+        try:
+            await self.session.flush()
+        except Exception:
+            await self.session.rollback()
+            raise
         return True
 
     async def update_one(self, filter_dict: dict, update_dict: dict, upsert=False) -> UpdateResult:
@@ -858,7 +866,11 @@ class BaseRepository:
                         current.append(v)
                     setattr(row, k, current)
 
-        await self.session.flush()
+        try:
+            await self.session.flush()
+        except Exception:
+            await self.session.rollback()
+            raise
         return UpdateResult(1, 1)
 
     async def update_many(self, filter_dict: dict, update_dict: dict) -> UpdateResult:
@@ -893,7 +905,11 @@ class BaseRepository:
                     if k in cols:
                         setattr(row, k, None)
                 count += 1
-            await self.session.flush()
+            try:
+                await self.session.flush()
+            except Exception:
+                await self.session.rollback()
+                raise
             return UpdateResult(count, count)
 
         if set_fields:
@@ -1112,7 +1128,11 @@ class BaseRepository:
         for k in unset_fields:
             if k in cols:
                 setattr(row, k, None)
-        await self.session.flush()
+        try:
+            await self.session.flush()
+        except Exception:
+            await self.session.rollback()
+            raise
         d = _to_dict(row)
         if projection:
             d = _apply_projection(d, projection)
@@ -1305,7 +1325,11 @@ class GenericCollectionRepository(BaseRepository):
         col_vals["data"] = data_vals
         obj = self.model(**col_vals)
         self.session.add(obj)
-        await self.session.flush()
+        try:
+            await self.session.flush()
+        except Exception:
+            await self.session.rollback()
+            raise
         return InsertOneResult(doc["id"])
 
     async def update_one(self, filter_dict, update, upsert=False, return_document=False, **kwargs):
@@ -1347,7 +1371,11 @@ class GenericCollectionRepository(BaseRepository):
             for k, v in update["$inc"].items():
                 data[k] = (data.get(k) or 0) + v
             obj.data = data
-        await self.session.flush()
+        try:
+            await self.session.flush()
+        except Exception:
+            await self.session.rollback()
+            raise
         if return_document:
             return _to_dict(obj)
         return type("UpdateResult", (), {"modified_count": 1, "matched_count": 1})()
@@ -1377,7 +1405,11 @@ class GenericCollectionRepository(BaseRepository):
                 obj.data = data
             count += 1
         if count:
-            await self.session.flush()
+            try:
+                await self.session.flush()
+            except Exception:
+                await self.session.rollback()
+                raise
         return type("UpdateResult", (), {"modified_count": count, "matched_count": count})()
 
     async def delete_one(self, filter_dict):
@@ -1390,7 +1422,11 @@ class GenericCollectionRepository(BaseRepository):
         obj = result.scalars().first()
         if obj:
             await self.session.delete(obj)
-            await self.session.flush()
+            try:
+                await self.session.flush()
+            except Exception:
+                await self.session.rollback()
+                raise
             return type("DeleteResult", (), {"deleted_count": 1})()
         return type("DeleteResult", (), {"deleted_count": 0})()
 

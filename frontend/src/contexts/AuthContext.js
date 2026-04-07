@@ -69,6 +69,22 @@ export const AuthProvider = ({ children }) => {
         return retryRequest(api, config, retryCount);
       }
 
+      if (status === 401 && !config.url?.includes('/auth/me') && !config.url?.includes('/auth/login')) {
+        localStorage.removeItem('nassaq_token');
+        setToken(null);
+        setUser(null);
+        window.location.href = '/login';
+        return Promise.reject(error);
+      }
+
+      if (status === 429) {
+        const retryAfter = error.response?.headers?.['retry-after'];
+        const parsed = retryAfter ? parseInt(retryAfter, 10) : NaN;
+        const secs = Number.isFinite(parsed) && parsed > 0 ? parsed : 30;
+        toast.error(`طلبات كثيرة — يرجى الانتظار ${secs} ثانية`);
+        return Promise.reject(error);
+      }
+
       if (status >= 500 || !error.response) {
         const msg = !error.response
           ? 'تعذر الاتصال بالخادم — تحقق من الاتصال بالإنترنت'

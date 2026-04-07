@@ -28,14 +28,20 @@ def register_middleware(app: FastAPI):
             db.set_session(session)
             try:
                 response = await call_next(request)
-                try:
-                    await session.commit()
-                except Exception:
+                if session.is_active and not session.in_nested_transaction():
+                    try:
+                        await session.commit()
+                    except Exception:
+                        await session.rollback()
+                        raise
+                else:
                     await session.rollback()
-                    raise
                 return response
             except Exception:
-                await session.rollback()
+                try:
+                    await session.rollback()
+                except Exception:
+                    pass
                 raise
             finally:
                 db.set_session(None)

@@ -614,6 +614,14 @@ async def create_teacher(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN]))
 ):
     """Create a new teacher"""
+    school_id = getattr(teacher_data, 'school_id', None) or current_user.get("tenant_id")
+    if not school_id:
+        raise HTTPException(status_code=400, detail="يجب تحديد المدرسة / School context is required")
+    user_tenant = current_user.get("tenant_id")
+    if user_tenant and school_id != user_tenant:
+        raise HTTPException(status_code=403, detail="لا يمكنك إنشاء معلم في مدرسة أخرى / Cannot create teacher in another school")
+    teacher_data.school_id = school_id
+
     # Check if email already exists
     existing = await db.users.find_one({"email": teacher_data.email})
     if existing:
