@@ -228,10 +228,12 @@ async def get_platform_users(
         query.setdefault("$and", []).extend(role_conditions)
     
     if search:
+        import re as _re
+        safe_search = _re.escape(search)
         search_conditions = [
-            {"full_name": {"$regex": search, "$options": "i"}},
-            {"email": {"$regex": search, "$options": "i"}},
-            {"phone": {"$regex": search, "$options": "i"}},
+            {"full_name": {"$regex": safe_search, "$options": "i"}},
+            {"email": {"$regex": safe_search, "$options": "i"}},
+            {"phone": {"$regex": safe_search, "$options": "i"}},
         ]
         if "$or" in query:
             query["$and"] = [{"$or": query.pop("$or")}, {"$or": search_conditions}]

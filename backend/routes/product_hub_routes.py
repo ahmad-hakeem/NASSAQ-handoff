@@ -538,11 +538,13 @@ async def list_issues(
     if date_to:
         query.setdefault("created_at", {})["$lte"] = date_to + "T23:59:59"
     if search:
+        import re as _re
+        safe_search = _re.escape(search)
         query["$or"] = [
-            {"title": {"$regex": search, "$options": "i"}},
-            {"current_behavior": {"$regex": search, "$options": "i"}},
-            {"employee_name": {"$regex": search, "$options": "i"}},
-            {"page": {"$regex": search, "$options": "i"}},
+            {"title": {"$regex": safe_search, "$options": "i"}},
+            {"current_behavior": {"$regex": safe_search, "$options": "i"}},
+            {"employee_name": {"$regex": safe_search, "$options": "i"}},
+            {"page": {"$regex": safe_search, "$options": "i"}},
         ]
 
     total = await gd_count(db.session, "product_issues", query)

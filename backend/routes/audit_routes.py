@@ -217,8 +217,10 @@ def setup_audit_routes(db, get_current_user, require_roles, UserRole):
         try:
             query: dict = {}
 
+            import re as _re
+
             if action and action != "all":
-                query["action"] = {"$regex": action, "$options": "i"}
+                query["action"] = {"$regex": _re.escape(action), "$options": "i"}
 
             if severity and severity != "all":
                 query["severity"] = severity
@@ -243,12 +245,13 @@ def setup_audit_routes(db, get_current_user, require_roles, UserRole):
                     query["timestamp"] = ts_filter
 
             if search:
+                safe_search = _re.escape(search)
                 query["$or"] = [
-                    {"actor_name": {"$regex": search, "$options": "i"}},
-                    {"actor_email": {"$regex": search, "$options": "i"}},
-                    {"action": {"$regex": search, "$options": "i"}},
-                    {"ip_address": {"$regex": search, "$options": "i"}},
-                    {"details.path": {"$regex": search, "$options": "i"}},
+                    {"actor_name": {"$regex": safe_search, "$options": "i"}},
+                    {"actor_email": {"$regex": safe_search, "$options": "i"}},
+                    {"action": {"$regex": safe_search, "$options": "i"}},
+                    {"ip_address": {"$regex": safe_search, "$options": "i"}},
+                    {"details.path": {"$regex": safe_search, "$options": "i"}},
                 ]
 
             total = await gd_count(db.session, "audit_logs", query)

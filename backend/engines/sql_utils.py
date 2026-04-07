@@ -144,7 +144,13 @@ def _build_orm_filter_conditions(model_cls, filters: dict):
                     elif op == "$nin":
                         conds.append(~col.in_(val))
                     elif op == "$regex":
-                        conds.append(col.op("~")(str(val)))
+                        options = v.get("$options", "") if isinstance(v, dict) else ""
+                        if "i" in options:
+                            conds.append(col.op("~*")(str(val)))
+                        else:
+                            conds.append(col.op("~")(str(val)))
+                    elif op == "$options":
+                        pass
                     elif op == "$exists":
                         if val:
                             conds.append(col.isnot(None))
@@ -189,7 +195,13 @@ def _build_orm_filter_conditions(model_cls, filters: dict):
                     elif op == "$in":
                         conds.append(col_expr.in_([str(x) for x in val]))
                     elif op == "$regex":
-                        conds.append(col_expr.op("~")(str(val)))
+                        options = v.get("$options", "") if isinstance(v, dict) else ""
+                        if "i" in options:
+                            conds.append(col_expr.op("~*")(str(val)))
+                        else:
+                            conds.append(col_expr.op("~")(str(val)))
+                    elif op == "$options":
+                        pass
                     elif op == "$exists":
                         if val:
                             conds.append(json_expr.isnot(None))
@@ -407,7 +419,13 @@ def _build_filter_conditions(model_cls, filters: dict):
                 elif op == "$nin":
                     conds.append(~col_expr.in_([str(x) for x in val]))
                 elif op == "$regex":
-                    conds.append(col_expr.op("~")(str(val)))
+                    options = v.get("$options", "") if isinstance(v, dict) else ""
+                    if "i" in options:
+                        conds.append(col_expr.op("~*")(str(val)))
+                    else:
+                        conds.append(col_expr.op("~")(str(val)))
+                elif op == "$options":
+                    pass
                 elif op == "$exists":
                     if val:
                         conds.append(json_expr.isnot(None))

@@ -84,8 +84,9 @@ async def get_audit_logs(
     query: dict = {}
     if tenant_id:
         query["tenant_id"] = tenant_id
+    import re as _re
     if action and action != "all":
-        query["action"] = {"$regex": action, "$options": "i"}
+        query["action"] = {"$regex": _re.escape(action), "$options": "i"}
     if entity_type and entity_type != "all":
         query["entity_type"] = entity_type
     if severity and severity != "all":
@@ -101,12 +102,13 @@ async def get_audit_logs(
         if ts_f:
             query["timestamp"] = ts_f
     if search:
+        safe_search = _re.escape(search)
         query["$or"] = [
-            {"actor_name":  {"$regex": search, "$options": "i"}},
-            {"actor_email": {"$regex": search, "$options": "i"}},
-            {"action":      {"$regex": search, "$options": "i"}},
-            {"ip_address":  {"$regex": search, "$options": "i"}},
-            {"details.path":{"$regex": search, "$options": "i"}},
+            {"actor_name":  {"$regex": safe_search, "$options": "i"}},
+            {"actor_email": {"$regex": safe_search, "$options": "i"}},
+            {"action":      {"$regex": safe_search, "$options": "i"}},
+            {"ip_address":  {"$regex": safe_search, "$options": "i"}},
+            {"details.path":{"$regex": safe_search, "$options": "i"}},
         ]
 
     effective_skip = (page - 1) * limit if page > 1 else skip

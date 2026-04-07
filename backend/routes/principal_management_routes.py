@@ -1010,14 +1010,16 @@ async def search_users_for_linking(
     tenant_id = current_user.get("tenant_id")
     coll_name = "students" if user_type == "student" else "parents" if user_type == "parent" else "teachers"
 
+    import re as _re
+    safe_q = _re.escape(q)
     query = {
         "$and": [
             _entity_tenant_filter(tenant_id),
             {"$or": [
-                {"full_name": {"$regex": q, "$options": "i"}},
-                {"national_id": {"$regex": q, "$options": "i"}},
-                {"email": {"$regex": q, "$options": "i"}},
-                {"student_number": {"$regex": q, "$options": "i"}} if user_type == "student" else {"phone": {"$regex": q, "$options": "i"}}
+                {"full_name": {"$regex": safe_q, "$options": "i"}},
+                {"national_id": {"$regex": safe_q, "$options": "i"}},
+                {"email": {"$regex": safe_q, "$options": "i"}},
+                {"student_number": {"$regex": safe_q, "$options": "i"}} if user_type == "student" else {"phone": {"$regex": safe_q, "$options": "i"}}
             ]}
         ]
     }

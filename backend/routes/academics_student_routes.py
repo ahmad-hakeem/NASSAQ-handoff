@@ -571,12 +571,14 @@ async def search_parents(
     if not q or len(q) < 2:
         return {"parents": []}
     
+    import re as _re
+    safe_q = _re.escape(q)
     # Search by name or phone
     query = {
         "school_id": school_id,
         "$or": [
-            {"full_name": {"$regex": q, "$options": "i"}},
-            {"phone": {"$regex": q, "$options": "i"}},
+            {"full_name": {"$regex": safe_q, "$options": "i"}},
+            {"phone": {"$regex": safe_q, "$options": "i"}},
         ]
     }
     

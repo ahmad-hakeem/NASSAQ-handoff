@@ -941,3 +941,23 @@ Sub-pages (accessible from within classes/sessions, not top-level sidebar):
 - **Features**: Class header (name, grade, teacher, capacity bar, academic year), student list with grid/list toggle, gifted/other/all sub-tabs, search bar, add student button, export class list, StudentProfileDialog for viewing student details
 - **Back navigation**: Button + breadcrumb trail (User Management > Class Name), browser back button works
 - **API endpoints used**: `GET /classes/{class_id}`, `GET /classes/{class_id}/students`, `GET /classes`, `GET /reference/grades`
+
+## Bug Audit & Security Fixes (April 2026)
+
+### WebSocket Reconnect Loop Fix
+- Added connection guard (`isConnectingRef`), max retry limit (15), proper cleanup of old connections, and stop-on-auth-failure (code 4001) in `WebSocketContext.jsx`
+
+### Backend Auth Hardening
+- Password complexity validation on `/auth/register`
+- `is_active` and `is_locked` checks in `get_current_user` (dependencies.py) — revokes suspended/locked accounts mid-session
+- `is_locked` check added to `/auth/refresh` — locked accounts cannot mint new tokens
+
+### JSONB Race Condition Fix
+- Added `with_for_update()` row locks to `gd_update_one` and `gd_update_many` in `sql_utils.py`
+
+### `$options: "i"` Case-Insensitive Regex
+- All three filter paths in `sql_utils.py` (`_build_orm_filter_conditions` direct columns, ORM `data` JSONB fallback, and `_build_filter_conditions` for GenericDocument) now use `~*` when `$options` contains `"i"`; `$options` key silently skipped
+
+### ReDoS Protection
+- `re.escape()` applied to all user-provided search inputs before `$regex` across 7 route files: `security_routes.py`, `user_routes_mod.py`, `admin_routes_mod.py`, `audit_routes.py`, `academics_student_routes.py`, `product_hub_routes.py`, `principal_management_routes.py`
+- `search_directory_routes_mod.py` already had `re.escape()` — verified safe

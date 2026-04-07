@@ -193,6 +193,8 @@ async def refresh_token(body: RefreshTokenRequest):
         raise HTTPException(status_code=401, detail="User not found")
     if not user.get("is_active", True):
         raise HTTPException(status_code=401, detail="Account disabled")
+    if user.get("is_locked", False):
+        raise HTTPException(status_code=401, detail="Account is locked")
 
     token_payload = {"sub": user_id, "role": user["role"]}
     if user.get("tenant_id"):

@@ -163,6 +163,12 @@ async def get_current_user(
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
 
+        if not user.get("is_active", True):
+            raise HTTPException(status_code=401, detail="Account is deactivated")
+
+        if user.get("is_locked", False):
+            raise HTTPException(status_code=401, detail="Account is locked")
+
         user.pop("_id", None)
         if "id" not in user or not user.get("id"):
             user["id"] = user_id

@@ -59,15 +59,17 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
         Search for an account by email or phone
         """
         try:
+            import re as _re
             query = request.search_query.strip()
             if not query:
                 return []
             
+            safe_query = _re.escape(query)
             # Search by email or phone
             results = await gd_find(db.session, "users", {
                 "$or": [
-                    {"email": {"$regex": query, "$options": "i"}},
-                    {"phone": {"$regex": query, "$options": "i"}}
+                    {"email": {"$regex": safe_query, "$options": "i"}},
+                    {"phone": {"$regex": safe_query, "$options": "i"}}
                 ]
             }, limit=20)
             
