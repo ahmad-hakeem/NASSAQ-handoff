@@ -206,7 +206,7 @@ export default function SecurityCenterPage() {
       const results = await Promise.allSettled([
         api.get('/security/dashboard'),
         api.get('/security/alerts'),
-        api.get('/security/events'),
+        api.get('/audit/logs', { params: { limit: 200, days: 7, action: 'auth' } }),
       ]);
 
       const [dashResult, alertsResult, eventsResult] = results;
@@ -239,7 +239,26 @@ export default function SecurityCenterPage() {
       }
 
       if (eventsResult.status === 'fulfilled' && eventsResult.value?.data) {
-        setSecurityEvents(Array.isArray(eventsResult.value.data) ? eventsResult.value.data : []);
+        const logsData = eventsResult.value.data;
+        const rawLogs = logsData.logs || logsData;
+        const mapped = (Array.isArray(rawLogs) ? rawLogs : []).map(log => {
+          const action = log.action || '';
+          let eventType = 'login';
+          if (action.includes('login_failed')) eventType = 'login_failed';
+          else if (action.includes('password')) eventType = 'password_change';
+          else if (action.includes('locked') || action.includes('deactivated')) eventType = 'account_locked';
+          else if (action.includes('permission') || action.includes('role')) eventType = 'permission_change';
+          return {
+            id: log.id || '',
+            type: eventType,
+            user: log.actor_name || log.performed_by || '',
+            email: log.actor_email || '',
+            ip: log.ip_address || '',
+            timestamp: log.timestamp || '',
+            action: action,
+          };
+        });
+        setSecurityEvents(mapped);
       } else if (eventsResult.status === 'rejected') {
         anyFailed = true;
       }
@@ -730,7 +749,7 @@ export default function SecurityCenterPage() {
                           </div>
                           <div className="flex gap-2">
                             <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); setSelectedAlert(alert); setShowAlertDetailsSheet(true); }}><Eye className="h-4 w-4 me-1" />{t('viewDetails')}</Button>
-                            <Button variant="outline" size="sm" onClick={async (e) => { e.stopPropagation(); try { await api.post(`/security/dismiss-alert/${alert.id}`); setSecurityAlerts(prev => prev.filter(a => a.id !== alert.id)); toast.success(t('alertDismissed')); } catch { nassaqError(t('actionFailed')); } }}>{t('dismiss')}</Button>
+                            <Button variant="outline" size="sm" onClick={async (e) => { e.stopPropagation(); try { await api.post(`/security/dismiss-alert/${alert.id}?alert_key=${encodeURIComponent(alert.alert_key || alert.id)}`); setSecurityAlerts(prev => prev.filter(a => a.id !== alert.id)); toast.success(t('alertDismissed')); } catch { nassaqError(t('actionFailed')); } }}>{t('dismiss')}</Button>
                             <Button variant="destructive" size="sm" onClick={async (e) => { e.stopPropagation(); try { await api.post(`/security/escalate-alert/${alert.id}`); toast.success(t('alertEscalatedToTechTeam')); } catch { nassaqError(t('actionFailed')); } }}>{t('escalate')}</Button>
                           </div>
                         </div>

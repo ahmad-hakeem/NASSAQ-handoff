@@ -3,7 +3,7 @@ Security Center Routes - مسارات مركز الأمان
 APIs for security operations: lock/unlock accounts, end sessions, force password change
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime, timezone
@@ -472,10 +472,26 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
 
             security_score = round(sum(f["value"] * f["weight"] for f in score_factors) / 100)
 
-            last_backup_record = await gd_find(db.session, "audit_logs", {
+            backup_records = await gd_find(db.session, "audit_logs", {
                 "action": {"$in": ["data.exported", "data_exported", "backup.created"]},
-            }, order_by="timestamp", desc_order=True, limit=1)
-            last_backup = last_backup_record[0].get("timestamp") if last_backup_record else now.isoformat()
+            }, order_by="timestamp", desc_order=True, limit=100)
+            total_backups = len(backup_records)
+            last_backup = backup_records[0].get("timestamp") if backup_records else now.isoformat()
+
+            backup_freshness = 100
+            if backup_records:
+                last_backup_dt = datetime.fromisoformat(last_backup.replace("Z", "+00:00")) if last_backup else now
+                days_since = (now - last_backup_dt).days
+                if days_since > 30:
+                    backup_freshness = 30
+                elif days_since > 7:
+                    backup_freshness = 60
+                elif days_since > 1:
+                    backup_freshness = 80
+
+            score_factors.append(
+                {"id": "backup_freshness", "label_ar": "حداثة النسخ الاحتياطية", "label_en": "Backup Freshness", "value": backup_freshness, "weight": 0}
+            )
 
             return {
                 "securityScore": min(100, security_score),
@@ -487,7 +503,7 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
                 "encryptedData": encryption_score,
                 "passwordPolicyStrength": "strong",
                 "lastBackup": last_backup,
-                "totalBackups": len(last_backup_record) if last_backup_record else 0,
+                "totalBackups": total_backups,
                 "loggingCoverage": logging_score,
                 "mustChangePassword": must_change_pw,
                 "scoreFactors": score_factors,
@@ -529,32 +545,43 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
                 uid = fl.get("performed_by") or fl.get("actor_email") or fl.get("details", {}).get("email", "unknown")
                 user_fails.setdefault(uid, []).append(fl)
 
+            dismissed_ids = set()
+            dismissed_records = await gd_find(db.session, "security_dismissed_alerts", {}, limit=1000)
+            for dr in dismissed_records:
+                dismissed_ids.add(dr.get("alert_key", ""))
+
             for uid, fails in user_fails.items():
                 recent_fails = [f for f in fails if f.get("timestamp", "") >= cutoff_1h]
-                if len(recent_fails) >= 3:
+                if len(recent_fails) > 5:
                     alert_id += 1
-                    alerts.append({
-                        "id": f"alert-brute-{alert_id}",
-                        "type": "high",
-                        "status": "active",
-                        "title_ar": f"محاولات دخول فاشلة متكررة ({len(recent_fails)} محاولة)",
-                        "title_en": f"Repeated failed login attempts ({len(recent_fails)} attempts)",
-                        "description_ar": f"المستخدم {uid} لديه {len(recent_fails)} محاولة فاشلة خلال الساعة الأخيرة",
-                        "description_en": f"User {uid} has {len(recent_fails)} failed attempts in the last hour",
-                        "timestamp": recent_fails[0].get("timestamp", now.isoformat()),
-                    })
-                elif len(fails) >= 5:
+                    alert_key = f"brute-{uid}"
+                    if alert_key not in dismissed_ids:
+                        alerts.append({
+                            "id": f"alert-brute-{alert_id}",
+                            "type": "high",
+                            "status": "active",
+                            "title_ar": f"محاولات دخول فاشلة متكررة ({len(recent_fails)} محاولة)",
+                            "title_en": f"Repeated failed login attempts ({len(recent_fails)} attempts)",
+                            "description_ar": f"المستخدم {uid} لديه {len(recent_fails)} محاولة فاشلة خلال الساعة الأخيرة",
+                            "description_en": f"User {uid} has {len(recent_fails)} failed attempts in the last hour",
+                            "timestamp": recent_fails[0].get("timestamp", now.isoformat()),
+                            "alert_key": alert_key,
+                        })
+                elif len(fails) >= 10:
                     alert_id += 1
-                    alerts.append({
-                        "id": f"alert-fails-{alert_id}",
-                        "type": "medium",
-                        "status": "active",
-                        "title_ar": f"محاولات دخول فاشلة ({len(fails)} محاولة خلال 7 أيام)",
-                        "title_en": f"Failed login attempts ({len(fails)} in 7 days)",
-                        "description_ar": f"المستخدم {uid} لديه {len(fails)} محاولة فاشلة خلال الأسبوع",
-                        "description_en": f"User {uid} has {len(fails)} failed attempts this week",
-                        "timestamp": fails[0].get("timestamp", now.isoformat()),
-                    })
+                    alert_key = f"fails-weekly-{uid}"
+                    if alert_key not in dismissed_ids:
+                        alerts.append({
+                            "id": f"alert-fails-{alert_id}",
+                            "type": "medium",
+                            "status": "active",
+                            "title_ar": f"محاولات دخول فاشلة ({len(fails)} محاولة خلال 7 أيام)",
+                            "title_en": f"Failed login attempts ({len(fails)} in 7 days)",
+                            "description_ar": f"المستخدم {uid} لديه {len(fails)} محاولة فاشلة خلال الأسبوع",
+                            "description_en": f"User {uid} has {len(fails)} failed attempts this week",
+                            "timestamp": fails[0].get("timestamp", now.isoformat()),
+                            "alert_key": alert_key,
+                        })
 
             locked_events = await gd_find(db.session, "audit_logs", {
                 "action": {"$in": ["account_locked", "security.account_locked"]},
@@ -564,6 +591,9 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
             for ev in locked_events:
                 alert_id += 1
                 target = ev.get("target_user_id") or ev.get("target_name") or "unknown"
+                alert_key = f"lock-{ev.get('id', alert_id)}"
+                if alert_key in dismissed_ids:
+                    continue
                 alerts.append({
                     "id": f"alert-lock-{alert_id}",
                     "type": "medium",
@@ -573,6 +603,7 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
                     "description_ar": f"تم قفل حساب {target} بواسطة {ev.get('performed_by_name', 'مدير')}",
                     "description_en": f"Account {target} was locked by {ev.get('performed_by_name', 'admin')}",
                     "timestamp": ev.get("timestamp", now.isoformat()),
+                    "alert_key": alert_key,
                 })
 
             pw_changes = await gd_find(db.session, "audit_logs", {
@@ -582,6 +613,9 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
 
             for ev in pw_changes:
                 alert_id += 1
+                alert_key = f"pw-{ev.get('id', alert_id)}"
+                if alert_key in dismissed_ids:
+                    continue
                 alerts.append({
                     "id": f"alert-pw-{alert_id}",
                     "type": "low",
@@ -591,6 +625,7 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
                     "description_ar": f"تم فرض تغيير كلمة مرور بواسطة {ev.get('performed_by_name', 'مدير')}",
                     "description_en": f"Password change forced by {ev.get('performed_by_name', 'admin')}",
                     "timestamp": ev.get("timestamp", now.isoformat()),
+                    "alert_key": alert_key,
                 })
 
             session_events = await gd_find(db.session, "audit_logs", {
@@ -600,6 +635,9 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
 
             for ev in session_events:
                 alert_id += 1
+                alert_key = f"sess-{ev.get('id', alert_id)}"
+                if alert_key in dismissed_ids:
+                    continue
                 alerts.append({
                     "id": f"alert-sess-{alert_id}",
                     "type": "high",
@@ -609,6 +647,7 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
                     "description_ar": f"تم إنهاء جميع الجلسات بواسطة {ev.get('performed_by_name', 'مدير')}",
                     "description_en": f"All sessions terminated by {ev.get('performed_by_name', 'admin')}",
                     "timestamp": ev.get("timestamp", now.isoformat()),
+                    "alert_key": alert_key,
                 })
 
             alerts.sort(key=lambda a: ({"high": 0, "medium": 1, "low": 2}.get(a["type"], 3), a.get("timestamp", "")), reverse=False)
@@ -845,17 +884,28 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
     @router.post("/dismiss-alert/{alert_id}")
     async def dismiss_alert(
         alert_id: str,
+        alert_key: Optional[str] = Query(None),
         current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
     ):
-        """تجاهل تنبيه أمني"""
+        """تجاهل تنبيه أمني — يُحفظ بشكل دائم"""
         try:
+            key = alert_key or alert_id
+            await gd_insert(db.session, "security_dismissed_alerts", {
+                "id": str(uuid.uuid4()),
+                "alert_key": key,
+                "alert_id": alert_id,
+                "dismissed_by": current_user.get("id"),
+                "dismissed_by_name": current_user.get("name", current_user.get("full_name", "")),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+
             await gd_insert(db.session, "audit_logs", {
                 "id": str(uuid.uuid4()),
                 "action": "security.alert_dismissed",
                 "performed_by": current_user.get("id"),
                 "performed_by_name": current_user.get("name", current_user.get("full_name", "")),
                 "timestamp": datetime.now(timezone.utc).isoformat(),
-                "details": {"alert_id": alert_id},
+                "details": {"alert_id": alert_id, "alert_key": key},
             })
             return {"success": True, "message": "تم تجاهل التنبيه"}
         except Exception as e:
