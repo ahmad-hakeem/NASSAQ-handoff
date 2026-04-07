@@ -250,9 +250,10 @@ def dict_to_model(model_cls, data: dict):
         if k == "_id":
             continue
         if k in cols:
-            kwargs[k] = v
+            kwargs[k] = _coerce_model_value(model_cls, k, v)
         elif TENANT_ALIAS.get(k) in cols:
-            kwargs[TENANT_ALIAS[k]] = v
+            real_key = TENANT_ALIAS[k]
+            kwargs[real_key] = _coerce_model_value(model_cls, real_key, v)
         else:
             extra[k] = v
     if extra and "data" in cols:
@@ -264,6 +265,18 @@ def dict_to_model(model_cls, data: dict):
     return model_cls(**kwargs)
 
 
+def _coerce_model_value(model_cls, key, val):
+    if val is None:
+        return None
+    try:
+        col_attr = getattr(model_cls, key, None)
+        if col_attr is not None:
+            return _coerce_value(col_attr, val)
+    except Exception:
+        pass
+    return val
+
+
 def apply_updates(obj, updates: dict, model_cls=None):
     if model_cls is None:
         model_cls = type(obj)
@@ -273,9 +286,12 @@ def apply_updates(obj, updates: dict, model_cls=None):
         if k in ("id", "_id"):
             continue
         if k in cols:
+            v = _coerce_model_value(model_cls, k, v)
             setattr(obj, k, v)
         elif TENANT_ALIAS.get(k) in cols:
-            setattr(obj, TENANT_ALIAS[k], v)
+            real_key = TENANT_ALIAS[k]
+            v = _coerce_model_value(model_cls, real_key, v)
+            setattr(obj, real_key, v)
         else:
             extra[k] = v
     if extra and "data" in cols:
