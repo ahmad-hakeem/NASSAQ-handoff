@@ -344,7 +344,7 @@ export default function IntegrationsPage() {
     
     const fetchApiKeys = async () => {
       try {
-        const response = await api.get('/api-keys');
+        const response = await api.get('/settings/api-keys');
         // Handle both array and object response formats
         const data = response.data?.keys || response.data || [];
         setApiKeys(Array.isArray(data) ? data : []);
