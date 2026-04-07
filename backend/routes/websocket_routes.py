@@ -189,15 +189,19 @@ def create_websocket_routes(db, decode_token):
             })
             
             async def _server_ping_loop(ws, uid):
-                """Server-initiated ping every 30s to detect zombie connections."""
+                """Server-initiated ping every 30s; force-closes socket on failure."""
                 try:
                     while True:
                         await asyncio.sleep(30)
                         try:
                             await ws.send_json({"type": "server_ping", "ts": datetime.now(timezone.utc).isoformat()})
                         except Exception:
-                            logger.info(f"Server ping failed for user={uid}, closing")
-                            break
+                            logger.info(f"Server ping failed for user={uid}, force-closing")
+                            try:
+                                await ws.close(code=4001, reason="ping failed")
+                            except Exception:
+                                pass
+                            return
                 except asyncio.CancelledError:
                     pass
 
@@ -228,19 +232,11 @@ def create_websocket_routes(db, decode_token):
                         pass
                         
             except (WebSocketDisconnect, Exception) as e:
-                ping_task.cancel()
                 if not isinstance(e, WebSocketDisconnect):
                     logger.warning(f"WebSocket error: {e}")
-                if user_id in manager.active_connections:
-                    if websocket in manager.active_connections[user_id]:
-                        manager.active_connections[user_id].remove(websocket)
-                    if not manager.active_connections[user_id]:
-                        del manager.active_connections[user_id]
-                        if role in manager.role_connections:
-                            manager.role_connections[role].discard(user_id)
-                        if tenant_id and tenant_id in manager.tenant_connections:
-                            manager.tenant_connections[tenant_id].discard(user_id)
-                logger.info(f"WebSocket disconnected: user={user_id}")
+            finally:
+                ping_task.cancel()
+                manager.disconnect(websocket, user_id, role, tenant_id)
                 
         except Exception as e:
             logger.warning(f"WebSocket connection error: {e}")
