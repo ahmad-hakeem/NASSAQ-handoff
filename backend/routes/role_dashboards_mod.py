@@ -64,14 +64,15 @@ async def get_teacher_dashboard(
         user = await db.users.find_one({"id": teacher_id, "role": "teacher"}, {"_id": 0})
         if user:
             tenant_id = user.get("tenant_id")
+            if not tenant_id:
+                raise HTTPException(status_code=403, detail="المعلم غير مرتبط بمدرسة / Teacher has no school assignment")
             lookup_filter = {
+                "school_id": tenant_id,
                 "$or": [
                     {"email": user.get("email")},
                     {"full_name": user.get("full_name")}
                 ]
             }
-            if tenant_id:
-                lookup_filter["school_id"] = tenant_id
             teacher = await db.teachers.find_one(lookup_filter, {"_id": 0})
     
     if not teacher:

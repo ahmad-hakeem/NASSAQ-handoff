@@ -51,10 +51,11 @@ async def cleanup():
         orphan_r = await session.execute(
             text(
                 "DELETE FROM users WHERE tenant_id IS NULL "
-                "AND role NOT IN ('platform_admin')"
+                "AND role NOT IN ('platform_admin') "
+                "AND email LIKE '%test%'"
             )
         )
-        print(f"  Deleted {orphan_r.rowcount} orphaned non-admin users")
+        print(f"  Deleted {orphan_r.rowcount} orphaned test users")
 
         await session.commit()
         print("Cleanup complete.")
