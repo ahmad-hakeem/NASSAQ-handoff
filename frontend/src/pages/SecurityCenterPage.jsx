@@ -206,7 +206,7 @@ export default function SecurityCenterPage() {
       const results = await Promise.allSettled([
         api.get('/security/dashboard'),
         api.get('/security/alerts'),
-        api.get('/audit/logs', { params: { limit: 200, days: 7, action: 'auth' } }),
+        api.get('/audit/logs', { params: { limit: 200, days: 30 } }),
       ]);
 
       const [dashResult, alertsResult, eventsResult] = results;

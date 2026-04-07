@@ -440,7 +440,7 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
                 "timestamp": {"$gte": cutoff_24h},
             })
 
-            total_logins_30d = await gd_count(db.session, "audit_logs", {
+            successful_logins_30d = await gd_count(db.session, "audit_logs", {
                 "action": {"$in": ["auth.login", "login"]},
                 "timestamp": {"$gte": cutoff_30d},
             })
@@ -454,23 +454,27 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
             })
 
             protected_pct = round((active_accounts / max(total_accounts, 1)) * 100) if total_accounts > 0 else 0
-            login_success_rate = round(((total_logins_30d - failed_logins_30d) / max(total_logins_30d, 1)) * 100) if total_logins_30d > 0 else 100
 
-            pw_policy_score = 90
+            total_login_attempts = successful_logins_30d + failed_logins_30d
+            login_success_rate = round((successful_logins_30d / max(total_login_attempts, 1)) * 100) if total_login_attempts > 0 else 100
+
+            pw_no_change = must_change_pw
+            pw_policy_score = max(0, 100 - (pw_no_change * 5))
+            pw_policy_score = min(100, pw_policy_score)
+
             encryption_score = 100
+
             logging_score = 100 if total_audit_events > 0 else 50
             account_security_score = max(0, 100 - (locked_accounts * 5) - (failed_logins_24h * 2))
             auth_score = min(100, login_success_rate)
 
             score_factors = [
                 {"id": "account_protection", "label_ar": "حماية الحسابات", "label_en": "Account Protection", "value": protected_pct, "weight": 25},
-                {"id": "authentication", "label_ar": "المصادقة", "label_en": "Authentication", "value": auth_score, "weight": 25},
+                {"id": "authentication", "label_ar": "المصادقة", "label_en": "Authentication", "value": auth_score, "weight": 20},
                 {"id": "password_policy", "label_ar": "سياسة كلمات المرور", "label_en": "Password Policy", "value": pw_policy_score, "weight": 20},
-                {"id": "encryption", "label_ar": "التشفير", "label_en": "Encryption", "value": encryption_score, "weight": 15},
-                {"id": "logging", "label_ar": "تغطية السجلات", "label_en": "Logging Coverage", "value": logging_score, "weight": 15},
+                {"id": "encryption", "label_ar": "التشفير", "label_en": "Encryption", "value": encryption_score, "weight": 10},
+                {"id": "logging", "label_ar": "تغطية السجلات", "label_en": "Logging Coverage", "value": logging_score, "weight": 10},
             ]
-
-            security_score = round(sum(f["value"] * f["weight"] for f in score_factors) / 100)
 
             backup_records = await gd_find(db.session, "audit_logs", {
                 "action": {"$in": ["data.exported", "data_exported", "backup.created"]},
@@ -490,8 +494,10 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
                     backup_freshness = 80
 
             score_factors.append(
-                {"id": "backup_freshness", "label_ar": "حداثة النسخ الاحتياطية", "label_en": "Backup Freshness", "value": backup_freshness, "weight": 0}
+                {"id": "backup_freshness", "label_ar": "حداثة النسخ الاحتياطية", "label_en": "Backup Freshness", "value": backup_freshness, "weight": 15}
             )
+
+            security_score = round(sum(f["value"] * f["weight"] for f in score_factors) / max(sum(f["weight"] for f in score_factors), 1))
 
             return {
                 "securityScore": min(100, security_score),
