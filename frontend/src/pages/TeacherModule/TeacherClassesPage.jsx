@@ -59,11 +59,11 @@ export default function TeacherClassesPage() {
   const [gradeFilter, setGradeFilter] = useState('all');
   const [sortBy, setSortBy] = useState('grade');
 
+  const { t } = useTranslation();
   const { nassaqError } = useNassaqAlert();
   const teacherId = user?.teacher_id || user?.id;
 
   const handleTabChange = (tab) => {
-  const { t } = useTranslation();
     setSearchParams(tab === 'sessions' ? { tab: 'sessions' } : {});
   };
 

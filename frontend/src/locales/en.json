@@ -2888,5 +2888,19 @@
   "noAlerts": "No Alerts",
   "allSystemsOperational": "All systems are operational",
   "ms": "ms",
-  "seconds": "seconds"
+  "seconds": "seconds",
+  "integrationsPageTitle": "Integrations",
+  "integrationsPageSubtitle": "Manage integrations and connect with external services",
+  "analyticsPageTitle": "Platform Analytics",
+  "analyticsPageSubtitle": "Comprehensive analysis of platform and school performance",
+  "settingsPageTitle": "Platform Settings",
+  "settingsPageSubtitle": "Manage platform settings and configurations",
+  "rulesPageTitle": "Rules Management",
+  "rulesPageSubtitle": "Create and manage business rules and policies",
+  "securityPageTitle": "Security Center",
+  "securityPageSubtitle": "Monitor and manage platform security",
+  "tenantsPageTitle": "Schools Management",
+  "tenantsPageSubtitle": "Manage and monitor all registered schools",
+  "monitoringPageTitle": "System Monitoring",
+  "monitoringPageSubtitle": "Monitor system health and performance"
 }

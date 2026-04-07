@@ -441,8 +441,8 @@ export const RulesManagementPage = () => {
           <div className="container mx-auto px-4 lg:px-6 py-4">
             <div className="flex items-center justify-between mb-4">
               <PageHeader 
-                title={t('pageTitle')} 
-                subtitle={t('pageSubtitle')}
+                title={t('rulesPageTitle')} 
+                subtitle={t('rulesPageSubtitle')}
                 icon={BookOpen}
                 className="mb-0"
               />

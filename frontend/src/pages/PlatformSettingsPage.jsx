@@ -773,8 +773,8 @@ export const PlatformSettingsPage = () => {
           <div className="container mx-auto px-4 lg:px-6 py-4">
             <div className="flex items-center justify-between">
               <PageHeader 
-                title={t('pageTitle')} 
-                subtitle={t('pageSubtitle')}
+                title={t('settingsPageTitle')} 
+                subtitle={t('settingsPageSubtitle')}
                 icon={Settings}
                 className="mb-0"
               />
@@ -984,7 +984,7 @@ export const PlatformSettingsPage = () => {
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label>{t.email}</Label>
+                          <Label>{t('email')}</Label>
                           <Input
                             type="email"
                             value={accountData.email}
@@ -994,7 +994,7 @@ export const PlatformSettingsPage = () => {
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label>{t.phone}</Label>
+                          <Label>{t('phone')}</Label>
                           <Input
                             type="tel"
                             value={accountData.phone}

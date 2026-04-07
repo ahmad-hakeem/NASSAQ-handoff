@@ -138,7 +138,7 @@ export default function TeacherResourcesPage() {
   });
 
   const getResourceIcon = (type) => {
-    const resourceType = RESOURCE_TYPES.find(t => t.value === type);
+    const resourceType = RESOURCE_TYPES.find(rt => rt.value === type);
     return resourceType?.icon || File;
   };
 
@@ -264,7 +264,7 @@ export default function TeacherResourcesPage() {
                         <div className="flex-1 min-w-0">
                           <h3 className="font-medium truncate">{resource.title}</h3>
                           <p className="text-xs text-muted-foreground">
-                            {RESOURCE_TYPES.find(t => t.value === resource.type)?.[isRTL ? 'label' : 'labelEn']}
+                            {RESOURCE_TYPES.find(rt => rt.value === resource.type)?.[isRTL ? 'label' : 'labelEn']}
                           </p>
                         </div>
                       </div>

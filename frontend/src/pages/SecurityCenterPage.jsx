@@ -420,7 +420,7 @@ export default function SecurityCenterPage() {
         <header className="sticky top-0 z-40 bg-background/95 backdrop-blur border-b">
           <div className="container mx-auto px-4 lg:px-6 py-4">
             <div className="flex items-center justify-between mb-4">
-              <PageHeader title={t('pageTitle')} subtitle={t('pageSubtitle')} icon={Shield} className="mb-0" />
+              <PageHeader title={t('securityPageTitle')} subtitle={t('securityPageSubtitle')} icon={Shield} className="mb-0" />
               <div className="flex items-center gap-2">
                 <Button variant="outline" className="rounded-xl" onClick={handleRefresh} disabled={refreshing}>
                   {refreshing ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : <RefreshCw className="h-4 w-4 me-2" />}

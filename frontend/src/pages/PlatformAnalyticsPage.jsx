@@ -540,8 +540,8 @@ export const PlatformAnalyticsPage = () => {
           <div className="container mx-auto px-4 lg:px-6 py-4">
             <div className="flex items-center justify-between mb-4">
               <PageHeader 
-                title={t('pageTitle')} 
-                subtitle={t('pageSubtitle')}
+                title={t('analyticsPageTitle')} 
+                subtitle={t('analyticsPageSubtitle')}
                 icon={BarChart3}
                 className="mb-0"
               />
@@ -573,25 +573,25 @@ export const PlatformAnalyticsPage = () => {
                 <span className="text-sm font-medium text-muted-foreground">{t('activeFilters')}:</span>
                 {filters.city !== 'all' && (
                   <Badge variant="secondary" className="flex items-center gap-1">
-                    {t('city')}: {t[filters.city] || filters.city}
+                    {t('city')}: {t(filters.city) || filters.city}
                     <X className="h-3 w-3 cursor-pointer" onClick={() => removeFilter('city')} />
                   </Badge>
                 )}
                 {filters.stage !== 'all' && (
                   <Badge variant="secondary" className="flex items-center gap-1">
-                    {t('stage')}: {t[filters.stage]}
+                    {t('stage')}: {t(filters.stage)}
                     <X className="h-3 w-3 cursor-pointer" onClick={() => removeFilter('stage')} />
                   </Badge>
                 )}
                 {filters.period !== 'thisMonth' && (
                   <Badge variant="secondary" className="flex items-center gap-1">
-                    {t('period')}: {t[filters.period]}
+                    {t('period')}: {t(filters.period)}
                     <X className="h-3 w-3 cursor-pointer" onClick={() => removeFilter('period')} />
                   </Badge>
                 )}
                 {filters.status !== 'all' && (
                   <Badge variant="secondary" className="flex items-center gap-1">
-                    {t.status}: {t[filters.status]}
+                    {t('status')}: {t(filters.status)}
                     <X className="h-3 w-3 cursor-pointer" onClick={() => removeFilter('status')} />
                   </Badge>
                 )}
@@ -1123,7 +1123,7 @@ export const PlatformAnalyticsPage = () => {
                           <div>
                             <p className="font-medium">{isRTL ? report.name : report.name_en}</p>
                             <p className="text-sm text-muted-foreground">
-                              {t[report.frequency]} • {report.recipients} {t('recipients3')}
+                              {t(report.frequency)} • {report.recipients} {t('recipients3')}
                             </p>
                           </div>
                         </div>
@@ -1602,7 +1602,7 @@ export const PlatformAnalyticsPage = () => {
               
               {/* Status Filter */}
               <div className="space-y-2">
-                <Label>{t.status}</Label>
+                <Label>{t('status')}</Label>
                 <Select value={filters.status} onValueChange={(v) => setFilters(prev => ({ ...prev, status: v }))}>
                   <SelectTrigger>
                     <SelectValue />

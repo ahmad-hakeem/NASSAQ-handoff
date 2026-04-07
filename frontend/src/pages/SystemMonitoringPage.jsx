@@ -285,8 +285,8 @@ export const SystemMonitoringPage = () => {
           <div className="container mx-auto px-4 lg:px-6 py-4">
             <div className="flex items-center justify-between mb-4">
               <PageHeader 
-                title={t('pageTitle')} 
-                subtitle={t('pageSubtitle')}
+                title={t('monitoringPageTitle')} 
+                subtitle={t('monitoringPageSubtitle')}
                 icon={Activity}
                 className="mb-0"
               />
@@ -553,7 +553,7 @@ export const SystemMonitoringPage = () => {
                         <span className="font-bold">{metrics.aiModelsActive} {t('active')}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm text-muted-foreground">{t.status}</span>
+                        <span className="text-sm text-muted-foreground">{t('status')}</span>
                         <Badge className="bg-green-500">{t('healthy')}</Badge>
                       </div>
                     </div>
@@ -711,7 +711,7 @@ export const SystemMonitoringPage = () => {
                             job.status === 'completed' ? 'bg-green-500' :
                             'bg-red-500'
                           }>
-                            {t[job.status]}
+                            {t(job.status)}
                           </Badge>
                         </div>
                         {job.status === 'running' && (
@@ -1027,7 +1027,7 @@ export const SystemMonitoringPage = () => {
                         job.status === 'completed' ? 'bg-green-500' :
                         'bg-red-500'
                       }>
-                        {t[job.status]}
+                        {t(job.status)}
                       </Badge>
                     </div>
                     {job.status === 'running' && (

@@ -1132,15 +1132,15 @@ export default function SessionTeachPage() {
                     { id: 'student', label: 'طالب' },
                     { id: 'behavioural', label: 'سلوكية' },
                     { id: 'followup', label: 'متابعة' },
-                  ].map(t => (
+                  ].map(nt => (
                     <button
-                      key={t.id}
-                      onClick={() => setNoteType(t.id)}
+                      key={nt.id}
+                      onClick={() => setNoteType(nt.id)}
                       className={`flex-1 py-1 rounded text-[10px] font-medium transition-all ${
-                        noteType === t.id ? 'bg-amber-600 text-white' : 'bg-white/10 text-white/50'
+                        noteType === nt.id ? 'bg-amber-600 text-white' : 'bg-white/10 text-white/50'
                       }`}
                     >
-                      {t.label}
+                      {nt.label}
                     </button>
                   ))}
                 </div>

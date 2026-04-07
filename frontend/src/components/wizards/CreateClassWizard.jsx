@@ -229,7 +229,7 @@ export const CreateClassWizard = ({ open, onOpenChange, onSuccess }) => {
   });
 
   const getGradeName = (id) => options.grades?.find(g => g.id === id)?.[isRTL ? 'name_ar' : 'name_en'] || id;
-  const getTeacherName = (id) => options.teachers?.find(t => t.teacher_id === id)?.full_name_ar || '';
+  const getTeacherName = (id) => options.teachers?.find(tc => tc.teacher_id === id)?.full_name_ar || '';
 
   const steps = [
     { num: 1, title: t('info'), icon: School },
@@ -283,7 +283,7 @@ export const CreateClassWizard = ({ open, onOpenChange, onSuccess }) => {
                     <Select value={data.class_type || 'regular'} onValueChange={(val) => onChange('class_type', val)}>
                       <SelectTrigger className="h-10 rounded-lg" data-testid="class-type"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {options.classTypes?.map((t) => (<SelectItem key={t.code} value={t.code}>{isRTL ? t.name_ar : t.name_en}</SelectItem>))}
+                        {options.classTypes?.map((ct) => (<SelectItem key={ct.code} value={ct.code}>{isRTL ? ct.name_ar : ct.name_en}</SelectItem>))}
                       </SelectContent>
                     </Select>
                   </FormField>
@@ -320,7 +320,7 @@ export const CreateClassWizard = ({ open, onOpenChange, onSuccess }) => {
                     <SelectTrigger className="h-10 rounded-lg" data-testid="class-homeroom-teacher"><SelectValue placeholder={t('selectTeacher')} /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">{t('noTeacher')}</SelectItem>
-                      {options.teachers?.map((t) => (<SelectItem key={t.teacher_id} value={t.teacher_id}>{t.full_name_ar || t.full_name_en}</SelectItem>))}
+                      {options.teachers?.map((tc) => (<SelectItem key={tc.teacher_id} value={tc.teacher_id}>{tc.full_name_ar || tc.full_name_en}</SelectItem>))}
                     </SelectContent>
                   </Select>
                 </FormField>

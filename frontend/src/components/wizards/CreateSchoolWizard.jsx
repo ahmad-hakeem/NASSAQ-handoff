@@ -819,7 +819,7 @@ ${createdSchool?.tenant_code}
                       <CardContent className="px-3 pb-3 space-y-2 text-sm">
                         <div><span className="text-muted-foreground">{t('lang')}</span> <strong>{settingsData.defaultLanguage === 'ar' ? 'العربية' : 'English'}</strong></div>
                         <div><span className="text-muted-foreground">{t('cal')}</span> <strong>{CALENDAR_SYSTEMS.find(c => c.value === settingsData.calendarSystem)?.label}</strong></div>
-                        <div><span className="text-muted-foreground">{t('type2')}</span> <strong>{SCHOOL_TYPES.find(t => t.value === settingsData.schoolType)?.label}</strong></div>
+                        <div><span className="text-muted-foreground">{t('type2')}</span> <strong>{SCHOOL_TYPES.find(st => st.value === settingsData.schoolType)?.label}</strong></div>
                         <div><span className="text-muted-foreground">{t('stage')}</span> <strong>{EDUCATIONAL_STAGES.find(s => s.value === settingsData.educationalStage)?.label}</strong></div>
                         <div><span className="text-muted-foreground">{t('assess')}</span> <strong>{ASSESSMENT_SYSTEMS.find(a => a.value === settingsData.assessmentSystem)?.label}</strong></div>
                       </CardContent>

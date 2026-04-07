@@ -232,8 +232,8 @@ export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {options.recipientTypes.map((t) => (
-                      <SelectItem key={t.code} value={t.code}>{isRTL ? t.name_ar : t.name_en}</SelectItem>
+                    {options.recipientTypes.map((rt) => (
+                      <SelectItem key={rt.code} value={rt.code}>{isRTL ? rt.name_ar : rt.name_en}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -273,8 +273,8 @@ export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {options.notificationTypes.map((t) => (
-                      <SelectItem key={t.code} value={t.code}>{isRTL ? t.name_ar : t.name_en}</SelectItem>
+                    {options.notificationTypes.map((nt) => (
+                      <SelectItem key={nt.code} value={nt.code}>{isRTL ? nt.name_ar : nt.name_en}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

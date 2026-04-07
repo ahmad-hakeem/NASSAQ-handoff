@@ -281,8 +281,8 @@ export default function TenantsManagement() {
                     <Building2 className="h-6 w-6" />
                   </div>
                   <div>
-                    <h1 className="text-2xl sm:text-3xl font-bold font-cairo">{t('pageTitle')}</h1>
-                    <p className="text-white/70 text-sm font-tajawal">{t('pageSubtitle')}</p>
+                    <h1 className="text-2xl sm:text-3xl font-bold font-cairo">{t('tenantsPageTitle')}</h1>
+                    <p className="text-white/70 text-sm font-tajawal">{t('tenantsPageSubtitle')}</p>
                   </div>
                 </div>
               </div>
@@ -365,7 +365,7 @@ export default function TenantsManagement() {
             <div className="hidden sm:flex items-center gap-2">
               <Select value={filters.status} onValueChange={(v) => { setFilters(f => ({ ...f, status: v })); setActiveStatusFilter(null); }}>
                 <SelectTrigger className="w-36 rounded-xl">
-                  <SelectValue placeholder={t.status} />
+                  <SelectValue placeholder={t('status')} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">{t('allStatus')}</SelectItem>
@@ -509,7 +509,7 @@ export default function TenantsManagement() {
                       <th className="text-center p-3 font-medium text-slate-500">{t('classes')}</th>
                       <th className="text-center p-3 font-medium text-slate-500">{t('parents')}</th>
                       <th className="text-center p-3 font-medium text-slate-500">{t('setup_score')}</th>
-                      <th className="text-center p-3 font-medium text-slate-500">{t.status}</th>
+                      <th className="text-center p-3 font-medium text-slate-500">{t('status')}</th>
                       <th className="text-center p-3 font-medium text-slate-500">{t('actions2')}</th>
                     </tr>
                   </thead>
@@ -690,7 +690,7 @@ export default function TenantsManagement() {
           </SheetHeader>
           <div className="space-y-6 mt-6">
             <div className="space-y-2">
-              <label className="text-sm font-medium">{t.status}</label>
+              <label className="text-sm font-medium">{t('status')}</label>
               <Select value={filters.status} onValueChange={(v) => { setFilters(f => ({ ...f, status: v })); setActiveStatusFilter(null); }}>
                 <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
                 <SelectContent>

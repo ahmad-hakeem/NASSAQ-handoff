@@ -398,8 +398,8 @@ ${baseUrl}/webhooks
           <div className="container mx-auto px-4 lg:px-6 py-4">
             <div className="flex items-center justify-between mb-4">
               <PageHeader 
-                title={t('pageTitle')} 
-                subtitle={t('pageSubtitle')}
+                title={t('integrationsPageTitle')} 
+                subtitle={t('integrationsPageSubtitle')}
                 icon={Link2}
                 className="mb-0"
               />
@@ -1290,7 +1290,7 @@ ${baseUrl}/webhooks
               </div>
               
               <div className="space-y-2">
-                <Label>{t.permissions}</Label>
+                <Label>{t('permissions')}</Label>
                 <Select 
                   value={newKeyForm.permissions} 
                   onValueChange={(v) => setNewKeyForm({ ...newKeyForm, permissions: v })}

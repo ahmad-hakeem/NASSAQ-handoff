@@ -2888,5 +2888,19 @@
   "noAlerts": "لا توجد تنبيهات",
   "allSystemsOperational": "جميع الأنظمة تعمل بشكل طبيعي",
   "ms": "مللي ثانية",
-  "seconds": "ثانية"
+  "seconds": "ثانية",
+  "integrationsPageTitle": "التكاملات",
+  "integrationsPageSubtitle": "إدارة التكاملات والربط مع الخدمات الخارجية",
+  "analyticsPageTitle": "تحليلات المنصة",
+  "analyticsPageSubtitle": "تحليل شامل لأداء المنصة والمدارس",
+  "settingsPageTitle": "إعدادات المنصة",
+  "settingsPageSubtitle": "إدارة إعدادات المنصة والتكوينات",
+  "rulesPageTitle": "إدارة القواعد",
+  "rulesPageSubtitle": "إنشاء وإدارة قواعد العمل والسياسات",
+  "securityPageTitle": "مركز الأمان",
+  "securityPageSubtitle": "مراقبة وإدارة أمان المنصة",
+  "tenantsPageTitle": "إدارة المدارس",
+  "tenantsPageSubtitle": "إدارة ومراقبة جميع المدارس المسجلة",
+  "monitoringPageTitle": "مراقبة النظام",
+  "monitoringPageSubtitle": "مراقبة أداء وصحة النظام"
 }

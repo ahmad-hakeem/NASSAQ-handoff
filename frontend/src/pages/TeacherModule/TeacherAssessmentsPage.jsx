@@ -241,7 +241,7 @@ export default function TeacherAssessmentsPage() {
                         <div>
                           <CardTitle className="text-base">{assessment.title || assessment.name}</CardTitle>
                           <p className="text-xs text-muted-foreground">
-                            {ASSESSMENT_TYPES.find(t => t.value === (assessment.assessment_type || assessment.type))?.[isRTL ? 'label' : 'labelEn']}
+                            {ASSESSMENT_TYPES.find(at => at.value === (assessment.assessment_type || assessment.type))?.[isRTL ? 'label' : 'labelEn']}
                           </p>
                         </div>
                       </div>
@@ -313,8 +313,8 @@ export default function TeacherAssessmentsPage() {
                   <Select value={newAssessment.assessment_type} onValueChange={(v) => setNewAssessment({...newAssessment, assessment_type: v})}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {ASSESSMENT_TYPES.map(t => (
-                        <SelectItem key={t.value} value={t.value}>{isRTL ? t.label : t.labelEn}</SelectItem>
+                      {ASSESSMENT_TYPES.map(at => (
+                        <SelectItem key={at.value} value={at.value}>{isRTL ? at.label : at.labelEn}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

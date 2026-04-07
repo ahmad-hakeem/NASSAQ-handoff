@@ -47,6 +47,7 @@ function getAvatarSvg(gender, index) {
 export default function SessionStartPage() {
   const { user, api, isRTL } = useAuth();
   const { isDark, toggleTheme } = useTheme();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
 
