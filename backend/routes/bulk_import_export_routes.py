@@ -224,7 +224,7 @@ def setup_bulk_routes(db, get_current_user, require_roles, UserRole):
     @router.get("/export/{export_type}")
     async def export_data(
         export_type: ExportType,
-        format: str = Query("xlsx", regex="^(xlsx|csv)$"),
+        format: str = Query("xlsx", pattern="^(xlsx|csv)$"),
         school_id: Optional[str] = None,
         grade: Optional[str] = None,
         class_name: Optional[str] = None,

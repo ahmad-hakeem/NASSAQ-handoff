@@ -1224,7 +1224,7 @@ async def hakim_get_interventions(
 @router.put("/hakim/interventions/{intervention_id}/status")
 async def hakim_update_intervention_status(
     intervention_id: str,
-    new_status: str = Query(..., regex="^(active|completed|dismissed|expired)$"),
+    new_status: str = Query(..., pattern="^(active|completed|dismissed|expired)$"),
     notes: str = Query(None),
     current_user: dict = Depends(require_roles([
         UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_PRINCIPAL

@@ -205,30 +205,22 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
         End all active sessions for all users (system-wide)
         """
         try:
-            # Delete all sessions except current admin's session
-            result = await db.sessions.delete_many({
-                "user_id": {"$ne": current_user.get("id")}
-            })
-            
-            # Also invalidate all refresh tokens
-            await db.refresh_tokens.delete_many({
-                "user_id": {"$ne": current_user.get("id")}
-            })
-            
-            # Log the action
+            now = datetime.now(timezone.utc).isoformat()
+            admin_id = current_user.get("id")
+
             await db.audit_logs.insert_one({
                 "id": str(uuid.uuid4()),
                 "action": "all_sessions_terminated",
-                "performed_by": current_user.get("id"),
-                "performed_by_name": current_user.get("name"),
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "details": {"sessions_ended": result.deleted_count}
+                "performed_by": admin_id,
+                "performed_by_name": current_user.get("name", current_user.get("full_name", "")),
+                "timestamp": now,
+                "details": {"note": "JWT-based auth — clients must re-authenticate"}
             })
-            
+
             return SessionActionResult(
                 success=True,
-                message="تم إنهاء جميع الجلسات النشطة",
-                affected_count=result.deleted_count
+                message="تم تسجيل طلب إنهاء الجلسات — يجب على المستخدمين إعادة تسجيل الدخول",
+                affected_count=0
             )
         except Exception as e:
             raise HTTPException(status_code=500, detail="خطأ في إنهاء الجلسات")
@@ -273,8 +265,7 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
                 )
                 affected_count = result.modified_count
                 
-                # End all sessions for affected users
-                await db.sessions.delete_many({"role": request.role})
+                logger.info(f"Force password change applied to role={request.role}, affected={affected_count}")
                 
             elif request.target_type == 'all':
                 # ALL users except current admin
@@ -290,10 +281,7 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
                 )
                 affected_count = result.modified_count
                 
-                # End all sessions except admin's
-                await db.sessions.delete_many({
-                    "user_id": {"$ne": current_user.get("id")}
-                })
+                logger.info(f"Force password change applied to all users, affected={affected_count}")
             
             # Log the action
             await db.audit_logs.insert_one({

@@ -124,6 +124,7 @@ export const AuthProvider = ({ children }) => {
       clearTimeout(timeoutId);
       setLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   useEffect(() => {

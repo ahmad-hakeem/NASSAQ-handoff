@@ -12,7 +12,7 @@ export function createApiService(api) {
       get: (id) => api.get(`/schools/${id}`),
       create: (data) => api.post('/schools', data),
       update: (id, data) => api.put(`/schools/${id}`, data),
-      dashboard: () => api.get('/school/dashboard-stats'),
+      dashboard: () => api.get('/school/dashboard'),
     },
 
     students: {

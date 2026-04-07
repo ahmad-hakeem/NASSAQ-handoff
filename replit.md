@@ -71,7 +71,7 @@ Each fix report must include: root cause, why it wasn't caught before, what chan
 - **Core Rule**: Production data must NEVER be lost, overwritten, or replaced during deployment
 - **Database**: Replit co-located PostgreSQL via `DATABASE_URL` — <1ms latency (migrated from Supabase EU ~291ms)
   - Pool: `pool_size=15, max_overflow=25, pool_recycle=300, pool_use_lifo=True, pool_pre_ping=True`
-  - 94 FK constraints, 5 unique constraints, 222 indexes enforced at DB level
+  - 99 FK constraints, 6 unique constraints, 259 indexes enforced at DB level (27 FK indexes added in migration i1j2k3l4m5n6)
   - **In-memory caching**: `/public/stats` (60s TTL in `school_routes_mod.py`), `/admin/command-center/stats` (30s TTL in `dashboard_routes_mod.py`)
 - **Seed Scripts**: BLOCKED in production and staging (`config.seed_allowed()` returns `False`)
 - **Double Guard**: Even if seeds allowed, they are SKIPPED when database already has data (user count > 0)
