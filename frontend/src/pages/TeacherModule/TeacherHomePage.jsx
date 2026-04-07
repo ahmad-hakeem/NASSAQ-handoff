@@ -19,7 +19,6 @@ import { formatHijriDate } from '../../utils/hijriDate';
 
 import { useTranslation } from '../../contexts/ThemeContext';
 const getTimeUntilLesson = (lessonTime) => {
-  const { t } = useTranslation();
   if (!lessonTime) return null;
   const now = new Date();
   const [hours, minutes] = lessonTime.split(':').map(Number);

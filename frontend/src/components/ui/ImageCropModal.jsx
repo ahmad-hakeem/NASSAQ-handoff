@@ -14,7 +14,6 @@ import { Loader2, ZoomIn, ZoomOut, Upload, X, Check, ImagePlus } from 'lucide-re
 
 import { useTranslation } from '../../contexts/ThemeContext';
 async function getCroppedImg(imageSrc, pixelCrop) {
-  const { t } = useTranslation();
   const image = new Image();
   image.crossOrigin = 'anonymous';
   await new Promise((resolve, reject) => {

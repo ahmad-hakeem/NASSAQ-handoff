@@ -91,7 +91,6 @@ const ASSESSMENT_SYSTEMS = [
 
 // Generate temporary password
 const generateTempPassword = () => {
-  const { t } = useTranslation();
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789@#$';
   let password = '';
   for (let i = 0; i < 12; i++) {

@@ -444,7 +444,6 @@ const TESTING_ACCOUNT_PERMISSIONS = [
 
 // دالة للحصول على الصلاحيات حسب الدور
 const getPermissionsByRole = (roleId) => {
-  const { t } = useTranslation();
   switch (roleId) {
     case 'platform_admin':
       return PLATFORM_ADMIN_PERMISSIONS;

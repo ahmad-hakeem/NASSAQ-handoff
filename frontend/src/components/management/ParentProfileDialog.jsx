@@ -21,6 +21,7 @@ export default function ParentProfileDialog({ open, onClose, parent, onRefresh }
   const { api } = useAuth();
   const { nassaqConfirm, nassaqError } = useNassaqAlert();
   const { isRTL } = useTheme();
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState('info');
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -119,7 +120,6 @@ export default function ParentProfileDialog({ open, onClose, parent, onRefresh }
   };
 
   const handleDelete = () => {
-  const { t } = useTranslation();
     nassaqConfirm(
       t('areYouSureYouWantToPermanentlyDeleteThisParentThis'),
       async () => {

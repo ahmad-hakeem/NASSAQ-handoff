@@ -22,6 +22,7 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
   const { api } = useAuth();
   const { nassaqConfirm, nassaqError } = useNassaqAlert();
   const { isRTL } = useTheme();
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState('info');
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -138,7 +139,6 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
   };
 
   const handleDelete = () => {
-  const { t } = useTranslation();
     nassaqConfirm(
       t('areYouSureYouWantToPermanentlyDeleteThisTeacherThi'),
       async () => {

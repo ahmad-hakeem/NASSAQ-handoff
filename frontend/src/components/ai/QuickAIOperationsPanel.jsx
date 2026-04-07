@@ -116,6 +116,7 @@ const RECENT_OPERATIONS = [
 ];
 
 export default function QuickAIOperationsPanel({ api, isRTL = true }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   
   // States
@@ -150,7 +151,6 @@ export default function QuickAIOperationsPanel({ api, isRTL = true }) {
   
   // Generate operation results - Empty states when no data
   const generateOperationResults = (operationId) => {
-  const { t } = useTranslation();
     switch (operationId) {
       case 'system_diagnosis':
         return {
