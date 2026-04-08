@@ -30,6 +30,7 @@ const BADGE_META = {
 };
 
 export default function TeacherAchievementsPage() {
+  const { t } = useTranslation();
   const { user, api, isRTL } = useAuth();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
@@ -64,7 +65,6 @@ export default function TeacherAchievementsPage() {
     : (t('startYourJourney'));
 
   const renderBadgeCard = (badge, isEarned) => {
-  const { t } = useTranslation();
     const meta = BADGE_META[badge.id] || {};
     const Icon = meta.icon || Award;
     return (

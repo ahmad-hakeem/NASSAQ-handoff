@@ -223,8 +223,7 @@ def register_routes(app, api_router: APIRouter):
 
     @app.websocket("/ws")
     async def reject_bare_ws(websocket: WebSocket):
-        await websocket.accept()
-        await websocket.close(code=4000, reason="Use /api/ws/notifications")
+        await websocket.close(code=1000)
 
     _register_static_fallback(app)
 

@@ -961,3 +961,16 @@ Sub-pages (accessible from within classes/sessions, not top-level sidebar):
 ### ReDoS Protection
 - `re.escape()` applied to all user-provided search inputs before `$regex` across 7 route files: `security_routes.py`, `user_routes_mod.py`, `admin_routes_mod.py`, `audit_routes.py`, `academics_student_routes.py`, `product_hub_routes.py`, `principal_management_routes.py`
 - `search_directory_routes_mod.py` already had `re.escape()` — verified safe
+
+### TeacherAchievementsPage Hooks Fix
+- `useTranslation()` was called inside `renderBadgeCard()` helper function (non-component) — React hooks violation causing crash
+- Fixed: Moved `const { t } = useTranslation()` to component top level, removed duplicate call from `renderBadgeCard`
+
+### WebSocket `/ws` Health-Check Noise
+- Replit proxy hits bare `/ws` endpoint every ~2 seconds for health checks
+- Changed handler from `accept() + close(4000)` → `close(1000)` to suppress 3-line-per-hit log noise
+- Real notification WebSocket remains at `/api/ws/notifications?token=...`
+
+### ErrorBoundary Production Safety
+- Stack traces in fallback UI are for debugging only — removed after crash diagnosis
+- Errors still logged to `console.error` for DevTools inspection
