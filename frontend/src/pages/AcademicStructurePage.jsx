@@ -17,7 +17,7 @@ import {
   GraduationCap, Calendar, BookOpen, ClipboardCheck, ArrowUpDown,
   Plus, Edit2, Trash2, Eye, ChevronLeft, Sparkles, AlertTriangle,
   Info, CheckCircle2, Loader2, Send, Archive, X, CalendarDays,
-  Clock, School, FileText, Settings2, TrendingUp, Users
+  Clock, School, FileText, Settings2, TrendingUp, Users, Upload
 } from 'lucide-react';
 
 const STATUS_CONFIG = {
@@ -33,6 +33,7 @@ const HOLIDAY_TYPES = [
   { value: 'school', label: 'إجازة مدرسية' },
   { value: 'activity', label: 'يوم نشاط' },
   { value: 'weekend_extension', label: 'تمديد عطلة نهاية الأسبوع' },
+  { value: 'other', label: 'أخرى' },
 ];
 
 const EXAM_TYPES = [
@@ -42,12 +43,6 @@ const EXAM_TYPES = [
   { value: 'quiz', label: 'اختبار قصير' },
 ];
 
-const PROMOTION_MODES = [
-  { value: 'auto', label: 'ترقية تلقائية', desc: 'ينتقل جميع الطلاب تلقائياً' },
-  { value: 'conditional', label: 'ترقية مشروطة', desc: 'بناءً على الحضور والدرجات' },
-  { value: 'manual', label: 'ترقية يدوية', desc: 'يحدد المعلم/المدير يدوياً' },
-  { value: 'repeat', label: 'إعادة السنة', desc: 'وفق نظام الإعادة الرسمي' },
-];
 
 export function AcademicStructureContent() {
   const { api } = useAuth();
@@ -62,7 +57,6 @@ export function AcademicStructureContent() {
   const [terms, setTerms] = useState([]);
   const [holidays, setHolidays] = useState([]);
   const [examPeriods, setExamPeriods] = useState([]);
-  const [promotionRules, setPromotionRules] = useState([]);
   const [calendarData, setCalendarData] = useState(null);
   const [aiInsights, setAiInsights] = useState(null);
 
@@ -70,14 +64,17 @@ export function AcademicStructureContent() {
   const [showTermDialog, setShowTermDialog] = useState(false);
   const [showHolidayDialog, setShowHolidayDialog] = useState(false);
   const [showExamDialog, setShowExamDialog] = useState(false);
+  const [showCalendarImportDialog, setShowCalendarImportDialog] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+  const [importProcessing, setImportProcessing] = useState(false);
+  const [importResult, setImportResult] = useState(null);
+  const [hakimImportChat, setHakimImportChat] = useState('');
   const [editingItem, setEditingItem] = useState(null);
 
   const [yearForm, setYearForm] = useState({ name: '', name_en: '', start_date: '', end_date: '', is_current: false });
   const [termForm, setTermForm] = useState({ name: '', name_en: '', start_date: '', end_date: '', is_current: false });
-  const [holidayForm, setHolidayForm] = useState({ name: '', name_en: '', start_date: '', end_date: '', type: 'public', term_id: '' });
-  const [examForm, setExamForm] = useState({ name: '', name_en: '', start_date: '', end_date: '', exam_type: 'final', term_id: '' });
-  const [promoForm, setPromoForm] = useState({ mode: 'auto', min_attendance_percent: 75, min_grade_percent: 50, max_failures: 2 });
-
+  const [holidayForm, setHolidayForm] = useState({ name: '', name_en: '', start_date: '', end_date: '', type: 'public', custom_type: '', term_id: '' });
+  const [examForm, setExamForm] = useState({ name: '', name_en: '', start_date: '', end_date: '', exam_type: 'final', term_id: '', start_time: '', end_time: '', period_number: '' });
   const fetchOverview = useCallback(async () => {
     try {
       const res = await api.get('/academic-structure/overview');
@@ -99,17 +96,15 @@ export function AcademicStructureContent() {
   const fetchYearData = useCallback(async (yearId) => {
     if (!yearId) return;
     try {
-      const [termsRes, holidaysRes, examsRes, rulesRes, calRes] = await Promise.all([
+      const [termsRes, holidaysRes, examsRes, calRes] = await Promise.all([
         api.get(`/terms?academic_year_id=${yearId}`),
         api.get(`/holidays?academic_year_id=${yearId}`),
         api.get(`/exam-periods?academic_year_id=${yearId}`),
-        api.get(`/promotion-rules?academic_year_id=${yearId}`),
         api.get(`/academic-calendar/${yearId}`),
       ]);
       setTerms(termsRes.data);
       setHolidays(holidaysRes.data);
       setExamPeriods(examsRes.data);
-      setPromotionRules(rulesRes.data);
       setCalendarData(calRes.data);
     } catch (e) { console.error('Year data error:', e); }
   }, [api]);
@@ -194,7 +189,7 @@ export function AcademicStructureContent() {
       }
       setShowHolidayDialog(false);
       setEditingItem(null);
-      setHolidayForm({ name: '', name_en: '', start_date: '', end_date: '', type: 'public', term_id: '' });
+      setHolidayForm({ name: '', name_en: '', start_date: '', end_date: '', type: 'public', custom_type: '', term_id: '' });
       await fetchYearData(selectedYear.id);
     } catch (e) {
       nassaqError(e.response?.data?.detail || 'حدث خطأ أثناء حفظ الإجازة');
@@ -205,7 +200,13 @@ export function AcademicStructureContent() {
   const handleSaveExam = async () => {
     setSaving(true);
     try {
-      const payload = { ...examForm, academic_year_id: selectedYear.id };
+      const payload = {
+        ...examForm,
+        academic_year_id: selectedYear.id,
+        start_time: examForm.start_time || null,
+        end_time: examForm.end_time || null,
+        period_number: examForm.period_number !== '' && examForm.period_number !== null ? Number(examForm.period_number) : null,
+      };
       if (editingItem) {
         await api.put(`/exam-periods/${editingItem.id}`, payload);
       } else {
@@ -213,7 +214,7 @@ export function AcademicStructureContent() {
       }
       setShowExamDialog(false);
       setEditingItem(null);
-      setExamForm({ name: '', name_en: '', start_date: '', end_date: '', exam_type: 'final', term_id: '' });
+      setExamForm({ name: '', name_en: '', start_date: '', end_date: '', exam_type: 'final', term_id: '', start_time: '', end_time: '', period_number: '' });
       await fetchYearData(selectedYear.id);
     } catch (e) {
       nassaqError(e.response?.data?.detail || 'حدث خطأ أثناء حفظ فترة الاختبارات');
@@ -305,33 +306,46 @@ export function AcademicStructureContent() {
     }, { title: 'تأكيد الحذف', confirmText: 'نعم، احذف', cancelText: 'إلغاء' });
   };
 
-  const handleSavePromotion = async () => {
+  const handleCalendarImport = async () => {
+    if (!importFile || !selectedYear) return;
+    setImportProcessing(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', importFile);
+      if (hakimImportChat) formData.append('instructions', hakimImportChat);
+      const res = await api.post(`/academic-calendar/${selectedYear.id}/import`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setImportResult(res.data);
+    } catch (e) {
+      nassaqError(e.response?.data?.detail || 'حدث خطأ أثناء استيراد التقويم');
+    }
+    setImportProcessing(false);
+  };
+
+  const handleApplyImportResult = async () => {
+    if (!importResult || !selectedYear) return;
     setSaving(true);
     try {
-      const payload = { ...promoForm, academic_year_id: selectedYear.id };
-      if (promotionRules.length > 0) {
-        await api.put(`/promotion-rules/${promotionRules[0].id}`, payload);
-      } else {
-        await api.post('/promotion-rules', payload);
-      }
+      await api.post(`/academic-calendar/${selectedYear.id}/import/apply`, { import_data: importResult });
+      setShowCalendarImportDialog(false);
+      setImportFile(null);
+      setImportResult(null);
+      setHakimImportChat('');
       await fetchYearData(selectedYear.id);
     } catch (e) {
-      nassaqError(e.response?.data?.detail || 'حدث خطأ أثناء حفظ قواعد الترقية');
+      nassaqError(e.response?.data?.detail || 'حدث خطأ أثناء تطبيق بيانات التقويم');
     }
     setSaving(false);
   };
 
-  useEffect(() => {
-    if (promotionRules.length > 0) {
-      const r = promotionRules[0];
-      setPromoForm({
-        mode: r.mode || 'auto',
-        min_attendance_percent: r.min_attendance_percent || 75,
-        min_grade_percent: r.min_grade_percent || 50,
-        max_failures: r.max_failures || 2,
-      });
-    }
-  }, [promotionRules]);
+  const openExamDialog = (presetTermId = null) => {
+    setEditingItem(null);
+    const currentTerm = terms.find(t => t.is_current);
+    const defaultTermId = presetTermId || (currentTerm ? currentTerm.id : (terms.length > 0 ? terms[0].id : ''));
+    setExamForm({ name: '', name_en: '', start_date: '', end_date: '', exam_type: 'final', term_id: defaultTermId, start_time: '', end_time: '', period_number: '' });
+    setShowExamDialog(true);
+  };
 
   const getDaysBetween = (start, end) => {
     try {
@@ -426,9 +440,6 @@ export function AcademicStructureContent() {
           </TabsTrigger>
           <TabsTrigger value="exams" className="rounded-lg text-sm gap-1.5 data-[state=active]:bg-[#1B3A5C] data-[state=active]:text-white">
             <ClipboardCheck className="h-4 w-4" /> فترات الاختبارات
-          </TabsTrigger>
-          <TabsTrigger value="promotion" className="rounded-lg text-sm gap-1.5 data-[state=active]:bg-[#1B3A5C] data-[state=active]:text-white">
-            <ArrowUpDown className="h-4 w-4" /> قواعد الترقية
           </TabsTrigger>
         </TabsList>
 
@@ -628,11 +639,7 @@ export function AcademicStructureContent() {
                           }}>
                             <CalendarDays className="h-3 w-3" /> إجازة
                           </Button>
-                          <Button size="sm" variant="outline" className="text-xs gap-1" onClick={() => {
-                            setExamForm({ ...examForm, term_id: term.id });
-                            setEditingItem(null);
-                            setShowExamDialog(true);
-                          }}>
+                          <Button size="sm" variant="outline" className="text-xs gap-1" onClick={() => openExamDialog(term.id)}>
                             <ClipboardCheck className="h-3 w-3" /> اختبار
                           </Button>
                         </div>
@@ -656,12 +663,18 @@ export function AcademicStructureContent() {
             </Card>
           ) : (
             <>
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between mb-4 gap-2">
                 <h2 className="text-lg font-bold text-[#1B3A5C]">التقويم الأكاديمي — {selectedYear.name}</h2>
-                <Button size="sm" onClick={() => { setEditingItem(null); setHolidayForm({ name: '', name_en: '', start_date: '', end_date: '', type: 'public', term_id: '' }); setShowHolidayDialog(true); }}
-                  className="bg-[#1B3A5C] hover:bg-[#2d5a8c] text-white gap-1.5">
-                  <Plus className="h-4 w-4" /> إضافة إجازة
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" variant="outline" onClick={() => { setImportFile(null); setImportResult(null); setHakimImportChat(''); setShowCalendarImportDialog(true); }}
+                    className="gap-1.5 border-[#1B3A5C] text-[#1B3A5C] hover:bg-[#1B3A5C]/10">
+                    <Upload className="h-4 w-4" /> استيراد التقويم بالذكاء الاصطناعي
+                  </Button>
+                  <Button size="sm" onClick={() => { setEditingItem(null); setHolidayForm({ name: '', name_en: '', start_date: '', end_date: '', type: 'public', custom_type: '', term_id: '' }); setShowHolidayDialog(true); }}
+                    className="bg-[#1B3A5C] hover:bg-[#2d5a8c] text-white gap-1.5">
+                    <Plus className="h-4 w-4" /> إضافة إجازة
+                  </Button>
+                </div>
               </div>
 
               {/* Calendar Summary */}
@@ -740,7 +753,7 @@ export function AcademicStructureContent() {
                             <Badge variant="outline" className="text-xs">{HOLIDAY_TYPES.find(t => t.value === h.type)?.label || h.type}</Badge>
                             <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => {
                               setEditingItem(h);
-                              setHolidayForm({ name: h.name, name_en: h.name_en || '', start_date: h.start_date, end_date: h.end_date, type: h.type, term_id: h.term_id || '' });
+                              setHolidayForm({ name: h.name, name_en: h.name_en || '', start_date: h.start_date, end_date: h.end_date, type: h.type, custom_type: h.custom_type || '', term_id: h.term_id || '' });
                               setShowHolidayDialog(true);
                             }}>
                               <Edit2 className="h-3.5 w-3.5" />
@@ -800,7 +813,7 @@ export function AcademicStructureContent() {
             <>
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-bold text-[#1B3A5C]">فترات الاختبارات — {selectedYear.name}</h2>
-                <Button size="sm" onClick={() => { setEditingItem(null); setExamForm({ name: '', name_en: '', start_date: '', end_date: '', exam_type: 'final', term_id: '' }); setShowExamDialog(true); }}
+                <Button size="sm" onClick={() => openExamDialog()}
                   className="bg-[#1B3A5C] hover:bg-[#2d5a8c] text-white gap-1.5">
                   <Plus className="h-4 w-4" /> إضافة فترة اختبار
                 </Button>
@@ -839,7 +852,7 @@ export function AcademicStructureContent() {
                           <div className="flex gap-2">
                             <Button size="sm" variant="outline" className="text-xs gap-1" onClick={() => {
                               setEditingItem(ep);
-                              setExamForm({ name: ep.name, name_en: ep.name_en || '', start_date: ep.start_date, end_date: ep.end_date, exam_type: ep.exam_type, term_id: ep.term_id });
+                              setExamForm({ name: ep.name, name_en: ep.name_en || '', start_date: ep.start_date, end_date: ep.end_date, exam_type: ep.exam_type, term_id: ep.term_id, start_time: ep.start_time || '', end_time: ep.end_time || '', period_number: ep.period_number || '' });
                               setShowExamDialog(true);
                             }}>
                               <Edit2 className="h-3 w-3" /> تعديل
@@ -858,97 +871,6 @@ export function AcademicStructureContent() {
           )}
         </TabsContent>
 
-        {/* TAB 5: Promotion Rules */}
-        <TabsContent value="promotion">
-          {!selectedYear ? (
-            <Card className="border-dashed border-2 border-gray-300">
-              <CardContent className="p-12 text-center">
-                <ArrowUpDown className="h-12 w-12 mx-auto text-gray-400 mb-3" />
-                <h3 className="text-lg font-semibold text-gray-600">اختر سنة دراسية أولاً</h3>
-              </CardContent>
-            </Card>
-          ) : (
-            <>
-              <div className="mb-4">
-                <h2 className="text-lg font-bold text-[#1B3A5C]">قواعد الترقية والانتقال — {selectedYear.name}</h2>
-                <p className="text-sm text-gray-500">تحديد شروط انتقال الطلاب بين المراحل الدراسية</p>
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Promotion Mode */}
-                <Card className="border-0 shadow-sm">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base">نمط الترقية</CardTitle>
-                    <CardDescription>اختر نظام الانتقال المناسب لمدرستك</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      {PROMOTION_MODES.map((mode) => (
-                        <div key={mode.value}
-                          className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
-                            promoForm.mode === mode.value ? 'border-[#1B3A5C] bg-[#1B3A5C]/5' : 'border-gray-200 hover:border-gray-300'
-                          }`}
-                          onClick={() => setPromoForm({ ...promoForm, mode: mode.value })}>
-                          <div className="flex items-center gap-2">
-                            <div className={`w-4 h-4 rounded-full border-2 ${promoForm.mode === mode.value ? 'border-[#1B3A5C] bg-[#1B3A5C]' : 'border-gray-300'}`}>
-                              {promoForm.mode === mode.value && <div className="w-2 h-2 rounded-full bg-white m-0.5" />}
-                            </div>
-                            <span className="font-medium text-sm">{mode.label}</span>
-                          </div>
-                          <p className="text-xs text-gray-500 mr-6 mt-1">{mode.desc}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Conditions */}
-                <Card className="border-0 shadow-sm">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base">شروط الترقية</CardTitle>
-                    <CardDescription>الحد الأدنى المطلوب لانتقال الطالب</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-5">
-                    <div>
-                      <div className="flex justify-between mb-2">
-                        <Label className="text-sm">الحد الأدنى للحضور</Label>
-                        <span className="text-sm font-bold text-[#1B3A5C]">{promoForm.min_attendance_percent}%</span>
-                      </div>
-                      <Slider value={[promoForm.min_attendance_percent]} onValueChange={([v]) => setPromoForm({ ...promoForm, min_attendance_percent: v })}
-                        min={0} max={100} step={5} className="w-full" />
-                    </div>
-
-                    <div>
-                      <div className="flex justify-between mb-2">
-                        <Label className="text-sm">الحد الأدنى للدرجات</Label>
-                        <span className="text-sm font-bold text-[#1B3A5C]">{promoForm.min_grade_percent}%</span>
-                      </div>
-                      <Slider value={[promoForm.min_grade_percent]} onValueChange={([v]) => setPromoForm({ ...promoForm, min_grade_percent: v })}
-                        min={0} max={100} step={5} className="w-full" />
-                    </div>
-
-                    <div>
-                      <Label className="text-sm mb-2 block">الحد الأقصى لعدد المواد الراسبة</Label>
-                      <Select value={String(promoForm.max_failures)} onValueChange={(v) => setPromoForm({ ...promoForm, max_failures: parseInt(v) })}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {[0, 1, 2, 3, 4, 5].map(n => (
-                            <SelectItem key={n} value={String(n)}>{n} {n === 0 ? '(لا يُسمح بالرسوب)' : n === 1 ? 'مادة' : 'مواد'}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <Button onClick={handleSavePromotion} disabled={saving} className="w-full bg-[#1B3A5C] hover:bg-[#2d5a8c] text-white">
-                      {saving ? <Loader2 className="h-4 w-4 animate-spin ml-2" /> : null}
-                      حفظ قواعد الترقية
-                    </Button>
-                  </CardContent>
-                </Card>
-              </div>
-            </>
-          )}
-        </TabsContent>
       </Tabs>
 
       {/* ========== DIALOGS ========== */}
@@ -1044,13 +966,19 @@ export function AcademicStructureContent() {
             </div>
             <div>
               <Label>نوع الإجازة</Label>
-              <Select value={holidayForm.type} onValueChange={(v) => setHolidayForm({ ...holidayForm, type: v })}>
+              <Select value={holidayForm.type} onValueChange={(v) => setHolidayForm({ ...holidayForm, type: v, custom_type: '' })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {HOLIDAY_TYPES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
+            {holidayForm.type === 'other' && (
+              <div>
+                <Label>تحديد نوع الإجازة (أخرى)</Label>
+                <Input value={holidayForm.custom_type} onChange={(e) => setHolidayForm({ ...holidayForm, custom_type: e.target.value })} placeholder="مثال: إجازة استثنائية" />
+              </div>
+            )}
             <div>
               <Label>الفصل الدراسي (اختياري)</Label>
               <Select value={holidayForm.term_id || 'none'} onValueChange={(v) => setHolidayForm({ ...holidayForm, term_id: v === 'none' ? '' : v })}>
@@ -1127,6 +1055,20 @@ export function AcademicStructureContent() {
                 <Input type="date" value={examForm.end_date} onChange={(e) => setExamForm({ ...examForm, end_date: e.target.value })} />
               </div>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>وقت البدء (اختياري)</Label>
+                <Input type="time" value={examForm.start_time} onChange={(e) => setExamForm({ ...examForm, start_time: e.target.value })} />
+              </div>
+              <div>
+                <Label>وقت الانتهاء (اختياري)</Label>
+                <Input type="time" value={examForm.end_time} onChange={(e) => setExamForm({ ...examForm, end_time: e.target.value })} />
+              </div>
+            </div>
+            <div>
+              <Label>رقم الفترة (اختياري)</Label>
+              <Input type="number" min="1" value={examForm.period_number} onChange={(e) => setExamForm({ ...examForm, period_number: e.target.value })} placeholder="مثال: 1" />
+            </div>
           </div>
           <DialogFooter className="flex gap-2">
             <Button variant="outline" onClick={() => setShowExamDialog(false)}>إلغاء</Button>
@@ -1135,6 +1077,65 @@ export function AcademicStructureContent() {
               {saving ? <Loader2 className="h-4 w-4 animate-spin ml-2" /> : null}
               {editingItem ? 'تحديث' : 'إضافة'}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* AI Calendar Import Dialog */}
+      <Dialog open={showCalendarImportDialog} onOpenChange={setShowCalendarImportDialog}>
+        <DialogContent className="sm:max-w-lg" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-[#1B3A5C]" /> استيراد التقويم الأكاديمي بالذكاء الاصطناعي
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="mb-2 block">ارفع ملف Excel أو CSV يحتوي على التقويم</Label>
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-[#1B3A5C]/50 transition-colors"
+                onClick={() => document.getElementById('calendar-file-input').click()}>
+                <Upload className="h-8 w-8 mx-auto text-gray-400 mb-2" />
+                {importFile ? (
+                  <p className="text-sm font-medium text-[#1B3A5C]">{importFile.name}</p>
+                ) : (
+                  <p className="text-sm text-gray-500">اضغط لاختيار الملف</p>
+                )}
+                <p className="text-xs text-gray-400 mt-1">.xlsx, .xls, .csv</p>
+                <input id="calendar-file-input" type="file" className="hidden" accept=".xlsx,.xls,.csv"
+                  onChange={(e) => { if (e.target.files[0]) setImportFile(e.target.files[0]); }} />
+              </div>
+            </div>
+            <div>
+              <Label className="mb-2 block">تعليمات إضافية لحكيم (اختياري)</Label>
+              <Input value={hakimImportChat} onChange={(e) => setHakimImportChat(e.target.value)}
+                placeholder="مثال: يمكن تجاهل عطل نهاية الأسبوع، واعتبر أن الدراسة من السبت إلى الأربعاء..." />
+            </div>
+            {importResult && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <CheckCircle2 className="h-5 w-5 text-green-600" />
+                  <span className="font-medium text-green-800">تم تحليل التقويم بنجاح</span>
+                </div>
+                <div className="text-sm text-gray-700 space-y-1">
+                  {importResult.holidays && <p>الإجازات المكتشفة: {importResult.holidays.length}</p>}
+                  {importResult.exam_periods && <p>فترات الاختبارات: {importResult.exam_periods.length}</p>}
+                  {importResult.message && <p>{importResult.message}</p>}
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter className="flex gap-2">
+            <Button variant="outline" onClick={() => setShowCalendarImportDialog(false)}>إلغاء</Button>
+            {importResult ? (
+              <Button onClick={handleApplyImportResult} disabled={saving} className="bg-green-600 hover:bg-green-700 text-white gap-1.5">
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                تطبيق البيانات
+              </Button>
+            ) : (
+              <Button onClick={handleCalendarImport} disabled={!importFile || importProcessing} className="bg-[#1B3A5C] hover:bg-[#2d5a8c] text-white gap-1.5">
+                {importProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                تحليل بالذكاء الاصطناعي
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

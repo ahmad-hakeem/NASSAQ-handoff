@@ -59,11 +59,6 @@ export function useSchoolSettings() {
   const [assignments, setAssignments] = useState([]);
   const [constraints, setConstraints] = useState([]);
   const [readinessData, setReadinessData] = useState(null);
-  const [officialCurriculumStats, setOfficialCurriculumStats] = useState(null);
-  const [officialStages, setOfficialStages] = useState([]);
-  const [officialTracks, setOfficialTracks] = useState([]);
-  const [officialRankLoads, setOfficialRankLoads] = useState([]);
-
   const [stageCurriculums, setStageCurriculums] = useState({});
   const [loadingCurriculum, setLoadingCurriculum] = useState({});
   const [expandedStages, setExpandedStages] = useState({});
@@ -138,7 +133,6 @@ export function useSchoolSettings() {
       const [
         settingsRes, teachersRes, classesRes, assignmentsRes,
         constraintsRes, readinessRes, schoolRes,
-        officialStatsRes, officialStagesRes, officialTracksRes, officialRankLoadsRes,
         subjectsRes, hardConstraintsRes, softConstraintsRes
       ] = await Promise.all([
         api.get('/school/settings').catch(() => ({ data: {} })),
@@ -148,10 +142,6 @@ export function useSchoolSettings() {
         api.get('/school/constraints').catch(() => ({ data: [] })),
         api.get('/timetable-readiness/check').catch(() => ({ data: null })),
         api.get('/school/info').catch(() => ({ data: {} })),
-        api.get('/official-curriculum/stats').catch(() => ({ data: null })),
-        api.get('/official-curriculum/stages').catch(() => ({ data: [] })),
-        api.get('/official-curriculum/tracks').catch(() => ({ data: [] })),
-        api.get('/official-curriculum/teacher-rank-loads').catch(() => ({ data: [] })),
         api.get('/school/subjects/unique').catch(() => ({ data: [] })),
         api.get('/school/settings/hard-constraints').catch(() => ({ data: { hard_constraints: [] } })),
         api.get('/school/settings/soft-constraints').catch(() => ({ data: { soft_constraints: [] } }))
@@ -164,10 +154,6 @@ export function useSchoolSettings() {
       setConstraints(Array.isArray(constraintsRes.data) ? constraintsRes.data : []);
       setReadinessData(readinessRes.data);
       setSchoolInfo(schoolRes.data || {});
-      setOfficialCurriculumStats(officialStatsRes.data);
-      setOfficialStages(Array.isArray(officialStagesRes.data) ? officialStagesRes.data : []);
-      setOfficialTracks(Array.isArray(officialTracksRes.data) ? officialTracksRes.data : []);
-      setOfficialRankLoads(Array.isArray(officialRankLoadsRes.data) ? officialRankLoadsRes.data : []);
       setSubjects(Array.isArray(subjectsRes.data) ? subjectsRes.data : []);
 
       const hcData = hardConstraintsRes.data?.hard_constraints || [];
@@ -274,29 +260,8 @@ export function useSchoolSettings() {
     }
   }, [schoolInfo]);
 
-  const fetchStageCurriculum = useCallback(async (stageId) => {
-    if (!api || stageCurriculums[stageId] || loadingCurriculum[stageId]) return;
-
-    setLoadingCurriculum(prev => ({ ...prev, [stageId]: true }));
-    try {
-      const response = await api.get(`/official-curriculum/stage/${stageId}/full`);
-      setStageCurriculums(prev => ({ ...prev, [stageId]: response.data }));
-    } catch (error) {
-      console.error('Error fetching stage curriculum:', error);
-      nassaqError('حدث خطأ في تحميل بيانات المرحلة');
-    } finally {
-      setLoadingCurriculum(prev => ({ ...prev, [stageId]: false }));
-    }
-  }, [api, stageCurriculums, loadingCurriculum]);
-
   const toggleStageExpand = (stageId) => {
-    setExpandedStages(prev => {
-      const newExpanded = { ...prev, [stageId]: !prev[stageId] };
-      if (newExpanded[stageId]) {
-        fetchStageCurriculum(stageId);
-      }
-      return newExpanded;
-    });
+    setExpandedStages(prev => ({ ...prev, [stageId]: !prev[stageId] }));
   };
 
   const toggleTrackExpand = (trackId) => {
@@ -901,7 +866,7 @@ export function useSchoolSettings() {
     activeSection, setActiveSection, activeTab, setActiveTab,
     loading, saving, hasChanges, setHasChanges, sensors,
     schoolInfo, settings, teachers, classes, assignments, constraints,
-    readinessData, officialCurriculumStats, officialStages, officialTracks, officialRankLoads,
+    readinessData,
     stageCurriculums, loadingCurriculum, expandedStages, expandedTracks, expandedGrades,
     subjects, draggingSubject, setDraggingSubject, selectedSubject, setSelectedSubject,
     assignmentSaving, assignmentSubTab, setAssignmentSubTab,

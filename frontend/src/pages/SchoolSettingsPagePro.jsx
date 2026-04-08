@@ -4,33 +4,21 @@ import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import {
-  CalendarDays, Clock, School, BookOpen,
-  Sliders, Save, CheckCircle2, AlertTriangle,
+  Save, CheckCircle2, AlertTriangle,
   AlertCircle, Play, RefreshCw, X, GraduationCap,
-  Target, Building2, Layers, Award, Zap, Calendar,
-  Coffee, UserX, Link2, Edit2
+  Building2, Zap, School, Link2, Edit2
 } from 'lucide-react';
 import { AcademicStructureContent } from './AcademicStructurePage';
 import { useSchoolSettings } from '../hooks/useSchoolSettings';
 import { DynamicSettingsContent } from '../components/school-settings/DynamicSettingsContent';
-import { StaticSettingsContent } from '../components/school-settings/StaticSettingsContent';
 import { SettingsModals } from '../components/school-settings/SettingsModals';
 
 const dynamicTabs = [
   { id: 'school-info', label: 'بيانات المدرسة', icon: Building2 },
-  { id: 'timings', label: 'التوقيت والحصص', icon: Clock },
   { id: 'classes', label: 'الفصول والشعب', icon: School },
   { id: 'teacher-assignments', label: 'إسناد المعلمين', icon: Link2 },
-  { id: 'unavailability', label: 'عدم التوفر', icon: UserX },
-  { id: 'constraints', label: 'القيود والتفضيلات', icon: Sliders }
 ];
 
-const staticTabs = [
-  { id: 'curriculum', label: 'المنهج الرسمي', icon: BookOpen },
-  { id: 'stages', label: 'المراحل والمسارات', icon: Layers },
-  { id: 'rank-loads', label: 'النصاب التعليمي', icon: Award },
-  { id: 'subject-distribution', label: 'توزيع المواد', icon: Target }
-];
 
 function SchoolSettingsPagePro() {
   const hook = useSchoolSettings();
@@ -190,7 +178,7 @@ function SchoolSettingsPagePro() {
             </Card>
           )}
 
-          <div className="grid grid-cols-3 gap-3 mb-6">
+          <div className="grid grid-cols-2 gap-3 mb-6">
             <button
               onClick={() => { setActiveSection('dynamic'); setActiveTab('school-info'); }}
               className={`relative group flex items-center gap-3 p-4 rounded-2xl border-2 transition-all duration-300 text-right ${
@@ -202,8 +190,8 @@ function SchoolSettingsPagePro() {
                 <Zap className={`h-5 w-5 ${activeSection === 'dynamic' ? 'text-white' : 'text-[#1C3D74]'}`} />
               </div>
               <div className="flex-1 min-w-0">
-                <p className={`font-bold text-sm truncate ${activeSection === 'dynamic' ? 'text-white' : 'text-slate-800'}`}>إعدادات الجدول</p>
-                <p className={`text-xs truncate ${activeSection === 'dynamic' ? 'text-white/70' : 'text-slate-400'}`}>التوقيت والحصص والإسناد</p>
+                <p className={`font-bold text-sm truncate ${activeSection === 'dynamic' ? 'text-white' : 'text-slate-800'}`}>إعدادات المدرسة</p>
+                <p className={`text-xs truncate ${activeSection === 'dynamic' ? 'text-white/70' : 'text-slate-400'}`}>بيانات المدرسة والفصول والإسناد</p>
               </div>
               {activeSection === 'dynamic' && <div className="absolute -bottom-1.5 right-1/2 translate-x-1/2 w-8 h-1.5 rounded-full bg-white/40" />}
             </button>
@@ -224,23 +212,6 @@ function SchoolSettingsPagePro() {
               </div>
               {activeSection === 'academic' && <div className="absolute -bottom-1.5 right-1/2 translate-x-1/2 w-8 h-1.5 rounded-full bg-white/40" />}
             </button>
-
-            <button
-              onClick={() => { setActiveSection('static'); setActiveTab('curriculum'); }}
-              className={`relative group flex items-center gap-3 p-4 rounded-2xl border-2 transition-all duration-300 text-right ${
-                activeSection === 'static' ? 'border-emerald-600 bg-gradient-to-l from-emerald-600 to-emerald-700 text-white shadow-lg scale-[1.02]' : 'border-slate-200 bg-white hover:border-emerald-400 hover:shadow-md'
-              }`}
-              data-testid="section-static-btn"
-            >
-              <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 transition-all ${activeSection === 'static' ? 'bg-white/20' : 'bg-emerald-600/10'}`}>
-                <BookOpen className={`h-5 w-5 ${activeSection === 'static' ? 'text-white' : 'text-emerald-600'}`} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className={`font-bold text-sm truncate ${activeSection === 'static' ? 'text-white' : 'text-slate-800'}`}>المنهج الرسمي</p>
-                <p className={`text-xs truncate ${activeSection === 'static' ? 'text-white/70' : 'text-slate-400'}`}>بيانات وزارة التعليم</p>
-              </div>
-              {activeSection === 'static' && <div className="absolute -bottom-1.5 right-1/2 translate-x-1/2 w-8 h-1.5 rounded-full bg-white/40" />}
-            </button>
           </div>
 
           {activeSection === 'dynamic' && <DynamicSettingsContent hook={hook} dynamicTabs={dynamicTabs} />}
@@ -248,8 +219,6 @@ function SchoolSettingsPagePro() {
           {activeSection === 'academic' && (
             <div className="space-y-6"><AcademicStructureContent /></div>
           )}
-
-          {activeSection === 'static' && <StaticSettingsContent hook={hook} staticTabs={staticTabs} />}
 
           </div>
         </div>

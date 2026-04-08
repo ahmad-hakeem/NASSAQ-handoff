@@ -974,3 +974,10 @@ Sub-pages (accessible from within classes/sessions, not top-level sidebar):
 ### ErrorBoundary Production Safety
 - Stack traces in fallback UI are for debugging only — removed after crash diagnosis
 - Errors still logged to `console.error` for DevTools inspection
+
+### Task-71: Academic Structure & School Settings Restructure
+- **AcademicStructurePage.jsx**: Added `other` holiday type with custom text input; Added `start_time`, `end_time`, `period_number` to exam period dialog; Added `openExamDialog()` helper that auto-fills current term; Removed "قواعد الترقية" tab from UI; Added AI calendar import button + dialog (file upload, Hakim instructions, preview)
+- **academic_structure_routes.py**: Added `custom_type` to `HolidayCreate`; Added `start_time`, `end_time`, `period_number` to `ExamPeriodCreate`; Added `/academic-calendar/{year_id}/import` (AI parse) and `/import/apply` endpoints using OpenAI + openpyxl
+- **SchoolSettingsPagePro.jsx**: Removed "المنهج الرسمي" section (static section) entirely; Changed from 3-column to 2-column section buttons; Removed timetable-specific tabs (timings, unavailability, constraints) from dynamic section; Dynamic section now shows only school-info, classes, teacher-assignments
+- **PrincipalTimetablePage.jsx**: Added `pageView` state (timetable/settings); Added toggle buttons; When in settings view, renders `DynamicSettingsContent` with timetable-specific tabs (timings, unavailability, constraints) via `useSchoolSettings` hook
+- **Dependencies**: Added `openpyxl` for Excel file parsing in calendar import

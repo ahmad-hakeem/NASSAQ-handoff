@@ -96,10 +96,6 @@ def register_routes(app, api_router: APIRouter):
     from routes.principal_management_routes import router as principal_mgmt_router
     api_router.include_router(principal_mgmt_router)
 
-    from routes.official_curriculum_routes import router as official_curriculum_router, set_database as set_official_curriculum_db
-    set_official_curriculum_db(db)
-    api_router.include_router(official_curriculum_router)
-
     from routes.timetable_readiness_routes import router as timetable_readiness_router, set_database as set_readiness_db
     set_readiness_db(db)
     api_router.include_router(timetable_readiness_router)

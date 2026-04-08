@@ -6,8 +6,8 @@ Extends the academic year & term CRUD in academics_year_term_routes.py.
 import uuid
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from dependencies import db, get_current_user, require_roles, UserRole
 import logging
@@ -27,6 +27,7 @@ class HolidayCreate(BaseModel):
     start_date: str
     end_date: str
     type: str = "public"
+    custom_type: Optional[str] = None
 
 
 class HolidayResponse(BaseModel):
@@ -39,6 +40,7 @@ class HolidayResponse(BaseModel):
     start_date: str
     end_date: str
     type: str
+    custom_type: Optional[str] = None
     school_id: str
     created_at: str
 
@@ -51,6 +53,23 @@ class ExamPeriodCreate(BaseModel):
     start_date: str
     end_date: str
     exam_type: str = "final"
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    period_number: Optional[int] = None
+
+    @field_validator('period_number', mode='before')
+    @classmethod
+    def coerce_period_number(cls, v):
+        if v == '' or v is None:
+            return None
+        return int(v)
+
+    @field_validator('start_time', 'end_time', mode='before')
+    @classmethod
+    def coerce_empty_time(cls, v):
+        if v == '':
+            return None
+        return v
 
 
 class ExamPeriodResponse(BaseModel):
@@ -63,31 +82,11 @@ class ExamPeriodResponse(BaseModel):
     start_date: str
     end_date: str
     exam_type: str
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    period_number: Optional[int] = None
     school_id: str
     created_at: str
-
-
-class PromotionRuleCreate(BaseModel):
-    academic_year_id: str
-    mode: str = "auto"
-    min_attendance_percent: float = 75.0
-    min_grade_percent: float = 50.0
-    max_failures: int = 2
-    rules: Optional[dict] = None
-
-
-class PromotionRuleResponse(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str
-    academic_year_id: str
-    mode: str
-    min_attendance_percent: float
-    min_grade_percent: float
-    max_failures: int
-    rules: Optional[dict] = None
-    school_id: str
-    created_at: str
-    updated_at: str
 
 
 ADMIN_ROLES = [UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]
@@ -355,6 +354,7 @@ async def create_holiday(
         "start_date": data.start_date,
         "end_date": data.end_date,
         "type": data.type,
+        "custom_type": data.custom_type,
         "school_id": school_id,
         "created_at": now,
         "created_by": current_user.get("id"),
@@ -398,6 +398,7 @@ async def update_holiday(
         "start_date": data.start_date,
         "end_date": data.end_date,
         "type": data.type,
+        "custom_type": data.custom_type,
         "term_id": data.term_id,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -437,6 +438,9 @@ async def create_exam_period(
         "start_date": data.start_date,
         "end_date": data.end_date,
         "exam_type": data.exam_type,
+        "start_time": data.start_time,
+        "end_time": data.end_time,
+        "period_number": data.period_number,
         "school_id": school_id,
         "created_at": now,
         "created_by": current_user.get("id"),
@@ -480,6 +484,9 @@ async def update_exam_period(
         "start_date": data.start_date,
         "end_date": data.end_date,
         "exam_type": data.exam_type,
+        "start_time": data.start_time,
+        "end_time": data.end_time,
+        "period_number": data.period_number,
         "term_id": data.term_id,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -498,91 +505,6 @@ async def delete_exam_period(
     if result == 0:
         raise HTTPException(status_code=404, detail="فترة الاختبارات غير موجودة")
     return {"message": "تم حذف فترة الاختبارات بنجاح"}
-
-
-# ============== PROMOTION RULES ==============
-
-@router.post("/promotion-rules", response_model=PromotionRuleResponse)
-async def create_promotion_rule(
-    data: PromotionRuleCreate,
-    current_user: dict = Depends(require_roles(ADMIN_ROLES))
-):
-    school_id = await get_school_id_from_year(data.academic_year_id, current_user)
-    now = datetime.now(timezone.utc).isoformat()
-
-    existing = await gd_find_one(db.session, "promotion_rules", {
-        "school_id": school_id,
-        "academic_year_id": data.academic_year_id
-    })
-    if existing:
-        raise HTTPException(status_code=400, detail="توجد قواعد ترقية بالفعل لهذا العام")
-
-    rule_doc = {
-        "id": str(uuid.uuid4()),
-        "academic_year_id": data.academic_year_id,
-        "mode": data.mode,
-        "min_attendance_percent": data.min_attendance_percent,
-        "min_grade_percent": data.min_grade_percent,
-        "max_failures": data.max_failures,
-        "rules": data.rules or {},
-        "school_id": school_id,
-        "created_at": now,
-        "updated_at": now,
-        "created_by": current_user.get("id"),
-    }
-    await gd_insert(db.session, "promotion_rules", rule_doc)
-    rule_doc.pop("_id", None)
-    return PromotionRuleResponse(**rule_doc)
-
-
-@router.get("/promotion-rules")
-async def get_promotion_rules(
-    academic_year_id: Optional[str] = None,
-    current_user: dict = Depends(get_current_user)
-):
-    school_id = get_school_id(current_user)
-    query = {"school_id": school_id}
-    if academic_year_id:
-        query["academic_year_id"] = academic_year_id
-
-    rules = await gd_find(db.session, "promotion_rules", query, limit=50)
-    return rules
-
-
-@router.put("/promotion-rules/{rule_id}", response_model=PromotionRuleResponse)
-async def update_promotion_rule(
-    rule_id: str,
-    data: PromotionRuleCreate,
-    current_user: dict = Depends(require_roles(ADMIN_ROLES))
-):
-    school_id = get_school_id(current_user)
-    rule = await gd_find_one(db.session, "promotion_rules", {"id": rule_id, "school_id": school_id})
-    if not rule:
-        raise HTTPException(status_code=404, detail="قواعد الترقية غير موجودة")
-
-    update_data = {
-        "mode": data.mode,
-        "min_attendance_percent": data.min_attendance_percent,
-        "min_grade_percent": data.min_grade_percent,
-        "max_failures": data.max_failures,
-        "rules": data.rules or {},
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    }
-    await gd_update_one(db.session, "promotion_rules", {"id": rule_id}, update_data)
-    updated = await gd_find_one(db.session, "promotion_rules", {"id": rule_id})
-    return PromotionRuleResponse(**updated)
-
-
-@router.delete("/promotion-rules/{rule_id}")
-async def delete_promotion_rule(
-    rule_id: str,
-    current_user: dict = Depends(require_roles(ADMIN_ROLES))
-):
-    school_id = get_school_id(current_user)
-    result = await gd_delete_one(db.session, "promotion_rules", {"id": rule_id, "school_id": school_id})
-    if result == 0:
-        raise HTTPException(status_code=404, detail="قواعد الترقية غير موجودة")
-    return {"message": "تم حذف قواعد الترقية بنجاح"}
 
 
 # ============== ACADEMIC CALENDAR VIEW ==============
@@ -744,4 +666,153 @@ async def hakim_academic_analysis(
             "holidays_count": len(holidays),
             "exam_periods_count": len(exam_periods),
         }
+    }
+
+
+class CalendarImportApply(BaseModel):
+    import_data: dict
+
+
+@router.post("/academic-calendar/{year_id}/import")
+async def import_calendar_ai(
+    year_id: str,
+    file: UploadFile = File(...),
+    instructions: Optional[str] = Form(None),
+    current_user: dict = Depends(require_roles(ADMIN_ROLES))
+):
+    """Use AI to parse an uploaded Excel/CSV file and extract holidays and exam periods."""
+    school_id = get_school_id(current_user)
+    year = await gd_find_one(db.session, "academic_years", {"id": year_id, "school_id": school_id})
+    if not year:
+        raise HTTPException(status_code=404, detail="السنة الدراسية غير موجودة")
+
+    content = await file.read()
+    filename = file.filename or "calendar"
+
+    try:
+        import io
+        import csv
+        import os
+        from openai import OpenAI
+
+        text_content = ""
+        if filename.endswith(".csv"):
+            try:
+                reader = csv.reader(io.StringIO(content.decode("utf-8-sig", errors="replace")))
+                rows = [",".join(row) for row in reader]
+                text_content = "\n".join(rows[:200])
+            except Exception:
+                text_content = content.decode("utf-8", errors="replace")[:3000]
+        else:
+            try:
+                import openpyxl
+                wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
+                ws = wb.active
+                rows = []
+                for i, row in enumerate(ws.iter_rows(values_only=True)):
+                    if i >= 200:
+                        break
+                    rows.append(" | ".join([str(c) if c is not None else "" for c in row]))
+                text_content = "\n".join(rows)
+            except Exception:
+                text_content = content.decode("utf-8", errors="replace")[:3000]
+
+        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        system_prompt = (
+            "You are an Arabic academic calendar analyzer. "
+            "Extract holidays and exam periods from the provided table data. "
+            "Return a JSON object with two arrays: 'holidays' and 'exam_periods'. "
+            "Each holiday: {name, name_en, start_date (YYYY-MM-DD), end_date (YYYY-MM-DD), type (public/school/activity/other)}. "
+            "Each exam_period: {name, name_en, start_date (YYYY-MM-DD), end_date (YYYY-MM-DD), exam_type (midterm/final)}. "
+            "If dates are in Hijri format, convert to Gregorian. Respond with JSON only."
+        )
+        user_msg = f"Academic year: {year.get('name')}\nFile: {filename}\n\nTable data:\n{text_content}"
+        if instructions:
+            user_msg += f"\n\nAdditional instructions: {instructions}"
+
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_msg}
+            ],
+            response_format={"type": "json_object"},
+            max_tokens=2000
+        )
+        import json
+        result = json.loads(response.choices[0].message.content)
+        result["message"] = f"تم تحليل الملف بنجاح. تم اكتشاف {len(result.get('holidays', []))} إجازة و{len(result.get('exam_periods', []))} فترة اختبارات."
+        return result
+    except Exception as e:
+        logger.error(f"Calendar import AI error: {e}")
+        raise HTTPException(status_code=500, detail="فشل في تحليل الملف. يرجى المحاولة مجدداً أو التواصل مع الدعم الفني.")
+
+
+@router.post("/academic-calendar/{year_id}/import/apply")
+async def apply_calendar_import(
+    year_id: str,
+    body: CalendarImportApply,
+    current_user: dict = Depends(require_roles(ADMIN_ROLES))
+):
+    """Apply previously analyzed calendar data to create holidays and exam periods."""
+    school_id = get_school_id(current_user)
+    year = await gd_find_one(db.session, "academic_years", {"id": year_id, "school_id": school_id})
+    if not year:
+        raise HTTPException(status_code=404, detail="السنة الدراسية غير موجودة")
+
+    import_data = body.import_data
+    created_holidays = 0
+    created_exams = 0
+    now = datetime.now(timezone.utc).isoformat()
+
+    for h in import_data.get("holidays", []):
+        try:
+            doc = {
+                "id": str(uuid.uuid4()),
+                "school_id": school_id,
+                "academic_year_id": year_id,
+                "term_id": h.get("term_id"),
+                "name": h.get("name", "إجازة"),
+                "name_en": h.get("name_en"),
+                "start_date": h.get("start_date", ""),
+                "end_date": h.get("end_date", h.get("start_date", "")),
+                "type": h.get("type", "public"),
+                "custom_type": h.get("custom_type"),
+                "created_at": now
+            }
+            await gd_insert(db.session, "holidays", doc)
+            created_holidays += 1
+        except Exception as e:
+            logger.warning(f"Failed to insert holiday: {e}")
+
+    terms = await gd_find(db.session, "academic_terms", {"academic_year_id": year_id, "school_id": school_id})
+    term_id = terms[0]["id"] if terms else None
+
+    for ep in import_data.get("exam_periods", []):
+        try:
+            doc = {
+                "id": str(uuid.uuid4()),
+                "school_id": school_id,
+                "academic_year_id": year_id,
+                "term_id": ep.get("term_id") or term_id or "",
+                "name": ep.get("name", "فترة اختبارات"),
+                "name_en": ep.get("name_en"),
+                "start_date": ep.get("start_date", ""),
+                "end_date": ep.get("end_date", ep.get("start_date", "")),
+                "exam_type": ep.get("exam_type", "final"),
+                "start_time": ep.get("start_time"),
+                "end_time": ep.get("end_time"),
+                "period_number": ep.get("period_number"),
+                "created_at": now
+            }
+            await gd_insert(db.session, "exam_periods", doc)
+            created_exams += 1
+        except Exception as e:
+            logger.warning(f"Failed to insert exam period: {e}")
+
+    return {
+        "success": True,
+        "created_holidays": created_holidays,
+        "created_exam_periods": created_exams,
+        "message": f"تم إنشاء {created_holidays} إجازة و{created_exams} فترة اختبارات بنجاح"
     }

@@ -16,6 +16,9 @@ import {
   PublishTimetableVersionModal,
   TimetableSessionDetailsDrawer
 } from './TimetableModals';
+import { useSchoolSettings } from '../../hooks/useSchoolSettings';
+import { DynamicSettingsContent } from '../school-settings/DynamicSettingsContent';
+import { SettingsModals } from '../school-settings/SettingsModals';
 
 import { TimetableStatus, ReadinessStatus } from './types';
 import { Skeleton } from '../../components/ui/skeleton';
@@ -192,10 +195,17 @@ const ToggleCard = ({ active, onClick, icon: Icon, label, activeColor, activeBg,
 
 const PLACEHOLDER_VALUE = '__none__';
 
+const TIMETABLE_SETTINGS_TABS = [
+  { id: 'timings', label: 'التوقيت والحصص', icon: Clock },
+  { id: 'unavailability', label: 'عدم التوفر', icon: Settings },
+  { id: 'constraints', label: 'القيود والتفضيلات', icon: Settings },
+];
+
 const PrincipalTimetablePage = () => {
   const navigate = useNavigate();
   const { user, schoolContext } = useAuth();
   const { nassaqError, nassaqWarning } = useNassaqAlert();
+  const schoolSettingsHook = useSchoolSettings('timings');
   const gridSectionRef = useRef(null);
   const journeyTimersRef = useRef([]);
   const [showSuccessOverlay, setShowSuccessOverlay] = useState(false);
@@ -266,6 +276,7 @@ const PrincipalTimetablePage = () => {
   const [showPreviousTimetables, setShowPreviousTimetables] = useState(false);
   const [viewingPreviousTT, setViewingPreviousTT] = useState(null);
   const [viewingPreviousLoading, setViewingPreviousLoading] = useState(false);
+  const [pageView, setPageView] = useState('timetable');
 
   const [modalState, setModalState] = useState({
     generationModalOpen: false,
@@ -905,6 +916,40 @@ const PrincipalTimetablePage = () => {
             </div>
           </div>
 
+          {/* ═══════════════ PAGE VIEW TOGGLE ═══════════════ */}
+          <div className="flex items-center gap-2 print:hidden">
+            <button
+              onClick={() => setPageView('timetable')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all border-2 ${
+                pageView === 'timetable'
+                  ? 'bg-[#1C3D74] text-white border-[#1C3D74] shadow-md'
+                  : 'bg-white text-slate-600 border-slate-200 hover:border-[#1C3D74]/40'
+              }`}
+            >
+              <Calendar className="h-4 w-4" /> الجدول الدراسي
+            </button>
+            <button
+              onClick={() => { setPageView('settings'); schoolSettingsHook.setActiveTab('timings'); }}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all border-2 ${
+                pageView === 'settings'
+                  ? 'bg-[#1C3D74] text-white border-[#1C3D74] shadow-md'
+                  : 'bg-white text-slate-600 border-slate-200 hover:border-[#1C3D74]/40'
+              }`}
+            >
+              <Settings className="h-4 w-4" /> إعدادات الجدول
+            </button>
+          </div>
+
+          {/* ═══════════════ SETTINGS PANEL ═══════════════ */}
+          {pageView === 'settings' && (
+            <div className="space-y-6">
+              <DynamicSettingsContent hook={schoolSettingsHook} dynamicTabs={TIMETABLE_SETTINGS_TABS} />
+              <SettingsModals hook={schoolSettingsHook} />
+            </div>
+          )}
+
+          {pageView === 'timetable' && <>
+
           {/* ═══════════════ DRAFT STATUS BANNER ═══════════════ */}
           {currentStatus === TimetableStatus.DRAFT && (
             <Card className="border-2 border-amber-300 bg-gradient-to-l from-amber-50 via-yellow-50 to-orange-50 shadow-md overflow-hidden">
@@ -1511,6 +1556,8 @@ const PrincipalTimetablePage = () => {
               </div>
             </div>
           )}
+
+          </>}
 
         </div>
       </div>
