@@ -208,9 +208,11 @@ export function useSchoolSettings() {
       setLoading(false);
     }
     try {
-      const schoolId = user?.tenant_id || user?.school_id || 'SCH-001';
-      const res = await api.get(`/time-slots?school_id=${schoolId}`);
-      setTimeSlotsCount(Array.isArray(res.data) ? res.data.length : 0);
+      const schoolId = user?.tenant_id || user?.school_id;
+      if (schoolId) {
+        const res = await api.get(`/time-slots?school_id=${schoolId}`);
+        setTimeSlotsCount(Array.isArray(res.data) ? res.data.length : 0);
+      }
     } catch (e) { console.error('Error fetching time slots:', e); setTimeSlotsCount(0); }
 
     try {
@@ -337,7 +339,7 @@ export function useSchoolSettings() {
   const generateTimeSlots = async () => {
     setGeneratingSlots(true);
     try {
-      const schoolId = user?.tenant_id || user?.school_id || 'SCH-001';
+      const schoolId = user?.tenant_id || user?.school_id;
       const response = await api.post(`/seed/time-slots/${schoolId}`);
       const count = response.data?.count || response.data?.created || 0;
       setTimeSlotsCount(count);
@@ -351,7 +353,8 @@ export function useSchoolSettings() {
 
   const fetchTimeSlotsCount = async () => {
     try {
-      const schoolId = user?.tenant_id || user?.school_id || 'SCH-001';
+      const schoolId = user?.tenant_id || user?.school_id;
+      if (!schoolId) return;
       const res = await api.get(`/time-slots?school_id=${schoolId}`);
       setTimeSlotsCount(Array.isArray(res.data) ? res.data.length : 0);
     } catch (e) { console.error('Error fetching time slots:', e); setTimeSlotsCount(0); }
@@ -398,7 +401,7 @@ export function useSchoolSettings() {
     setSelectedSubject(null);
 
     try {
-      const schoolId = user?.tenant_id || user?.school_id || 'SCH-001';
+      const schoolId = user?.tenant_id || user?.school_id;
       const response = await api.post('/teacher-assignments', {
         teacher_id: teacher.id,
         subject_id: subjectToAssign.id,
@@ -830,8 +833,8 @@ export function useSchoolSettings() {
   }, [api]);
 
   const handleWorkloadOverride = async (teacherId, standbyOverride) => {
+    const prevWorkloadSummary = workloadSummary;
     try {
-      await api.put(`/school/settings/workload-override/${teacherId}`, { standby_override: standbyOverride });
       setWorkloadSummary(prev => prev.map(w => {
         if (w.teacher_id !== teacherId) return w;
         const computedStandby = standbyOverride === null
@@ -839,8 +842,10 @@ export function useSchoolSettings() {
           : standbyOverride;
         return { ...w, standby_periods: computedStandby, manual_override: standbyOverride !== null };
       }));
+      await api.put(`/school/settings/workload-override/${teacherId}`, { standby_override: standbyOverride });
       toast.success('تم تحديث حصص الانتظار');
     } catch (e) {
+      setWorkloadSummary(prevWorkloadSummary);
       nassaqError('حدث خطأ في تحديث حصص الانتظار');
     }
   };

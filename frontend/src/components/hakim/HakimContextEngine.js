@@ -71,9 +71,8 @@ const PATH_CONTEXT_RULES = [
   { path: '/school/dashboard', context: 'school_dashboard', category: 'analysis', animLevel: ANIMATION_LEVELS.IDLE },
   { path: '/school/settings', context: 'settings', category: 'guidance', animLevel: ANIMATION_LEVELS.IDLE },
   { path: '/school/schedule', context: 'schedule', category: 'teaching', animLevel: ANIMATION_LEVELS.IDLE },
-  { path: '/school/reports', context: 'reports', category: 'analysis', animLevel: ANIMATION_LEVELS.IDLE },
   { path: '/school/ai-insights', context: 'ai_insights', category: 'analysis', animLevel: ANIMATION_LEVELS.INTERACTION },
-  { path: '/school/analytics', context: 'analytics', category: 'analysis', animLevel: ANIMATION_LEVELS.IDLE },
+  { path: '/principal/ai-insights', context: 'ai_insights', category: 'analysis', animLevel: ANIMATION_LEVELS.INTERACTION },
 
   { path: '/teacher', exact: true, context: 'teacher_home', category: 'teaching', animLevel: ANIMATION_LEVELS.IDLE },
   { path: '/teacher/home', context: 'teacher_home', category: 'teaching', animLevel: ANIMATION_LEVELS.IDLE },

@@ -1823,6 +1823,8 @@ async def delete_unavailability(
     if not school_id:
         raise HTTPException(status_code=400, detail="School context required")
     result = await gd_delete_one(db.session, "unavailability", {"id": unavailability_id, "school_id": school_id})
+    if not result:
+        raise HTTPException(status_code=404, detail="سجل عدم التوفر غير موجود")
     return {"success": True, "message": "تم حذف فترة عدم التوفر"}
 
 
