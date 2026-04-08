@@ -15,8 +15,9 @@ import {
   ArrowUpRight, ArrowDownRight, Activity, Star, Flame,
   Radar, HeartPulse, Cpu, BrainCircuit, ExternalLink,
   ChevronRight, ChevronLeft, Eye, TrendingDown, AlertCircle,
-  BookOpen, LayoutGrid,
+  BookOpen, ClipboardCheck, Award, UserCheck,
 } from 'lucide-react';
+import { Progress } from '../components/ui/progress';
 
 const HAKIM_AVATAR = '/hakim-poses/detecting-patterns.png';
 
@@ -466,6 +467,130 @@ const HealthRing = ({ label, value, color, icon: Icon, isRTL }) => {
   );
 };
 
+const TeacherMonitoringSection = ({ isRTL, api }) => {
+  const [monitorData, setMonitorData] = useState(null);
+  const [monitorLoading, setMonitorLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchMonitorData = async () => {
+      setMonitorLoading(true);
+      try {
+        const [overviewRes, behaviorRes, gradesRes] = await Promise.all([
+          api.get('/reports/school/overview').catch(() => ({ data: null })),
+          api.get('/reports/school/behavior').catch(() => ({ data: null })),
+          api.get('/reports/school/grades').catch(() => ({ data: null })),
+        ]);
+
+        const overview = overviewRes.data || {};
+        const behavior = behaviorRes.data || {};
+        const grades = Array.isArray(gradesRes.data) ? gradesRes.data : [];
+
+        const totalSubjects = grades.length;
+        const avgPassRate = totalSubjects > 0 ? Math.round(grades.reduce((sum, g) => sum + (g.pass_rate || 0), 0) / totalSubjects) : 0;
+        const totalAttendance = (overview.attendance?.present || 0) + (overview.attendance?.absent || 0) + (overview.attendance?.late || 0);
+        const participationRate = totalAttendance > 0 ? Math.round(((overview.attendance?.present || 0) / totalAttendance) * 100) : 0;
+
+        setMonitorData({
+          totalStudents: overview.total_students || 0,
+          attendanceRate: overview.attendance_rate || 0,
+          attendance: overview.attendance || { present: 0, absent: 0, late: 0 },
+          avgGrade: overview.avg_grade || 0,
+          positiveBehavior: behavior.stats?.positive || 0,
+          negativeBehavior: behavior.stats?.negative || 0,
+          warningBehavior: behavior.stats?.warning || 0,
+          totalBehavior: behavior.stats?.total || 0,
+          skillsAssessed: totalSubjects,
+          avgSkillScore: avgPassRate,
+          participationRate: participationRate,
+        });
+      } catch (err) {
+        console.error('Teacher monitoring data error:', err);
+      } finally {
+        setMonitorLoading(false);
+      }
+    };
+    fetchMonitorData();
+  }, [api]);
+
+  if (monitorLoading) {
+    return (
+      <Card className="card-nassaq">
+        <CardContent className="flex items-center justify-center py-12">
+          <Loader2 className="h-6 w-6 animate-spin text-brand-turquoise" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!monitorData) return null;
+
+  const d = monitorData;
+  const behaviorPositiveRate = d.totalBehavior > 0 ? Math.round((d.positiveBehavior / d.totalBehavior) * 100) : 0;
+
+  const monitorCards = [
+    { label: isRTL ? 'الحضور' : 'Attendance', value: `${d.attendanceRate}%`, icon: ClipboardCheck, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-950/30', detail: isRTL ? `${d.attendance.present} حاضر | ${d.attendance.absent} غائب | ${d.attendance.late} متأخر` : `${d.attendance.present} present | ${d.attendance.absent} absent | ${d.attendance.late} late` },
+    { label: isRTL ? 'المعدل الأكاديمي' : 'Avg Grade', value: d.avgGrade || '-', icon: Award, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/30', detail: isRTL ? 'متوسط درجات أعمال السنة' : 'Average coursework grade' },
+    { label: isRTL ? 'السلوك الإيجابي' : 'Positive Behavior', value: d.positiveBehavior, icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-950/30', detail: `${behaviorPositiveRate}% ${isRTL ? 'من إجمالي السلوك' : 'of total behavior'}` },
+    { label: isRTL ? 'السلوك السلبي' : 'Negative Behavior', value: d.negativeBehavior, icon: TrendingDown, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/30', detail: `${d.warningBehavior} ${isRTL ? 'تحذيرات' : 'warnings'}` },
+    { label: isRTL ? 'إجمالي الطلاب' : 'Total Students', value: d.totalStudents, icon: Users, color: 'text-brand-navy', bg: 'bg-blue-50 dark:bg-blue-950/30', detail: isRTL ? 'المسجلون في المدرسة' : 'Enrolled in school' },
+    { label: isRTL ? 'المواد المقيّمة' : 'Subjects Assessed', value: d.skillsAssessed, icon: Star, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/30', detail: `${isRTL ? 'معدل النجاح' : 'Pass rate'}: ${d.avgSkillScore}%` },
+    { label: isRTL ? 'نسبة المشاركة' : 'Participation', value: `${d.participationRate}%`, icon: Activity, color: 'text-cyan-600', bg: 'bg-cyan-50 dark:bg-cyan-950/30', detail: isRTL ? 'تفاعل الطلاب في الأنشطة' : 'Student engagement in activities' },
+    { label: isRTL ? 'سجلات السلوك' : 'Behavior Records', value: d.totalBehavior, icon: Eye, color: 'text-violet-600', bg: 'bg-violet-50 dark:bg-violet-950/30', detail: isRTL ? 'إجمالي سجلات الرصد' : 'Total monitoring records' },
+  ];
+
+  return (
+    <Card className="card-nassaq overflow-hidden">
+      <CardHeader className="pb-3 border-b border-border/30">
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2.5 font-cairo text-base">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-turquoise to-teal-600 flex items-center justify-center shadow-md shadow-brand-turquoise/20">
+              <UserCheck className="h-4.5 w-4.5 text-white" />
+            </div>
+            {isRTL ? 'رؤى رصد المعلم' : 'Teacher Monitoring Insights'}
+          </CardTitle>
+          <Badge className="bg-brand-turquoise/10 text-brand-turquoise border-0 font-cairo text-xs px-2.5">
+            {isRTL ? 'بيانات حية' : 'Live Data'}
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="pt-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {monitorCards.map((card, i) => {
+            const CardIcon = card.icon;
+            return (
+              <div key={i} className={`p-4 rounded-xl ${card.bg} border border-border/30`}>
+                <div className="flex items-center gap-2 mb-2">
+                  <CardIcon className={`h-4 w-4 ${card.color}`} />
+                  <span className="text-[11px] font-tajawal text-muted-foreground">{card.label}</span>
+                </div>
+                <p className={`text-2xl font-bold font-cairo ${card.color}`}>{card.value}</p>
+                <p className="text-[10px] text-muted-foreground font-tajawal mt-1">{card.detail}</p>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-4 space-y-3">
+          <div>
+            <div className="flex justify-between text-sm mb-1">
+              <span className="text-muted-foreground text-xs font-tajawal">{isRTL ? 'نسبة الحضور الإجمالية' : 'Overall Attendance Rate'}</span>
+              <span className="font-bold font-cairo text-xs">{d.attendanceRate}%</span>
+            </div>
+            <Progress value={d.attendanceRate} className="h-2" />
+          </div>
+          <div>
+            <div className="flex justify-between text-sm mb-1">
+              <span className="text-muted-foreground text-xs font-tajawal">{isRTL ? 'نسبة السلوك الإيجابي' : 'Positive Behavior Rate'}</span>
+              <span className="font-bold font-cairo text-xs">{behaviorPositiveRate}%</span>
+            </div>
+            <Progress value={behaviorPositiveRate} className="h-2" />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
 export const AIInsightsPage = () => {
   const { t } = useTranslation();
   const { api } = useAuth();
@@ -514,7 +639,6 @@ export const AIInsightsPage = () => {
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState('overview');
 
   const [insights, setInsights] = useState({ overall_score: 0, trend: 'up', trend_value: 0, metrics: {} });
   const [predictions, setPredictions] = useState([]);
@@ -597,14 +721,6 @@ export const AIInsightsPage = () => {
       </Sidebar>
     );
   }
-
-  const tabs = [
-    { id: 'overview', label: t('overview'), icon: LayoutGrid, count: null },
-    { id: 'alerts', label: t('alerts'), icon: Zap, count: alerts.length },
-    { id: 'predictions', label: t('predictions'), icon: TrendingUp, count: predictions.length },
-    { id: 'recommendations', label: t('recommendations2'), icon: Target, count: recommendations.length },
-    { id: 'risks', label: t('risks'), icon: Shield, count: studentRisks.length },
-  ];
 
   return (
     <Sidebar>
@@ -752,7 +868,7 @@ export const AIInsightsPage = () => {
               value={studentRisks.length}
               subLabel={highRiskCount > 0 ? `${highRiskCount} ${isRTL ? 'خطر مرتفع' : 'critical'}` : (t('safe'))}
               gradient="from-rose-500 to-red-600"
-              onClick={() => setActiveTab('risks')}
+              onClick={() => document.getElementById('risks-section')?.scrollIntoView({ behavior: 'smooth' })}
               delay={400}
             />
           </div>
@@ -774,7 +890,7 @@ export const AIInsightsPage = () => {
                       ? `يوجد ${totalIssues} عنصر يحتاج انتباهك — ${alerts.length} تنبيه و ${highRiskCount} طالب في خطر مرتفع`
                       : `${totalIssues} items need your attention — ${alerts.length} alerts and ${highRiskCount} high-risk students`}
                   </p>
-                  <Button variant="outline" size="sm" onClick={() => setActiveTab('alerts')} className="rounded-lg text-xs border-amber-300 text-amber-700 hover:bg-amber-100">
+                  <Button variant="outline" size="sm" onClick={() => document.getElementById('alerts-section')?.scrollIntoView({ behavior: 'smooth' })} className="rounded-lg text-xs border-amber-300 text-amber-700 hover:bg-amber-100">
                     {t('viewDetails')}
                   </Button>
                 </>
@@ -791,85 +907,25 @@ export const AIInsightsPage = () => {
             </div>
           </div>
 
-          {/* ══════ NAVIGATION TABS ══════ */}
-          <div className="flex items-center gap-1 overflow-x-auto pb-1 scrollbar-none border-b border-border/30">
-            {tabs.map(tab => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-tajawal whitespace-nowrap transition-all duration-300 rounded-t-xl ${
-                    isActive
-                      ? 'text-brand-turquoise font-bold'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  <Icon className="h-4 w-4" />
-                  {tab.label}
-                  {tab.count > 0 && (
-                    <span className={`min-w-[20px] h-5 rounded-full text-[10px] flex items-center justify-center font-bold px-1.5 ${
-                      isActive ? 'bg-brand-turquoise/15 text-brand-turquoise' : 'bg-muted text-muted-foreground'
-                    }`}>
-                      {tab.count}
-                    </span>
-                  )}
-                  {isActive && (
-                    <span className="absolute bottom-0 inset-x-2 h-0.5 rounded-full bg-gradient-to-r from-brand-turquoise to-brand-purple" />
-                  )}
-                </button>
-              );
-            })}
+          {/* ══════ TEACHER MONITORING INSIGHTS ══════ */}
+          <div className="ai-slide-in">
+            <TeacherMonitoringSection isRTL={isRTL} api={api} />
           </div>
 
-          {/* ══════ CONTENT ══════ */}
+          {/* ══════ ALL SECTIONS ══════ */}
           <div className="space-y-6">
-
-            {activeTab === 'overview' && (
-              <div className="space-y-6 ai-slide-in">
-                <div className="grid lg:grid-cols-2 gap-6">
-                  <AlertsTimeline alerts={alerts} isRTL={isRTL} onNavigate={handleAlertNavigate} />
+            <div className="space-y-6 ai-slide-in">
+              <div id="alerts-section" className="grid lg:grid-cols-2 gap-6">
+                <AlertsTimeline alerts={alerts} isRTL={isRTL} onNavigate={handleAlertNavigate} />
+                <div id="risks-section">
                   <RiskStudentsPanel students={studentRisks} isRTL={isRTL} onNavigate={handleStudentNavigate} />
                 </div>
-                <div className="grid lg:grid-cols-2 gap-6">
-                  <RecommendationsPanel recommendations={recommendations} isRTL={isRTL} />
-                  <PredictionsPanel predictions={predictions} isRTL={isRTL} />
-                </div>
               </div>
-            )}
-
-            {activeTab === 'alerts' && (
-              <div className="ai-slide-in max-w-3xl mx-auto">
-                <AlertsTimeline alerts={alerts} isRTL={isRTL} onNavigate={handleAlertNavigate} />
-              </div>
-            )}
-
-            {activeTab === 'predictions' && (
-              <div className="ai-slide-in max-w-3xl mx-auto">
+              <div className="grid lg:grid-cols-2 gap-6">
+                <RecommendationsPanel recommendations={recommendations} isRTL={isRTL} />
                 <PredictionsPanel predictions={predictions} isRTL={isRTL} />
               </div>
-            )}
-
-            {activeTab === 'recommendations' && (
-              <div className="ai-slide-in max-w-3xl mx-auto">
-                <svg width="0" height="0">
-                  <defs>
-                    <linearGradient id="impactGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#46C1BE" />
-                      <stop offset="100%" stopColor="#615090" />
-                    </linearGradient>
-                  </defs>
-                </svg>
-                <RecommendationsPanel recommendations={recommendations} isRTL={isRTL} />
-              </div>
-            )}
-
-            {activeTab === 'risks' && (
-              <div className="ai-slide-in max-w-3xl mx-auto">
-                <RiskStudentsPanel students={studentRisks} isRTL={isRTL} onNavigate={handleStudentNavigate} />
-              </div>
-            )}
+            </div>
 
             <div className="pb-4 ai-fade-in">
               <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground/40 font-tajawal">

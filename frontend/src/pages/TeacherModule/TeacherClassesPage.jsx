@@ -275,7 +275,7 @@ export default function TeacherClassesPage() {
               variant="outline"
               size="sm"
               className="flex-1 h-8 text-xs"
-              onClick={(e) => { e.stopPropagation(); navigate(`/teacher/reports?class=${cls.id}`); }}
+              onClick={(e) => { e.stopPropagation(); navigate(`/principal/ai-insights`); }}
             >
               <BarChart3 className="h-3 w-3 me-1" />
               {t('reports2')}

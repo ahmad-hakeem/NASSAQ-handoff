@@ -43,7 +43,6 @@ import {
   TeacherStudentsPage,
   TeacherAchievementsPage,
   TeacherCommunicationPage,
-  TeacherReportsPage,
   TeacherResourcesPage,
   TeacherSettingsPage
 } from "../pages/TeacherModule";
@@ -55,7 +54,6 @@ import { ProductHubIssuePage } from "../pages/ProductHubIssuePage";
 import { PlatformSchoolsPage } from "../pages/PlatformSchoolsPage";
 import PlatformSchoolDetailPage from "../pages/PlatformSchoolDetailPage";
 import { PlatformUsersPage } from "../pages/PlatformUsersPage";
-import { PlatformReportsPage } from "../pages/PlatformReportsPage";
 import { PlatformNotificationsPage } from "../pages/PlatformNotificationsPage";
 import { PlatformSettingsPage } from "../pages/PlatformSettingsPage";
 import { RulesManagementPage } from "../pages/RulesManagementPage";
@@ -68,14 +66,12 @@ import TenantsManagement from "../pages/TenantsManagement";
 import TeacherClassAssignmentPage from "../pages/TeacherClassAssignmentPage";
 
 import SchoolSettingsPagePro from "../pages/SchoolSettingsPagePro";
-import { SchoolReportsPage } from "../pages/SchoolReportsPage";
 import { AIInsightsPage } from "../pages/AIInsightsPage";
 import { AccountSettingsPage } from "../pages/AccountSettingsPage";
 import ForcePasswordChange from "../pages/ForcePasswordChange";
 import RegistrationConfirmationPage from "../pages/RegistrationConfirmationPage";
 import UsersManagement from "../pages/UsersManagement";
 import UserDetailsPage from "../pages/UserDetailsPage";
-import { PlatformAnalyticsPage } from "../pages/PlatformAnalyticsPage";
 import AuditLogsPage from "../pages/AuditLogsPage";
 
 import {
@@ -162,9 +158,6 @@ export default function AppRoutes() {
       <Route path="/admin/communication" element={
         <ProtectedRoute allowedRoles={['platform_admin']}><CommunicationNotificationsPage /></ProtectedRoute>
       } />
-      <Route path="/admin/analytics" element={
-        <ProtectedRoute allowedRoles={['platform_admin']}><PlatformAnalyticsPage /></ProtectedRoute>
-      } />
       <Route path="/admin/product-hub" element={
         <ProtectedRoute allowedRoles={PRODUCT_HUB_ROLES}><ProductHubPage /></ProtectedRoute>
       } />
@@ -173,9 +166,6 @@ export default function AppRoutes() {
       } />
       <Route path="/admin/product-hub/issues/:issueId" element={
         <ProtectedRoute allowedRoles={PRODUCT_HUB_ROLES}><ProductHubIssuePage /></ProtectedRoute>
-      } />
-      <Route path="/admin/reports" element={
-        <ProtectedRoute allowedRoles={['platform_admin', 'ministry_rep']}><PlatformReportsPage /></ProtectedRoute>
       } />
       <Route path="/notifications" element={
         <ProtectedRoute allowedRoles={ALL_AUTHENTICATED_ROLES}><NotificationsPage /></ProtectedRoute>
@@ -232,9 +222,6 @@ export default function AppRoutes() {
       } />
       <Route path="/teacher/communication" element={
         <ProtectedRoute allowedRoles={['teacher']}><TeacherCommunicationPage /></ProtectedRoute>
-      } />
-      <Route path="/teacher/reports" element={
-        <ProtectedRoute allowedRoles={['teacher']}><TeacherReportsPage /></ProtectedRoute>
       } />
       <Route path="/teacher/resources" element={
         <ProtectedRoute allowedRoles={['teacher']}><TeacherResourcesPage /></ProtectedRoute>
@@ -379,11 +366,8 @@ export default function AppRoutes() {
       <Route path="/school/teacher-class-assignments" element={
         <ProtectedRoute allowedRoles={SCHOOL_ROLES}><TeacherClassAssignmentPage /></ProtectedRoute>
       } />
-      <Route path="/principal/reports" element={
-        <ProtectedRoute allowedRoles={SCHOOL_ROLES}><SchoolReportsPage /></ProtectedRoute>
-      } />
       <Route path="/principal/ai-insights" element={
-        <ProtectedRoute allowedRoles={SCHOOL_ROLES}><AIInsightsPage /></ProtectedRoute>
+        <ProtectedRoute allowedRoles={[...SCHOOL_ROLES, 'platform_admin', 'teacher']}><AIInsightsPage /></ProtectedRoute>
       } />
 
       {/* Account Settings - All authenticated users */}

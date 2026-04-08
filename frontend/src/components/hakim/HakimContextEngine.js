@@ -85,7 +85,7 @@ const PATH_CONTEXT_RULES = [
   { path: '/teacher/schedule', context: 'teacher_schedule', category: 'teaching', animLevel: ANIMATION_LEVELS.IDLE },
   { path: '/teacher/students', context: 'teacher_students', category: 'guidance', animLevel: ANIMATION_LEVELS.IDLE },
   { path: '/teacher/classes', context: 'teacher_classes', category: 'teaching', animLevel: ANIMATION_LEVELS.IDLE },
-  { path: '/teacher/reports', context: 'teacher_reports', category: 'analysis', animLevel: ANIMATION_LEVELS.IDLE },
+  { path: '/principal/ai-insights', context: 'ai_insights', category: 'analysis', animLevel: ANIMATION_LEVELS.IDLE },
   { path: '/teacher/achievements', context: 'achievements', category: 'success', animLevel: ANIMATION_LEVELS.IDLE },
 
   { path: '/student', context: 'student_portal', category: 'guidance', animLevel: ANIMATION_LEVELS.IDLE },
@@ -97,7 +97,6 @@ const PATH_CONTEXT_RULES = [
   { path: '/admin/tenants', context: 'admin_tenants', category: 'analysis', animLevel: ANIMATION_LEVELS.IDLE },
   { path: '/admin/monitoring', context: 'monitoring', category: 'analysis', animLevel: ANIMATION_LEVELS.IDLE },
   { path: '/admin/audit', context: 'audit', category: 'analysis', animLevel: ANIMATION_LEVELS.IDLE },
-  { path: '/admin/analytics', context: 'platform_analytics', category: 'analysis', animLevel: ANIMATION_LEVELS.IDLE },
 ];
 
 const EVENT_REACTIONS = {

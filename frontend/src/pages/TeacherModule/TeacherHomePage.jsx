@@ -389,7 +389,7 @@ export default function TeacherHomePage() {
             {[
               { icon: BookOpen, label: isRTL ? 'فصولي' : 'Classes', path: '/teacher/classes', gradient: 'from-blue-500 to-blue-600' },
               { icon: Users, label: isRTL ? 'طلابي' : 'Students', path: '/teacher/students', gradient: 'from-emerald-500 to-emerald-600' },
-              { icon: BarChart3, label: t('reports'), path: '/teacher/reports', gradient: 'from-purple-500 to-purple-600' },
+              { icon: BarChart3, label: t('aiInsights') || 'AI Insights', path: '/principal/ai-insights', gradient: 'from-purple-500 to-purple-600' },
               { icon: Award, label: isRTL ? 'إنجازاتي' : 'Achievements', path: '/teacher/achievements', gradient: 'from-amber-500 to-amber-600' },
             ].map(nav => (
               <button

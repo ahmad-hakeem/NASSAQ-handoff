@@ -15,7 +15,8 @@ import {
   BookOpen, ChevronRight, Play, Server, Eye, CheckCircle,
   TrendingUp, TrendingDown, AlertTriangle, Bell, User, BookOpenCheck,
   School, Layers, ClipboardList, HeartPulse, Loader2, ArrowUpRight,
-  Database, Wifi, CircleDot, MessagesSquare, UserCog, LayoutDashboard
+  Database, Wifi, CircleDot, MessagesSquare, UserCog, LayoutDashboard,
+  ChevronLeft, Target
 } from 'lucide-react';
 import {
   XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar, Cell, PieChart, Pie
@@ -25,6 +26,93 @@ import CreateUserWizard from '../components/wizards/CreateUserWizard';
 import QuickAIOperationsPanel from '../components/ai/QuickAIOperationsPanel';
 
 const HAKIM_AVATAR = '/hakim-poses/analyzing-data.png';
+
+const AdminAnalyticsSummary = ({ isRTL, navigate }) => {
+  const { api } = useAuth();
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [platformRes, overviewRes, behaviorRes] = await Promise.all([
+          api.get('/analytics/overview').catch(() => ({ data: null })),
+          api.get('/reports/school/overview').catch(() => ({ data: null })),
+          api.get('/reports/school/behavior').catch(() => ({ data: null })),
+        ]);
+        const stats = platformRes.data?.stats || {};
+        const overview = overviewRes.data || {};
+        const behavior = behaviorRes.data || {};
+        setData({
+          totalSchools: stats.total_schools || 0,
+          totalStudents: stats.total_students || overview.total_students || 0,
+          attendanceRate: overview.attendance_rate || 0,
+          avgGrade: overview.avg_grade || 0,
+          positiveBehavior: behavior.stats?.positive || 0,
+          negativeBehavior: behavior.stats?.negative || 0,
+        });
+      } catch (err) {
+        console.error('Admin analytics summary error:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [api]);
+
+  if (loading) {
+    return (
+      <Card className="border-0 shadow-lg">
+        <CardContent className="flex items-center justify-center py-8">
+          <Loader2 className="h-5 w-5 animate-spin text-brand-turquoise" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!data) return null;
+
+  const items = [
+    { label: isRTL ? 'الحضور' : 'Attendance', value: `${data.attendanceRate}%`, icon: UserCheck, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-950/30' },
+    { label: isRTL ? 'المعدل' : 'Avg Grade', value: data.avgGrade || '-', icon: Target, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/30' },
+    { label: isRTL ? 'سلوك إيجابي' : 'Positive', value: data.positiveBehavior, icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-950/30' },
+    { label: isRTL ? 'سلوك سلبي' : 'Negative', value: data.negativeBehavior, icon: TrendingDown, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/30' },
+  ];
+
+  return (
+    <Card className="border-0 shadow-lg overflow-hidden">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2 font-cairo text-lg">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-brand-turquoise to-teal-600 flex items-center justify-center">
+              <BarChart3 className="h-4.5 w-4.5 text-white" />
+            </div>
+            {isRTL ? 'ملخص تحليلات الرصد' : 'Monitoring Analytics Summary'}
+          </CardTitle>
+          <button onClick={() => navigate('/principal/ai-insights')}
+            className="flex items-center gap-1 text-xs font-cairo font-bold text-brand-turquoise hover:text-brand-purple transition-colors">
+            {isRTL ? 'رؤى الذكاء' : 'AI Insights'}
+            {isRTL ? <ChevronLeft className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+          </button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {items.map((item, i) => {
+            const ItemIcon = item.icon;
+            return (
+              <div key={i} className={`text-center p-3 rounded-xl ${item.bg}`}>
+                <ItemIcon className={`h-5 w-5 mx-auto mb-1 ${item.color}`} />
+                <p className={`text-xl font-bold font-cairo ${item.color}`}>{item.value}</p>
+                <p className="text-[10px] text-muted-foreground font-tajawal">{item.label}</p>
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
 
 const KPICard = ({ icon: Icon, iconColor, title, value, subtitle, trend, trendValue, onClick, className = '' }) => (
   <Card
@@ -216,7 +304,7 @@ export const AdminDashboard = () => {
   const quickActions = [
     { icon: Building2, label: t('addSchool'), action: () => setShowAddSchoolWizard(true), color: 'bg-brand-navy hover:bg-brand-navy/90' },
     { icon: Users, label: isRTL ? 'إدارة المستخدمين' : 'Manage Users', action: () => navigate('/admin/users'), color: 'bg-brand-purple hover:bg-brand-purple/90' },
-    { icon: BarChart3, label: t('reports'), action: () => navigate('/admin/reports'), color: 'bg-brand-turquoise hover:bg-brand-turquoise/90' },
+    { icon: BarChart3, label: t('aiInsights') || 'AI Insights', action: () => navigate('/principal/ai-insights'), color: 'bg-brand-turquoise hover:bg-brand-turquoise/90' },
     { icon: Settings, label: t('settings'), action: () => navigate('/settings'), color: 'bg-slate-700 hover:bg-slate-600' },
   ];
 
@@ -338,6 +426,9 @@ export const AdminDashboard = () => {
               </CardContent>
             </Card>
           )}
+
+          {/* Analytics Summary */}
+          <AdminAnalyticsSummary isRTL={isRTL} navigate={navigate} />
 
           {/* Section: Primary KPIs */}
           <div>

@@ -244,9 +244,9 @@ export const Sidebar = ({ children }) => {
         roles: ['platform_admin'],
       },
       {
-        icon: BarChart3,
-        label: t('analyticsReports'),
-        href: '/admin/analytics',
+        icon: Network,
+        label: t('aiInsights'),
+        href: '/principal/ai-insights',
         roles: ['platform_admin'],
       },
       {
@@ -351,19 +351,12 @@ export const Sidebar = ({ children }) => {
         href: '/principal/communication',
         roles: SCHOOL_ROLES,
       },
-      // 8. Reports & Analytics
-      {
-        icon: BarChart3,
-        label: t('reportsAndAnalytics'),
-        href: '/principal/reports',
-        roles: SCHOOL_ROLES,
-      },
-      // 9. AI Insights
+      // 8. AI Insights
       {
         icon: Network,
         label: t('aiInsights'),
         href: '/principal/ai-insights',
-        roles: SCHOOL_PRINCIPAL_ROLES,
+        roles: SCHOOL_ROLES,
       },
       // 10. Account Settings
       {
@@ -407,15 +400,15 @@ export const Sidebar = ({ children }) => {
         roles: ['teacher'],
       },
       {
-        icon: BarChart3,
-        label: t('reportsAndAnalytics'),
-        href: '/teacher/reports',
-        roles: ['teacher'],
-      },
-      {
         icon: MessageSquare,
         label: t('communicationCenter'),
         href: '/teacher/communication',
+        roles: ['teacher'],
+      },
+      {
+        icon: Network,
+        label: t('aiInsights'),
+        href: '/principal/ai-insights',
         roles: ['teacher'],
       },
       {

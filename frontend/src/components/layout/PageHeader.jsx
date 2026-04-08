@@ -58,11 +58,6 @@ const PAGE_CONFIG = {
     title_ar: 'مراقبة النظام',
     title_en: 'System Monitoring',
   },
-  '/admin/reports': {
-    icon: BarChart3,
-    title_ar: 'التحليلات',
-    title_en: 'Analytics',
-  },
   '/admin/integrations': {
     icon: Link2,
     title_ar: 'التكاملات',

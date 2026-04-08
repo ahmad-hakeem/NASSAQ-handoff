@@ -5,7 +5,7 @@ import hakimEngine, { SYSTEM_EVENTS, ANIMATION_LEVELS } from './HakimContextEngi
 
 const AI_ENABLED_PAGES = [
   '/teacher/home', '/teacher/classes', '/teacher/achievements',
-  '/teacher/reports', '/teacher/communication', '/teacher/schedule',
+  '/principal/ai-insights', '/teacher/communication', '/teacher/schedule',
   '/teacher/assessments', '/teacher/attendance', '/teacher/behavior',
   '/teacher/session/start', '/teacher/session/teach',
   '/school/dashboard', '/school/schedule', '/school/ai-insights',

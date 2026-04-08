@@ -556,7 +556,7 @@ export default function TeacherClassDetailPage() {
                   <Button
                     variant="outline"
                     className="h-auto py-3 flex-col gap-1.5"
-                    onClick={() => navigate(`/teacher/reports?class=${classId}`)}
+                    onClick={() => navigate(`/principal/ai-insights`)}
                   >
                     <BarChart3 className="h-5 w-5 text-amber-600" />
                     <span className="text-xs font-tajawal">{t('reports')}</span>
