@@ -1,0 +1,13 @@
+User-agent: *
+Disallow: /principal/
+Disallow: /admin/
+Disallow: /teacher/
+Disallow: /parent/
+Disallow: /school/
+Disallow: /api/
+
+Allow: /
+Allow: /login
+Allow: /register
+
+Sitemap: https://nassaq.com/sitemap.xml
