@@ -122,6 +122,14 @@ export function useSchoolSettings() {
   const [activeHardTab, setActiveHardTab] = useState('all');
   const [activeSoftTab, setActiveSoftTab] = useState('all');
 
+  const [customSoftConstraints, setCustomSoftConstraints] = useState([]);
+  const [constraintPatterns, setConstraintPatterns] = useState({ builtin: [], custom: [] });
+  const [otherDuties, setOtherDuties] = useState([]);
+  const [workloadSummary, setWorkloadSummary] = useState([]);
+  const [workloadLoading, setWorkloadLoading] = useState(false);
+  const [showAddConstraintModal, setShowAddConstraintModal] = useState(false);
+  const [showAddDutyModal, setShowAddDutyModal] = useState(false);
+
   const fetchData = useCallback(async () => {
     if (!api) return;
     setLoading(true);
@@ -227,6 +235,20 @@ export function useSchoolSettings() {
       setTeacherUnavailability(teacherUnavailRes.data?.items || []);
       setClassUnavailability(classUnavailRes.data?.items || []);
     } catch (e) { console.error('Error fetching unavailability:', e); }
+
+    try {
+      const [customConstraintsRes, patternsRes, dutiesRes] = await Promise.all([
+        api.get('/school/settings/custom-soft-constraints').catch(() => ({ data: { constraints: [] } })),
+        api.get('/school/settings/constraint-patterns').catch(() => ({ data: { builtin_patterns: [], custom_patterns: [] } })),
+        api.get('/school/settings/other-duties').catch(() => ({ data: { duties: [] } })),
+      ]);
+      setCustomSoftConstraints(customConstraintsRes.data?.constraints || []);
+      setConstraintPatterns({
+        builtin: patternsRes.data?.builtin_patterns || [],
+        custom: patternsRes.data?.custom_patterns || [],
+      });
+      setOtherDuties(dutiesRes.data?.duties || []);
+    } catch (e) { console.error('Error fetching constraints/duties:', e); }
   }, [api, user]);
 
   useEffect(() => {
@@ -481,6 +503,18 @@ export function useSchoolSettings() {
     setHasChanges(true);
   };
 
+  const handleSoftConstraintTargetSubjects = async (code, subjectIds) => {
+    const prev_constraint = softConstraints.find(x => x.code === code);
+    const prevSubjectIds = prev_constraint?.target_subject_ids || [];
+    setSoftConstraints(prev => prev.map(x => x.code === code ? { ...x, target_subject_ids: subjectIds } : x));
+    try {
+      await api.put(`/school/settings/soft-constraints/${code}`, { target_subject_ids: subjectIds });
+    } catch (e) {
+      setSoftConstraints(prev => prev.map(x => x.code === code ? { ...x, target_subject_ids: prevSubjectIds } : x));
+      nassaqError('حدث خطأ في تحديث المواد المستهدفة');
+    }
+  };
+
   const handleSoftConstraintToggle = async (code) => {
     const c = softConstraints.find(x => x.code === code);
     if (!c) return;
@@ -671,6 +705,181 @@ export function useSchoolSettings() {
     }
   }, [assignmentSubTab]);
 
+  const handleAddCustomConstraint = async (constraintData) => {
+    try {
+      const res = await api.post('/school/settings/custom-soft-constraints', constraintData);
+      const newConstraint = res.data?.constraint;
+      if (newConstraint) {
+        setCustomSoftConstraints(prev => [...prev, newConstraint]);
+        toast.success('تم إضافة القيد التفضيلي بنجاح');
+      }
+      setShowAddConstraintModal(false);
+    } catch (e) {
+      nassaqError(e.response?.data?.detail || 'حدث خطأ في إضافة القيد');
+    }
+  };
+
+  const handleUpdateCustomConstraint = async (constraintId, updates) => {
+    try {
+      const res = await api.put(`/school/settings/custom-soft-constraints/${constraintId}`, updates);
+      const updated = res.data?.constraint;
+      if (updated) {
+        setCustomSoftConstraints(prev => prev.map(c => c.id === constraintId ? updated : c));
+      } else {
+        setCustomSoftConstraints(prev => prev.map(c => c.id === constraintId ? { ...c, ...updates } : c));
+      }
+      toast.success('تم تحديث القيد بنجاح');
+    } catch (e) {
+      nassaqError(e.response?.data?.detail || 'حدث خطأ في تحديث القيد');
+    }
+  };
+
+  const handleDeleteCustomConstraint = (constraintId) => {
+    nassaqConfirm('هل أنت متأكد من حذف هذا القيد؟', async () => {
+      try {
+        await api.delete(`/school/settings/custom-soft-constraints/${constraintId}`);
+        setCustomSoftConstraints(prev => prev.filter(c => c.id !== constraintId));
+        toast.success('تم حذف القيد بنجاح');
+      } catch (e) {
+        nassaqError('حدث خطأ في حذف القيد');
+      }
+    });
+  };
+
+  const handleToggleCustomConstraint = async (constraintId) => {
+    const c = customSoftConstraints.find(x => x.id === constraintId);
+    if (!c) return;
+    const newActive = !c.is_active;
+    setCustomSoftConstraints(prev => prev.map(x => x.id === constraintId ? { ...x, is_active: newActive } : x));
+    try {
+      await api.put(`/school/settings/custom-soft-constraints/${constraintId}`, { is_active: newActive });
+    } catch (e) {
+      setCustomSoftConstraints(prev => prev.map(x => x.id === constraintId ? { ...x, is_active: !newActive } : x));
+      nassaqError('حدث خطأ في تحديث القيد');
+    }
+  };
+
+  const handleAddConstraintPattern = async (patternData) => {
+    try {
+      const res = await api.post('/school/settings/constraint-patterns', patternData);
+      const newPattern = res.data?.pattern;
+      if (newPattern) {
+        setConstraintPatterns(prev => ({ ...prev, custom: [...(prev.custom || []), newPattern] }));
+        toast.success('تم إضافة النمط بنجاح');
+      }
+      return newPattern;
+    } catch (e) {
+      nassaqError('حدث خطأ في إضافة النمط');
+      return null;
+    }
+  };
+
+  const handleUpdateConstraintPattern = async (patternId, patternData) => {
+    try {
+      const res = await api.put(`/school/settings/constraint-patterns/${patternId}`, patternData);
+      const updated = res.data?.pattern;
+      if (updated) {
+        setConstraintPatterns(prev => ({
+          ...prev,
+          custom: (prev.custom || []).map(p => p.id === patternId ? updated : p),
+        }));
+        toast.success('تم تحديث النمط بنجاح');
+      }
+      return updated;
+    } catch (e) {
+      nassaqError('حدث خطأ في تحديث النمط');
+      return null;
+    }
+  };
+
+  const handleDeleteConstraintPattern = (patternId) => {
+    nassaqConfirm('هل أنت متأكد من حذف هذا النمط؟', async () => {
+      try {
+        await api.delete(`/school/settings/constraint-patterns/${patternId}`);
+        setConstraintPatterns(prev => ({
+          ...prev,
+          custom: (prev.custom || []).filter(p => p.id !== patternId),
+        }));
+        toast.success('تم حذف النمط بنجاح');
+      } catch (e) {
+        nassaqError('حدث خطأ في حذف النمط');
+      }
+    });
+  };
+
+  const handleAddOtherDuty = async (dutyData) => {
+    try {
+      const res = await api.post('/school/settings/other-duties', dutyData);
+      const newDuty = res.data?.duty;
+      if (newDuty) {
+        setOtherDuties(prev => [...prev, newDuty]);
+        toast.success('تم إضافة التكليف بنجاح');
+      }
+      setShowAddDutyModal(false);
+      fetchWorkloadSummary();
+    } catch (e) {
+      nassaqError(e.response?.data?.detail || 'حدث خطأ في إضافة التكليف');
+    }
+  };
+
+  const handleUpdateOtherDuty = async (dutyId, updates) => {
+    try {
+      const res = await api.put(`/school/settings/other-duties/${dutyId}`, updates);
+      const updated = res.data?.duty;
+      if (updated) {
+        setOtherDuties(prev => prev.map(d => d.id === dutyId ? updated : d));
+      } else {
+        setOtherDuties(prev => prev.map(d => d.id === dutyId ? { ...d, ...updates } : d));
+      }
+      toast.success('تم تحديث التكليف بنجاح');
+      fetchWorkloadSummary();
+    } catch (e) {
+      nassaqError(e.response?.data?.detail || 'حدث خطأ في تحديث التكليف');
+    }
+  };
+
+  const handleDeleteOtherDuty = (dutyId) => {
+    nassaqConfirm('هل أنت متأكد من حذف هذا التكليف؟', async () => {
+      try {
+        await api.delete(`/school/settings/other-duties/${dutyId}`);
+        setOtherDuties(prev => prev.filter(d => d.id !== dutyId));
+        toast.success('تم حذف التكليف بنجاح');
+        fetchWorkloadSummary();
+      } catch (e) {
+        nassaqError('حدث خطأ في حذف التكليف');
+      }
+    });
+  };
+
+  const fetchWorkloadSummary = useCallback(async () => {
+    if (!api) return;
+    setWorkloadLoading(true);
+    try {
+      const res = await api.get('/school/settings/workload-summary');
+      setWorkloadSummary(res.data?.summary || []);
+    } catch (e) {
+      console.error('Error fetching workload summary:', e);
+    } finally {
+      setWorkloadLoading(false);
+    }
+  }, [api]);
+
+  const handleWorkloadOverride = async (teacherId, standbyOverride) => {
+    try {
+      await api.put(`/school/settings/workload-override/${teacherId}`, { standby_override: standbyOverride });
+      setWorkloadSummary(prev => prev.map(w => {
+        if (w.teacher_id !== teacherId) return w;
+        const computedStandby = standbyOverride === null
+          ? Math.max(0, (w.total_periods - w.used_periods))
+          : standbyOverride;
+        return { ...w, standby_periods: computedStandby, manual_override: standbyOverride !== null };
+      }));
+      toast.success('تم تحديث حصص الانتظار');
+    } catch (e) {
+      nassaqError('حدث خطأ في تحديث حصص الانتظار');
+    }
+  };
+
   const navigateToFix = (category) => {
     setActiveSection('dynamic');
     const tabMapping = {
@@ -705,11 +914,22 @@ export function useSchoolSettings() {
     workDays, timingSettings, timeSlotsCount, generatingSlots,
     breakTimes, teacherUnavailability, classUnavailability,
     hardConstraints, softConstraints, activeHardTab, setActiveHardTab, activeSoftTab, setActiveSoftTab,
+    customSoftConstraints, setCustomSoftConstraints,
+    constraintPatterns, setConstraintPatterns,
+    otherDuties, setOtherDuties,
+    workloadSummary, workloadLoading,
+    showAddConstraintModal, setShowAddConstraintModal,
+    showAddDutyModal, setShowAddDutyModal,
     fetchData, saveAllSettings, saveSchoolInfo, generateTimeSlots, fetchTimeSlotsCount,
     handleDragStart, handleDragEnd, handleSelectSubject, handleAssignToTeacher,
     removeAssignment, getTeacherAssignments, getSubjectById, deleteClass,
     handleSettingChange, handleWorkDayChange,
     handleSoftConstraintToggle, handleSoftConstraintWeight, toggleAllConstraints,
+    handleSoftConstraintTargetSubjects,
+    handleAddCustomConstraint, handleUpdateCustomConstraint, handleDeleteCustomConstraint, handleToggleCustomConstraint,
+    handleAddConstraintPattern, handleUpdateConstraintPattern, handleDeleteConstraintPattern,
+    handleAddOtherDuty, handleUpdateOtherDuty, handleDeleteOtherDuty,
+    fetchWorkloadSummary, handleWorkloadOverride,
     handleAddBreak, handleEditBreak, handleDeleteBreak, handleSaveBreak,
     handleAddUnavailability, handleSaveUnavailability, handleDeleteUnavailability, handleOpenNoorImport,
     loadClassAssignments, handleCreateClassAssignment, handleDeleteClassAssignment,

@@ -35,10 +35,17 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
     workDays, timingSettings, timeSlotsCount, generatingSlots,
     breakTimes, teacherUnavailability, classUnavailability,
     hardConstraints, softConstraints, activeHardTab, setActiveHardTab, activeSoftTab, setActiveSoftTab,
+    customSoftConstraints, constraintPatterns, otherDuties, workloadSummary, workloadLoading,
+    showAddConstraintModal, setShowAddConstraintModal, showAddDutyModal, setShowAddDutyModal,
     saveAllSettings, saveSchoolInfo, generateTimeSlots,
     getTeacherAssignments, removeAssignment, deleteClass,
     handleSettingChange, handleWorkDayChange,
     handleSoftConstraintToggle, handleSoftConstraintWeight, toggleAllConstraints,
+    handleSoftConstraintTargetSubjects,
+    handleAddCustomConstraint, handleUpdateCustomConstraint, handleDeleteCustomConstraint, handleToggleCustomConstraint,
+    handleAddConstraintPattern,
+    handleAddOtherDuty, handleUpdateOtherDuty, handleDeleteOtherDuty,
+    fetchWorkloadSummary, handleWorkloadOverride,
     handleAddBreak, handleEditBreak, handleDeleteBreak,
     handleAddUnavailability, handleDeleteUnavailability,
     handleCreateClassAssignment, handleDeleteClassAssignment,
@@ -734,13 +741,35 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
           <ConstraintsPanel
             hardConstraints={hardConstraints}
             softConstraints={softConstraints}
+            customSoftConstraints={customSoftConstraints}
+            constraintPatterns={constraintPatterns}
+            subjects={subjects}
+            teachers={teachers}
+            otherDuties={otherDuties}
+            workloadSummary={workloadSummary}
+            workloadLoading={workloadLoading}
             activeHardTab={activeHardTab}
             setActiveHardTab={setActiveHardTab}
             activeSoftTab={activeSoftTab}
             setActiveSoftTab={setActiveSoftTab}
+            showAddConstraintModal={showAddConstraintModal}
+            setShowAddConstraintModal={setShowAddConstraintModal}
+            showAddDutyModal={showAddDutyModal}
+            setShowAddDutyModal={setShowAddDutyModal}
             handleSoftConstraintToggle={handleSoftConstraintToggle}
             handleSoftConstraintWeight={handleSoftConstraintWeight}
             toggleAllConstraints={toggleAllConstraints}
+            handleSoftConstraintTargetSubjects={handleSoftConstraintTargetSubjects}
+            handleAddCustomConstraint={handleAddCustomConstraint}
+            handleDeleteCustomConstraint={handleDeleteCustomConstraint}
+            handleToggleCustomConstraint={handleToggleCustomConstraint}
+            handleUpdateCustomConstraint={handleUpdateCustomConstraint}
+            handleAddConstraintPattern={handleAddConstraintPattern}
+            handleAddOtherDuty={handleAddOtherDuty}
+            handleUpdateOtherDuty={handleUpdateOtherDuty}
+            handleDeleteOtherDuty={handleDeleteOtherDuty}
+            fetchWorkloadSummary={fetchWorkloadSummary}
+            handleWorkloadOverride={handleWorkloadOverride}
           />
         </TabsContent>
       </Tabs>
@@ -748,7 +777,79 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
   );
 }
 
-function ConstraintsPanel({ hardConstraints, softConstraints, activeHardTab, setActiveHardTab, activeSoftTab, setActiveSoftTab, handleSoftConstraintToggle, handleSoftConstraintWeight, toggleAllConstraints }) {
+function SubjectMultiSelect({ subjects, selectedIds, onChange }) {
+  const [open, setOpen] = React.useState(false);
+  const selected = selectedIds || [];
+
+  const toggle = (id) => {
+    const newSelected = selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id];
+    onChange(newSelected);
+  };
+
+  const label = selected.length === 0
+    ? 'جميع المواد (افتراضي)'
+    : selected.length === 1
+      ? (subjects.find(s => s.id === selected[0])?.name_ar || selected[0])
+      : `${selected.length} مواد مختارة`;
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-md border border-slate-200 bg-white text-slate-600 hover:border-amber-300 hover:text-amber-700 transition-all max-w-[180px] truncate"
+      >
+        <BookOpen className="h-3 w-3 flex-shrink-0" />
+        <span className="truncate">{label}</span>
+      </button>
+      {open && (
+        <div className="absolute top-full mt-1 right-0 z-50 bg-white border border-slate-200 rounded-xl shadow-lg w-52 max-h-48 overflow-y-auto p-1.5">
+          <div
+            className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer text-[11px] transition-all ${selected.length === 0 ? 'bg-amber-50 text-amber-700 font-medium' : 'hover:bg-slate-50 text-slate-600'}`}
+            onClick={() => { onChange([]); setOpen(false); }}
+          >
+            <CheckCircle2 className={`h-3 w-3 ${selected.length === 0 ? 'text-amber-500' : 'text-transparent'}`} />
+            جميع المواد (بدون تحديد)
+          </div>
+          {subjects.map(s => (
+            <div
+              key={s.id}
+              className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer text-[11px] transition-all ${selected.includes(s.id) ? 'bg-amber-50 text-amber-700 font-medium' : 'hover:bg-slate-50 text-slate-600'}`}
+              onClick={() => toggle(s.id)}
+            >
+              <CheckCircle2 className={`h-3 w-3 flex-shrink-0 ${selected.includes(s.id) ? 'text-amber-500' : 'text-transparent'}`} />
+              <span className="truncate">{s.name_ar || s.name}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {open && <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />}
+    </div>
+  );
+}
+
+function ConstraintsPanel({
+  hardConstraints, softConstraints, customSoftConstraints = [], constraintPatterns = {}, subjects = [],
+  teachers = [], otherDuties = [], workloadSummary = [], workloadLoading = false,
+  activeHardTab, setActiveHardTab, activeSoftTab, setActiveSoftTab,
+  showAddConstraintModal, setShowAddConstraintModal, showAddDutyModal, setShowAddDutyModal,
+  handleSoftConstraintToggle, handleSoftConstraintWeight, toggleAllConstraints,
+  handleSoftConstraintTargetSubjects, handleAddCustomConstraint, handleUpdateCustomConstraint,
+  handleDeleteCustomConstraint, handleToggleCustomConstraint, handleAddConstraintPattern,
+  handleAddOtherDuty, handleUpdateOtherDuty, handleDeleteOtherDuty, fetchWorkloadSummary, handleWorkloadOverride,
+}) {
+  const [activePanel, setActivePanel] = React.useState('soft');
+  const [workloadLoaded, setWorkloadLoaded] = React.useState(false);
+  const [editingConstraint, setEditingConstraint] = React.useState(null);
+  const [editingDuty, setEditingDuty] = React.useState(null);
+
+  React.useEffect(() => {
+    if (activePanel === 'workload' && !workloadLoaded) {
+      setWorkloadLoaded(true);
+      fetchWorkloadSummary();
+    }
+  }, [activePanel]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const hardCategoryLabels = {
     all: { label: 'الكل', color: 'red' }, resource_conflict: { label: 'تعارض الموارد', color: 'red' },
     time_boundary: { label: 'حدود الوقت', color: 'orange' }, capacity: { label: 'السعة', color: 'blue' },
@@ -780,10 +881,30 @@ function ConstraintsPanel({ hardConstraints, softConstraints, activeHardTab, set
     slate: 'bg-slate-50/80 border-slate-200', amber: 'bg-amber-50/80 border-amber-200'
   };
 
+  const panels = [
+    { id: 'hard', label: 'القيود الإلزامية', icon: Shield, count: hardConstraints.length, color: 'red' },
+    { id: 'soft', label: 'القيود التفضيلية', icon: Sliders, count: softConstraints.length + customSoftConstraints.length, color: 'amber' },
+    { id: 'workload', label: 'النصاب والتكليفات', icon: Users, count: workloadSummary.length || teachers.length, color: 'blue' },
+  ];
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-      <div className="flex flex-col">
-        <div className="bg-gradient-to-br from-red-50 to-rose-50 border-2 border-red-200 rounded-2xl overflow-hidden flex flex-col h-full">
+    <div className="space-y-4">
+      <div className="flex gap-2 p-1 bg-slate-100 rounded-xl">
+        {panels.map(p => (
+          <button
+            key={p.id}
+            onClick={() => setActivePanel(p.id)}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-sm font-medium transition-all ${activePanel === p.id ? 'bg-white shadow text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            <p.icon className="h-4 w-4" />
+            <span className="hidden sm:inline">{p.label}</span>
+            <Badge className="text-[10px] bg-slate-100 text-slate-600 border-0">{p.count}</Badge>
+          </button>
+        ))}
+      </div>
+
+      {activePanel === 'hard' && (
+        <div className="bg-gradient-to-br from-red-50 to-rose-50 border-2 border-red-200 rounded-2xl overflow-hidden">
           <div className="p-4 border-b border-red-200 bg-white/60">
             <div className="flex items-center gap-2.5 mb-1.5">
               <div className="w-9 h-9 rounded-xl bg-red-500 flex items-center justify-center shadow-sm"><Shield className="h-4.5 w-4.5 text-white" /></div>
@@ -803,7 +924,7 @@ function ConstraintsPanel({ hardConstraints, softConstraints, activeHardTab, set
               );
             })}
           </div>
-          <div className="flex-1 overflow-y-auto p-3 space-y-2" style={{ maxHeight: '520px' }}>
+          <div className="overflow-y-auto p-3 space-y-2" style={{ maxHeight: '520px' }}>
             {filteredHard.length === 0 ? (
               <div className="text-center py-8 text-slate-400"><Shield className="h-10 w-10 mx-auto mb-2 opacity-40" /><p className="text-sm">{hardConstraints.length === 0 ? 'لا توجد قيود إلزامية' : 'لا توجد قيود في هذا التصنيف'}</p></div>
             ) : (
@@ -827,83 +948,567 @@ function ConstraintsPanel({ hardConstraints, softConstraints, activeHardTab, set
             )}
           </div>
         </div>
-      </div>
+      )}
 
-      <div className="flex flex-col">
-        <div className="bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-200 rounded-2xl overflow-hidden flex flex-col h-full">
-          <div className="p-4 border-b border-amber-200 bg-white/60">
-            <div className="flex items-center gap-2.5 mb-1.5">
-              <div className="w-9 h-9 rounded-xl bg-amber-500 flex items-center justify-center shadow-sm"><Sliders className="h-4.5 w-4.5 text-white" /></div>
-              <div className="flex-1"><h3 className="text-base font-bold text-amber-800">القيود التفضيلية</h3><p className="text-[11px] text-amber-500 mt-0.5">Soft Constraints</p></div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-emerald-600 font-semibold">{softConstraints.filter(c => c.is_active).length} مفعّل</span>
-                <span className="text-xs text-slate-300">|</span>
-                <span className="text-xs text-slate-400">{softConstraints.filter(c => !c.is_active).length} معطّل</span>
+      {activePanel === 'soft' && (
+        <div className="space-y-4">
+          <div className="bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-200 rounded-2xl overflow-hidden">
+            <div className="p-4 border-b border-amber-200 bg-white/60">
+              <div className="flex items-center gap-2.5 mb-1.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-500 flex items-center justify-center shadow-sm"><Sliders className="h-4.5 w-4.5 text-white" /></div>
+                <div className="flex-1"><h3 className="text-base font-bold text-amber-800">القيود التفضيلية</h3><p className="text-[11px] text-amber-500 mt-0.5">Soft Constraints</p></div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-emerald-600 font-semibold">{softConstraints.filter(c => c.is_active).length} مفعّل</span>
+                  <span className="text-xs text-slate-300">|</span>
+                  <span className="text-xs text-slate-400">{softConstraints.filter(c => !c.is_active).length} معطّل</span>
+                </div>
+              </div>
+              <div className="flex items-center justify-between mt-2">
+                <p className="text-xs text-amber-600/80">تؤثر على جودة الجدول — يمكن تفعيلها وضبط أولويتها والمواد المستهدفة</p>
+                <div className="flex gap-1.5">
+                  <button onClick={() => toggleAllConstraints(true)} className="text-[10px] px-2 py-1 rounded-md border border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-all">تفعيل الكل</button>
+                  <button onClick={() => toggleAllConstraints(false)} className="text-[10px] px-2 py-1 rounded-md border border-slate-300 text-slate-500 bg-white hover:bg-slate-50 transition-all">تعطيل الكل</button>
+                </div>
               </div>
             </div>
-            <div className="flex items-center justify-between mt-2">
-              <p className="text-xs text-amber-600/80">تؤثر على جودة الجدول — يمكن تفعيلها وضبط أولويتها</p>
-              <div className="flex gap-1.5">
-                <button onClick={() => toggleAllConstraints(true)} className="text-[10px] px-2 py-1 rounded-md border border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-all">تفعيل الكل</button>
-                <button onClick={() => toggleAllConstraints(false)} className="text-[10px] px-2 py-1 rounded-md border border-slate-300 text-slate-500 bg-white hover:bg-slate-50 transition-all">تعطيل الكل</button>
-              </div>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-1.5 p-3 border-b border-amber-100 bg-white/40">
-            {['all', ...softCats].map(cat => {
-              const info = softCategoryLabels[cat] || { label: cat, color: 'slate' };
-              const count = cat === 'all' ? softConstraints.length : (softGrouped[cat]?.length || 0);
-              return (
-                <button key={cat} onClick={() => setActiveSoftTab(cat)} className={`text-[11px] px-2.5 py-1 rounded-lg border transition-all font-medium ${activeSoftTab === cat ? 'bg-amber-500 text-white border-amber-500 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:border-amber-300 hover:text-amber-600'}`}>
-                  {info.label} ({count})
-                </button>
-              );
-            })}
-          </div>
-          <div className="flex-1 overflow-y-auto p-3 space-y-2.5" style={{ maxHeight: '520px' }}>
-            {filteredSoft.length === 0 ? (
-              <div className="text-center py-8 text-slate-400"><Sliders className="h-10 w-10 mx-auto mb-2 opacity-40" /><p className="text-sm">{softConstraints.length === 0 ? 'لا توجد قيود تفضيلية' : 'لا توجد قيود في هذا التصنيف'}</p></div>
-            ) : (
-              filteredSoft.map(c => {
-                const priorityLabel = c.weight >= 8 ? 'عالية' : c.weight >= 5 ? 'متوسطة' : 'منخفضة';
-                const priorityStyles = c.weight >= 8 ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : c.weight >= 5 ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-slate-100 text-slate-600 border-slate-200';
+            <div className="flex flex-wrap gap-1.5 p-3 border-b border-amber-100 bg-white/40">
+              {['all', ...softCats].map(cat => {
+                const info = softCategoryLabels[cat] || { label: cat, color: 'slate' };
+                const count = cat === 'all' ? softConstraints.length : (softGrouped[cat]?.length || 0);
                 return (
-                  <div key={c.code} className={`rounded-xl border-2 transition-all duration-200 overflow-hidden ${c.is_active ? 'border-amber-200 bg-white' : 'border-slate-100 bg-slate-50/60 opacity-60'}`}>
-                    <div className="flex items-center justify-between p-3 pb-1.5">
+                  <button key={cat} onClick={() => setActiveSoftTab(cat)} className={`text-[11px] px-2.5 py-1 rounded-lg border transition-all font-medium ${activeSoftTab === cat ? 'bg-amber-500 text-white border-amber-500 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:border-amber-300 hover:text-amber-600'}`}>
+                    {info.label} ({count})
+                  </button>
+                );
+              })}
+            </div>
+            <div className="overflow-y-auto p-3 space-y-2.5" style={{ maxHeight: '480px' }}>
+              {filteredSoft.length === 0 ? (
+                <div className="text-center py-8 text-slate-400"><Sliders className="h-10 w-10 mx-auto mb-2 opacity-40" /><p className="text-sm">{softConstraints.length === 0 ? 'لا توجد قيود تفضيلية' : 'لا توجد قيود في هذا التصنيف'}</p></div>
+              ) : (
+                filteredSoft.map(c => {
+                  const priorityLabel = c.weight >= 8 ? 'عالية' : c.weight >= 5 ? 'متوسطة' : 'منخفضة';
+                  const priorityStyles = c.weight >= 8 ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : c.weight >= 5 ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-slate-100 text-slate-600 border-slate-200';
+                  return (
+                    <div key={c.code} className={`rounded-xl border-2 transition-all duration-200 overflow-hidden ${c.is_active ? 'border-amber-200 bg-white' : 'border-slate-100 bg-slate-50/60 opacity-60'}`}>
+                      <div className="flex items-center justify-between p-3 pb-1.5">
+                        <div className="flex items-center gap-2.5">
+                          <Switch checked={c.is_active} onCheckedChange={() => handleSoftConstraintToggle(c.code)} />
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] font-mono text-slate-400 bg-slate-100 px-1 py-0.5 rounded">{c.code}</span>
+                              <span className={`text-sm font-medium ${c.is_active ? 'text-slate-800' : 'text-slate-400'}`}>{c.name_ar}</span>
+                            </div>
+                            {c.description_ar && <p className="text-[11px] text-slate-400 mt-0.5 line-clamp-1">{c.description_ar}</p>}
+                          </div>
+                        </div>
+                        {c.is_active && <Badge className={`text-[10px] border ${priorityStyles}`}>{priorityLabel}</Badge>}
+                      </div>
+                      {c.is_active && (
+                        <div className="px-3 pb-3 pt-1">
+                          <div className="flex items-center gap-2.5">
+                            <span className="text-[11px] text-slate-500 w-12 shrink-0">الأولوية</span>
+                            <input type="range" min="1" max="10" step="1" value={c.weight} onChange={(e) => handleSoftConstraintWeight(c.code, parseInt(e.target.value))} className="flex-1 h-1.5 rounded-full accent-amber-500 cursor-pointer" />
+                            <span className="text-xs font-bold w-8 text-start text-amber-600">{c.weight}/10</span>
+                          </div>
+                          <div className="flex items-center justify-between mt-1.5">
+                            <div className="flex gap-1.5">
+                              {[{label:'منخفض', val:3},{label:'متوسط', val:6},{label:'عالي', val:9}].map(p => (
+                                <button key={p.val} onClick={() => handleSoftConstraintWeight(c.code, p.val)} className={`text-[10px] px-2 py-0.5 rounded-md border transition-all ${c.weight === p.val ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-slate-500 border-slate-200 hover:border-amber-300'}`}>{p.label}</button>
+                              ))}
+                            </div>
+                            {subjects.length > 0 && (
+                              <SubjectMultiSelect
+                                subjects={subjects}
+                                selectedIds={c.target_subject_ids || []}
+                                onChange={(ids) => handleSoftConstraintTargetSubjects(c.code, ids)}
+                              />
+                            )}
+                          </div>
+                          {(c.target_subject_ids?.length > 0) && (
+                            <p className="text-[10px] text-amber-600 mt-1 flex items-center gap-1">
+                              <BookOpen className="h-3 w-3" />
+                              مطبّق على {c.target_subject_ids.length} مادة محددة فقط
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+            <div className="p-3 border-t border-amber-100 bg-white/40">
+              <p className="text-[11px] text-slate-400 text-center">التغييرات تُحفظ تلقائياً — تُطبَّق على الجداول الجديدة فقط</p>
+            </div>
+          </div>
+
+          <div className="bg-gradient-to-br from-violet-50 to-purple-50 border-2 border-violet-200 rounded-2xl overflow-hidden">
+            <div className="p-4 border-b border-violet-200 bg-white/60">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-violet-500 flex items-center justify-center shadow-sm"><Plus className="h-4.5 w-4.5 text-white" /></div>
+                  <div>
+                    <h3 className="text-base font-bold text-violet-800">القيود التفضيلية المخصصة</h3>
+                    <p className="text-[11px] text-violet-500 mt-0.5">Custom Soft Constraints</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowAddConstraintModal(true)}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-violet-500 text-white hover:bg-violet-600 transition-all shadow-sm"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  إضافة قيد جديد
+                </button>
+              </div>
+            </div>
+            <div className="p-3 space-y-2" style={{ maxHeight: '320px', overflowY: 'auto' }}>
+              {customSoftConstraints.length === 0 ? (
+                <div className="text-center py-8 text-slate-400">
+                  <Plus className="h-10 w-10 mx-auto mb-2 opacity-40" />
+                  <p className="text-sm">لم تُضَف قيود مخصصة بعد</p>
+                  <button onClick={() => setShowAddConstraintModal(true)} className="mt-3 text-xs text-violet-600 hover:text-violet-700 underline">إضافة أول قيد مخصص</button>
+                </div>
+              ) : (
+                customSoftConstraints.map(c => (
+                  <div key={c.id} className={`rounded-xl border-2 overflow-hidden transition-all ${c.is_active ? 'border-violet-200 bg-white' : 'border-slate-100 bg-slate-50/60 opacity-60'}`}>
+                    <div className="flex items-center justify-between p-3">
                       <div className="flex items-center gap-2.5">
-                        <Switch checked={c.is_active} onCheckedChange={() => handleSoftConstraintToggle(c.code)} />
+                        <Switch checked={c.is_active} onCheckedChange={() => handleToggleCustomConstraint(c.id)} />
                         <div>
                           <div className="flex items-center gap-1.5">
-                            <span className="text-[10px] font-mono text-slate-400 bg-slate-100 px-1 py-0.5 rounded">{c.code}</span>
+                            <Badge className="text-[9px] bg-violet-100 text-violet-700 border-violet-200">مخصص</Badge>
                             <span className={`text-sm font-medium ${c.is_active ? 'text-slate-800' : 'text-slate-400'}`}>{c.name_ar}</span>
                           </div>
-                          {c.description_ar && <p className="text-[11px] text-slate-400 mt-0.5 line-clamp-1">{c.description_ar}</p>}
+                          {c.description_ar && <p className="text-[11px] text-slate-400 mt-0.5">{c.description_ar}</p>}
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-[10px] text-slate-500">الوزن: {c.weight}/10</span>
+                            {c.pattern_code && c.pattern_code !== 'custom' && (
+                              <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">{c.pattern_code}</span>
+                            )}
+                            {(c.target_subject_ids?.length > 0) && (
+                              <span className="text-[10px] text-amber-600">{c.target_subject_ids.length} مادة محددة</span>
+                            )}
+                          </div>
                         </div>
                       </div>
-                      {c.is_active && <Badge className={`text-[10px] border ${priorityStyles}`}>{priorityLabel}</Badge>}
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => setEditingConstraint(c)} className="p-1.5 text-violet-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-all" title="تعديل القيد">
+                          <Edit2 className="h-3.5 w-3.5" />
+                        </button>
+                        <button onClick={() => handleDeleteCustomConstraint(c.id)} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all" title="حذف القيد">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </div>
-                    {c.is_active && (
-                      <div className="px-3 pb-3 pt-1">
-                        <div className="flex items-center gap-2.5">
-                          <span className="text-[11px] text-slate-500 w-12 shrink-0">الأولوية</span>
-                          <input type="range" min="1" max="10" step="1" value={c.weight} onChange={(e) => handleSoftConstraintWeight(c.code, parseInt(e.target.value))} className="flex-1 h-1.5 rounded-full accent-amber-500 cursor-pointer" />
-                          <span className="text-xs font-bold w-8 text-start text-amber-600">{c.weight}/10</span>
-                        </div>
-                        <div className="flex gap-1.5 mt-1.5 me-12">
-                          {[{label:'منخفض', val:3},{label:'متوسط', val:6},{label:'عالي', val:9}].map(p => (
-                            <button key={p.val} onClick={() => handleSoftConstraintWeight(c.code, p.val)} className={`text-[10px] px-2 py-0.5 rounded-md border transition-all ${c.weight === p.val ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-slate-500 border-slate-200 hover:border-amber-300'}`}>{p.label}</button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </div>
-                );
-              })
+                ))
+              )}
+            </div>
+          </div>
+
+          {showAddConstraintModal && (
+            <AddConstraintModal
+              subjects={subjects}
+              constraintPatterns={constraintPatterns}
+              handleAddConstraintPattern={handleAddConstraintPattern}
+              onSave={handleAddCustomConstraint}
+              onClose={() => setShowAddConstraintModal(false)}
+            />
+          )}
+          {editingConstraint && (
+            <AddConstraintModal
+              subjects={subjects}
+              constraintPatterns={constraintPatterns}
+              handleAddConstraintPattern={handleAddConstraintPattern}
+              initialData={editingConstraint}
+              onSave={async (data) => {
+                await handleUpdateCustomConstraint(editingConstraint.id, data);
+                setEditingConstraint(null);
+              }}
+              onClose={() => setEditingConstraint(null)}
+            />
+          )}
+        </div>
+      )}
+
+      {activePanel === 'workload' && (
+        <div className="space-y-4">
+          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-2xl overflow-hidden">
+            <div className="p-4 border-b border-blue-200 bg-white/60">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-blue-500 flex items-center justify-center shadow-sm"><Users className="h-4.5 w-4.5 text-white" /></div>
+                  <div>
+                    <h3 className="text-base font-bold text-blue-800">ملخص النصاب</h3>
+                    <p className="text-[11px] text-blue-500 mt-0.5">حصص دراسية + تكليفات = مستخدم / النصاب الكلي</p>
+                  </div>
+                </div>
+                <button onClick={fetchWorkloadSummary} className="text-[10px] px-2 py-1 rounded-md border border-blue-200 text-blue-600 hover:bg-blue-50 flex items-center gap-1">
+                  <RefreshCw className="h-3 w-3" />تحديث
+                </button>
+              </div>
+            </div>
+            <div className="overflow-y-auto" style={{ maxHeight: '480px' }}>
+              {workloadLoading ? (
+                <div className="text-center py-12 text-slate-400"><RefreshCw className="h-8 w-8 mx-auto mb-2 animate-spin opacity-40" /><p className="text-sm">جاري حساب النصاب...</p></div>
+              ) : workloadSummary.length === 0 ? (
+                <div className="text-center py-12 text-slate-400"><Users className="h-10 w-10 mx-auto mb-2 opacity-40" /><p className="text-sm">لا يوجد معلمون أو لم يتم تحميل بيانات النصاب</p></div>
+              ) : (
+                <div className="divide-y divide-blue-50">
+                  {workloadSummary.map(w => (
+                    <WorkloadRow key={w.teacher_id} w={w} handleWorkloadOverride={handleWorkloadOverride} />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-gradient-to-br from-teal-50 to-emerald-50 border-2 border-teal-200 rounded-2xl overflow-hidden">
+            <div className="p-4 border-b border-teal-200 bg-white/60">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-teal-500 flex items-center justify-center shadow-sm"><Zap className="h-4.5 w-4.5 text-white" /></div>
+                  <div>
+                    <h3 className="text-base font-bold text-teal-800">التكليفات الأخرى</h3>
+                    <p className="text-[11px] text-teal-500 mt-0.5">مهام غير تدريسية لها حصص معادلة (إذاعة، مكتبة، إرشاد...)</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowAddDutyModal(true)}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-teal-500 text-white hover:bg-teal-600 transition-all shadow-sm"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  إضافة تكليف
+                </button>
+              </div>
+            </div>
+            <div className="p-3 space-y-2" style={{ maxHeight: '320px', overflowY: 'auto' }}>
+              {otherDuties.length === 0 ? (
+                <div className="text-center py-8 text-slate-400">
+                  <Zap className="h-10 w-10 mx-auto mb-2 opacity-40" />
+                  <p className="text-sm">لا توجد تكليفات أخرى مضافة</p>
+                  <p className="text-xs mt-1">مثال: إذاعة (2 حصة)، مكتبة (1 حصة)، إرشاد (3 حصص)</p>
+                </div>
+              ) : (
+                otherDuties.map(d => (
+                  <div key={d.id} className="flex items-center justify-between p-3 rounded-xl border border-teal-100 bg-white">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-slate-800">{d.teacher_name}</span>
+                        <Badge className="text-[10px] bg-teal-100 text-teal-700 border-teal-200">{d.duty_name}</Badge>
+                        <Badge className="text-[10px] bg-blue-100 text-blue-700 border-blue-200">{d.equivalent_periods} حصة</Badge>
+                      </div>
+                      {d.notes && <p className="text-[11px] text-slate-400 mt-0.5">{d.notes}</p>}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => setEditingDuty(d)} className="p-1.5 text-teal-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-all" title="تعديل التكليف">
+                        <Edit2 className="h-3.5 w-3.5" />
+                      </button>
+                      <button onClick={() => handleDeleteOtherDuty(d.id)} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all" title="حذف التكليف">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {showAddDutyModal && (
+            <AddDutyModal
+              teachers={teachers}
+              onSave={handleAddOtherDuty}
+              onClose={() => setShowAddDutyModal(false)}
+            />
+          )}
+          {editingDuty && (
+            <AddDutyModal
+              teachers={teachers}
+              initialData={editingDuty}
+              onSave={async (data) => {
+                await handleUpdateOtherDuty(editingDuty.id, data);
+                setEditingDuty(null);
+              }}
+              onClose={() => setEditingDuty(null)}
+            />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WorkloadRow({ w, handleWorkloadOverride }) {
+  const [localStandby, setLocalStandby] = React.useState(String(w.standby_periods));
+  React.useEffect(() => { setLocalStandby(String(w.standby_periods)); }, [w.standby_periods]);
+
+  const commit = () => {
+    const val = parseInt(localStandby, 10);
+    if (isNaN(val) || val < 0 || val > w.total_periods) {
+      setLocalStandby(String(w.standby_periods));
+      return;
+    }
+    if (val !== w.standby_periods) {
+      handleWorkloadOverride(w.teacher_id, val);
+    }
+  };
+
+  const usedPct = Math.min(100, Math.round((w.used_periods / (w.total_periods || 1)) * 100));
+  const isOverload = w.overload;
+
+  return (
+    <div className={`p-4 ${isOverload ? 'bg-red-50/50' : 'bg-white/40'}`}>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold text-slate-800">{w.teacher_name}</span>
+          {w.rank && <Badge className="text-[9px] bg-slate-100 text-slate-600 border-0">{w.rank}</Badge>}
+          {isOverload && <Badge className="text-[9px] bg-red-100 text-red-700 border-red-200">تجاوز النصاب</Badge>}
+          {w.manual_override && <Badge className="text-[9px] bg-blue-100 text-blue-700 border-blue-200">تعديل يدوي</Badge>}
+        </div>
+        <div className="text-xs text-slate-600 font-medium">
+          <span className={isOverload ? 'text-red-600 font-bold' : ''}>{w.used_periods}</span>/{w.total_periods} حصة
+        </div>
+      </div>
+      <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden mb-2">
+        <div
+          className={`h-full rounded-full transition-all ${isOverload ? 'bg-red-500' : usedPct > 80 ? 'bg-amber-500' : 'bg-blue-500'}`}
+          style={{ width: `${usedPct}%` }}
+        />
+      </div>
+      <div className="flex items-center justify-between text-[10px] text-slate-500">
+        <div className="flex items-center gap-3">
+          <span>📚 تدريس: <strong>{w.teaching_periods}</strong></span>
+          <span>➕ تكليفات: <strong>{w.other_duty_periods}</strong></span>
+          <span className={w.standby_periods < 0 ? 'text-red-600' : 'text-slate-500'}>⏳ انتظار: <strong>{w.standby_periods}</strong></span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-slate-400">حصص الانتظار:</span>
+          <input
+            type="number"
+            min="0"
+            max={w.total_periods}
+            value={localStandby}
+            onChange={(e) => setLocalStandby(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.target.blur(); } }}
+            className="w-12 text-center text-xs border border-slate-200 rounded px-1 py-0.5 focus:outline-none focus:border-blue-400"
+            title={`تعديل يدوي لحصص الانتظار (0 - ${w.total_periods})`}
+          />
+          {w.manual_override && (
+            <button onClick={() => handleWorkloadOverride(w.teacher_id, null)} className="text-slate-400 hover:text-red-500 transition-all" title="إزالة التعديل اليدوي">
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AddConstraintModal({ subjects, constraintPatterns, handleAddConstraintPattern, onSave, onClose, initialData = null }) {
+  const isEdit = !!initialData;
+  const [nameAr, setNameAr] = React.useState(initialData?.name_ar || '');
+  const [descAr, setDescAr] = React.useState(initialData?.description_ar || '');
+  const [patternCode, setPatternCode] = React.useState(initialData?.pattern_code || 'custom');
+  const [weight, setWeight] = React.useState(initialData?.weight ?? 5);
+  const [targetSubjectIds, setTargetSubjectIds] = React.useState(initialData?.target_subject_ids || []);
+  const [appliesTo, setAppliesTo] = React.useState(initialData?.applies_to || 'school');
+  const [showNewPattern, setShowNewPattern] = React.useState(false);
+  const [newPatternName, setNewPatternName] = React.useState('');
+  const [saving, setSaving] = React.useState(false);
+
+  const allPatterns = [
+    ...(constraintPatterns?.builtin || []),
+    ...(constraintPatterns?.custom || []),
+  ];
+
+  const handleSave = async () => {
+    if (!nameAr.trim()) return;
+    setSaving(true);
+    try {
+      await onSave({ name_ar: nameAr, description_ar: descAr, pattern_code: patternCode, weight, target_subject_ids: targetSubjectIds, applies_to: appliesTo });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAddPattern = async () => {
+    if (!newPatternName.trim()) return;
+    const p = await handleAddConstraintPattern({ name_ar: newPatternName });
+    if (p) {
+      setPatternCode(p.code);
+      setShowNewPattern(false);
+      setNewPatternName('');
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" dir="rtl">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+        <div className="p-5 border-b flex items-center justify-between">
+          <h3 className="text-lg font-bold flex items-center gap-2"><Plus className="h-5 w-5 text-violet-600" />{isEdit ? 'تعديل القيد التفضيلي' : 'إضافة قيد تفضيلي مخصص'}</h3>
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg transition-all"><X className="h-4 w-4" /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div>
+            <Label className="text-sm font-medium text-slate-700">اسم القيد <span className="text-red-500">*</span></Label>
+            <Input value={nameAr} onChange={e => setNameAr(e.target.value)} placeholder="مثال: المعلم أحمد لا يُجدول في الحصة الأولى" className="mt-1.5" />
+          </div>
+          <div>
+            <Label className="text-sm font-medium text-slate-700">الوصف</Label>
+            <Input value={descAr} onChange={e => setDescAr(e.target.value)} placeholder="وصف تفصيلي للقيد..." className="mt-1.5" />
+          </div>
+          <div>
+            <Label className="text-sm font-medium text-slate-700">نمط القيد</Label>
+            <div className="flex gap-2 mt-1.5">
+              <Select value={patternCode} onValueChange={setPatternCode}>
+                <SelectTrigger className="flex-1"><SelectValue placeholder="اختر النمط" /></SelectTrigger>
+                <SelectContent>
+                  {allPatterns.map(p => (
+                    <SelectItem key={p.code} value={p.code}>{p.name_ar}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <button onClick={() => setShowNewPattern(!showNewPattern)} className="text-xs px-3 py-1.5 rounded-lg border border-violet-200 text-violet-700 hover:bg-violet-50 transition-all whitespace-nowrap">+ نمط جديد</button>
+            </div>
+            {showNewPattern && (
+              <div className="flex gap-2 mt-2">
+                <Input value={newPatternName} onChange={e => setNewPatternName(e.target.value)} placeholder="اسم النمط الجديد..." className="flex-1 text-sm" />
+                <button onClick={handleAddPattern} className="text-xs px-3 py-1.5 rounded-lg bg-violet-500 text-white hover:bg-violet-600 transition-all">إضافة</button>
+              </div>
             )}
           </div>
-          <div className="p-3 border-t border-amber-100 bg-white/40">
-            <p className="text-[11px] text-slate-400 text-center">التغييرات تُحفظ تلقائياً — تُطبَّق على الجداول الجديدة فقط</p>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label className="text-sm font-medium text-slate-700">الوزن / الأولوية</Label>
+              <div className="flex items-center gap-2 mt-1.5">
+                <input type="range" min="1" max="10" value={weight} onChange={e => setWeight(parseInt(e.target.value))} className="flex-1 accent-violet-500" />
+                <span className="text-sm font-bold text-violet-600 w-8">{weight}/10</span>
+              </div>
+            </div>
+            <div>
+              <Label className="text-sm font-medium text-slate-700">نطاق التطبيق</Label>
+              <Select value={appliesTo} onValueChange={setAppliesTo}>
+                <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="school">المدرسة كاملة</SelectItem>
+                  <SelectItem value="teacher">معلم</SelectItem>
+                  <SelectItem value="class">فصل</SelectItem>
+                  <SelectItem value="subject">مادة</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
+          {subjects.length > 0 && (
+            <div>
+              <Label className="text-sm font-medium text-slate-700">المواد المستهدفة (اختياري)</Label>
+              <p className="text-xs text-slate-400 mb-1.5">إذا تُركت فارغة يُطبَّق على جميع المواد</p>
+              <div className="flex flex-wrap gap-1.5 p-2 border rounded-xl bg-slate-50 min-h-[40px]">
+                {subjects.map(s => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => setTargetSubjectIds(prev => prev.includes(s.id) ? prev.filter(x => x !== s.id) : [...prev, s.id])}
+                    className={`text-[11px] px-2 py-0.5 rounded-md border transition-all ${targetSubjectIds.includes(s.id) ? 'bg-violet-500 text-white border-violet-500' : 'bg-white text-slate-600 border-slate-200 hover:border-violet-300'}`}
+                  >
+                    {s.name_ar || s.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="p-5 border-t flex justify-end gap-3">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-all">إلغاء</button>
+          <button onClick={handleSave} disabled={!nameAr.trim() || saving} className="px-5 py-2 text-sm bg-violet-500 text-white rounded-lg hover:bg-violet-600 transition-all disabled:opacity-50">
+            {saving ? 'جاري الحفظ...' : 'حفظ القيد'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AddDutyModal({ teachers, onSave, onClose, initialData = null }) {
+  const isEdit = !!initialData;
+  const [teacherId, setTeacherId] = React.useState(initialData?.teacher_id || '');
+  const [dutyName, setDutyName] = React.useState(initialData?.duty_name || '');
+  const [equivalentPeriods, setEquivalentPeriods] = React.useState(initialData?.equivalent_periods ?? 1);
+  const [notes, setNotes] = React.useState(initialData?.notes || '');
+  const [saving, setSaving] = React.useState(false);
+
+  const DUTY_PRESETS = ['إذاعة المدرسة', 'مكتبة', 'إرشاد طلابي', 'ريادة فصل', 'نشاط مدرسي', 'لجنة امتحانات', 'إشراف فترة الانتظار'];
+
+  const handleSave = async () => {
+    if (!teacherId || !dutyName.trim()) return;
+    setSaving(true);
+    const teacher = teachers.find(t => t.id === teacherId);
+    try {
+      await onSave({
+        teacher_id: teacherId,
+        teacher_name: teacher?.full_name || '',
+        duty_name: dutyName,
+        equivalent_periods: equivalentPeriods,
+        notes,
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" dir="rtl">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="p-5 border-b flex items-center justify-between">
+          <h3 className="text-lg font-bold flex items-center gap-2"><Zap className="h-5 w-5 text-teal-600" />{isEdit ? 'تعديل التكليف' : 'إضافة تكليف آخر'}</h3>
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg transition-all"><X className="h-4 w-4" /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div>
+            <Label className="text-sm font-medium text-slate-700">المعلم {!isEdit && <span className="text-red-500">*</span>}</Label>
+            {isEdit ? (
+              <div className="mt-1.5 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-sm text-slate-700">
+                {initialData?.teacher_name || 'المعلم'}
+                <span className="text-[10px] text-slate-400 mr-2">(لا يمكن تغيير المعلم)</span>
+              </div>
+            ) : (
+              <Select value={teacherId} onValueChange={setTeacherId}>
+                <SelectTrigger className="mt-1.5"><SelectValue placeholder="اختر المعلم" /></SelectTrigger>
+                <SelectContent>
+                  {teachers.map(t => <SelectItem key={t.id} value={t.id}>{t.full_name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+          <div>
+            <Label className="text-sm font-medium text-slate-700">نوع التكليف <span className="text-red-500">*</span></Label>
+            <div className="flex flex-wrap gap-1.5 mt-1.5 mb-2">
+              {DUTY_PRESETS.map(p => (
+                <button key={p} type="button" onClick={() => setDutyName(p)} className={`text-[11px] px-2 py-0.5 rounded-md border transition-all ${dutyName === p ? 'bg-teal-500 text-white border-teal-500' : 'bg-white text-slate-600 border-slate-200 hover:border-teal-300'}`}>{p}</button>
+              ))}
+            </div>
+            <Input value={dutyName} onChange={e => setDutyName(e.target.value)} placeholder="أو اكتب نوع التكليف..." className="mt-1" />
+          </div>
+          <div>
+            <Label className="text-sm font-medium text-slate-700">عدد الحصص المعادلة</Label>
+            <div className="flex items-center gap-3 mt-1.5">
+              {[1, 2, 3, 4, 5].map(n => (
+                <button key={n} type="button" onClick={() => setEquivalentPeriods(n)} className={`w-10 h-10 rounded-xl text-sm font-bold border transition-all ${equivalentPeriods === n ? 'bg-teal-500 text-white border-teal-500' : 'bg-white text-slate-600 border-slate-200 hover:border-teal-300'}`}>{n}</button>
+              ))}
+              <input type="number" min="0" max="20" value={equivalentPeriods} onChange={e => setEquivalentPeriods(parseInt(e.target.value) || 0)} className="w-16 text-center border border-slate-200 rounded-xl px-2 py-2 text-sm focus:outline-none focus:border-teal-400" />
+            </div>
+          </div>
+          <div>
+            <Label className="text-sm font-medium text-slate-700">ملاحظات</Label>
+            <Input value={notes} onChange={e => setNotes(e.target.value)} placeholder="ملاحظات اختيارية..." className="mt-1.5" />
+          </div>
+        </div>
+        <div className="p-5 border-t flex justify-end gap-3">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-all">إلغاء</button>
+          <button onClick={handleSave} disabled={!teacherId || !dutyName.trim() || saving} className="px-5 py-2 text-sm bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition-all disabled:opacity-50">
+            {saving ? 'جاري الحفظ...' : 'إضافة التكليف'}
+          </button>
         </div>
       </div>
     </div>

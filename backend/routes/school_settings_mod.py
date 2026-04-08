@@ -990,7 +990,29 @@ async def get_soft_constraints(
         UserRole.PLATFORM_ADMIN, UserRole.TEACHER
     ]))
 ):
-    constraints = await gd_find(db.session, "timetable_soft_constraints", {}, order_by="order", desc_order=False, limit=50)
+    school_id = current_user.get("school_id") or current_user.get("tenant_id")
+    # Fetch immutable global reference constraints
+    global_constraints = await gd_find(db.session, "timetable_soft_constraints", {}, order_by="order", desc_order=False, limit=50)
+
+    # Fetch per-school overrides (school-scoped mutable state)
+    school_overrides: Dict[str, dict] = {}
+    if school_id:
+        overrides = await gd_find(db.session, "school_soft_constraint_overrides", {"school_id": school_id}, limit=200)
+        school_overrides = {ov["code"]: ov for ov in overrides if ov.get("code")}
+
+    # Merge: global defaults + per-school overrides (overrides win for is_active, weight, target_subject_ids)
+    constraints = []
+    for c in global_constraints:
+        merged = dict(c)
+        ov = school_overrides.get(c.get("code"))
+        if ov:
+            if "is_active" in ov:
+                merged["is_active"] = ov["is_active"]
+            if "weight" in ov:
+                merged["weight"] = ov["weight"]
+            if "target_subject_ids" in ov:
+                merged["target_subject_ids"] = ov["target_subject_ids"]
+        constraints.append(merged)
 
     categories = {}
     for c in constraints:
@@ -1021,20 +1043,439 @@ async def toggle_soft_constraint(
     data: dict,
     current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN]))
 ):
+    school_id = current_user.get("school_id") or current_user.get("tenant_id")
+    if not school_id:
+        raise HTTPException(status_code=403, detail="المستخدم غير مرتبط بمدرسة")
+
     constraint = await gd_find_one(db.session, "timetable_soft_constraints", {"code": code})
     if not constraint:
         raise HTTPException(status_code=404, detail="القيد غير موجود")
 
-    update = {"updated_at": datetime.now(timezone.utc).isoformat()}
+    now = datetime.now(timezone.utc).isoformat()
+    update: dict = {"code": code, "school_id": school_id, "updated_at": now}
     if "is_active" in data:
         update["is_active"] = data["is_active"]
     if "weight" in data:
         w = data["weight"]
         if isinstance(w, int) and 1 <= w <= 10:
             update["weight"] = w
+    if "target_subject_ids" in data:
+        val = data["target_subject_ids"]
+        update["target_subject_ids"] = val if isinstance(val, list) else []
 
-    await gd_update_one(db.session, "timetable_soft_constraints", {"code": code}, update)
+    # Upsert into school-scoped override collection — global timetable_soft_constraints is IMMUTABLE
+    existing_ov = await gd_find_one(db.session, "school_soft_constraint_overrides", {"school_id": school_id, "code": code})
+    if existing_ov:
+        await gd_update_one(db.session, "school_soft_constraint_overrides", {"school_id": school_id, "code": code}, update)
+    else:
+        update["id"] = str(uuid.uuid4())
+        update["created_at"] = now
+        await gd_insert(db.session, "school_soft_constraint_overrides", update)
+
     return {"success": True, "message": "تم تحديث القيد التفضيلي بنجاح"}
+
+
+# ============ CUSTOM SOFT CONSTRAINTS ============
+
+@router.get("/school/settings/custom-soft-constraints")
+async def get_custom_soft_constraints(
+    current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN]))
+):
+    school_id = current_user.get("school_id") or current_user.get("tenant_id")
+    if not school_id:
+        raise HTTPException(status_code=403, detail="المستخدم غير مرتبط بمدرسة")
+    constraints = await gd_find(db.session, "custom_soft_constraints", {"school_id": school_id}, order_by="created_at", desc_order=False, limit=100)
+    return {"success": True, "constraints": constraints, "total": len(constraints)}
+
+
+@router.post("/school/settings/custom-soft-constraints")
+async def create_custom_soft_constraint(
+    data: dict,
+    current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN]))
+):
+    school_id = current_user.get("school_id") or current_user.get("tenant_id")
+    if not school_id:
+        raise HTTPException(status_code=403, detail="المستخدم غير مرتبط بمدرسة")
+
+    name_ar = data.get("name_ar", "").strip()
+    if not name_ar:
+        raise HTTPException(status_code=400, detail="اسم القيد مطلوب")
+
+    now = datetime.now(timezone.utc).isoformat()
+    cid = str(uuid.uuid4())
+    try:
+        weight_val = max(1, min(10, int(data.get("weight", 5))))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="قيمة الوزن غير صالحة — يجب أن تكون رقماً بين 1 و10")
+    doc = {
+        "id": cid,
+        "school_id": school_id,
+        "name_ar": name_ar,
+        "description_ar": data.get("description_ar", ""),
+        "pattern": data.get("pattern", ""),
+        "pattern_code": data.get("pattern_code", "custom"),
+        "weight": weight_val,
+        "target_subject_ids": data.get("target_subject_ids", []),
+        "applies_to": data.get("applies_to", "school"),
+        "is_active": True,
+        "is_custom": True,
+        "created_by": current_user.get("email"),
+        "created_at": now,
+        "updated_at": now,
+    }
+    await gd_insert(db.session, "custom_soft_constraints", doc)
+    created = await gd_find_one(db.session, "custom_soft_constraints", {"id": cid})
+    return {"success": True, "constraint": created, "message": "تم إنشاء القيد التفضيلي بنجاح"}
+
+
+@router.put("/school/settings/custom-soft-constraints/{constraint_id}")
+async def update_custom_soft_constraint(
+    constraint_id: str,
+    data: dict,
+    current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN]))
+):
+    school_id = current_user.get("school_id") or current_user.get("tenant_id")
+    existing = await gd_find_one(db.session, "custom_soft_constraints", {"id": constraint_id, "school_id": school_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="القيد غير موجود")
+
+    update = {"updated_at": datetime.now(timezone.utc).isoformat()}
+    for field in ["name_ar", "description_ar", "pattern", "pattern_code", "applies_to"]:
+        if field in data:
+            update[field] = data[field]
+    if "weight" in data:
+        try:
+            update["weight"] = max(1, min(10, int(data["weight"])))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="قيمة الوزن غير صالحة — يجب أن تكون رقماً بين 1 و10")
+    if "target_subject_ids" in data:
+        update["target_subject_ids"] = data["target_subject_ids"] if isinstance(data["target_subject_ids"], list) else []
+    if "is_active" in data:
+        update["is_active"] = bool(data["is_active"])
+
+    await gd_update_one(db.session, "custom_soft_constraints", {"id": constraint_id, "school_id": school_id}, update)
+    updated = await gd_find_one(db.session, "custom_soft_constraints", {"id": constraint_id})
+    return {"success": True, "constraint": updated, "message": "تم تحديث القيد بنجاح"}
+
+
+@router.delete("/school/settings/custom-soft-constraints/{constraint_id}")
+async def delete_custom_soft_constraint(
+    constraint_id: str,
+    current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN]))
+):
+    school_id = current_user.get("school_id") or current_user.get("tenant_id")
+    existing = await gd_find_one(db.session, "custom_soft_constraints", {"id": constraint_id, "school_id": school_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="القيد غير موجود")
+    await gd_delete_one(db.session, "custom_soft_constraints", {"id": constraint_id, "school_id": school_id})
+    return {"success": True, "message": "تم حذف القيد بنجاح"}
+
+
+# ============ CONSTRAINT PATTERNS ============
+
+BUILTIN_CONSTRAINT_PATTERNS = [
+    {"code": "no_consecutive", "name_ar": "منع التكرار المتتالي", "description_ar": "تجنب جدولة نفس المادة في حصتين متتاليتين"},
+    {"code": "early_period_preference", "name_ar": "تفضيل الحصص المبكرة", "description_ar": "جدولة المواد في الحصص الأولى من اليوم"},
+    {"code": "late_period_preference", "name_ar": "تفضيل الحصص المتأخرة", "description_ar": "جدولة المواد في الحصص الأخيرة من اليوم"},
+    {"code": "balanced_distribution", "name_ar": "توزيع متوازن", "description_ar": "توزيع حصص المادة بالتساوي عبر أيام الأسبوع"},
+    {"code": "after_break", "name_ar": "بعد الاستراحة", "description_ar": "جدولة المادة بعد فترة الاستراحة"},
+    {"code": "before_break", "name_ar": "قبل الاستراحة", "description_ar": "جدولة المادة قبل فترة الاستراحة"},
+    {"code": "minimize_gaps", "name_ar": "تقليل الفراغات", "description_ar": "تقليل الفترات الفارغة في الجدول"},
+    {"code": "fair_distribution", "name_ar": "توزيع عادل", "description_ar": "توزيع الحصص بشكل عادل بين المعلمين"},
+    {"code": "custom", "name_ar": "نمط مخصص", "description_ar": "نمط مخصص تعرّفه بنفسك"},
+]
+
+
+@router.get("/school/settings/constraint-patterns")
+async def get_constraint_patterns(
+    current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN]))
+):
+    school_id = current_user.get("school_id") or current_user.get("tenant_id")
+    custom_patterns = await gd_find(db.session, "custom_constraint_patterns", {"school_id": school_id}, limit=50)
+    return {
+        "success": True,
+        "builtin_patterns": BUILTIN_CONSTRAINT_PATTERNS,
+        "custom_patterns": custom_patterns,
+    }
+
+
+@router.post("/school/settings/constraint-patterns")
+async def create_constraint_pattern(
+    data: dict,
+    current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN]))
+):
+    school_id = current_user.get("school_id") or current_user.get("tenant_id")
+    name_ar = data.get("name_ar", "").strip()
+    if not name_ar:
+        raise HTTPException(status_code=400, detail="اسم النمط مطلوب")
+    now = datetime.now(timezone.utc).isoformat()
+    pid = str(uuid.uuid4())
+    doc = {
+        "id": pid,
+        "school_id": school_id,
+        "code": f"custom_{pid[:8]}",
+        "name_ar": name_ar,
+        "description_ar": data.get("description_ar", ""),
+        "created_by": current_user.get("email"),
+        "created_at": now,
+        "updated_at": now,
+    }
+    await gd_insert(db.session, "custom_constraint_patterns", doc)
+    created = await gd_find_one(db.session, "custom_constraint_patterns", {"id": pid})
+    return {"success": True, "pattern": created, "message": "تم إنشاء النمط بنجاح"}
+
+
+@router.put("/school/settings/constraint-patterns/{pattern_id}")
+async def update_constraint_pattern(
+    pattern_id: str,
+    data: dict,
+    current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN]))
+):
+    school_id = current_user.get("school_id") or current_user.get("tenant_id")
+    pattern = await gd_find_one(db.session, "custom_constraint_patterns", {"id": pattern_id, "school_id": school_id})
+    if not pattern:
+        raise HTTPException(status_code=404, detail="النمط غير موجود")
+    allowed = {}
+    if "name_ar" in data:
+        allowed["name_ar"] = data["name_ar"].strip()
+    if "description_ar" in data:
+        allowed["description_ar"] = data["description_ar"]
+    allowed["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await gd_update_one(db.session, "custom_constraint_patterns", {"id": pattern_id, "school_id": school_id}, {"$set": allowed})
+    updated = await gd_find_one(db.session, "custom_constraint_patterns", {"id": pattern_id})
+    return {"success": True, "pattern": updated, "message": "تم تحديث النمط بنجاح"}
+
+
+@router.delete("/school/settings/constraint-patterns/{pattern_id}")
+async def delete_constraint_pattern(
+    pattern_id: str,
+    current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN]))
+):
+    school_id = current_user.get("school_id") or current_user.get("tenant_id")
+    pattern = await gd_find_one(db.session, "custom_constraint_patterns", {"id": pattern_id, "school_id": school_id})
+    if not pattern:
+        raise HTTPException(status_code=404, detail="النمط غير موجود")
+    await gd_delete_one(db.session, "custom_constraint_patterns", {"id": pattern_id, "school_id": school_id})
+    return {"success": True, "message": "تم حذف النمط بنجاح"}
+
+
+# ============ OTHER DUTIES ============
+
+@router.get("/school/settings/other-duties")
+async def get_other_duties(
+    current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN]))
+):
+    school_id = current_user.get("school_id") or current_user.get("tenant_id")
+    if not school_id:
+        raise HTTPException(status_code=403, detail="المستخدم غير مرتبط بمدرسة")
+    duties = await gd_find(db.session, "teacher_other_duties", {"school_id": school_id}, order_by="created_at", desc_order=False, limit=200)
+    return {"success": True, "duties": duties, "total": len(duties)}
+
+
+@router.post("/school/settings/other-duties")
+async def create_other_duty(
+    data: dict,
+    current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN]))
+):
+    school_id = current_user.get("school_id") or current_user.get("tenant_id")
+    if not school_id:
+        raise HTTPException(status_code=403, detail="المستخدم غير مرتبط بمدرسة")
+
+    teacher_id = data.get("teacher_id", "").strip()
+    duty_name = data.get("duty_name", "").strip()
+    if not teacher_id or not duty_name:
+        raise HTTPException(status_code=400, detail="teacher_id و duty_name مطلوبان")
+
+    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id, "school_id": school_id})
+    if not teacher:
+        raise HTTPException(status_code=400, detail="المعلم غير موجود أو لا ينتمي إلى هذه المدرسة")
+
+    try:
+        equivalent_periods = max(0, int(data.get("equivalent_periods", 1)))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="قيمة الحصص المعادلة غير صالحة — يجب أن تكون رقماً صحيحاً موجباً")
+    now = datetime.now(timezone.utc).isoformat()
+    did = str(uuid.uuid4())
+    doc = {
+        "id": did,
+        "school_id": school_id,
+        "teacher_id": teacher_id,
+        "teacher_name": data.get("teacher_name", ""),
+        "duty_name": duty_name,
+        "equivalent_periods": equivalent_periods,
+        "notes": data.get("notes", ""),
+        "created_by": current_user.get("email"),
+        "created_at": now,
+        "updated_at": now,
+    }
+    await gd_insert(db.session, "teacher_other_duties", doc)
+    created = await gd_find_one(db.session, "teacher_other_duties", {"id": did})
+    return {"success": True, "duty": created, "message": "تم إضافة التكليف بنجاح"}
+
+
+@router.put("/school/settings/other-duties/{duty_id}")
+async def update_other_duty(
+    duty_id: str,
+    data: dict,
+    current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN]))
+):
+    school_id = current_user.get("school_id") or current_user.get("tenant_id")
+    existing = await gd_find_one(db.session, "teacher_other_duties", {"id": duty_id, "school_id": school_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="التكليف غير موجود")
+
+    update = {"updated_at": datetime.now(timezone.utc).isoformat()}
+    if "duty_name" in data:
+        update["duty_name"] = data["duty_name"]
+    if "equivalent_periods" in data:
+        try:
+            update["equivalent_periods"] = max(0, int(data["equivalent_periods"]))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="قيمة الحصص المعادلة غير صالحة — يجب أن تكون رقماً صحيحاً موجباً")
+    if "notes" in data:
+        update["notes"] = data["notes"]
+
+    await gd_update_one(db.session, "teacher_other_duties", {"id": duty_id, "school_id": school_id}, update)
+    updated = await gd_find_one(db.session, "teacher_other_duties", {"id": duty_id})
+    return {"success": True, "duty": updated, "message": "تم تحديث التكليف بنجاح"}
+
+
+@router.delete("/school/settings/other-duties/{duty_id}")
+async def delete_other_duty(
+    duty_id: str,
+    current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN]))
+):
+    school_id = current_user.get("school_id") or current_user.get("tenant_id")
+    existing = await gd_find_one(db.session, "teacher_other_duties", {"id": duty_id, "school_id": school_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="التكليف غير موجود")
+    await gd_delete_one(db.session, "teacher_other_duties", {"id": duty_id, "school_id": school_id})
+    return {"success": True, "message": "تم حذف التكليف بنجاح"}
+
+
+# ============ WORKLOAD CALCULATION ============
+
+RANK_TOTAL_PERIODS = {
+    "expert": 24,
+    "advanced": 22,
+    "practitioner": 20,
+    "assistant": 18,
+    "معلم خبير": 24,
+    "معلم متقدم": 22,
+    "معلم ممارس": 20,
+    "معلم مساعد": 18,
+}
+
+
+@router.get("/school/settings/workload-summary")
+async def get_workload_summary(
+    current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN]))
+):
+    school_id = current_user.get("school_id") or current_user.get("tenant_id")
+    if not school_id:
+        raise HTTPException(status_code=403, detail="المستخدم غير مرتبط بمدرسة")
+
+    teachers = await gd_find(db.session, "teachers", {"school_id": school_id, "is_active": True}, limit=200)
+    assignments = await gd_find(db.session, "teacher_assignments", {"school_id": school_id}, limit=2000)
+    duties = await gd_find(db.session, "teacher_other_duties", {"school_id": school_id}, limit=500)
+
+    assignments_by_teacher: Dict[str, int] = {}
+    for a in assignments:
+        tid = a.get("teacher_id")
+        if tid:
+            sessions = int(a.get("periods_per_week") or a.get("weekly_sessions") or 0)
+            assignments_by_teacher[tid] = assignments_by_teacher.get(tid, 0) + sessions
+
+    duties_by_teacher: Dict[str, list] = {}
+    for d in duties:
+        tid = d.get("teacher_id")
+        if tid:
+            if tid not in duties_by_teacher:
+                duties_by_teacher[tid] = []
+            duties_by_teacher[tid].append(d)
+
+    overrides = await gd_find(db.session, "teacher_workload_overrides", {"school_id": school_id}, limit=200)
+    overrides_by_teacher: Dict[str, dict] = {o["teacher_id"]: o for o in overrides if o.get("teacher_id")}
+
+    summary = []
+    for teacher in teachers:
+        tid = teacher.get("id")
+        rank = teacher.get("rank", "")
+        total_periods = RANK_TOTAL_PERIODS.get(rank, 20)
+        teaching_periods = assignments_by_teacher.get(tid, 0)
+        teacher_duties = duties_by_teacher.get(tid, [])
+        other_duty_periods = sum(int(d.get("equivalent_periods", 0)) for d in teacher_duties)
+        used_periods = teaching_periods + other_duty_periods
+        override = overrides_by_teacher.get(tid, {})
+        manual_override = override.get("standby_override")
+        standby_periods = manual_override if manual_override is not None else max(0, total_periods - used_periods)
+
+        summary.append({
+            "teacher_id": tid,
+            "teacher_name": teacher.get("full_name", ""),
+            "rank": rank,
+            "total_periods": total_periods,
+            "teaching_periods": teaching_periods,
+            "other_duty_periods": other_duty_periods,
+            "other_duties": teacher_duties,
+            "used_periods": used_periods,
+            "standby_periods": standby_periods,
+            "manual_override": manual_override is not None,
+            "overload": used_periods > total_periods,
+        })
+
+    return {"success": True, "summary": summary, "total_teachers": len(summary)}
+
+
+@router.put("/school/settings/workload-override/{teacher_id}")
+async def set_workload_override(
+    teacher_id: str,
+    data: dict,
+    current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN]))
+):
+    school_id = current_user.get("school_id") or current_user.get("tenant_id")
+    if not school_id:
+        raise HTTPException(status_code=403, detail="المستخدم غير مرتبط بمدرسة")
+
+    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id, "school_id": school_id})
+    if not teacher:
+        raise HTTPException(status_code=404, detail="المعلم غير موجود")
+
+    now = datetime.now(timezone.utc).isoformat()
+    standby_override = data.get("standby_override")
+    if standby_override is None:
+        await gd_delete_one(db.session, "teacher_workload_overrides", {"teacher_id": teacher_id, "school_id": school_id})
+        return {"success": True, "message": "تم إزالة التعديل اليدوي"}
+
+    try:
+        standby_override = int(standby_override)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="قيمة حصص الانتظار غير صالحة — يجب أن تكون رقماً صحيحاً")
+
+    rank = teacher.get("rank", "")
+    max_periods = RANK_TOTAL_PERIODS.get(rank, 24)
+    if standby_override < 0 or standby_override > max_periods:
+        raise HTTPException(
+            status_code=400,
+            detail=f"قيمة حصص الانتظار يجب أن تكون بين 0 و{max_periods}"
+        )
+
+    override_doc = {
+        "teacher_id": teacher_id,
+        "school_id": school_id,
+        "standby_override": standby_override,
+        "updated_by": current_user.get("email"),
+        "updated_at": now,
+    }
+    existing = await gd_find_one(db.session, "teacher_workload_overrides", {"teacher_id": teacher_id, "school_id": school_id})
+    if existing:
+        await gd_update_one(db.session, "teacher_workload_overrides", {"teacher_id": teacher_id, "school_id": school_id}, override_doc)
+    else:
+        override_doc["id"] = str(uuid.uuid4())
+        override_doc["created_at"] = now
+        await gd_insert(db.session, "teacher_workload_overrides", override_doc)
+
+    return {"success": True, "message": "تم تحديث حصص الانتظار اليدوية"}
 
 
 @router.put("/school/constraints/{constraint_id}")
