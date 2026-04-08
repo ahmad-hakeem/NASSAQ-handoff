@@ -204,95 +204,6 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
           </Card>
         </TabsContent>
 
-        <TabsContent value="academic-year" className="space-y-6">
-          <Card className="bg-white shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-xl flex items-center gap-2"><Calendar className="h-5 w-5 text-[#1C3D74]" />العام والفصل الدراسي الحالي</CardTitle>
-              <CardDescription>حدد العام والفصل الدراسي الذي سيتم بناء الجدول له</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid md:grid-cols-2 gap-6">
-                <div>
-                  <Label className="text-sm text-slate-600 mb-2 block">العام الدراسي</Label>
-                  <Select value={timingSettings.academicYear} onValueChange={(v) => handleSettingChange('academicYear', v)}>
-                    <SelectTrigger className="h-12 bg-white" data-testid="academic-year-select"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="1447">1447 هـ</SelectItem>
-                      <SelectItem value="1446">1446 هـ</SelectItem>
-                      <SelectItem value="1445">1445 هـ</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label className="text-sm text-slate-600 mb-2 block">الفصل الدراسي</Label>
-                  <Select value={timingSettings.currentSemester} onValueChange={(v) => handleSettingChange('currentSemester', v)}>
-                    <SelectTrigger className="h-12 bg-white" data-testid="semester-select"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="1">الفصل الأول</SelectItem>
-                      <SelectItem value="2">الفصل الثاني</SelectItem>
-                      <SelectItem value="3">الفصل الثالث</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="mt-6 flex justify-end">
-                <Button onClick={saveAllSettings} disabled={saving} className="bg-[#1C3D74] hover:bg-[#152d57] px-8" data-testid="save-academic-btn">
-                  <Save className="h-4 w-4 ml-2" />{saving ? 'جاري الحفظ...' : 'حفظ'}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="workdays" className="space-y-6">
-          <Card className="bg-white shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-xl flex items-center gap-2"><CalendarDays className="h-5 w-5 text-[#1C3D74]" />أيام العمل والعطلة</CardTitle>
-              <CardDescription>حدد أيام الدراسة الأسبوعية</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-7 gap-3 mb-6">
-                {[
-                  { key: 'sunday', ar: 'الأحد', en: 'Sun' },
-                  { key: 'monday', ar: 'الإثنين', en: 'Mon' },
-                  { key: 'tuesday', ar: 'الثلاثاء', en: 'Tue' },
-                  { key: 'wednesday', ar: 'الأربعاء', en: 'Wed' },
-                  { key: 'thursday', ar: 'الخميس', en: 'Thu' },
-                  { key: 'friday', ar: 'الجمعة', en: 'Fri' },
-                  { key: 'saturday', ar: 'السبت', en: 'Sat' }
-                ].map((day) => (
-                  <div
-                    key={day.key}
-                    onClick={() => handleWorkDayChange(day.key)}
-                    className={`cursor-pointer rounded-xl p-4 text-center transition-all duration-200 ${
-                      workDays[day.key]
-                        ? 'bg-brand-navy text-white shadow-lg shadow-brand-navy/20'
-                        : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
-                    }`}
-                    data-testid={`day-${day.key}`}
-                  >
-                    <p className="text-xs mb-1 opacity-70">{day.en}</p>
-                    <p className="text-sm font-bold">{day.ar}</p>
-                    <div className="mt-2">
-                      {workDays[day.key] ? <CheckCircle2 className="h-4 w-4 mx-auto" /> : <X className="h-4 w-4 mx-auto opacity-50" />}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <Separator className="my-6" />
-              <div className="flex items-center justify-between">
-                <div className="flex gap-6">
-                  <div className="flex items-center gap-2"><div className="w-4 h-4 rounded-full bg-brand-navy"></div><span className="text-sm text-slate-600">{Object.values(workDays).filter(Boolean).length} أيام دراسة</span></div>
-                  <div className="flex items-center gap-2"><div className="w-4 h-4 rounded-full bg-slate-200"></div><span className="text-sm text-slate-600">{Object.values(workDays).filter(v => !v).length} أيام عطلة</span></div>
-                </div>
-                <Button onClick={saveAllSettings} disabled={saving} className="bg-[#1C3D74] hover:bg-[#152d57] px-8" data-testid="save-workdays-btn">
-                  <Save className="h-4 w-4 ml-2" />{saving ? 'جاري الحفظ...' : 'حفظ التغييرات'}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
         <TabsContent value="timings" className="space-y-6">
           <Card className="bg-white shadow-sm">
             <CardHeader>
@@ -351,41 +262,44 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
                   <div className="text-center p-3 bg-white rounded-lg"><p className="text-sm text-slate-500">الاستراحة</p><p className="text-xl font-bold text-[#1C3D74]">{timingSettings.breakDuration} د</p></div>
                 </div>
               </div>
-              <div className="mt-6 flex justify-end">
-                <Button onClick={saveAllSettings} disabled={saving} className="bg-[#1C3D74] hover:bg-[#152d57] px-8" data-testid="save-timings-btn">
-                  <Save className="h-4 w-4 ml-2" />{saving ? 'جاري الحفظ...' : 'حفظ التغييرات'}
-                </Button>
-              </div>
             </CardContent>
           </Card>
 
           <Card className="bg-white shadow-sm">
-            <CardContent className="p-5">
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-4">
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${timeSlotsCount > 0 ? 'bg-emerald-100' : 'bg-amber-100'}`}>
-                    <Timer className={`h-6 w-6 ${timeSlotsCount > 0 ? 'text-emerald-600' : 'text-amber-600'}`} />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-slate-800">الفترات الزمنية للجدول</h3>
-                    <p className="text-sm text-slate-500 mt-0.5">
-                      {timeSlotsCount === null ? 'جاري التحقق...' : timeSlotsCount === 0 ? 'لا توجد فترات زمنية — اضغط "توليد" لإنشائها تلقائياً من إعدادات التوقيت' : `${timeSlotsCount} فترة زمنية مُعرَّفة للجدول`}
-                    </p>
-                  </div>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-xl flex items-center gap-2"><Calendar className="h-5 w-5 text-[#1C3D74]" />نمط الدوام</CardTitle>
+                  <CardDescription>اختر نمط الدوام المناسب للمدرسة</CardDescription>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  {timeSlotsCount > 0 && <Badge className="bg-emerald-100 text-emerald-700 border-0"><CheckCircle2 className="h-3 w-3 ml-1" />جاهز</Badge>}
-                  <Button onClick={generateTimeSlots} disabled={generatingSlots} variant={timeSlotsCount > 0 ? 'outline' : 'default'} className={timeSlotsCount > 0 ? '' : 'bg-[#1C3D74] hover:bg-[#152d57]'} data-testid="generate-time-slots-btn">
-                    {generatingSlots ? <RefreshCw className="h-4 w-4 ml-2 animate-spin" /> : <Wand2 className="h-4 w-4 ml-2" />}
-                    {timeSlotsCount > 0 ? 'إعادة توليد' : 'توليد الفترات'}
-                  </Button>
-                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-3 gap-4">
+                {[
+                  { value: 'summer', label: 'دوام صيفي', icon: '☀️' },
+                  { value: 'winter', label: 'دوام شتوي', icon: '❄️' },
+                  { value: 'ramadan', label: 'دوام رمضان', icon: '🌙' }
+                ].map((pattern) => (
+                  <div
+                    key={pattern.value}
+                    onClick={() => handleSettingChange('attendancePattern', pattern.value)}
+                    className={`cursor-pointer rounded-xl p-4 text-center transition-all duration-200 border-2 ${
+                      timingSettings.attendancePattern === pattern.value
+                        ? 'border-[#1C3D74] bg-[#1C3D74]/5 shadow-md'
+                        : 'border-slate-200 hover:border-slate-300 bg-white'
+                    }`}
+                    data-testid={`pattern-${pattern.value}`}
+                  >
+                    <span className="text-3xl mb-2 block">{pattern.icon}</span>
+                    <p className={`font-bold text-sm ${timingSettings.attendancePattern === pattern.value ? 'text-[#1C3D74]' : 'text-slate-700'}`}>{pattern.label}</p>
+                    {timingSettings.attendancePattern === pattern.value && <CheckCircle2 className="h-4 w-4 mx-auto mt-2 text-[#1C3D74]" />}
+                  </div>
+                ))}
               </div>
             </CardContent>
           </Card>
-        </TabsContent>
 
-        <TabsContent value="breaks" className="space-y-6">
           <Card className="bg-white shadow-sm">
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -399,14 +313,19 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
             <CardContent>
               <div className="space-y-3">
                 {breakTimes.map((breakTime) => (
-                  <div key={breakTime.id} className={`flex items-center justify-between p-4 rounded-xl border ${breakTime.type === 'prayer' ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
+                  <div key={breakTime.id} className={`flex items-center justify-between p-4 rounded-xl border ${breakTime.type === 'prayer' ? 'bg-emerald-50 border-emerald-200' : breakTime.type === 'other' ? 'bg-blue-50 border-blue-200' : 'bg-amber-50 border-amber-200'}`}>
                     <div className="flex items-center gap-4">
-                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${breakTime.type === 'prayer' ? 'bg-emerald-500 text-white' : 'bg-amber-500 text-white'}`}>
+                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${breakTime.type === 'prayer' ? 'bg-emerald-500 text-white' : breakTime.type === 'other' ? 'bg-blue-500 text-white' : 'bg-amber-500 text-white'}`}>
                         {breakTime.type === 'prayer' ? <Moon className="h-5 w-5" /> : <Coffee className="h-5 w-5" />}
                       </div>
                       <div>
                         <p className="font-medium">{breakTime.name}</p>
-                        <p className="text-sm text-slate-500">بعد الحصة {breakTime.afterPeriod} • {breakTime.duration} دقيقة</p>
+                        <p className="text-sm text-slate-500">
+                          بعد الحصة {breakTime.afterPeriod} • {breakTime.duration} دقيقة
+                          {breakTime.day && breakTime.day !== 'all' && ` • ${breakTime.day}`}
+                          {breakTime.day === 'all' && ' • جميع الأيام'}
+                          {breakTime.type === 'other' && breakTime.customType && ` • ${breakTime.customType}`}
+                        </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -416,13 +335,14 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
                   </div>
                 ))}
               </div>
-              <div className="mt-6 flex justify-end">
-                <Button onClick={saveAllSettings} disabled={saving} className="bg-[#1C3D74] hover:bg-[#152d57] px-8" data-testid="save-breaks-btn">
-                  <Save className="h-4 w-4 ml-2" />{saving ? 'جاري الحفظ...' : 'حفظ التغييرات'}
-                </Button>
-              </div>
             </CardContent>
           </Card>
+
+          <div className="flex justify-end">
+            <Button onClick={saveAllSettings} disabled={saving} className="bg-[#1C3D74] hover:bg-[#152d57] px-8" data-testid="save-timings-btn">
+              <Save className="h-4 w-4 ml-2" />{saving ? 'جاري الحفظ...' : 'حفظ التغييرات'}
+            </Button>
+          </div>
         </TabsContent>
 
         <TabsContent value="classes" className="space-y-6">

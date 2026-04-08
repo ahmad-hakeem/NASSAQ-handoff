@@ -17,7 +17,9 @@ export function useSchoolSettings() {
   const initialSection = validSections.includes(rawSection) ? rawSection : 'dynamic';
   const [activeSection, setActiveSectionState] = useState(initialSection);
 
-  const initialTab = searchParams.get('tab') || 'school-info';
+  const validDynamicTabs = ['school-info', 'timings', 'classes', 'teacher-assignments', 'unavailability', 'constraints'];
+  const rawTab = searchParams.get('tab') || 'school-info';
+  const initialTab = validDynamicTabs.includes(rawTab) ? rawTab : 'school-info';
   const [activeTab, setActiveTab] = useState(initialTab);
 
   const setActiveSection = useCallback((section) => {
@@ -98,7 +100,8 @@ export function useSchoolSettings() {
     periodsPerDay: 7,
     periodDuration: 45,
     breakDuration: 20,
-    breakAfterPeriod: 3
+    breakAfterPeriod: 3,
+    attendancePattern: 'winter'
   });
   const [timeSlotsCount, setTimeSlotsCount] = useState(null);
   const [generatingSlots, setGeneratingSlots] = useState(false);
@@ -186,7 +189,8 @@ export function useSchoolSettings() {
         periodsPerDay: s.periodsPerDay || 7,
         periodDuration: s.periodDuration || 45,
         breakDuration: s.breakDuration || 20,
-        breakAfterPeriod: s.breakAfterPeriod || 3
+        breakAfterPeriod: s.breakAfterPeriod || 3,
+        attendancePattern: s.attendancePattern || s.attendance_pattern || 'winter'
       });
 
       if (Array.isArray(s.breaks) && s.breaks.length > 0) {
@@ -196,6 +200,8 @@ export function useSchoolSettings() {
           afterPeriod: b.afterPeriod || b.after_period || idx + 2,
           duration: b.duration || 15,
           type: b.type || 'break',
+          customType: b.customType || b.custom_type || '',
+          day: b.day || 'all',
         })));
       }
 
@@ -286,12 +292,15 @@ export function useSchoolSettings() {
         breakAfterPeriod: timingSettings.breakAfterPeriod,
         workingDays,
         weekendDays,
+        attendancePattern: timingSettings.attendancePattern,
         breaks: breakTimes.map(b => ({
           id: b.id,
           name: b.name,
           afterPeriod: b.afterPeriod,
           duration: b.duration,
           type: b.type,
+          customType: b.customType,
+          day: b.day,
         })),
       };
 
@@ -604,15 +613,15 @@ export function useSchoolSettings() {
   const navigateToFix = (category) => {
     setActiveSection('dynamic');
     const tabMapping = {
-      'academic_context': 'academic-year',
-      'school_days': 'workdays',
+      'academic_context': 'timings',
+      'school_days': 'timings',
       'day_structure': 'timings',
       'classes': 'classes',
       'teachers': 'teacher-assignments',
       'teacher_assignments': 'teacher-assignments',
       'constraints': 'constraints'
     };
-    const tab = tabMapping[category] || 'academic-year';
+    const tab = tabMapping[category] || 'timings';
     setActiveTab(tab);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };

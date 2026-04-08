@@ -18,10 +18,7 @@ import { SettingsModals } from '../components/school-settings/SettingsModals';
 
 const dynamicTabs = [
   { id: 'school-info', label: 'بيانات المدرسة', icon: Building2 },
-  { id: 'academic-year', label: 'العام والفصل الدراسي', icon: Calendar },
-  { id: 'workdays', label: 'أيام العمل', icon: CalendarDays },
   { id: 'timings', label: 'التوقيت والحصص', icon: Clock },
-  { id: 'breaks', label: 'الاستراحات والصلاة', icon: Coffee },
   { id: 'classes', label: 'الفصول والشعب', icon: School },
   { id: 'teacher-assignments', label: 'إسناد المعلمين', icon: Link2 },
   { id: 'unavailability', label: 'عدم التوفر', icon: UserX },

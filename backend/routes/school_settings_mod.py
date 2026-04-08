@@ -198,8 +198,13 @@ class SchoolTiming(BaseModel):
 class BreakPeriod(BaseModel):
     id: Optional[str] = None
     name: Optional[str] = None
-    start: str
-    end: str
+    start: Optional[str] = None
+    end: Optional[str] = None
+    type: Optional[str] = None
+    custom_type: Optional[str] = None
+    duration: Optional[int] = None
+    after_period: Optional[int] = None
+    day: Optional[str] = None
 
 
 class ActivityDay(BaseModel):
@@ -600,6 +605,7 @@ async def get_school_settings(
         "workingDays": nested_settings.get("working_days") or settings.get("working_days_ar", []),
         "weekendDays": nested_settings.get("weekend_days") or settings.get("weekend_days_ar", []),
         "breaks": settings.get("breaks", []),
+        "attendancePattern": nested_settings.get("attendance_pattern") or settings.get("attendance_pattern", "winter"),
         # Original field names for backward compatibility
         "working_days": settings.get("working_days", {}),
         "periods_per_day": settings.get("periods_per_day", 7),
@@ -840,6 +846,8 @@ async def update_school_settings_full(
         "break_duration_minutes": ("settings.break_duration_minutes", "break_duration_minutes"),
         "prayer_duration_minutes": ("settings.prayer_duration_minutes", "prayer_duration_minutes"),
         "time_slots": ("settings.time_slots", "time_slots"),
+        "attendancePattern": ("settings.attendance_pattern", "attendance_pattern"),
+        "attendance_pattern": ("settings.attendance_pattern", "attendance_pattern"),
     }
     
     for frontend_key, (nested_key, root_key) in field_mappings.items():
@@ -849,10 +857,14 @@ async def update_school_settings_full(
     
     if "breaks" in settings_data and isinstance(settings_data["breaks"], list):
         breaks_data = []
+        key_map = {"afterPeriod": "after_period", "customType": "custom_type"}
         for b in settings_data["breaks"]:
             if not b.get("id"):
                 b["id"] = str(uuid.uuid4())
-            breaks_data.append(b)
+            normalized = {}
+            for k, v in b.items():
+                normalized[key_map.get(k, k)] = v
+            breaks_data.append(normalized)
         update_data["breaks"] = breaks_data
 
     # Get old settings for audit log
