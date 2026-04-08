@@ -6,8 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#0F2C59" />
 
-    <title>NASSAQ | نَسَّق — نظام إدارة المدارس الذكي</title>
-    <meta name="description" content="نَسَّق — منصة إدارة المدارس الذكية المدعومة بالذكاء الاصطناعي. تتيح للمدارس إدارة الطلاب والمعلمين والجداول والحضور والتواصل مع أولياء الأمور من مكان واحد." />
+    <title>NASSAQ | نَسَّق — نظام إدارة المدارس الذكي بالذكاء الاصطناعي</title>
+    <meta name="description" content="نَسَّق — منصة إدارة المدارس الذكية بالذكاء الاصطناعي. إدارة الطلاب والمعلمين والجداول والحضور والتواصل مع أولياء الأمور في مكان واحد." />
 
     <link rel="canonical" href="https://nassaq.com/" />
 
@@ -35,39 +35,148 @@
 
     <style>
       .skip-link {
+        clip: rect(0 0 0 0);
+        clip-path: inset(50%);
+        height: 1px;
+        overflow: hidden;
         position: absolute;
-        top: -100%;
+        white-space: nowrap;
+        width: 1px;
+      }
+      .skip-link:focus {
+        clip: auto;
+        clip-path: none;
+        height: auto;
+        width: auto;
+        position: fixed;
+        top: 0;
         right: 0;
         background: #0F2C59;
-        color: #fff;
+        color: #ffffff;
         padding: 8px 16px;
         z-index: 9999;
         font-size: 14px;
         text-decoration: none;
         border-radius: 0 0 4px 4px;
       }
-      .skip-link:focus {
-        top: 0;
+      .nassaq-static {
+        font-family: Arial, sans-serif;
+        max-width: 920px;
+        margin: 0 auto;
+        padding: 24px 20px;
+        direction: rtl;
+        text-align: right;
+        color: #1a1a1a;
+        background: #ffffff;
       }
-      .visually-hidden {
-        position: absolute;
-        width: 1px;
-        height: 1px;
-        padding: 0;
-        margin: -1px;
-        overflow: hidden;
-        clip: rect(0,0,0,0);
-        white-space: nowrap;
-        border: 0;
+      .nassaq-static h1 { font-size: 1.9rem; color: #0F2C59; margin-bottom: 0.75rem; }
+      .nassaq-static h2 { font-size: 1.3rem; color: #0F2C59; margin-top: 1.5rem; margin-bottom: 0.5rem; }
+      .nassaq-static p  { font-size: 1rem; line-height: 1.75; color: #222222; margin-bottom: 0.8rem; }
+      .nassaq-static ul { padding-right: 1.5rem; margin-bottom: 0.8rem; }
+      .nassaq-static li { margin-bottom: 0.35rem; color: #222222; line-height: 1.6; }
+      .nassaq-static nav { margin-bottom: 1.5rem; }
+      .nassaq-static nav a {
+        display: inline-block;
+        margin-left: 16px;
+        color: #0F2C59;
+        text-decoration: underline;
+        font-size: 0.95rem;
+      }
+      .nassaq-static footer {
+        margin-top: 2rem;
+        padding-top: 1rem;
+        border-top: 1px solid #e5e5e5;
+        font-size: 0.85rem;
+        color: #333333;
+      }
+      .nassaq-static footer a {
+        color: #0F2C59;
+        margin-left: 12px;
+        text-decoration: underline;
       }
     </style>
   </head>
   <body>
     <a href="#main-content" class="skip-link">تخطى إلى المحتوى الرئيسي</a>
-    <h1 class="visually-hidden">نَسَّق — منصة إدارة المدارس الذكية</h1>
-    <noscript>يجب تفعيل JavaScript لتشغيل هذا التطبيق.</noscript>
+
     <div id="root">
-      <main id="main-content" aria-label="محتوى التطبيق"></main>
+      <main id="main-content" role="main" aria-label="محتوى التطبيق">
+        <div class="nassaq-static">
+          <h1>نَسَّق NASSAQ — نظام إدارة المدارس الذكي</h1>
+
+          <nav aria-label="التنقل الرئيسي">
+            <a href="/login">تسجيل الدخول</a>
+            <a href="/register">إنشاء حساب</a>
+            <a href="/about">عن المنصة</a>
+            <a href="/contact">تواصل معنا</a>
+            <a href="/privacy-policy">سياسة الخصوصية</a>
+          </nav>
+
+          <p>
+            نَسَّق منصة إدارة مدرسية ذكية مدعومة بالذكاء الاصطناعي، مصممة لتمكين المدارس
+            السعودية والعربية من اتخاذ قرارات تعليمية مبنية على البيانات. تجمع المنصة كل
+            أدوات الإدارة المدرسية في واجهة موحدة وسهلة الاستخدام، مما يوفر وقت المعلمين
+            والإداريين ويرفع مستوى تجربة الطالب والأسرة.
+          </p>
+
+          <h2>المميزات الرئيسية</h2>
+          <ul>
+            <li>إدارة الطلاب والفصول الدراسية وسجلاتهم الأكاديمية بشكل متكامل</li>
+            <li>متابعة حضور الطلاب والمعلمين يومياً مع تقارير فورية</li>
+            <li>إنشاء الجداول المدرسية تلقائياً بمساعدة الذكاء الاصطناعي</li>
+            <li>تواصل مباشر مع أولياء الأمور عبر الإشعارات والرسائل</li>
+            <li>تقارير وتحليلات شاملة لأداء الطلاب والمعلمين والمدرسة</li>
+            <li>مساعد ذكي "حكيم" يقدم توصيات تعليمية فورية ومخصصة</li>
+            <li>دعم متعدد الأدوار: مدير المدرسة، المعلم، ولي الأمر، الطالب</li>
+            <li>استيراد البيانات من نظام نور وأنظمة التعليم السعودية الرسمية</li>
+            <li>إدارة الغياب والسلوك وخطط التحسين الأكاديمي</li>
+            <li>جدولة ذكية مع مراعاة قيود المعلمين وأولويات الفصول</li>
+          </ul>
+
+          <h2>لماذا نَسَّق؟</h2>
+          <p>
+            تواجه المدارس تحديات يومية في إدارة البيانات الضخمة: سجلات الطلاب، جداول المعلمين،
+            تقارير الأداء، والتواصل مع الأسر. نَسَّق يحل هذه التحديات من خلال منصة متكاملة تعمل
+            على جميع الأجهزة، تدعم اللغة العربية بشكل كامل، وتوفر رؤى ذكية لتحسين المخرجات
+            التعليمية وترفع كفاءة الإدارة المدرسية.
+          </p>
+
+          <h2>الأدوار المدعومة</h2>
+          <ul>
+            <li>مدير المنصة — إدارة المدارس والمستخدمين والتراخيص على مستوى المنصة بالكامل</li>
+            <li>مدير المدرسة والمشرف — الإشراف الكامل على العمليات المدرسية والجداول والتقارير</li>
+            <li>المعلم — إدارة الصفوف والحضور والتقييمات والجلسات التعليمية</li>
+            <li>ولي الأمر — متابعة أداء أبنائه وتلقي الإشعارات والتواصل مع المدرسة</li>
+          </ul>
+
+          <h2>التقنية والأمان</h2>
+          <p>
+            تعتمد منصة نَسَّق على أحدث تقنيات الويب لضمان الأمان والأداء العالي. تستخدم
+            المنصة تشفيراً متطوراً لحماية بيانات الطلاب والمدارس، وتلتزم بمعايير الخصوصية
+            وحماية البيانات. تتوفر المنصة على مدار الساعة مع دعم فني متواصل لجميع المستخدمين.
+          </p>
+          <p>
+            تدعم المنصة نظام المستأجرين المتعددين مما يتيح لكل مدرسة بيئة مستقلة وآمنة
+            تماماً، مع إمكانية التوسع لتشمل شبكات المدارس الكبرى والمجموعات التعليمية.
+          </p>
+
+          <footer>
+            <p>
+              جميع الحقوق محفوظة &copy; 2026 NASSAQ نَسَّق
+              <a href="/privacy-policy">سياسة الخصوصية</a>
+              <a href="/about">عن المنصة</a>
+              <a href="/contact">تواصل معنا</a>
+              <a href="/login">تسجيل الدخول</a>
+            </p>
+          </footer>
+        </div>
+      </main>
     </div>
+
+    <noscript>
+      <p style="text-align:center;padding:20px;font-family:Arial;color:#333;direction:rtl;">
+        يتطلب تشغيل منصة نَسَّق تفعيل JavaScript في المتصفح. يُرجى تفعيله والمحاولة مجدداً.
+      </p>
+    </noscript>
   </body>
 </html>

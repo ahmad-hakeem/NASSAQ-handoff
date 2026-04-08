@@ -65,6 +65,23 @@ webpackConfig.devServer = (devServerConfig) => {
   devServerConfig.port = 5000;
   devServerConfig.allowedHosts = "all";
 
+  devServerConfig.headers = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "X-XSS-Protection": "1; mode=block",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+    "Content-Security-Policy":
+      "default-src 'self'; " +
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com; " +
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+      "font-src 'self' https://fonts.gstatic.com data:; " +
+      "img-src 'self' data: blob: https:; " +
+      "connect-src 'self' wss: ws: http://localhost:8000; " +
+      "frame-ancestors 'none';",
+    "Cache-Control": "public, max-age=0, must-revalidate",
+  };
+
   // Add health check endpoints if enabled
   if (config.enableHealthCheck && setupHealthEndpoints && healthPluginInstance) {
     const originalSetupMiddlewares = devServerConfig.setupMiddlewares;
