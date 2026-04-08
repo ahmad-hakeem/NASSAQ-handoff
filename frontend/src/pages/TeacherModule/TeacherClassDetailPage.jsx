@@ -37,6 +37,7 @@ const GRADE_COLORS = {
 };
 
 export default function TeacherClassDetailPage() {
+  const { t } = useTranslation();
   const { nassaqError } = useNassaqAlert();
   const { classId } = useParams();
   const navigate = useNavigate();

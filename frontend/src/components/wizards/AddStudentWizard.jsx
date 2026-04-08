@@ -150,6 +150,7 @@ export default function AddStudentWizard({
   grades = [],
   classes = [],
 }) {
+  const { t } = useTranslation();
   const { nassaqError } = useNassaqAlert();
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);

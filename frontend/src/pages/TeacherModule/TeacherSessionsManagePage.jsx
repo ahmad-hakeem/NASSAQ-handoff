@@ -37,6 +37,7 @@ const STATUS_MAP = {
 };
 
 export default function TeacherSessionsManagePage() {
+  const { t } = useTranslation();
   const { user, api, isRTL } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);

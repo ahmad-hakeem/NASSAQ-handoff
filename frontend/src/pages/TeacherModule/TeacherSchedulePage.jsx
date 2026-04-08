@@ -77,6 +77,7 @@ const STATUS_BADGES = {
 };
 
 export default function TeacherSchedulePage() {
+  const { t } = useTranslation();
   const { user, api, isRTL } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);

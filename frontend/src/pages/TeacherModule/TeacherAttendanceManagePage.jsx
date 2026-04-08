@@ -24,6 +24,7 @@ const ATTENDANCE_STATUS = {
 };
 
 export default function TeacherAttendanceManagePage() {
+  const { t } = useTranslation();
   const { user, api, isRTL } = useAuth();
   const { nassaqError, nassaqWarning } = useNassaqAlert();
   const [searchParams] = useSearchParams();

@@ -46,6 +46,7 @@ import {
 
 import { useTranslation } from '../contexts/ThemeContext';
 export default function UsersManagement() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { nassaqError } = useNassaqAlert();

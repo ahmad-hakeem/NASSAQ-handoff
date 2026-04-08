@@ -45,6 +45,7 @@ const PREDEFINED_BEHAVIORS = {
 };
 
 export default function TeacherBehaviorPage() {
+  const { t } = useTranslation();
   const { user, api, isRTL } = useAuth();
   const [loading, setLoading] = useState(true);
   const [classes, setClasses] = useState([]);

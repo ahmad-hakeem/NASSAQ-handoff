@@ -29,6 +29,7 @@ const RESOURCE_TYPES = [
 ];
 
 export default function TeacherResourcesPage() {
+  const { t } = useTranslation();
   const { user, api, isRTL } = useAuth();
   const [loading, setLoading] = useState(true);
   const [classes, setClasses] = useState([]);

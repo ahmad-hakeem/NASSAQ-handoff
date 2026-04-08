@@ -21,6 +21,7 @@ import {
 
 import { useTranslation } from '../../contexts/ThemeContext';
 export default function TeacherReportsPage() {
+  const { t } = useTranslation();
   const { user, api, isRTL } = useAuth();
   const [loading, setLoading] = useState(true);
   const [classes, setClasses] = useState([]);

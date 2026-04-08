@@ -352,6 +352,7 @@ export default function StudentClassGrid({
   onView, onEdit, onDelete, onAction,
   onTransferStudent, canDrag = false
 }) {
+  const { t } = useTranslation();
   const classStudentMap = useMemo(() => {
     const map = {};
     const unassigned = [];

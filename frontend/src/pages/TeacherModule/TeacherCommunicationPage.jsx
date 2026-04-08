@@ -41,6 +41,7 @@ const TEMPLATES = [
 ];
 
 export default function TeacherCommunicationPage() {
+  const { t } = useTranslation();
   const { user, api, isRTL } = useAuth();
   const [loading, setLoading] = useState(true);
   const [classes, setClasses] = useState([]);
