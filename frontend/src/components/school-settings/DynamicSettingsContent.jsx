@@ -14,7 +14,7 @@ import {
   Sliders, Plus, Edit2, Trash2, Save, CheckCircle2,
   Info, X, GraduationCap, Shield, Building2, MapPin, Phone, Mail,
   Layers, Zap, Lock, Calendar, Timer, Coffee, Moon, UserX, DoorClosed,
-  RefreshCw, Wand2, Database
+  RefreshCw, Wand2, Database, FileSpreadsheet, Upload, AlertTriangle
 } from 'lucide-react';
 import { DndContext, DragOverlay, closestCenter } from '@dnd-kit/core';
 import {
@@ -42,7 +42,7 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
     handleAddBreak, handleEditBreak, handleDeleteBreak,
     handleAddUnavailability, handleDeleteUnavailability,
     handleCreateClassAssignment, handleDeleteClassAssignment,
-    nassaqWarning, user, api, setAssignments,
+    nassaqWarning, user, api, setAssignments, handleOpenNoorImport,
   } = hook;
 
   return (
@@ -356,7 +356,18 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
                     <CardDescription className="text-brand-navy/60">{classes.length} فصل مسجل في قاعدة البيانات</CardDescription>
                   </div>
                 </div>
-                <Badge variant="outline" className="bg-brand-turquoise/10 text-brand-turquoise border-brand-turquoise/30"><Database className="h-3 w-3 ml-1" />بيانات من قاعدة البيانات</Badge>
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={() => handleOpenNoorImport('noor_classes')}
+                    className="bg-green-600 hover:bg-green-700 text-white gap-2 shadow-md"
+                    size="sm"
+                    data-testid="noor-import-classes-btn"
+                  >
+                    <FileSpreadsheet className="h-4 w-4" />
+                    استيراد من نظام نور
+                  </Button>
+                  <Badge variant="outline" className="bg-brand-turquoise/10 text-brand-turquoise border-brand-turquoise/30"><Database className="h-3 w-3 ml-1" />بيانات من قاعدة البيانات</Badge>
+                </div>
               </div>
             </CardHeader>
             <CardContent className="p-0">
@@ -461,7 +472,18 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
                         <p className="text-xs text-brand-purple/60">{teachers.length} معلم • {subjects.length} مادة • {assignments.length} إسناد</p>
                       </div>
                     </div>
-                    <Badge variant="outline" className="bg-brand-purple/10 text-brand-purple border-brand-purple/30 text-xs"><Zap className="h-3 w-3 ml-1" />سحب وإفلات</Badge>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        onClick={() => handleOpenNoorImport('noor_assignments')}
+                        className="bg-green-600 hover:bg-green-700 text-white gap-2 shadow-md"
+                        size="sm"
+                        data-testid="noor-import-assignments-btn"
+                      >
+                        <FileSpreadsheet className="h-3.5 w-3.5" />
+                        استيراد من نظام نور
+                      </Button>
+                      <Badge variant="outline" className="bg-brand-purple/10 text-brand-purple border-brand-purple/30 text-xs"><Zap className="h-3 w-3 ml-1" />سحب وإفلات</Badge>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -550,7 +572,17 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
                         <p className="text-xs text-slate-600">{teachers.length} معلم • {classes.length} فصل • {classAssignments.length} إسناد</p>
                       </div>
                     </div>
-                    <Badge variant="outline" className="bg-brand-turquoise/10 text-brand-turquoise-dark border-brand-turquoise/30 text-xs"><Zap className="h-3 w-3 ml-1" />سحب وإفلات</Badge>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        onClick={() => handleOpenNoorImport('noor_assignments')}
+                        className="bg-green-600 hover:bg-green-700 text-white gap-2 shadow-md"
+                        size="sm"
+                      >
+                        <FileSpreadsheet className="h-3.5 w-3.5" />
+                        استيراد من نظام نور
+                      </Button>
+                      <Badge variant="outline" className="bg-brand-turquoise/10 text-brand-turquoise-dark border-brand-turquoise/30 text-xs"><Zap className="h-3 w-3 ml-1" />سحب وإفلات</Badge>
+                    </div>
                   </div>
                   <div className="mt-3 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-xs text-blue-700">
                     <span className="font-bold">الإعداد الافتراضي:</span> جميع المعلمين مرتبطون بجميع الفصول تلقائيًا. يمكنك إزالة فصل من كارت المعلم لإلغاء الربط.
@@ -633,8 +665,22 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
                 ) : (
                   <div className="space-y-2">
                     {teacherUnavailability.map((item) => (
-                      <div key={item.id} className="flex items-center justify-between p-3 bg-amber-50 rounded-lg border border-amber-200">
-                        <span className="text-sm">{item.teacher_name} - {item.day} - الحصة {item.period}</span>
+                      <div key={item.id} className={`flex items-center justify-between p-3 rounded-lg border ${item.unavailability_type === 'long_term' ? 'bg-orange-50 border-orange-200' : 'bg-amber-50 border-amber-200'}`}>
+                        <div className="flex items-center gap-2">
+                          {item.unavailability_type === 'long_term' ? (
+                            <Calendar className="h-4 w-4 text-orange-500 flex-shrink-0" />
+                          ) : (
+                            <Clock className="h-4 w-4 text-amber-500 flex-shrink-0" />
+                          )}
+                          <div>
+                            <span className="text-sm font-medium">{item.teacher_name || item.entity_name}</span>
+                            {item.unavailability_type === 'long_term' ? (
+                              <p className="text-xs text-orange-600">فترة طويلة: {item.start_date} إلى {item.end_date}{item.reason ? ` (${item.reason})` : ''}</p>
+                            ) : (
+                              <p className="text-xs text-amber-600">متكرر: {item.day} - الحصة {item.period}</p>
+                            )}
+                          </div>
+                        </div>
                         <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-red-500" onClick={() => handleDeleteUnavailability(item.id, 'teacher')}><X className="h-3 w-3" /></Button>
                       </div>
                     ))}
@@ -658,8 +704,22 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
                 ) : (
                   <div className="space-y-2">
                     {classUnavailability.map((item) => (
-                      <div key={item.id} className="flex items-center justify-between p-3 bg-red-50 rounded-lg border border-red-200">
-                        <span className="text-sm">{item.class_name} - {item.day} - الحصة {item.period}</span>
+                      <div key={item.id} className={`flex items-center justify-between p-3 rounded-lg border ${item.unavailability_type === 'long_term' ? 'bg-rose-50 border-rose-300' : 'bg-red-50 border-red-200'}`}>
+                        <div className="flex items-center gap-2">
+                          {item.unavailability_type === 'long_term' ? (
+                            <AlertTriangle className="h-4 w-4 text-rose-500 flex-shrink-0" />
+                          ) : (
+                            <DoorClosed className="h-4 w-4 text-red-500 flex-shrink-0" />
+                          )}
+                          <div>
+                            <span className="text-sm font-medium">{item.class_name || item.entity_name}</span>
+                            {item.unavailability_type === 'long_term' ? (
+                              <p className="text-xs text-rose-600">فترة طويلة: {item.start_date} إلى {item.end_date}{item.reason ? ` (${item.reason})` : ''}</p>
+                            ) : (
+                              <p className="text-xs text-red-600">متكرر: {item.day} - الحصة {item.period}</p>
+                            )}
+                          </div>
+                        </div>
                         <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-red-500" onClick={() => handleDeleteUnavailability(item.id, 'class')}><X className="h-3 w-3" /></Button>
                       </div>
                     ))}

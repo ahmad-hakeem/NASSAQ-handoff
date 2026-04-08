@@ -22,6 +22,8 @@ logger = logging.getLogger("nassaq.bulk_import")
 class ImportType(str, Enum):
     STUDENTS = "students"
     TEACHERS = "teachers"
+    NOOR_CLASSES = "noor_classes"
+    NOOR_ASSIGNMENTS = "noor_assignments"
 
 
 class ExportType(str, Enum):
@@ -56,7 +58,27 @@ def setup_bulk_routes(db, get_current_user, require_roles, UserRole):
     ):
         """تحميل قالب الاستيراد"""
         try:
-            if import_type == ImportType.STUDENTS:
+            if import_type == ImportType.NOOR_CLASSES:
+                columns = {
+                    'اسم الفصل (مطلوب)': ['الأول أ', 'الثاني ب'],
+                    'الصف (مطلوب)': ['الأول', 'الثاني'],
+                    'الشعبة': ['أ', 'ب'],
+                    'السعة': ['30', '25'],
+                    'المرحلة': ['ابتدائي', 'ابتدائي'],
+                    'ملاحظات': ['', '']
+                }
+                filename = "قالب_استيراد_نور_الفصول.xlsx"
+            elif import_type == ImportType.NOOR_ASSIGNMENTS:
+                columns = {
+                    'اسم المعلم (مطلوب)': ['أحمد محمد السعيد', 'فاطمة علي الخالدي'],
+                    'البريد الإلكتروني للمعلم': ['ahmed@school.com', 'fatima@school.com'],
+                    'اسم المادة (مطلوب)': ['الرياضيات', 'العلوم'],
+                    'اسم الفصل': ['الأول أ', 'الثاني ب'],
+                    'عدد الحصص الأسبوعية': ['5', '4'],
+                    'ملاحظات': ['', '']
+                }
+                filename = "قالب_استيراد_نور_الإسناد.xlsx"
+            elif import_type == ImportType.STUDENTS:
                 columns = {
                     'الاسم الأول (مطلوب)': ['أحمد', 'محمد'],
                     'اسم الأب': ['علي', 'خالد'],
@@ -185,8 +207,16 @@ def setup_bulk_routes(db, get_current_user, require_roles, UserRole):
                 result = await _import_students(db, df, school_id, current_user, errors, warnings)
                 imported = result['imported']
                 failed = result['failed']
-            else:
+            elif import_type == ImportType.TEACHERS:
                 result = await _import_teachers(db, df, school_id, current_user, errors, warnings)
+                imported = result['imported']
+                failed = result['failed']
+            elif import_type == ImportType.NOOR_CLASSES:
+                result = await _import_noor_classes(db, df, school_id, current_user, errors, warnings)
+                imported = result['imported']
+                failed = result['failed']
+            elif import_type == ImportType.NOOR_ASSIGNMENTS:
+                result = await _import_noor_assignments(db, df, school_id, current_user, errors, warnings)
                 imported = result['imported']
                 failed = result['failed']
             
@@ -525,6 +555,218 @@ async def _import_teachers(db, df: pd.DataFrame, school_id: str, user: dict, err
             errors.append({"row": row_num, "message": str(e)})
             failed += 1
     
+    return {"imported": imported, "failed": failed}
+
+
+async def _import_noor_classes(db, df: pd.DataFrame, school_id: str, user: dict, errors: list, warnings: list):
+    imported = 0
+    failed = 0
+
+    column_map = {
+        'اسم الفصل (مطلوب)': 'name',
+        'اسم الفصل': 'name',
+        'الصف (مطلوب)': 'grade_level',
+        'الصف': 'grade_level',
+        'الشعبة': 'section',
+        'السعة': 'capacity',
+        'المرحلة': 'stage',
+        'ملاحظات': 'notes'
+    }
+
+    df = df.rename(columns={k: v for k, v in column_map.items() if k in df.columns})
+
+    for idx, row in df.iterrows():
+        row_num = idx + 2
+
+        try:
+            name = str(row.get('name', '')).strip()
+            grade_level = str(row.get('grade_level', '')).strip()
+
+            if not name or name == 'nan':
+                errors.append({"row": row_num, "field": "اسم الفصل", "message": "حقل مطلوب"})
+                failed += 1
+                continue
+
+            if not grade_level or grade_level == 'nan':
+                errors.append({"row": row_num, "field": "الصف", "message": "حقل مطلوب"})
+                failed += 1
+                continue
+
+            section = str(row.get('section', '')).strip() if pd.notna(row.get('section')) else ''
+            existing = await gd_find_one(db.session, "classes", {
+                "name": name,
+                "school_id": school_id,
+                "section": section
+            })
+
+            if existing:
+                warnings.append({"row": row_num, "message": f"الفصل موجود مسبقاً ({name} - {section})"})
+                failed += 1
+                continue
+
+            capacity = 30
+            try:
+                cap_val = row.get('capacity')
+                if pd.notna(cap_val):
+                    capacity = int(float(str(cap_val).strip()))
+            except (ValueError, TypeError):
+                pass
+
+            class_doc = {
+                "id": str(uuid.uuid4()),
+                "school_id": school_id,
+                "name": name,
+                "name_ar": name,
+                "grade_level": grade_level,
+                "grade": grade_level,
+                "section": section if section != 'nan' else '',
+                "capacity": capacity,
+                "stage": str(row.get('stage', '')).strip() if pd.notna(row.get('stage')) else '',
+                "notes": str(row.get('notes', '')).strip() if pd.notna(row.get('notes')) else '',
+                "is_active": True,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "created_by": user.get("id"),
+                "import_source": "noor_import"
+            }
+
+            await gd_insert(db.session, "classes", class_doc)
+            imported += 1
+
+        except Exception as e:
+            errors.append({"row": row_num, "message": str(e)})
+            failed += 1
+
+    return {"imported": imported, "failed": failed}
+
+
+async def _import_noor_assignments(db, df: pd.DataFrame, school_id: str, user: dict, errors: list, warnings: list):
+    imported = 0
+    failed = 0
+
+    column_map = {
+        'اسم المعلم (مطلوب)': 'teacher_name',
+        'اسم المعلم': 'teacher_name',
+        'البريد الإلكتروني للمعلم': 'teacher_email',
+        'اسم المادة (مطلوب)': 'subject_name',
+        'اسم المادة': 'subject_name',
+        'اسم الفصل': 'class_name',
+        'عدد الحصص الأسبوعية': 'weekly_periods',
+        'ملاحظات': 'notes'
+    }
+
+    df = df.rename(columns={k: v for k, v in column_map.items() if k in df.columns})
+
+    teachers_cache = {}
+    teachers_list = await gd_find(db.session, "teachers", {"school_id": school_id}, limit=2000)
+    for t in teachers_list:
+        teachers_cache[t.get('full_name', '').strip().lower()] = t
+        if t.get('email'):
+            teachers_cache[t['email'].strip().lower()] = t
+
+    subjects_cache = {}
+    subjects_list = await gd_find(db.session, "subjects", {"school_id": school_id}, limit=2000)
+    for s in subjects_list:
+        subjects_cache[s.get('name_ar', '').strip().lower()] = s
+        subjects_cache[s.get('name', '').strip().lower()] = s
+
+    for idx, row in df.iterrows():
+        row_num = idx + 2
+
+        try:
+            teacher_name = str(row.get('teacher_name', '')).strip()
+            subject_name = str(row.get('subject_name', '')).strip()
+
+            if not teacher_name or teacher_name == 'nan':
+                errors.append({"row": row_num, "field": "اسم المعلم", "message": "حقل مطلوب"})
+                failed += 1
+                continue
+
+            if not subject_name or subject_name == 'nan':
+                errors.append({"row": row_num, "field": "اسم المادة", "message": "حقل مطلوب"})
+                failed += 1
+                continue
+
+            teacher = teachers_cache.get(teacher_name.lower())
+            if not teacher:
+                teacher_email = str(row.get('teacher_email', '')).strip().lower()
+                if teacher_email and teacher_email != 'nan':
+                    teacher = teachers_cache.get(teacher_email)
+
+            if not teacher:
+                errors.append({"row": row_num, "field": "اسم المعلم", "message": f"المعلم '{teacher_name}' غير موجود في النظام"})
+                failed += 1
+                continue
+
+            subject = subjects_cache.get(subject_name.lower())
+            if not subject:
+                subject_id = str(uuid.uuid4())
+                subject = {
+                    "id": subject_id,
+                    "school_id": school_id,
+                    "name": subject_name,
+                    "name_ar": subject_name,
+                    "is_active": True,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "import_source": "noor_import"
+                }
+                await gd_insert(db.session, "subjects", subject)
+                subjects_cache[subject_name.lower()] = subject
+
+            class_name = str(row.get('class_name', '')).strip() if pd.notna(row.get('class_name')) else None
+            weekly_periods_raw = row.get('weekly_periods')
+            weekly_periods = int(weekly_periods_raw) if pd.notna(weekly_periods_raw) and str(weekly_periods_raw).strip().isdigit() else None
+            notes = str(row.get('notes', '')).strip() if pd.notna(row.get('notes')) else None
+
+            class_id = None
+            if class_name and class_name != 'nan':
+                class_doc = await gd_find_one(db.session, "classes", {"school_id": school_id, "name": class_name})
+                if class_doc:
+                    class_id = class_doc["id"]
+                else:
+                    warnings.append({"row": row_num, "message": f"الفصل '{class_name}' غير موجود، سيتم إنشاء الإسناد بدون ربط فصل"})
+
+            dup_query = {
+                "teacher_id": teacher["id"],
+                "subject_id": subject["id"],
+                "school_id": school_id
+            }
+            if class_id:
+                dup_query["class_id"] = class_id
+
+            existing = await gd_find_one(db.session, "teacher_assignments", dup_query)
+
+            if existing:
+                warnings.append({"row": row_num, "message": f"الإسناد موجود مسبقاً ({teacher_name} - {subject_name}{' - ' + class_name if class_name else ''})"})
+                failed += 1
+                continue
+
+            assignment_doc = {
+                "id": str(uuid.uuid4()),
+                "school_id": school_id,
+                "teacher_id": teacher["id"],
+                "subject_id": subject["id"],
+                "teacher_name": teacher.get("full_name", teacher_name),
+                "subject_name": subject.get("name_ar", subject_name),
+                "is_active": True,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "created_by": user.get("id"),
+                "import_source": "noor_import"
+            }
+            if class_id:
+                assignment_doc["class_id"] = class_id
+                assignment_doc["class_name"] = class_name
+            if weekly_periods is not None:
+                assignment_doc["weekly_periods"] = weekly_periods
+            if notes:
+                assignment_doc["notes"] = notes
+
+            await gd_insert(db.session, "teacher_assignments", assignment_doc)
+            imported += 1
+
+        except Exception as e:
+            errors.append({"row": row_num, "message": str(e)})
+            failed += 1
+
     return {"imported": imported, "failed": failed}
 
 

@@ -4,11 +4,16 @@ import { Skeleton } from '../../components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
 import {
   Coffee, Moon, User, AlertTriangle,
-  Lock, Sparkles, Filter, Calendar, BookOpen, GripVertical, ArrowLeftRight
+  Lock, Sparkles, Filter, Calendar, BookOpen, GripVertical, ArrowLeftRight, DoorClosed
 } from 'lucide-react';
 import {
   ViewModes, getSubjectColor, NEUTRAL_COLOR, WEEKDAYS
 } from './types';
+
+const AR_TO_EN_DAY = {
+  'الأحد': 'sunday', 'الإثنين': 'monday', 'الثلاثاء': 'tuesday',
+  'الأربعاء': 'wednesday', 'الخميس': 'thursday', 'الجمعة': 'friday', 'السبت': 'saturday'
+};
 
 const DAY_COLORS = [
   { header: 'from-[#0F2C59] to-[#1a3d70]', light: 'bg-[#0F2C59]/5' },
@@ -191,6 +196,7 @@ const TimetableGridSection = ({
   showWarnings = true,
   showColorCoding = true,
   conflictCells = [],
+  classUnavailability = [],
   onSessionClick,
   onGenerate,
   onRegenerate,
@@ -442,6 +448,16 @@ const TimetableGridSection = ({
                     const isConflict = conflictCells.some(
                       cc => cc.day === day.key && cc.period === slotNum
                     );
+                    const cellClassIds = cellSessions.map(s => s.class_id).filter(Boolean);
+                    const isClassUnavailable = cellClassIds.length > 0 && classUnavailability.some(u => {
+                      if (!cellClassIds.includes(u.entity_id)) return false;
+                      if (u.unavailability_type === 'long_term') {
+                        const today = new Date().toISOString().slice(0, 10);
+                        return u.start_date <= today && today <= u.end_date;
+                      }
+                      const uDayKey = AR_TO_EN_DAY[u.day] || u.day;
+                      return uDayKey === day.key && String(u.period) === String(slotNum);
+                    });
                     const isDropTarget = dropTargetKey === cellKey && draggedSessionId;
                     const hasDraggedSession = cellSessions.some(s => s.id === draggedSessionId);
 
@@ -455,6 +471,8 @@ const TimetableGridSection = ({
                         className={`p-1.5 border-b border-gray-100/80 ${rowBg} group transition-all duration-200 relative ${
                           isConflict
                             ? 'bg-red-50 dark:bg-red-950/30 ring-2 ring-red-400 ring-inset rounded-sm'
+                            : isClassUnavailable
+                            ? 'bg-amber-50/80 dark:bg-amber-950/20 ring-1 ring-amber-300 ring-inset rounded-sm opacity-70'
                             : ''
                         } ${isMoveTarget
                             ? 'bg-violet-50 ring-2 ring-violet-400 ring-dashed rounded-lg scale-[1.02] shadow-md'
@@ -471,6 +489,11 @@ const TimetableGridSection = ({
                         {isConflict && (
                           <div className="absolute top-0.5 end-0.5 z-10">
                             <AlertTriangle className="h-3.5 w-3.5 text-red-500 animate-pulse" />
+                          </div>
+                        )}
+                        {isClassUnavailable && !isConflict && (
+                          <div className="absolute top-0.5 end-0.5 z-10" title="فصل غير متوفر - يرجى نقل الحصة">
+                            <DoorClosed className="h-3 w-3 text-amber-500" />
                           </div>
                         )}
                         {isMoveTarget && (

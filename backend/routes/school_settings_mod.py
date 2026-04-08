@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Depends, status, Header, Query, Bo
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import Response
 from starlette.responses import StreamingResponse
-from pydantic import BaseModel, Field, ConfigDict, EmailStr, model_validator
+from pydantic import BaseModel, Field, ConfigDict, EmailStr, model_validator, field_validator
 from typing import List, Optional, Any, Dict
 from datetime import datetime, timezone, timedelta
 
@@ -222,6 +222,30 @@ class TeacherAvailability(BaseModel):
     teacher_id: str
     available_days: List[str] = []
     available_periods: Optional[List[int]] = None
+
+
+class UnavailabilityCreate(BaseModel):
+    entity_type: str
+    entity_id: str
+    entity_name: Optional[str] = None
+    unavailability_type: str = "recurring"
+    day: Optional[str] = None
+    period: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    reason: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_unavailability_fields(self):
+        if self.unavailability_type == "recurring":
+            if not self.day or not self.period:
+                raise ValueError("عدم التوفر المتكرر يتطلب تحديد اليوم والحصة")
+        elif self.unavailability_type == "long_term":
+            if not self.start_date or not self.end_date:
+                raise ValueError("فترة عدم التوفر طويلة الأمد تتطلب تحديد تاريخ البداية والنهاية")
+            if self.start_date > self.end_date:
+                raise ValueError("تاريخ النهاية يجب أن يكون بعد تاريخ البداية")
+        return self
 
 
 class AdminConstraint(BaseModel):
@@ -1273,6 +1297,111 @@ async def update_teacher_availability(
             })
     
     return {"message": "تم تحديث توفر المعلم"}
+
+
+@router.post("/school/settings/unavailability")
+async def create_unavailability(
+    data: UnavailabilityCreate,
+    current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN])),
+    x_school_context: str = Header(default=None, alias="X-School-Context")
+):
+    school_id = await get_school_id_from_context(current_user, x_school_context)
+
+    if not school_id:
+        raise HTTPException(status_code=400, detail="School context required")
+
+    unavailability_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+
+    doc = {
+        "id": unavailability_id,
+        "school_id": school_id,
+        "entity_type": data.entity_type,
+        "entity_id": data.entity_id,
+        "entity_name": data.entity_name,
+        "unavailability_type": data.unavailability_type,
+        "day": data.day,
+        "period": data.period,
+        "start_date": data.start_date,
+        "end_date": data.end_date,
+        "reason": data.reason,
+        "created_at": now,
+        "created_by": current_user.get("id"),
+    }
+
+    await gd_insert(db.session, "unavailability", doc)
+
+    notifications_sent = 0
+    if data.entity_type == "class":
+        from routes.notification_routes_mod import create_notification_internal
+
+        class_assignments = await gd_find(db.session, "teacher_class_assignments", {
+            "school_id": school_id,
+            "class_id": data.entity_id
+        }, limit=500)
+
+        teacher_ids = list(set(a.get("teacher_id") for a in class_assignments if a.get("teacher_id")))
+
+        if data.unavailability_type == "long_term":
+            period_desc = f"من {data.start_date} إلى {data.end_date}"
+        else:
+            period_desc = f"يوم {data.day} - الحصة {data.period}"
+
+        for teacher_id in teacher_ids:
+            await create_notification_internal(
+                title="تنبيه: عدم توفر فصل دراسي",
+                message=f"الفصل '{data.entity_name or data.entity_id}' غير متوفر ({period_desc}). يرجى نقل الطلاب إلى فصل بديل.",
+                recipient_id=teacher_id,
+                notification_type="schedule",
+                priority="high",
+                sender_id=current_user.get("id"),
+                related_entity="class",
+                related_entity_id=data.entity_id,
+                school_id=school_id,
+                title_en="Alert: Classroom Unavailable",
+                message_en=f"Classroom '{data.entity_name or data.entity_id}' is unavailable ({period_desc}). Please relocate students to an alternative classroom."
+            )
+
+        notifications_sent = len(teacher_ids)
+
+    return {
+        "success": True,
+        "id": unavailability_id,
+        "message": "تم حفظ فترة عدم التوفر بنجاح",
+        "notifications_sent": notifications_sent
+    }
+
+
+@router.delete("/school/settings/unavailability/{unavailability_id}")
+async def delete_unavailability(
+    unavailability_id: str,
+    current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN])),
+    x_school_context: str = Header(default=None, alias="X-School-Context")
+):
+    school_id = await get_school_id_from_context(current_user, x_school_context)
+    if not school_id:
+        raise HTTPException(status_code=400, detail="School context required")
+    result = await gd_delete_one(db.session, "unavailability", {"id": unavailability_id, "school_id": school_id})
+    return {"success": True, "message": "تم حذف فترة عدم التوفر"}
+
+
+@router.get("/school/settings/unavailability")
+async def get_unavailability(
+    entity_type: Optional[str] = None,
+    current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN])),
+    x_school_context: str = Header(default=None, alias="X-School-Context")
+):
+    school_id = await get_school_id_from_context(current_user, x_school_context)
+
+    if not school_id:
+        raise HTTPException(status_code=400, detail="School context required")
+
+    query = {"school_id": school_id}
+    if entity_type:
+        query["entity_type"] = entity_type
+
+    items = await gd_find(db.session, "unavailability", query, limit=1000)
+    return {"items": items}
 
 
 @router.put("/school/settings/constraints")

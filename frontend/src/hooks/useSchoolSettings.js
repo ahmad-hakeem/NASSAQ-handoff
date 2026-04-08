@@ -84,6 +84,8 @@ export function useSchoolSettings() {
   const [showUnavailabilityModal, setShowUnavailabilityModal] = useState(false);
   const [editingBreak, setEditingBreak] = useState(null);
   const [unavailabilityType, setUnavailabilityType] = useState('teacher');
+  const [showNoorImportModal, setShowNoorImportModal] = useState(false);
+  const [noorImportType, setNoorImportType] = useState('noor_classes');
 
   const [editedSchoolInfo, setEditedSchoolInfo] = useState({});
 
@@ -216,6 +218,15 @@ export function useSchoolSettings() {
       const res = await api.get(`/time-slots?school_id=${schoolId}`);
       setTimeSlotsCount(Array.isArray(res.data) ? res.data.length : 0);
     } catch (e) { console.error('Error fetching time slots:', e); setTimeSlotsCount(0); }
+
+    try {
+      const [teacherUnavailRes, classUnavailRes] = await Promise.all([
+        api.get('/school/settings/unavailability?entity_type=teacher').catch(() => ({ data: { items: [] } })),
+        api.get('/school/settings/unavailability?entity_type=class').catch(() => ({ data: { items: [] } })),
+      ]);
+      setTeacherUnavailability(teacherUnavailRes.data?.items || []);
+      setClassUnavailability(classUnavailRes.data?.items || []);
+    } catch (e) { console.error('Error fetching unavailability:', e); }
   }, [api, user]);
 
   useEffect(() => {
@@ -546,19 +557,64 @@ export function useSchoolSettings() {
     setShowUnavailabilityModal(true);
   };
 
-  const handleSaveUnavailability = (data) => {
+  const handleSaveUnavailability = async (data) => {
+    const localId = Date.now();
+    const item = { id: localId, ...data };
+
     if (unavailabilityType === 'teacher') {
-      setTeacherUnavailability(prev => [...prev, { id: Date.now(), ...data }]);
+      setTeacherUnavailability(prev => [...prev, item]);
     } else {
-      setClassUnavailability(prev => [...prev, { id: Date.now(), ...data }]);
+      setClassUnavailability(prev => [...prev, item]);
     }
     setShowUnavailabilityModal(false);
     setHasChanges(true);
-    toast.success('تم إضافة فترة عدم التوفر بنجاح');
+
+    try {
+      const entityId = data.teacher_id || data.class_id;
+      const entityName = data.teacher_name || data.class_name;
+      const res = await api.post('/school/settings/unavailability', {
+        entity_type: unavailabilityType,
+        entity_id: entityId,
+        entity_name: entityName,
+        unavailability_type: data.unavailability_type || 'recurring',
+        day: data.day || null,
+        period: data.period || null,
+        start_date: data.start_date || null,
+        end_date: data.end_date || null,
+        reason: data.reason || null,
+      });
+
+      const serverId = res.data?.id || localId;
+      if (unavailabilityType === 'teacher') {
+        setTeacherUnavailability(prev => prev.map(u => u.id === localId ? { ...u, id: serverId } : u));
+      } else {
+        setClassUnavailability(prev => prev.map(u => u.id === localId ? { ...u, id: serverId } : u));
+      }
+
+      const notifCount = res.data?.notifications_sent || 0;
+      if (notifCount > 0) {
+        toast.success(`تم إضافة فترة عدم التوفر وإرسال ${notifCount} إشعار للمعلمين`);
+      } else {
+        toast.success('تم إضافة فترة عدم التوفر بنجاح');
+      }
+    } catch (err) {
+      console.error('Error saving unavailability:', err);
+      if (unavailabilityType === 'teacher') {
+        setTeacherUnavailability(prev => prev.filter(u => u.id !== localId));
+      } else {
+        setClassUnavailability(prev => prev.filter(u => u.id !== localId));
+      }
+      toast.error('حدث خطأ أثناء حفظ فترة عدم التوفر');
+    }
+  };
+
+  const handleOpenNoorImport = (type) => {
+    setNoorImportType(type);
+    setShowNoorImportModal(true);
   };
 
   const handleDeleteUnavailability = (id, type) => {
-    nassaqConfirm('هل أنت متأكد من حذف هذه الفترة؟', () => {
+    nassaqConfirm('هل أنت متأكد من حذف هذه الفترة؟', async () => {
       if (type === 'teacher') {
         setTeacherUnavailability(prev => prev.filter(u => u.id !== id));
       } else {
@@ -566,6 +622,11 @@ export function useSchoolSettings() {
       }
       setHasChanges(true);
       toast.success('تم حذف الفترة بنجاح');
+      try {
+        await api.delete(`/school/settings/unavailability/${id}`);
+      } catch (err) {
+        console.error('Error deleting unavailability:', err);
+      }
     }, { title: 'تأكيد الحذف', confirmText: 'نعم، احذف', cancelText: 'إلغاء' });
   };
 
@@ -639,6 +700,7 @@ export function useSchoolSettings() {
     showEditSchool, setShowEditSchool, showBreakModal, setShowBreakModal,
     showUnavailabilityModal, setShowUnavailabilityModal,
     editingBreak, setEditingBreak, unavailabilityType, setUnavailabilityType,
+    showNoorImportModal, setShowNoorImportModal, noorImportType, setNoorImportType,
     editedSchoolInfo, setEditedSchoolInfo,
     workDays, timingSettings, timeSlotsCount, generatingSlots,
     breakTimes, teacherUnavailability, classUnavailability,
@@ -649,7 +711,7 @@ export function useSchoolSettings() {
     handleSettingChange, handleWorkDayChange,
     handleSoftConstraintToggle, handleSoftConstraintWeight, toggleAllConstraints,
     handleAddBreak, handleEditBreak, handleDeleteBreak, handleSaveBreak,
-    handleAddUnavailability, handleSaveUnavailability, handleDeleteUnavailability,
+    handleAddUnavailability, handleSaveUnavailability, handleDeleteUnavailability, handleOpenNoorImport,
     loadClassAssignments, handleCreateClassAssignment, handleDeleteClassAssignment,
     toggleStageExpand, toggleTrackExpand, toggleGradeExpand,
     navigateToFix, setAssignments,

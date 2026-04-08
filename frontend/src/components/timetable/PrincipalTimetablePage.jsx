@@ -276,6 +276,7 @@ const PrincipalTimetablePage = () => {
   const [modalSubmitting, setModalSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
   const [conflictCells, setConflictCells] = useState([]);
+  const [classUnavailability, setClassUnavailability] = useState([]);
 
   const api = useCallback(async (url, opts = {}) => {
     const res = await fetch(url, {
@@ -288,6 +289,13 @@ const PrincipalTimetablePage = () => {
     }
     return json;
   }, [token, schoolId]);
+
+  const fetchClassUnavailability = useCallback(async () => {
+    try {
+      const data = await api('/api/school/settings/unavailability?entity_type=class');
+      setClassUnavailability(data.items || []);
+    } catch { /* unavailability is optional */ }
+  }, [api]);
 
   const fetchSummary = useCallback(async () => {
     const data = await api('/api/principal/timetable/summary');
@@ -401,7 +409,8 @@ const PrincipalTimetablePage = () => {
         fetchSummary(),
         fetchReadiness(),
         fetchVersions(),
-        fetchFilterOptions()
+        fetchFilterOptions(),
+        fetchClassUnavailability()
       ]);
 
       const versionForGrid = versions?.find(v => v.status === 'published') ||
@@ -420,7 +429,7 @@ const PrincipalTimetablePage = () => {
       setErrorMessage(err.message);
       setPageStatus('error');
     }
-  }, [fetchSummary, fetchReadiness, fetchVersions, fetchFilterOptions, fetchGrid, fetchInsights, fetchIssues]);
+  }, [fetchSummary, fetchReadiness, fetchVersions, fetchFilterOptions, fetchGrid, fetchInsights, fetchIssues, fetchClassUnavailability]);
 
   useEffect(() => {
     if (schoolId) loadPageData();
@@ -1302,6 +1311,7 @@ const PrincipalTimetablePage = () => {
             showWarnings={true}
             showColorCoding={showColorCoding}
             conflictCells={conflictCells}
+            classUnavailability={classUnavailability}
             onSessionClick={handleSessionClick}
             onGenerate={() => setModalState(prev => ({ ...prev, generationModalOpen: true }))}
             onRegenerate={() => setModalState(prev => ({ ...prev, generationModalOpen: true }))}
