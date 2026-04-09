@@ -11,7 +11,11 @@ import { Bell, ShieldAlert, UserPlus, Megaphone, AlertTriangle, Lock, LogIn, Wre
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 const getWsUrl = () => {
   if (API_URL) {
-    return API_URL.replace('https://', 'wss://').replace('http://', 'ws://');
+    const wsUrl = API_URL.replace('https://', 'wss://').replace('http://', 'ws://');
+    if (window.location.protocol === 'https:') {
+      return wsUrl.replace('ws://', 'wss://');
+    }
+    return wsUrl;
   }
   // When using dev proxy, derive WS URL from the current window location
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
