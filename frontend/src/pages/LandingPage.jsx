@@ -123,7 +123,7 @@ function AnimatedCounter({ target, duration = 2000, suffix = '' }) {
     };
   }, [target, duration]);
 
-  return <span ref={ref}>{count > 0 ? `+${count.toLocaleString()}` : '...'}{suffix}</span>;
+  return <span ref={ref}>{count > 0 ? `${count.toLocaleString()}+` : '0'}{suffix}</span>;
 }
 
 function useScrollReveal() {

@@ -63,6 +63,7 @@ def register_middleware(app: FastAPI):
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "font-src 'self' https://fonts.gstatic.com data:; "
             "img-src 'self' data: blob: https:; "
+            "media-src 'self' https:; "
             "connect-src 'self' wss: ws:; "
             "frame-ancestors 'none';"
         )
