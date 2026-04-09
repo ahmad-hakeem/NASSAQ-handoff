@@ -313,7 +313,7 @@ export function useSchoolSettings() {
         toast.success('تم حفظ جميع الإعدادات بنجاح');
       }
       setHasChanges(false);
-      api.get('/timetable-readiness/check').then(r => setReadinessData(r.data)).catch(() => {});
+      api.get('/timetable-readiness/check').then(r => setReadinessData(r.data)).catch(err => { if (process.env.NODE_ENV === 'development') console.warn('Timetable readiness check failed:', err.message); });
     } catch (error) {
       console.error('Save error:', error);
       nassaqError('حدث خطأ في حفظ الإعدادات');

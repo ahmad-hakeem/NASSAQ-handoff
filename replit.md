@@ -59,6 +59,17 @@ Every task must follow these principles before delivery:
 - **Adding new translations**: Add key to both `ar.json` and `en.json`, use `t('key')` in JSX
 - **Old `translations` export**: Still available from `ThemeContext.js` as `translations` (aliased to `locales`) for backward compatibility
 
+### WebSocket Security
+- **Auth method**: Token sent via message after connection (NOT in URL query string) to prevent token leakage in server access logs
+- **Flow**: Client connects → sends `{type: "auth", token: "..."}` → server validates → registers connection
+- **Backward compat**: Server still accepts `?token=` query param as fallback, but frontend no longer uses it
+- **Files**: `frontend/src/contexts/WebSocketContext.jsx`, `backend/routes/websocket_routes.py`
+
+### Content Security Policy
+- **CSP header** set in `backend/app/middleware.py` with directives for script, style, font, img, media, connect sources
+- **media-src**: `'self' https:` — allows notification sounds from external HTTPS sources
+- **Do NOT** add `unsafe-eval` or broad wildcards without security review
+
 ### Alert & Warning System
 - All warning/error/confirm dialogs use `NassaqAlertDialog` component (`frontend/src/components/ui/NassaqAlertDialog.jsx`)
 - `NassaqAlertProvider` wraps the app in `App.js` — all components can use `useNassaqAlert()` hook

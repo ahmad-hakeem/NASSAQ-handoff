@@ -138,17 +138,25 @@ def create_websocket_routes(db, decode_token):
     async def websocket_notifications(websocket: WebSocket, token: str = None):
         """WebSocket endpoint للإشعارات الفورية"""
         
-        # First accept the connection
         await websocket.accept()
         
-        if not token:
+        auth_token = token
+        if not auth_token:
+            try:
+                raw = await asyncio.wait_for(websocket.receive_text(), timeout=10)
+                msg = json.loads(raw)
+                if msg.get("type") == "auth":
+                    auth_token = msg.get("token")
+            except (asyncio.TimeoutError, json.JSONDecodeError, Exception):
+                pass
+        
+        if not auth_token:
             await websocket.send_json({"type": "error", "message": "Token required"})
             await websocket.close(code=4001, reason="Token required")
             return
         
         try:
-            # Decode and validate token
-            payload = decode_token(token)
+            payload = decode_token(auth_token)
             if not payload:
                 await websocket.send_json({"type": "error", "message": "Invalid token"})
                 await websocket.close(code=4001, reason="Invalid token")

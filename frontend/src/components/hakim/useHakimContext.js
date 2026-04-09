@@ -59,7 +59,7 @@ function useHakimContext(options = {}) {
           aiCacheRef.current[cacheKey] = { message: msg, ts: Date.now() };
           hakimEngine.fireEvent('ai_analysis_ready', msg);
         }
-      }).catch(() => {}).finally(() => { aiFetchingRef.current = false; });
+      }).catch(err => { if (process.env.NODE_ENV === 'development') console.warn('Hakim AI analysis failed:', err.message); }).finally(() => { aiFetchingRef.current = false; });
     }
   }, [location.pathname, user, autoDetect, api]);
 

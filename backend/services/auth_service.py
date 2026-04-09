@@ -80,11 +80,13 @@ def create_get_current_user(db):
     return get_current_user
 
 
-def create_require_roles(UserRole):
-    """Factory function to create role checker dependency"""
+def create_require_roles(UserRole, get_current_user_dep=None):
+    """Factory function to create role checker dependency (legacy — prefer require_roles from dependencies.py)"""
     def require_roles(allowed_roles: List):
-        async def role_checker(current_user: dict = Depends(security)):
-            if current_user["role"] not in [r.value for r in allowed_roles]:
+        dep = get_current_user_dep or security
+        async def role_checker(current_user: dict = Depends(dep)):
+            user_role = current_user.get("role") if isinstance(current_user, dict) else None
+            if not user_role or user_role not in [r.value for r in allowed_roles]:
                 raise HTTPException(status_code=403, detail="Insufficient permissions")
             return current_user
         return role_checker

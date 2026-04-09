@@ -198,9 +198,10 @@ export const WebSocketProvider = ({ children }) => {
     }
     
     try {
-      const ws = new WebSocket(`${WS_URL}/api/ws/notifications?token=${token}`);
+      const ws = new WebSocket(`${WS_URL}/api/ws/notifications`);
       
       ws.onopen = () => {
+        ws.send(JSON.stringify({ type: 'auth', token }));
         if (process.env.NODE_ENV === 'development') console.info('WebSocket connected');
         setIsConnected(true);
         reconnectDelayRef.current = 1000;

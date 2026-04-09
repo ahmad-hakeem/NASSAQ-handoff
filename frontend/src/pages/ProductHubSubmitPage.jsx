@@ -200,7 +200,7 @@ export function ProductHubSubmitPage() {
   useEffect(() => {
     axios.get('/api/product-hub/config', { headers: authHeaders() })
       .then(r => setConfig(r.data))
-      .catch(() => {});
+      .catch(err => { if (process.env.NODE_ENV === 'development') console.warn('Failed to fetch product hub config:', err.message); });
   }, []);
 
   useEffect(() => {

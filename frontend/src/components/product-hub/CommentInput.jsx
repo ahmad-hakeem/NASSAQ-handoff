@@ -15,7 +15,7 @@ function useMentionableUsers(isAdmin) {
     if (!isAdmin) return;
     axios.get('/api/product-hub/mentionable-users', { headers: authHeaders() })
       .then(res => setUsers(res.data.users || []))
-      .catch(() => {});
+      .catch(err => { if (process.env.NODE_ENV === 'development') console.warn('Failed to fetch mentionable users:', err.message); });
   }, [isAdmin]);
   return users;
 }
