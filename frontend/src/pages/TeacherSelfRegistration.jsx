@@ -318,7 +318,10 @@ export const TeacherSelfRegistration = () => {
       
       const { access_token, refresh_token, user: userData } = response.data;
       localStorage.setItem('nassaq_token', access_token);
-      localStorage.setItem('nassaq_refresh_token', refresh_token);
+      localStorage.removeItem('nassaq_refresh_token');
+      if (refresh_token) {
+        sessionStorage.setItem('nassaq_refresh_token', refresh_token);
+      }
       
       toast.success(t('accountCreatedSuccessfullyLoggingIn'));
       
