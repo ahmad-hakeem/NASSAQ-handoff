@@ -49,6 +49,8 @@ def create_bulk_teacher_routes(db, get_current_user, require_roles, UserRole, ha
         
         try:
             content = await file.read()
+            if len(content) > 10 * 1024 * 1024:
+                raise HTTPException(status_code=400, detail="حجم الملف يتجاوز الحد المسموح (10 ميغابايت)")
             decoded = content.decode('utf-8-sig')  # Handle BOM
             
             reader = csv.DictReader(io.StringIO(decoded))

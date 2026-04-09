@@ -183,9 +183,10 @@ def setup_bulk_routes(db, get_current_user, require_roles, UserRole):
             raise HTTPException(status_code=400, detail="يجب أن يكون الملف بصيغة Excel أو CSV")
         
         try:
-            # Read file
             contents = await file.read()
-            
+            if len(contents) > 10 * 1024 * 1024:
+                raise HTTPException(status_code=400, detail="حجم الملف يتجاوز الحد المسموح (10 ميغابايت)")
+
             if file.filename.endswith('.csv'):
                 df = pd.read_csv(io.BytesIO(contents))
             else:

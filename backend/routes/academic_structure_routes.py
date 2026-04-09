@@ -687,6 +687,8 @@ async def import_calendar_ai(
         raise HTTPException(status_code=404, detail="السنة الدراسية غير موجودة")
 
     content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="حجم الملف يتجاوز الحد المسموح (10 ميغابايت)")
     filename = file.filename or "calendar"
 
     try:

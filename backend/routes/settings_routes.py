@@ -587,8 +587,17 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
     ):
         """رفع صورة شخصية"""
         try:
-            # Read and encode file
+            MAX_SIZE = 5 * 1024 * 1024  # 5 MB
+            ALLOWED_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+
+            if file.content_type not in ALLOWED_TYPES:
+                raise HTTPException(status_code=400, detail="صيغة الملف غير مدعومة. يرجى رفع صورة (JPEG, PNG, GIF, WebP)")
+
             content = await file.read()
+
+            if len(content) > MAX_SIZE:
+                raise HTTPException(status_code=400, detail="حجم الصورة يتجاوز الحد المسموح (5 ميغابايت)")
+
             encoded = base64.b64encode(content).decode('utf-8')
             data_url = f"data:{file.content_type};base64,{encoded}"
             
