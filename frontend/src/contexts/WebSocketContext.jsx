@@ -113,7 +113,7 @@ export const WebSocketProvider = ({ children }) => {
   
   // Handle incoming notification
   const handleNotification = useCallback((notification) => {
-    const isRTL = document.documentElement.dir === 'rtl' || true; // Default to Arabic
+    const isRTL = document.documentElement.dir === 'rtl';
     const message = isRTL ? notification.message_ar : notification.message_en;
     const title = isRTL ? notification.title_ar : notification.title_en;
     
@@ -243,7 +243,8 @@ export const WebSocketProvider = ({ children }) => {
         
         if (event.code === 4001) {
           if (process.env.NODE_ENV === 'development') console.warn('WebSocket auth failed (4001), not reconnecting');
-          return;
+          return; // 4001 = invalid/expired token — do not reconnect
+          // Note: 4002 = server ping timeout (network blip) — falls through to reconnect logic below
         }
         
         if (event.code !== 1000 && token && reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {

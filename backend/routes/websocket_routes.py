@@ -199,7 +199,7 @@ def create_websocket_routes(db, decode_token):
                         except Exception:
                             logger.info(f"Server ping failed for user={uid}, force-closing")
                             try:
-                                await ws.close(code=4001, reason="ping failed")
+                                await ws.close(code=4002, reason="ping failed")
                             except Exception:
                                 pass
                             return
