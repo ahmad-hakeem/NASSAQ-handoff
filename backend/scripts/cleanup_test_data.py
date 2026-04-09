@@ -34,12 +34,17 @@ async def cleanup():
         placeholders = ", ".join(f":id_{i}" for i in range(len(school_ids)))
         params = {f"id_{i}": sid for i, sid in enumerate(school_ids)}
 
-        for table in ["classes", "teachers", "students", "users"]:
-            col = "tenant_id" if table == "users" else "school_id"
-            r = await session.execute(
-                text(f"DELETE FROM {table} WHERE {col} IN ({placeholders})"),
-                params,
+        delete_targets = [
+            ("classes", "school_id"),
+            ("teachers", "school_id"),
+            ("students", "school_id"),
+            ("users", "tenant_id"),
+        ]
+        for table, col in delete_targets:
+            sql = "DELETE FROM {t} WHERE {c} IN ({p})".format(
+                t=table, c=col, p=placeholders
             )
+            r = await session.execute(text(sql), params)
             print(f"  Deleted {r.rowcount} rows from {table}")
 
         r = await session.execute(
