@@ -341,10 +341,12 @@ async def seed_admin(current_user: dict = Depends(require_roles([UserRole.PLATFO
 @router.post("/seed/test-accounts")
 async def seed_test_accounts(current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))):
     """
-    إنشاء حسابات اختبار للنظام - Platform Admin only:
-    - مدير المدرسة: principal@nassaq.com / NassaqPrincipal2026
-    - معلم: teacher@nassaq.com / NassaqTeacher2026
+    إنشاء حسابات اختبار للنظام - Platform Admin only.
+    Passwords are read from TEST_PRINCIPAL_PASSWORD and TEST_TEACHER_PASSWORD env vars.
     """
+    test_principal_password = os.getenv("TEST_PRINCIPAL_PASSWORD", "NassaqPrincipal2026")
+    test_teacher_password = os.getenv("TEST_TEACHER_PASSWORD", "NassaqTeacher2026")
+
     results = {
         "principal": None,
         "teacher": None
@@ -382,7 +384,7 @@ async def seed_test_accounts(current_user: dict = Depends(require_roles([UserRol
     if existing_principal:
         # Update password to ensure it's correct
         await gd_update_one(db.session, "users", {"email": "principal@nassaq.com"}, {
-                "password_hash": hash_password("NassaqPrincipal2026"),
+                "password_hash": hash_password(test_principal_password),
                 "is_active": True,
                 "updated_at": datetime.now(timezone.utc).isoformat()
             })
@@ -392,7 +394,7 @@ async def seed_test_accounts(current_user: dict = Depends(require_roles([UserRol
         principal_doc = {
             "id": principal_id,
             "email": "principal@nassaq.com",
-            "password_hash": hash_password("NassaqPrincipal2026"),
+            "password_hash": hash_password(test_principal_password),
             "full_name": "مدير المدرسة",
             "full_name_en": "School Principal",
             "role": UserRole.SCHOOL_PRINCIPAL.value,
@@ -413,7 +415,7 @@ async def seed_test_accounts(current_user: dict = Depends(require_roles([UserRol
     if existing_teacher:
         # Update password to ensure it's correct
         await gd_update_one(db.session, "users", {"email": "teacher@nassaq.com"}, {
-                "password_hash": hash_password("NassaqTeacher2026"),
+                "password_hash": hash_password(test_teacher_password),
                 "is_active": True,
                 "updated_at": datetime.now(timezone.utc).isoformat()
             })
@@ -426,7 +428,7 @@ async def seed_test_accounts(current_user: dict = Depends(require_roles([UserRol
         teacher_user_doc = {
             "id": teacher_user_id,
             "email": "teacher@nassaq.com",
-            "password_hash": hash_password("NassaqTeacher2026"),
+            "password_hash": hash_password(test_teacher_password),
             "full_name": "معلم تجريبي",
             "full_name_en": "Test Teacher",
             "role": UserRole.TEACHER.value,
@@ -473,12 +475,12 @@ async def seed_test_accounts(current_user: dict = Depends(require_roles([UserRol
         "accounts": {
             "principal": {
                 "email": "principal@nassaq.com",
-                "password": "NassaqPrincipal2026",
+                "password": test_principal_password,
                 "role": "School Principal"
             },
             "teacher": {
                 "email": "teacher@nassaq.com",
-                "password": "NassaqTeacher2026",
+                "password": test_teacher_password,
                 "role": "Teacher"
             }
         },
