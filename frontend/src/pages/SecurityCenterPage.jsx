@@ -448,11 +448,13 @@ export default function SecurityCenterPage() {
       const scoreColor = metrics.securityScore >= 80 ? '#228B22' : metrics.securityScore >= 50 ? '#DAA520' : '#DC143C';
       const scoreLabel = metrics.securityScore >= 90 ? (rtl ? 'ممتاز' : 'Excellent') : metrics.securityScore >= 70 ? (rtl ? 'جيد' : 'Good') : metrics.securityScore >= 50 ? (rtl ? 'يحتاج تحسين' : 'Needs Improvement') : (rtl ? 'حرج' : 'Critical');
 
+      const escHtml = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
       const tbl = (headers, rows, headerBg = '#294164') => {
-        const ths = headers.map(h => `<th style="padding:6px 10px;background:${headerBg};color:#fff;font-size:11px;text-align:${align}">${h}</th>`).join('');
+        const ths = headers.map(h => `<th style="padding:6px 10px;background:${headerBg};color:#fff;font-size:11px;text-align:${align}">${escHtml(h)}</th>`).join('');
         const trs = rows.map((r, i) => {
           const bg = i % 2 === 1 ? '#f5f7fa' : '#fff';
-          const tds = r.map(c => `<td style="padding:5px 10px;font-size:10px;text-align:${align};border-bottom:1px solid #eee">${c}</td>`).join('');
+          const tds = r.map(c => `<td style="padding:5px 10px;font-size:10px;text-align:${align};border-bottom:1px solid #eee">${escHtml(c)}</td>`).join('');
           return `<tr style="background:${bg}">${tds}</tr>`;
         }).join('');
         return `<table style="width:100%;border-collapse:collapse;margin-bottom:10px"><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table>`;
