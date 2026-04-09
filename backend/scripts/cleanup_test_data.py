@@ -48,7 +48,7 @@ async def cleanup():
             print(f"  Deleted {r.rowcount} rows from {table}")
 
         r = await session.execute(
-            text(f"DELETE FROM schools WHERE id IN ({placeholders})"),
+            text("DELETE FROM schools WHERE id IN ({p})".format(p=placeholders)),
             params,
         )
         print(f"  Deleted {r.rowcount} schools")
