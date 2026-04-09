@@ -135,13 +135,7 @@ export const Sidebar = ({ children }) => {
       });
       
       if (response.data.success) {
-        if (updateToken) {
-          await updateToken(response.data.access_token);
-        } else {
-          localStorage.setItem('nassaq_token', response.data.access_token);
-          window.location.reload();
-          return;
-        }
+        await updateToken(response.data.access_token);
 
         toast.success(response.data.message || (t('roleSwitchedSuccessfully')));
         setShowRoleSwitcher(false);
@@ -163,13 +157,7 @@ export const Sidebar = ({ children }) => {
       const response = await api.post('/user-roles/return-to-original', {});
       
       if (response.data.success) {
-        if (updateToken) {
-          await updateToken(response.data.access_token);
-        } else {
-          localStorage.setItem('nassaq_token', response.data.access_token);
-          window.location.reload();
-          return;
-        }
+        await updateToken(response.data.access_token);
 
         toast.success(response.data.message || (t('returnedToOriginalRole')));
         setShowRoleSwitcher(false);
