@@ -78,8 +78,6 @@ CORS_ORIGINS = "https://76d3d322-060b-41e8-b1b6-757b9374d907-00-uqpmfo0lufwh.wor
 FRONTEND_URL = "https://76d3d322-060b-41e8-b1b6-757b9374d907-00-uqpmfo0lufwh.worf.replit.dev"
 
   [userenv.shared]
-  ADMIN_SEED_PASSWORD_ZALAT = "h38xaHBJ"
-  ADMIN_SEED_PASSWORD_HAKIM = "Hakimnassaqapp2026$$"
 ENVIRONMENT = "production"
 
   [objectStorage]
