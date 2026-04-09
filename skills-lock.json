@@ -41,6 +41,11 @@
       "sourceType": "github",
       "computedHash": "f3bc47f890f42a44db1007ab390709ec368e4b8c089baee6b0007182236ac474"
     },
+    "webapp-testing": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "computedHash": "cf8e5916d474886bd67b09691247f43f331523008b7d366064bc607ab42d6302"
+    },
     "writing-plans": {
       "source": "obra/superpowers",
       "sourceType": "github",
