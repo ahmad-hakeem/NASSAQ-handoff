@@ -16,7 +16,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 async def create_backup_snapshot():
     from db import engine
-    from sqlalchemy import text
+    from sqlalchemy import func, select, text
+    from sqlalchemy.sql import column
+    from sqlalchemy.sql import table as sa_table
 
     tables = [
         "users", "schools", "students", "teachers", "classes",
@@ -33,9 +35,12 @@ async def create_backup_snapshot():
     async with engine.connect() as conn:
         for table in tables:
             try:
-                result = await conn.execute(text(f"SELECT count(*) FROM {table}"))
+                t = sa_table(table, column("id"))
+                result = await conn.execute(select(func.count()).select_from(t))
                 count = result.scalar()
-                id_result = await conn.execute(text(f"SELECT id FROM {table} ORDER BY id LIMIT 3"))
+                id_result = await conn.execute(
+                    select(column("id")).select_from(t).order_by(column("id")).limit(3)
+                )
                 sample_ids = [row[0] for row in id_result.fetchall()]
                 snapshot["tables"][table] = {
                     "count": count,
