@@ -100,7 +100,7 @@ def register_middleware(app: FastAPI):
                 try:
                     auth_hdr = request.headers.get("authorization", "")
                     if auth_hdr.startswith("Bearer "):
-                        from jose import jwt as _jwt
+                        import jwt as _jwt
                         payload = _jwt.decode(auth_hdr[7:], JWT_SECRET, algorithms=[JWT_ALGORITHM])
                         user_id = payload.get("sub")
                         user_role = payload.get("role")

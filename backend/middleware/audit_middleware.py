@@ -342,7 +342,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
             try:
                 auth_header = request.headers.get("authorization", "")
                 if auth_header.startswith("Bearer "):
-                    import jose.jwt as _jwt
+                    import jwt as _jwt
                     from config import JWT_SECRET, JWT_ALGORITHM
                     token = auth_header[7:]
                     payload = _jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
