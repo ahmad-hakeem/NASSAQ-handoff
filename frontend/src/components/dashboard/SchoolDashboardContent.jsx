@@ -313,10 +313,10 @@ const AttendanceRadial = ({ data, isRTL }) => {
       </CardHeader>
       <CardContent className="space-y-5">
         <div className="grid grid-cols-2 gap-4">
-          {categories.map((cat, i) => {
+          {categories.map((cat) => {
             const color = getColor(cat.percent);
             return (
-              <div key={i} className="relative p-4 rounded-2xl bg-muted/30 border border-border/50">
+              <div key={cat.label} className="relative p-4 rounded-2xl bg-muted/30 border border-border/50">
                 <div className="flex flex-col items-center text-center mb-4">
                   <div className="relative mb-2">
                     <RadialRing percent={cat.percent} color={color} />
@@ -490,11 +490,11 @@ const DailyOpsPanel = ({ data, isRTL, onNavigate }) => {
           </div>
         ) : (
           <div className="space-y-1.5">
-            {sorted.map((item, idx) => {
+            {sorted.map((item) => {
               const ItemIcon = item.icon;
               const isCritical = item.priority === 'critical';
               return (
-                <button key={idx} onClick={() => onNavigate?.(item.path)}
+                <button key={item.path || item.label} onClick={() => onNavigate?.(item.path)}
                   className={`w-full flex items-center gap-3 p-2.5 rounded-xl transition-all duration-200 group text-start ${
                     isCritical
                       ? 'bg-red-50/80 dark:bg-red-950/20 hover:bg-red-100/80 dark:hover:bg-red-950/30 ring-1 ring-red-200/60 dark:ring-red-800/30'

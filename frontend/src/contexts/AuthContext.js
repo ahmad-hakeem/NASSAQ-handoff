@@ -64,14 +64,15 @@ export const AuthProvider = ({ children }) => {
     return sessionStorage.getItem('nassaq_impersonating') === 'true';
   });
 
-  const api = axios.create({
+  const api = useMemo(() => axios.create({
     baseURL: `${API_URL}/api`,
     headers: {
       'Content-Type': 'application/json',
     },
-  });
+  }), []);
 
-  api.interceptors.request.use((config) => {
+  useEffect(() => {
+  const reqInterceptor = api.interceptors.request.use((config) => {
     const storedToken = localStorage.getItem('nassaq_token');
     if (storedToken) {
       config.headers.Authorization = `Bearer ${storedToken}`;
@@ -87,7 +88,7 @@ export const AuthProvider = ({ children }) => {
     return config;
   });
 
-  api.interceptors.response.use(
+  const resInterceptor = api.interceptors.response.use(
     (response) => response,
     async (error) => {
       const config = error.config || {};
@@ -142,6 +143,12 @@ export const AuthProvider = ({ children }) => {
     }
   );
 
+  return () => {
+    api.interceptors.request.eject(reqInterceptor);
+    api.interceptors.response.eject(resInterceptor);
+  };
+  }, [api]);
+
   const fetchUser = useCallback(async () => {
     if (!token) {
       setLoading(false);
@@ -179,8 +186,7 @@ export const AuthProvider = ({ children }) => {
       clearTimeout(timeoutId);
       setLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, [token, api]);
 
   useEffect(() => {
     fetchUser();

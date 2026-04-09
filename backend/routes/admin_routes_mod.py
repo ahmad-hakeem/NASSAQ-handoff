@@ -313,10 +313,13 @@ async def seed_admin(current_user: dict = Depends(require_roles([UserRole.PLATFO
         return {"message": "Admin already exists", "email": "info@nassaqapp.com"}
     
     admin_id = str(uuid.uuid4())
+    seed_password = os.environ.get("NASSAQ_SEED_ADMIN_PASSWORD")
+    if not seed_password:
+        raise HTTPException(status_code=500, detail="NASSAQ_SEED_ADMIN_PASSWORD environment variable is not set")
     admin_doc = {
         "id": admin_id,
         "email": "info@nassaqapp.com",
-        "password_hash": hash_password("NassaqAdmin2026!##$$HBJ"),
+        "password_hash": hash_password(seed_password),
         "full_name": "مدير المنصة",
         "full_name_en": "Platform Admin",
         "role": UserRole.PLATFORM_ADMIN.value,

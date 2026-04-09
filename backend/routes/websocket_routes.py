@@ -236,7 +236,7 @@ def create_websocket_routes(db, decode_token):
                                     )
                                     await ws_session.commit()
                     except json.JSONDecodeError:
-                        pass
+                        logger.debug(f"Malformed JSON from WebSocket user={user_id}")
                         
             except (WebSocketDisconnect, Exception) as e:
                 if not isinstance(e, WebSocketDisconnect):

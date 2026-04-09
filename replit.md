@@ -87,6 +87,18 @@ Every task must follow these principles before delivery:
 - **Do NOT use** `Intl.DateTimeFormat('ar-SA-u-ca-islamic')` — it's browser-dependent and inaccurate by 1-2 days vs official Saudi calendar
 - All dashboard pages (Teacher, Student, Parent, Admin, Portals) use the centralized utility
 
+### Security Hardening (Bug Audit — April 2026)
+- **Sensitive field filtering**: `security_routes.py` `/account-status/{user_id}` strips `password_hash`, `password`, `refresh_token`, `reset_token` before returning user data
+- **Seed admin password**: No longer hardcoded in source code — requires `NASSAQ_SEED_ADMIN_PASSWORD` environment variable
+- **SQL filter blocking**: `sql_utils.py` blocks filters on sensitive columns (`password_hash`, `password`, `refresh_token`, `reset_token`) in both ORM and JSONB query paths — logged as warnings
+- **Regex sanitization**: All `$regex` filter operators in `sql_utils.py` are escaped via `re.escape()` and length-limited (200 chars) to prevent ReDoS attacks
+- **Auth error logging**: `auth_service.py` now logs database lookup failures during JWT validation instead of silently swallowing them
+- **Exception logging**: Swallowed exceptions in `notification_engine.py`, `websocket_routes.py`, and `identity_engine.py` now log with proper error context
+- **Tenant isolation warnings**: `warn_missing_tenant_filter()` utility in `middleware/tenant_isolation.py` — logs warnings when tenant-scoped collections are queried without tenant filters
+- **CSP cleanup**: Removed `cdn.tailwindcss.com` from Content-Security-Policy in both `backend/app/middleware.py` and `frontend/craco.config.js`; added `media-src 'self' https:` to frontend CSP
+- **AuthContext stability**: `api` axios instance memoized with `useMemo`; interceptors properly set up and cleaned up via `useEffect`
+- **React key fixes**: `SchoolDashboardContent.jsx` uses stable keys (`cat.label`, `item.path`) instead of array indices
+
 ### Post-Fix Documentation
 Each fix report must include: root cause, why it wasn't caught before, what changed, how recurrence is prevented, what was tested
 

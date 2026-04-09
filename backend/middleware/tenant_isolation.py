@@ -275,6 +275,26 @@ class TenantAwareQuery:
         return await collection.count_documents(filtered_query)
 
 
+TENANT_SCOPED_COLLECTIONS = frozenset({
+    "students", "teachers", "classes", "subjects", "attendance",
+    "teacher_attendance", "schedules", "grades", "behaviour_records",
+    "events", "notifications", "registration_requests",
+})
+
+
+def warn_missing_tenant_filter(collection: str, filters: dict, user: dict = None):
+    if collection not in TENANT_SCOPED_COLLECTIONS:
+        return
+    if user and TenantIsolation.is_platform_user(user):
+        return
+    has_tenant = any(k in filters for k in ("tenant_id", "school_id"))
+    if not has_tenant:
+        logger.warning(
+            f"Query on '{collection}' without tenant filter — "
+            f"user={user.get('id') if user else 'unknown'}, filters={list(filters.keys())}"
+        )
+
+
 # Export
 __all__ = [
     "PLATFORM_ROLES",
@@ -282,4 +302,6 @@ __all__ = [
     "tenant_scoped",
     "validate_resource_tenant",
     "TenantAwareQuery",
+    "warn_missing_tenant_filter",
+    "TENANT_SCOPED_COLLECTIONS",
 ]

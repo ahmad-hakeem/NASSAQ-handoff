@@ -1,4 +1,6 @@
+import re as _re_module
 import uuid
+import logging
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any, Type
 
@@ -8,9 +10,23 @@ from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.types import DateTime, Date
 
+_sql_logger = logging.getLogger("nassaq.sql_utils")
+
 TENANT_ALIAS = {"tenant_id": "school_id", "school_id": "tenant_id"}
 
 _SKIP_KEYS = frozenset({"_collection"})
+
+_SENSITIVE_FILTER_KEYS = frozenset({
+    "password_hash", "password", "refresh_token", "reset_token",
+})
+
+_MAX_REGEX_LENGTH = 200
+
+
+def _sanitize_regex(pattern: str) -> str:
+    if len(pattern) > _MAX_REGEX_LENGTH:
+        raise ValueError(f"Regex pattern too long ({len(pattern)} > {_MAX_REGEX_LENGTH})")
+    return _re_module.escape(pattern)
 
 
 def _get_orm_model(collection: str):
@@ -122,6 +138,9 @@ def _build_orm_filter_conditions(model_cls, filters: dict):
                 sub_conds = _build_orm_filter_conditions(model_cls, sub)
                 conds.extend(sub_conds)
         elif k in cols:
+            if k in _SENSITIVE_FILTER_KEYS:
+                _sql_logger.warning(f"Blocked filter on sensitive column: {k}")
+                continue
             col = getattr(model_cls, k)
             if isinstance(v, dict):
                 for op, val in v.items():
@@ -144,11 +163,12 @@ def _build_orm_filter_conditions(model_cls, filters: dict):
                     elif op == "$nin":
                         conds.append(~col.in_(val))
                     elif op == "$regex":
+                        safe_pattern = _sanitize_regex(str(val))
                         options = v.get("$options", "") if isinstance(v, dict) else ""
                         if "i" in options:
-                            conds.append(col.op("~*")(str(val)))
+                            conds.append(col.op("~*")(safe_pattern))
                         else:
-                            conds.append(col.op("~")(str(val)))
+                            conds.append(col.op("~")(safe_pattern))
                     elif op == "$options":
                         pass
                     elif op == "$exists":
@@ -195,11 +215,12 @@ def _build_orm_filter_conditions(model_cls, filters: dict):
                     elif op == "$in":
                         conds.append(col_expr.in_([str(x) for x in val]))
                     elif op == "$regex":
+                        safe_pattern = _sanitize_regex(str(val))
                         options = v.get("$options", "") if isinstance(v, dict) else ""
                         if "i" in options:
-                            conds.append(col_expr.op("~*")(str(val)))
+                            conds.append(col_expr.op("~*")(safe_pattern))
                         else:
-                            conds.append(col_expr.op("~")(str(val)))
+                            conds.append(col_expr.op("~")(safe_pattern))
                     elif op == "$options":
                         pass
                     elif op == "$exists":
@@ -342,6 +363,9 @@ def _build_filter_conditions(model_cls, filters: dict):
     if not filters:
         return conds
     for k, v in filters.items():
+        if k in _SENSITIVE_FILTER_KEYS:
+            _sql_logger.warning(f"Blocked filter on sensitive key: {k}")
+            continue
         if k == "$or":
             or_conds = []
             for sub in v:
@@ -419,11 +443,12 @@ def _build_filter_conditions(model_cls, filters: dict):
                 elif op == "$nin":
                     conds.append(~col_expr.in_([str(x) for x in val]))
                 elif op == "$regex":
+                    safe_pattern = _sanitize_regex(str(val))
                     options = v.get("$options", "") if isinstance(v, dict) else ""
                     if "i" in options:
-                        conds.append(col_expr.op("~*")(str(val)))
+                        conds.append(col_expr.op("~*")(safe_pattern))
                     else:
-                        conds.append(col_expr.op("~")(str(val)))
+                        conds.append(col_expr.op("~")(safe_pattern))
                 elif op == "$options":
                     pass
                 elif op == "$exists":
@@ -976,9 +1001,8 @@ def _check_match_condition(doc, k, v):
                 if not ov and dv is not None:
                     return False
             elif op == "$regex":
-                import re as _re
-                pattern = str(ov)
-                if not _re.search(pattern, str(dv or ""), _re.IGNORECASE):
+                pattern = _re_module.escape(str(ov))
+                if not _re_module.search(pattern, str(dv or ""), _re_module.IGNORECASE):
                     return False
         return True
     return dv == v

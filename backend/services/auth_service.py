@@ -57,8 +57,9 @@ def create_get_current_user(db):
             user = None
             try:
                 user = await gd_find_one(db.session, "users", {"_id": str(user_id)})
-            except Exception:
-                pass
+            except Exception as e:
+                import logging
+                logging.getLogger("nassaq.auth").warning(f"User lookup by _id failed: {e}")
             
             if not user:
                 user = await gd_find_one(db.session, "users", {"id": user_id})

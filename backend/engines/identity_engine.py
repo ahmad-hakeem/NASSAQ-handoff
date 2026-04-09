@@ -626,8 +626,9 @@ class IdentityEngine:
             )
             self.session.add(obj)
             await self.session.flush()
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+            logging.getLogger("nassaq.identity").warning(f"Failed to write audit log: {e}")
 
 
 __all__ = ["IdentityEngine"]

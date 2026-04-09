@@ -170,7 +170,9 @@ class NotificationEngine:
                 )
                 results["created"] += 1
                 results["notification_ids"].append(notification["id"])
-            except Exception:
+            except Exception as e:
+                import logging
+                logging.getLogger("nassaq.notifications").error(f"Failed to create notification for {recipient_id}: {e}")
                 results["failed"] += 1
 
         return results

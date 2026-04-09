@@ -395,9 +395,10 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
                 "timestamp": now
             })
 
+            logger.info(f"Password reset for user {user_id} by admin {current_user.get('id')}")
             return {
                 "success": True,
-                "message": "تم إعادة تعيين كلمة المرور",
+                "message": "تم إعادة تعيين كلمة المرور بنجاح. سيُطلب من المستخدم تغيير كلمة المرور عند الدخول.",
                 "temporary_password": temp_password,
                 "must_change_on_login": True
             }
@@ -416,7 +417,9 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
         if not user:
             raise HTTPException(status_code=404, detail="المستخدم غير موجود")
 
-        return user
+        SENSITIVE_FIELDS = {"password_hash", "password", "refresh_token", "reset_token"}
+        safe_user = {k: v for k, v in user.items() if k not in SENSITIVE_FIELDS}
+        return safe_user
 
     @router.get("/dashboard")
     async def security_dashboard(

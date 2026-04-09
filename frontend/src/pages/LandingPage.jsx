@@ -206,7 +206,7 @@ export const LandingPage = () => {
           });
         }
       } catch (error) {
-        
+        console.error('Failed to fetch platform stats:', error);
       }
     };
     fetchStats();
