@@ -154,8 +154,8 @@ def create_teacher_registration_router(db, get_current_user, require_roles, User
 
         try:
             validate_password_complexity(data.password)
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="كلمة المرور لا تستوفي متطلبات التعقيد")
 
         session = db.session
 

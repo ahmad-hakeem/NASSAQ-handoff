@@ -1018,9 +1018,10 @@ async def create_test_accounts(
             }
         }
     except Exception as e:
+        logger.error(f"Test account creation error: {e}")
         return {
             "success": False,
-            "message": f"حدث خطأ: {str(e)}"
+            "message": "حدث خطأ أثناء إنشاء الحسابات التجريبية"
         }
 
 

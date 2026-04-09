@@ -435,11 +435,10 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
             cutoff_24h = (now - timedelta(hours=24)).isoformat()
             cutoff_30d = (now - timedelta(days=30)).isoformat()
 
-            all_users = await gd_find(db.session, "users", {}, limit=50000)
-            total_accounts = len(all_users)
-            active_accounts = sum(1 for u in all_users if u.get("is_active", True))
-            locked_accounts = sum(1 for u in all_users if u.get("is_locked", False))
-            must_change_pw = sum(1 for u in all_users if u.get("must_change_password", False))
+            total_accounts = await gd_count(db.session, "users", {})
+            active_accounts = await gd_count(db.session, "users", {"is_active": True})
+            locked_accounts = await gd_count(db.session, "users", {"is_locked": True})
+            must_change_pw = await gd_count(db.session, "users", {"must_change_password": True})
 
             failed_logins_24h = await gd_count(db.session, "audit_logs", {
                 "action": {"$in": ["auth.login_failed", "login_failed"]},
@@ -761,17 +760,16 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
             cutoff_24h = (now - timedelta(hours=24)).isoformat()
             cutoff_90d = (now - timedelta(days=90)).isoformat()
 
-            all_users = await gd_find(db.session, "users", {}, limit=50000)
-            total = len(all_users)
-            active = sum(1 for u in all_users if u.get("is_active", True))
-            locked = sum(1 for u in all_users if u.get("is_locked", False))
-            must_change = sum(1 for u in all_users if u.get("must_change_password", False))
+            total = await gd_count(db.session, "users", {})
+            active = await gd_count(db.session, "users", {"is_active": True})
+            locked = await gd_count(db.session, "users", {"is_locked": True})
+            must_change = await gd_count(db.session, "users", {"must_change_password": True})
 
-            inactive_90d = []
-            for u in all_users:
-                last_login = u.get("last_login") or u.get("created_at") or ""
-                if last_login and last_login < cutoff_90d and u.get("is_active", True):
-                    inactive_90d.append(u.get("email", "unknown"))
+            inactive_users = await gd_find(db.session, "users", {
+                "is_active": True,
+                "last_login": {"$lt": cutoff_90d}
+            }, limit=100)
+            inactive_90d = [u.get("email", "unknown") for u in inactive_users]
 
             failed_24h = await gd_count(db.session, "audit_logs", {
                 "action": {"$in": ["auth.login_failed", "login_failed"]},

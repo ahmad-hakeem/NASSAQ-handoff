@@ -382,7 +382,7 @@ export const AccountSettingsPage = () => {
     setSwitchingRole(true);
     try {
       const response = await api.post(`/user-roles/switch/${roleId}`);
-      if (response.data?.access_token) localStorage.setItem('token', response.data.access_token);
+      if (response.data?.access_token) localStorage.setItem('nassaq_token', response.data.access_token);
       toast.success(t('roleSwitchedSuccessfully'));
       setTimeout(() => window.location.reload(), 1000);
     } catch (error) {

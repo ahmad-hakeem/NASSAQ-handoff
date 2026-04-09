@@ -245,7 +245,7 @@ const PrincipalTimetablePage = () => {
     return localStorage.getItem('school_id') || localStorage.getItem('nassaq_school_id') || '';
   }, [user, schoolContext]);
 
-  const token = localStorage.getItem('nassaq_token') || localStorage.getItem('token') || '';
+  const token = localStorage.getItem('nassaq_token') || '';
 
   const [pageStatus, setPageStatus] = useState('loading');
   const [generationStatus, setGenerationStatus] = useState('idle');

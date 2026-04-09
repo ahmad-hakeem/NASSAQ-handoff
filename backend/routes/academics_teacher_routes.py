@@ -488,7 +488,7 @@ async def create_teacher_wizard(
     # Generate IDs and password
     teacher_id = str(uuid.uuid4())
     user_id = str(uuid.uuid4())
-    temp_password = f"T{random.randint(100000, 999999)}"
+    temp_password = f"Tch{uuid.uuid4().hex[:8]}!"
     
     # Create teacher document
     teacher_doc = {
@@ -529,6 +529,7 @@ async def create_teacher_wizard(
         "role": "teacher",
         "is_active": True,
         "is_suspended": False,
+        "must_change_password": True,
         "tenant_id": school_id,
         "school_id": school_id,
         "teacher_id": teacher_id,
@@ -568,7 +569,7 @@ async def create_teacher_wizard(
         "message": "تم إنشاء حساب المعلم بنجاح"
     }
 
-@router.post("/teachers", response_model=TeacherResponse)
+@router.post("/teachers")
 async def create_teacher(
     teacher_data: TeacherCreate,
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN]))
@@ -591,10 +592,11 @@ async def create_teacher(
     user_id = str(uuid.uuid4())
     teacher_id = str(uuid.uuid4())
     
+    temp_password = f"Tch{uuid.uuid4().hex[:8]}!"
     user_doc = {
         "id": user_id,
         "email": teacher_data.email,
-        "password_hash": hash_password("Teacher@123"),  # Default password
+        "password_hash": hash_password(temp_password),
         "full_name": teacher_data.full_name,
         "full_name_en": teacher_data.full_name_en,
         "role": UserRole.TEACHER.value,
@@ -602,6 +604,7 @@ async def create_teacher(
         "phone": teacher_data.phone,
         "avatar_url": None,
         "is_active": True,
+        "must_change_password": True,
         "preferred_language": "ar",
         "preferred_theme": "light",
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -637,7 +640,10 @@ async def create_teacher(
     except Exception as e:
         logger.warning(f"Auto-assign teacher {teacher_id} to classes failed: {e}")
     
-    return TeacherResponse(**teacher_doc)
+    response = TeacherResponse(**teacher_doc)
+    response_data = response.dict() if hasattr(response, 'dict') else response.model_dump()
+    response_data["temp_password"] = temp_password
+    return response_data
 
 @router.get("/teachers", response_model=List[TeacherResponse])
 async def get_teachers(

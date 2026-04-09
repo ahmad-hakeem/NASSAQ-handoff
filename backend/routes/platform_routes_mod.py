@@ -9,7 +9,8 @@ from starlette.responses import StreamingResponse
 from pydantic import BaseModel, Field, ConfigDict, EmailStr, model_validator
 from typing import List, Optional, Any, Dict
 from datetime import datetime, timezone, timedelta
-import uuid, os, logging, json, re, io, base64
+import uuid, os, logging, json, re, io, base64, secrets, hashlib
+from cryptography.fernet import Fernet
 
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
 from dependencies import (
@@ -25,7 +26,35 @@ from dependencies import (
 
 router = APIRouter()
 
+_ENCRYPTION_KEY = os.environ.get("NASSAQ_ENCRYPTION_KEY", "")
+_IS_PRODUCTION = os.environ.get("ENVIRONMENT", "").lower() == "production"
+_logger = logging.getLogger("nassaq.platform")
 
+def _get_fernet():
+    if _ENCRYPTION_KEY:
+        key = base64.urlsafe_b64encode(hashlib.sha256(_ENCRYPTION_KEY.encode()).digest())
+        return Fernet(key)
+    return None
+
+def _encrypt_api_key(value: str) -> str:
+    if not value:
+        return value
+    f = _get_fernet()
+    if f:
+        return f.encrypt(value.encode()).decode()
+    if _IS_PRODUCTION:
+        raise ValueError("NASSAQ_ENCRYPTION_KEY required in production for API key encryption")
+    _logger.warning("NASSAQ_ENCRYPTION_KEY not set — API key stored unencrypted")
+    return value
+
+def _decrypt_api_key(value: str) -> str:
+    f = _get_fernet()
+    if f and value:
+        try:
+            return f.decrypt(value.encode()).decode()
+        except Exception:
+            return value
+    return value
 
 # ============== PLATFORM ANALYTICS ROUTES ==============
 
@@ -575,7 +604,7 @@ async def create_integration(
         "description": data.description,
         "description_en": data.description_en,
         "api_base_url": data.api_base_url,
-        "api_key": data.api_key,  # Should be encrypted in production
+        "api_key": _encrypt_api_key(data.api_key) if data.api_key else None,
         "webhook_url": data.webhook_url,
         "config": data.config or {},
         "status": "pending",
@@ -652,7 +681,7 @@ async def update_integration(
     }
     
     if data.api_key:
-        updates["api_key"] = data.api_key
+        updates["api_key"] = _encrypt_api_key(data.api_key)
     
     await gd_update_one(db.session, "integrations", {"id": integration_id}, updates)
     

@@ -11,28 +11,38 @@ const RETRY_STATUS_CODES = new Set([502, 503]);
 const MAX_RETRIES = 2;
 const BASE_DELAY_MS = 500;
 
+let refreshPromise = null;
+
 async function attemptTokenRefresh() {
-  const refreshToken = localStorage.getItem('nassaq_refresh_token') || sessionStorage.getItem('nassaq_refresh_token');
-  if (!refreshToken) return null;
+  if (refreshPromise) return refreshPromise;
 
-  try {
-    const response = await axios.post(`${API_URL}/api/auth/refresh`, { refresh_token: refreshToken });
-    const { access_token: newAccess, refresh_token: newRefresh } = response.data;
+  refreshPromise = (async () => {
+    const refreshToken = localStorage.getItem('nassaq_refresh_token') || sessionStorage.getItem('nassaq_refresh_token');
+    if (!refreshToken) return null;
 
-    localStorage.setItem('nassaq_token', newAccess);
+    try {
+      const response = await axios.post(`${API_URL}/api/auth/refresh`, { refresh_token: refreshToken });
+      const { access_token: newAccess, refresh_token: newRefresh } = response.data;
 
-    if (newRefresh) {
-      if (localStorage.getItem('nassaq_refresh_token')) {
-        localStorage.setItem('nassaq_refresh_token', newRefresh);
-      } else {
-        sessionStorage.setItem('nassaq_refresh_token', newRefresh);
+      localStorage.setItem('nassaq_token', newAccess);
+
+      if (newRefresh) {
+        if (localStorage.getItem('nassaq_refresh_token')) {
+          localStorage.setItem('nassaq_refresh_token', newRefresh);
+        } else {
+          sessionStorage.setItem('nassaq_refresh_token', newRefresh);
+        }
       }
-    }
 
-    return newAccess;
-  } catch {
-    return null;
-  }
+      return newAccess;
+    } catch {
+      return null;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
 }
 
 function clearAllAuthTokens() {

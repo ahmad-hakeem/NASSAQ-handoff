@@ -99,6 +99,16 @@ Every task must follow these principles before delivery:
 - **AuthContext stability**: `api` axios instance memoized with `useMemo`; interceptors properly set up and cleaned up via `useEffect`
 - **React key fixes**: `SchoolDashboardContent.jsx` uses stable keys (`cat.label`, `item.path`) instead of array indices
 
+### Security Hardening Phase 2 (Comprehensive Audit — April 9, 2026)
+- **Token key mismatch fix**: `AccountSettingsPage.jsx` role-switch now uses `nassaq_token` key (was `token`), matching AuthContext; `PrincipalTimetablePage.jsx` removed fallback to old `token` key
+- **Access token expiry**: `ACCESS_TOKEN_EXPIRE_MINUTES` reduced from 129600 (90 days) to 30 minutes in `backend/.env` — access tokens are short-lived; refresh tokens handle session persistence
+- **Token refresh race condition**: `AuthContext.js` `attemptTokenRefresh()` now uses promise deduplication — concurrent 401s share a single refresh call instead of racing
+- **Teacher password generation**: `academics_teacher_routes.py` `POST /teachers` now generates unique temp password (`Tch{random}!`) instead of hardcoded `Teacher@123`; sets `must_change_password: true`; returns `temp_password` in response
+- **Security dashboard memory fix**: `security_routes.py` dashboard and AI report replaced `gd_find(limit=50000)` with `gd_count()` queries — no longer loads all users into memory
+- **API key encryption**: `platform_routes_mod.py` integrations now encrypt `api_key` using Fernet symmetric encryption when `NASSAQ_ENCRYPTION_KEY` env var is set; graceful fallback to plaintext if key not configured
+- **Error message sanitization**: Replaced `str(e)` in API responses with safe Arabic messages in `auth_routes_mod.py`, `teacher_registration_routes.py`, `audit_routes.py`, `user_routes_mod.py`
+- **WebSocket token URL removed**: `websocket_routes.py` no longer accepts `?token=` query parameter — token must be sent via post-connection `{type: "auth", token: "..."}` message only
+
 ### Post-Fix Documentation
 Each fix report must include: root cause, why it wasn't caught before, what changed, how recurrence is prevented, what was tested
 

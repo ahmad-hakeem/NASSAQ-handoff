@@ -459,7 +459,7 @@ def setup_audit_routes(db, get_current_user, require_roles, UserRole):
             return {"data": logs, "format": "json", "total": len(logs)}
         except Exception as e:
             logger.error(f"Audit export error: {e}")
-            return {"data": [], "format": format, "total": 0, "error": str(e)}
+            return {"data": [], "format": format, "total": 0, "error": "حدث خطأ أثناء التصدير"}
 
     @router.get("/user/{user_id}")
     async def get_user_audit_trail(

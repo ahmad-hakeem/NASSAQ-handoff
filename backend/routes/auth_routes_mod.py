@@ -41,8 +41,8 @@ async def register(user_data: UserCreate):
 
     try:
         validate_password_complexity(user_data.password)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="كلمة المرور لا تستوفي متطلبات التعقيد")
 
     existing = await gd_find_one(db.session, "users", {"email": user_data.email})
     if existing:
