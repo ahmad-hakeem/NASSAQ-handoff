@@ -1072,12 +1072,17 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         current_user: dict = Depends(require_roles([UserRole.PARENT]))
     ):
         """إرسال رسالة من ولي الأمر"""
+        school_id = current_user.get("tenant_id")
         receiver = await gd_find_one(db.session, "users", {"id": receiver_id})
         if not receiver:
             receiver = await gd_find_one(db.session, "teachers", {"id": receiver_id})
 
         if not receiver:
             raise HTTPException(status_code=404, detail="المستلم غير موجود")
+
+        receiver_school = receiver.get("tenant_id") or receiver.get("school_id")
+        if receiver_school and receiver_school != school_id:
+            raise HTTPException(status_code=403, detail="لا يمكنك مراسلة مستخدمين خارج مدرستك")
 
         message = {
             "id": str(uuid.uuid4()),
@@ -1455,6 +1460,14 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         if not child_id or not absence_date or not reason:
             raise HTTPException(status_code=400, detail="child_id, absence_date, and reason are required")
 
+        open_total = (
+            await gd_count(db.session, "messages", {"sender_id": parent_id, "status": {"$in": ["open", "pending", "sent"]}})
+            + await gd_count(db.session, "absence_excuses", {"parent_id": parent_id, "status": {"$in": ["pending", "submitted"]}})
+            + await gd_count(db.session, "meeting_requests", {"parent_id": parent_id, "status": {"$in": ["pending", "submitted"]}})
+        )
+        if open_total >= 3:
+            raise HTTPException(status_code=429, detail="لقد وصلت للحد الأقصى من الطلبات المفتوحة (3)")
+
         children = await _find_children(parent_id, current_user.get("phone"), school_id)
         child_ids = [c.get("id") for c in children]
         if child_id not in child_ids:
@@ -1506,6 +1519,14 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
 
         if not preferred_date or not topic:
             raise HTTPException(status_code=400, detail="preferred_date and topic are required")
+
+        open_total = (
+            await gd_count(db.session, "messages", {"sender_id": parent_id, "status": {"$in": ["open", "pending", "sent"]}})
+            + await gd_count(db.session, "absence_excuses", {"parent_id": parent_id, "status": {"$in": ["pending", "submitted"]}})
+            + await gd_count(db.session, "meeting_requests", {"parent_id": parent_id, "status": {"$in": ["pending", "submitted"]}})
+        )
+        if open_total >= 3:
+            raise HTTPException(status_code=429, detail="لقد وصلت للحد الأقصى من الطلبات المفتوحة (3)")
 
         meeting = {
             "id": str(uuid.uuid4()),
