@@ -1,96 +1,56 @@
-/**
- * Parent Portal - Dashboard Page
- * لوحة تحكم بوابة ولي الأمر
- */
-
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useAuth } from '../../contexts/AuthContext';
-import { useTheme , useTranslation } from '../../contexts/ThemeContext';
+import { useTheme, useTranslation } from '../../contexts/ThemeContext';
 import PortalLayout from '../../components/portal/PortalLayout';
-import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
-import { Badge } from '../../components/ui/badge';
-import { Progress } from '../../components/ui/progress';
-import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
+import useParentDashboard from '../../hooks/useParentDashboard';
+import StudentSwitcher from '../../components/parent/StudentSwitcher';
+import SchoolDayProgress from '../../components/parent/SchoolDayProgress';
+import CurrentClassCard from '../../components/parent/CurrentClassCard';
+import UpcomingClasses from '../../components/parent/UpcomingClasses';
+import PerformanceIndicator from '../../components/parent/PerformanceIndicator';
+import WeeklyStory from '../../components/parent/WeeklyStory';
+import HakimChatWidget from '../../components/parent/HakimChatWidget';
+import { Card, CardContent } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Skeleton } from '../../components/ui/skeleton';
-import { ScrollArea } from '../../components/ui/scroll-area';
-import { toast } from 'sonner';
 import {
-  Users,
-  GraduationCap,
-  CheckCircle,
-  XCircle,
-  AlertCircle,
-  Clock,
-  Bell,
-  TrendingUp,
-  MessageSquare,
-  ChevronLeft,
-  ChevronRight,
-  Award,
-  Calendar,
-  BookOpen,
+  Users, GraduationCap, Bell, Calendar, MessageSquare,
+  ChevronLeft, Building, UserCircle
 } from 'lucide-react';
-
-
 import { formatHijriDate } from '../../utils/hijriDate';
 
 const ParentPortalDashboard = () => {
   const { t } = useTranslation();
-  const { token, user, api } = useAuth();
   const { isRTL } = useTheme();
-  const [loading, setLoading] = useState(true);
-  const [dashboard, setDashboard] = useState(null);
-  const [selectedChildIndex, setSelectedChildIndex] = useState(0);
+  const {
+    children,
+    selectedChildIndex,
+    selectedChild,
+    selectedChildId,
+    liveData,
+    weeklyStory,
+    notifications,
+    loading,
+    liveLoading,
+    weeklyLoading,
+    selectChild,
+  } = useParentDashboard();
 
-  useEffect(() => {
-    fetchDashboard();
-  }, [token]);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [notifTab, setNotifTab] = useState('admin');
 
-  const fetchDashboard = async () => {
-    try {
-      const response = await api.get('/parent-portal/dashboard');
-      setDashboard(response.data);
-    } catch (error) {
-      console.error('Error fetching dashboard:', error);
-      // Set default data if API fails
-      setDashboard({
-        parent: {
-          name: user?.full_name || 'ولي أمر',
-          email: user?.email,
-          phone: user?.phone
-        },
-        children: [],
-        children_count: 0,
-        unread_notifications: 0,
-        unread_messages: 0
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const selectedChild = dashboard?.children?.[selectedChildIndex];
-
-  const getGradeColor = (percentage) => {
-    if (percentage >= 90) return 'text-green-600';
-    if (percentage >= 75) return 'text-blue-600';
-    if (percentage >= 60) return 'text-amber-600';
-    return 'text-red-600';
-  };
+  const adminNotifs = notifications.filter(n => n.sender_role === 'admin' || n.sender_role === 'school_admin' || !n.sender_role);
+  const teacherNotifs = notifications.filter(n => n.sender_role === 'teacher');
 
   if (loading) {
     return (
       <PortalLayout portalType="parent">
         <div className="p-4 space-y-4">
-          <Skeleton className="h-32 w-full rounded-2xl" />
-          <div className="grid grid-cols-2 gap-3">
-            {[1, 2, 3, 4].map(i => (
-              <Skeleton key={i} className="h-24 rounded-xl" />
-            ))}
-          </div>
-          <Skeleton className="h-64 rounded-2xl" />
+          <Skeleton className="h-10 w-full rounded-xl" />
+          <Skeleton className="h-28 w-full rounded-2xl" />
+          <Skeleton className="h-16 w-full rounded-2xl" />
+          <Skeleton className="h-40 w-full rounded-2xl" />
+          <Skeleton className="h-60 w-full rounded-2xl" />
         </div>
       </PortalLayout>
     );
@@ -98,86 +58,19 @@ const ParentPortalDashboard = () => {
 
   return (
     <PortalLayout portalType="parent">
-      <div className="p-4 space-y-4" data-testid="parent-portal-dashboard">
-        {/* Welcome Banner */}
-        <Card className="bg-gradient-to-br from-indigo-500 to-purple-600 text-white border-0 rounded-2xl overflow-hidden">
-          <CardContent className="p-4 md:p-6">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-4">
-                <div className="w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-white/20 flex items-center justify-center backdrop-blur-sm">
-                  <Users className="h-8 w-8 md:h-10 md:w-10 text-white" />
-                </div>
-                <div>
-                  <p className="text-indigo-100 text-sm">{formatHijriDate()}</p>
-                  <h1 className="text-xl md:text-2xl font-bold font-cairo mt-1">
-                    {t('welcome')}, {dashboard?.parent?.name?.split(' ')[0]}
-                  </h1>
-                  <p className="text-indigo-100 flex items-center gap-2 mt-1 text-sm">
-                    <GraduationCap className="h-4 w-4" />
-                    {dashboard?.children_count || 0} {dashboard?.children_count === 1 ? (t('childEnrolled')) : (t('childrenEnrolled'))}
-                  </p>
-                </div>
-              </div>
-              
-              {/* Quick Stats */}
-              <div className="hidden md:flex gap-4">
-                <div className="text-center px-4 py-2 bg-white/10 rounded-xl backdrop-blur-sm">
-                  <p className="text-2xl font-bold">{dashboard?.unread_notifications || 0}</p>
-                  <p className="text-xs text-indigo-100">{t('notifications2')}</p>
-                </div>
-                <div className="text-center px-4 py-2 bg-white/10 rounded-xl backdrop-blur-sm">
-                  <p className="text-2xl font-bold">{dashboard?.unread_messages || 0}</p>
-                  <p className="text-xs text-indigo-100">{t('messages3')}</p>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="p-4 space-y-4 max-w-lg mx-auto" dir="rtl" data-testid="parent-portal-dashboard">
+        <StudentSwitcher
+          children={children}
+          selectedIndex={selectedChildIndex}
+          onSelect={selectChild}
+        />
 
-        {/* Children Selector */}
-        {dashboard?.children?.length > 0 && (
-          <div className="flex gap-2 overflow-x-auto pb-2">
-            {dashboard.children.map((child, index) => (
-              <button
-                key={child.id}
-                onClick={() => setSelectedChildIndex(index)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl whitespace-nowrap transition-all ${
-                  selectedChildIndex === index
-                    ? 'bg-indigo-600 text-white shadow-lg'
-                    : 'bg-white text-gray-700 border shadow-sm'
-                }`}
-                data-testid={`child-selector-${child.id}`}
-              >
-                <Avatar className="h-8 w-8">
-                  <AvatarImage src={child.profile_picture} />
-                  <AvatarFallback className={`text-sm ${
-                    selectedChildIndex === index ? 'bg-white/20 text-white' : 'bg-indigo-100 text-indigo-600'
-                  }`}>
-                    {child.name?.charAt(0)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="text-start">
-                  <span className="text-sm font-medium block">{child.name?.split(' ')[0]}</span>
-                  <span className={`text-xs ${selectedChildIndex === index ? 'text-indigo-100' : 'text-muted-foreground'}`}>
-                    {child.grade}
-                  </span>
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* No Children State */}
-        {(!dashboard?.children || dashboard.children.length === 0) && (
+        {(!children || children.length === 0) && (
           <Card className="rounded-2xl border-0 shadow-sm">
             <CardContent className="py-12 text-center">
               <Users className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-              <h3 className="font-bold text-lg text-gray-700 mb-2">
-                {t('noChildrenEnrolled')}
-              </h3>
-              <p className="text-muted-foreground text-sm mb-4">
-                {t('contactSchoolAdministrationToLinkYourAccount')}
-              </p>
+              <h3 className="font-bold text-lg text-gray-700 mb-2">{t('noChildrenEnrolled')}</h3>
+              <p className="text-muted-foreground text-sm mb-4">{t('contactSchoolAdministrationToLinkYourAccount')}</p>
               <Button variant="outline">
                 <MessageSquare className="h-4 w-4 me-2" />
                 {t('contactAdmin')}
@@ -186,150 +79,139 @@ const ParentPortalDashboard = () => {
           </Card>
         )}
 
-        {/* Selected Child Stats */}
-        {selectedChild && (
+        {selectedChild && liveData && (
           <>
-            {/* Child Info Card */}
-            <Card className="rounded-2xl border-0 shadow-sm overflow-hidden">
-              <div className="bg-gradient-to-l from-indigo-50 to-purple-50 p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Avatar className="h-14 w-14 border-2 border-indigo-200">
-                      <AvatarImage src={selectedChild.profile_picture} />
-                      <AvatarFallback className="bg-indigo-100 text-indigo-600 font-bold text-lg">
-                        {selectedChild.name?.charAt(0)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <h2 className="font-cairo font-bold text-lg">{selectedChild.name}</h2>
-                      <p className="text-sm text-muted-foreground">
-                        {selectedChild.grade} - {selectedChild.class_name}
-                      </p>
-                      <p className="text-xs text-muted-foreground">{selectedChild.school_name}</p>
+            <Card className="bg-gradient-to-br from-indigo-600 to-purple-700 text-white border-0 rounded-2xl overflow-hidden shadow-lg shadow-indigo-200">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <p className="text-indigo-100 text-xs">{formatHijriDate()}</p>
+                    <h1 className="text-lg font-bold mt-0.5">
+                      {liveData.student?.name}
+                    </h1>
+                    <div className="flex items-center gap-3 mt-1 text-sm text-indigo-100">
+                      <span className="flex items-center gap-1">
+                        <GraduationCap className="w-3.5 h-3.5" />
+                        {liveData.student?.class_name} - {liveData.student?.grade_level}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1 mt-0.5 text-xs text-indigo-200">
+                      <Building className="w-3 h-3" />
+                      {liveData.student?.school_name}
                     </div>
                   </div>
-                  <Link to={`/parent/child/${selectedChild.id}`}>
-                    <Button variant="outline" size="sm" className="text-indigo-600 border-indigo-200">
-                      {t('details')}
-                      <ChevronLeft className="h-4 w-4 ms-1" />
-                    </Button>
-                  </Link>
+
+                  <div className="flex gap-2">
+                    {selectedChildId && (
+                      <Link to={`/parent/child/${selectedChildId}/schedule`}>
+                        <button className="p-2.5 rounded-xl bg-white/15 hover:bg-white/25 transition-colors" title="الجدول الأسبوعي">
+                          <Calendar className="w-5 h-5" />
+                        </button>
+                      </Link>
+                    )}
+                    <button
+                      onClick={() => setShowNotifications(!showNotifications)}
+                      className="p-2.5 rounded-xl bg-white/15 hover:bg-white/25 transition-colors relative"
+                      title="التنبيهات"
+                    >
+                      <Bell className="w-5 h-5" />
+                      {notifications.length > 0 && (
+                        <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-[10px] font-bold flex items-center justify-center">
+                          {notifications.length}
+                        </span>
+                      )}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            </Card>
-
-            {/* Stats Grid */}
-            <div className="grid grid-cols-2 gap-3">
-              <Card className="rounded-xl border-0 shadow-sm">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="p-2 rounded-lg bg-green-100">
-                      <CheckCircle className="h-5 w-5 text-green-600" />
-                    </div>
-                    <span className="text-2xl font-bold text-green-600">
-                      {selectedChild.attendance_rate}%
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground">{isRTL ? 'نسبة الحضور' : 'Attendance'}</p>
-                  <Progress value={selectedChild.attendance_rate} className="h-1.5 mt-2" />
-                </CardContent>
-              </Card>
-
-              <Card className="rounded-xl border-0 shadow-sm">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="p-2 rounded-lg bg-blue-100">
-                      <Award className="h-5 w-5 text-blue-600" />
-                    </div>
-                    <span className="text-2xl font-bold text-blue-600">
-                      {selectedChild.average_score}%
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground">{t('average2')}</p>
-                  <Progress value={selectedChild.average_score} className="h-1.5 mt-2" />
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Recent Grades */}
-            <Card className="rounded-2xl border-0 shadow-sm">
-              <CardHeader className="pb-2">
-                <CardTitle className="flex items-center justify-between text-base">
-                  <div className="flex items-center gap-2">
-                    <TrendingUp className="h-5 w-5 text-blue-600" />
-                    {t('recentGrades')}
-                  </div>
-                  <Link to={`/parent/child/${selectedChild.id}/grades`} className="text-xs text-blue-600 hover:underline">
-                    {t('viewAll')}
-                  </Link>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {selectedChild.recent_grades?.length > 0 ? (
-                  <div className="space-y-2">
-                    {selectedChild.recent_grades.map((grade, idx) => (
-                      <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-                        <div className="flex items-center gap-2">
-                          <BookOpen className="h-4 w-4 text-gray-400" />
-                          <div>
-                            <span className="font-medium text-sm">{grade.subject}</span>
-                            <p className="text-xs text-muted-foreground">{grade.date}</p>
-                          </div>
-                        </div>
-                        <Badge variant="outline" className={getGradeColor(grade.score / grade.max_score * 100)}>
-                          {grade.score}/{grade.max_score}
-                        </Badge>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-                    <Award className="h-10 w-10 mb-2 opacity-30" />
-                    <p className="text-sm">{isRTL ? 'لا توجد درجات' : 'No grades yet'}</p>
-                  </div>
-                )}
               </CardContent>
             </Card>
 
-            {/* Quick Actions */}
-            <div className="grid grid-cols-2 gap-3">
-              <Link to={`/parent/child/${selectedChild.id}/schedule`}>
+            {showNotifications && (
+              <Card className="rounded-2xl border-0 shadow-md">
+                <CardContent className="p-4">
+                  <div className="flex gap-2 mb-3">
+                    <button
+                      onClick={() => setNotifTab('admin')}
+                      className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all ${
+                        notifTab === 'admin' ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-50 text-gray-500'
+                      }`}
+                    >
+                      تنبيهات الإدارة ({adminNotifs.length})
+                    </button>
+                    <button
+                      onClick={() => setNotifTab('teacher')}
+                      className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all ${
+                        notifTab === 'teacher' ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-50 text-gray-500'
+                      }`}
+                    >
+                      تنبيهات المعلم ({teacherNotifs.length})
+                    </button>
+                  </div>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {(notifTab === 'admin' ? adminNotifs : teacherNotifs).length === 0 ? (
+                      <p className="text-center text-sm text-gray-400 py-4">لا توجد تنبيهات</p>
+                    ) : (
+                      (notifTab === 'admin' ? adminNotifs : teacherNotifs).map((n, i) => (
+                        <div key={n.id || i} className="p-2.5 rounded-lg bg-gray-50 text-sm">
+                          <p className="text-gray-800 font-medium text-xs">{n.title || n.message}</p>
+                          <p className="text-gray-400 text-xs mt-0.5">{n.created_at ? new Date(n.created_at).toLocaleDateString('ar-SA') : ''}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            <PerformanceIndicator performance={liveData.performance} />
+
+            <SchoolDayProgress schoolDay={liveData.school_day} />
+
+            <CurrentClassCard
+              currentClass={liveData.current_class}
+              studentName={liveData.student?.name?.split(' ')[0]}
+            />
+
+            <UpcomingClasses classes={liveData.upcoming_classes} />
+
+            <WeeklyStory data={weeklyStory} loading={weeklyLoading} />
+
+            <div className="grid grid-cols-2 gap-3 pb-4">
+              <Link to="/parent/communication">
                 <Card className="rounded-xl border-0 shadow-sm hover:shadow-md transition-all cursor-pointer">
                   <CardContent className="p-4 text-center">
-                    <Calendar className="h-8 w-8 mx-auto mb-2 text-indigo-600" />
-                    <p className="text-sm font-medium">{t('schedule')}</p>
+                    <MessageSquare className="h-7 w-7 mx-auto mb-2 text-indigo-600" />
+                    <p className="text-xs font-medium text-gray-700">مركز التواصل</p>
                   </CardContent>
                 </Card>
               </Link>
-              
-              <Link to={`/parent/child/${selectedChild.id}/attendance`}>
-                <Card className="rounded-xl border-0 shadow-sm hover:shadow-md transition-all cursor-pointer">
-                  <CardContent className="p-4 text-center">
-                    <CheckCircle className="h-8 w-8 mx-auto mb-2 text-green-600" />
-                    <p className="text-sm font-medium">{t('attendance2')}</p>
-                  </CardContent>
-                </Card>
-              </Link>
-              
-              <Link to={`/parent/child/${selectedChild.id}/teachers`}>
-                <Card className="rounded-xl border-0 shadow-sm hover:shadow-md transition-all cursor-pointer">
-                  <CardContent className="p-4 text-center">
-                    <Users className="h-8 w-8 mx-auto mb-2 text-purple-600" />
-                    <p className="text-sm font-medium">{t('teachers')}</p>
-                  </CardContent>
-                </Card>
-              </Link>
-              
-              <Link to="/parent/messages">
-                <Card className="rounded-xl border-0 shadow-sm hover:shadow-md transition-all cursor-pointer">
-                  <CardContent className="p-4 text-center">
-                    <MessageSquare className="h-8 w-8 mx-auto mb-2 text-blue-600" />
-                    <p className="text-sm font-medium">{t('messages')}</p>
-                  </CardContent>
-                </Card>
-              </Link>
+              {selectedChildId && (
+                <Link to={`/parent/child/${selectedChildId}/profile`}>
+                  <Card className="rounded-xl border-0 shadow-sm hover:shadow-md transition-all cursor-pointer">
+                    <CardContent className="p-4 text-center">
+                      <UserCircle className="h-7 w-7 mx-auto mb-2 text-purple-600" />
+                      <p className="text-xs font-medium text-gray-700">ملف الطالب</p>
+                    </CardContent>
+                  </Card>
+                </Link>
+              )}
             </div>
           </>
+        )}
+
+        {selectedChild && !liveData && !liveLoading && (
+          <Card className="rounded-2xl border-0 shadow-sm">
+            <CardContent className="py-8 text-center">
+              <p className="text-gray-500 text-sm">لا توجد بيانات متاحة حالياً</p>
+            </CardContent>
+          </Card>
+        )}
+
+        {selectedChildId && (
+          <HakimChatWidget
+            childId={selectedChildId}
+            childName={liveData?.student?.name?.split(' ')[0] || selectedChild?.name}
+          />
         )}
       </div>
     </PortalLayout>

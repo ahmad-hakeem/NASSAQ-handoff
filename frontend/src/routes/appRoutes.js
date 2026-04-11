@@ -95,7 +95,10 @@ import {
   ParentMessagesPage,
   ParentAbsenceExcusePage,
   ParentMeetingRequestPage,
-  ParentSettingsPage
+  ParentSettingsPage,
+  ParentCommunicationCenter,
+  StudentProfilePage as ParentStudentProfilePage,
+  StudentAnalyticsPage as ParentStudentAnalyticsPage
 } from "../pages/ParentPortal";
 
 const SCHOOL_ROLES = ['school_principal', 'school_admin', 'school_sub_admin'];
@@ -286,6 +289,15 @@ export default function AppRoutes() {
       } />
       <Route path="/parent/settings" element={
         <ProtectedRoute allowedRoles={['parent']}><ParentSettingsPage /></ProtectedRoute>
+      } />
+      <Route path="/parent/communication" element={
+        <ProtectedRoute allowedRoles={['parent']}><ParentCommunicationCenter /></ProtectedRoute>
+      } />
+      <Route path="/parent/child/:childId/profile" element={
+        <ProtectedRoute allowedRoles={['parent']}><ParentStudentProfilePage /></ProtectedRoute>
+      } />
+      <Route path="/parent/child/:childId/analytics" element={
+        <ProtectedRoute allowedRoles={['parent']}><ParentStudentAnalyticsPage /></ProtectedRoute>
       } />
 
       {/* Principal Dashboard */}
