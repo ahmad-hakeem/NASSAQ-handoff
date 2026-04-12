@@ -10,7 +10,7 @@ const UpcomingClasses = ({ classes }) => {
   return (
     <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-gray-800">{t('upcomingClasses')}</h3>
+        <h3 className="text-sm font-semibold text-gray-800 font-cairo">{t('upcomingClasses')}</h3>
         <span className="text-xs text-gray-400 bg-gray-50 px-2 py-0.5 rounded-full">
           {classes.length} {t('periods')}
         </span>
@@ -19,10 +19,10 @@ const UpcomingClasses = ({ classes }) => {
         {classes.map((cls, i) => (
           <div
             key={i}
-            className="flex items-center justify-between py-3 px-3.5 rounded-xl bg-gray-50 hover:bg-indigo-50 transition-colors group"
+            className="flex items-center justify-between py-3 px-3.5 rounded-xl bg-gray-50 hover:bg-brand-navy/5 transition-colors group"
           >
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center group-hover:bg-indigo-200 transition-colors">
+              <div className="w-9 h-9 rounded-lg bg-brand-navy/15 text-brand-navy flex items-center justify-center group-hover:bg-brand-navy/20 transition-colors">
                 <BookOpen className="w-4 h-4" />
               </div>
               <div>

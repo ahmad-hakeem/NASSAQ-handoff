@@ -103,7 +103,7 @@ const HakimChatWidget = ({ childId, childName }) => {
     <>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="fixed bottom-20 left-4 z-50 w-14 h-14 rounded-full bg-gradient-to-br from-indigo-600 to-purple-700 text-white shadow-lg shadow-indigo-300 flex items-center justify-center hover:scale-105 transition-transform"
+        className="fixed bottom-20 left-4 z-50 w-14 h-14 rounded-full bg-gradient-to-br from-brand-turquoise to-brand-navy text-white shadow-lg shadow-brand-turquoise/30 flex items-center justify-center hover:scale-105 transition-transform"
         aria-label="حكيم"
       >
         {isOpen ? <X className="w-6 h-6" /> : (
@@ -116,7 +116,7 @@ const HakimChatWidget = ({ childId, childName }) => {
 
       {isOpen && (
         <div className="fixed bottom-36 left-4 z-50 w-80 sm:w-96 h-[32rem] bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden" dir="rtl">
-          <div className="bg-gradient-to-r from-indigo-600 to-purple-700 p-4 text-white">
+          <div className="bg-gradient-to-r from-brand-turquoise to-brand-navy p-4 text-white">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
@@ -140,12 +140,12 @@ const HakimChatWidget = ({ childId, childName }) => {
             {messages.map((msg, i) => (
               <div key={i} className={`flex gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
                 <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${
-                  msg.role === 'user' ? 'bg-indigo-100 text-indigo-600' : 'bg-purple-100 text-purple-600'
+                  msg.role === 'user' ? 'bg-brand-navy/15 text-brand-navy' : 'bg-brand-turquoise/15 text-brand-turquoise'
                 }`}>
                   {msg.role === 'user' ? <User className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
                 </div>
                 {msg.role === 'user' ? (
-                  <div className="max-w-[80%] px-3 py-2 rounded-2xl text-sm leading-relaxed bg-indigo-600 text-white rounded-br-sm">
+                  <div className="max-w-[80%] px-3 py-2 rounded-2xl text-sm leading-relaxed bg-brand-navy text-white rounded-br-sm">
                     {msg.content}
                   </div>
                 ) : (
@@ -158,7 +158,7 @@ const HakimChatWidget = ({ childId, childName }) => {
             ))}
             {sending && (
               <div className="flex gap-2">
-                <div className="w-7 h-7 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center">
+                <div className="w-7 h-7 rounded-full bg-brand-turquoise/15 text-brand-turquoise flex items-center justify-center">
                   <Bot className="w-3.5 h-3.5" />
                 </div>
                 <div className="bg-white border border-gray-200 px-4 py-2 rounded-2xl rounded-bl-sm flex items-center gap-2">
@@ -176,7 +176,7 @@ const HakimChatWidget = ({ childId, childName }) => {
                 <button
                   key={i}
                   onClick={() => sendMessage(s)}
-                  className="shrink-0 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 text-xs font-medium hover:bg-indigo-100 transition-colors border border-indigo-100"
+                  className="shrink-0 px-2.5 py-1 rounded-lg bg-brand-turquoise/10 text-brand-navy text-xs font-medium hover:bg-brand-turquoise/20 transition-colors border border-brand-turquoise/20"
                 >
                   {s}
                 </button>
@@ -193,13 +193,13 @@ const HakimChatWidget = ({ childId, childName }) => {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="اسأل حكيم عن أداء ابنك..."
-                className="flex-1 px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="flex-1 px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy focus:border-transparent"
                 disabled={sending}
               />
               <button
                 onClick={() => sendMessage()}
                 disabled={!input.trim() || sending}
-                className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="w-9 h-9 rounded-xl bg-brand-navy text-white flex items-center justify-center hover:bg-brand-navy-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 <Send className="w-4 h-4" />
               </button>

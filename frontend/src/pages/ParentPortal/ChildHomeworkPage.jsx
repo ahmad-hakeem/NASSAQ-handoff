@@ -61,7 +61,7 @@ const ChildHomeworkPage = () => {
     <PortalLayout portalType="parent">
       <div className="p-4 space-y-4" data-testid="child-homework-page">
         <div className="flex items-center gap-2 mb-2">
-          <ClipboardList className="h-6 w-6 text-indigo-600" />
+          <ClipboardList className="h-6 w-6 text-brand-navy" />
           <h1 className="text-xl font-bold font-cairo">
             {isRTL ? `واجبات ${data?.child_name || ''}` : `${data?.child_name || ''}'s Homework`}
           </h1>

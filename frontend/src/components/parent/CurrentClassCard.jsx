@@ -58,10 +58,10 @@ const CurrentClassCard = ({ currentClass, studentName }) => {
   }
 
   return (
-    <div className="bg-gradient-to-br from-indigo-600 to-purple-700 rounded-2xl overflow-hidden text-white shadow-lg shadow-indigo-200">
+    <div className="bg-gradient-to-br from-brand-navy to-brand-purple rounded-2xl overflow-hidden text-white shadow-lg shadow-brand-navy/15">
       <div className="p-5">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-medium opacity-90">{t('whereIsStudentNow', { name: studentName })}</h3>
+          <h3 className="text-sm font-medium opacity-90 font-cairo">{t('whereIsStudentNow', { name: studentName })}</h3>
           <div className="flex items-center gap-1.5 bg-white/20 backdrop-blur-sm rounded-full px-3 py-1.5">
             <Timer className="w-3.5 h-3.5" />
             <span className="text-sm font-bold tabular-nums tracking-wider">{countdown}</span>

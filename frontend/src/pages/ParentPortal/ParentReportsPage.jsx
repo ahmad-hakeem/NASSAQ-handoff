@@ -88,7 +88,7 @@ const ParentReportsPage = () => {
     <PortalLayout portalType="parent">
       <div className="p-4 space-y-4" data-testid="parent-reports-page">
         <div className="flex items-center gap-2 mb-2">
-          <FileText className="h-6 w-6 text-indigo-600" />
+          <FileText className="h-6 w-6 text-brand-navy" />
           <h1 className="text-xl font-bold font-cairo">{t('reports')}</h1>
         </div>
 
@@ -108,12 +108,12 @@ const ParentReportsPage = () => {
               <Card key={child.id} className="rounded-2xl border-0 shadow-sm overflow-hidden">
                 <button
                   onClick={() => setExpandedChild(isExpanded ? null : child.id)}
-                  className="w-full p-4 flex items-center justify-between bg-gradient-to-l from-indigo-50 to-purple-50 hover:from-indigo-100 transition-all"
+                  className="w-full p-4 flex items-center justify-between bg-gradient-to-l from-brand-navy/5 to-brand-purple/5 hover:from-brand-navy/10 transition-all"
                 >
                   <div className="flex items-center gap-3">
-                    <Avatar className="h-10 w-10 border-2 border-indigo-200">
+                    <Avatar className="h-10 w-10 border-2 border-brand-navy/20">
                       <AvatarImage src={child.profile_picture} />
-                      <AvatarFallback className="bg-indigo-100 text-indigo-600 font-bold">
+                      <AvatarFallback className="bg-brand-navy/15 text-brand-navy font-bold">
                         {child.name?.charAt(0)}
                       </AvatarFallback>
                     </Avatar>
@@ -141,7 +141,7 @@ const ParentReportsPage = () => {
                     </div>
 
                     <div className="space-y-3">
-                      <h3 className="text-sm font-bold">{t('attendanceDetails')}</h3>
+                      <h3 className="text-sm font-bold font-cairo">{t('attendanceDetails')}</h3>
                       <div className="grid grid-cols-3 gap-2 text-center text-xs">
                         <div className="p-2 bg-green-50 rounded-lg">
                           <p className="font-bold text-green-600">{report.attendance?.present}</p>
@@ -160,7 +160,7 @@ const ParentReportsPage = () => {
 
                     {report.academics?.subject_averages && Object.keys(report.academics.subject_averages).length > 0 && (
                       <div className="space-y-3">
-                        <h3 className="text-sm font-bold">{t('subjectAverages')}</h3>
+                        <h3 className="text-sm font-bold font-cairo">{t('subjectAverages')}</h3>
                         {Object.entries(report.academics.subject_averages).map(([subj, avg]) => (
                           <div key={subj}>
                             <div className="flex justify-between text-sm mb-1">
@@ -176,16 +176,16 @@ const ParentReportsPage = () => {
                     )}
 
                     <div className="grid grid-cols-2 gap-3">
-                      <div className="p-3 bg-purple-50 rounded-xl">
-                        <Heart className="h-5 w-5 text-purple-600 mb-1" />
-                        <p className="text-sm font-bold">{t('behavior')}</p>
+                      <div className="p-3 bg-brand-purple/5 rounded-xl">
+                        <Heart className="h-5 w-5 text-brand-purple mb-1" />
+                        <p className="text-sm font-bold font-cairo">{t('behavior')}</p>
                         <p className="text-xs text-muted-foreground">
                           {t('positive')}: {report.behaviour?.positive} | {t('negative')}: {report.behaviour?.negative}
                         </p>
                       </div>
                       <div className="p-3 bg-amber-50 rounded-xl">
                         <Star className="h-5 w-5 text-amber-600 mb-1" />
-                        <p className="text-sm font-bold">{isRTL ? 'المشاركة' : 'Participation'}</p>
+                        <p className="text-sm font-bold font-cairo">{isRTL ? 'المشاركة' : 'Participation'}</p>
                         <p className="text-xs text-muted-foreground">
                           {report.participation?.total_points} {t('points')}
                         </p>

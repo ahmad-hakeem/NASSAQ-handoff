@@ -17,7 +17,7 @@ import {
 
 const DAY_NAMES = {
   sunday: { ar: 'الأحد', color: 'from-blue-500 to-blue-600' },
-  monday: { ar: 'الإثنين', color: 'from-purple-500 to-purple-600' },
+  monday: { ar: 'الإثنين', color: 'from-brand-purple to-brand-purple-dark' },
   tuesday: { ar: 'الثلاثاء', color: 'from-green-500 to-green-600' },
   wednesday: { ar: 'الأربعاء', color: 'from-amber-500 to-amber-600' },
   thursday: { ar: 'الخميس', color: 'from-rose-500 to-rose-600' },
@@ -86,7 +86,7 @@ const ChildSchedulePage = () => {
               </Button>
             </Link>
             <div>
-              <h1 className="text-lg font-bold">
+              <h1 className="text-lg font-bold font-cairo">
                 {isRTL ? 'الجدول الدراسي' : 'Class Schedule'}
               </h1>
               {child && (
@@ -122,7 +122,7 @@ const ChildSchedulePage = () => {
           <Card className="rounded-2xl border-0 shadow-sm">
             <CardContent className="py-16 text-center">
               <Calendar className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-              <h3 className="font-bold text-lg text-gray-700 mb-2">
+              <h3 className="font-bold font-cairo text-lg text-gray-700 mb-2">
                 {t('noScheduleAvailable')}
               </h3>
               <p className="text-sm text-muted-foreground">
@@ -138,7 +138,7 @@ const ChildSchedulePage = () => {
               return (
                 <Card key={day} className="rounded-2xl border-0 shadow-sm overflow-hidden">
                   <div className={`bg-gradient-to-r ${dayInfo.color} px-4 py-2.5`}>
-                    <h3 className="font-bold text-white text-sm flex items-center gap-2">
+                    <h3 className="font-bold font-cairo text-white text-sm flex items-center gap-2">
                       <Calendar className="h-4 w-4" />
                       {isRTL ? dayInfo.ar : day}
                       <Badge className="bg-white/20 text-white border-0 text-[10px]">
@@ -151,13 +151,13 @@ const ChildSchedulePage = () => {
                       <div className="space-y-2">
                         {entries.map((entry, idx) => (
                           <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition">
-                            <div className="flex flex-col items-center justify-center min-w-[56px] h-12 rounded-lg bg-indigo-100">
-                              <span className="text-[10px] font-bold text-indigo-600">{entry.start_time}</span>
-                              <span className="text-[9px] text-indigo-400">{entry.end_time}</span>
+                            <div className="flex flex-col items-center justify-center min-w-[56px] h-12 rounded-lg bg-brand-navy/15">
+                              <span className="text-[10px] font-bold text-brand-navy">{entry.start_time}</span>
+                              <span className="text-[9px] text-brand-navy/60">{entry.end_time}</span>
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2">
-                                <BookOpen className="h-3.5 w-3.5 text-indigo-500 flex-shrink-0" />
+                                <BookOpen className="h-3.5 w-3.5 text-brand-navy flex-shrink-0" />
                                 <p className="font-semibold text-sm truncate">{entry.subject}</p>
                               </div>
                               <div className="flex items-center gap-2 mt-0.5">
@@ -225,8 +225,8 @@ const ChildSchedulePage = () => {
                               }
                               return (
                                 <td key={day} className="p-1 border-b">
-                                  <div className="h-12 rounded-lg bg-indigo-50 border border-indigo-100 flex flex-col items-center justify-center px-1">
-                                    <span className="text-[10px] font-semibold text-indigo-700 truncate max-w-full">
+                                  <div className="h-12 rounded-lg bg-brand-navy/5 border border-brand-navy/10 flex flex-col items-center justify-center px-1">
+                                    <span className="text-[10px] font-semibold text-brand-navy truncate max-w-full">
                                       {entry.subject}
                                     </span>
                                     <span className="text-[9px] text-gray-400 truncate max-w-full">

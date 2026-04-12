@@ -15,7 +15,7 @@ import {
 const Toggle = ({ checked, onChange }) => (
   <button
     onClick={() => onChange(!checked)}
-    className={`w-11 h-6 rounded-full transition-all relative ${checked ? 'bg-indigo-600' : 'bg-gray-300'}`}
+    className={`w-11 h-6 rounded-full transition-all relative ${checked ? 'bg-brand-navy' : 'bg-gray-300'}`}
   >
     <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-all ${
       checked ? 'right-0.5' : 'left-0.5'
@@ -92,14 +92,14 @@ const ParentSettingsPage = () => {
     <PortalLayout portalType="parent">
       <div className="p-4 space-y-4" data-testid="parent-settings-page">
         <div className="flex items-center gap-2 mb-2">
-          <Settings className="h-6 w-6 text-indigo-600" />
+          <Settings className="h-6 w-6 text-brand-navy" />
           <h1 className="text-xl font-bold font-cairo">{t('settings')}</h1>
         </div>
 
         <Card className="rounded-2xl border-0 shadow-sm">
           <CardContent className="p-4 space-y-4">
-            <h2 className="font-bold text-base flex items-center gap-2">
-              <Bell className="h-5 w-5 text-indigo-600" />
+            <h2 className="font-cairo font-bold text-base flex items-center gap-2">
+              <Bell className="h-5 w-5 text-brand-navy" />
               {t('notificationPreferences')}
             </h2>
 
@@ -123,8 +123,8 @@ const ParentSettingsPage = () => {
 
         <Card className="rounded-2xl border-0 shadow-sm">
           <CardContent className="p-4 space-y-4">
-            <h2 className="font-bold text-base flex items-center gap-2">
-              <Globe className="h-5 w-5 text-indigo-600" />
+            <h2 className="font-cairo font-bold text-base flex items-center gap-2">
+              <Globe className="h-5 w-5 text-brand-navy" />
               {t('language')}
             </h2>
             <div className="flex gap-3">
@@ -137,7 +137,7 @@ const ParentSettingsPage = () => {
                   onClick={() => setSettings(prev => ({ ...prev, language: lang.value }))}
                   className={`flex-1 p-3 rounded-xl text-sm font-medium transition-all ${
                     settings?.language === lang.value
-                      ? 'bg-indigo-600 text-white'
+                      ? 'bg-brand-navy text-white'
                       : 'bg-gray-50 text-gray-700 border'
                   }`}
                 >
@@ -151,7 +151,7 @@ const ParentSettingsPage = () => {
         <Button
           onClick={handleSave}
           disabled={saving}
-          className="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl h-12"
+          className="w-full bg-brand-navy hover:bg-brand-navy-dark text-white rounded-xl h-12"
         >
           {saving
             ? (t('saving'))

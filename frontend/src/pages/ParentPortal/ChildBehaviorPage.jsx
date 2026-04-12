@@ -52,7 +52,7 @@ const ChildBehaviorPage = () => {
     <PortalLayout portalType="parent">
       <div className="p-4 space-y-4" data-testid="child-behavior-page">
         <div className="flex items-center gap-2 mb-2">
-          <Heart className="h-6 w-6 text-indigo-600" />
+          <Heart className="h-6 w-6 text-brand-navy" />
           <h1 className="text-xl font-bold font-cairo">{isRTL ? 'سجل السلوك' : 'Behavior Record'}</h1>
         </div>
 

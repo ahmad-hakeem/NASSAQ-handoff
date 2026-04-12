@@ -70,7 +70,7 @@ const CumulativeAnalytics = ({ childId, viewerRole = 'parent' }) => {
     const colorMap = {
       'ممتاز': 'text-green-600 bg-green-50',
       'جيد جداً': 'text-blue-600 bg-blue-50',
-      'جيد': 'text-indigo-600 bg-indigo-50',
+      'جيد': 'text-brand-navy bg-brand-navy/5',
       'مقبول': 'text-amber-600 bg-amber-50',
       'ضعيف': 'text-red-600 bg-red-50',
     };
@@ -94,14 +94,14 @@ const CumulativeAnalytics = ({ childId, viewerRole = 'parent' }) => {
       <Card className="rounded-2xl border-0 shadow-sm">
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-2">
-            <Activity className="h-5 w-5 text-indigo-600" />
+            <Activity className="h-5 w-5 text-brand-navy" />
             {t('performanceSummary')}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-3 gap-3">
-            <div className="text-center p-3 bg-indigo-50 rounded-xl">
-              <Award className="h-6 w-6 mx-auto mb-1 text-indigo-600" />
+            <div className="text-center p-3 bg-brand-navy/5 rounded-xl">
+              <Award className="h-6 w-6 mx-auto mb-1 text-brand-navy" />
               <p className={`text-lg font-bold ${getLevelColor(summary?.level).split(' ')[0]}`}>
                 {summary?.level}
               </p>
@@ -112,9 +112,9 @@ const CumulativeAnalytics = ({ childId, viewerRole = 'parent' }) => {
               <p className="text-lg font-bold text-blue-600">{summary?.overall_average}%</p>
               <p className="text-[10px] text-muted-foreground">{t('overallAverage')}</p>
             </div>
-            <div className="text-center p-3 bg-purple-50 rounded-xl">
-              <Users className="h-6 w-6 mx-auto mb-1 text-purple-600" />
-              <p className="text-lg font-bold text-purple-600">{summary?.class_average}%</p>
+            <div className="text-center p-3 bg-brand-purple/5 rounded-xl">
+              <Users className="h-6 w-6 mx-auto mb-1 text-brand-purple" />
+              <p className="text-lg font-bold text-brand-purple">{summary?.class_average}%</p>
               <p className="text-[10px] text-muted-foreground">{t('classAverage')}</p>
             </div>
           </div>
@@ -142,7 +142,7 @@ const CumulativeAnalytics = ({ childId, viewerRole = 'parent' }) => {
       <Card className="rounded-2xl border-0 shadow-sm">
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-2">
-            <Target className="h-5 w-5 text-indigo-600" />
+            <Target className="h-5 w-5 text-brand-navy" />
             {t('performanceTrend')}
           </CardTitle>
         </CardHeader>
@@ -166,7 +166,7 @@ const CumulativeAnalytics = ({ childId, viewerRole = 'parent' }) => {
         <Card className="rounded-2xl border-0 shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
-              <BookOpen className="h-5 w-5 text-indigo-600" />
+              <BookOpen className="h-5 w-5 text-brand-navy" />
               {t('subjectDistribution')}
             </CardTitle>
           </CardHeader>
@@ -242,7 +242,7 @@ const CumulativeAnalytics = ({ childId, viewerRole = 'parent' }) => {
         <Card className="rounded-2xl border-0 shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
-              <Home className="h-5 w-5 text-indigo-600" />
+              <Home className="h-5 w-5 text-brand-navy" />
               {t('homeFollowUp')}
             </CardTitle>
           </CardHeader>

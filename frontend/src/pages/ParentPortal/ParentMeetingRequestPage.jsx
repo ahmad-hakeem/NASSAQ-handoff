@@ -125,7 +125,7 @@ const ParentMeetingRequestPage = () => {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 font-cairo flex items-center gap-2">
-              <CalendarCheck className="h-7 w-7 text-indigo-600" />
+              <CalendarCheck className="h-7 w-7 text-brand-navy" />
               {t('meetingRequest')}
             </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
@@ -148,7 +148,7 @@ const ParentMeetingRequestPage = () => {
 
         {showForm && (
           <Card className="border-0 shadow-lg overflow-hidden">
-            <div className="h-1.5 bg-gradient-to-r from-indigo-500 to-purple-500" />
+            <div className="h-1.5 bg-gradient-to-r from-brand-navy to-brand-purple" />
             <CardHeader className="pb-2">
               <CardTitle className="text-lg font-cairo">
                 {t('meetingRequestForm')}
@@ -220,11 +220,11 @@ const ParentMeetingRequestPage = () => {
                           onClick={() => setContactPreference(opt.value)}
                           className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all text-sm ${
                             isSelected
-                              ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300'
+                              ? 'border-brand-navy bg-brand-navy/5 dark:bg-brand-navy/20 text-brand-navy dark:text-brand-navy/80'
                               : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 text-gray-600 dark:text-gray-400'
                           }`}
                         >
-                          <Icon className={`h-5 w-5 ${isSelected ? 'text-indigo-600' : ''}`} />
+                          <Icon className={`h-5 w-5 ${isSelected ? 'text-brand-navy' : ''}`} />
                           <span className="font-medium text-xs">
                             {isRTL ? opt.label : opt.labelEn}
                           </span>
@@ -237,7 +237,7 @@ const ParentMeetingRequestPage = () => {
                 <Button
                   type="submit"
                   disabled={submitting || !preferredDate || !topic.trim()}
-                  className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white h-11 font-cairo"
+                  className="w-full bg-gradient-to-r from-brand-navy to-brand-purple hover:from-brand-navy-dark hover:to-brand-purple text-white h-11 font-cairo"
                 >
                   {submitting ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -255,7 +255,7 @@ const ParentMeetingRequestPage = () => {
 
         <div className="space-y-3">
           <h2 className="text-lg font-bold font-cairo text-gray-800 dark:text-gray-200 flex items-center gap-2">
-            <History className="h-5 w-5 text-indigo-500" />
+            <History className="h-5 w-5 text-brand-navy" />
             {t('myRequests2')}
             {meetings.length > 0 && (
               <Badge variant="secondary" className="text-xs">{meetings.length}</Badge>
@@ -280,12 +280,12 @@ const ParentMeetingRequestPage = () => {
                 <Card key={meeting.id} className="border-0 shadow-sm hover:shadow-md transition-shadow">
                   <CardContent className="p-4">
                     <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <CalendarCheck className="h-5 w-5 text-indigo-600" />
+                      <div className="w-10 h-10 rounded-xl bg-brand-navy/15 dark:bg-brand-navy/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <CalendarCheck className="h-5 w-5 text-brand-navy" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2 mb-1">
-                          <h3 className="font-semibold text-sm text-gray-900 dark:text-gray-100 truncate">
+                          <h3 className="font-semibold text-sm text-gray-900 dark:text-gray-100 truncate font-cairo">
                             {meeting.topic}
                           </h3>
                           <Badge className={`text-[10px] flex-shrink-0 ${status.color}`}>

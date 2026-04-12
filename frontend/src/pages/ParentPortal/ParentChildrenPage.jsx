@@ -54,9 +54,9 @@ const ParentChildrenPage = () => {
     <PortalLayout portalType="parent">
       <div className="p-4 space-y-4" data-testid="parent-children-page">
         <div className="flex items-center gap-2 mb-2">
-          <Users className="h-6 w-6 text-indigo-600" />
+          <Users className="h-6 w-6 text-brand-navy" />
           <h1 className="text-xl font-bold font-cairo">{t('myChildren')}</h1>
-          <Badge className="bg-indigo-100 text-indigo-700 border-0 ms-auto">
+          <Badge className="bg-brand-navy/15 text-brand-navy border-0 ms-auto">
             {children.length} {t('children')}
           </Badge>
         </div>
@@ -65,7 +65,7 @@ const ParentChildrenPage = () => {
           <Card className="rounded-2xl border-0 shadow-sm">
             <CardContent className="py-16 text-center">
               <Users className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-              <h3 className="font-bold text-lg text-gray-700 mb-2">
+              <h3 className="font-cairo font-bold text-lg text-gray-700 mb-2">
                 {t('noChildrenEnrolled')}
               </h3>
               <p className="text-muted-foreground text-sm">
@@ -77,11 +77,11 @@ const ParentChildrenPage = () => {
           <div className="space-y-4">
             {children.map((child) => (
               <Card key={child.id} className="rounded-2xl border-0 shadow-sm overflow-hidden">
-                <div className="bg-gradient-to-l from-indigo-50 to-purple-50 p-4">
+                <div className="bg-gradient-to-l from-brand-navy/5 to-brand-purple/5 p-4">
                   <div className="flex items-center gap-4">
-                    <Avatar className="h-16 w-16 border-2 border-indigo-200">
+                    <Avatar className="h-16 w-16 border-2 border-brand-navy/20">
                       <AvatarImage src={child.photo_url || child.profile_picture} />
-                      <AvatarFallback className="bg-indigo-100 text-indigo-600 font-bold text-xl">
+                      <AvatarFallback className="bg-brand-navy/15 text-brand-navy font-bold text-xl">
                         {child.name?.charAt(0)}
                       </AvatarFallback>
                     </Avatar>

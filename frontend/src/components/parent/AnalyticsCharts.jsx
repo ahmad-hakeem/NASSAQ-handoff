@@ -15,7 +15,7 @@ export const GaugeChart = ({ value, level }) => {
   const getColor = () => {
     if (value >= 90) return '#10b981';
     if (value >= 80) return '#3b82f6';
-    if (value >= 70) return '#6366f1';
+    if (value >= 70) return '#1C3D74';
     if (value >= 60) return '#f59e0b';
     return '#ef4444';
   };
@@ -65,9 +65,9 @@ export const PerformanceLine = ({ data }) => {
             type="monotone"
             dataKey="average"
             name="المتوسط"
-            stroke="#6366f1"
+            stroke="#1C3D74"
             strokeWidth={2}
-            dot={{ r: 3, fill: '#6366f1' }}
+            dot={{ r: 3, fill: '#1C3D74' }}
             activeDot={{ r: 5 }}
           />
         </LineChart>
@@ -89,8 +89,8 @@ export const SubjectRadar = ({ data }) => {
           <Radar
             name="الدرجات"
             dataKey="score"
-            stroke="#6366f1"
-            fill="#6366f1"
+            stroke="#1C3D74"
+            fill="#1C3D74"
             fillOpacity={0.25}
             strokeWidth={2}
           />

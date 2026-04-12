@@ -15,8 +15,8 @@ const StudentSwitcher = ({ children, selectedIndex, onSelect }) => {
             onClick={() => onSelect(index)}
             className={`flex items-center gap-2.5 px-4 py-2.5 rounded-2xl whitespace-nowrap transition-all duration-200 text-sm font-medium min-w-0
               ${isSelected
-                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200 scale-[1.02]'
-                : 'bg-white text-gray-700 border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 hover:shadow-sm'
+                ? 'bg-brand-navy text-white shadow-lg shadow-brand-navy/15 scale-[1.02]'
+                : 'bg-white text-gray-700 border border-gray-200 hover:border-brand-navy/30 hover:bg-brand-navy/5 hover:shadow-sm'
               }`}
             data-testid={`student-switcher-${index}`}
           >
@@ -24,18 +24,18 @@ const StudentSwitcher = ({ children, selectedIndex, onSelect }) => {
               <img
                 src={child.profile_picture || child.photo_url}
                 alt={child.name}
-                className={`w-7 h-7 rounded-full object-cover border-2 ${isSelected ? 'border-white/40' : 'border-indigo-100'}`}
+                className={`w-7 h-7 rounded-full object-cover border-2 ${isSelected ? 'border-white/40' : 'border-brand-navy/10'}`}
               />
             ) : (
               <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold
-                ${isSelected ? 'bg-white/20 text-white' : 'bg-indigo-100 text-indigo-600'}`}>
+                ${isSelected ? 'bg-white/20 text-white' : 'bg-brand-navy/15 text-brand-navy'}`}>
                 {initials}
               </div>
             )}
             <div className="flex flex-col items-start">
               <span className="leading-tight">{child.name?.split(' ')[0]}</span>
               {child.grade && (
-                <span className={`text-[10px] leading-tight ${isSelected ? 'text-indigo-200' : 'text-gray-400'}`}>
+                <span className={`text-[10px] leading-tight ${isSelected ? 'text-white/60' : 'text-gray-400'}`}>
                   {child.grade}
                 </span>
               )}

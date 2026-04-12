@@ -76,14 +76,14 @@ const WeeklyStory = ({ data, loading, error, onRetry }) => {
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-      <div className="bg-gradient-to-r from-purple-50 to-indigo-50 p-4 border-b border-purple-100">
+      <div className="bg-gradient-to-r from-brand-purple/5 to-brand-navy/5 p-4 border-b border-brand-purple/10">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-brand-purple/15 text-brand-purple flex items-center justify-center">
               <BookOpen className="w-4.5 h-4.5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-gray-800">{t('weeklyStory')}</h3>
+              <h3 className="text-base font-bold text-gray-800 font-cairo">{t('weeklyStory')}</h3>
               {(week_start || week_end) && (
                 <p className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-1">
                   <Calendar className="w-3 h-3" />
@@ -92,7 +92,7 @@ const WeeklyStory = ({ data, loading, error, onRetry }) => {
               )}
             </div>
           </div>
-          <span className="text-[10px] text-purple-500 bg-purple-100 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
+          <span className="text-[10px] text-brand-purple bg-brand-purple/15 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
             <RefreshCw className="w-2.5 h-2.5" />
             {t('weeklyRefresh')}
           </span>
@@ -217,7 +217,7 @@ const WeeklyStory = ({ data, loading, error, onRetry }) => {
                     }}
                   />
                   <Legend wrapperStyle={{ fontSize: 11, direction: 'rtl' }} />
-                  <Bar dataKey="participation" name={t('classParticipation')} fill="#6366f1" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="participation" name={t('classParticipation')} fill="#1C3D74" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="positive_behavior" name={t('positiveBehavior')} fill="#10b981" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -227,22 +227,22 @@ const WeeklyStory = ({ data, loading, error, onRetry }) => {
 
         {daily_chart_data?.length > 0 && hasActivityData && (
           <div className="flex items-center gap-4 justify-center">
-            <ActivityDot color="bg-indigo-500" label={t('classParticipation')} />
+            <ActivityDot color="bg-brand-navy" label={t('classParticipation')} />
             <ActivityDot color="bg-emerald-500" label={t('positiveBehavior')} />
             {daily_chart_data.some(d => d.participation > 3) && (
-              <ActivityDot color="bg-purple-500" label={t('highActivity')} />
+              <ActivityDot color="bg-brand-purple" label={t('highActivity')} />
             )}
           </div>
         )}
 
         {weekly_tip && (
-          <div className="flex items-start gap-3 p-4 rounded-xl bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-100">
-            <div className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
+          <div className="flex items-start gap-3 p-4 rounded-xl bg-gradient-to-r from-brand-navy/5 to-brand-purple/5 border border-brand-navy/10">
+            <div className="w-9 h-9 rounded-full bg-brand-navy/15 text-brand-navy flex items-center justify-center shrink-0">
               <Lightbulb className="w-4.5 h-4.5" />
             </div>
             <div>
-              <p className="text-xs font-bold text-indigo-800 mb-1">{t('weeklyTip')}</p>
-              <p className="text-sm text-indigo-700 leading-relaxed">{weekly_tip}</p>
+              <p className="text-xs font-bold text-brand-navy-dark mb-1 font-cairo">{t('weeklyTip')}</p>
+              <p className="text-sm text-brand-navy leading-relaxed">{weekly_tip}</p>
             </div>
           </div>
         )}
@@ -268,14 +268,14 @@ const SectionLabel = ({ icon: Icon, label, color = 'gray' }) => {
 
 const StatBadge = ({ icon: Icon, label, value, color }) => {
   const colorClasses = {
-    indigo: 'bg-indigo-50 text-indigo-700 border-indigo-100',
+    indigo: 'bg-brand-navy/5 text-brand-navy border-brand-navy/10',
     emerald: 'bg-emerald-50 text-emerald-700 border-emerald-100',
   };
 
   return (
     <div className={`flex items-center gap-3 p-3.5 rounded-xl border ${colorClasses[color] || colorClasses.indigo}`}>
       <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-        color === 'emerald' ? 'bg-emerald-100' : 'bg-indigo-100'
+        color === 'emerald' ? 'bg-emerald-100' : 'bg-brand-navy/15'
       }`}>
         <Icon className="w-5 h-5" />
       </div>

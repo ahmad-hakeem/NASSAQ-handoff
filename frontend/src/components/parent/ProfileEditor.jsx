@@ -69,7 +69,7 @@ const ProfileEditor = ({ profile, childId, onSave, onCancel }) => {
               key={e}
               onClick={() => setEmoji(e)}
               className={`w-10 h-10 rounded-xl text-xl flex items-center justify-center transition-all ${
-                emoji === e ? 'bg-indigo-100 dark:bg-indigo-900/40 ring-2 ring-indigo-500 scale-110' : 'bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700'
+                emoji === e ? 'bg-brand-navy/15 dark:bg-brand-navy-dark/40 ring-2 ring-brand-navy scale-110' : 'bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700'
               }`}
             >
               {e}
@@ -139,7 +139,7 @@ const ProfileEditor = ({ profile, childId, onSave, onCancel }) => {
               onClick={() => setFamilySituation(familySituation === id ? '' : id)}
               className={`px-3 py-2.5 rounded-xl text-sm transition-all border-2 ${
                 familySituation === id
-                  ? 'bg-indigo-50 text-indigo-700 border-indigo-300 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-700'
+                  ? 'bg-brand-navy/5 text-brand-navy border-brand-navy/30 dark:bg-brand-navy-dark/30 dark:text-brand-navy-light dark:border-brand-navy-dark'
                   : 'bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-transparent hover:border-gray-200 dark:hover:border-gray-600'
               }`}
             >
@@ -153,7 +153,7 @@ const ProfileEditor = ({ profile, childId, onSave, onCancel }) => {
         <button
           onClick={handleSave}
           disabled={saving}
-          className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+          className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-brand-navy text-white text-sm font-medium hover:bg-brand-navy-dark disabled:opacity-50 transition-colors"
         >
           <Save className="w-4 h-4" />
           {saving ? (isRTL ? 'جارٍ الحفظ...' : 'Saving...') : (isRTL ? 'حفظ التعديلات' : 'Save Changes')}

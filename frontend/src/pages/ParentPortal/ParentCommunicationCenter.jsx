@@ -209,7 +209,7 @@ const ParentCommunicationCenter = () => {
     <PortalLayout portalType="parent">
       <div className="p-4 space-y-4 max-w-lg mx-auto" dir={isRTL ? 'rtl' : 'ltr'}>
         <div className="flex items-center gap-3 mb-1">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-navy to-brand-purple flex items-center justify-center">
             <MessageSquare className="w-5 h-5 text-white" />
           </div>
           <div>
@@ -232,9 +232,9 @@ const ParentCommunicationCenter = () => {
         )}
 
         {requestsCount && canSubmit && (
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800">
-            <AlertCircle className="w-4 h-4 text-indigo-500 shrink-0" />
-            <p className="text-xs text-indigo-700 dark:text-indigo-300">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-brand-navy/5 dark:bg-brand-navy/20 border border-brand-navy/10 dark:border-brand-navy/30">
+            <AlertCircle className="w-4 h-4 text-brand-navy shrink-0" />
+            <p className="text-xs text-brand-navy dark:text-brand-navy/80">
               {t('openRequestsCount').replace('{count}', requestsCount.total_open)}
             </p>
           </div>
@@ -251,15 +251,15 @@ const ParentCommunicationCenter = () => {
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
                   isActive
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200 dark:shadow-indigo-900/30'
-                    : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-indigo-300 dark:hover:border-indigo-600'
+                    ? 'bg-brand-navy text-white shadow-md shadow-brand-navy/15 dark:shadow-brand-navy/30'
+                    : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-brand-navy/30 dark:hover:border-brand-navy/40'
                 }`}
               >
                 <Icon className="w-4 h-4" />
                 {tab.label}
                 {unreadCount > 0 && (
                   <span className={`w-5 h-5 rounded-full text-[10px] flex items-center justify-center font-bold ${
-                    isActive ? 'bg-white text-indigo-600' : 'bg-red-500 text-white'
+                    isActive ? 'bg-white text-brand-navy' : 'bg-red-500 text-white'
                   }`}>
                     {unreadCount}
                   </span>
@@ -279,7 +279,7 @@ const ParentCommunicationCenter = () => {
             )}
 
             <Card className="rounded-2xl border-0 shadow-sm">
-              <div className="h-1 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-t-2xl" />
+              <div className="h-1 bg-gradient-to-r from-brand-navy to-brand-purple rounded-t-2xl" />
               <CardContent className="p-4 space-y-4">
                 <div>
                   <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 font-cairo">
@@ -292,7 +292,7 @@ const ParentCommunicationCenter = () => {
                         onClick={() => setMsgType(mt.id)}
                         className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-all ${
                           msgType === mt.id
-                            ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-700 shadow-sm'
+                            ? 'bg-brand-navy/15 dark:bg-brand-navy/20 text-brand-navy dark:text-brand-navy/80 border border-brand-navy/30 dark:border-brand-navy/40 shadow-sm'
                             : 'bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-transparent hover:border-gray-200 dark:hover:border-gray-600'
                         }`}
                       >
@@ -313,7 +313,7 @@ const ParentCommunicationCenter = () => {
                         onClick={() => setRecipient(rt.id)}
                         className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-all ${
                           recipient === rt.id
-                            ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-700 shadow-sm'
+                            ? 'bg-brand-navy/15 dark:bg-brand-navy/20 text-brand-navy dark:text-brand-navy/80 border border-brand-navy/30 dark:border-brand-navy/40 shadow-sm'
                             : 'bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-transparent hover:border-gray-200 dark:hover:border-gray-600'
                         }`}
                       >
@@ -328,13 +328,13 @@ const ParentCommunicationCenter = () => {
                   onChange={e => setMsgText(e.target.value)}
                   placeholder={t('writeYourMessageHere')}
                   rows={4}
-                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none placeholder:text-gray-400"
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-brand-navy resize-none placeholder:text-gray-400"
                 />
 
                 <button
                   onClick={handleSendMessage}
                   disabled={!msgText.trim() || sending || !canSubmit}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white text-sm font-medium font-cairo disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md shadow-indigo-200 dark:shadow-indigo-900/30"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-brand-navy to-brand-purple hover:from-brand-navy-dark hover:to-brand-purple text-white text-sm font-medium font-cairo disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md shadow-brand-navy/15 dark:shadow-brand-navy/30"
                 >
                   {sending ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -350,7 +350,7 @@ const ParentCommunicationCenter = () => {
 
         {activeTab === 'excuse' && (
           <Card className="rounded-2xl border-0 shadow-sm">
-            <div className="h-1 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-t-2xl" />
+            <div className="h-1 bg-gradient-to-r from-brand-navy to-brand-purple rounded-t-2xl" />
             <CardContent className="p-4 space-y-4">
               {children.length > 1 && (
                 <div>
@@ -360,7 +360,7 @@ const ParentCommunicationCenter = () => {
                   <select
                     value={excuseChildId}
                     onChange={e => setExcuseChildId(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-brand-navy"
                   >
                     {children.map(c => (
                       <option key={c.id} value={c.id}>
@@ -380,7 +380,7 @@ const ParentCommunicationCenter = () => {
                   type="date"
                   value={excuseDate}
                   onChange={e => setExcuseDate(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-brand-navy"
                 />
               </div>
 
@@ -393,7 +393,7 @@ const ParentCommunicationCenter = () => {
                   onChange={e => setExcuseDesc(e.target.value)}
                   placeholder={t('medicalExcuseDesc')}
                   rows={3}
-                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none placeholder:text-gray-400"
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-brand-navy resize-none placeholder:text-gray-400"
                 />
               </div>
 
@@ -411,9 +411,9 @@ const ParentCommunicationCenter = () => {
                   id="excuse-file-input"
                 />
                 {excuseFileName ? (
-                  <div className="flex items-center gap-2 p-3 rounded-xl border border-indigo-200 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-900/20">
-                    <FileText className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
-                    <span className="text-sm text-indigo-700 dark:text-indigo-300 truncate flex-1">{excuseFileName}</span>
+                  <div className="flex items-center gap-2 p-3 rounded-xl border border-brand-navy/20 dark:border-brand-navy/40 bg-brand-navy/5 dark:bg-brand-navy/20">
+                    <FileText className="w-4 h-4 text-brand-navy dark:text-brand-navy/70 shrink-0" />
+                    <span className="text-sm text-brand-navy dark:text-brand-navy/80 truncate flex-1">{excuseFileName}</span>
                     <button
                       type="button"
                       onClick={clearFile}
@@ -426,7 +426,7 @@ const ParentCommunicationCenter = () => {
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700 hover:border-indigo-300 dark:hover:border-indigo-600 text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all"
+                    className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700 hover:border-brand-navy/30 dark:hover:border-brand-navy/40 text-gray-500 dark:text-gray-400 hover:text-brand-navy dark:hover:text-brand-navy/70 transition-all"
                   >
                     <Upload className="w-4 h-4" />
                     <span className="text-sm">{t('attachmentLink')}</span>
@@ -437,7 +437,7 @@ const ParentCommunicationCenter = () => {
               <button
                 onClick={handleSendExcuse}
                 disabled={!excuseDesc.trim() || !excuseChildId || sendingExcuse || !canSubmit}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white text-sm font-medium font-cairo disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md shadow-indigo-200 dark:shadow-indigo-900/30"
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-brand-navy to-brand-purple hover:from-brand-navy-dark hover:to-brand-purple text-white text-sm font-medium font-cairo disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md shadow-brand-navy/15 dark:shadow-brand-navy/30"
               >
                 {sendingExcuse ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -452,7 +452,7 @@ const ParentCommunicationCenter = () => {
 
         {activeTab === 'inbox' && (
           <Card className="rounded-2xl border-0 shadow-sm">
-            <div className="h-1 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-t-2xl" />
+            <div className="h-1 bg-gradient-to-r from-brand-navy to-brand-purple rounded-t-2xl" />
             <CardContent className="p-4">
               {messages.length === 0 ? (
                 <div className="text-center py-10">
@@ -472,7 +472,7 @@ const ParentCommunicationCenter = () => {
                         className={`p-3.5 rounded-xl border transition-all ${
                           isRead
                             ? 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700'
-                            : 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800'
+                            : 'bg-brand-navy/5 dark:bg-brand-navy/20 border-brand-navy/20 dark:border-brand-navy/30'
                         }`}
                       >
                         <div className="flex items-start gap-3">

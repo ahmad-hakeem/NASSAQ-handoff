@@ -113,7 +113,7 @@ const ChildDetailsPage = () => {
           <Card className="rounded-2xl border-0 shadow-sm">
             <CardContent className="py-12 text-center">
               <User className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-              <h3 className="font-bold text-lg text-gray-700 mb-2">
+              <h3 className="font-bold font-cairo text-lg text-gray-700 mb-2">
                 {t('studentNotFound')}
               </h3>
               <Link to="/parent">
@@ -133,7 +133,7 @@ const ChildDetailsPage = () => {
     <PortalLayout portalType="parent">
       <div className="p-4 space-y-4" data-testid="child-details-page">
         {/* Child Profile Card */}
-        <Card className="rounded-2xl border-0 shadow-sm bg-gradient-to-br from-indigo-500 to-purple-600 text-white">
+        <Card className="rounded-2xl border-0 shadow-sm bg-gradient-to-br from-brand-navy to-brand-purple text-white">
           <CardContent className="p-6">
             <div className="flex items-center gap-4">
               <Avatar className="h-20 w-20 border-4 border-white/30">
@@ -144,7 +144,7 @@ const ChildDetailsPage = () => {
               </Avatar>
               <div className="flex-1">
                 <h1 className="text-2xl font-bold font-cairo">{child.name}</h1>
-                <p className="text-indigo-100 flex items-center gap-2 mt-1">
+                <p className="text-white/80 flex items-center gap-2 mt-1">
                   <MapPin className="h-4 w-4" />
                   {child.school_name}
                 </p>
@@ -316,13 +316,13 @@ const ChildDetailsPage = () => {
                     <div className="space-y-4">
                       {schedule.days.map((day) => (
                         <div key={day}>
-                          <h3 className="font-bold text-sm mb-2 text-indigo-600">{day}</h3>
+                          <h3 className="font-bold font-cairo text-sm mb-2 text-brand-navy">{day}</h3>
                           {schedule.schedule[day]?.length > 0 ? (
                             <div className="space-y-2">
                               {schedule.schedule[day].map((entry, idx) => (
                                 <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                                  <div className="w-14 h-10 rounded bg-indigo-100 flex items-center justify-center">
-                                    <span className="text-xs font-bold text-indigo-600">{entry.start_time}</span>
+                                  <div className="w-14 h-10 rounded bg-brand-navy/15 flex items-center justify-center">
+                                    <span className="text-xs font-bold text-brand-navy">{entry.start_time}</span>
                                   </div>
                                   <div>
                                     <p className="font-medium text-sm">{entry.subject}</p>
@@ -361,13 +361,13 @@ const ChildDetailsPage = () => {
         <Card className="rounded-2xl border-0 shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
-              <MessageSquare className="h-5 w-5 text-indigo-600" />
+              <MessageSquare className="h-5 w-5 text-brand-navy" />
               {t('contactTeachers')}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <Link to={`/parent/child/${childId}/teachers`}>
-              <Button className="w-full bg-indigo-600 hover:bg-indigo-700">
+              <Button className="w-full bg-brand-navy hover:bg-brand-navy-dark">
                 {t('viewTeachersList')}
               </Button>
             </Link>

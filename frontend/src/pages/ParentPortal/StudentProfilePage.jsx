@@ -70,7 +70,7 @@ const StudentProfilePage = () => {
       <PortalLayout portalType="parent">
         <div className="p-4 text-center text-gray-500 mt-20" dir={isRTL ? 'rtl' : 'ltr'}>
           <p>{isRTL ? 'لا يمكن عرض ملف الطالب حالياً' : 'Unable to display student profile'}</p>
-          <Link to="/parent" className="text-indigo-600 text-sm mt-2 inline-block">
+          <Link to="/parent" className="text-brand-navy text-sm mt-2 inline-block">
             {isRTL ? 'العودة للرئيسية' : 'Back to Home'}
           </Link>
         </div>
@@ -87,20 +87,20 @@ const StudentProfilePage = () => {
               <ChevronLeft className={`w-5 h-5 text-gray-600 dark:text-gray-400 ${isRTL ? 'rotate-180' : ''}`} />
             </button>
           </Link>
-          <h1 className="text-lg font-bold text-gray-800 dark:text-gray-200">
+          <h1 className="text-lg font-bold font-cairo text-gray-800 dark:text-gray-200">
             {isRTL ? 'ملف الطالب' : 'Student Profile'}
           </h1>
         </div>
 
         <Card className="rounded-2xl border-0 shadow-sm overflow-hidden">
-          <div className="bg-gradient-to-r from-indigo-600 to-purple-700 p-5 text-white">
+          <div className="bg-gradient-to-r from-brand-navy to-brand-purple p-5 text-white">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-4">
                 <div className="w-16 h-16 rounded-2xl bg-white/20 flex items-center justify-center text-3xl">
                   {profile?.emoji || '👦'}
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold">{profile?.name}</h2>
+                  <h2 className="text-lg font-bold font-cairo">{profile?.name}</h2>
                   <div className="flex items-center gap-2 mt-1 text-sm opacity-80">
                     <GraduationCap className="w-3.5 h-3.5" />
                     <span>{profile?.class_name} - {profile?.grade_level}</span>
@@ -197,16 +197,16 @@ const StudentProfilePage = () => {
 
                 <Link
                   to={`/parent/child/${childId}/analytics`}
-                  className="flex items-center gap-3 p-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/20 dark:hover:bg-indigo-900/30 transition-colors"
+                  className="flex items-center gap-3 p-3 rounded-xl bg-brand-navy/5 hover:bg-brand-navy/10 dark:bg-brand-navy-dark/20 dark:hover:bg-brand-navy-dark/30 transition-colors"
                 >
-                  <div className="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                  <div className="w-10 h-10 rounded-xl bg-brand-navy/15 dark:bg-brand-navy-dark/40 text-brand-navy dark:text-brand-navy-light flex items-center justify-center">
                     <BarChart3 className="w-5 h-5" />
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-indigo-800 dark:text-indigo-300">
+                    <p className="text-sm font-medium text-brand-navy-dark dark:text-brand-navy-light">
                       {isRTL ? 'تحليل الأداء التراكمي' : 'Cumulative Performance Analysis'}
                     </p>
-                    <p className="text-xs text-indigo-600 dark:text-indigo-400">
+                    <p className="text-xs text-brand-navy dark:text-brand-navy-light/70">
                       {isRTL ? 'عرض التحليل الشامل والرسوم البيانية' : 'View comprehensive analysis and charts'}
                     </p>
                   </div>

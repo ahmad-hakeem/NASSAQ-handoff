@@ -47,7 +47,7 @@ const ParentMessagesPage = () => {
     <PortalLayout portalType="parent">
       <div className="p-4 space-y-4" data-testid="parent-messages-page">
         <div className="flex items-center gap-2 mb-2">
-          <MessageSquare className="h-6 w-6 text-indigo-600" />
+          <MessageSquare className="h-6 w-6 text-brand-navy" />
           <h1 className="text-xl font-bold font-cairo">{t('messages2')}</h1>
         </div>
 
@@ -55,7 +55,7 @@ const ParentMessagesPage = () => {
           <Card className="rounded-2xl border-0 shadow-sm">
             <CardContent className="py-16 text-center">
               <MessageSquare className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-              <h3 className="font-bold text-lg text-gray-700 mb-2">
+              <h3 className="font-cairo font-bold text-lg text-gray-700 mb-2">
                 {t('noMessagesYet')}
               </h3>
               <p className="text-muted-foreground text-sm">

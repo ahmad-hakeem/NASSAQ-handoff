@@ -42,20 +42,20 @@ const PerformanceIndicator = ({ performance }) => {
   const levelColors = {
     'ممتاز': { gradient: 'from-emerald-500 to-emerald-600', ring: 'ring-emerald-200' },
     'جيد جداً': { gradient: 'from-blue-500 to-blue-600', ring: 'ring-blue-200' },
-    'جيد ومستقر': { gradient: 'from-indigo-500 to-indigo-600', ring: 'ring-indigo-200' },
+    'جيد ومستقر': { gradient: 'from-brand-navy to-brand-navy', ring: 'ring-brand-navy/20' },
     'مقبول': { gradient: 'from-amber-500 to-amber-600', ring: 'ring-amber-200' },
     'يحتاج تحسين': { gradient: 'from-red-500 to-red-600', ring: 'ring-red-200' },
   };
 
-  const levelStyle = levelColors[level] || { gradient: 'from-indigo-500 to-indigo-600', ring: 'ring-indigo-200' };
+  const levelStyle = levelColors[level] || { gradient: 'from-brand-navy to-brand-navy', ring: 'ring-brand-navy/20' };
 
   return (
     <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
       <div className="flex items-center gap-2 mb-3">
-        <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center">
-          <BarChart3 className="w-4 h-4 text-indigo-600" />
+        <div className="w-8 h-8 rounded-lg bg-brand-navy/5 flex items-center justify-center">
+          <BarChart3 className="w-4 h-4 text-brand-navy" />
         </div>
-        <p className="text-sm font-semibold text-gray-800">{t('performanceIndicator')}</p>
+        <p className="text-sm font-semibold text-gray-800 font-cairo">{t('performanceIndicator')}</p>
       </div>
 
       <div className="flex items-center justify-between mb-3">

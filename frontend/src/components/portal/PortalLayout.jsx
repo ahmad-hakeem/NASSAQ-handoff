@@ -40,9 +40,9 @@ export const PortalLayout = ({ children, portalType = 'student' }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const isStudent = portalType === 'student';
-  const primaryColor = isStudent ? 'emerald' : 'indigo';
-  const gradientFrom = isStudent ? 'from-emerald-600' : 'from-indigo-600';
-  const gradientTo = isStudent ? 'to-teal-500' : 'to-purple-500';
+  const primaryColor = isStudent ? 'emerald' : 'brand-navy';
+  const gradientFrom = isStudent ? 'from-emerald-600' : 'from-brand-navy';
+  const gradientTo = isStudent ? 'to-teal-500' : 'to-brand-purple';
 
   const handleLogout = () => {
     logout();
@@ -198,7 +198,7 @@ export const PortalLayout = ({ children, portalType = 'student' }) => {
                   onClick={() => setMobileMenuOpen(false)}
                   className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
                     isActive(item.href)
-                      ? `bg-${primaryColor}-50 text-${primaryColor}-600`
+                      ? isStudent ? 'bg-emerald-50 text-emerald-600' : 'bg-brand-navy/5 text-brand-navy'
                       : 'text-gray-600 hover:bg-gray-50'
                   }`}
                 >
@@ -246,7 +246,9 @@ export const PortalLayout = ({ children, portalType = 'student' }) => {
                 to={item.href}
                 className={`flex flex-col items-center gap-0.5 py-1.5 px-2 min-w-[56px] rounded-xl transition-all duration-200 ${
                   active
-                    ? `text-${primaryColor}-600 bg-${primaryColor}-50 dark:bg-${primaryColor}-950/30`
+                    ? isStudent
+                      ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30'
+                      : 'text-brand-navy bg-brand-navy/5 dark:bg-brand-navy/10'
                     : 'text-gray-400 dark:text-gray-500 active:bg-gray-100 dark:active:bg-slate-800'
                 }`}
                 data-testid={`bottom-nav-${item.href.split('/').pop()}`}

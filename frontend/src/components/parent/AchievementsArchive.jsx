@@ -13,9 +13,9 @@ const TYPE_OPTIONS = [
 ];
 
 const SOURCE_CONFIG = {
-  parent: { label_ar: 'ولي الأمر', label_en: 'Parent', icon: User, color: 'bg-indigo-100 text-indigo-700' },
+  parent: { label_ar: 'ولي الأمر', label_en: 'Parent', icon: User, color: 'bg-brand-navy/15 text-brand-navy' },
   teacher: { label_ar: 'المعلم', label_en: 'Teacher', icon: GraduationCap, color: 'bg-emerald-100 text-emerald-700' },
-  admin: { label_ar: 'الإدارة', label_en: 'Admin', icon: Building, color: 'bg-purple-100 text-purple-700' },
+  admin: { label_ar: 'الإدارة', label_en: 'Admin', icon: Building, color: 'bg-brand-purple/15 text-brand-purple' },
 };
 
 const AchievementsArchive = ({ childId }) => {
@@ -102,13 +102,13 @@ const AchievementsArchive = ({ childId }) => {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Award className="w-5 h-5 text-amber-600" />
-          <h3 className="text-base font-bold text-gray-800 dark:text-gray-200">
+          <h3 className="text-base font-bold font-cairo text-gray-800 dark:text-gray-200">
             {isRTL ? 'إنجازاتي' : 'My Achievements'}
           </h3>
         </div>
         <button
           onClick={() => setShowForm(!showForm)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-navy text-white text-xs font-medium hover:bg-brand-navy-dark transition-colors"
         >
           {showForm ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
           {showForm ? (isRTL ? 'إلغاء' : 'Cancel') : (isRTL ? 'إضافة إنجاز' : 'Add Achievement')}
@@ -122,7 +122,7 @@ const AchievementsArchive = ({ childId }) => {
             value={name}
             onChange={e => setName(e.target.value)}
             placeholder={isRTL ? 'اسم الإنجاز' : 'Achievement name'}
-            className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-brand-navy"
           />
           <div className="flex flex-wrap gap-2">
             {TYPE_OPTIONS.map(opt => (
@@ -131,8 +131,8 @@ const AchievementsArchive = ({ childId }) => {
                 onClick={() => setType(opt.id)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
                   type === opt.id
-                    ? 'bg-indigo-100 text-indigo-700 border border-indigo-300 dark:bg-indigo-900/40 dark:text-indigo-300 dark:border-indigo-600'
-                    : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-600 hover:border-indigo-200'
+                    ? 'bg-brand-navy/15 text-brand-navy border border-brand-navy/30 dark:bg-brand-navy-dark/40 dark:text-brand-navy-light dark:border-brand-navy-dark'
+                    : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-600 hover:border-brand-navy/20'
                 }`}
               >
                 <span>{opt.icon}</span>
@@ -145,15 +145,15 @@ const AchievementsArchive = ({ childId }) => {
             onClick={() => fileInputRef.current?.click()}
             className={`flex items-center gap-3 px-3 py-3 rounded-lg border-2 border-dashed cursor-pointer transition-all ${
               file
-                ? 'border-indigo-300 bg-indigo-50 dark:bg-indigo-900/20 dark:border-indigo-600'
-                : 'border-gray-200 dark:border-gray-600 hover:border-indigo-200 bg-white dark:bg-gray-900'
+                ? 'border-brand-navy/30 bg-brand-navy/5 dark:bg-brand-navy-dark/20 dark:border-brand-navy-dark'
+                : 'border-gray-200 dark:border-gray-600 hover:border-brand-navy/20 bg-white dark:bg-gray-900'
             }`}
           >
             {file ? (
               <>
-                <FileText className="w-5 h-5 text-indigo-600" />
+                <FileText className="w-5 h-5 text-brand-navy" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-indigo-700 dark:text-indigo-300 truncate">{file.name}</p>
+                  <p className="text-sm font-medium text-brand-navy dark:text-brand-navy-light truncate">{file.name}</p>
                   <p className="text-xs text-gray-400">{(file.size / 1024).toFixed(0)} KB</p>
                 </div>
                 <button
@@ -183,7 +183,7 @@ const AchievementsArchive = ({ childId }) => {
           <button
             onClick={handleSubmit}
             disabled={saving}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-brand-navy text-white text-sm font-medium hover:bg-brand-navy-dark disabled:opacity-50 transition-colors"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
             {saving ? (isRTL ? 'جارٍ الحفظ...' : 'Saving...') : (isRTL ? 'حفظ الإنجاز' : 'Save Achievement')}
@@ -209,7 +209,7 @@ const AchievementsArchive = ({ childId }) => {
             const SourceIcon = sourceConf.icon;
             const hasFile = ach.file_data || ach.file_url;
             return (
-              <div key={ach.id || i} className="flex items-center gap-3 p-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 hover:border-indigo-100 dark:hover:border-indigo-800 transition-colors">
+              <div key={ach.id || i} className="flex items-center gap-3 p-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 hover:border-brand-navy/10 dark:hover:border-brand-navy-dark transition-colors">
                 <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-900/30 text-amber-600 flex items-center justify-center flex-shrink-0">
                   <Award className="w-5 h-5" />
                 </div>
@@ -235,7 +235,7 @@ const AchievementsArchive = ({ childId }) => {
                     target="_blank"
                     rel="noreferrer"
                     download={ach.file_name || undefined}
-                    className="text-indigo-600 dark:text-indigo-400 text-xs hover:underline flex-shrink-0"
+                    className="text-brand-navy dark:text-brand-navy-light/70 text-xs hover:underline flex-shrink-0"
                   >
                     {isRTL ? 'عرض' : 'View'}
                   </a>

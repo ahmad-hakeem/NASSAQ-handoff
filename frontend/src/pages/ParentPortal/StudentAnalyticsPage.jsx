@@ -71,7 +71,7 @@ const StudentAnalyticsPage = () => {
             </button>
           </Link>
           <div>
-            <h1 className="text-lg font-bold text-gray-800">تحليل الأداء</h1>
+            <h1 className="text-lg font-bold font-cairo text-gray-800">تحليل الأداء</h1>
             <p className="text-xs text-gray-500">{data.student_name}</p>
           </div>
         </div>
@@ -79,17 +79,17 @@ const StudentAnalyticsPage = () => {
         <Card className="rounded-2xl border-0 shadow-sm">
           <CardContent className="p-4">
             <div className="grid grid-cols-3 gap-3 text-center">
-              <div className="p-3 rounded-xl bg-indigo-50">
-                <p className="text-2xl font-bold text-indigo-700">{data.summary?.overall_average}%</p>
-                <p className="text-xs text-indigo-600 mt-1">المتوسط العام</p>
+              <div className="p-3 rounded-xl bg-brand-navy/5">
+                <p className="text-2xl font-bold text-brand-navy">{data.summary?.overall_average}%</p>
+                <p className="text-xs text-brand-navy mt-1">المتوسط العام</p>
               </div>
               <div className="p-3 rounded-xl bg-blue-50">
                 <p className="text-2xl font-bold text-blue-700">{data.summary?.class_average}%</p>
                 <p className="text-xs text-blue-600 mt-1">متوسط الفصل</p>
               </div>
-              <div className="p-3 rounded-xl bg-purple-50">
-                <p className="text-2xl font-bold text-purple-700">{data.summary?.total_assessments}</p>
-                <p className="text-xs text-purple-600 mt-1">التقييمات</p>
+              <div className="p-3 rounded-xl bg-brand-purple/5">
+                <p className="text-2xl font-bold text-brand-purple">{data.summary?.total_assessments}</p>
+                <p className="text-xs text-brand-purple mt-1">التقييمات</p>
               </div>
             </div>
           </CardContent>
@@ -97,21 +97,21 @@ const StudentAnalyticsPage = () => {
 
         <Card className="rounded-2xl border-0 shadow-sm">
           <CardContent className="p-4">
-            <p className="text-sm font-semibold text-gray-700 mb-3">مستوى الأداء الحالي</p>
+            <p className="text-sm font-semibold font-cairo text-gray-700 mb-3">مستوى الأداء الحالي</p>
             <GaugeChart value={data.gauge_data?.value || 0} level={data.gauge_data?.level || ''} />
           </CardContent>
         </Card>
 
         <Card className="rounded-2xl border-0 shadow-sm">
           <CardContent className="p-4">
-            <p className="text-sm font-semibold text-gray-700 mb-3">اتجاه الأداء</p>
+            <p className="text-sm font-semibold font-cairo text-gray-700 mb-3">اتجاه الأداء</p>
             <PerformanceLine data={data.line_chart_data} />
           </CardContent>
         </Card>
 
         <Card className="rounded-2xl border-0 shadow-sm">
           <CardContent className="p-4">
-            <p className="text-sm font-semibold text-gray-700 mb-3">توزيع النتائج في المواد</p>
+            <p className="text-sm font-semibold font-cairo text-gray-700 mb-3">توزيع النتائج في المواد</p>
             <SubjectRadar data={data.radar_data} />
           </CardContent>
         </Card>
@@ -122,7 +122,7 @@ const StudentAnalyticsPage = () => {
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <TrendingUp className="w-4 h-4 text-emerald-600" />
-                  <p className="text-sm font-semibold text-gray-700">نقاط القوة</p>
+                  <p className="text-sm font-semibold font-cairo text-gray-700">نقاط القوة</p>
                 </div>
                 <div className="space-y-2">
                   {data.strengths.map((s, i) => (
@@ -141,7 +141,7 @@ const StudentAnalyticsPage = () => {
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <TrendingDown className="w-4 h-4 text-amber-600" />
-                  <p className="text-sm font-semibold text-gray-700">يحتاج تحسين</p>
+                  <p className="text-sm font-semibold font-cairo text-gray-700">يحتاج تحسين</p>
                 </div>
                 <div className="space-y-2">
                   {data.weaknesses.map((w, i) => (
@@ -161,7 +161,7 @@ const StudentAnalyticsPage = () => {
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <Activity className="w-4 h-4 text-gray-600" />
-                <p className="text-sm font-semibold text-gray-700">مؤشر المتابعة المنزلية</p>
+                <p className="text-sm font-semibold font-cairo text-gray-700">مؤشر المتابعة المنزلية</p>
               </div>
               <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${fuConf.color}`}>
                 <FuIcon className="w-3.5 h-3.5" />
