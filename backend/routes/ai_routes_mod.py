@@ -385,6 +385,180 @@ class HakimChatRequest(BaseModel):
     conversation_history: Optional[List[Dict[str, str]]] = None
     session_id: Optional[str] = None
     current_page: Optional[str] = None
+    child_id: Optional[str] = None
+
+
+async def _verify_parent_child_access(parent_user_id: str, child_id: str) -> bool:
+    link = await gd_find_one(db.session, "guardian_links", {
+        "parent_ref": parent_user_id, "student_id": child_id, "is_active": True
+    })
+    if link:
+        return True
+    student = await gd_find_one(db.session, "students", {"id": child_id})
+    if student and (student.get("parent_id") == parent_user_id or student.get("parent_user_id") == parent_user_id):
+        return True
+    return False
+
+
+async def _build_parent_child_context(child_id: str, school_id: str) -> str:
+    student = await gd_find_one(db.session, "students", {"id": child_id})
+    if not student:
+        return ""
+
+    student_name = student.get("full_name", "الطالب")
+    class_id = student.get("class_id", "")
+    sid = student.get("school_id") or school_id
+
+    cls = await gd_find_one(db.session, "classes", {"id": class_id, "school_id": sid}) if class_id else None
+    class_name = cls.get("name", "") if cls else ""
+
+    cutoff_30 = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%d")
+    cutoff_90 = (datetime.now(timezone.utc) - timedelta(days=90)).strftime("%Y-%m-%d")
+
+    att_total = await gd_count(db.session, "attendance", {
+        "student_id": child_id, "school_id": sid, "date": {"$gte": cutoff_30}
+    })
+    att_present = await gd_count(db.session, "attendance", {
+        "student_id": child_id, "school_id": sid, "date": {"$gte": cutoff_30},
+        "status": {"$in": ["present", "late"]}
+    })
+    att_absent = await gd_count(db.session, "attendance", {
+        "student_id": child_id, "school_id": sid, "date": {"$gte": cutoff_30},
+        "status": "absent"
+    })
+    att_rate = round((att_present / att_total) * 100, 1) if att_total > 0 else None
+
+    grades = await gd_find(db.session, "student_grades", {
+        "student_id": child_id, "tenant_id": sid
+    }, order_by="graded_at", desc_order=True, limit=50)
+
+    grades_text = ""
+    if grades:
+        subject_grades: Dict[str, list] = {}
+        for g in grades:
+            subj = g.get("subject_name") or g.get("subject_id", "غير محدد")
+            if subj not in subject_grades:
+                subject_grades[subj] = []
+            subject_grades[subj].append(g.get("percentage", 0))
+
+        grade_lines = []
+        for subj, pcts in subject_grades.items():
+            avg = round(sum(pcts) / len(pcts), 1)
+            latest = pcts[0]
+            grade_lines.append(f"  - {subj}: أحدث درجة {latest}%، متوسط {avg}%")
+        grades_text = "\n".join(grade_lines)
+
+        all_avg = round(sum(g.get("percentage", 0) for g in grades) / len(grades), 1)
+        grades_text = f"المعدل العام: {all_avg}%\n" + grades_text
+
+    daily_scores = await gd_find(db.session, "student_daily_scores", {
+        "student_id": child_id, "school_id": sid, "date": {"$gte": cutoff_30}
+    }, limit=100)
+    daily_avg = None
+    if daily_scores:
+        total_s = sum(s.get("score", 0) for s in daily_scores)
+        max_s = len(daily_scores) * 5
+        daily_avg = round((total_s / max_s) * 100, 1) if max_s > 0 else None
+
+    session_ids_raw = await gd_find(db.session, "class_sessions", {
+        "school_id": sid, "status": "completed", "date": {"$gte": cutoff_30}
+    }, limit=5000)
+    session_ids = [s["id"] for s in session_ids_raw]
+
+    behaviour_interactions = []
+    if session_ids:
+        behaviour_interactions = await gd_find(db.session, "session_interactions", {
+            "student_id": child_id, "interaction_type": "behaviour",
+            "session_id": {"$in": session_ids}
+        }, limit=200)
+
+    behaviour_records = await gd_find(db.session, "behaviour_records", {
+        "student_id": child_id, "tenant_id": sid, "incident_date": {"$gte": cutoff_90}
+    }, limit=100)
+
+    positive_b = 0
+    negative_b = 0
+    behaviour_notes = []
+
+    for inter in behaviour_interactions:
+        bcat = inter.get("behaviour_category", inter.get("behaviour_type", ""))
+        if bcat in ("positive", "respect", "teamwork"):
+            positive_b += 1
+        elif bcat in ("negative", "disruption"):
+            negative_b += 1
+
+    for rec in behaviour_records:
+        cat = rec.get("category", "")
+        if cat == "positive":
+            positive_b += 1
+        elif cat == "negative":
+            negative_b += 1
+        note = rec.get("description") or rec.get("behaviour_type_name", "")
+        if note:
+            behaviour_notes.append(note)
+
+    weaknesses = []
+    strengths = []
+    if att_rate is not None:
+        if att_rate < 80:
+            weaknesses.append(f"انخفاض الحضور ({att_rate}%)")
+        else:
+            strengths.append(f"حضور جيد ({att_rate}%)")
+
+    if grades:
+        all_avg_val = sum(g.get("percentage", 0) for g in grades) / len(grades)
+        if all_avg_val < 60:
+            weaknesses.append(f"ضعف في التحصيل الأكاديمي (معدل {round(all_avg_val, 1)}%)")
+        elif all_avg_val >= 85:
+            strengths.append(f"تحصيل أكاديمي ممتاز (معدل {round(all_avg_val, 1)}%)")
+
+        low_subjects = []
+        for subj, pcts in subject_grades.items():
+            subj_avg = sum(pcts) / len(pcts)
+            if subj_avg < 60:
+                low_subjects.append(f"{subj} ({round(subj_avg, 1)}%)")
+        if low_subjects:
+            weaknesses.append(f"مواد تحتاج تحسين: {', '.join(low_subjects)}")
+
+    if negative_b > positive_b and negative_b > 3:
+        weaknesses.append(f"ملاحظات سلوكية سلبية ({negative_b} سلبية مقابل {positive_b} إيجابية)")
+    elif positive_b > 0 and positive_b >= negative_b * 2:
+        strengths.append("سلوك إيجابي ومتميز")
+
+    context_parts = [f"""
+--- بيانات الطالب: {student_name} ---
+الفصل: {class_name}"""]
+
+    if att_rate is not None:
+        context_parts.append(f"""
+📊 الحضور (آخر 30 يوم):
+- نسبة الحضور: {att_rate}%
+- أيام الغياب: {att_absent} من أصل {att_total}""")
+
+    if grades_text:
+        context_parts.append(f"""
+📝 الدرجات والتقييمات:
+{grades_text}""")
+
+    if daily_avg is not None:
+        context_parts.append(f"- متوسط التقييم اليومي: {daily_avg}%")
+
+    if positive_b > 0 or negative_b > 0:
+        context_parts.append(f"""
+🎯 السلوك:
+- ملاحظات إيجابية: {positive_b}
+- ملاحظات سلبية: {negative_b}""")
+        if behaviour_notes:
+            recent_notes = behaviour_notes[:5]
+            context_parts.append("- أحدث الملاحظات: " + " | ".join(recent_notes))
+
+    if strengths:
+        context_parts.append("\n✅ نقاط القوة: " + "، ".join(strengths))
+    if weaknesses:
+        context_parts.append("\n⚠️ نقاط تحتاج اهتمام: " + "، ".join(weaknesses))
+
+    return "\n".join(context_parts)
+
 
 @router.post("/hakim/chat", response_model=HakimResponse)
 async def chat_with_hakim(message: HakimChatRequest, current_user: dict = Depends(get_current_user)):
@@ -394,8 +568,19 @@ async def chat_with_hakim(message: HakimChatRequest, current_user: dict = Depend
             return JSONResponse(status_code=503, content=AI_NOT_CONFIGURED_RESPONSE)
 
         school_id = current_user.get("tenant_id") or message.tenant_id
+        user_role = current_user.get("role", message.user_role or "unknown")
+        is_parent = user_role == "parent" or message.context == "parent_portal"
+
+        child_context = ""
+        if is_parent and message.child_id:
+            parent_user_id = current_user.get("id", "")
+            has_access = await _verify_parent_child_access(parent_user_id, message.child_id)
+            if not has_access:
+                raise HTTPException(status_code=403, detail="ليس لديك صلاحية الوصول إلى بيانات هذا الطالب")
+            child_context = await _build_parent_child_context(message.child_id, school_id or "")
+
         school_context = ""
-        if school_id:
+        if school_id and not is_parent:
             school = await gd_find_one(db.session, "schools", {"id": school_id})
             total_students = await gd_count(db.session, "students", {"school_id": school_id})
             total_teachers = await gd_count(db.session, "teachers", {"school_id": school_id})
@@ -429,7 +614,31 @@ async def chat_with_hakim(message: HakimChatRequest, current_user: dict = Depend
             page_name = page_map.get(message.current_page, message.current_page)
             page_context = f"\nالمستخدم حالياً في صفحة: {page_name}"
 
-        nav_links = """
+        if is_parent:
+            system_prompt = f"""أنت حكيم، المساعد الذكي لأولياء الأمور في منصة نَسَّق التعليمية.
+مهمتك مساعدة ولي الأمر في فهم أداء ابنه/ابنته الدراسي وتقديم نصائح تربوية مخصصة.
+
+## قواعد مهمة:
+1. أجب دائماً باللغة العربية الفصحى بأسلوب ودود ومطمئن
+2. استند في إجاباتك على بيانات الطالب الفعلية المتوفرة أدناه
+3. قدم نصائح عملية وواقعية يمكن لولي الأمر تطبيقها في المنزل
+4. استخدم Markdown للتنسيق (عناوين ##، قوائم -، نص **عريض**)
+5. استخدم الرموز التعبيرية بشكل مناسب (📊 📝 ✅ ⚠️ 🎯 💡 📈)
+6. اجعل الرد مختصراً ومفيداً
+7. لا تخترع بيانات غير موجودة — إذا لم تتوفر معلومة، أوضح ذلك
+8. عند الإشارة لنقاط ضعف، قدمها بأسلوب إيجابي مع اقتراحات التحسين
+
+## خبراتك:
+- تحليل أداء الطلاب الأكاديمي وتقديم توصيات
+- تفسير الدرجات ومؤشرات الحضور لولي الأمر
+- اقتراح أساليب تربوية لتحسين أداء الطالب
+- تقديم نصائح حول المتابعة المنزلية
+- شرح السلوكيات المدرسية وكيفية التعامل معها
+{child_context}
+
+دور المستخدم: ولي أمر"""
+        else:
+            nav_links = """
 روابط صفحات النظام المتاحة (استخدمها عند التوجيه):
 - مركز القيادة: /school/dashboard
 - الجدول الدراسي: /school/schedule
@@ -443,7 +652,7 @@ async def chat_with_hakim(message: HakimChatRequest, current_user: dict = Depend
 - إدارة المستخدمين: /admin/users-management
 - التقارير: /admin/reports"""
 
-        system_prompt = f"""أنت حكيم، المساعد الذكي الرسمي لمنصة نَسَّق لإدارة المدارس.
+            system_prompt = f"""أنت حكيم، المساعد الذكي الرسمي لمنصة نَسَّق لإدارة المدارس.
 أنت خبير في الشؤون التعليمية والإدارية المدرسية.
 
 ## قواعد تنسيق الرد (مهمة جداً):
@@ -476,9 +685,13 @@ async def chat_with_hakim(message: HakimChatRequest, current_user: dict = Depend
 - تستخدم اللغة العربية الفصحى
 - تقدم إجابات عملية مع روابط مباشرة للصفحات ذات الصلة
 {school_context}{page_context}
-دور المستخدم الحالي: {message.user_role or current_user.get('role', 'unknown')}"""
+دور المستخدم الحالي: {user_role}"""
 
-        session_key = message.session_id or f"hakim_{current_user.get('id', 'anon')}"
+        user_id = current_user.get('id', 'anon')
+        if is_parent and message.child_id:
+            session_key = message.session_id or f"hakim_{user_id}_{message.child_id}"
+        else:
+            session_key = message.session_id or f"hakim_{user_id}"
 
         messages_list = [{"role": "system", "content": system_prompt}]
 
@@ -513,17 +726,31 @@ async def chat_with_hakim(message: HakimChatRequest, current_user: dict = Depend
         if len(_hakim_sessions[session_key]) > 40:
             _hakim_sessions[session_key] = _hakim_sessions[session_key][-30:]
 
-        suggestions = _generate_hakim_suggestions(message.message)
+        suggestions = _generate_hakim_suggestions(message.message, is_parent=is_parent)
 
         return HakimResponse(response=reply, suggestions=suggestions)
 
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"Hakim LLM error: {str(e)}")
         return _hakim_fallback(message.message)
 
 
-def _generate_hakim_suggestions(msg: str) -> list:
+def _generate_hakim_suggestions(msg: str, is_parent: bool = False) -> list:
     msg_lower = msg.lower()
+    if is_parent:
+        if "رياضيات" in msg or "حساب" in msg or "math" in msg_lower:
+            return ["كيف أساعده في الرياضيات؟", "ما هي درجاته في الرياضيات؟", "أنشطة تقوية منزلية"]
+        elif "درجات" in msg or "نتائج" in msg or "علامات" in msg:
+            return ["ما هي درجاته الأخيرة؟", "أي المواد يحتاج تحسين؟", "كيف أتابع أداءه؟"]
+        elif "حضور" in msg or "غياب" in msg:
+            return ["كم يوم تغيّب؟", "كيف أحسّن انتظامه؟", "ما تأثير الغياب على أدائه؟"]
+        elif "سلوك" in msg or "تصرف" in msg:
+            return ["كيف سلوكه في المدرسة؟", "نصائح لتحسين السلوك", "كيف أتواصل مع المعلم؟"]
+        elif "ضعف" in msg or "مشكلة" in msg or "صعوبة" in msg:
+            return ["ما نقاط الضعف لديه؟", "خطة تحسين منزلية", "هل يحتاج دروس تقوية؟"]
+        return ["كيف أداء ابني الدراسي؟", "ما نقاط القوة والضعف؟", "نصائح للمتابعة المنزلية"]
     if "جدول" in msg or "schedule" in msg_lower:
         return ["إنشاء جدول جديد", "توليد جدول تلقائي", "كشف التعارضات"]
     elif "حصة" in msg or "حصص" in msg:
