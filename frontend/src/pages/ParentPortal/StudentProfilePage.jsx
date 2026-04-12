@@ -7,7 +7,27 @@ import ProfileEditor from '../../components/parent/ProfileEditor';
 import AchievementsArchive from '../../components/parent/AchievementsArchive';
 import { Card, CardContent } from '../../components/ui/card';
 import { Skeleton } from '../../components/ui/skeleton';
-import { Edit3, Award, ChevronLeft, BarChart3, GraduationCap, Building } from 'lucide-react';
+import { Edit3, Award, ChevronLeft, BarChart3, GraduationCap, Building, Heart, Eye, Wind, ShieldAlert } from 'lucide-react';
+
+const HEALTH_LABELS = {
+  asthma: { ar: 'الربو', en: 'Asthma', icon: Wind, color: 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300' },
+  weak_vision: { ar: 'ضعف النظر', en: 'Weak Vision', icon: Eye, color: 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' },
+  allergy: { ar: 'الحساسية', en: 'Allergies', icon: ShieldAlert, color: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' },
+  heart: { ar: 'مشاكل القلب', en: 'Heart Issues', icon: Heart, color: 'bg-pink-50 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300' },
+};
+
+const BEHAVIOR_LABELS = {
+  shyness: { ar: 'الخجل', en: 'Shyness', icon: '🙈' },
+  hyperactivity: { ar: 'فرط الحركة', en: 'Hyperactivity', icon: '⚡' },
+  concentration_difficulty: { ar: 'صعوبة التركيز', en: 'Difficulty Concentrating', icon: '🎯' },
+};
+
+const FAMILY_LABELS = {
+  both_parents: { ar: 'مع الوالدين', en: 'Both Parents' },
+  father_only: { ar: 'مع الأب فقط', en: 'Father Only' },
+  mother_only: { ar: 'مع الأم فقط', en: 'Mother Only' },
+  other: { ar: 'طرف آخر', en: 'Other' },
+};
 
 const StudentProfilePage = () => {
   const { t } = useTranslation();
@@ -48,9 +68,11 @@ const StudentProfilePage = () => {
   if (!profile) {
     return (
       <PortalLayout portalType="parent">
-        <div className="p-4 text-center text-gray-500 mt-20" dir="rtl">
-          <p>لا يمكن عرض ملف الطالب حالياً</p>
-          <Link to="/parent" className="text-indigo-600 text-sm mt-2 inline-block">العودة للرئيسية</Link>
+        <div className="p-4 text-center text-gray-500 mt-20" dir={isRTL ? 'rtl' : 'ltr'}>
+          <p>{isRTL ? 'لا يمكن عرض ملف الطالب حالياً' : 'Unable to display student profile'}</p>
+          <Link to="/parent" className="text-indigo-600 text-sm mt-2 inline-block">
+            {isRTL ? 'العودة للرئيسية' : 'Back to Home'}
+          </Link>
         </div>
       </PortalLayout>
     );
@@ -58,14 +80,16 @@ const StudentProfilePage = () => {
 
   return (
     <PortalLayout portalType="parent">
-      <div className="p-4 space-y-4 max-w-lg mx-auto" dir="rtl">
+      <div className="p-4 space-y-4 max-w-lg mx-auto" dir={isRTL ? 'rtl' : 'ltr'}>
         <div className="flex items-center gap-3 mb-2">
           <Link to="/parent">
-            <button className="p-2 rounded-lg hover:bg-gray-100 transition-colors">
-              <ChevronLeft className="w-5 h-5 text-gray-600" />
+            <button className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+              <ChevronLeft className={`w-5 h-5 text-gray-600 dark:text-gray-400 ${isRTL ? 'rotate-180' : ''}`} />
             </button>
           </Link>
-          <h1 className="text-lg font-bold text-gray-800">ملف الطالب</h1>
+          <h1 className="text-lg font-bold text-gray-800 dark:text-gray-200">
+            {isRTL ? 'ملف الطالب' : 'Student Profile'}
+          </h1>
         </div>
 
         <Card className="rounded-2xl border-0 shadow-sm overflow-hidden">
@@ -89,16 +113,16 @@ const StudentProfilePage = () => {
               </div>
               <div className="flex gap-2">
                 <button
-                  onClick={() => setShowAchievements(!showAchievements)}
-                  className="p-2 rounded-lg bg-white/20 hover:bg-white/30 transition-colors"
-                  title="إنجازاتي"
+                  onClick={() => { setShowAchievements(!showAchievements); if (!showAchievements) setEditing(false); }}
+                  className={`p-2 rounded-lg transition-colors ${showAchievements ? 'bg-white/30' : 'bg-white/20 hover:bg-white/30'}`}
+                  title={isRTL ? 'إنجازاتي' : 'My Achievements'}
                 >
                   <Award className="w-4 h-4" />
                 </button>
                 <button
-                  onClick={() => setEditing(!editing)}
-                  className="p-2 rounded-lg bg-white/20 hover:bg-white/30 transition-colors"
-                  title="تعديل الملف"
+                  onClick={() => { setEditing(!editing); if (!editing) setShowAchievements(false); }}
+                  className={`p-2 rounded-lg transition-colors ${editing ? 'bg-white/30' : 'bg-white/20 hover:bg-white/30'}`}
+                  title={isRTL ? 'تعديل الملف' : 'Edit Profile'}
                 >
                   <Edit3 className="w-4 h-4" />
                 </button>
@@ -121,51 +145,70 @@ const StudentProfilePage = () => {
               <div className="space-y-4">
                 {profile?.health_conditions?.length > 0 && (
                   <div>
-                    <p className="text-xs font-medium text-gray-500 mb-2">المشاكل الصحية</p>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
+                      {isRTL ? 'المشاكل الصحية' : 'Health Conditions'}
+                    </p>
                     <div className="flex flex-wrap gap-2">
-                      {profile.health_conditions.map(c => (
-                        <span key={c} className="px-3 py-1 rounded-full bg-red-50 text-red-700 text-xs font-medium">
-                          {c === 'asthma' ? 'الربو' : c === 'weak_vision' ? 'ضعف النظر' : c === 'allergy' ? 'الحساسية' : c === 'heart' ? 'مشاكل القلب' : c}
-                        </span>
-                      ))}
+                      {profile.health_conditions.map(c => {
+                        const cfg = HEALTH_LABELS[c];
+                        const Icon = cfg?.icon;
+                        return (
+                          <span key={c} className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${cfg?.color || 'bg-gray-100 text-gray-700'}`}>
+                            {Icon && <Icon className="w-3 h-3" />}
+                            {cfg ? (isRTL ? cfg.ar : cfg.en) : c}
+                          </span>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
 
                 {profile?.behavioral_aspects?.length > 0 && (
                   <div>
-                    <p className="text-xs font-medium text-gray-500 mb-2">سلوك يحتاج تحسين</p>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
+                      {isRTL ? 'سلوك يحتاج تحسين' : 'Behavioral Aspects'}
+                    </p>
                     <div className="flex flex-wrap gap-2">
-                      {profile.behavioral_aspects.map(b => (
-                        <span key={b} className="px-3 py-1 rounded-full bg-amber-50 text-amber-700 text-xs font-medium">
-                          {b === 'shyness' ? 'الخجل' : b === 'hyperactivity' ? 'فرط الحركة' : b === 'concentration_difficulty' ? 'صعوبة التركيز' : b}
-                        </span>
-                      ))}
+                      {profile.behavioral_aspects.map(b => {
+                        const cfg = BEHAVIOR_LABELS[b];
+                        return (
+                          <span key={b} className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 text-xs font-medium">
+                            {cfg?.icon && <span>{cfg.icon}</span>}
+                            {cfg ? (isRTL ? cfg.ar : cfg.en) : b}
+                          </span>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
 
                 {profile?.family_situation && (
                   <div>
-                    <p className="text-xs font-medium text-gray-500 mb-1">الوضع العائلي</p>
-                    <p className="text-sm text-gray-700">
-                      {profile.family_situation === 'both_parents' ? 'مع الوالدين' :
-                       profile.family_situation === 'father_only' ? 'مع الأب فقط' :
-                       profile.family_situation === 'mother_only' ? 'مع الأم فقط' : 'طرف آخر'}
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                      {isRTL ? 'الوضع العائلي' : 'Family Situation'}
+                    </p>
+                    <p className="text-sm text-gray-700 dark:text-gray-300">
+                      {FAMILY_LABELS[profile.family_situation]
+                        ? (isRTL ? FAMILY_LABELS[profile.family_situation].ar : FAMILY_LABELS[profile.family_situation].en)
+                        : profile.family_situation}
                     </p>
                   </div>
                 )}
 
                 <Link
                   to={`/parent/child/${childId}/analytics`}
-                  className="flex items-center gap-3 p-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 transition-colors"
+                  className="flex items-center gap-3 p-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/20 dark:hover:bg-indigo-900/30 transition-colors"
                 >
-                  <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
                     <BarChart3 className="w-5 h-5" />
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-indigo-800">تحليل الأداء التراكمي</p>
-                    <p className="text-xs text-indigo-600">عرض التحليل الشامل والرسوم البيانية</p>
+                    <p className="text-sm font-medium text-indigo-800 dark:text-indigo-300">
+                      {isRTL ? 'تحليل الأداء التراكمي' : 'Cumulative Performance Analysis'}
+                    </p>
+                    <p className="text-xs text-indigo-600 dark:text-indigo-400">
+                      {isRTL ? 'عرض التحليل الشامل والرسوم البيانية' : 'View comprehensive analysis and charts'}
+                    </p>
                   </div>
                 </Link>
               </div>

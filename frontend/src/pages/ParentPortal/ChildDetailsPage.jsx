@@ -140,7 +140,7 @@ const ChildDetailsPage = () => {
                   {child.name?.charAt(0)}
                 </AvatarFallback>
               </Avatar>
-              <div>
+              <div className="flex-1">
                 <h1 className="text-2xl font-bold font-cairo">{child.name}</h1>
                 <p className="text-indigo-100 flex items-center gap-2 mt-1">
                   <MapPin className="h-4 w-4" />
@@ -155,6 +155,11 @@ const ChildDetailsPage = () => {
                   </Badge>
                 </div>
               </div>
+              <Link to={`/parent/child/${childId}/profile`} className="self-start">
+                <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 rounded-xl">
+                  <User className="h-5 w-5" />
+                </Button>
+              </Link>
             </div>
           </CardContent>
         </Card>

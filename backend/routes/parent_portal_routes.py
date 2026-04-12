@@ -3,7 +3,7 @@ NASSAQ - Parent Portal Routes
 مسارات بوابة ولي الأمر
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from typing import Optional, List
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
@@ -763,15 +763,86 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         if not child:
             raise HTTPException(status_code=403, detail="غير مصرح")
 
+        ALLOWED_TYPES = {"academic", "sports", "arts", "behavior", "other"}
+
+        ach_name = (data.get("name") or "").strip()
+        if not ach_name:
+            raise HTTPException(status_code=400, detail="اسم الإنجاز مطلوب")
+
+        ach_type = data.get("type", "other")
+        if ach_type not in ALLOWED_TYPES:
+            ach_type = "other"
+
         achievement = {
             "id": str(uuid.uuid4()),
             "student_id": child_id,
             "school_id": child.get("school_id", school_id),
-            "name": data.get("name", ""),
-            "type": data.get("type", "other"),
+            "name": ach_name,
+            "type": ach_type,
             "source": "parent",
             "source_user_id": parent_id,
-            "file_url": data.get("file_url", ""),
+            "file_url": "",
+            "file_data": "",
+            "file_name": "",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await gd_insert(db.session, "student_achievements", achievement)
+        return {"success": True, "achievement": achievement}
+
+    ALLOWED_ACHIEVEMENT_MIMES = {
+        "image/jpeg", "image/png", "image/gif", "image/webp",
+        "application/pdf",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    }
+
+    @router.post("/child/{child_id}/achievements/upload")
+    async def upload_child_achievement(
+        child_id: str,
+        name: str = Form(...),
+        type: str = Form("other"),
+        file: UploadFile = File(None),
+        current_user: dict = Depends(require_roles([UserRole.PARENT]))
+    ):
+        import base64
+        parent_id = current_user.get("id")
+        parent_phone = current_user.get("phone")
+        school_id = current_user.get("tenant_id")
+        child = await _verify_parent_access(parent_id, parent_phone, child_id, school_id)
+        if not child:
+            raise HTTPException(status_code=403, detail="غير مصرح")
+
+        clean_name = name.strip()
+        if not clean_name:
+            raise HTTPException(status_code=400, detail="اسم الإنجاز مطلوب")
+
+        allowed_types = {"academic", "sports", "arts", "behavior", "other"}
+        if type not in allowed_types:
+            type = "other"
+
+        file_data = ""
+        file_name = ""
+        if file and file.filename:
+            if file.content_type not in ALLOWED_ACHIEVEMENT_MIMES:
+                raise HTTPException(status_code=400, detail="نوع الملف غير مسموح — يرجى رفع صورة أو PDF أو مستند Word")
+            content = await file.read()
+            if len(content) > 5 * 1024 * 1024:
+                raise HTTPException(status_code=400, detail="حجم الملف يجب أن يكون أقل من 5 ميجابايت")
+            encoded = base64.b64encode(content).decode("utf-8")
+            file_data = f"data:{file.content_type};base64,{encoded}"
+            file_name = file.filename
+
+        achievement = {
+            "id": str(uuid.uuid4()),
+            "student_id": child_id,
+            "school_id": child.get("school_id", school_id),
+            "name": clean_name,
+            "type": type,
+            "source": "parent",
+            "source_user_id": parent_id,
+            "file_data": file_data,
+            "file_name": file_name,
+            "file_url": "",
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
         await gd_insert(db.session, "student_achievements", achievement)
