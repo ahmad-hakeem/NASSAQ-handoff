@@ -11,25 +11,32 @@ export default function useParentDashboard() {
   const [loading, setLoading] = useState(true);
   const [liveLoading, setLiveLoading] = useState(false);
   const [weeklyLoading, setWeeklyLoading] = useState(false);
+  const [liveError, setLiveError] = useState(false);
+  const [weeklyError, setWeeklyError] = useState(false);
+  const [childrenError, setChildrenError] = useState(false);
   const timerRef = useRef(null);
 
   const fetchChildren = useCallback(async () => {
+    setChildrenError(false);
     try {
       const res = await api.get('/parent-portal/children');
       setChildren(res.data?.children || []);
     } catch (err) {
       setChildren([]);
+      setChildrenError(true);
     }
   }, [api]);
 
   const fetchLiveData = useCallback(async (childId) => {
     if (!childId) return;
     setLiveLoading(true);
+    setLiveError(false);
     try {
       const res = await api.get(`/parent-portal/child/${childId}/today-live`);
       setLiveData(res.data);
     } catch (err) {
       setLiveData(null);
+      setLiveError(true);
     } finally {
       setLiveLoading(false);
     }
@@ -38,11 +45,13 @@ export default function useParentDashboard() {
   const fetchWeeklyStory = useCallback(async (childId) => {
     if (!childId) return;
     setWeeklyLoading(true);
+    setWeeklyError(false);
     try {
       const res = await api.get(`/parent-portal/child/${childId}/weekly-story`);
       setWeeklyStory(res.data);
     } catch (err) {
       setWeeklyStory(null);
+      setWeeklyError(true);
     } finally {
       setWeeklyLoading(false);
     }
@@ -100,8 +109,12 @@ export default function useParentDashboard() {
     loading,
     liveLoading,
     weeklyLoading,
+    liveError,
+    weeklyError,
+    childrenError,
     selectChild,
     refreshLiveData: () => fetchLiveData(selectedChildId),
     refreshWeeklyStory: () => fetchWeeklyStory(selectedChildId),
+    refreshChildren: fetchChildren,
   };
 }

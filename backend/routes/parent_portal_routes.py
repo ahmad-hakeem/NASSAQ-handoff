@@ -6,6 +6,9 @@ NASSAQ - Parent Portal Routes
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional, List
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
+
+SAUDI_TZ = ZoneInfo("Asia/Riyadh")
 import uuid
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
 
@@ -427,7 +430,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         if not child:
             raise HTTPException(status_code=403, detail="غير مصرح لك بالوصول لهذا الطالب")
 
-        now = datetime.now(timezone(timedelta(hours=3)))
+        now = datetime.now(SAUDI_TZ)
         current_time = now.strftime("%H:%M")
         day_map = {6: "sunday", 0: "monday", 1: "tuesday", 2: "wednesday", 3: "thursday"}
         today_en = day_map.get(now.weekday(), "")
@@ -569,7 +572,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         if not child:
             raise HTTPException(status_code=403, detail="غير مصرح لك بالوصول لهذا الطالب")
 
-        now = datetime.now(timezone(timedelta(hours=3)))
+        now = datetime.now(SAUDI_TZ)
         today = now.date()
         days_since_saturday = (today.weekday() + 2) % 7
         week_start = today - timedelta(days=days_since_saturday)

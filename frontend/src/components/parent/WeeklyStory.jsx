@@ -1,8 +1,8 @@
 import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { Award, Star, TrendingUp, BookOpen, Lightbulb, FileText } from 'lucide-react';
+import { Award, Star, TrendingUp, BookOpen, Lightbulb, FileText, AlertCircle, RefreshCw } from 'lucide-react';
 
-const WeeklyStory = ({ data, loading }) => {
+const WeeklyStory = ({ data, loading, error, onRetry }) => {
   if (loading) {
     return (
       <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 animate-pulse">
@@ -12,7 +12,31 @@ const WeeklyStory = ({ data, loading }) => {
     );
   }
 
-  if (!data) return null;
+  if (error) {
+    return (
+      <div className="bg-white rounded-2xl p-5 shadow-sm border border-red-100 text-center py-8">
+        <AlertCircle className="w-10 h-10 text-red-400 mx-auto mb-3" />
+        <p className="text-gray-700 text-sm font-medium mb-1">تعذر تحميل قصة الأسبوع</p>
+        <p className="text-gray-400 text-xs mb-3">يرجى التحقق من الاتصال والمحاولة مرة أخرى</p>
+        {onRetry && (
+          <button onClick={onRetry} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+            <RefreshCw className="w-3.5 h-3.5" />
+            إعادة المحاولة
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 text-center py-10">
+        <BookOpen className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+        <p className="text-gray-500 text-sm font-medium">لا توجد بيانات هذا الأسبوع بعد</p>
+        <p className="text-gray-400 text-xs mt-1">ستظهر قصة الأسبوع عند توفر بيانات كافية</p>
+      </div>
+    );
+  }
 
   const {
     participation_count,

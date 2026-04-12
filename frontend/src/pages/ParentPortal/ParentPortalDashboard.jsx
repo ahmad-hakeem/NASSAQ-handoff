@@ -15,7 +15,7 @@ import { Button } from '../../components/ui/button';
 import { Skeleton } from '../../components/ui/skeleton';
 import {
   Users, GraduationCap, Bell, Calendar, MessageSquare,
-  ChevronLeft, Building, UserCircle
+  ChevronLeft, Building, UserCircle, RefreshCw, AlertCircle
 } from 'lucide-react';
 import { formatHijriDate } from '../../utils/hijriDate';
 
@@ -33,14 +33,20 @@ const ParentPortalDashboard = () => {
     loading,
     liveLoading,
     weeklyLoading,
+    liveError,
+    weeklyError,
+    childrenError,
     selectChild,
+    refreshLiveData,
+    refreshWeeklyStory,
+    refreshChildren,
   } = useParentDashboard();
 
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifTab, setNotifTab] = useState('admin');
 
-  const adminNotifs = notifications.filter(n => n.sender_role === 'admin' || n.sender_role === 'school_admin' || !n.sender_role);
   const teacherNotifs = notifications.filter(n => n.sender_role === 'teacher');
+  const adminNotifs = notifications.filter(n => n.sender_role !== 'teacher');
 
   if (loading) {
     return (
@@ -65,7 +71,21 @@ const ParentPortalDashboard = () => {
           onSelect={selectChild}
         />
 
-        {(!children || children.length === 0) && (
+        {childrenError && (
+          <Card className="rounded-2xl border-0 shadow-sm border-red-100">
+            <CardContent className="py-8 text-center">
+              <AlertCircle className="h-10 w-10 mx-auto mb-3 text-red-400" />
+              <p className="text-gray-700 text-sm font-medium mb-1">تعذر تحميل بيانات الأبناء</p>
+              <p className="text-gray-400 text-xs mb-3">يرجى التحقق من الاتصال والمحاولة مرة أخرى</p>
+              <Button variant="outline" size="sm" onClick={refreshChildren}>
+                <RefreshCw className="h-3.5 w-3.5 me-1.5" />
+                إعادة المحاولة
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {!childrenError && (!children || children.length === 0) && !loading && (
           <Card className="rounded-2xl border-0 shadow-sm">
             <CardContent className="py-12 text-center">
               <Users className="h-16 w-16 mx-auto mb-4 text-gray-300" />
@@ -174,7 +194,7 @@ const ParentPortalDashboard = () => {
 
             <UpcomingClasses classes={liveData.upcoming_classes} />
 
-            <WeeklyStory data={weeklyStory} loading={weeklyLoading} />
+            <WeeklyStory data={weeklyStory} loading={weeklyLoading} error={weeklyError} onRetry={refreshWeeklyStory} />
 
             <div className="grid grid-cols-2 gap-3 pb-4">
               <Link to="/parent/communication">
@@ -199,9 +219,24 @@ const ParentPortalDashboard = () => {
           </>
         )}
 
-        {selectedChild && !liveData && !liveLoading && (
+        {selectedChild && !liveData && !liveLoading && liveError && (
+          <Card className="rounded-2xl border-0 shadow-sm border-red-100">
+            <CardContent className="py-8 text-center">
+              <AlertCircle className="h-10 w-10 mx-auto mb-3 text-red-400" />
+              <p className="text-gray-700 text-sm font-medium mb-1">تعذر تحميل بيانات اليوم الدراسي</p>
+              <p className="text-gray-400 text-xs mb-3">يرجى التحقق من الاتصال والمحاولة مرة أخرى</p>
+              <Button variant="outline" size="sm" onClick={refreshLiveData}>
+                <RefreshCw className="h-3.5 w-3.5 me-1.5" />
+                إعادة المحاولة
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {selectedChild && !liveData && !liveLoading && !liveError && (
           <Card className="rounded-2xl border-0 shadow-sm">
             <CardContent className="py-8 text-center">
+              <GraduationCap className="h-10 w-10 mx-auto mb-3 text-gray-300" />
               <p className="text-gray-500 text-sm">لا توجد بيانات متاحة حالياً</p>
             </CardContent>
           </Card>
