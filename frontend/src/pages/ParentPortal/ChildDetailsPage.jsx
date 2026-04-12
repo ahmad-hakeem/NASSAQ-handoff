@@ -18,6 +18,7 @@ import { Skeleton } from '../../components/ui/skeleton';
 import { ScrollArea } from '../../components/ui/scroll-area';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
+import CumulativeAnalytics from '../../components/parent/CumulativeAnalytics';
 import {
   User,
   Calendar,
@@ -33,6 +34,7 @@ import {
   MapPin,
   Phone,
   Mail,
+  BarChart3,
 } from 'lucide-react';
 
 
@@ -198,8 +200,11 @@ const ChildDetailsPage = () => {
         </div>
 
         {/* Tabs */}
-        <Tabs defaultValue="grades" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 bg-gray-100 rounded-xl p-1">
+        <Tabs defaultValue="analytics" className="w-full">
+          <TabsList className="grid w-full grid-cols-4 bg-gray-100 rounded-xl p-1">
+            <TabsTrigger value="analytics" className="rounded-lg text-xs">
+              {t('cumulativeAnalytics')}
+            </TabsTrigger>
             <TabsTrigger value="grades" className="rounded-lg text-xs">
               {t('grades')}
             </TabsTrigger>
@@ -210,6 +215,11 @@ const ChildDetailsPage = () => {
               {t('schedule')}
             </TabsTrigger>
           </TabsList>
+
+          {/* Analytics Tab */}
+          <TabsContent value="analytics" className="mt-4">
+            <CumulativeAnalytics childId={childId} viewerRole="parent" />
+          </TabsContent>
 
           {/* Grades Tab */}
           <TabsContent value="grades" className="mt-4">

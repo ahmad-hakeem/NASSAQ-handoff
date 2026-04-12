@@ -59,6 +59,15 @@ Every task must follow these principles before delivery:
 - **Adding new translations**: Add key to both `ar.json` and `en.json`, use `t('key')` in JSX
 - **Old `translations` export**: Still available from `ThemeContext.js` as `translations` (aliased to `locales`) for backward compatibility
 
+### Cumulative Analytics (Task #76)
+- **Component**: `frontend/src/components/parent/CumulativeAnalytics.jsx` — role-aware analytics section
+- **Charts**: Uses existing `AnalyticsCharts.jsx` (GaugeChart, PerformanceLine, SubjectRadar from Recharts)
+- **Parent view** (`ChildDetailsPage.jsx`): Analytics tab shows performance summary, gauge/line charts, radar chart, strengths/weaknesses, and home follow-up indicator
+- **Student view** (`StudentProfilePage.jsx`): Shows same charts minus sensitive data (no follow-up indicator, no health/behavioral/social data)
+- **Backend endpoints**: Parent uses existing `/parent-portal/child/{child_id}/analytics`, Student uses new `/student-portal/my-analytics`
+- **Follow-up status**: Arabic labels — "مستقر" (stable), "يحتاج متابعة" (needs follow-up), "بحاجة دعم" (needs support)
+- **Locale keys**: `cumulativeAnalytics`, `performanceSummary`, `overallLevel`, `classAverage`, `comparedToClass`, `performanceTrend`, `monthlyTrajectory`, `subjectDistribution`, `homeFollowUp`, `compositeScore`, `homeworkCompletion`, `noAnalyticsData`
+
 ### WebSocket Security
 - **Auth method**: Token sent via message after connection (NOT in URL query string) to prevent token leakage in server access logs
 - **Flow**: Client connects → sends `{type: "auth", token: "..."}` → server validates → registers connection

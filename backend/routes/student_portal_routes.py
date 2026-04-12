@@ -1251,5 +1251,105 @@ def setup_homework_routes(router, db, get_current_user, require_roles, UserRole)
             **assignment,
             "submission": submission
         }
-    
+
+    @router.get("/my-analytics")
+    async def get_student_my_analytics(
+        current_user: dict = Depends(require_roles([UserRole.STUDENT]))
+    ):
+        student_id = current_user.get("student_id") or current_user.get("id")
+        school_id = current_user.get("tenant_id")
+
+        student = await gd_find_one(db.session, "students", {"id": student_id})
+        if not student:
+            student = await gd_find_one(db.session, "students", {"user_id": current_user.get("id")})
+        if not student:
+            raise HTTPException(status_code=404, detail="الطالب غير موجود")
+        student_id = student.get("id", student_id)
+
+        all_grades = await gd_find(db.session, "grades", {"student_id": student_id}, limit=1000)
+        overall_avg = round(sum(g.get("percentage", 0) for g in all_grades) / len(all_grades), 1) if all_grades else 0
+
+        target_subjects = {"رياضيات": 0, "علوم": 0, "عربي": 0, "إنجليزي": 0, "مهارات رقمية": 0}
+        subject_counts = {k: 0 for k in target_subjects}
+        subject_all = {}
+        for g in all_grades:
+            subj = g.get("subject_name") or g.get("subject_id", "عام")
+            if subj not in subject_all:
+                subject_all[subj] = []
+            subject_all[subj].append(g.get("percentage", 0))
+            for key in target_subjects:
+                if key in subj:
+                    target_subjects[key] += g.get("percentage", 0)
+                    subject_counts[key] += 1
+                    break
+
+        radar_data = []
+        for subj, total in target_subjects.items():
+            count = subject_counts[subj]
+            radar_data.append({"subject": subj, "score": round(total / count, 1) if count > 0 else 0})
+
+        monthly_data = {}
+        for g in all_grades:
+            date_str = str(g.get("date", ""))
+            if date_str and len(date_str) >= 7:
+                month_key = date_str[:7]
+                if month_key not in monthly_data:
+                    monthly_data[month_key] = []
+                monthly_data[month_key].append(g.get("percentage", 0))
+
+        line_chart_data = sorted([
+            {"month": k, "average": round(sum(v) / len(v), 1)}
+            for k, v in monthly_data.items()
+        ], key=lambda x: x["month"])
+
+        class_id = student.get("class_id")
+        class_avg = 0
+        if class_id:
+            classmates = await gd_find(db.session, "students", {"class_id": class_id, "school_id": school_id}, limit=100)
+            classmate_ids = [c.get("id") for c in classmates if c.get("id") != student_id]
+            if classmate_ids:
+                class_grades = await gd_find(db.session, "grades", {
+                    "student_id": {"$in": classmate_ids}
+                }, limit=5000)
+                class_avg = round(sum(g.get("percentage", 0) for g in class_grades) / len(class_grades), 1) if class_grades else 0
+
+        strengths = []
+        weaknesses = []
+        for subj, scores in subject_all.items():
+            avg = round(sum(scores) / len(scores), 1) if scores else 0
+            if avg >= 80:
+                strengths.append({"area": subj, "detail": f"متوسط {avg}%"})
+            elif avg < 60:
+                weaknesses.append({"area": subj, "detail": f"متوسط {avg}%"})
+
+        total_participation = await gd_count(db.session, "participation_records", {"student_id": student_id})
+        if total_participation > 20:
+            strengths.append({"area": "مشاركة صفية", "detail": f"{total_participation} مشاركة مسجلة"})
+
+        if overall_avg >= 90:
+            level = "ممتاز"
+        elif overall_avg >= 80:
+            level = "جيد جداً"
+        elif overall_avg >= 70:
+            level = "جيد"
+        elif overall_avg >= 60:
+            level = "مقبول"
+        else:
+            level = "ضعيف"
+
+        return {
+            "student_name": student.get("full_name"),
+            "summary": {
+                "overall_average": overall_avg,
+                "level": level,
+                "class_average": class_avg,
+                "total_assessments": len(all_grades),
+            },
+            "gauge_data": {"value": overall_avg, "level": level},
+            "line_chart_data": line_chart_data,
+            "radar_data": radar_data,
+            "strengths": strengths,
+            "weaknesses": weaknesses,
+        }
+
     return router

@@ -7,6 +7,7 @@ import { Badge } from '../../components/ui/badge';
 import { Progress } from '../../components/ui/progress';
 import { Skeleton } from '../../components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
+import CumulativeAnalytics from '../../components/parent/CumulativeAnalytics';
 import {
   User, GraduationCap, MapPin, Calendar, CheckCircle,
   TrendingUp, Star, Award, Mail, Phone, Hash, Activity
@@ -127,6 +128,8 @@ const StudentProfilePage = () => {
             </CardContent>
           </Card>
         </div>
+
+        <CumulativeAnalytics childId={student.id} viewerRole="student" />
 
         <Card className="rounded-2xl border-0 shadow-sm">
           <CardContent className="p-4 space-y-4">
