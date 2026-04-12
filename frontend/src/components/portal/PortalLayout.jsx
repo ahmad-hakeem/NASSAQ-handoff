@@ -63,10 +63,10 @@ export const PortalLayout = ({ children, portalType = 'student' }) => {
   const parentMenuItems = [
     { icon: Home, label: t('home'), href: '/parent' },
     { icon: Users, label: t('myChildren'), href: '/parent/children' },
+    { icon: MessageSquare, label: t('communicationCenter'), href: '/parent/communication' },
     { icon: FileText, label: t('absenceExcuse'), href: '/parent/absence-excuse' },
     { icon: CalendarCheck, label: t('meetingRequest'), href: '/parent/meeting-request' },
     { icon: BarChart3, label: t('reports'), href: '/parent/reports' },
-    { icon: MessageSquare, label: t('messages'), href: '/parent/messages' },
     { icon: Bell, label: t('notifications'), href: '/notifications' },
     { icon: Settings, label: t('settings'), href: '/parent/settings' },
   ];

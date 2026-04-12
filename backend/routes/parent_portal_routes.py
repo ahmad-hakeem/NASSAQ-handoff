@@ -3,7 +3,7 @@ NASSAQ - Parent Portal Routes
 مسارات بوابة ولي الأمر
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from typing import Optional, List
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
@@ -1496,6 +1496,36 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         await gd_insert(db.session, "absence_excuses", excuse)
         excuse.pop("_id", None)
         return {"message": "تم إرسال العذر بنجاح", "excuse": excuse}
+
+    @router.post("/upload-attachment")
+    async def upload_attachment(
+        file: UploadFile = File(...),
+        current_user: dict = Depends(require_roles([UserRole.PARENT]))
+    ):
+        import base64
+        MAX_SIZE = 5 * 1024 * 1024
+        ALLOWED_TYPES = {
+            "image/jpeg", "image/png", "image/gif", "image/webp",
+            "application/pdf",
+            "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        }
+
+        if file.content_type not in ALLOWED_TYPES:
+            raise HTTPException(status_code=400, detail="صيغة الملف غير مدعومة")
+
+        content = await file.read()
+        if len(content) > MAX_SIZE:
+            raise HTTPException(status_code=400, detail="حجم الملف يتجاوز الحد المسموح (5 ميغابايت)")
+
+        encoded = base64.b64encode(content).decode('utf-8')
+        data_url = f"data:{file.content_type};base64,{encoded}"
+
+        return {
+            "success": True,
+            "attachment_url": data_url,
+            "attachment_name": file.filename,
+        }
 
     @router.get("/absence-excuses")
     async def get_absence_excuses(
