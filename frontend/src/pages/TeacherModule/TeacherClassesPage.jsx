@@ -528,7 +528,7 @@ export default function TeacherClassesPage() {
   };
 
   const renderSettingsModal = () => (
-    <Dialog open={showSettingsModal} onOpenChange={setShowSettingsModal}>
+    <Dialog open={showSettingsModal} onOpenChange={(open) => { setShowSettingsModal(open); if (!open) { setSettingsSubject(''); } }}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto" dir={isRTL ? 'rtl' : 'ltr'}>
         <DialogHeader>
           <DialogTitle className="font-cairo flex items-center gap-2">
