@@ -202,6 +202,8 @@ export default function TeacherCommunicationPage() {
 
   const handleSelectCategory = (catId) => {
     setSelectedCategory(catId);
+    setSelectedRecipients([]);
+    setGuidanceStudentIds([]);
     if (catId === 'parents') {
       setActiveView('parent-mode');
     } else if (catId === 'students') {
@@ -901,12 +903,12 @@ export default function TeacherCommunicationPage() {
             <SelectItem value="all">{t('allNotifications')}</SelectItem>
             <SelectItem value="circulars">
               <span className="flex items-center gap-2">
-                <ScrollText className="h-3.5 w-3.5" />{t('circulars')}
+                <ScrollText className="h-3.5 w-3.5" />{t('viewCirculars')}
               </span>
             </SelectItem>
             <SelectItem value="workshops">
               <span className="flex items-center gap-2">
-                <Presentation className="h-3.5 w-3.5" />{t('workshops')}
+                <Presentation className="h-3.5 w-3.5" />{t('attendWorkshops')}
               </span>
             </SelectItem>
           </SelectContent>
