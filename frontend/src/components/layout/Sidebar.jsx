@@ -389,7 +389,7 @@ export const Sidebar = ({ children }) => {
       },
       {
         icon: MessageSquare,
-        label: t('communicationCenter'),
+        label: t('communicationNotifications'),
         href: '/teacher/communication',
         roles: ['teacher'],
       },
@@ -397,12 +397,6 @@ export const Sidebar = ({ children }) => {
         icon: Network,
         label: t('aiInsights'),
         href: '/principal/ai-insights',
-        roles: ['teacher'],
-      },
-      {
-        icon: Bell,
-        label: t('notificationsCenter'),
-        href: '/notifications',
         roles: ['teacher'],
       },
       {

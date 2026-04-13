@@ -9,35 +9,41 @@ import { Textarea } from '../../components/ui/textarea';
 import { Label } from '../../components/ui/label';
 import { Avatar, AvatarFallback } from '../../components/ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../../components/ui/dialog';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { Checkbox } from '../../components/ui/checkbox';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import {
-  MessageSquare, Send, Plus, Users, Loader2, RefreshCw,
-  Bell, Mail, Phone, Clock, CheckCircle2, AlertCircle, Search,
-  MessageCircle, Megaphone, UserCheck, ChevronLeft, ChevronRight,
-  BookOpen, FileText, AlertTriangle, Inbox, History, Eye, EyeOff,
-  GraduationCap, Building2, Filter
+  MessageSquare, Send, Users, Loader2, RefreshCw,
+  Bell, Phone, Clock, CheckCircle2, AlertCircle, Search,
+  Megaphone, UserCheck, ChevronLeft,
+  BookOpen, FileText, AlertTriangle, Eye,
+  GraduationCap, Building2, Shield, Star,
+  ScrollText, Presentation, ArrowLeft, ArrowRight,
+  UserCog, HeartHandshake, Sparkles, Info
 } from 'lucide-react';
-
 import { useTranslation } from '../../contexts/ThemeContext';
-const MESSAGE_TYPES = [
-  { value: 'general', label: 'عام', labelEn: 'General', icon: MessageSquare, color: 'bg-blue-500' },
-  { value: 'urgent', label: 'عاجل', labelEn: 'Urgent', icon: AlertCircle, color: 'bg-red-500' },
-  { value: 'announcement', label: 'إعلان', labelEn: 'Announcement', icon: Megaphone, color: 'bg-purple-500' },
-  { value: 'meeting', label: 'اجتماع', labelEn: 'Meeting', icon: UserCheck, color: 'bg-green-500' },
-  { value: 'follow_up', label: 'متابعة طالب', labelEn: 'Student Follow-up', icon: GraduationCap, color: 'bg-amber-500' },
-];
 
 const TEMPLATES = [
-  { id: 'homework', icon: BookOpen, gradient: 'from-blue-500 to-indigo-500', titleAr: 'تذكير بالواجب', titleEn: 'Homework Reminder', bodyAr: 'نود تذكيركم بضرورة متابعة أداء الواجبات المنزلية لابنكم/ابنتكم. يرجى التأكد من إنجازها في الوقت المحدد.', bodyEn: 'Reminder to follow up on your child\'s homework.' },
-  { id: 'exam', icon: FileText, gradient: 'from-amber-500 to-orange-500', titleAr: 'إشعار اختبار', titleEn: 'Exam Notice', bodyAr: 'نود إعلامكم بأنه سيكون هناك اختبار قريباً. يرجى مساعدة الطالب في الاستعداد والمراجعة.', bodyEn: 'There will be an upcoming exam. Please help your child prepare.' },
-  { id: 'meeting', icon: UserCheck, gradient: 'from-green-500 to-emerald-500', titleAr: 'دعوة لاجتماع', titleEn: 'Meeting Invitation', bodyAr: 'يسرنا دعوتكم لحضور اجتماع أولياء الأمور لمناقشة تقدم الطلاب الأكاديمي.', bodyEn: 'You are invited to attend a parent-teacher meeting.' },
-  { id: 'behavior', icon: AlertTriangle, gradient: 'from-rose-500 to-red-500', titleAr: 'ملاحظة سلوكية', titleEn: 'Behavior Note', bodyAr: 'نود إطلاعكم على سلوك الطالب في المدرسة ونأمل التعاون لتحسين الوضع.', bodyEn: 'We would like to inform you about your child\'s behavior.' },
-  { id: 'achievement', icon: CheckCircle2, gradient: 'from-emerald-500 to-teal-500', titleAr: 'إنجاز متميز', titleEn: 'Achievement Notice', bodyAr: 'يسعدنا إبلاغكم بتفوق ابنكم/ابنتكم في الأنشطة الأكاديمية.', bodyEn: 'We are pleased to inform you about your child\'s achievement.' },
-  { id: 'absence', icon: AlertCircle, gradient: 'from-red-500 to-rose-500', titleAr: 'تنبيه غياب', titleEn: 'Absence Alert', bodyAr: 'نود إعلامكم بتسجيل غياب لابنكم/ابنتكم اليوم. يرجى التواصل معنا.', bodyEn: 'Your child was marked absent today. Please contact us.' },
+  { id: 'homework', icon: BookOpen, color: 'bg-blue-500', titleKey: 'homeworkReminder', bodyKey: 'homeworkReminderBody' },
+  { id: 'exam', icon: FileText, color: 'bg-amber-500', titleKey: 'examNotice', bodyKey: 'examNoticeBody' },
+  { id: 'meeting', icon: UserCheck, color: 'bg-green-500', titleKey: 'meetingInvitation', bodyKey: 'meetingInvitationBody' },
+  { id: 'behavior', icon: AlertTriangle, color: 'bg-rose-500', titleKey: 'behaviorNote', bodyKey: 'behaviorNoteBody' },
+  { id: 'achievement', icon: CheckCircle2, color: 'bg-emerald-500', titleKey: 'achievementNotice', bodyKey: 'achievementNoticeBody' },
+  { id: 'absence', icon: AlertCircle, color: 'bg-red-500', titleKey: 'absenceAlert', bodyKey: 'absenceAlertBody' },
+];
+
+const RECIPIENT_CATEGORIES = [
+  { id: 'parents', icon: Users, color: 'bg-blue-500', i18nKey: 'parentsCategory' },
+  { id: 'admin', icon: Building2, color: 'bg-brand-navy', i18nKey: 'adminCategory' },
+  { id: 'students', icon: GraduationCap, color: 'bg-green-500', i18nKey: 'studentsCategory' },
+  { id: 'staff', icon: Shield, color: 'bg-brand-purple', i18nKey: 'schoolStaffCategory' },
+];
+
+const STAFF_ROLES = [
+  { id: 'vice_principal', icon: UserCog, i18nKey: 'vicePrincipal' },
+  { id: 'counselor', icon: HeartHandshake, i18nKey: 'studentCounselor' },
+  { id: 'activity_leader', icon: Star, i18nKey: 'activityLeader' },
+  { id: 'gifted_coordinator', icon: Sparkles, i18nKey: 'giftedCoordinator' },
 ];
 
 export default function TeacherCommunicationPage() {
@@ -46,291 +52,1059 @@ export default function TeacherCommunicationPage() {
   const [loading, setLoading] = useState(true);
   const [classes, setClasses] = useState([]);
   const [students, setStudents] = useState([]);
-  const [sentMessages, setSentMessages] = useState([]);
-  const [receivedMessages, setReceivedMessages] = useState([]);
   const [notifications, setNotifications] = useState([]);
-  const [selectedClass, setSelectedClass] = useState('');
-  const [activeTab, setActiveTab] = useState('compose');
-  const [showComposeDialog, setShowComposeDialog] = useState(false);
+  const [schoolNotifications, setSchoolNotifications] = useState([]);
+  const [systemAlerts, setSystemAlerts] = useState([]);
   const [sending, setSending] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [msgSearchQuery, setMsgSearchQuery] = useState('');
-  const [recipientFilter, setRecipientFilter] = useState('all_parties');
+
+  const [activeView, setActiveView] = useState('sections');
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [selectedClass, setSelectedClass] = useState('');
+  const [selectedRecipients, setSelectedRecipients] = useState([]);
+  const [parentMode, setParentMode] = useState(null);
+  const [messageBody, setMessageBody] = useState('');
+  const [messageSubject, setMessageSubject] = useState('');
+
+  const [schoolNotifFilter, setSchoolNotifFilter] = useState('all');
 
   const { nassaqError } = useNassaqAlert();
-  const [newMessage, setNewMessage] = useState({
-    type: 'general', subject: '', body: '', recipients: 'all',
-    selectedStudents: [], selectedParents: []
-  });
-
   const teacherId = user?.teacher_id || user?.id;
 
   const fetchData = useCallback(async () => {
     if (!teacherId) return;
     setLoading(true);
     try {
-      const [classesRes, sentRes, receivedRes, notifRes] = await Promise.all([
+      const [classesRes, notifRes] = await Promise.all([
         api.get(`/teacher/classes/${teacherId}`).catch(() => ({ data: [] })),
-        api.get(`/messages?sender_id=${teacherId}`).catch(() => ({ data: [] })),
-        api.get(`/messages?recipient_id=${teacherId}`).catch(() => ({ data: [] })),
-        api.get(`/notifications?recipient_id=${teacherId}&limit=20`).catch(() => ({ data: [] })),
+        api.get(`/notifications?limit=50`).catch(() => ({ data: [] })),
       ]);
       setClasses(classesRes.data || []);
-      setSentMessages(sentRes.data || []);
-      setReceivedMessages(receivedRes.data || []);
-      setNotifications(Array.isArray(notifRes.data) ? notifRes.data : []);
-      if (classesRes.data?.length > 0 && !selectedClass) setSelectedClass(classesRes.data[0].id);
-    } catch (error) { console.error('Error:', error); }
-    finally { setLoading(false); }
-  }, [api, teacherId, selectedClass]);
+
+      const allNotifs = Array.isArray(notifRes.data) ? notifRes.data : [];
+      setNotifications(allNotifs);
+
+      const school = allNotifs.filter(n =>
+        n.notification_type === 'announcement' ||
+        n.notification_type === 'schedule'
+      );
+      setSchoolNotifications(school);
+
+      const system = allNotifs.filter(n =>
+        n.notification_type === 'system'
+      );
+      setSystemAlerts(system);
+    } catch (error) {
+      console.error('Error:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [api, teacherId]);
 
   const fetchStudents = useCallback(async () => {
     if (!selectedClass) return;
     try {
       const res = await api.get(`/classes/${selectedClass}/students`);
       setStudents(res.data || []);
-    } catch (error) { console.error('Error:', error); }
+    } catch (error) {
+      console.error('Error:', error);
+    }
   }, [api, selectedClass]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => { if (selectedClass) fetchStudents(); }, [selectedClass, fetchStudents]);
 
   const handleSendMessage = async () => {
-    if (!newMessage.subject || !newMessage.body) { nassaqError(t('pleaseFillAllFields')); return; }
+    if (!messageSubject || !messageBody) {
+      nassaqError(t('pleaseFillAllFields'));
+      return;
+    }
+    if (selectedRecipients.length === 0) {
+      nassaqError(t('noRecipientsSelected'));
+      return;
+    }
     setSending(true);
     try {
-      let recipientIds = [];
-      if (newMessage.recipients === 'all') recipientIds = students.map(s => s.parent_id || s.id);
-      else if (newMessage.recipients === 'selected') recipientIds = newMessage.selectedParents;
-      await api.post('/messages', { sender_id: teacherId, sender_type: 'teacher', recipient_ids: recipientIds, type: newMessage.type, subject: newMessage.subject, body: newMessage.body, class_id: selectedClass });
-      toast.success(isRTL ? 'تم إرسال الرسالة بنجاح' : 'Message sent successfully');
-      setShowComposeDialog(false);
-      setNewMessage({ type: 'general', subject: '', body: '', recipients: 'all', selectedStudents: [], selectedParents: [] });
+      const isRoleBasedRecipient = (id) =>
+        ['vice_principal', 'counselor', 'activity_leader', 'gifted_coordinator', 'admin_general',
+         'school_sub_admin', 'school_principal', 'school_admin'].includes(id);
+
+      const roleRecipients = selectedRecipients.filter(isRoleBasedRecipient);
+      const userRecipients = selectedRecipients.filter(id => !isRoleBasedRecipient(id));
+
+      if (roleRecipients.length > 0) {
+        const roleMap = {
+          'vice_principal': 'school_sub_admin',
+          'counselor': 'school_sub_admin',
+          'activity_leader': 'school_sub_admin',
+          'gifted_coordinator': 'school_sub_admin',
+          'admin_general': 'school_principal',
+        };
+        const roles = [...new Set(roleRecipients.map(r => roleMap[r] || r))];
+        for (const role of roles) {
+          await api.post('/notifications', {
+            title: messageSubject,
+            message: messageBody,
+            notification_type: 'communication',
+            priority: 'medium',
+            recipient_role: role,
+          });
+        }
+      }
+
+      for (const recipientId of userRecipients) {
+        await api.post('/notifications', {
+          title: messageSubject,
+          message: messageBody,
+          notification_type: 'communication',
+          priority: 'medium',
+          recipient_id: recipientId,
+        });
+      }
+
+      toast.success(t('messageSentSuccessfully'));
+      resetFlow();
       fetchData();
-    } catch (error) { nassaqError(t('errorSendingMessage')); }
-    finally { setSending(false); }
+    } catch (error) {
+      nassaqError(t('errorSendingMessage'));
+    } finally {
+      setSending(false);
+    }
   };
 
-  const toggleStudentSelection = (studentId, parentId) => {
-    setNewMessage(prev => {
-      const isSelected = prev.selectedStudents.includes(studentId);
-      return { ...prev, selectedStudents: isSelected ? prev.selectedStudents.filter(id => id !== studentId) : [...prev.selectedStudents, studentId], selectedParents: isSelected ? prev.selectedParents.filter(id => id !== parentId) : [...prev.selectedParents, parentId] };
-    });
+  const resetFlow = () => {
+    setActiveView('sections');
+    setSelectedTemplate(null);
+    setSelectedCategory(null);
+    setSelectedClass('');
+    setSelectedRecipients([]);
+    setParentMode(null);
+    setMessageBody('');
+    setMessageSubject('');
   };
-
-  const filteredStudents = students.filter(s => s.full_name?.toLowerCase().includes(searchQuery.toLowerCase()));
 
   const applyTemplate = (template) => {
-    setNewMessage({ ...newMessage, subject: isRTL ? template.titleAr : template.titleEn, body: isRTL ? template.bodyAr : template.bodyEn });
-    setShowComposeDialog(true);
+    setSelectedTemplate(template);
+    setMessageSubject(t(template.titleKey));
+    setMessageBody(t(template.bodyKey));
+    setActiveView('recipients');
   };
 
-  const filteredSentMessages = sentMessages.filter(m =>
-    !msgSearchQuery || m.subject?.toLowerCase().includes(msgSearchQuery.toLowerCase()) || m.body?.toLowerCase().includes(msgSearchQuery.toLowerCase())
+  const handleSelectCategory = (catId) => {
+    setSelectedCategory(catId);
+    if (catId === 'parents') {
+      setActiveView('parent-mode');
+    } else if (catId === 'students') {
+      setActiveView('student-select');
+    } else if (catId === 'staff') {
+      setActiveView('staff-select');
+    } else if (catId === 'admin') {
+      setActiveView('admin-select');
+    }
+  };
+
+  const handleParentModeSelect = (mode) => {
+    setParentMode(mode);
+    if (mode === 'all') {
+      const allParentIds = students.filter(s => s.parent_id).map(s => s.parent_id);
+      setSelectedRecipients([...new Set(allParentIds)]);
+      setActiveView('preview');
+    } else {
+      setActiveView('parent-individual');
+    }
+  };
+
+  const toggleRecipient = (id) => {
+    setSelectedRecipients(prev =>
+      prev.includes(id) ? prev.filter(r => r !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAllStudents = () => {
+    const allIds = filteredStudents.map(s => s.id);
+    const allSelected = allIds.every(id => selectedRecipients.includes(id));
+    if (allSelected) {
+      setSelectedRecipients(prev => prev.filter(id => !allIds.includes(id)));
+    } else {
+      setSelectedRecipients(prev => [...new Set([...prev, ...allIds])]);
+    }
+  };
+
+  const handleStaffSelect = (roleId) => {
+    setSelectedRecipients([roleId]);
+    setActiveView('preview');
+  };
+
+  const handleAdminSelect = (type) => {
+    if (type === 'guidance') {
+      setActiveView('student-select');
+      setSelectedCategory('guidance');
+    } else {
+      setSelectedRecipients(['admin_general']);
+      setActiveView('preview');
+    }
+  };
+
+  const goToPreview = () => {
+    if (selectedRecipients.length === 0) {
+      nassaqError(t('noRecipientsSelected'));
+      return;
+    }
+    setActiveView('preview');
+  };
+
+  const markNotificationRead = async (notifId) => {
+    try {
+      await api.put(`/notifications/${notifId}/read`);
+      setNotifications(prev => prev.map(n => n.id === notifId ? { ...n, read_status: true } : n));
+      setSchoolNotifications(prev => prev.map(n => n.id === notifId ? { ...n, read_status: true } : n));
+      setSystemAlerts(prev => prev.map(n => n.id === notifId ? { ...n, read_status: true } : n));
+    } catch (error) {
+      console.error('Error:', error);
+    }
+  };
+
+  const filteredStudents = students.filter(s =>
+    s.full_name?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const filteredReceivedMessages = receivedMessages.filter(m =>
-    !msgSearchQuery || m.subject?.toLowerCase().includes(msgSearchQuery.toLowerCase()) || m.body?.toLowerCase().includes(msgSearchQuery.toLowerCase())
+  const filteredSchoolNotifs = schoolNotifFilter === 'all'
+    ? schoolNotifications
+    : schoolNotifications.filter(n => {
+        if (schoolNotifFilter === 'circulars') return n.notification_type === 'announcement';
+        if (schoolNotifFilter === 'workshops') return n.notification_type === 'schedule';
+        return true;
+      });
+
+  const unreadCount = notifications.filter(n => !n.read_status && !n.is_read).length;
+  const BackIcon = isRTL ? ChevronLeft : ArrowLeft;
+
+  const renderSections = () => (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <button
+          onClick={() => setActiveView('templates')}
+          className="group text-start"
+        >
+          <Card className="h-full border-2 border-transparent hover:border-brand-turquoise/40 hover:shadow-md transition-shadow duration-200">
+            <CardContent className="p-6">
+              <div className="w-12 h-12 rounded-xl bg-brand-turquoise/10 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform duration-200">
+                <MessageSquare className="h-6 w-6 text-brand-turquoise" />
+              </div>
+              <h3 className="text-lg font-bold font-cairo text-brand-navy dark:text-white mb-1">
+                {t('communicationCenterSection')}
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                {t('communicationCenterSectionDesc')}
+              </p>
+            </CardContent>
+          </Card>
+        </button>
+
+        <button
+          onClick={() => setActiveView('school-notifications')}
+          className="group text-start"
+        >
+          <Card className="h-full border-2 border-transparent hover:border-brand-navy/40 hover:shadow-md transition-shadow duration-200">
+            <CardContent className="p-6">
+              <div className="w-12 h-12 rounded-xl bg-brand-navy/10 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform duration-200">
+                <Megaphone className="h-6 w-6 text-brand-navy dark:text-brand-turquoise" />
+              </div>
+              <h3 className="text-lg font-bold font-cairo text-brand-navy dark:text-white mb-1">
+                {t('schoolNotifications')}
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                {t('schoolNotificationsDesc')}
+              </p>
+              {schoolNotifications.filter(n => !n.read_status).length > 0 && (
+                <Badge className="mt-2 bg-red-500 text-white border-0">
+                  {schoolNotifications.filter(n => !n.read_status).length} {t('new3')}
+                </Badge>
+              )}
+            </CardContent>
+          </Card>
+        </button>
+
+        <button
+          onClick={() => setActiveView('system-alerts')}
+          className="group text-start"
+        >
+          <Card className="h-full border-2 border-transparent hover:border-brand-purple/40 hover:shadow-md transition-shadow duration-200">
+            <CardContent className="p-6">
+              <div className="w-12 h-12 rounded-xl bg-brand-purple/10 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform duration-200">
+                <Bell className="h-6 w-6 text-brand-purple" />
+              </div>
+              <h3 className="text-lg font-bold font-cairo text-brand-navy dark:text-white mb-1">
+                {t('systemAlerts')}
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                {t('systemAlertsDesc')}
+              </p>
+              {systemAlerts.filter(n => !n.read_status).length > 0 && (
+                <Badge className="mt-2 bg-brand-purple text-white border-0">
+                  {systemAlerts.filter(n => !n.read_status).length} {t('new3')}
+                </Badge>
+              )}
+            </CardContent>
+          </Card>
+        </button>
+      </div>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base font-cairo flex items-center gap-2">
+            <Bell className="h-4 w-4 text-brand-turquoise" />
+            {t('recentNotifications2')}
+            {unreadCount > 0 && (
+              <Badge className="bg-red-500 text-white border-0 text-[10px]">{unreadCount}</Badge>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {notifications.length === 0 ? (
+            <div className="flex flex-col items-center py-10 text-center">
+              <Bell className="h-10 w-10 mb-3 text-muted-foreground/30" />
+              <p className="text-sm text-muted-foreground font-cairo">{t('noNotifications2')}</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {notifications.slice(0, 5).map((notif) => (
+                <NotificationCard
+                  key={notif.id}
+                  notif={notif}
+                  isRTL={isRTL}
+                  onRead={markNotificationRead}
+                  t={t}
+                />
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 
-  const unreadInbox = receivedMessages.filter(m => !m.is_read).length;
+  const renderTemplates = () => (
+    <div className="space-y-4">
+      <button
+        onClick={() => setActiveView('sections')}
+        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-brand-navy dark:hover:text-brand-turquoise transition-colors duration-150"
+      >
+        <BackIcon className="h-4 w-4" />
+        {t('backToSections')}
+      </button>
+
+      <div>
+        <h2 className="text-xl font-bold font-cairo text-brand-navy dark:text-white mb-1">
+          {t('communicationCenterSection')}
+        </h2>
+        <p className="text-sm text-muted-foreground mb-4">{t('chooseTemplate')}</p>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        {TEMPLATES.map(template => {
+          const TIcon = template.icon;
+          return (
+            <button
+              key={template.id}
+              onClick={() => applyTemplate(template)}
+              className="group p-4 rounded-xl border-2 border-border/50 hover:border-brand-turquoise/40 bg-card hover:shadow-md transition-shadow duration-200 text-center"
+            >
+              <div className={`w-11 h-11 mx-auto mb-2.5 rounded-xl ${template.color} flex items-center justify-center group-hover:scale-110 transition-transform duration-200`}>
+                <TIcon className="h-5 w-5 text-white" />
+              </div>
+              <p className="text-sm font-cairo font-medium leading-tight">
+                {t(template.titleKey)}
+              </p>
+            </button>
+          );
+        })}
+      </div>
+
+      <Card className="mt-4">
+        <CardContent className="p-4">
+          <Button
+            className="w-full bg-brand-turquoise hover:bg-brand-turquoise/90 text-white"
+            onClick={() => {
+              setMessageSubject('');
+              setMessageBody('');
+              setSelectedTemplate(null);
+              setActiveView('recipients');
+            }}
+          >
+            <Send className="h-4 w-4 me-2" />
+            {t('sendNotificationBtn')}
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  const renderRecipients = () => (
+    <div className="space-y-4">
+      <button
+        onClick={() => setActiveView('templates')}
+        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-brand-navy dark:hover:text-brand-turquoise transition-colors duration-150"
+      >
+        <BackIcon className="h-4 w-4" />
+        {t('backToTemplates')}
+      </button>
+
+      <div>
+        <h2 className="text-xl font-bold font-cairo text-brand-navy dark:text-white mb-1">
+          {t('selectRecipients')}
+        </h2>
+        <p className="text-sm text-muted-foreground mb-4">{t('recipientCategories')}</p>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {RECIPIENT_CATEGORIES.map(cat => {
+          const CIcon = cat.icon;
+          return (
+            <button
+              key={cat.id}
+              onClick={() => handleSelectCategory(cat.id)}
+              className="group p-5 rounded-xl border-2 border-border/50 hover:border-brand-turquoise/40 bg-card hover:shadow-md transition-shadow duration-200 text-center"
+            >
+              <div className={`w-12 h-12 mx-auto mb-3 rounded-xl ${cat.color} flex items-center justify-center group-hover:scale-110 transition-transform duration-200`}>
+                <CIcon className="h-6 w-6 text-white" />
+              </div>
+              <p className="text-sm font-cairo font-semibold">{t(cat.i18nKey)}</p>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const renderParentMode = () => (
+    <div className="space-y-4">
+      <button
+        onClick={() => setActiveView('recipients')}
+        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-brand-navy dark:hover:text-brand-turquoise transition-colors duration-150"
+      >
+        <BackIcon className="h-4 w-4" />
+        {t('backToCategories')}
+      </button>
+
+      <div>
+        <h2 className="text-xl font-bold font-cairo text-brand-navy dark:text-white mb-1">
+          {t('parentsCategory')}
+        </h2>
+      </div>
+
+      <div className="mb-4">
+        <Label className="text-sm font-medium mb-2 block">{t('selectClass')}</Label>
+        <Select value={selectedClass} onValueChange={setSelectedClass}>
+          <SelectTrigger className="w-full sm:w-[240px]">
+            <SelectValue placeholder={t('selectClass')} />
+          </SelectTrigger>
+          <SelectContent>
+            {classes.map(cls => (
+              <SelectItem key={cls.id} value={cls.id}>{cls.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <button
+          onClick={() => handleParentModeSelect('individual')}
+          className="p-5 rounded-xl border-2 border-border/50 hover:border-blue-400/40 bg-card hover:shadow-md transition-shadow duration-200 text-start"
+        >
+          <Users className="h-8 w-8 text-blue-500 mb-2" />
+          <p className="font-cairo font-semibold text-sm">{t('individualParent')}</p>
+          <p className="text-xs text-muted-foreground mt-1">{t('selectOneOrMoreStudents')}</p>
+        </button>
+
+        <button
+          onClick={() => handleParentModeSelect('all')}
+          className="p-5 rounded-xl border-2 border-border/50 hover:border-green-400/40 bg-card hover:shadow-md transition-shadow duration-200 text-start"
+          disabled={!selectedClass}
+        >
+          <Megaphone className="h-8 w-8 text-green-500 mb-2" />
+          <p className="font-cairo font-semibold text-sm">{t('allParentsInClass')}</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {selectedClass ? `${students.length} ${t('parentsCategory')}` : t('selectClass')}
+          </p>
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderParentIndividual = () => (
+    <div className="space-y-4">
+      <button
+        onClick={() => setActiveView('parent-mode')}
+        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-brand-navy dark:hover:text-brand-turquoise transition-colors duration-150"
+      >
+        <BackIcon className="h-4 w-4" />
+        {t('backToCategories')}
+      </button>
+
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <h2 className="text-xl font-bold font-cairo text-brand-navy dark:text-white">
+          {t('individualParent')}
+        </h2>
+        <div className="relative">
+          <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder={t('search')}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="ps-9 w-full sm:w-[200px] h-9"
+          />
+        </div>
+      </div>
+
+      <div className="mb-3">
+        <Select value={selectedClass} onValueChange={setSelectedClass}>
+          <SelectTrigger className="w-full sm:w-[240px]">
+            <SelectValue placeholder={t('selectClass')} />
+          </SelectTrigger>
+          <SelectContent>
+            {classes.map(cls => (
+              <SelectItem key={cls.id} value={cls.id}>{cls.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <Card>
+        <CardContent className="p-3">
+          <div className="max-h-[340px] overflow-y-auto space-y-1.5">
+            {filteredStudents.length === 0 ? (
+              <div className="text-center py-8 text-sm text-muted-foreground">
+                {t('noStudentsFound')}
+              </div>
+            ) : (
+              filteredStudents.map(student => (
+                <div
+                  key={student.id}
+                  className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors duration-150 ${
+                    selectedRecipients.includes(student.parent_id || student.id)
+                      ? 'bg-brand-turquoise/10 border-brand-turquoise/30'
+                      : 'hover:bg-muted/50 border-transparent'
+                  }`}
+                  onClick={() => toggleRecipient(student.parent_id || student.id)}
+                >
+                  <Checkbox
+                    checked={selectedRecipients.includes(student.parent_id || student.id)}
+                    onCheckedChange={() => toggleRecipient(student.parent_id || student.id)}
+                  />
+                  <Avatar className="h-8 w-8">
+                    <AvatarFallback className={`text-xs font-bold ${
+                      student.gender === 'male' ? 'bg-sky-100 text-sky-600' : 'bg-pink-100 text-pink-600'
+                    }`}>
+                      {student.full_name?.charAt(0) || '?'}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{student.full_name}</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {t('parent')}: {student.parent_name || '-'}
+                    </p>
+                  </div>
+                  {student.parent_phone && (
+                    <span className="text-[10px] text-muted-foreground flex items-center gap-1" dir="ltr">
+                      <Phone className="h-3 w-3" />{student.parent_phone}
+                    </span>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="flex items-center justify-between">
+        <Badge variant="secondary" className="font-cairo">
+          {selectedRecipients.length} {t('selected2')}
+        </Badge>
+        <Button
+          className="bg-brand-turquoise hover:bg-brand-turquoise/90 text-white"
+          disabled={selectedRecipients.length === 0}
+          onClick={goToPreview}
+        >
+          {t('confirmAndSend')}
+          {isRTL ? <ArrowLeft className="h-4 w-4 ms-2" /> : <ArrowRight className="h-4 w-4 ms-2" />}
+        </Button>
+      </div>
+    </div>
+  );
+
+  const renderStudentSelect = () => (
+    <div className="space-y-4">
+      <button
+        onClick={() => setActiveView(selectedCategory === 'guidance' ? 'admin-select' : 'recipients')}
+        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-brand-navy dark:hover:text-brand-turquoise transition-colors duration-150"
+      >
+        <BackIcon className="h-4 w-4" />
+        {t('backToCategories')}
+      </button>
+
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <h2 className="text-xl font-bold font-cairo text-brand-navy dark:text-white">
+          {selectedCategory === 'guidance' ? t('studentGuidance') : t('studentsCategory')}
+        </h2>
+        <div className="relative">
+          <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder={t('search')}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="ps-9 w-full sm:w-[200px] h-9"
+          />
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3 flex-wrap">
+        <Select value={selectedClass} onValueChange={setSelectedClass}>
+          <SelectTrigger className="w-full sm:w-[240px]">
+            <SelectValue placeholder={t('selectClass')} />
+          </SelectTrigger>
+          <SelectContent>
+            {classes.map(cls => (
+              <SelectItem key={cls.id} value={cls.id}>{cls.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button variant="outline" size="sm" onClick={handleSelectAllStudents}>
+          {filteredStudents.length > 0 && filteredStudents.every(s => selectedRecipients.includes(s.id))
+            ? t('deselectAll')
+            : t('selectAll')}
+        </Button>
+      </div>
+
+      <Card>
+        <CardContent className="p-3">
+          <div className="max-h-[340px] overflow-y-auto space-y-1.5">
+            {filteredStudents.length === 0 ? (
+              <div className="text-center py-8 text-sm text-muted-foreground">
+                {t('noStudentsFound')}
+              </div>
+            ) : (
+              filteredStudents.map(student => (
+                <div
+                  key={student.id}
+                  className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors duration-150 ${
+                    selectedRecipients.includes(student.id)
+                      ? 'bg-brand-turquoise/10 border-brand-turquoise/30'
+                      : 'hover:bg-muted/50 border-transparent'
+                  }`}
+                  onClick={() => toggleRecipient(student.id)}
+                >
+                  <Checkbox
+                    checked={selectedRecipients.includes(student.id)}
+                    onCheckedChange={() => toggleRecipient(student.id)}
+                  />
+                  <Avatar className="h-8 w-8">
+                    <AvatarFallback className={`text-xs font-bold ${
+                      student.gender === 'male' ? 'bg-sky-100 text-sky-600' : 'bg-pink-100 text-pink-600'
+                    }`}>
+                      {student.full_name?.charAt(0) || '?'}
+                    </AvatarFallback>
+                  </Avatar>
+                  <p className="text-sm font-medium truncate flex-1">{student.full_name}</p>
+                </div>
+              ))
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="flex items-center justify-between">
+        <Badge variant="secondary" className="font-cairo">
+          {selectedRecipients.length} {t('selected2')}
+        </Badge>
+        <Button
+          className="bg-brand-turquoise hover:bg-brand-turquoise/90 text-white"
+          disabled={selectedRecipients.length === 0}
+          onClick={goToPreview}
+        >
+          {t('confirmAndSend')}
+          {isRTL ? <ArrowLeft className="h-4 w-4 ms-2" /> : <ArrowRight className="h-4 w-4 ms-2" />}
+        </Button>
+      </div>
+    </div>
+  );
+
+  const renderStaffSelect = () => (
+    <div className="space-y-4">
+      <button
+        onClick={() => setActiveView('recipients')}
+        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-brand-navy dark:hover:text-brand-turquoise transition-colors duration-150"
+      >
+        <BackIcon className="h-4 w-4" />
+        {t('backToCategories')}
+      </button>
+
+      <div>
+        <h2 className="text-xl font-bold font-cairo text-brand-navy dark:text-white mb-1">
+          {t('schoolStaffCategory')}
+        </h2>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {STAFF_ROLES.map(role => {
+          const RIcon = role.icon;
+          return (
+            <button
+              key={role.id}
+              onClick={() => handleStaffSelect(role.id)}
+              className="group p-4 rounded-xl border-2 border-border/50 hover:border-brand-purple/40 bg-card hover:shadow-md transition-shadow duration-200 text-start flex items-center gap-4"
+            >
+              <div className="w-10 h-10 rounded-lg bg-brand-purple/10 flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
+                <RIcon className="h-5 w-5 text-brand-purple" />
+              </div>
+              <p className="text-sm font-cairo font-semibold">{t(role.i18nKey)}</p>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const renderAdminSelect = () => (
+    <div className="space-y-4">
+      <button
+        onClick={() => setActiveView('recipients')}
+        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-brand-navy dark:hover:text-brand-turquoise transition-colors duration-150"
+      >
+        <BackIcon className="h-4 w-4" />
+        {t('backToCategories')}
+      </button>
+
+      <div>
+        <h2 className="text-xl font-bold font-cairo text-brand-navy dark:text-white mb-1">
+          {t('adminCategory')}
+        </h2>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <button
+          onClick={() => handleAdminSelect('guidance')}
+          className="group p-5 rounded-xl border-2 border-border/50 hover:border-brand-navy/40 bg-card hover:shadow-md transition-shadow duration-200 text-start"
+        >
+          <GraduationCap className="h-8 w-8 text-brand-navy dark:text-brand-turquoise mb-2" />
+          <p className="font-cairo font-semibold text-sm">{t('studentGuidance')}</p>
+          <p className="text-xs text-muted-foreground mt-1">{t('selectOneOrMoreStudents')}</p>
+        </button>
+
+        <button
+          onClick={() => handleAdminSelect('general')}
+          className="group p-5 rounded-xl border-2 border-border/50 hover:border-brand-navy/40 bg-card hover:shadow-md transition-shadow duration-200 text-start"
+        >
+          <Building2 className="h-8 w-8 text-brand-navy dark:text-brand-turquoise mb-2" />
+          <p className="font-cairo font-semibold text-sm">{t('generalAdminNotification')}</p>
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderPreview = () => (
+    <div className="space-y-4">
+      <button
+        onClick={() => {
+          if (parentMode === 'individual') setActiveView('parent-individual');
+          else if (selectedCategory === 'students' || selectedCategory === 'guidance') setActiveView('student-select');
+          else setActiveView('recipients');
+        }}
+        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-brand-navy dark:hover:text-brand-turquoise transition-colors duration-150"
+      >
+        <BackIcon className="h-4 w-4" />
+        {t('backToCategories')}
+      </button>
+
+      <h2 className="text-xl font-bold font-cairo text-brand-navy dark:text-white">
+        {t('messagePreview')}
+      </h2>
+
+      <Card>
+        <CardContent className="p-5 space-y-4">
+          <div>
+            <Label className="text-xs text-muted-foreground">{t('selectedRecipients')}</Label>
+            <Badge variant="secondary" className="mt-1 font-cairo">
+              {selectedRecipients.length} {t('recipients3')}
+            </Badge>
+          </div>
+
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">{t('messageSubject')} *</Label>
+              <Input
+                value={messageSubject}
+                onChange={(e) => setMessageSubject(e.target.value)}
+                placeholder={t('messageSubject')}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">{t('message')} *</Label>
+              <Textarea
+                value={messageBody}
+                onChange={(e) => setMessageBody(e.target.value)}
+                placeholder={t('writeYourMessageHere')}
+                rows={5}
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="flex items-center justify-end gap-3">
+        <Button variant="outline" onClick={resetFlow}>{t('cancel')}</Button>
+        <Button
+          className="bg-brand-turquoise hover:bg-brand-turquoise/90 text-white"
+          onClick={handleSendMessage}
+          disabled={sending || !messageSubject || !messageBody}
+        >
+          {sending && <Loader2 className="h-4 w-4 animate-spin me-2" />}
+          <Send className="h-4 w-4 me-1" />
+          {t('send')}
+        </Button>
+      </div>
+    </div>
+  );
+
+  const renderSchoolNotifications = () => (
+    <div className="space-y-4">
+      <button
+        onClick={() => setActiveView('sections')}
+        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-brand-navy dark:hover:text-brand-turquoise transition-colors duration-150"
+      >
+        <BackIcon className="h-4 w-4" />
+        {t('backToSections')}
+      </button>
+
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="text-xl font-bold font-cairo text-brand-navy dark:text-white mb-1">
+            {t('schoolNotifications')}
+          </h2>
+          <p className="text-sm text-muted-foreground">{t('fromSchoolAdmin')}</p>
+        </div>
+        <Select value={schoolNotifFilter} onValueChange={setSchoolNotifFilter}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t('allNotifications')}</SelectItem>
+            <SelectItem value="circulars">
+              <span className="flex items-center gap-2">
+                <ScrollText className="h-3.5 w-3.5" />{t('circulars')}
+              </span>
+            </SelectItem>
+            <SelectItem value="workshops">
+              <span className="flex items-center gap-2">
+                <Presentation className="h-3.5 w-3.5" />{t('workshops')}
+              </span>
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {filteredSchoolNotifs.length === 0 ? (
+        <Card>
+          <CardContent className="p-8 text-center">
+            <Megaphone className="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" />
+            <p className="text-sm text-muted-foreground font-cairo">
+              {schoolNotifFilter === 'circulars' ? t('noCircularsYet')
+                : schoolNotifFilter === 'workshops' ? t('noWorkshopsYet')
+                : t('noNotifications2')}
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {filteredSchoolNotifs.map(notif => (
+            <NotificationCard
+              key={notif.id}
+              notif={notif}
+              isRTL={isRTL}
+              onRead={markNotificationRead}
+              t={t}
+              variant="school"
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderSystemAlerts = () => (
+    <div className="space-y-4">
+      <button
+        onClick={() => setActiveView('sections')}
+        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-brand-navy dark:hover:text-brand-turquoise transition-colors duration-150"
+      >
+        <BackIcon className="h-4 w-4" />
+        {t('backToSections')}
+      </button>
+
+      <div>
+        <h2 className="text-xl font-bold font-cairo text-brand-navy dark:text-white mb-1">
+          {t('systemAlerts')}
+        </h2>
+        <p className="text-sm text-muted-foreground">{t('fromNassaq')}</p>
+      </div>
+
+      {systemAlerts.length === 0 ? (
+        <Card>
+          <CardContent className="p-8 text-center">
+            <Bell className="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" />
+            <p className="text-sm text-muted-foreground font-cairo">{t('noSystemAlertsYet')}</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {systemAlerts.map(notif => (
+            <NotificationCard
+              key={notif.id}
+              notif={notif}
+              isRTL={isRTL}
+              onRead={markNotificationRead}
+              t={t}
+              variant="system"
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderActiveView = () => {
+    switch (activeView) {
+      case 'sections': return renderSections();
+      case 'templates': return renderTemplates();
+      case 'recipients': return renderRecipients();
+      case 'parent-mode': return renderParentMode();
+      case 'parent-individual': return renderParentIndividual();
+      case 'student-select': return renderStudentSelect();
+      case 'staff-select': return renderStaffSelect();
+      case 'admin-select': return renderAdminSelect();
+      case 'preview': return renderPreview();
+      case 'school-notifications': return renderSchoolNotifications();
+      case 'system-alerts': return renderSystemAlerts();
+      default: return renderSections();
+    }
+  };
 
   return (
     <Sidebar>
-      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white dark:from-gray-900 dark:to-gray-800" dir={isRTL ? 'rtl' : 'ltr'}>
-        <div className="sticky top-0 z-20 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm border-b p-4">
-          <div className="flex items-center justify-between flex-wrap gap-4">
+      <div className="min-h-screen bg-slate-50 dark:bg-gray-900" dir={isRTL ? 'rtl' : 'ltr'}>
+        <div className="sticky top-0 z-20 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm border-b border-slate-200 dark:border-slate-800 p-4">
+          <div className="flex items-center justify-between flex-wrap gap-4 max-w-[1400px] mx-auto">
             <div>
               <h1 className="text-2xl font-bold text-brand-navy dark:text-brand-turquoise font-cairo">
-                {t('communicationCenter')}
+                {t('communicationNotifications')}
               </h1>
-              <p className="text-sm text-muted-foreground">{t('sendAndReceiveMessagesAndNotifications')}</p>
+              <p className="text-sm text-muted-foreground">{t('communicationCenterSectionDesc')}</p>
             </div>
             <div className="flex items-center gap-2">
-              <Select value={selectedClass} onValueChange={setSelectedClass}>
-                <SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder={t('class')} /></SelectTrigger>
-                <SelectContent>{classes.map(cls => (<SelectItem key={cls.id} value={cls.id}>{cls.name}</SelectItem>))}</SelectContent>
-              </Select>
-              <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /></Button>
-              <Button className="bg-brand-turquoise hover:bg-brand-turquoise/90" onClick={() => setShowComposeDialog(true)}>
-                <Plus className="h-4 w-4 me-1" /><span className="hidden sm:inline">{t('newMessage')}</span><span className="sm:hidden">{isRTL ? 'جديدة' : 'New'}</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { resetFlow(); fetchData(); }}
+                disabled={loading}
+              >
+                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
               </Button>
+              {unreadCount > 0 && (
+                <Badge className="bg-red-500 text-white border-0">
+                  {unreadCount} {t('new3')}
+                </Badge>
+              )}
             </div>
           </div>
         </div>
 
-        <div className="p-4 max-w-[1400px] mx-auto space-y-5">
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="mb-4 bg-muted/50">
-              <TabsTrigger value="compose" className="gap-1.5"><Send className="h-3.5 w-3.5" />{t('quickSend')}</TabsTrigger>
-              <TabsTrigger value="inbox" className="gap-1.5">
-                <Inbox className="h-3.5 w-3.5" />{t('inbox2')}
-                {unreadInbox > 0 && <Badge className="bg-red-500 text-white text-[9px] px-1.5 h-4 border-0">{unreadInbox}</Badge>}
-              </TabsTrigger>
-              <TabsTrigger value="sent" className="gap-1.5">
-                <History className="h-3.5 w-3.5" />{t('sent')}
-                {sentMessages.length > 0 && <Badge variant="secondary" className="text-[9px] px-1.5 h-4 border-0">{sentMessages.length}</Badge>}
-              </TabsTrigger>
-              <TabsTrigger value="notifications" className="gap-1.5">
-                <Bell className="h-3.5 w-3.5" />{t('notifications')}
-                {notifications.length > 0 && <Badge className="bg-brand-turquoise text-white text-[9px] px-1.5 h-4 border-0">{notifications.length}</Badge>}
-              </TabsTrigger>
-              <TabsTrigger value="contacts" className="gap-1.5"><Users className="h-3.5 w-3.5" />{t('contacts')}</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="compose">
-              {loading ? (<div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-brand-turquoise" /></div>) : (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-                    {TEMPLATES.map(template => {
-                      const TIcon = template.icon;
-                      return (<button key={template.id} onClick={() => applyTemplate(template)} className="group p-4 rounded-xl border-2 border-border/50 hover:border-brand-turquoise/40 bg-card hover:shadow-lg hover:shadow-brand-turquoise/5 transition-all duration-300 text-center">
-                        <div className={`w-11 h-11 mx-auto mb-2.5 rounded-xl bg-gradient-to-br ${template.gradient} flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform`}><TIcon className="h-5 w-5 text-white" /></div>
-                        <p className="text-sm font-cairo font-medium leading-tight">{isRTL ? template.titleAr : template.titleEn}</p>
-                      </button>);
-                    })}
-                  </div>
-                  <div className="grid lg:grid-cols-3 gap-4">
-                    <div className="lg:col-span-2">
-                      <Card>
-                        <CardHeader className="pb-3"><CardTitle className="text-base font-cairo flex items-center gap-2"><MessageSquare className="h-4 w-4 text-brand-turquoise" />{t('recentSentMessages')}</CardTitle></CardHeader>
-                        <CardContent>
-                          {sentMessages.length === 0 ? (<div className="text-center py-8"><MessageSquare className="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" /><p className="text-sm text-muted-foreground font-cairo">{t('noMessagesSentYet')}</p></div>) : (
-                            <div className="space-y-2">{sentMessages.slice(0, 5).map((message, idx) => {
-                              const typeConfig = MESSAGE_TYPES.find(mt => mt.value === message.type);
-                              return (<div key={message.id || idx} className="p-3 rounded-lg border hover:bg-muted/30 transition-all">
-                                <div className="flex items-start justify-between mb-1"><div className="flex items-center gap-2"><Badge className={`text-[10px] border-0 ${message.type === 'urgent' ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'}`}>{typeConfig?.[isRTL ? 'label' : 'labelEn'] || message.type}</Badge><span className="font-medium text-sm">{message.subject}</span></div><span className="text-[10px] text-muted-foreground flex items-center gap-1 shrink-0"><Clock className="h-3 w-3" />{message.created_at ? new Date(message.created_at).toLocaleDateString(isRTL ? 'ar-SA' : 'en-US') : ''}</span></div>
-                                <p className="text-xs text-muted-foreground line-clamp-1 ps-1">{message.body}</p>
-                              </div>);
-                            })}</div>
-                          )}
-                        </CardContent>
-                      </Card>
-                    </div>
-                    <div className="space-y-3">
-                      <Card className="bg-gradient-to-br from-brand-turquoise/5 to-brand-navy/5 border-brand-turquoise/20"><CardContent className="p-4 text-center"><Send className="h-7 w-7 mx-auto mb-2 text-brand-turquoise" /><div className="text-2xl font-bold font-cairo text-brand-navy dark:text-brand-turquoise">{sentMessages.length}</div><div className="text-xs text-muted-foreground">{t('sent4')}</div></CardContent></Card>
-                      <Card><CardContent className="p-4 text-center"><Inbox className="h-7 w-7 mx-auto mb-2 text-blue-600" /><div className="text-2xl font-bold font-cairo text-blue-600">{receivedMessages.length}</div><div className="text-xs text-muted-foreground">{t('received2')}</div></CardContent></Card>
-                      <Card><CardContent className="p-4 text-center"><Users className="h-7 w-7 mx-auto mb-2 text-green-600" /><div className="text-2xl font-bold font-cairo text-green-600">{students.length}</div><div className="text-xs text-muted-foreground">{isRTL ? 'ولي أمر' : 'Parents'}</div></CardContent></Card>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </TabsContent>
-
-            <TabsContent value="inbox">
-              <Card>
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between flex-wrap gap-3">
-                    <CardTitle className="text-base font-cairo flex items-center gap-2"><Inbox className="h-4 w-4 text-blue-500" />{t('inbox3')}{unreadInbox > 0 && <Badge className="bg-red-500 text-white border-0">{unreadInbox} {t('new3')}</Badge>}</CardTitle>
-                    <div className="relative"><Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder={t('searchMessages')} value={msgSearchQuery} onChange={(e) => setMsgSearchQuery(e.target.value)} className="ps-9 w-full sm:w-[200px] h-9" /></div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  {filteredReceivedMessages.length === 0 ? (<div className="flex flex-col items-center py-10 text-center"><Inbox className="h-12 w-12 mb-3 text-muted-foreground/30" /><p className="text-muted-foreground font-cairo">{t('noReceivedMessages')}</p></div>) : (
-                    <div className="space-y-2.5">{filteredReceivedMessages.map((message, idx) => {
-                      const typeConfig = MESSAGE_TYPES.find(mt => mt.value === message.type);
-                      const MIcon = typeConfig?.icon || MessageSquare;
-                      return (<div key={message.id || idx} className={`p-4 rounded-xl border transition-all ${!message.is_read ? 'bg-brand-turquoise/5 border-brand-turquoise/20 hover:shadow-md' : 'hover:bg-muted/30'}`}>
-                        <div className="flex items-start justify-between mb-2"><div className="flex items-center gap-2.5"><div className={`w-8 h-8 rounded-lg ${typeConfig?.color || 'bg-blue-500'} flex items-center justify-center shrink-0`}><MIcon className="h-4 w-4 text-white" /></div><div><div className="flex items-center gap-2"><span className="font-medium text-sm">{message.subject}</span>{!message.is_read && <span className="w-2 h-2 rounded-full bg-brand-turquoise" />}</div><div className="flex items-center gap-2 mt-0.5"><Badge variant="secondary" className="text-[10px]">{typeConfig?.[isRTL ? 'label' : 'labelEn'] || message.type}</Badge>{message.sender_name && <span className="text-[10px] text-muted-foreground">{isRTL ? 'من' : 'From'}: {message.sender_name}</span>}</div></div></div><span className="text-[10px] text-muted-foreground flex items-center gap-1 shrink-0"><Clock className="h-3 w-3" />{message.created_at ? new Date(message.created_at).toLocaleDateString(isRTL ? 'ar-SA' : 'en-US', { dateStyle: 'medium' }) : ''}</span></div>
-                        <p className="text-xs text-muted-foreground line-clamp-2 ps-[42px]">{message.body}</p>
-                      </div>);
-                    })}</div>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="sent">
-              <Card>
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between flex-wrap gap-3">
-                    <CardTitle className="text-base font-cairo flex items-center gap-2"><History className="h-4 w-4 text-brand-turquoise" />{t('sentMessageHistory')}</CardTitle>
-                    <div className="relative"><Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder={t('search')} value={msgSearchQuery} onChange={(e) => setMsgSearchQuery(e.target.value)} className="ps-9 w-full sm:w-[200px] h-9" /></div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  {filteredSentMessages.length === 0 ? (<div className="flex flex-col items-center py-10 text-center"><MessageSquare className="h-12 w-12 mb-3 text-muted-foreground/30" /><p className="text-muted-foreground font-cairo">{t('noSentMessages')}</p></div>) : (
-                    <div className="space-y-2.5">{filteredSentMessages.map((message, idx) => {
-                      const typeConfig = MESSAGE_TYPES.find(mt => mt.value === message.type);
-                      const MIcon = typeConfig?.icon || MessageSquare;
-                      return (<div key={message.id || idx} className="p-4 rounded-xl border hover:border-brand-turquoise/30 hover:shadow-sm transition-all">
-                        <div className="flex items-start justify-between mb-2"><div className="flex items-center gap-2.5"><div className={`w-8 h-8 rounded-lg ${typeConfig?.color || 'bg-blue-500'} flex items-center justify-center shrink-0`}><MIcon className="h-4 w-4 text-white" /></div><div><span className="font-medium text-sm">{message.subject}</span><div className="flex items-center gap-2 mt-0.5"><Badge variant="secondary" className="text-[10px]">{typeConfig?.[isRTL ? 'label' : 'labelEn'] || message.type}</Badge><span className="text-[10px] text-muted-foreground flex items-center gap-1"><Users className="h-2.5 w-2.5" />{message.recipient_ids?.length || 0} {t('recipients3')}</span></div></div></div><span className="text-[10px] text-muted-foreground flex items-center gap-1 shrink-0"><Clock className="h-3 w-3" />{message.created_at ? new Date(message.created_at).toLocaleDateString(isRTL ? 'ar-SA' : 'en-US', { dateStyle: 'medium' }) : ''}</span></div>
-                        <p className="text-xs text-muted-foreground line-clamp-2 ps-[42px]">{message.body}</p>
-                      </div>);
-                    })}</div>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="notifications">
-              <Card>
-                <CardHeader className="pb-3"><CardTitle className="text-base font-cairo flex items-center gap-2"><Bell className="h-4 w-4 text-brand-turquoise" />{t('recentNotifications2')}</CardTitle></CardHeader>
-                <CardContent>
-                  {notifications.length === 0 ? (<div className="flex flex-col items-center py-10 text-center"><Inbox className="h-12 w-12 mb-3 text-muted-foreground/30" /><p className="text-muted-foreground font-cairo">{t('noNotifications2')}</p><p className="text-xs text-muted-foreground/60 mt-1">{t('notificationsWillAppearHere')}</p></div>) : (
-                    <div className="space-y-2">{notifications.map((notif, idx) => (
-                      <div key={notif.id || idx} className={`p-3.5 rounded-xl border transition-all ${(notif.is_read || notif.read_status) ? 'bg-card' : 'bg-brand-turquoise/5 border-brand-turquoise/20'}`}>
-                        <div className="flex items-start gap-3">
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${notif.priority === 'high' ? 'bg-red-100 dark:bg-red-900/40 text-red-600' : 'bg-brand-turquoise/10 text-brand-turquoise'}`}>{notif.priority === 'high' ? <AlertCircle className="h-4 w-4" /> : <Bell className="h-4 w-4" />}</div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-0.5"><p className="font-medium text-sm truncate">{notif.title}</p>{!(notif.is_read || notif.read_status) && <span className="w-2 h-2 rounded-full bg-brand-turquoise shrink-0" />}</div>
-                            <p className="text-xs text-muted-foreground line-clamp-2">{notif.message}</p>
-                            <span className="text-[10px] text-muted-foreground/60 flex items-center gap-1 mt-1.5"><Clock className="h-2.5 w-2.5" />{notif.created_at ? new Date(notif.created_at).toLocaleString(isRTL ? 'ar-SA' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' }) : ''}</span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}</div>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="contacts">
-              <Card>
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between flex-wrap gap-3">
-                    <CardTitle className="text-base font-cairo flex items-center gap-2"><Users className="h-4 w-4 text-brand-turquoise" />{t('contacts')}<Badge variant="secondary" className="font-cairo">{filteredStudents.length}</Badge></CardTitle>
-                    <div className="relative"><Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder={t('search')} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="ps-9 w-full sm:w-[200px] h-9" /></div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  {filteredStudents.length === 0 ? (<div className="text-center py-10 text-muted-foreground font-cairo">{t('noContactsFound')}</div>) : (
-                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">{filteredStudents.map(student => (
-                      <div key={student.id} className="p-3.5 rounded-xl border hover:border-brand-turquoise/30 hover:shadow-sm transition-all">
-                        <div className="flex items-center gap-3 mb-2.5"><Avatar className="h-9 w-9"><AvatarFallback className={`text-xs font-bold ${student.gender === 'male' ? 'bg-sky-100 text-sky-600' : 'bg-pink-100 text-pink-600'}`}>{student.full_name?.charAt(0) || '?'}</AvatarFallback></Avatar><div className="flex-1 min-w-0"><p className="font-medium text-sm truncate">{student.full_name}</p><p className="text-[10px] text-muted-foreground">{t('parent')}: {student.parent_name || '-'}</p></div></div>
-                        {student.parent_phone && (<div className="flex items-center gap-2 text-xs text-muted-foreground mb-2"><Phone className="h-3 w-3" /><span dir="ltr">{student.parent_phone}</span></div>)}
-                        <Button variant="outline" size="sm" className="w-full text-xs h-8 hover:border-brand-turquoise hover:text-brand-turquoise" onClick={() => { setNewMessage({ ...newMessage, recipients: 'selected', selectedStudents: [student.id], selectedParents: [student.parent_id] }); setShowComposeDialog(true); }}><Send className="h-3 w-3 me-1" />{t('sendMessage')}</Button>
-                      </div>
-                    ))}</div>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
-        </div>
-
-        <Dialog open={showComposeDialog} onOpenChange={setShowComposeDialog}>
-          <DialogContent className="w-[95vw] max-w-lg">
-            <DialogHeader><DialogTitle className="font-cairo flex items-center gap-2"><div className="w-8 h-8 rounded-lg bg-brand-turquoise flex items-center justify-center"><Send className="h-4 w-4 text-white" /></div>{t('sendMessage')}</DialogTitle></DialogHeader>
-            <div className="space-y-4 py-2">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5"><Label className="text-xs">{t('type')}</Label><Select value={newMessage.type} onValueChange={(v) => setNewMessage({...newMessage, type: v})}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger><SelectContent>{MESSAGE_TYPES.map(mt => (<SelectItem key={mt.value} value={mt.value}>{isRTL ? mt.label : mt.labelEn}</SelectItem>))}</SelectContent></Select></div>
-                <div className="space-y-1.5"><Label className="text-xs">{t('recipients4')}</Label><Select value={newMessage.recipients} onValueChange={(v) => setNewMessage({...newMessage, recipients: v})}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('allParents')}</SelectItem><SelectItem value="selected">{t('selected2')}</SelectItem></SelectContent></Select></div>
-              </div>
-              {newMessage.recipients === 'selected' && (<div className="space-y-1.5"><Label className="text-xs">{t('selectStudents')} ({newMessage.selectedStudents.length})</Label><div className="max-h-28 overflow-y-auto border rounded-lg p-2 space-y-1">{students.map(student => (<div key={student.id} className="flex items-center gap-2 p-1 rounded hover:bg-muted/50"><Checkbox checked={newMessage.selectedStudents.includes(student.id)} onCheckedChange={() => toggleStudentSelection(student.id, student.parent_id)} /><span className="text-sm">{student.full_name}</span></div>))}</div></div>)}
-              <div className="space-y-1.5"><Label className="text-xs">{isRTL ? 'عنوان الرسالة' : 'Subject'} *</Label><Input value={newMessage.subject} onChange={(e) => setNewMessage({...newMessage, subject: e.target.value})} placeholder={t('messageSubject')} className="h-9" /></div>
-              <div className="space-y-1.5"><Label className="text-xs">{t('message')} *</Label><Textarea value={newMessage.body} onChange={(e) => setNewMessage({...newMessage, body: e.target.value})} placeholder={isRTL ? 'اكتب رسالتك هنا...' : 'Write your message...'} rows={4} /></div>
-              {newMessage.recipients === 'all' && (<div className="p-2.5 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200/60"><p className="text-[11px] text-blue-600 dark:text-blue-400 flex items-center gap-1.5"><Users className="h-3 w-3 shrink-0" />{isRTL ? `سيتم إرسال الرسالة إلى ${students.length} ولي أمر` : `Message will be sent to ${students.length} parents`}</p></div>)}
+        <div className="p-4 md:p-6 lg:p-8 max-w-[1400px] mx-auto">
+          {loading ? (
+            <div className="flex items-center justify-center py-20">
+              <Loader2 className="h-8 w-8 animate-spin text-brand-turquoise" />
             </div>
-            <DialogFooter className="gap-2">
-              <Button variant="outline" onClick={() => setShowComposeDialog(false)} className="h-9">{t('cancel')}</Button>
-              <Button className="bg-brand-turquoise hover:bg-brand-turquoise/90 h-9" onClick={handleSendMessage} disabled={sending || !newMessage.subject || !newMessage.body}>
-                {sending && <Loader2 className="h-4 w-4 animate-spin me-2" />}<Send className="h-4 w-4 me-1" />{t('send')}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+          ) : (
+            renderActiveView()
+          )}
+        </div>
       </div>
     </Sidebar>
+  );
+}
+
+function NotificationCard({ notif, isRTL, onRead, t, variant }) {
+  const isUnread = !notif.read_status && !notif.is_read;
+  const priorityColors = {
+    critical: 'bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-300',
+    high: 'bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-300',
+    medium: 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300',
+    low: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300',
+  };
+
+  const typeIcons = {
+    system: Info,
+    announcement: Megaphone,
+    schedule: Presentation,
+    communication: MessageSquare,
+    attendance: Eye,
+    assessment: FileText,
+    behaviour: AlertTriangle,
+  };
+
+  const TypeIcon = typeIcons[notif.notification_type] || Bell;
+  const iconBg = variant === 'system'
+    ? 'bg-brand-purple/10 text-brand-purple'
+    : variant === 'school'
+    ? 'bg-brand-navy/10 text-brand-navy dark:text-brand-turquoise'
+    : notif.priority === 'high' || notif.priority === 'critical'
+    ? 'bg-red-100 dark:bg-red-900/40 text-red-600'
+    : 'bg-brand-turquoise/10 text-brand-turquoise';
+
+  return (
+    <div
+      className={`p-4 rounded-xl border transition-colors duration-150 cursor-pointer ${
+        isUnread
+          ? 'bg-brand-turquoise/5 border-brand-turquoise/20 hover:shadow-sm'
+          : 'bg-card hover:bg-muted/30'
+      }`}
+      onClick={() => isUnread && onRead(notif.id)}
+    >
+      <div className="flex items-start gap-3">
+        <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${iconBg}`}>
+          <TypeIcon className="h-4 w-4" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-0.5">
+            <p className="font-medium text-sm truncate">{isRTL ? notif.title : (notif.title_en || notif.title)}</p>
+            {isUnread && <span className="w-2 h-2 rounded-full bg-brand-turquoise shrink-0" />}
+          </div>
+          <p className="text-xs text-muted-foreground line-clamp-2">
+            {isRTL ? notif.message : (notif.message_en || notif.message)}
+          </p>
+          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+            {notif.priority && (
+              <Badge className={`text-[10px] border-0 ${priorityColors[notif.priority] || priorityColors.medium}`}>
+                {t(`priority${notif.priority.charAt(0).toUpperCase()}${notif.priority.slice(1)}`)}
+              </Badge>
+            )}
+            {notif.sender_name && (
+              <span className="text-[10px] text-muted-foreground">
+                {t('from')}: {notif.sender_name}
+              </span>
+            )}
+            <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+              <Clock className="h-2.5 w-2.5" />
+              {notif.created_at
+                ? new Date(notif.created_at).toLocaleString(isRTL ? 'ar-SA' : 'en-US', {
+                    dateStyle: 'medium',
+                    timeStyle: 'short',
+                  })
+                : ''}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
