@@ -68,6 +68,7 @@ export default function TeacherCommunicationPage() {
   const [messageSubject, setMessageSubject] = useState('');
 
   const [schoolNotifFilter, setSchoolNotifFilter] = useState('all');
+  const [guidanceStudentIds, setGuidanceStudentIds] = useState([]);
 
   const { nassaqError } = useNassaqAlert();
   const teacherId = user?.teacher_id || user?.id;
@@ -80,6 +81,8 @@ export default function TeacherCommunicationPage() {
         api.get(`/teacher/classes/${teacherId}`).catch(() => ({ data: [] })),
         api.get(`/notifications?limit=50`).catch(() => ({ data: [] })),
       ]);
+      // Note: backend GET /notifications enforces auth-scoped filtering
+      // (recipient_id=current_user OR recipient_role=current_user.role)
       setClasses(classesRes.data || []);
 
       const allNotifs = Array.isArray(notifRes.data) ? notifRes.data : [];
@@ -143,13 +146,18 @@ export default function TeacherCommunicationPage() {
         };
         const roles = [...new Set(roleRecipients.map(r => roleMap[r] || r))];
         for (const role of roles) {
-          await api.post('/notifications', {
+          const payload = {
             title: messageSubject,
             message: messageBody,
             notification_type: 'communication',
             priority: 'medium',
             recipient_role: role,
-          });
+          };
+          if (guidanceStudentIds.length > 0) {
+            payload.related_entity = 'student';
+            payload.related_entity_id = guidanceStudentIds.join(',');
+          }
+          await api.post('/notifications', payload);
         }
       }
 
@@ -182,6 +190,7 @@ export default function TeacherCommunicationPage() {
     setParentMode(null);
     setMessageBody('');
     setMessageSubject('');
+    setGuidanceStudentIds([]);
   };
 
   const applyTemplate = (template) => {
@@ -238,8 +247,8 @@ export default function TeacherCommunicationPage() {
 
   const handleAdminSelect = (type) => {
     if (type === 'guidance') {
-      setActiveView('student-select');
-      setSelectedCategory('guidance');
+      setSelectedRecipients(['counselor']);
+      setActiveView('guidance-student-context');
     } else {
       setSelectedRecipients(['admin_general']);
       setActiveView('preview');
@@ -637,7 +646,7 @@ export default function TeacherCommunicationPage() {
   const renderStudentSelect = () => (
     <div className="space-y-4">
       <button
-        onClick={() => setActiveView(selectedCategory === 'guidance' ? 'admin-select' : 'recipients')}
+        onClick={() => setActiveView('recipients')}
         className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-brand-navy dark:hover:text-brand-turquoise transition-colors duration-150"
       >
         <BackIcon className="h-4 w-4" />
@@ -646,7 +655,7 @@ export default function TeacherCommunicationPage() {
 
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h2 className="text-xl font-bold font-cairo text-brand-navy dark:text-white">
-          {selectedCategory === 'guidance' ? t('studentGuidance') : t('studentsCategory')}
+          {t('studentsCategory')}
         </h2>
         <div className="relative">
           <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -973,6 +982,105 @@ export default function TeacherCommunicationPage() {
     </div>
   );
 
+  const renderGuidanceStudentContext = () => (
+    <div className="space-y-4">
+      <button
+        onClick={() => setActiveView('admin-select')}
+        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-brand-navy dark:hover:text-brand-turquoise transition-colors duration-150"
+      >
+        <BackIcon className="h-4 w-4" />
+        {t('backToCategories')}
+      </button>
+
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="text-xl font-bold font-cairo text-brand-navy dark:text-white">
+            {t('studentGuidance')}
+          </h2>
+          <p className="text-sm text-muted-foreground">{t('selectOneOrMoreStudents')}</p>
+        </div>
+        <div className="relative">
+          <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder={t('search')}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="ps-9 w-full sm:w-[200px] h-9"
+          />
+        </div>
+      </div>
+
+      <Select value={selectedClass} onValueChange={setSelectedClass}>
+        <SelectTrigger className="w-full sm:w-[240px]">
+          <SelectValue placeholder={t('selectClass')} />
+        </SelectTrigger>
+        <SelectContent>
+          {classes.map(cls => (
+            <SelectItem key={cls.id} value={cls.id}>{cls.name}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Card>
+        <CardContent className="p-3">
+          <div className="max-h-[340px] overflow-y-auto space-y-1.5">
+            {filteredStudents.length === 0 ? (
+              <div className="text-center py-8 text-sm text-muted-foreground">
+                {t('noStudentsFound')}
+              </div>
+            ) : (
+              filteredStudents.map(student => (
+                <div
+                  key={student.id}
+                  className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors duration-150 ${
+                    guidanceStudentIds.includes(student.id)
+                      ? 'bg-brand-turquoise/10 border-brand-turquoise/30'
+                      : 'hover:bg-muted/50 border-transparent'
+                  }`}
+                  onClick={() => {
+                    setGuidanceStudentIds(prev =>
+                      prev.includes(student.id) ? prev.filter(id => id !== student.id) : [...prev, student.id]
+                    );
+                  }}
+                >
+                  <Checkbox
+                    checked={guidanceStudentIds.includes(student.id)}
+                    onCheckedChange={() => {
+                      setGuidanceStudentIds(prev =>
+                        prev.includes(student.id) ? prev.filter(id => id !== student.id) : [...prev, student.id]
+                      );
+                    }}
+                  />
+                  <Avatar className="h-8 w-8">
+                    <AvatarFallback className={`text-xs font-bold ${
+                      student.gender === 'male' ? 'bg-sky-100 text-sky-600' : 'bg-pink-100 text-pink-600'
+                    }`}>
+                      {student.full_name?.charAt(0) || '?'}
+                    </AvatarFallback>
+                  </Avatar>
+                  <p className="text-sm font-medium truncate flex-1">{student.full_name}</p>
+                </div>
+              ))
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="flex items-center justify-between">
+        <Badge variant="secondary" className="font-cairo">
+          {guidanceStudentIds.length} {t('selected2')}
+        </Badge>
+        <Button
+          className="bg-brand-turquoise hover:bg-brand-turquoise/90 text-white"
+          onClick={() => setActiveView('preview')}
+        >
+          {t('confirmAndSend')}
+          {isRTL ? <ArrowLeft className="h-4 w-4 ms-2" /> : <ArrowRight className="h-4 w-4 ms-2" />}
+        </Button>
+      </div>
+    </div>
+  );
+
   const renderActiveView = () => {
     switch (activeView) {
       case 'sections': return renderSections();
@@ -983,6 +1091,7 @@ export default function TeacherCommunicationPage() {
       case 'student-select': return renderStudentSelect();
       case 'staff-select': return renderStaffSelect();
       case 'admin-select': return renderAdminSelect();
+      case 'guidance-student-context': return renderGuidanceStudentContext();
       case 'preview': return renderPreview();
       case 'school-notifications': return renderSchoolNotifications();
       case 'system-alerts': return renderSystemAlerts();

@@ -412,6 +412,12 @@ export const Sidebar = ({ children }) => {
         roles: ['teacher'],
       },
       {
+        icon: Bell,
+        label: t('notificationsCenter'),
+        href: '/notifications',
+        roles: ['teacher'],
+      },
+      {
         icon: Settings,
         label: t('profileSettings'),
         href: '/teacher/settings',
