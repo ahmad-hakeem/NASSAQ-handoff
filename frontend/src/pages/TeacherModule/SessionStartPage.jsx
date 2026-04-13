@@ -9,20 +9,30 @@ import {
   Users, CheckCircle2, Loader2, Play,
   ArrowRight, UserCheck, UserX, Sun, Moon,
   LayoutGrid, List, BookOpen, Sparkles, GraduationCap,
-  AlertCircle
+  AlertCircle, Heart, ShieldAlert, AlertTriangle, Eye
 } from 'lucide-react';
 
 const STATUS_CONFIG = {
   present: {
-    label: 'حاضر', labelEn: 'Present', short: 'ح', emoji: '✅',
-    dark: { ring: 'ring-emerald-400', bg: 'bg-emerald-500', text: 'text-emerald-400', card: 'border-emerald-500/30 bg-emerald-500/10', glow: 'shadow-emerald-500/20' },
-    light: { ring: 'ring-emerald-500', bg: 'bg-emerald-500', text: 'text-emerald-700', card: 'border-emerald-300 bg-emerald-50', glow: 'shadow-emerald-200/40' },
+    label: 'حاضر', labelEn: 'Present', short: 'ح',
+    dark: { ring: 'ring-emerald-400', bg: 'bg-emerald-500', text: 'text-emerald-400', card: 'border-slate-700 bg-slate-800/60', glow: '' },
+    light: { ring: 'ring-emerald-500', bg: 'bg-emerald-500', text: 'text-emerald-700', card: 'border-gray-200 bg-white', glow: '' },
   },
   absent: {
-    label: 'غائب', labelEn: 'Absent', short: 'غ', emoji: '❌',
+    label: 'غائب', labelEn: 'Absent', short: 'غ',
     dark: { ring: 'ring-red-400', bg: 'bg-red-500', text: 'text-red-400', card: 'border-red-500/30 bg-red-500/10', glow: 'shadow-red-500/20' },
-    light: { ring: 'ring-red-500', bg: 'bg-red-500', text: 'text-red-700', card: 'border-red-300 bg-red-50', glow: 'shadow-red-200/40' },
+    light: { ring: 'ring-red-500', bg: 'bg-red-500', text: 'text-red-700', card: 'border-pink-300 bg-pink-50', glow: 'shadow-pink-200/40' },
   },
+};
+
+const HEALTH_BADGES = {
+  diabetes: { icon: Heart, color: 'text-red-500', bg: 'bg-red-100 dark:bg-red-500/20' },
+  allergy: { icon: AlertTriangle, color: 'text-amber-500', bg: 'bg-amber-100 dark:bg-amber-500/20' },
+  asthma: { icon: Heart, color: 'text-blue-500', bg: 'bg-blue-100 dark:bg-blue-500/20' },
+  epilepsy: { icon: ShieldAlert, color: 'text-purple-500', bg: 'bg-purple-100 dark:bg-purple-500/20' },
+  vision: { icon: Eye, color: 'text-cyan-500', bg: 'bg-cyan-100 dark:bg-cyan-500/20' },
+  social_case: { icon: ShieldAlert, color: 'text-orange-500', bg: 'bg-orange-100 dark:bg-orange-500/20' },
+  special_needs: { icon: Heart, color: 'text-pink-500', bg: 'bg-pink-100 dark:bg-pink-500/20' },
 };
 
 const MALE_AVATARS = [
@@ -382,22 +392,22 @@ export default function SessionStartPage() {
                   <Users className="h-5 w-5 text-white" />
                 </div>
                 <div>
-                  <span className={`font-cairo font-bold ${themeStyles.text} text-sm block`}>سجل الحضور</span>
-                  <span className={`${themeStyles.textMuted} text-xs font-tajawal`}>{stats.total} طالب</span>
+                  <span className={`font-cairo font-bold ${themeStyles.text} text-sm block`}>{t('attendanceRecords')}</span>
+                  <span className={`${themeStyles.textMuted} text-xs font-tajawal`}>{stats.total} {t('student')}</span>
                 </div>
               </div>
               <div className="flex items-center gap-2">
                 <div className={`px-4 py-2 rounded-xl ${isDark ? 'bg-emerald-500/15' : 'bg-emerald-50'} border ${isDark ? 'border-emerald-500/20' : 'border-emerald-200'}`}>
                   <span className={`font-mono font-bold text-2xl ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>{presentPct}%</span>
-                  <span className={`${themeStyles.textSub} text-xs ms-1 font-tajawal`}>حضور</span>
+                  <span className={`${themeStyles.textSub} text-xs ms-1 font-tajawal`}>{t('attendance')}</span>
                 </div>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3 mb-5">
               {[
-                { key: 'present', icon: UserCheck, label: 'حاضر', gradient: 'from-emerald-500 to-emerald-600', numColor: isDark ? 'text-emerald-400' : 'text-emerald-600' },
-                { key: 'absent', icon: UserX, label: 'غائب', gradient: 'from-red-500 to-red-600', numColor: isDark ? 'text-red-400' : 'text-red-600' },
+                { key: 'present', icon: UserCheck, label: t('present'), gradient: 'from-emerald-500 to-emerald-600', numColor: isDark ? 'text-emerald-400' : 'text-emerald-600' },
+                { key: 'absent', icon: UserX, label: t('absent'), gradient: 'from-red-500 to-red-600', numColor: isDark ? 'text-red-400' : 'text-red-600' },
               ].map(s => (
                 <div key={s.key} className={`${themeStyles.statBg} rounded-xl p-3 text-center border transition-all duration-300 hover:scale-[1.02]`}>
                   <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${s.gradient} flex items-center justify-center mx-auto mb-2 shadow-sm`}>
@@ -422,13 +432,13 @@ export default function SessionStartPage() {
               onClick={() => markAll('present')}
               className="flex-1 h-12 rounded-xl bg-gradient-to-r from-emerald-600/20 to-emerald-500/10 border border-emerald-500/30 text-emerald-500 text-sm font-medium font-cairo hover:from-emerald-600/30 hover:to-emerald-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
             >
-              <UserCheck className="h-4 w-4" /> الكل حاضر
+              <UserCheck className="h-4 w-4" /> {t('allPresent')}
             </button>
             <button
               onClick={() => markAll('absent')}
               className="flex-1 h-12 rounded-xl bg-gradient-to-r from-red-600/20 to-red-500/10 border border-red-500/30 text-red-500 text-sm font-medium font-cairo hover:from-red-600/30 hover:to-red-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
             >
-              <UserX className="h-4 w-4" /> الكل غائب
+              <UserX className="h-4 w-4" /> {t('allAbsent')}
             </button>
           </div>
 
@@ -461,10 +471,18 @@ export default function SessionStartPage() {
                 <div className="w-8 h-8 rounded-xl bg-brand-turquoise/20 flex items-center justify-center">
                   <Users className="h-4 w-4 text-brand-turquoise" />
                 </div>
-                <span className={`${themeStyles.text} text-sm font-cairo font-bold`}>الطلاب ({stats.total})</span>
+                <span className={`${themeStyles.text} text-sm font-cairo font-bold`}>{t('students')} ({stats.total})</span>
                 <div className={`flex-1 h-px ${themeStyles.divider}`} />
                 <span className={`${themeStyles.textMuted} text-[10px] font-cairo flex items-center gap-1`}>
-                  اضغط على الطالب لتسجيل غياب
+                  {t('selectAbsenteesOnly')}
+                </span>
+              </div>
+              <div className="flex items-center gap-3 mb-3">
+                <span className={`text-xs font-cairo font-medium px-3 py-1 rounded-full ${isDark ? 'bg-emerald-500/15 text-emerald-400' : 'bg-emerald-50 text-emerald-600'} border ${isDark ? 'border-emerald-500/20' : 'border-emerald-200'}`}>
+                  {t('present')}: {stats.present}
+                </span>
+                <span className={`text-xs font-cairo font-medium px-3 py-1 rounded-full ${isDark ? 'bg-red-500/15 text-red-400' : 'bg-pink-50 text-red-600'} border ${isDark ? 'border-red-500/20' : 'border-pink-200'}`}>
+                  {t('absent')}: {stats.absent}
                 </span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -480,8 +498,8 @@ export default function SessionStartPage() {
               <div className="w-24 h-24 rounded-2xl bg-gray-500/10 flex items-center justify-center mx-auto mb-5">
                 <AlertCircle className="h-12 w-12 opacity-30" />
               </div>
-              <p className="font-cairo text-xl font-bold mb-2">لا يوجد طلاب في هذا الفصل</p>
-              <p className={`${themeStyles.textMuted} text-sm font-tajawal`}>تأكد من إضافة الطلاب إلى الفصل من لوحة الإدارة</p>
+              <p className="font-cairo text-xl font-bold mb-2">{t('noStudentsInClass')}</p>
+              <p className={`${themeStyles.textMuted} text-sm font-tajawal`}>{t('addStudentsToThisClass')}</p>
             </div>
           )}
 
@@ -501,7 +519,7 @@ export default function SessionStartPage() {
             ) : (
               <CheckCircle2 className="h-6 w-6" />
             )}
-            اعتماد الحضور والبدء
+            {t('approveAttendanceAndStart')}
           </button>
         </div>
       </div>
