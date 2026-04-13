@@ -55,6 +55,7 @@ export default function TeacherHomePage() {
   const [classMetrics, setClassMetrics] = useState(null);
   const [dayStatus, setDayStatus] = useState(null);
   const [notificationCount, setNotificationCount] = useState(0);
+  const [portfolioProgress, setPortfolioProgress] = useState(0);
 
   const teacherId = user?.teacher_id || user?.id;
 
@@ -76,6 +77,18 @@ export default function TeacherHomePage() {
       if (res?.data) setNotificationCount(res.data.count || 0);
     } catch (e) { /* silent */ }
   }, [api]);
+
+  const fetchPortfolioProgress = useCallback(async () => {
+    if (!teacherId) return;
+    try {
+      const res = await api.get(`/teacher/achievements/${teacherId}`).catch(() => null);
+      if (res?.data) {
+        const earned = res.data.earned_badges || 0;
+        const total = res.data.total_badges || 1;
+        setPortfolioProgress(Math.round((earned / total) * 100));
+      }
+    } catch (e) { /* silent */ }
+  }, [api, teacherId]);
 
   const fetchTeacherData = useCallback(async () => {
     if (!teacherId) return;
@@ -135,12 +148,13 @@ export default function TeacherHomePage() {
     fetchTeacherData();
     fetchDayStatus();
     fetchNotificationCount();
+    fetchPortfolioProgress();
     const interval = setInterval(() => {
       fetchTeacherData();
       fetchDayStatus();
     }, 60000);
     return () => clearInterval(interval);
-  }, [fetchTeacherData, fetchDayStatus, fetchNotificationCount]);
+  }, [fetchTeacherData, fetchDayStatus, fetchNotificationCount, fetchPortfolioProgress]);
 
   useEffect(() => {
     if (!teacherId) return;
@@ -215,12 +229,13 @@ export default function TeacherHomePage() {
                 <Calendar className="h-4.5 w-4.5 text-brand-navy dark:text-brand-turquoise" />
               </Button>
               <Button
-                size="icon"
+                size="sm"
                 variant="ghost"
-                className="rounded-xl h-9 w-9 hover:bg-brand-purple/10"
+                className="rounded-xl h-9 px-2 gap-1 hover:bg-brand-purple/10"
                 onClick={() => navigate('/teacher/achievements')}
               >
-                <Award className="h-4.5 w-4.5 text-brand-navy dark:text-brand-turquoise" />
+                <Award className="h-4 w-4 text-brand-navy dark:text-brand-turquoise" />
+                <span className="text-[10px] font-cairo font-bold text-brand-purple">{portfolioProgress}%</span>
               </Button>
             </div>
             <div className="flex items-center gap-1.5">

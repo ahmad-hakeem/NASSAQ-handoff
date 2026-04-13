@@ -2771,7 +2771,7 @@
   "theSchoolsJourneyToSmartSystems": "رحلة المدرسة نحو النظام الذكي",
   "theseIndicatorsAreBasedOnCumulativeDataAndWillBeAi": "هذه المؤشرات مبنية على البيانات التراكمية وستكون مدعومة بالذكاء الاصطناعي في إصدار مستقبلي من نَسَّق.",
   "theSystemWillPerformComprehensiveTechnicalAnalysis": "سيقوم النظام بتحليل شامل للحالة التقنية باستخدام الذكاء الاصطناعي",
-  "theTeacher": "المعلم",
+  "theTeacher": "الأستاذ {0}",
   "thisActionCannotBeUndone": "لا يمكن التراجع عن هذا الإجراء",
   "thisActionWillBeLoggedUseThisFeatureCarefully": "سيتم تسجيل هذا الإجراء في سجل النظام. استخدم هذه الميزة بحذر.",
   "thisEmailIsAlreadyRegistered": "هذا البريد مسجل مسبقاً — استخدم بريداً آخر",

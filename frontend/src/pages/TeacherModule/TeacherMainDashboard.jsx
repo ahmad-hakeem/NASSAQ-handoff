@@ -122,6 +122,7 @@ export default function TeacherMainDashboard() {
   const [hakimLoading, setHakimLoading] = useState(false);
   const [dayStatus, setDayStatus] = useState(null);
   const [notificationCount, setNotificationCount] = useState(0);
+  const [portfolioProgress, setPortfolioProgress] = useState(0);
 
   const teacherId = user?.teacher_id || user?.id;
   const teacherSubject = user?.primary_subject_name || user?.specialization || '';
@@ -216,9 +217,22 @@ export default function TeacherMainDashboard() {
     } catch (e) { /* silent */ }
   }, [api]);
 
+  const fetchPortfolioProgress = useCallback(async () => {
+    if (!teacherId) return;
+    try {
+      const res = await api.get(`/teacher/achievements/${teacherId}`).catch(() => null);
+      if (res?.data) {
+        const earned = res.data.earned_badges || 0;
+        const total = res.data.total_badges || 1;
+        setPortfolioProgress(Math.round((earned / total) * 100));
+      }
+    } catch (e) { /* silent */ }
+  }, [api, teacherId]);
+
   useEffect(() => { fetchTeacherData(); }, [fetchTeacherData]);
   useEffect(() => { fetchMetrics(); }, [fetchMetrics]);
   useEffect(() => { fetchNotificationCount(); }, [fetchNotificationCount]);
+  useEffect(() => { fetchPortfolioProgress(); }, [fetchPortfolioProgress]);
 
   useEffect(() => {
     const fetchHakimData = async () => {
@@ -250,7 +264,7 @@ export default function TeacherMainDashboard() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([fetchTeacherData(), fetchMetrics(), fetchDayStatus(), fetchNotificationCount()]);
+    await Promise.all([fetchTeacherData(), fetchMetrics(), fetchDayStatus(), fetchNotificationCount(), fetchPortfolioProgress()]);
     setRefreshing(false);
     toast.success(t('dataRefreshed'));
   };
@@ -287,9 +301,9 @@ export default function TeacherMainDashboard() {
 
   const formatTimeLabel = (timeStr) => {
     const [h, m] = timeStr.split(':').map(Number);
-    if (isRTL) return `${h}:${m.toString().padStart(2, '0')} ${h < 12 ? 'صباحاً' : 'مساءً'}`;
     const h12 = h > 12 ? h - 12 : h === 0 ? 12 : h;
-    return `${h12}:${m.toString().padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+    const ampm = h < 12 ? t('am') : t('pm');
+    return `${isRTL ? h : h12}:${m.toString().padStart(2, '0')} ${ampm}`;
   };
 
   if (loading) {
@@ -333,6 +347,9 @@ export default function TeacherMainDashboard() {
                 >
                   <Award className="h-4 w-4" />
                   {t('viewPortfolio')}
+                  <Badge className="bg-brand-purple/15 text-brand-purple border-brand-purple/25 text-[10px] font-cairo px-1.5 py-0 ms-1">
+                    {portfolioProgress}%
+                  </Badge>
                 </Button>
               </div>
 
