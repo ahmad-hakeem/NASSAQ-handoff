@@ -123,7 +123,7 @@ async def update_evidence(
     result = await _engine.update_evidence(evidence_id, current_user["id"], updates)
     if not result.get("success"):
         err = result.get("error", "not_found")
-        if err in ("cannot_edit_auto_evidence", "invalid_evidence_type"):
+        if err == "invalid_evidence_type":
             raise HTTPException(status_code=400, detail=err)
         raise HTTPException(status_code=404, detail=err)
     return result
@@ -138,10 +138,7 @@ async def delete_evidence(
         raise HTTPException(status_code=403, detail="غير مصرح")
     result = await _engine.delete_evidence(evidence_id, current_user["id"])
     if not result.get("success"):
-        err = result.get("error", "not_found")
-        if err == "cannot_delete_auto_evidence":
-            raise HTTPException(status_code=400, detail=err)
-        raise HTTPException(status_code=404, detail=err)
+        raise HTTPException(status_code=404, detail=result.get("error", "not_found"))
     return result
 
 
@@ -157,6 +154,8 @@ async def get_portfolio_progress(current_user: dict = Depends(get_current_user))
 
 @router.get("/teacher/portfolio/evidence-types")
 async def get_evidence_types(current_user: dict = Depends(get_current_user)):
+    if current_user["role"] not in ("teacher", "platform_admin", "school_principal", "school_admin"):
+        raise HTTPException(status_code=403, detail="غير مصرح")
     result = {}
     for section_key, type_keys in EVIDENCE_SECTIONS.items():
         result[section_key] = type_keys

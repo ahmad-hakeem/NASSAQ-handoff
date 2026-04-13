@@ -281,8 +281,6 @@ class PortfolioEvidenceEngine:
         })
         if not evidence:
             return {"success": False, "error": "not_found"}
-        if evidence.get("source") == "auto":
-            return {"success": False, "error": "cannot_edit_auto_evidence"}
 
         protected = {"id", "teacher_id", "school_id", "source", "source_entity_type",
                       "source_entity_id", "created_at"}
@@ -305,8 +303,6 @@ class PortfolioEvidenceEngine:
         })
         if not evidence:
             return {"success": False, "error": "not_found"}
-        if evidence.get("source") == "auto":
-            return {"success": False, "error": "cannot_delete_auto_evidence"}
         await gd_delete_one(self.db.session, "portfolio_evidence", {"id": evidence_id})
         return {"success": True}
 

@@ -393,16 +393,14 @@ export default function TeacherAchievementsPage() {
                                   <span>{t(TYPE_LABEL_KEYS[item.evidence_type] || item.evidence_type)}</span>
                                 </div>
                               </div>
-                              {item.source === 'manual' && (
-                                <div className="flex items-center gap-1 shrink-0">
-                                  <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEditDialog(item)}>
-                                    <Edit3 className="w-3.5 h-3.5 text-gray-400" />
-                                  </Button>
-                                  <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDeleteEvidence(item)}>
-                                    <Trash2 className="w-3.5 h-3.5 text-red-400" />
-                                  </Button>
-                                </div>
-                              )}
+                              <div className="flex items-center gap-1 shrink-0">
+                                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEditDialog(item)}>
+                                  <Edit3 className="w-3.5 h-3.5 text-gray-400" />
+                                </Button>
+                                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDeleteEvidence(item)}>
+                                  <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                                </Button>
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -480,16 +478,14 @@ export default function TeacherAchievementsPage() {
                           <span className="text-[11px] text-gray-400 flex items-center gap-1">
                             <Calendar className="w-3 h-3" /> {item.date}
                           </span>
-                          {item.source === 'manual' && (
-                            <div className="flex gap-1">
-                              <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => openEditDialog(item)}>
-                                <Edit3 className="w-3 h-3 text-gray-400" />
-                              </Button>
-                              <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => handleDeleteEvidence(item)}>
-                                <Trash2 className="w-3 h-3 text-red-400" />
-                              </Button>
-                            </div>
-                          )}
+                          <div className="flex gap-1">
+                            <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => openEditDialog(item)}>
+                              <Edit3 className="w-3 h-3 text-gray-400" />
+                            </Button>
+                            <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => handleDeleteEvidence(item)}>
+                              <Trash2 className="w-3 h-3 text-red-400" />
+                            </Button>
+                          </div>
                         </div>
                       </CardContent>
                     </Card>
