@@ -373,6 +373,9 @@ export default function TeacherClassDetailPage() {
         map[r.student_id].absences.push(r);
       }
     });
+    Object.values(map).forEach(entry => {
+      entry.absences.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    });
     return Object.values(map);
   }, [students, absenceData]);
 
