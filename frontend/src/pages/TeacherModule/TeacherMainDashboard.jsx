@@ -338,20 +338,21 @@ export default function TeacherMainDashboard() {
                 {t('mySchedule')}
               </Button>
 
-              <div className="relative">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="rounded-xl gap-2 font-tajawal text-xs hover:bg-brand-purple/10 hover:text-brand-purple"
-                  onClick={() => navigate('/teacher/achievements')}
-                >
-                  <Award className="h-4 w-4" />
-                  {t('viewPortfolio')}
-                  <Badge className="bg-brand-purple/15 text-brand-purple border-brand-purple/25 text-[10px] font-cairo px-1.5 py-0 ms-1">
-                    {portfolioProgress}%
-                  </Badge>
-                </Button>
-              </div>
+              <button
+                className="flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl hover:bg-brand-purple/10 transition-colors group"
+                onClick={() => navigate('/teacher/achievements')}
+              >
+                <div className="flex items-center gap-1.5">
+                  <Award className="h-4 w-4 text-brand-purple group-hover:text-brand-purple" />
+                  <span className="font-tajawal text-xs text-muted-foreground group-hover:text-brand-purple">{t('viewPortfolio')}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-12 h-1.5 bg-brand-purple/10 rounded-full overflow-hidden">
+                    <div className="h-full bg-brand-purple rounded-full" style={{ width: `${portfolioProgress}%` }} />
+                  </div>
+                  <span className="text-[10px] font-cairo font-bold text-brand-purple">{portfolioProgress}%</span>
+                </div>
+              </button>
 
               <div className="relative">
                 <Button
@@ -404,11 +405,17 @@ export default function TeacherMainDashboard() {
                     <p className="text-brand-turquoise font-bold font-cairo text-sm mt-0.5 truncate">
                       {teacherSubject ? t('teacherOf').replace('{0}', teacherSubject) : t('teacher')}
                     </p>
-                    <div className="flex items-center gap-2 mt-1.5">
+                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                       <div className="flex items-center gap-1.5 text-white/40 text-xs font-tajawal bg-white/5 rounded-lg px-2.5 py-1">
                         <School className="h-3.5 w-3.5 flex-shrink-0" />
                         <span className="truncate max-w-[200px]">{schoolName || (t('school'))}</span>
                       </div>
+                      {currentLesson && (
+                        <div className="flex items-center gap-1.5 text-brand-turquoise/80 text-xs font-tajawal bg-brand-turquoise/10 rounded-lg px-2.5 py-1">
+                          <BookOpen className="h-3.5 w-3.5 flex-shrink-0" />
+                          <span className="truncate max-w-[160px]">{currentLesson.subject}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
