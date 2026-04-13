@@ -1,0 +1,144 @@
+<h2 style="direction:rtl">تخطيط لوحة تحليل أداء الطلاب</h2>
+<p class="subtitle" style="direction:rtl">تبويب جديد داخل صفحة رؤى الذكاء الاصطناعي — عرض تسلسلي</p>
+
+<div class="mockup" style="direction:rtl">
+  <div class="mockup-header">لوحة تحليل أداء الطلاب — Student Performance Analytics</div>
+  <div class="mockup-body" style="background:#f8fafc;padding:24px;font-family:system-ui,sans-serif">
+
+    <!-- Section 1: KPI Cards -->
+    <div style="margin-bottom:8px;font-weight:700;color:#334155;font-size:13px">① الملخص التنفيذي (KPI Cards)</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px">
+      <div style="background:#fff;border-radius:12px;padding:16px;border-right:4px solid #22c55e;box-shadow:0 1px 3px rgba(0,0,0,0.08)">
+        <div style="font-size:11px;color:#64748b">مستقر</div>
+        <div style="font-size:28px;font-weight:800;color:#22c55e">62%</div>
+        <div style="font-size:11px;color:#94a3b8">124 طالب</div>
+      </div>
+      <div style="background:#fff;border-radius:12px;padding:16px;border-right:4px solid #eab308;box-shadow:0 1px 3px rgba(0,0,0,0.08)">
+        <div style="font-size:11px;color:#64748b">يحتاج متابعة</div>
+        <div style="font-size:28px;font-weight:800;color:#eab308">23%</div>
+        <div style="font-size:11px;color:#94a3b8">46 طالب</div>
+      </div>
+      <div style="background:#fff;border-radius:12px;padding:16px;border-right:4px solid #ef4444;box-shadow:0 1px 3px rgba(0,0,0,0.08)">
+        <div style="font-size:11px;color:#64748b">خطر تعليمي</div>
+        <div style="font-size:28px;font-weight:800;color:#ef4444">10%</div>
+        <div style="font-size:11px;color:#94a3b8">20 طالب</div>
+      </div>
+      <div style="background:#fff;border-radius:12px;padding:16px;border-right:4px solid #8b5cf6;box-shadow:0 1px 3px rgba(0,0,0,0.08)">
+        <div style="font-size:11px;color:#64748b">متفوق</div>
+        <div style="font-size:28px;font-weight:800;color:#8b5cf6">5%</div>
+        <div style="font-size:11px;color:#94a3b8">10 طلاب</div>
+      </div>
+    </div>
+
+    <!-- Section 2: Risk Map + Intervention List -->
+    <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:16px;margin-bottom:24px">
+      <!-- Risk Map -->
+      <div style="background:#fff;border-radius:12px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.08)">
+        <div style="font-weight:700;color:#334155;font-size:13px;margin-bottom:12px">② خريطة المخاطر</div>
+        <div style="background:#f1f5f9;border-radius:8px;height:220px;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden">
+          <!-- Simulated scatter dots -->
+          <svg width="100%" height="200" viewBox="0 0 400 200">
+            <!-- Green dots (stable) -->
+            <circle cx="50" cy="40" r="5" fill="#22c55e" opacity="0.7"/><circle cx="80" cy="55" r="5" fill="#22c55e" opacity="0.7"/>
+            <circle cx="120" cy="30" r="5" fill="#22c55e" opacity="0.7"/><circle cx="150" cy="65" r="5" fill="#22c55e" opacity="0.7"/>
+            <circle cx="200" cy="45" r="5" fill="#22c55e" opacity="0.7"/><circle cx="240" cy="35" r="5" fill="#22c55e" opacity="0.7"/>
+            <circle cx="280" cy="50" r="5" fill="#22c55e" opacity="0.7"/><circle cx="310" cy="25" r="5" fill="#22c55e" opacity="0.7"/>
+            <circle cx="100" cy="48" r="5" fill="#22c55e" opacity="0.7"/><circle cx="170" cy="38" r="5" fill="#22c55e" opacity="0.7"/>
+            <circle cx="60" cy="60" r="5" fill="#22c55e" opacity="0.7"/><circle cx="340" cy="42" r="5" fill="#22c55e" opacity="0.7"/>
+            <!-- Yellow dots (needs follow-up) -->
+            <circle cx="70" cy="110" r="5" fill="#eab308" opacity="0.7"/><circle cx="130" cy="120" r="5" fill="#eab308" opacity="0.7"/>
+            <circle cx="190" cy="105" r="5" fill="#eab308" opacity="0.7"/><circle cx="260" cy="115" r="5" fill="#eab308" opacity="0.7"/>
+            <circle cx="320" cy="100" r="5" fill="#eab308" opacity="0.7"/>
+            <!-- Red dots (at risk) -->
+            <circle cx="90" cy="165" r="6" fill="#ef4444" opacity="0.8"/><circle cx="160" cy="175" r="6" fill="#ef4444" opacity="0.8"/>
+            <circle cx="230" cy="160" r="6" fill="#ef4444" opacity="0.8"/>
+            <!-- Purple dots (excelling) -->
+            <circle cx="350" cy="20" r="5" fill="#8b5cf6" opacity="0.7"/><circle cx="370" cy="15" r="5" fill="#8b5cf6" opacity="0.7"/>
+          </svg>
+        </div>
+        <div style="display:flex;gap:16px;margin-top:8px;font-size:11px;color:#64748b;justify-content:center">
+          <span>🟢 مستقر</span><span>🟡 متابعة</span><span>🔴 خطر</span><span>🟣 متفوق</span>
+        </div>
+      </div>
+
+      <!-- Intervention List -->
+      <div style="background:#fff;border-radius:12px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.08)">
+        <div style="font-weight:700;color:#334155;font-size:13px;margin-bottom:12px">③ طلاب يحتاجون تدخلاً</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="background:#fef2f2;border-radius:8px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <div style="font-size:13px;font-weight:600;color:#991b1b">سارة الأحمدي</div>
+              <div style="font-size:11px;color:#dc2626">فصل 3/أ • غياب متكرر</div>
+            </div>
+            <button style="background:#ef4444;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer">اتخاذ إجراء</button>
+          </div>
+          <div style="background:#fef2f2;border-radius:8px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <div style="font-size:13px;font-weight:600;color:#991b1b">يوسف القحطاني</div>
+              <div style="font-size:11px;color:#dc2626">فصل 5/ب • تراجع اختبارات</div>
+            </div>
+            <button style="background:#ef4444;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer">اتخاذ إجراء</button>
+          </div>
+          <div style="background:#fffbeb;border-radius:8px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <div style="font-size:13px;font-weight:600;color:#92400e">نورة العتيبي</div>
+              <div style="font-size:11px;color:#d97706">فصل 2/ج • ضعف مشاركة</div>
+            </div>
+            <button style="background:#eab308;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer">اتخاذ إجراء</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section 3: Root Cause + Recommendations -->
+    <div style="display:grid;grid-template-columns:1fr 1.3fr;gap:16px">
+      <!-- Root Cause Pie Chart -->
+      <div style="background:#fff;border-radius:12px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.08)">
+        <div style="font-weight:700;color:#334155;font-size:13px;margin-bottom:12px">④ تحليل أسباب التعثر</div>
+        <div style="display:flex;align-items:center;justify-content:center;height:180px">
+          <svg width="160" height="160" viewBox="0 0 160 160">
+            <!-- Pie chart simulation -->
+            <circle cx="80" cy="80" r="70" fill="none" stroke="#3b82f6" stroke-width="30" stroke-dasharray="175.9 263.9" stroke-dashoffset="0" transform="rotate(-90 80 80)"/>
+            <circle cx="80" cy="80" r="70" fill="none" stroke="#f59e0b" stroke-width="30" stroke-dasharray="109.9 329.9" stroke-dashoffset="-175.9" transform="rotate(-90 80 80)"/>
+            <circle cx="80" cy="80" r="70" fill="none" stroke="#10b981" stroke-width="30" stroke-dasharray="87.9 351.9" stroke-dashoffset="-285.8" transform="rotate(-90 80 80)"/>
+            <circle cx="80" cy="80" r="70" fill="none" stroke="#8b5cf6" stroke-width="30" stroke-dasharray="65.9 373.9" stroke-dashoffset="-373.7" transform="rotate(-90 80 80)"/>
+          </svg>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:11px;color:#475569">
+          <div>🔵 الواجبات 40%</div>
+          <div>🟡 الغياب 25%</div>
+          <div>🟢 المشاركة 20%</div>
+          <div>🟣 الاختبارات 15%</div>
+        </div>
+      </div>
+
+      <!-- AI Recommendations -->
+      <div style="background:#fff;border-radius:12px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.08)">
+        <div style="font-weight:700;color:#334155;font-size:13px;margin-bottom:12px">⑤ توصيات حكيم الذكية</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="background:#eff6ff;border-radius:8px;padding:10px 12px;border-right:3px solid #3b82f6">
+            <div style="font-size:11px;font-weight:600;color:#1d4ed8">📊 توصية كمية</div>
+            <div style="font-size:12px;color:#334155">يوجد 5 طلاب يحتاجون متابعة مستمرة للواجبات</div>
+          </div>
+          <div style="background:#f0fdf4;border-radius:8px;padding:10px 12px;border-right:3px solid #22c55e">
+            <div style="font-size:11px;font-weight:600;color:#16a34a">✅ نتيجة إيجابية</div>
+            <div style="font-size:12px;color:#334155">تحسن ملحوظ لـ 3 طلاب بعد التدخل المبكر</div>
+          </div>
+          <div style="background:#fef2f2;border-radius:8px;padding:10px 12px;border-right:3px solid #ef4444">
+            <div style="font-size:11px;font-weight:600;color:#dc2626">⚠️ تنبيه إحصائي</div>
+            <div style="font-size:12px;color:#334155">ارتفاع نسبة الغياب 12% عن الأسبوع الماضي</div>
+          </div>
+          <div style="background:#faf5ff;border-radius:8px;padding:10px 12px;border-right:3px solid #8b5cf6">
+            <div style="font-size:11px;font-weight:600;color:#7c3aed">💡 توجيه إداري</div>
+            <div style="font-size:12px;color:#334155">ضرورة التواصل مع أولياء أمور فئة الخطر العالي</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div style="margin-top:20px;direction:rtl;text-align:center">
+  <p class="subtitle">هذا تصور مبدئي للتخطيط — هل يعجبك هذا الترتيب؟</p>
+</div>
