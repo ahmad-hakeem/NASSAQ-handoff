@@ -523,14 +523,24 @@ class SessionSettingsResponse(BaseModel):
     custom_skills: List[str]
 
 
-def _verify_teacher_access(teacher_id: str, current_user: dict):
+async def _verify_teacher_access(teacher_id: str, current_user: dict):
     uid = current_user.get("id", "")
     tid = current_user.get("teacher_id", "")
     role = current_user.get("role", "")
-    if role in ("super_admin", "school_admin", "school_sub_admin"):
+    if uid == teacher_id or tid == teacher_id:
         return
-    if uid != teacher_id and tid != teacher_id:
-        raise HTTPException(status_code=403, detail="غير مصرح بالوصول إلى إعدادات معلم آخر")
+    if role == UserRole.PLATFORM_ADMIN.value:
+        return
+    if role in ("school_admin", "school_sub_admin"):
+        user_tenant = current_user.get("tenant_id") or current_user.get("school_id")
+        if user_tenant:
+            teacher_doc = await gd_find_one(db.session, "teachers", {"id": teacher_id})
+            if not teacher_doc:
+                teacher_doc = await gd_find_one(db.session, "users", {"id": teacher_id})
+            teacher_school = (teacher_doc or {}).get("school_id") or (teacher_doc or {}).get("tenant_id")
+            if teacher_school == user_tenant:
+                return
+    raise HTTPException(status_code=403, detail="غير مصرح بالوصول إلى إعدادات معلم آخر")
 
 
 @router.get("/teacher/{teacher_id}/session-settings")
@@ -539,7 +549,7 @@ async def get_session_settings(
     subject_id: Optional[str] = None,
     current_user: dict = Depends(get_current_user),
 ):
-    _verify_teacher_access(teacher_id, current_user)
+    await _verify_teacher_access(teacher_id, current_user)
     query = {"teacher_id": teacher_id}
     if subject_id:
         query["subject_id"] = subject_id
@@ -555,7 +565,11 @@ async def save_session_settings(
     request: SessionSettingsRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    _verify_teacher_access(teacher_id, current_user)
+    await _verify_teacher_access(teacher_id, current_user)
+    if request.homework_mode and request.homework_mode not in ("didnt_submit", "submitted"):
+        raise HTTPException(status_code=422, detail="homework_mode must be 'didnt_submit' or 'submitted'")
+    if request.recitation_attempts not in (1, 2, 3):
+        raise HTTPException(status_code=422, detail="recitation_attempts must be 1, 2, or 3")
     existing = await gd_find_one(db.session, "session_settings", {
         "teacher_id": teacher_id,
         "subject_id": request.subject_id,
