@@ -1,39 +1,45 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Sidebar } from '../../components/layout/Sidebar';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
-import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
-import { Progress } from '../../components/ui/progress';
 import { Input } from '../../components/ui/input';
+import { Label } from '../../components/ui/label';
+import { Progress } from '../../components/ui/progress';
+import { Switch } from '../../components/ui/switch';
+import { Checkbox } from '../../components/ui/checkbox';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../../components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../components/ui/select';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import {
   Users, BookOpen, ClipboardCheck, FileText, Star, Calendar,
   ArrowRight, Loader2, RefreshCw, BarChart3, TrendingUp,
-  GraduationCap, Clock, ChevronLeft, Play, Search,
-  AlertTriangle, CheckCircle2, Award, Activity, Flame,
-  Eye
+  GraduationCap, Clock, ChevronLeft, ChevronDown, ChevronUp,
+  Play, Search, AlertTriangle, CheckCircle2, Award, Activity,
+  Eye, EyeOff, Plus, Trash2, Edit3, Upload, FileSpreadsheet,
+  Settings, Info, X, Check, Minus, CircleDot
 } from 'lucide-react';
 import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 import HakimPresence from '../../components/hakim/HakimPresence';
 
 import { useTranslation } from '../../contexts/ThemeContext';
-const DAY_AR = {
-  sunday: 'الأحد', monday: 'الاثنين', tuesday: 'الثلاثاء',
-  wednesday: 'الأربعاء', thursday: 'الخميس'
-};
 
 const GRADE_COLORS = {
-  '1': 'from-sky-500 to-sky-600',
-  '2': 'from-emerald-500 to-emerald-600',
-  '3': 'from-violet-500 to-violet-600',
-  '4': 'from-amber-500 to-amber-600',
-  '5': 'from-rose-500 to-rose-600',
-  '6': 'from-indigo-500 to-indigo-600',
+  '1': 'bg-sky-500 dark:bg-sky-600',
+  '2': 'bg-emerald-500 dark:bg-emerald-600',
+  '3': 'bg-violet-500 dark:bg-violet-600',
+  '4': 'bg-amber-500 dark:bg-amber-600',
+  '5': 'bg-rose-500 dark:bg-rose-600',
+  '6': 'bg-indigo-500 dark:bg-indigo-600',
 };
 
 export default function TeacherClassDetailPage() {
@@ -46,10 +52,31 @@ export default function TeacherClassDetailPage() {
   const [classData, setClassData] = useState(null);
   const [students, setStudents] = useState([]);
   const [schedule, setSchedule] = useState([]);
-  const [activeTab, setActiveTab] = useState('students');
+  const [activeTab, setActiveTab] = useState('curriculum');
+
+  const [curriculumData, setCurriculumData] = useState({ lessons: [], total: 0, completed: 0, progress: 0 });
+  const [curriculumLoading, setCurriculumLoading] = useState(false);
+  const [expandedWeeks, setExpandedWeeks] = useState({});
+  const [showAddLesson, setShowAddLesson] = useState(false);
+  const [newLessonTitle, setNewLessonTitle] = useState('');
+  const [newLessonWeek, setNewLessonWeek] = useState(1);
+  const [editingLesson, setEditingLesson] = useState(null);
+  const [editingTitle, setEditingTitle] = useState('');
+
+  const [gradeColumns, setGradeColumns] = useState([]);
+  const [studentGrades, setStudentGrades] = useState({});
+  const [gradesLoading, setGradesLoading] = useState(false);
+  const [showColumnSettings, setShowColumnSettings] = useState(false);
+  const [newColName, setNewColName] = useState('');
+  const [newColType, setNewColType] = useState('coursework');
+  const [newColMax, setNewColMax] = useState(10);
+
+  const [absenceData, setAbsenceData] = useState([]);
+  const [absenceLoading, setAbsenceLoading] = useState(false);
   const [studentSearch, setStudentSearch] = useState('');
 
   const teacherId = user?.teacher_id || user?.id;
+  const fileInputRef = useRef(null);
 
   const fetchClassData = useCallback(async () => {
     if (!classId) return;
@@ -79,9 +106,6 @@ export default function TeacherClassDetailPage() {
         };
       });
 
-      const avgGrade = enrichedStudents.length > 0
-        ? enrichedStudents.reduce((sum, s) => sum + (s.average_grade || 0), 0) / enrichedStudents.length
-        : 0;
       const avgAttendance = enrichedStudents.length > 0
         ? enrichedStudents.reduce((sum, s) => sum + (s.attendance_rate || 0), 0) / enrichedStudents.length
         : 0;
@@ -91,20 +115,18 @@ export default function TeacherClassDetailPage() {
 
       const cls = (classRes?.data && typeof classRes.data === 'object') ? classRes.data : {};
       const gl = cls.grade_level || cls.grade_id || '';
-      const gradeMap = { '1': 'الأول', '2': 'الثاني', '3': 'الثالث', '4': 'الرابع', '5': 'الخامس', '6': 'السادس',
-        '7': 'السابع', '8': 'الثامن', '9': 'التاسع', '10': 'العاشر', '11': 'الحادي عشر', '12': 'الثاني عشر' };
+      const gradeOrdinals = { '1': t('gradeOrdinal1'), '2': t('gradeOrdinal2'), '3': t('gradeOrdinal3'), '4': t('gradeOrdinal4'), '5': t('gradeOrdinal5'), '6': t('gradeOrdinal6') };
       const gradeNum = typeof gl === 'string' ? gl.match(/\d+/)?.[0] : String(gl);
-      const gradeName = cls.grade_name || (gradeNum ? `الصف ${gradeMap[gradeNum] || gradeNum}` : cls.name || '');
+      const gradeName = cls.grade_name || (gradeNum ? `${t('gradeLevel')} ${gradeOrdinals[gradeNum] || gradeNum}` : cls.name || '');
 
       setClassData({
         ...(typeof cls === 'object' ? cls : {}),
         id: classId,
-        name: cls.name || cls.name_ar || 'الفصل',
+        name: cls.name || cls.name_ar || t('class'),
         grade_name: gradeName,
         grade_level: gl,
         student_count: studentsList.length,
         attendance_rate: Math.round(avgAttendance),
-        average_grade: Math.round(avgGrade),
         participation_rate: Math.round(avgParticipation),
         weekly_periods: classSchedule.length,
       });
@@ -117,11 +139,158 @@ export default function TeacherClassDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [api, classId, teacherId, isRTL]);
+  }, [api, classId, teacherId]);
 
   useEffect(() => {
     fetchClassData();
   }, [fetchClassData]);
+
+  const fetchCurriculum = useCallback(async () => {
+    if (!classId) return;
+    setCurriculumLoading(true);
+    try {
+      const res = await api.get(`/class/${classId}/curriculum-plan`);
+      setCurriculumData(res.data || { lessons: [], total: 0, completed: 0, progress: 0 });
+      const weeks = {};
+      (res.data?.lessons || []).forEach(l => { weeks[l.week] = true; });
+      setExpandedWeeks(weeks);
+    } catch (err) {
+      console.error('Error loading curriculum:', err);
+    } finally {
+      setCurriculumLoading(false);
+    }
+  }, [api, classId]);
+
+  const fetchGradeColumns = useCallback(async () => {
+    if (!classId) return;
+    setGradesLoading(true);
+    try {
+      const res = await api.get(`/class/${classId}/grade-columns`);
+      setGradeColumns(res.data || []);
+    } catch (err) {
+      console.error('Error loading grade columns:', err);
+    } finally {
+      setGradesLoading(false);
+    }
+  }, [api, classId]);
+
+  const fetchAbsenceData = useCallback(async () => {
+    if (!classId) return;
+    setAbsenceLoading(true);
+    try {
+      const res = await api.get(`/attendance/class/${classId}?start_date=2024-01-01&end_date=2030-12-31`);
+      const records = Array.isArray(res.data) ? res.data : [];
+      const absences = records.filter(r => r.status === 'absent');
+      setAbsenceData(absences);
+    } catch (err) {
+      console.error('Error loading absences:', err);
+    } finally {
+      setAbsenceLoading(false);
+    }
+  }, [api, classId]);
+
+  useEffect(() => {
+    if (activeTab === 'curriculum') fetchCurriculum();
+    else if (activeTab === 'records') fetchGradeColumns();
+    else if (activeTab === 'absence') fetchAbsenceData();
+  }, [activeTab, fetchCurriculum, fetchGradeColumns, fetchAbsenceData]);
+
+  const handleToggleLesson = async (lesson) => {
+    try {
+      await api.put(`/curriculum-lesson/${lesson.id}`, { is_completed: !lesson.is_completed });
+      toast.success(lesson.is_completed ? t('lessonMarkedIncomplete') : t('lessonCompleted'));
+      fetchCurriculum();
+    } catch (err) {
+      console.error(err);
+      nassaqError(t('errorLoadingCurriculum'));
+    }
+  };
+
+  const handleDeleteLesson = async (lessonId) => {
+    try {
+      await api.delete(`/curriculum-lesson/${lessonId}`);
+      toast.success(t('lessonDeleted'));
+      fetchCurriculum();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleAddLesson = async () => {
+    if (!newLessonTitle.trim()) return;
+    try {
+      const weekLessons = curriculumData.lessons.filter(l => l.week === newLessonWeek);
+      await api.post(`/class/${classId}/curriculum-plan/lesson`, {
+        title: newLessonTitle.trim(),
+        week: newLessonWeek,
+        order: weekLessons.length + 1,
+      });
+      toast.success(t('lessonAdded'));
+      setNewLessonTitle('');
+      setShowAddLesson(false);
+      fetchCurriculum();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleEditLesson = async (lesson) => {
+    if (!editingTitle.trim()) return;
+    try {
+      await api.put(`/curriculum-lesson/${lesson.id}`, { title: editingTitle.trim() });
+      toast.success(t('lessonUpdated'));
+      setEditingLesson(null);
+      setEditingTitle('');
+      fetchCurriculum();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleAddColumn = async () => {
+    if (!newColName.trim()) return;
+    try {
+      await api.post(`/class/${classId}/grade-columns`, {
+        name: newColName.trim(),
+        column_type: newColType,
+        max_grade: newColMax,
+        order: gradeColumns.length + 1,
+      });
+      toast.success(t('columnAdded'));
+      setNewColName('');
+      setNewColMax(10);
+      fetchGradeColumns();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleToggleColumnVisibility = async (col) => {
+    try {
+      await api.put(`/grade-column/${col.id}`, { visible: !col.visible });
+      toast.success(t('columnUpdated'));
+      fetchGradeColumns();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeleteColumn = async (colId) => {
+    try {
+      await api.delete(`/grade-column/${colId}`);
+      toast.success(t('columnDeleted'));
+      fetchGradeColumns();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleGradeChange = (studentId, colId, value) => {
+    setStudentGrades(prev => ({
+      ...prev,
+      [`${studentId}_${colId}`]: value,
+    }));
+  };
 
   const filteredStudents = useMemo(() => {
     if (!studentSearch) return students;
@@ -131,32 +300,494 @@ export default function TeacherClassDetailPage() {
     );
   }, [students, studentSearch]);
 
-  const getGradeColor = (grade) => {
-    if (grade >= 90) return 'text-emerald-600';
-    if (grade >= 75) return 'text-blue-600';
-    if (grade >= 60) return 'text-amber-600';
-    return 'text-red-500';
+  const weekGroups = useMemo(() => {
+    const groups = {};
+    (curriculumData.lessons || []).forEach(l => {
+      const w = l.week || 1;
+      if (!groups[w]) groups[w] = [];
+      groups[w].push(l);
+    });
+    Object.keys(groups).forEach(w => {
+      groups[w].sort((a, b) => (a.order || 0) - (b.order || 0));
+    });
+    return groups;
+  }, [curriculumData.lessons]);
+
+  const maxWeek = useMemo(() => {
+    const weeks = Object.keys(weekGroups).map(Number);
+    return weeks.length > 0 ? Math.max(...weeks) : 0;
+  }, [weekGroups]);
+
+  const absencesByStudent = useMemo(() => {
+    const map = {};
+    students.forEach(s => { map[s.id] = { student: s, absences: [] }; });
+    absenceData.forEach(r => {
+      if (map[r.student_id]) {
+        map[r.student_id].absences.push(r);
+      }
+    });
+    return Object.values(map);
+  }, [students, absenceData]);
+
+  const isBehind = curriculumData.total > 0 && curriculumData.progress < 40;
+
+  const visibleColumns = gradeColumns.filter(c => c.visible !== false);
+
+  const gc = GRADE_COLORS[String(classData?.grade_level)] || 'bg-blue-500 dark:bg-blue-600';
+
+  const getColumnDisplay = (col) => {
+    if (!isRTL && col.name_en) return col.name_en;
+    return col.name;
   };
 
-  const getGradeBg = (grade) => {
-    if (grade >= 90) return 'bg-emerald-50 dark:bg-emerald-900/20';
-    if (grade >= 75) return 'bg-blue-50 dark:bg-blue-900/20';
-    if (grade >= 60) return 'bg-amber-50 dark:bg-amber-900/20';
-    return 'bg-red-50 dark:bg-red-900/20';
-  };
+  const renderCurriculumTab = () => (
+    <div className="space-y-4">
+      <div className="grid sm:grid-cols-3 gap-3">
+        <Card className="bg-brand-turquoise/5 border-brand-turquoise/20">
+          <CardContent className="p-4 text-center">
+            <div className="text-3xl font-bold text-brand-turquoise">{curriculumData.progress}%</div>
+            <div className="text-xs text-muted-foreground mt-1">{t('planProgress')}</div>
+            <Progress value={curriculumData.progress} className="h-2 mt-2" />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 text-center">
+            <div className="text-3xl font-bold text-emerald-600">{curriculumData.completed}</div>
+            <div className="text-xs text-muted-foreground mt-1">{t('completedLessons')}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 text-center">
+            <div className="text-3xl font-bold text-foreground">{curriculumData.total}</div>
+            <div className="text-xs text-muted-foreground mt-1">{t('totalLessons')}</div>
+          </CardContent>
+        </Card>
+      </div>
 
-  const getAttendanceBadge = (rate) => {
-    if (rate >= 95) return { color: 'bg-emerald-100 text-emerald-700', label: t('excellent') };
-    if (rate >= 85) return { color: 'bg-blue-100 text-blue-700', label: t('good') };
-    if (rate >= 75) return { color: 'bg-amber-100 text-amber-700', label: isRTL ? 'مقبول' : 'Fair' };
-    return { color: 'bg-red-100 text-red-700', label: isRTL ? 'ضعيف' : 'Poor' };
-  };
+      {isBehind && (
+        <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+          <AlertTriangle className="h-4 w-4 text-amber-500 flex-shrink-0" />
+          <p className="text-sm text-amber-700 dark:text-amber-300 font-tajawal">{t('curriculumBehindSchedule')}</p>
+          <Badge className="bg-amber-100 text-amber-700 border-0 ms-auto text-xs">{t('behind')}</Badge>
+        </div>
+      )}
 
-  const gc = GRADE_COLORS[String(classData?.grade_level)] || 'from-blue-500 to-blue-600';
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setShowAddLesson(true)}>
+            <Plus className="h-3.5 w-3.5" />
+            {t('addLesson')}
+          </Button>
+          <Button size="sm" variant="outline" className="gap-1.5" onClick={() => fileInputRef.current?.click()}>
+            <Upload className="h-3.5 w-3.5" />
+            {t('importPlan')}
+          </Button>
+        </div>
+        <Badge variant="secondary" className="text-xs">
+          {curriculumData.progress >= 80 ? t('onSchedule') : isBehind ? t('behind') : t('onSchedule')}
+        </Badge>
+      </div>
+
+      {curriculumLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-brand-turquoise" />
+        </div>
+      ) : Object.keys(weekGroups).length === 0 ? (
+        <Card className="border-dashed">
+          <CardContent className="text-center py-16">
+            <BookOpen className="h-14 w-14 mx-auto mb-4 text-muted-foreground/20" />
+            <h3 className="font-bold text-lg mb-2 font-cairo">{t('noLessonsInPlan')}</h3>
+            <p className="text-sm text-muted-foreground font-tajawal">{t('addLessonsToStartTracking')}</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-2">
+          {Object.keys(weekGroups).sort((a, b) => Number(a) - Number(b)).map(week => {
+            const lessons = weekGroups[week];
+            const weekCompleted = lessons.filter(l => l.is_completed).length;
+            const isExpanded = expandedWeeks[week];
+            return (
+              <Card key={week} className="overflow-hidden">
+                <button
+                  className="w-full flex items-center justify-between p-3 hover:bg-muted/30 transition-colors duration-150"
+                  onClick={() => setExpandedWeeks(prev => ({ ...prev, [week]: !prev[week] }))}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-brand-navy/10 dark:bg-brand-turquoise/10 flex items-center justify-center">
+                      <span className="text-sm font-bold text-brand-navy dark:text-brand-turquoise">{week}</span>
+                    </div>
+                    <div className="text-start">
+                      <p className="font-medium text-sm font-cairo">{t('weekNumber')} {week}</p>
+                      <p className="text-xs text-muted-foreground">{weekCompleted}/{lessons.length} {t('completedLessons')}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Progress value={lessons.length > 0 ? (weekCompleted / lessons.length) * 100 : 0} className="w-20 h-1.5" />
+                    {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                  </div>
+                </button>
+                {isExpanded && (
+                  <div className="border-t border-border/50 px-3 pb-3 space-y-1">
+                    {lessons.map((lesson, idx) => (
+                      <div
+                        key={lesson.id}
+                        className={`flex items-center gap-3 p-2.5 rounded-lg transition-colors duration-150 ${
+                          lesson.is_completed ? 'bg-emerald-50/50 dark:bg-emerald-900/10' :
+                          lesson.is_skipped ? 'bg-red-50/50 dark:bg-red-900/10 opacity-60' : 'hover:bg-muted/30'
+                        }`}
+                      >
+                        <Checkbox
+                          checked={lesson.is_completed}
+                          onCheckedChange={() => handleToggleLesson(lesson)}
+                          className="data-[state=checked]:bg-emerald-500 data-[state=checked]:border-emerald-500"
+                        />
+                        <div className="flex-1 min-w-0">
+                          {editingLesson === lesson.id ? (
+                            <div className="flex items-center gap-2">
+                              <Input
+                                value={editingTitle}
+                                onChange={(e) => setEditingTitle(e.target.value)}
+                                className="h-7 text-sm"
+                                onKeyDown={(e) => e.key === 'Enter' && handleEditLesson(lesson)}
+                              />
+                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => handleEditLesson(lesson)}>
+                                <Check className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setEditingLesson(null)}>
+                                <X className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <p className={`text-sm font-tajawal ${lesson.is_completed ? 'line-through text-muted-foreground' : ''}`}>
+                              {lesson.title}
+                            </p>
+                          )}
+                        </div>
+                        {!editingLesson && (
+                          <div className="flex items-center gap-0.5">
+                            <Button
+                              size="sm" variant="ghost" className="h-7 w-7 p-0"
+                              onClick={() => { setEditingLesson(lesson.id); setEditingTitle(lesson.title); }}
+                            >
+                              <Edit3 className="h-3 w-3 text-muted-foreground" />
+                            </Button>
+                            <Button
+                              size="sm" variant="ghost" className="h-7 w-7 p-0"
+                              onClick={() => handleDeleteLesson(lesson.id)}
+                            >
+                              <Trash2 className="h-3 w-3 text-red-400" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderRecordsTab = () => (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder={t('searchByNameOrId')}
+            value={studentSearch}
+            onChange={(e) => setStudentSearch(e.target.value)}
+            className="ps-9 h-9"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" className="gap-1.5" onClick={() => fileInputRef.current?.click()}>
+            <FileSpreadsheet className="h-3.5 w-3.5" />
+            {t('importGrades')}
+          </Button>
+          <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setShowColumnSettings(true)}>
+            <Settings className="h-3.5 w-3.5" />
+            {t('columnSettings')}
+          </Button>
+        </div>
+      </div>
+
+      {gradesLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-brand-turquoise" />
+        </div>
+      ) : (
+        <Card className="overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-muted/50 border-b border-border">
+                  <th className="p-3 text-start font-medium font-cairo sticky start-0 bg-muted/50 z-10 min-w-[180px]">{t('name')}</th>
+                  {visibleColumns.map(col => (
+                    <th key={col.id} className="p-3 text-center font-medium font-cairo min-w-[90px]">
+                      <div>{getColumnDisplay(col)}</div>
+                      <div className="text-[10px] text-muted-foreground font-normal">/{col.max_grade}</div>
+                    </th>
+                  ))}
+                  <th className="p-3 text-center font-medium font-cairo min-w-[80px] bg-blue-50 dark:bg-blue-900/20">{t('subtotal')}</th>
+                  <th className="p-3 text-center font-medium font-cairo min-w-[80px] bg-brand-navy/5 dark:bg-brand-turquoise/10">{t('grandTotal')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredStudents.length === 0 ? (
+                  <tr>
+                    <td colSpan={visibleColumns.length + 3} className="text-center py-12 text-muted-foreground">
+                      {t('noStudents')}
+                    </td>
+                  </tr>
+                ) : (
+                  filteredStudents.map((student, idx) => {
+                    const totalMax = visibleColumns.reduce((s, c) => s + (c.max_grade || 0), 0);
+                    const totalScore = visibleColumns.reduce((s, c) => {
+                      const val = parseFloat(studentGrades[`${student.id}_${c.id}`] || '0');
+                      return s + (isNaN(val) ? 0 : val);
+                    }, 0);
+                    return (
+                      <tr key={student.id} className="border-b border-border/50 hover:bg-muted/20 transition-colors duration-150">
+                        <td className="p-3 sticky start-0 bg-background z-10">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-7 h-7 rounded-full bg-brand-navy dark:bg-brand-turquoise flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                              {student.full_name?.charAt(0) || (idx + 1)}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-medium text-sm truncate font-cairo">{student.full_name || `${t('students')} ${idx + 1}`}</p>
+                              <p className="text-[10px] text-muted-foreground">{student.student_number || ''}</p>
+                            </div>
+                          </div>
+                        </td>
+                        {visibleColumns.map(col => (
+                          <td key={col.id} className="p-2 text-center">
+                            <Input
+                              type="number"
+                              min={0}
+                              max={col.max_grade}
+                              step={0.5}
+                              className="w-16 h-8 text-center text-sm mx-auto"
+                              placeholder="—"
+                              value={studentGrades[`${student.id}_${col.id}`] || ''}
+                              onChange={(e) => handleGradeChange(student.id, col.id, e.target.value)}
+                            />
+                          </td>
+                        ))}
+                        <td className="p-3 text-center bg-blue-50/50 dark:bg-blue-900/10">
+                          <span className="font-bold text-blue-600">{totalScore}</span>
+                          <span className="text-xs text-muted-foreground">/{totalMax}</span>
+                        </td>
+                        <td className="p-3 text-center bg-brand-navy/5 dark:bg-brand-turquoise/5">
+                          <span className={`font-bold text-lg ${
+                            totalMax > 0 && (totalScore / totalMax * 100) >= 90 ? 'text-emerald-600' :
+                            totalMax > 0 && (totalScore / totalMax * 100) >= 75 ? 'text-blue-600' :
+                            totalMax > 0 && (totalScore / totalMax * 100) >= 60 ? 'text-amber-600' : 'text-red-500'
+                          }`}>{totalScore}</span>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+
+  const renderAbsenceTab = () => (
+    <div className="space-y-4">
+      {absenceLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-brand-turquoise" />
+        </div>
+      ) : (
+        <Card className="overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-muted/50 border-b border-border">
+                  <th className="p-3 text-start font-medium font-cairo min-w-[200px]">{t('name')}</th>
+                  <th className="p-3 text-start font-medium font-cairo">{t('attendanceRecords')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {absencesByStudent.length === 0 ? (
+                  <tr>
+                    <td colSpan={2} className="text-center py-12 text-muted-foreground">{t('noStudents')}</td>
+                  </tr>
+                ) : (
+                  absencesByStudent.map(({ student, absences }) => (
+                    <tr key={student.id} className="border-b border-border/50 hover:bg-muted/20 transition-colors duration-150">
+                      <td className="p-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-full bg-brand-navy dark:bg-brand-turquoise flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                            {student.full_name?.charAt(0) || '?'}
+                          </div>
+                          <div>
+                            <p className="font-medium text-sm font-cairo">{student.full_name}</p>
+                            <p className="text-[10px] text-muted-foreground">
+                              {absences.length > 0 ? `${absences.length} ${t('absencesCount')}` : t('noAbsences')}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="p-3">
+                        {absences.length === 0 ? (
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                            <span className="text-xs text-emerald-600 font-tajawal">{t('studentHasFullAttendance')}</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {absences.slice(0, 12).map((abs, idx) => (
+                              <div key={abs.id || idx} className="flex flex-col items-center gap-0.5">
+                                <div className="w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/30 border-2 border-red-300 dark:border-red-700 flex items-center justify-center">
+                                  <X className="h-3.5 w-3.5 text-red-500" />
+                                </div>
+                                <span className="text-[9px] text-muted-foreground whitespace-nowrap">
+                                  {abs.date ? abs.date.slice(5) : ''}
+                                </span>
+                              </div>
+                            ))}
+                            {absences.length > 12 && (
+                              <Badge variant="secondary" className="text-[10px]">
+                                +{absences.length - 12}
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+
+  const renderAddLessonDialog = () => (
+    <Dialog open={showAddLesson} onOpenChange={setShowAddLesson}>
+      <DialogContent className="max-w-sm" dir={isRTL ? 'rtl' : 'ltr'}>
+        <DialogHeader>
+          <DialogTitle className="font-cairo flex items-center gap-2">
+            <Plus className="h-5 w-5 text-brand-turquoise" />
+            {t('addLesson')}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label className="font-cairo text-sm">{t('lessonTitle')}</Label>
+            <Input
+              value={newLessonTitle}
+              onChange={(e) => setNewLessonTitle(e.target.value)}
+              placeholder={t('lessonTitle')}
+              onKeyDown={(e) => e.key === 'Enter' && handleAddLesson()}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="font-cairo text-sm">{t('weekNumber')}</Label>
+            <Input
+              type="number"
+              min={1}
+              max={52}
+              value={newLessonWeek}
+              onChange={(e) => setNewLessonWeek(parseInt(e.target.value) || 1)}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setShowAddLesson(false)}>{t('cancel')}</Button>
+          <Button className="bg-brand-navy hover:bg-brand-navy-dark text-white" onClick={handleAddLesson}>
+            <Plus className="h-4 w-4 me-2" />
+            {t('add')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
+  const renderColumnSettings = () => (
+    <Dialog open={showColumnSettings} onOpenChange={setShowColumnSettings}>
+      <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto" dir={isRTL ? 'rtl' : 'ltr'}>
+        <DialogHeader>
+          <DialogTitle className="font-cairo flex items-center gap-2">
+            <Settings className="h-5 w-5 text-brand-turquoise" />
+            {t('columnSettings')}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            {gradeColumns.map(col => (
+              <div key={col.id} className="flex items-center justify-between p-2.5 rounded-lg border bg-card">
+                <div className="flex items-center gap-3">
+                  <Switch
+                    checked={col.visible !== false}
+                    onCheckedChange={() => handleToggleColumnVisibility(col)}
+                  />
+                  <div>
+                    <p className="text-sm font-medium font-cairo">{getColumnDisplay(col)}</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {col.column_type === 'exams' ? t('exams') : t('coursework')} • {t('maxGrade')}: {col.max_grade}
+                    </p>
+                  </div>
+                </div>
+                <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => handleDeleteColumn(col.id)}>
+                  <Trash2 className="h-3.5 w-3.5 text-red-400" />
+                </Button>
+              </div>
+            ))}
+          </div>
+
+          <div className="border-t border-border pt-4 space-y-3">
+            <p className="text-sm font-medium font-cairo">{t('addColumn')}</p>
+            <div className="space-y-2">
+              <Input
+                placeholder={t('columnName')}
+                value={newColName}
+                onChange={(e) => setNewColName(e.target.value)}
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <Select value={newColType} onValueChange={setNewColType}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="coursework">{t('coursework')}</SelectItem>
+                    <SelectItem value="exams">{t('exams')}</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={newColMax}
+                  onChange={(e) => setNewColMax(parseInt(e.target.value) || 10)}
+                  placeholder={t('maxGrade')}
+                />
+              </div>
+              <Button className="w-full bg-brand-navy hover:bg-brand-navy-dark text-white" onClick={handleAddColumn}>
+                <Plus className="h-4 w-4 me-2" />
+                {t('addColumn')}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 
   return (
     <Sidebar>
-      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white dark:from-gray-900 dark:to-gray-800" dir={isRTL ? 'rtl' : 'ltr'}>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900" dir={isRTL ? 'rtl' : 'ltr'}>
         <div className="sticky top-0 z-20 bg-white/90 dark:bg-gray-900/90 backdrop-blur-xl border-b border-border/50 shadow-sm">
           <div className="px-4 sm:px-6 py-4">
             <div className="flex items-center justify-between flex-wrap gap-3">
@@ -164,15 +795,15 @@ export default function TeacherClassDetailPage() {
                 <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => navigate('/teacher/classes')}>
                   <ArrowRight className="h-5 w-5" />
                 </Button>
-                <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${gc} flex items-center justify-center shadow-md`}>
+                <div className={`w-10 h-10 rounded-xl ${gc} flex items-center justify-center shadow-md`}>
                   <GraduationCap className="h-5 w-5 text-white" />
                 </div>
                 <div>
                   <h1 className="text-xl font-bold text-brand-navy dark:text-brand-turquoise font-cairo">
-                    {classData?.name || (t('class'))}
+                    {classData?.name || t('class')}
                   </h1>
                   <p className="text-sm text-muted-foreground">
-                    {classData?.grade_name || ''} • {classData?.student_count || 0} {isRTL ? 'طالب' : 'students'}
+                    {classData?.grade_name || ''} {classData?.student_count ? `• ${classData.student_count} ${t('students')}` : ''}
                   </p>
                 </div>
               </div>
@@ -191,6 +822,32 @@ export default function TeacherClassDetailPage() {
               </div>
             </div>
           </div>
+
+          <div className="px-4 sm:px-6 flex gap-0 border-t border-border/30">
+            {[
+              { key: 'curriculum', label: t('curriculumPlan'), icon: BookOpen },
+              { key: 'records', label: t('studentRecords'), icon: ClipboardCheck },
+              { key: 'absence', label: t('absenceLog'), icon: Calendar },
+            ].map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`px-4 sm:px-5 py-2.5 text-sm font-medium font-cairo transition-colors relative ${
+                  activeTab === tab.key
+                    ? 'text-brand-navy dark:text-brand-turquoise'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <span className="flex items-center gap-1.5">
+                  <tab.icon className="h-4 w-4" />
+                  <span className="hidden sm:inline">{tab.label}</span>
+                </span>
+                {activeTab === tab.key && (
+                  <span className="absolute bottom-0 inset-x-0 h-0.5 bg-brand-turquoise rounded-full" />
+                )}
+              </button>
+            ))}
+          </div>
         </div>
 
         {loading ? (
@@ -200,21 +857,21 @@ export default function TeacherClassDetailPage() {
           </div>
         ) : (
           <div className="px-4 sm:px-6 py-4 space-y-4">
-            <div className="flex items-center gap-3 p-3 rounded-2xl bg-gradient-to-r from-violet-50/80 via-cyan-50/50 to-transparent dark:from-violet-950/30 dark:via-cyan-950/20 dark:to-transparent border border-violet-100/50 dark:border-violet-800/30">
+            <div className="flex items-center gap-3 p-3 rounded-2xl bg-violet-50/80 dark:bg-violet-950/30 border border-violet-100/50 dark:border-violet-800/30">
               <HakimPresence size="xs" showMessage={true} messagePosition="bottom" />
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {[
-                { label: t('students'), value: classData?.student_count || 0, icon: Users, gradient: 'from-blue-500 to-blue-600', light: 'bg-blue-50 dark:bg-blue-900/20' },
-                { label: t('attendance2'), value: `${classData?.attendance_rate || 0}%`, icon: ClipboardCheck, gradient: 'from-emerald-500 to-emerald-600', light: 'bg-emerald-50 dark:bg-emerald-900/20' },
-                { label: isRTL ? 'المشاركة' : 'Participation', value: `${classData?.participation_rate || 0}%`, icon: Activity, gradient: 'from-purple-500 to-purple-600', light: 'bg-purple-50 dark:bg-purple-900/20' },
-                { label: isRTL ? 'حصة/أسبوع' : 'Sessions/wk', value: classData?.weekly_periods || 0, icon: Calendar, gradient: 'from-amber-500 to-amber-600', light: 'bg-amber-50 dark:bg-amber-900/20' },
-              ].map(({ label, value, icon: Icon, gradient, light }) => (
+                { label: t('students'), value: classData?.student_count || 0, icon: Users, iconBg: 'bg-blue-500 dark:bg-blue-600', light: 'bg-blue-50 dark:bg-blue-900/20' },
+                { label: t('attendance2'), value: `${classData?.attendance_rate || 0}%`, icon: ClipboardCheck, iconBg: 'bg-emerald-500 dark:bg-emerald-600', light: 'bg-emerald-50 dark:bg-emerald-900/20' },
+                { label: t('participation'), value: `${classData?.participation_rate || 0}%`, icon: Activity, iconBg: 'bg-purple-500 dark:bg-purple-600', light: 'bg-purple-50 dark:bg-purple-900/20' },
+                { label: t('perWeek'), value: classData?.weekly_periods || 0, icon: Calendar, iconBg: 'bg-amber-500 dark:bg-amber-600', light: 'bg-amber-50 dark:bg-amber-900/20' },
+              ].map(({ label, value, icon: Icon, iconBg, light }) => (
                 <Card key={label} className={`${light} border-0 shadow-sm`}>
                   <CardContent className="p-3">
                     <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center shadow-md flex-shrink-0`}>
+                      <div className={`w-10 h-10 rounded-xl ${iconBg} flex items-center justify-center shadow-md flex-shrink-0`}>
                         <Icon className="h-5 w-5 text-white" />
                       </div>
                       <div>
@@ -227,346 +884,28 @@ export default function TeacherClassDetailPage() {
               ))}
             </div>
 
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="w-full sm:w-auto">
-                <TabsTrigger value="students" className="flex-1 sm:flex-none">
-                  <Users className="h-4 w-4 me-1.5" />
-                  {t('students')}
-                  <Badge variant="secondary" className="ms-1.5 text-[10px] px-1.5">{students.length}</Badge>
-                </TabsTrigger>
-                <TabsTrigger value="schedule" className="flex-1 sm:flex-none">
-                  <Calendar className="h-4 w-4 me-1.5" />
-                  {t('schedule')}
-                </TabsTrigger>
-                <TabsTrigger value="stats" className="flex-1 sm:flex-none">
-                  <BarChart3 className="h-4 w-4 me-1.5" />
-                  {t('statistics2')}
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="students" className="mt-4 space-y-3">
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1">
-                    <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder={t('searchByNameOrId')}
-                      value={studentSearch}
-                      onChange={(e) => setStudentSearch(e.target.value)}
-                      className="ps-9 h-9"
-                    />
-                  </div>
-                </div>
-
-                {filteredStudents.length === 0 ? (
-                  <Card className="border-dashed">
-                    <CardContent className="text-center py-12">
-                      <Users className="h-12 w-12 mx-auto mb-3 text-muted-foreground/20" />
-                      <p className="text-muted-foreground font-tajawal">
-                        {studentSearch ? (t('noResults')) : (t('noStudents'))}
-                      </p>
-                    </CardContent>
-                  </Card>
-                ) : (
-                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {filteredStudents.map((student, idx) => {
-                      const ab = getAttendanceBadge(student.attendance_rate);
-                      return (
-                        <Card
-                          key={student.id}
-                          className="hover:shadow-md transition-all cursor-pointer group border hover:border-brand-turquoise/50"
-                          onClick={() => navigate(`/teacher/students?id=${student.id}`)}
-                        >
-                          <CardContent className="p-4">
-                            <div className="flex items-center gap-3 mb-3">
-                              <Avatar className="h-10 w-10 border-2 border-brand-navy/10">
-                                <AvatarImage src={student.avatar_url} />
-                                <AvatarFallback className="bg-gradient-to-br from-brand-navy to-brand-turquoise text-white text-sm font-bold">
-                                  {student.full_name?.charAt(0) || (idx + 1)}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div className="flex-1 min-w-0">
-                                <p className="font-medium text-sm truncate font-cairo">{student.full_name || `طالب ${idx + 1}`}</p>
-                                <p className="text-[11px] text-muted-foreground">{student.student_number || student.student_id || ''}</p>
-                              </div>
-                              <ChevronLeft className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                            </div>
-                            <div className="grid grid-cols-3 gap-1.5 text-center text-xs">
-                              <div className={`p-1.5 rounded-lg ${student.attendance_rate >= 85 ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'bg-red-50 dark:bg-red-900/20'}`}>
-                                <div className={`font-bold ${student.attendance_rate >= 85 ? 'text-emerald-600' : 'text-red-500'}`}>
-                                  {student.attendance_rate}%
-                                </div>
-                                <div className="text-muted-foreground text-[10px]">{isRTL ? 'حضور' : 'Attend.'}</div>
-                              </div>
-                              <div className={`p-1.5 rounded-lg ${getGradeBg(student.average_grade)}`}>
-                                <div className={`font-bold ${getGradeColor(student.average_grade)}`}>
-                                  {student.average_grade || '—'}
-                                </div>
-                                <div className="text-muted-foreground text-[10px]">{t('grade4')}</div>
-                              </div>
-                              <div className={`p-1.5 rounded-lg ${student.behavior_points >= 0 ? 'bg-purple-50 dark:bg-purple-900/20' : 'bg-red-50 dark:bg-red-900/20'}`}>
-                                <div className={`font-bold ${student.behavior_points >= 0 ? 'text-purple-600' : 'text-red-500'}`}>
-                                  {student.behavior_points || 0}
-                                </div>
-                                <div className="text-muted-foreground text-[10px]">{t('behav')}</div>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      );
-                    })}
-                  </div>
-                )}
-              </TabsContent>
-
-              <TabsContent value="schedule" className="mt-4">
-                {schedule.length === 0 ? (
-                  <Card className="border-dashed">
-                    <CardContent className="text-center py-12">
-                      <Calendar className="h-12 w-12 mx-auto mb-3 text-muted-foreground/20" />
-                      <p className="text-muted-foreground font-tajawal">{t('noScheduleForThisClass')}</p>
-                    </CardContent>
-                  </Card>
-                ) : (
-                  <div className="space-y-3">
-                    {['sunday', 'monday', 'tuesday', 'wednesday', 'thursday'].map(day => {
-                      const daySessions = schedule.filter(s => (s.day_of_week || '').toLowerCase() === day);
-                      if (daySessions.length === 0) return null;
-                      daySessions.sort((a, b) => (a.slot_number || 0) - (b.slot_number || 0));
-                      return (
-                        <Card key={day}>
-                          <CardHeader className="py-2.5 px-4">
-                            <CardTitle className="text-sm font-cairo flex items-center gap-2">
-                              <Calendar className="h-4 w-4 text-brand-turquoise" />
-                              {isRTL ? DAY_AR[day] : day.charAt(0).toUpperCase() + day.slice(1)}
-                              <Badge variant="secondary" className="text-[10px] px-1.5">{daySessions.length}</Badge>
-                            </CardTitle>
-                          </CardHeader>
-                          <CardContent className="px-4 pb-3 pt-0">
-                            <div className="space-y-2">
-                              {daySessions.map((session, idx) => (
-                                <div
-                                  key={session.id || idx}
-                                  className="flex items-center justify-between p-2.5 rounded-lg border border-border/50 hover:bg-muted/30 transition-all"
-                                >
-                                  <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-lg bg-brand-turquoise/10 flex items-center justify-center">
-                                      <Clock className="h-4 w-4 text-brand-turquoise" />
-                                    </div>
-                                    <div>
-                                      <p className="font-medium text-sm font-cairo">{session.subject_name || (isRTL ? 'مادة' : 'Subject')}</p>
-                                      <p className="text-xs text-muted-foreground">
-                                        {session.start_time || ''} - {session.end_time || ''}
-                                        {session.room_name ? ` • ${session.room_name}` : ''}
-                                      </p>
-                                    </div>
-                                  </div>
-                                  <Badge variant="outline" className="text-xs">
-                                    {t('p')}{session.slot_number || session.period_number || idx + 1}
-                                  </Badge>
-                                </div>
-                              ))}
-                            </div>
-                          </CardContent>
-                        </Card>
-                      );
-                    })}
-                  </div>
-                )}
-              </TabsContent>
-
-              <TabsContent value="stats" className="mt-4">
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-cairo flex items-center gap-2">
-                        <Award className="h-4 w-4 text-amber-500" />
-                        {t('gradeDistribution')}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      {[
-                        { label: t('excellent90'), color: 'text-emerald-600', bg: 'bg-emerald-500', filter: s => s.average_grade >= 90 },
-                        { label: t('veryGood7589'), color: 'text-blue-600', bg: 'bg-blue-500', filter: s => s.average_grade >= 75 && s.average_grade < 90 },
-                        { label: t('good6074'), color: 'text-amber-600', bg: 'bg-amber-500', filter: s => s.average_grade >= 60 && s.average_grade < 75 },
-                        { label: t('needsWork60'), color: 'text-red-500', bg: 'bg-red-500', filter: s => s.average_grade > 0 && s.average_grade < 60 },
-                      ].map((tier, idx) => {
-                        const count = students.filter(tier.filter).length;
-                        const pct = students.length > 0 ? Math.round((count / students.length) * 100) : 0;
-                        return (
-                          <div key={idx}>
-                            <div className="flex justify-between text-xs mb-1">
-                              <span className={tier.color}>{tier.label}</span>
-                              <span className="text-muted-foreground">{count} ({pct}%)</span>
-                            </div>
-                            <div className="h-2 rounded-full bg-muted overflow-hidden">
-                              <div className={`h-full rounded-full ${tier.bg} transition-all`} style={{ width: `${pct}%` }} />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-cairo flex items-center gap-2">
-                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                        {t('attendanceDistribution')}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      {[
-                        { label: t('excellent95'), color: 'text-emerald-600', bg: 'bg-emerald-500', filter: s => s.attendance_rate >= 95 },
-                        { label: t('good8594'), color: 'text-blue-600', bg: 'bg-blue-500', filter: s => s.attendance_rate >= 85 && s.attendance_rate < 95 },
-                        { label: t('fair7584'), color: 'text-amber-600', bg: 'bg-amber-500', filter: s => s.attendance_rate >= 75 && s.attendance_rate < 85 },
-                        { label: t('poor75'), color: 'text-red-500', bg: 'bg-red-500', filter: s => s.attendance_rate > 0 && s.attendance_rate < 75 },
-                      ].map((tier, idx) => {
-                        const count = students.filter(tier.filter).length;
-                        const pct = students.length > 0 ? Math.round((count / students.length) * 100) : 0;
-                        return (
-                          <div key={idx}>
-                            <div className="flex justify-between text-xs mb-1">
-                              <span className={tier.color}>{tier.label}</span>
-                              <span className="text-muted-foreground">{count} ({pct}%)</span>
-                            </div>
-                            <div className="h-2 rounded-full bg-muted overflow-hidden">
-                              <div className={`h-full rounded-full ${tier.bg} transition-all`} style={{ width: `${pct}%` }} />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-cairo flex items-center gap-2">
-                        <Star className="h-4 w-4 text-amber-500" />
-                        {t('topStudents2')}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-2.5">
-                        {[...students]
-                          .sort((a, b) => (b.average_grade || 0) - (a.average_grade || 0))
-                          .slice(0, 5)
-                          .map((student, idx) => (
-                            <div
-                              key={student.id}
-                              className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/30 cursor-pointer transition-all"
-                              onClick={() => navigate(`/teacher/students?id=${student.id}`)}
-                            >
-                              <div className="flex items-center gap-2.5">
-                                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
-                                  idx === 0 ? 'bg-gradient-to-br from-amber-400 to-amber-500 text-white shadow-sm' :
-                                  idx === 1 ? 'bg-gradient-to-br from-gray-300 to-gray-400 text-white' :
-                                  idx === 2 ? 'bg-gradient-to-br from-amber-600 to-amber-700 text-white' :
-                                  'bg-muted text-muted-foreground'
-                                }`}>
-                                  {idx + 1}
-                                </div>
-                                <span className="text-sm font-cairo">{student.full_name}</span>
-                              </div>
-                              <Badge className={`${getGradeColor(student.average_grade || 0)} border-0 bg-transparent`}>
-                                {student.average_grade || 0}
-                              </Badge>
-                            </div>
-                          ))}
-                        {students.length === 0 && (
-                          <p className="text-xs text-muted-foreground text-center py-4">{isRTL ? 'لا توجد بيانات' : 'No data'}</p>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-cairo flex items-center gap-2">
-                        <TrendingUp className="h-4 w-4 text-emerald-500" />
-                        {t('bestAttendance')}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-2.5">
-                        {[...students]
-                          .sort((a, b) => (b.attendance_rate || 0) - (a.attendance_rate || 0))
-                          .slice(0, 5)
-                          .map((student, idx) => (
-                            <div
-                              key={student.id}
-                              className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/30 cursor-pointer transition-all"
-                              onClick={() => navigate(`/teacher/students?id=${student.id}`)}
-                            >
-                              <div className="flex items-center gap-2.5">
-                                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
-                                  idx === 0 ? 'bg-gradient-to-br from-emerald-400 to-emerald-500 text-white shadow-sm' :
-                                  idx === 1 ? 'bg-gradient-to-br from-emerald-300 to-emerald-400 text-white' :
-                                  idx === 2 ? 'bg-gradient-to-br from-emerald-500 to-emerald-600 text-white' :
-                                  'bg-muted text-muted-foreground'
-                                }`}>
-                                  {idx + 1}
-                                </div>
-                                <span className="text-sm font-cairo">{student.full_name}</span>
-                              </div>
-                              <Badge variant="outline" className="text-emerald-600 border-emerald-200 text-xs">
-                                {student.attendance_rate || 0}%
-                              </Badge>
-                            </div>
-                          ))}
-                        {students.length === 0 && (
-                          <p className="text-xs text-muted-foreground text-center py-4">{isRTL ? 'لا توجد بيانات' : 'No data'}</p>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-              </TabsContent>
-            </Tabs>
-
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-cairo">{t('quickActions')}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  <Button
-                    variant="outline"
-                    className="h-auto py-3 flex-col gap-1.5"
-                    onClick={() => navigate(`/teacher/attendance?class=${classId}`)}
-                  >
-                    <ClipboardCheck className="h-5 w-5 text-emerald-600" />
-                    <span className="text-xs font-tajawal">{t('attendance3')}</span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="h-auto py-3 flex-col gap-1.5"
-                    onClick={() => navigate(`/teacher/assessments?class=${classId}`)}
-                  >
-                    <FileText className="h-5 w-5 text-blue-600" />
-                    <span className="text-xs font-tajawal">{t('assessments')}</span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="h-auto py-3 flex-col gap-1.5"
-                    onClick={() => navigate(`/teacher/behavior?class=${classId}`)}
-                  >
-                    <Star className="h-5 w-5 text-purple-600" />
-                    <span className="text-xs font-tajawal">{t('behavior')}</span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="h-auto py-3 flex-col gap-1.5"
-                    onClick={() => navigate(`/principal/ai-insights`)}
-                  >
-                    <BarChart3 className="h-5 w-5 text-amber-600" />
-                    <span className="text-xs font-tajawal">{t('reports')}</span>
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+            {activeTab === 'curriculum' && renderCurriculumTab()}
+            {activeTab === 'records' && renderRecordsTab()}
+            {activeTab === 'absence' && renderAbsenceTab()}
           </div>
         )}
       </div>
+
+      {renderAddLessonDialog()}
+      {renderColumnSettings()}
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        accept=".xlsx,.xls,.csv,.pdf"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) toast.success(t('importData') + ': ' + file.name);
+          if (fileInputRef.current) fileInputRef.current.value = '';
+        }}
+      />
+
       <HakimAssistant />
     </Sidebar>
   );

@@ -931,7 +931,7 @@ Sub-pages (accessible from within classes/sessions, not top-level sidebar):
 - Attendance, Assessments, Behavior — routes still active at `/teacher/attendance`, `/teacher/assessments`, `/teacher/behavior`
 - Resources — route still active at `/teacher/resources`
 - Session engine: `/teacher/session/start`, `/teacher/session/teach`
-- Class detail: `/teacher/class/:classId`
+- Class detail: `/teacher/class/:classId` — TeacherClassDetailPage (FULL REWRITE Task #82: Three tabs — Curriculum Plan (default), Student Records, Absence Log. Curriculum Plan: progress bar stats, weekly collapsible sections with lesson checkmarks, add/edit/delete lessons, inline editing. Student Records: grading table with configurable columns (coursework/exams), column settings dialog (add/remove/toggle visibility), locale-aware column names (name_en). Absence Log: visual absence circles per student with date labels, full attendance indicator. Backend: `_verify_class_access` tenant-scoped auth (teacher assignment check + school ownership), curriculum plan CRUD endpoints, grade columns config with Pydantic validation (Field constraints, enum column_type). i18n: 65 new keys including grade ordinals. NASSAQ design compliant: no gradients in dark mode, no transition-all, RTL-safe.)
 - Mobile home: `/teacher/home`
 
 - **Backend API**: `GET /teacher/sessions/{teacher_id}` — lists past sessions from `teacher_sessions` collection

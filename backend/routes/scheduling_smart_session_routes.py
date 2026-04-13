@@ -597,6 +597,222 @@ async def save_session_settings(
         return data
 
 
+# ============== CURRICULUM PLAN ==============
+
+ALLOWED_COLUMN_TYPES = {"coursework", "exams"}
+
+class LessonCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    week: int = Field(default=1, ge=1, le=52)
+    order: int = Field(default=1, ge=1, le=100)
+    notes: Optional[str] = Field(default=None, max_length=500)
+
+class LessonUpdate(BaseModel):
+    title: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    week: Optional[int] = Field(default=None, ge=1, le=52)
+    order: Optional[int] = Field(default=None, ge=1, le=100)
+    is_completed: Optional[bool] = None
+    is_skipped: Optional[bool] = None
+    notes: Optional[str] = Field(default=None, max_length=500)
+
+
+async def _verify_class_access(class_id: str, current_user: dict):
+    role = current_user.get("role", "")
+    if role == UserRole.PLATFORM_ADMIN.value:
+        return
+    cls = await gd_find_one(db.session, "classes", {"id": class_id})
+    if not cls:
+        raise HTTPException(status_code=404, detail="Class not found")
+    class_school = cls.get("school_id") or cls.get("tenant_id")
+    if role in ("teacher",):
+        tid = current_user.get("teacher_id") or current_user.get("id")
+        assignments = await gd_find(db.session, "class_subjects", {"class_id": class_id, "teacher_id": tid}, limit=1)
+        if assignments:
+            return
+        schedules = await gd_find(db.session, "schedule_entries", {"class_id": class_id, "teacher_id": tid}, limit=1)
+        if schedules:
+            return
+        raise HTTPException(status_code=403, detail="غير مصرح بالوصول إلى هذا الفصل")
+    if role in ("school_admin", "school_sub_admin"):
+        user_tenant = current_user.get("tenant_id") or current_user.get("school_id")
+        if user_tenant and class_school == user_tenant:
+            return
+    raise HTTPException(status_code=403, detail="غير مصرح بالوصول إلى هذا الفصل")
+
+
+@router.get("/class/{class_id}/curriculum-plan")
+async def get_curriculum_plan(
+    class_id: str,
+    subject_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+):
+    await _verify_class_access(class_id, current_user)
+    query = {"class_id": class_id}
+    if subject_id:
+        query["subject_id"] = subject_id
+    lessons = await gd_find(db.session, "curriculum_lessons", query, order_by="week", limit=500)
+    total = len(lessons)
+    completed = len([l for l in lessons if l.get("is_completed")])
+    return {
+        "lessons": lessons,
+        "total": total,
+        "completed": completed,
+        "progress": round((completed / total * 100) if total > 0 else 0),
+    }
+
+
+@router.post("/class/{class_id}/curriculum-plan/lesson")
+async def add_lesson(
+    class_id: str,
+    lesson: LessonCreate,
+    subject_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+):
+    await _verify_class_access(class_id, current_user)
+    doc_id = str(uuid.uuid4())
+    doc = {
+        "id": doc_id,
+        "class_id": class_id,
+        "subject_id": subject_id or "",
+        "title": lesson.title,
+        "week": lesson.week,
+        "order": lesson.order,
+        "notes": lesson.notes,
+        "is_completed": False,
+        "is_skipped": False,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await gd_insert(db.session, "curriculum_lessons", doc)
+    return doc
+
+
+@router.put("/curriculum-lesson/{lesson_id}")
+async def update_lesson(
+    lesson_id: str,
+    update: LessonUpdate,
+    current_user: dict = Depends(get_current_user),
+):
+    existing = await gd_find_one(db.session, "curriculum_lessons", {"id": lesson_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Lesson not found")
+    await _verify_class_access(existing["class_id"], current_user)
+    data = {k: v for k, v in update.model_dump().items() if v is not None}
+    data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await gd_update_one(db.session, "curriculum_lessons", {"id": lesson_id}, data)
+    return {**existing, **data}
+
+
+@router.delete("/curriculum-lesson/{lesson_id}")
+async def delete_lesson(
+    lesson_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    existing = await gd_find_one(db.session, "curriculum_lessons", {"id": lesson_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Lesson not found")
+    await _verify_class_access(existing["class_id"], current_user)
+    await gd_delete_one(db.session, "curriculum_lessons", {"id": lesson_id})
+    return {"success": True}
+
+
+# ============== GRADE COLUMNS CONFIG ==============
+
+class GradeColumnCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    column_type: str = Field(default="coursework")
+    max_grade: float = Field(default=10, ge=1, le=100)
+    order: int = Field(default=0, ge=0, le=50)
+    visible: bool = True
+
+    @model_validator(mode="after")
+    def validate_column_type(self):
+        if self.column_type not in ALLOWED_COLUMN_TYPES:
+            raise ValueError(f"column_type must be one of {ALLOWED_COLUMN_TYPES}")
+        return self
+
+class GradeColumnUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    max_grade: Optional[float] = Field(default=None, ge=1, le=100)
+    order: Optional[int] = Field(default=None, ge=0, le=50)
+    visible: Optional[bool] = None
+
+
+@router.get("/class/{class_id}/grade-columns")
+async def get_grade_columns(
+    class_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    await _verify_class_access(class_id, current_user)
+    columns = await gd_find(db.session, "grade_columns", {"class_id": class_id}, order_by="order", limit=50)
+    if not columns:
+        defaults = [
+            {"name": "المشاركة", "name_en": "Participation", "column_type": "coursework", "max_grade": 5, "order": 1},
+            {"name": "الواجبات", "name_en": "Homework", "column_type": "coursework", "max_grade": 5, "order": 2},
+            {"name": "المهام الأدائية", "name_en": "Performance Tasks", "column_type": "coursework", "max_grade": 10, "order": 3},
+            {"name": "اختبار قصير", "name_en": "Short Quiz", "column_type": "exams", "max_grade": 10, "order": 4},
+            {"name": "اختبار نهاية الفترة", "name_en": "End of Period Exam", "column_type": "exams", "max_grade": 20, "order": 5},
+        ]
+        for d in defaults:
+            d["id"] = str(uuid.uuid4())
+            d["class_id"] = class_id
+            d["visible"] = True
+            d["created_at"] = datetime.now(timezone.utc).isoformat()
+        await gd_insert_many(db.session, "grade_columns", defaults)
+        columns = defaults
+    return columns
+
+
+@router.post("/class/{class_id}/grade-columns")
+async def add_grade_column(
+    class_id: str,
+    col: GradeColumnCreate,
+    current_user: dict = Depends(get_current_user),
+):
+    await _verify_class_access(class_id, current_user)
+    doc_id = str(uuid.uuid4())
+    doc = {
+        "id": doc_id,
+        "class_id": class_id,
+        "name": col.name,
+        "column_type": col.column_type,
+        "max_grade": col.max_grade,
+        "order": col.order,
+        "visible": col.visible,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await gd_insert(db.session, "grade_columns", doc)
+    return doc
+
+
+@router.put("/grade-column/{column_id}")
+async def update_grade_column(
+    column_id: str,
+    update: GradeColumnUpdate,
+    current_user: dict = Depends(get_current_user),
+):
+    existing = await gd_find_one(db.session, "grade_columns", {"id": column_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Column not found")
+    await _verify_class_access(existing["class_id"], current_user)
+    data = {k: v for k, v in update.model_dump().items() if v is not None}
+    data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await gd_update_one(db.session, "grade_columns", {"id": column_id}, data)
+    return {**existing, **data}
+
+
+@router.delete("/grade-column/{column_id}")
+async def delete_grade_column(
+    column_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    existing = await gd_find_one(db.session, "grade_columns", {"id": column_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Column not found")
+    await _verify_class_access(existing["class_id"], current_user)
+    await gd_delete_one(db.session, "grade_columns", {"id": column_id})
+    return {"success": True}
+
+
 # ============== LEGACY ROUTES ==============
 @router.get("/")
 async def root():
