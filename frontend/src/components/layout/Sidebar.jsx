@@ -48,6 +48,7 @@ import {
   Play,
   Award,
   Lightbulb,
+  ChevronDown,
 } from 'lucide-react';
 
 
@@ -75,6 +76,7 @@ export const Sidebar = ({ children }) => {
   const [loadingRoles, setLoadingRoles] = useState(false);
   const [switchingRole, setSwitchingRole] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState({});
   const { user, logout, isImpersonating, schoolContext, getEffectiveRole, exitSchoolContext, token, updateToken, isSwitchedRole, originalRole, api } = useAuth();
   const { isRTL } = useTheme();
   const { t } = useTranslation();
@@ -392,6 +394,16 @@ export const Sidebar = ({ children }) => {
         label: t('communicationNotifications'),
         href: '/teacher/communication',
         roles: ['teacher'],
+        subItems: [
+          {
+            label: t('communicationCenter'),
+            href: '/teacher/communication',
+          },
+          {
+            label: t('notificationsCenter'),
+            href: '/notifications',
+          },
+        ],
       },
       {
         icon: Network,
@@ -533,20 +545,62 @@ export const Sidebar = ({ children }) => {
       {/* Menu Items */}
       <ScrollArea className="flex-1 px-3">
         <nav className="space-y-1 py-4">
-          {menuItems.map((item) => (
-            <Link
-              key={item.href}
-              to={item.href}
-              onClick={() => setMobileOpen(false)}
-              data-testid={`sidebar-link-${item.href.replace(/\//g, '-')}`}
-              className={`sidebar-item ${
-                isActive(item.href) ? 'sidebar-item-active' : 'sidebar-item-inactive'
-              }`}
-            >
-              <item.icon className="h-5 w-5 flex-shrink-0" />
-              {!collapsed && <span>{item.label}</span>}
-            </Link>
-          ))}
+          {menuItems.map((item) => {
+            const hasSubItems = item.subItems && item.subItems.length > 0;
+            const isGroupExpanded = expandedGroups[item.href];
+            const isAnySubActive = hasSubItems && item.subItems.some(sub => isActive(sub.href));
+
+            if (hasSubItems && !collapsed) {
+              return (
+                <div key={item.href}>
+                  <button
+                    onClick={() => setExpandedGroups(prev => ({ ...prev, [item.href]: !prev[item.href] }))}
+                    data-testid={`sidebar-link-${item.href.replace(/\//g, '-')}`}
+                    className={`sidebar-item w-full ${
+                      isAnySubActive ? 'sidebar-item-active' : 'sidebar-item-inactive'
+                    }`}
+                  >
+                    <item.icon className="h-5 w-5 flex-shrink-0" />
+                    <span className="flex-1 text-start">{item.label}</span>
+                    <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${isGroupExpanded ? 'rotate-180' : ''}`} />
+                  </button>
+                  {isGroupExpanded && (
+                    <div className="ms-7 mt-0.5 space-y-0.5">
+                      {item.subItems.map(sub => (
+                        <Link
+                          key={sub.href}
+                          to={sub.href}
+                          onClick={() => setMobileOpen(false)}
+                          className={`block py-1.5 px-3 rounded-md text-sm transition-colors duration-150 ${
+                            isActive(sub.href)
+                              ? 'text-brand-turquoise bg-white/10 font-medium'
+                              : 'text-white/60 hover:text-white hover:bg-white/5'
+                          }`}
+                        >
+                          {sub.label}
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            return (
+              <Link
+                key={item.href}
+                to={item.href}
+                onClick={() => setMobileOpen(false)}
+                data-testid={`sidebar-link-${item.href.replace(/\//g, '-')}`}
+                className={`sidebar-item ${
+                  isActive(item.href) ? 'sidebar-item-active' : 'sidebar-item-inactive'
+                }`}
+              >
+                <item.icon className="h-5 w-5 flex-shrink-0" />
+                {!collapsed && <span>{item.label}</span>}
+              </Link>
+            );
+          })}
         </nav>
       </ScrollArea>
 
