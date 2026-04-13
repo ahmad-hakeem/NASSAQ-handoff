@@ -284,8 +284,15 @@ export default function TeacherMainDashboard() {
   const dayStart = dayStatus?.day_start ?? '07:00';
   const dayEnd = dayStatus?.day_end ?? '13:15';
 
-  const currentLesson = stats.upcomingLessons.find(l => l.period === currentPeriod) || stats.upcomingLessons[0] || null;
-  const nextLesson = stats.upcomingLessons.find(l => l.period > currentPeriod) || (stats.upcomingLessons.length > 1 ? stats.upcomingLessons[1] : null);
+  const currentLesson = isSchoolTime
+    ? (stats.upcomingLessons.find(l => l.period === currentPeriod) || null)
+    : (stats.upcomingLessons[0] || null);
+  const nextLesson = (() => {
+    const next = stats.upcomingLessons.find(l => l.period > (isSchoolTime ? currentPeriod : 0));
+    if (next && currentLesson && next.period === currentLesson.period) return null;
+    if (!isSchoolTime && next === currentLesson) return stats.upcomingLessons[1] || null;
+    return next || null;
+  })();
   const NavArrow = isRTL ? ChevronLeft : ChevronRight;
 
   const handleStartClass = (lesson) => {

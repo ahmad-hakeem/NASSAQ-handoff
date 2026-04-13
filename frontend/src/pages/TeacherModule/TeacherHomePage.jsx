@@ -203,8 +203,15 @@ export default function TeacherHomePage() {
   const isSchoolTime = dayStatus?.is_school_time ?? false;
   const schoolDayNumber = dayStatus?.school_day_number ?? dayStatus?.day_number ?? 0;
 
-  const currentLesson = todayLessons.find(l => l.period === currentPeriod) || todayLessons[0] || null;
-  const nextLesson = todayLessons.find(l => l.period > currentPeriod) || (todayLessons.length > 1 ? todayLessons[1] : null);
+  const currentLesson = isSchoolTime
+    ? (todayLessons.find(l => l.period === currentPeriod) || null)
+    : (todayLessons[0] || null);
+  const nextLesson = (() => {
+    const next = todayLessons.find(l => l.period > (isSchoolTime ? currentPeriod : 0));
+    if (next && currentLesson && next.period === currentLesson.period) return null;
+    if (!isSchoolTime && next === currentLesson) return todayLessons[1] || null;
+    return next || null;
+  })();
 
   return (
     <Sidebar>
