@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Sidebar } from '../../components/layout/Sidebar';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
@@ -47,12 +47,19 @@ export default function TeacherClassDetailPage() {
   const { nassaqError } = useNassaqAlert();
   const { classId } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user, api, isRTL } = useAuth();
   const [loading, setLoading] = useState(true);
   const [classData, setClassData] = useState(null);
   const [students, setStudents] = useState([]);
   const [schedule, setSchedule] = useState([]);
-  const [activeTab, setActiveTab] = useState('curriculum');
+
+  const VALID_TABS = ['curriculum', 'records', 'absence'];
+  const tabFromUrl = searchParams.get('tab');
+  const activeTab = VALID_TABS.includes(tabFromUrl) ? tabFromUrl : 'curriculum';
+  const setActiveTab = (tab) => {
+    setSearchParams({ tab }, { replace: true });
+  };
 
   const [curriculumData, setCurriculumData] = useState({ lessons: [], total: 0, completed: 0, progress: 0 });
   const [curriculumLoading, setCurriculumLoading] = useState(false);
@@ -70,6 +77,8 @@ export default function TeacherClassDetailPage() {
   const [newColName, setNewColName] = useState('');
   const [newColType, setNewColType] = useState('coursework');
   const [newColMax, setNewColMax] = useState(10);
+  const [editingCol, setEditingCol] = useState(null);
+  const [editingColMax, setEditingColMax] = useState(10);
 
   const [absenceData, setAbsenceData] = useState([]);
   const [absenceLoading, setAbsenceLoading] = useState(false);
@@ -206,6 +215,16 @@ export default function TeacherClassDetailPage() {
     }
   };
 
+  const handleSkipLesson = async (lesson) => {
+    try {
+      await api.put(`/curriculum-lesson/${lesson.id}`, { is_skipped: !lesson.is_skipped });
+      toast.success(lesson.is_skipped ? t('lessonUpdated') : t('skipped'));
+      fetchCurriculum();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const handleDeleteLesson = async (lessonId) => {
     try {
       await api.delete(`/curriculum-lesson/${lessonId}`);
@@ -285,6 +304,34 @@ export default function TeacherClassDetailPage() {
     }
   };
 
+  const handleEditColumnMax = async (col) => {
+    try {
+      await api.put(`/grade-column/${col.id}`, { max_grade: editingColMax });
+      toast.success(t('columnUpdated'));
+      setEditingCol(null);
+      fetchGradeColumns();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleReorderColumn = async (col, direction) => {
+    const sorted = [...gradeColumns].sort((a, b) => (a.order || 0) - (b.order || 0));
+    const idx = sorted.findIndex(c => c.id === col.id);
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= sorted.length) return;
+    try {
+      await Promise.all([
+        api.put(`/grade-column/${sorted[idx].id}`, { order: sorted[swapIdx].order }),
+        api.put(`/grade-column/${sorted[swapIdx].id}`, { order: sorted[idx].order }),
+      ]);
+      toast.success(t('columnUpdated'));
+      fetchGradeColumns();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const handleGradeChange = (studentId, colId, value) => {
     setStudentGrades(prev => ({
       ...prev,
@@ -328,6 +375,19 @@ export default function TeacherClassDetailPage() {
     });
     return Object.values(map);
   }, [students, absenceData]);
+
+  const { currentLessonId, nextLessonId } = useMemo(() => {
+    const allLessons = (curriculumData.lessons || [])
+      .filter(l => !l.is_skipped)
+      .sort((a, b) => (a.week || 0) - (b.week || 0) || (a.order || 0) - (b.order || 0));
+    const firstIncomplete = allLessons.find(l => !l.is_completed);
+    const firstIncompleteIdx = firstIncomplete ? allLessons.indexOf(firstIncomplete) : -1;
+    const nextIdx = firstIncompleteIdx >= 0 ? firstIncompleteIdx + 1 : -1;
+    return {
+      currentLessonId: firstIncomplete?.id || null,
+      nextLessonId: nextIdx < allLessons.length && nextIdx >= 0 ? allLessons[nextIdx]?.id : null,
+    };
+  }, [curriculumData.lessons]);
 
   const isBehind = curriculumData.total > 0 && curriculumData.progress < 40;
 
@@ -428,17 +488,23 @@ export default function TeacherClassDetailPage() {
                 </button>
                 {isExpanded && (
                   <div className="border-t border-border/50 px-3 pb-3 space-y-1">
-                    {lessons.map((lesson, idx) => (
+                    {lessons.map((lesson, idx) => {
+                      const isCurrent = lesson.id === currentLessonId;
+                      const isNext = lesson.id === nextLessonId;
+                      return (
                       <div
                         key={lesson.id}
                         className={`flex items-center gap-3 p-2.5 rounded-lg transition-colors duration-150 ${
+                          isCurrent ? 'bg-brand-turquoise/10 dark:bg-brand-turquoise/5 ring-1 ring-brand-turquoise/30' :
                           lesson.is_completed ? 'bg-emerald-50/50 dark:bg-emerald-900/10' :
-                          lesson.is_skipped ? 'bg-red-50/50 dark:bg-red-900/10 opacity-60' : 'hover:bg-muted/30'
+                          lesson.is_skipped ? 'bg-red-50/50 dark:bg-red-900/10 opacity-60' :
+                          isNext ? 'bg-blue-50/50 dark:bg-blue-900/10' : 'hover:bg-muted/30'
                         }`}
                       >
                         <Checkbox
                           checked={lesson.is_completed}
                           onCheckedChange={() => handleToggleLesson(lesson)}
+                          disabled={lesson.is_skipped}
                           className="data-[state=checked]:bg-emerald-500 data-[state=checked]:border-emerald-500"
                         />
                         <div className="flex-1 min-w-0">
@@ -458,13 +524,40 @@ export default function TeacherClassDetailPage() {
                               </Button>
                             </div>
                           ) : (
-                            <p className={`text-sm font-tajawal ${lesson.is_completed ? 'line-through text-muted-foreground' : ''}`}>
-                              {lesson.title}
-                            </p>
+                            <div className="flex items-center gap-2">
+                              <p className={`text-sm font-tajawal ${
+                                lesson.is_completed ? 'line-through text-muted-foreground' :
+                                lesson.is_skipped ? 'line-through text-red-400' : ''
+                              }`}>
+                                {lesson.title}
+                              </p>
+                              {isCurrent && (
+                                <Badge className="bg-brand-turquoise/20 text-brand-turquoise border-0 text-[10px] px-1.5 py-0">
+                                  {t('currentLesson')}
+                                </Badge>
+                              )}
+                              {isNext && !isCurrent && (
+                                <Badge variant="outline" className="text-blue-500 border-blue-200 text-[10px] px-1.5 py-0">
+                                  {t('nextLesson')}
+                                </Badge>
+                              )}
+                              {lesson.is_skipped && (
+                                <Badge className="bg-red-100 text-red-500 border-0 text-[10px] px-1.5 py-0">
+                                  {t('skipped')}
+                                </Badge>
+                              )}
+                            </div>
                           )}
                         </div>
                         {!editingLesson && (
                           <div className="flex items-center gap-0.5">
+                            <Button
+                              size="sm" variant="ghost" className="h-7 w-7 p-0"
+                              title={lesson.is_skipped ? t('markComplete') : t('skipped')}
+                              onClick={() => handleSkipLesson(lesson)}
+                            >
+                              <Minus className={`h-3 w-3 ${lesson.is_skipped ? 'text-red-400' : 'text-muted-foreground'}`} />
+                            </Button>
                             <Button
                               size="sm" variant="ghost" className="h-7 w-7 p-0"
                               onClick={() => { setEditingLesson(lesson.id); setEditingTitle(lesson.title); }}
@@ -480,7 +573,8 @@ export default function TeacherClassDetailPage() {
                           </div>
                         )}
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </Card>
@@ -726,23 +820,60 @@ export default function TeacherClassDetailPage() {
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
-            {gradeColumns.map(col => (
-              <div key={col.id} className="flex items-center justify-between p-2.5 rounded-lg border bg-card">
-                <div className="flex items-center gap-3">
-                  <Switch
-                    checked={col.visible !== false}
-                    onCheckedChange={() => handleToggleColumnVisibility(col)}
-                  />
-                  <div>
-                    <p className="text-sm font-medium font-cairo">{getColumnDisplay(col)}</p>
-                    <p className="text-[10px] text-muted-foreground">
-                      {col.column_type === 'exams' ? t('exams') : t('coursework')} • {t('maxGrade')}: {col.max_grade}
-                    </p>
+            {[...gradeColumns].sort((a, b) => (a.order || 0) - (b.order || 0)).map((col, idx) => (
+              <div key={col.id} className="p-2.5 rounded-lg border bg-card space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Switch
+                      checked={col.visible !== false}
+                      onCheckedChange={() => handleToggleColumnVisibility(col)}
+                    />
+                    <div>
+                      <p className="text-sm font-medium font-cairo">{getColumnDisplay(col)}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {col.column_type === 'exams' ? t('exams') : t('coursework')}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-0.5">
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0" disabled={idx === 0}
+                      onClick={() => handleReorderColumn(col, 'up')}>
+                      <ChevronUp className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0" disabled={idx === gradeColumns.length - 1}
+                      onClick={() => handleReorderColumn(col, 'down')}>
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => handleDeleteColumn(col.id)}>
+                      <Trash2 className="h-3.5 w-3.5 text-red-400" />
+                    </Button>
                   </div>
                 </div>
-                <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => handleDeleteColumn(col.id)}>
-                  <Trash2 className="h-3.5 w-3.5 text-red-400" />
-                </Button>
+                <div className="flex items-center gap-2 ps-10">
+                  <Label className="text-[11px] text-muted-foreground whitespace-nowrap">{t('maxGrade')}:</Label>
+                  {editingCol === col.id ? (
+                    <div className="flex items-center gap-1">
+                      <Input
+                        type="number" min={1} max={100} value={editingColMax}
+                        onChange={(e) => setEditingColMax(parseFloat(e.target.value) || 10)}
+                        className="h-7 w-16 text-sm text-center"
+                      />
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => handleEditColumnMax(col)}>
+                        <Check className="h-3 w-3 text-emerald-500" />
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setEditingCol(null)}>
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <button
+                      className="text-sm font-medium text-blue-600 hover:underline"
+                      onClick={() => { setEditingCol(col.id); setEditingColMax(col.max_grade); }}
+                    >
+                      {col.max_grade}
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
