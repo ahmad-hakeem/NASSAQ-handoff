@@ -355,7 +355,7 @@ export const Sidebar = ({ children }) => {
       },
     ];
 
-    // Teacher Menu Items — 10 pages matching Teacher Account Structure
+    // Teacher Menu Items — Task #79: schedule, portfolio/achievements, notifications nav
     const teacherItems = [
       {
         icon: Home,

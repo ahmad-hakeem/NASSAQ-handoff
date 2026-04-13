@@ -295,7 +295,7 @@ export default function TeacherHomePage() {
                       </div>
                       <div className="min-w-0">
                         <h1 className="font-cairo text-lg font-bold leading-tight">
-                          {t('theTeacher').replace('{0}', teacherInfo?.name)}
+                          {t('theTeacherName').replace('{0}', teacherInfo?.name)}
                         </h1>
                         {teacherInfo?.rank && (
                           <Badge className="mt-1 bg-brand-turquoise/20 text-brand-turquoise border-brand-turquoise/30 text-[11px] font-tajawal px-2 py-0">
