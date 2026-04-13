@@ -498,6 +498,91 @@ async def add_smart_session(
 
 
 
+# ============== SESSION SETTINGS (per-subject evaluation pattern) ==============
+
+class SessionSettingsRequest(BaseModel):
+    subject_id: str
+    participation_enabled: bool = True
+    homework_enabled: bool = False
+    homework_mode: Optional[str] = "didnt_submit"
+    recitation_enabled: bool = False
+    recitation_attempts: int = 1
+    skills_enabled: bool = False
+    custom_skills: List[str] = []
+
+class SessionSettingsResponse(BaseModel):
+    id: str
+    teacher_id: str
+    subject_id: str
+    participation_enabled: bool
+    homework_enabled: bool
+    homework_mode: Optional[str]
+    recitation_enabled: bool
+    recitation_attempts: int
+    skills_enabled: bool
+    custom_skills: List[str]
+
+
+def _verify_teacher_access(teacher_id: str, current_user: dict):
+    uid = current_user.get("id", "")
+    tid = current_user.get("teacher_id", "")
+    role = current_user.get("role", "")
+    if role in ("super_admin", "school_admin", "school_sub_admin"):
+        return
+    if uid != teacher_id and tid != teacher_id:
+        raise HTTPException(status_code=403, detail="غير مصرح بالوصول إلى إعدادات معلم آخر")
+
+
+@router.get("/teacher/{teacher_id}/session-settings")
+async def get_session_settings(
+    teacher_id: str,
+    subject_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+):
+    _verify_teacher_access(teacher_id, current_user)
+    query = {"teacher_id": teacher_id}
+    if subject_id:
+        query["subject_id"] = subject_id
+    settings = await gd_find(db.session, "session_settings", query, limit=100)
+    if subject_id and settings:
+        return settings[0]
+    return settings
+
+
+@router.put("/teacher/{teacher_id}/session-settings")
+async def save_session_settings(
+    teacher_id: str,
+    request: SessionSettingsRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    _verify_teacher_access(teacher_id, current_user)
+    existing = await gd_find_one(db.session, "session_settings", {
+        "teacher_id": teacher_id,
+        "subject_id": request.subject_id,
+    })
+    data = {
+        "teacher_id": teacher_id,
+        "subject_id": request.subject_id,
+        "participation_enabled": request.participation_enabled,
+        "homework_enabled": request.homework_enabled,
+        "homework_mode": request.homework_mode,
+        "recitation_enabled": request.recitation_enabled,
+        "recitation_attempts": request.recitation_attempts,
+        "skills_enabled": request.skills_enabled,
+        "custom_skills": request.custom_skills,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if existing:
+        await gd_update_one(db.session, "session_settings", {"id": existing["id"]}, data)
+        return {**data, "id": existing["id"]}
+    else:
+        doc_id = str(uuid.uuid4())
+        data["id"] = doc_id
+        data["created_at"] = datetime.now(timezone.utc).isoformat()
+        await gd_insert(db.session, "session_settings", data)
+        return data
+
+
 # ============== LEGACY ROUTES ==============
 @router.get("/")
 async def root():

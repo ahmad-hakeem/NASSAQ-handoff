@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Sidebar } from '../../components/layout/Sidebar';
@@ -6,7 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/ca
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { Input } from '../../components/ui/input';
+import { Label } from '../../components/ui/label';
 import { Progress } from '../../components/ui/progress';
+import { Switch } from '../../components/ui/switch';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../../components/ui/dialog';
 import {
   Select,
   SelectContent,
@@ -21,20 +24,15 @@ import {
   GraduationCap, ClipboardCheck, BarChart3, Calendar,
   TrendingUp, LayoutGrid, List, Clock, Play,
   ChevronLeft, Star, AlertTriangle, CheckCircle2,
-  ArrowUpDown
+  ArrowUpDown, Settings, Plus, FileSpreadsheet,
+  FileImage, FileText, Upload, Info, X,
+  Hand, BookCheck, Mic, Sparkles, Save, Trash2
 } from 'lucide-react';
 import SessionsManageTab from './SessionsManageTab';
 
-
 import { useTranslation } from '../../contexts/ThemeContext';
-const DAY_AR = {
-  sunday: 'الأحد', monday: 'الاثنين', tuesday: 'الثلاثاء',
-  wednesday: 'الأربعاء', thursday: 'الخميس'
-};
-const DAY_EN = {
-  sunday: 'Sun', monday: 'Mon', tuesday: 'Tue',
-  wednesday: 'Wed', thursday: 'Thu'
-};
+
+const DAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday'];
 
 const GRADE_COLORS = {
   '1': { bg: 'from-sky-500 to-sky-600', light: 'bg-sky-50 dark:bg-sky-900/20', text: 'text-sky-700 dark:text-sky-300', border: 'border-sky-200 dark:border-sky-800' },
@@ -58,6 +56,30 @@ export default function TeacherClassesPage() {
   const [viewMode, setViewMode] = useState('card');
   const [gradeFilter, setGradeFilter] = useState('all');
   const [sortBy, setSortBy] = useState('grade');
+
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [settingsSubject, setSettingsSubject] = useState('');
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [sessionConfig, setSessionConfig] = useState({
+    participation_enabled: true,
+    homework_enabled: false,
+    homework_mode: 'didnt_submit',
+    recitation_enabled: false,
+    recitation_attempts: 1,
+    skills_enabled: false,
+    custom_skills: [],
+  });
+  const [newSkillName, setNewSkillName] = useState('');
+  const [showAddMorePrompt, setShowAddMorePrompt] = useState(false);
+
+  const [showAddClassDialog, setShowAddClassDialog] = useState(false);
+  const [addClassForm, setAddClassForm] = useState({ name: '', grade: '', section: '', weekly_count: 5 });
+  const [addingClass, setAddingClass] = useState(false);
+
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const fileInputRef = useRef(null);
+  const [importType, setImportType] = useState('');
 
   const { t } = useTranslation();
   const { nassaqError } = useNassaqAlert();
@@ -100,6 +122,147 @@ export default function TeacherClassesPage() {
   useEffect(() => {
     fetchClasses();
   }, [fetchClasses]);
+
+  const allSubjects = useMemo(() => {
+    const subjectMap = new Map();
+    classes.forEach(cls => {
+      if (cls.subjects_data) {
+        cls.subjects_data.forEach(s => {
+          if (s.id && s.name) subjectMap.set(s.id, s.name);
+        });
+      } else if (cls.subjects && cls.subject_ids) {
+        cls.subjects.forEach((name, idx) => {
+          const id = cls.subject_ids?.[idx];
+          if (id) subjectMap.set(id, name);
+        });
+      }
+    });
+    return Array.from(subjectMap, ([id, name]) => ({ id, name }));
+  }, [classes]);
+
+  const loadSessionSettings = useCallback(async (subjectId) => {
+    if (!subjectId || !teacherId) return;
+    setSettingsLoading(true);
+    try {
+      const res = await api.get(`/teacher/${teacherId}/session-settings?subject_id=${subjectId}`);
+      if (res.data && !Array.isArray(res.data)) {
+        setSessionConfig({
+          participation_enabled: res.data.participation_enabled ?? true,
+          homework_enabled: res.data.homework_enabled ?? false,
+          homework_mode: res.data.homework_mode ?? 'didnt_submit',
+          recitation_enabled: res.data.recitation_enabled ?? false,
+          recitation_attempts: res.data.recitation_attempts ?? 1,
+          skills_enabled: res.data.skills_enabled ?? false,
+          custom_skills: res.data.custom_skills ?? [],
+        });
+      } else {
+        setSessionConfig({
+          participation_enabled: true,
+          homework_enabled: false,
+          homework_mode: 'didnt_submit',
+          recitation_enabled: false,
+          recitation_attempts: 1,
+          skills_enabled: false,
+          custom_skills: [],
+        });
+      }
+    } catch (err) {
+      console.error('Error loading session settings:', err);
+      nassaqError(t('errorLoadingSessionSettings'));
+    } finally {
+      setSettingsLoading(false);
+    }
+  }, [api, teacherId]);
+
+  const handleSubjectChange = (subjectId) => {
+    setSettingsSubject(subjectId);
+    loadSessionSettings(subjectId);
+  };
+
+  const handleSaveSettings = async () => {
+    if (!settingsSubject) {
+      nassaqError(t('noSubjectSelected'));
+      return;
+    }
+    setShowAddMorePrompt(true);
+  };
+
+  const doSaveSettings = async () => {
+    setSettingsSaving(true);
+    try {
+      await api.put(`/teacher/${teacherId}/session-settings`, {
+        subject_id: settingsSubject,
+        ...sessionConfig,
+      });
+      toast.success(t('patternSaved'));
+      setShowAddMorePrompt(false);
+      setShowSettingsModal(false);
+      setSettingsSubject('');
+    } catch (err) {
+      console.error('Error saving session settings:', err);
+      nassaqError(t('errorSavingSessionSettings'));
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
+
+  const handleAddMoreElements = () => {
+    setShowAddMorePrompt(false);
+  };
+
+  const handleAddSkill = () => {
+    if (!newSkillName.trim()) return;
+    setSessionConfig(prev => ({
+      ...prev,
+      custom_skills: [...prev.custom_skills, newSkillName.trim()],
+    }));
+    setNewSkillName('');
+  };
+
+  const handleRemoveSkill = (index) => {
+    setSessionConfig(prev => ({
+      ...prev,
+      custom_skills: prev.custom_skills.filter((_, i) => i !== index),
+    }));
+  };
+
+  const handleAddClass = async () => {
+    if (!addClassForm.name || !addClassForm.grade) {
+      nassaqError(t('pleaseFillAllFields'));
+      return;
+    }
+    setAddingClass(true);
+    try {
+      await api.post('/classes/create', {
+        name_ar: addClassForm.name,
+        grade_id: addClassForm.grade,
+        capacity: 30,
+      });
+      toast.success(t('classAddedSuccessfully'));
+      setShowAddClassDialog(false);
+      setAddClassForm({ name: '', grade: '', section: '', weekly_count: 5 });
+      fetchClasses();
+    } catch (err) {
+      console.error('Error adding class:', err);
+      nassaqError(t('errorAddingClass'));
+    } finally {
+      setAddingClass(false);
+    }
+  };
+
+  const handleImportSelect = (type) => {
+    setImportType(type);
+    setShowImportDialog(false);
+    setTimeout(() => fileInputRef.current?.click(), 100);
+  };
+
+  const handleFileSelected = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      toast.success(t('importData') + ': ' + file.name);
+    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
   const grades = useMemo(() => {
     const g = [...new Set(classes.map(c => c.grade_level || c.grade_id || ''))].filter(Boolean).sort();
@@ -166,7 +329,7 @@ export default function TeacherClassesPage() {
   const renderNextSession = (cls) => {
     if (!cls.next_session) return null;
     const ns = cls.next_session;
-    const dayLabel = isRTL ? DAY_AR[ns.day] : DAY_EN[ns.day];
+    const dayLabel = t(ns.day) || ns.day;
     return (
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-1">
         <Clock className="h-3 w-3 text-brand-turquoise flex-shrink-0" />
@@ -178,11 +341,11 @@ export default function TeacherClassesPage() {
   };
 
   const ClassCard = ({ cls }) => {
-
     const gc = getGradeColor(cls.grade_level || cls.grade_id);
+    const curriculumPct = cls.curriculum_completion ?? cls.progress ?? Math.min(100, Math.round((cls.total_sessions || 0) * 2.5));
     return (
       <Card
-        className={`group hover:shadow-xl transition-all duration-300 cursor-pointer border-2 hover:border-brand-turquoise/50 overflow-hidden ${gc.border}`}
+        className={`group hover:shadow-xl transition-shadow duration-300 cursor-pointer border-2 hover:border-brand-turquoise/50 overflow-hidden ${gc.border}`}
         onClick={() => navigate(`/teacher/class/${cls.id}`)}
       >
         <div className={`h-1.5 bg-gradient-to-r ${gc.bg}`} />
@@ -209,17 +372,17 @@ export default function TeacherClassesPage() {
             <div className={`p-2 rounded-lg ${gc.light}`}>
               <Users className={`h-3.5 w-3.5 mx-auto mb-0.5 ${gc.text}`} />
               <div className={`text-lg font-bold ${gc.text}`}>{cls.student_count || 0}</div>
-              <div className="text-[10px] text-muted-foreground">{isRTL ? 'طالب' : 'Students'}</div>
+              <div className="text-[10px] text-muted-foreground">{t('students')}</div>
             </div>
             <div className="p-2 rounded-lg bg-muted/40">
               <BookOpen className="h-3.5 w-3.5 mx-auto mb-0.5 text-blue-500" />
               <div className="text-lg font-bold text-foreground">{cls.subjects?.length || 0}</div>
-              <div className="text-[10px] text-muted-foreground">{isRTL ? 'مادة' : 'Subjects'}</div>
+              <div className="text-[10px] text-muted-foreground">{t('subjects')}</div>
             </div>
             <div className="p-2 rounded-lg bg-muted/40">
               <Calendar className="h-3.5 w-3.5 mx-auto mb-0.5 text-purple-500" />
               <div className="text-lg font-bold text-foreground">{cls.weekly_periods || 0}</div>
-              <div className="text-[10px] text-muted-foreground">{isRTL ? 'حصة/أسبوع' : 'Per week'}</div>
+              <div className="text-[10px] text-muted-foreground">{t('perWeek')}</div>
             </div>
           </div>
 
@@ -233,6 +396,17 @@ export default function TeacherClassesPage() {
             </div>
             <Progress
               value={cls.attendance_rate || 0}
+              className="h-1.5"
+            />
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between text-xs mb-1">
+              <span className="text-muted-foreground">{t('curriculumProgress')}</span>
+              <span className="font-bold text-brand-turquoise">{curriculumPct}%</span>
+            </div>
+            <Progress
+              value={curriculumPct}
               className="h-1.5"
             />
           </div>
@@ -287,7 +461,6 @@ export default function TeacherClassesPage() {
   };
 
   const ClassTableRow = ({ cls }) => {
-
     const gc = getGradeColor(cls.grade_level || cls.grade_id);
     return (
       <tr
@@ -331,7 +504,7 @@ export default function TeacherClassesPage() {
           {cls.next_session ? (
             <div className="flex items-center gap-1.5 text-xs">
               <Clock className="h-3 w-3 text-brand-turquoise" />
-              <span>{isRTL ? DAY_AR[cls.next_session.day] : DAY_EN[cls.next_session.day]} {cls.next_session.start_time}</span>
+              <span>{t(cls.next_session.day) || cls.next_session.day} {cls.next_session.start_time}</span>
             </div>
           ) : (
             <span className="text-xs text-muted-foreground">—</span>
@@ -352,9 +525,344 @@ export default function TeacherClassesPage() {
     );
   };
 
+  const renderSettingsModal = () => (
+    <Dialog open={showSettingsModal} onOpenChange={setShowSettingsModal}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto" dir={isRTL ? 'rtl' : 'ltr'}>
+        <DialogHeader>
+          <DialogTitle className="font-cairo flex items-center gap-2">
+            <Settings className="h-5 w-5 text-brand-turquoise" />
+            {t('sessionSettings')}
+          </DialogTitle>
+          <p className="text-sm text-muted-foreground font-tajawal">{t('sessionSettingsDesc')}</p>
+        </DialogHeader>
+
+        <div className="space-y-5">
+          <div className="space-y-2">
+            <Label className="font-cairo text-sm font-medium">{t('selectSubject')}</Label>
+            <Select value={settingsSubject} onValueChange={handleSubjectChange}>
+              <SelectTrigger>
+                <SelectValue placeholder={t('selectSubject')} />
+              </SelectTrigger>
+              <SelectContent>
+                {allSubjects.map(s => (
+                  <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {!settingsSubject ? (
+            <div className="text-center py-8">
+              <BookOpen className="h-12 w-12 mx-auto mb-3 text-muted-foreground/20" />
+              <p className="text-sm text-muted-foreground font-cairo">{t('selectSubjectFirst')}</p>
+            </div>
+          ) : settingsLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-brand-turquoise" />
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-3 rounded-lg border bg-card">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                    <Hand className="h-4.5 w-4.5 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-sm font-cairo">{t('enableParticipation')}</p>
+                    <p className="text-xs text-muted-foreground">{t('participation')}</p>
+                  </div>
+                </div>
+                <Switch
+                  checked={sessionConfig.participation_enabled}
+                  onCheckedChange={(v) => setSessionConfig(p => ({ ...p, participation_enabled: v }))}
+                />
+              </div>
+
+              <div className="rounded-lg border bg-card overflow-hidden">
+                <div className="flex items-center justify-between p-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+                      <BookCheck className="h-4.5 w-4.5 text-emerald-600" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-sm font-cairo">{t('enableHomework')}</p>
+                      <p className="text-xs text-muted-foreground">{t('homeworkSubmissionMode')}</p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={sessionConfig.homework_enabled}
+                    onCheckedChange={(v) => setSessionConfig(p => ({ ...p, homework_enabled: v }))}
+                  />
+                </div>
+                {sessionConfig.homework_enabled && (
+                  <div className="px-3 pb-3 pt-0 ms-12 space-y-2">
+                    <label className="flex items-center gap-2 p-2 rounded-md hover:bg-muted/50 cursor-pointer transition-colors duration-150">
+                      <input
+                        type="radio"
+                        name="hw_mode"
+                        checked={sessionConfig.homework_mode === 'didnt_submit'}
+                        onChange={() => setSessionConfig(p => ({ ...p, homework_mode: 'didnt_submit' }))}
+                        className="accent-brand-turquoise"
+                      />
+                      <span className="text-sm font-tajawal">{t('clickWhoDidntSubmit')}</span>
+                    </label>
+                    <label className="flex items-center gap-2 p-2 rounded-md hover:bg-muted/50 cursor-pointer transition-colors duration-150">
+                      <input
+                        type="radio"
+                        name="hw_mode"
+                        checked={sessionConfig.homework_mode === 'submitted'}
+                        onChange={() => setSessionConfig(p => ({ ...p, homework_mode: 'submitted' }))}
+                        className="accent-brand-turquoise"
+                      />
+                      <span className="text-sm font-tajawal">{t('clickWhoSubmitted')}</span>
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-lg border bg-card overflow-hidden">
+                <div className="flex items-center justify-between p-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                      <Mic className="h-4.5 w-4.5 text-amber-600" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-sm font-cairo">{t('enableRecitation')}</p>
+                      <p className="text-xs text-muted-foreground">{t('attemptsForNonMastery')}</p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={sessionConfig.recitation_enabled}
+                    onCheckedChange={(v) => setSessionConfig(p => ({ ...p, recitation_enabled: v }))}
+                  />
+                </div>
+                {sessionConfig.recitation_enabled && (
+                  <div className="px-3 pb-3 pt-0 ms-12">
+                    <Label className="text-xs text-muted-foreground mb-1.5 block">{t('recitationAttempts')}</Label>
+                    <div className="flex items-center gap-2">
+                      {[1, 2, 3].map(n => (
+                        <Button
+                          key={n}
+                          variant={sessionConfig.recitation_attempts === n ? 'default' : 'outline'}
+                          size="sm"
+                          className={`h-9 w-14 ${sessionConfig.recitation_attempts === n ? 'bg-brand-turquoise hover:bg-brand-turquoise/90 text-white' : ''}`}
+                          onClick={() => setSessionConfig(p => ({ ...p, recitation_attempts: n }))}
+                        >
+                          {n}
+                        </Button>
+                      ))}
+                      <span className="text-xs text-muted-foreground">{t('attempts')}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-lg border bg-card overflow-hidden">
+                <div className="flex items-center justify-between p-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+                      <Sparkles className="h-4.5 w-4.5 text-purple-600" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-sm font-cairo">{t('enableSkills')}</p>
+                      <p className="text-xs text-muted-foreground">{t('skills')}</p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={sessionConfig.skills_enabled}
+                    onCheckedChange={(v) => setSessionConfig(p => ({ ...p, skills_enabled: v }))}
+                  />
+                </div>
+                {sessionConfig.skills_enabled && (
+                  <div className="px-3 pb-3 pt-0 ms-12 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Input
+                        placeholder={t('skillName')}
+                        value={newSkillName}
+                        onChange={(e) => setNewSkillName(e.target.value)}
+                        className="h-8 text-sm flex-1"
+                        onKeyDown={(e) => e.key === 'Enter' && handleAddSkill()}
+                      />
+                      <Button size="sm" variant="outline" className="h-8" onClick={handleAddSkill}>
+                        <Plus className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                    {sessionConfig.custom_skills.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {sessionConfig.custom_skills.map((skill, idx) => (
+                          <Badge key={idx} variant="secondary" className="gap-1 pe-1">
+                            {skill}
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveSkill(idx)}
+                              className="ms-0.5 hover:text-red-500 transition-colors duration-150"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+                <Info className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
+                <p className="text-xs text-blue-700 dark:text-blue-300 font-tajawal">{t('classDataLinkedToAdmin')}</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {settingsSubject && !settingsLoading && (
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setShowSettingsModal(false)}>{t('cancel')}</Button>
+            <Button
+              className="bg-brand-navy hover:bg-brand-navy-dark text-white"
+              onClick={handleSaveSettings}
+              disabled={settingsSaving}
+            >
+              {settingsSaving ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : <Save className="h-4 w-4 me-2" />}
+              {t('savePattern')}
+            </Button>
+          </DialogFooter>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+
+  const renderAddMorePrompt = () => (
+    <Dialog open={showAddMorePrompt} onOpenChange={setShowAddMorePrompt}>
+      <DialogContent className="max-w-sm" dir={isRTL ? 'rtl' : 'ltr'}>
+        <DialogHeader>
+          <DialogTitle className="font-cairo text-center">{t('sessionEvaluationPattern')}</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground text-center font-tajawal py-2">{t('doYouWantToAddMoreElements')}</p>
+        <div className="flex gap-3 justify-center">
+          <Button variant="outline" onClick={handleAddMoreElements}>
+            {t('yesAddMore')}
+          </Button>
+          <Button
+            className="bg-brand-navy hover:bg-brand-navy-dark text-white"
+            onClick={doSaveSettings}
+            disabled={settingsSaving}
+          >
+            {settingsSaving ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : null}
+            {t('noSaveNow')}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+
+  const renderAddClassDialog = () => (
+    <Dialog open={showAddClassDialog} onOpenChange={setShowAddClassDialog}>
+      <DialogContent className="max-w-md" dir={isRTL ? 'rtl' : 'ltr'}>
+        <DialogHeader>
+          <DialogTitle className="font-cairo flex items-center gap-2">
+            <Plus className="h-5 w-5 text-brand-turquoise" />
+            {t('addClassForm')}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label className="font-cairo text-sm">{t('courseName')}</Label>
+            <Input
+              value={addClassForm.name}
+              onChange={(e) => setAddClassForm(p => ({ ...p, name: e.target.value }))}
+              placeholder={t('courseName')}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label className="font-cairo text-sm">{t('gradeLevel')}</Label>
+              <Select value={addClassForm.grade} onValueChange={(v) => setAddClassForm(p => ({ ...p, grade: v }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder={t('gradeLevel')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {[1,2,3,4,5,6].map(g => (
+                    <SelectItem key={g} value={String(g)}>
+                      {t('gradeLevel')} {g}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="font-cairo text-sm">{t('sectionName')}</Label>
+              <Input
+                value={addClassForm.section}
+                onChange={(e) => setAddClassForm(p => ({ ...p, section: e.target.value }))}
+                placeholder={t('sectionName')}
+              />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label className="font-cairo text-sm">{t('weeklyClassCount')}</Label>
+            <Input
+              type="number"
+              min={1}
+              max={20}
+              value={addClassForm.weekly_count}
+              onChange={(e) => setAddClassForm(p => ({ ...p, weekly_count: parseInt(e.target.value) || 5 }))}
+            />
+          </div>
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+            <Info className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-blue-700 dark:text-blue-300 font-tajawal">{t('classDataLinkedToAdmin')}</p>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setShowAddClassDialog(false)}>{t('cancel')}</Button>
+          <Button
+            className="bg-brand-navy hover:bg-brand-navy-dark text-white"
+            onClick={handleAddClass}
+            disabled={addingClass}
+          >
+            {addingClass ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : <Plus className="h-4 w-4 me-2" />}
+            {t('addClass')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
+  const renderImportDialog = () => (
+    <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
+      <DialogContent className="max-w-sm" dir={isRTL ? 'rtl' : 'ltr'}>
+        <DialogHeader>
+          <DialogTitle className="font-cairo flex items-center gap-2">
+            <Upload className="h-5 w-5 text-brand-turquoise" />
+            {t('importClassData')}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-2">
+          {[
+            { type: 'excel', icon: FileSpreadsheet, label: t('importFromExcel'), color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/30' },
+            { type: 'pdf', icon: FileText, label: t('importFromPdf'), color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30' },
+            { type: 'image', icon: FileImage, label: t('importFromImage'), color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30' },
+          ].map(item => (
+            <button
+              key={item.type}
+              className={`w-full flex items-center gap-3 p-3.5 rounded-lg border transition-colors duration-150 text-start ${item.bg}`}
+              onClick={() => handleImportSelect(item.type)}
+            >
+              <item.icon className={`h-5 w-5 ${item.color}`} />
+              <span className="font-medium text-sm font-cairo">{item.label}</span>
+            </button>
+          ))}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+
+  const acceptMap = { excel: '.xlsx,.xls,.csv', pdf: '.pdf', image: '.jpg,.jpeg,.png,.webp' };
+
   return (
     <Sidebar>
-      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white dark:from-gray-900 dark:to-gray-800" dir={isRTL ? 'rtl' : 'ltr'}>
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white dark:bg-gray-900" dir={isRTL ? 'rtl' : 'ltr'}>
         <div className="sticky top-0 z-20 bg-white/90 dark:bg-gray-900/90 backdrop-blur-xl border-b border-border/50 shadow-sm">
           <div className="px-4 sm:px-6 py-4">
             <div className="flex items-center justify-between flex-wrap gap-3">
@@ -369,6 +877,34 @@ export default function TeacherClassesPage() {
               </div>
               {activeTab === 'classes' && (
                 <div className="flex items-center gap-2 flex-wrap">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 gap-1.5"
+                    onClick={() => setShowAddClassDialog(true)}
+                  >
+                    <Plus className="h-4 w-4" />
+                    <span className="hidden sm:inline">{t('addClass')}</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 gap-1.5"
+                    onClick={() => setShowImportDialog(true)}
+                  >
+                    <Upload className="h-4 w-4" />
+                    <span className="hidden sm:inline">{t('importData')}</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 gap-1.5"
+                    onClick={() => setShowSettingsModal(true)}
+                  >
+                    <Settings className="h-4 w-4" />
+                    <span className="hidden sm:inline">{t('sessionSettings')}</span>
+                  </Button>
+                  <div className="hidden sm:block h-6 w-px bg-border" />
                   <div className="relative">
                     <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
@@ -380,13 +916,13 @@ export default function TeacherClassesPage() {
                   </div>
                   <Select value={gradeFilter} onValueChange={setGradeFilter}>
                     <SelectTrigger className="w-[130px] h-9">
-                      <SelectValue placeholder={isRTL ? 'المرحلة' : 'Grade'} />
+                      <SelectValue placeholder={t('allGrades')} />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">{t('allGrades')}</SelectItem>
                       {grades.map(g => (
                         <SelectItem key={g} value={String(g)}>
-                          {isRTL ? `الصف ${g}` : `Grade ${g}`}
+                          {t('gradeLevel')} {g}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -419,7 +955,7 @@ export default function TeacherClassesPage() {
           <div className="px-4 sm:px-6 flex gap-0 border-t border-border/30">
             <button
               onClick={() => handleTabChange('classes')}
-              className={`px-5 py-2.5 text-sm font-medium font-cairo transition-all relative ${
+              className={`px-5 py-2.5 text-sm font-medium font-cairo transition-colors relative ${
                 activeTab === 'classes'
                   ? 'text-brand-navy dark:text-brand-turquoise'
                   : 'text-muted-foreground hover:text-foreground'
@@ -435,7 +971,7 @@ export default function TeacherClassesPage() {
             </button>
             <button
               onClick={() => handleTabChange('sessions')}
-              className={`px-5 py-2.5 text-sm font-medium font-cairo transition-all relative ${
+              className={`px-5 py-2.5 text-sm font-medium font-cairo transition-colors relative ${
                 activeTab === 'sessions'
                   ? 'text-brand-navy dark:text-brand-turquoise'
                   : 'text-muted-foreground hover:text-foreground'
@@ -461,10 +997,10 @@ export default function TeacherClassesPage() {
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
               {[
                 { label: t('classes4'), value: stats.totalClasses, icon: GraduationCap, gradient: 'from-blue-500 to-blue-600', light: 'bg-blue-50 dark:bg-blue-900/20' },
-                { label: isRTL ? 'طالب' : 'Students', value: stats.totalStudents, icon: Users, gradient: 'from-emerald-500 to-emerald-600', light: 'bg-emerald-50 dark:bg-emerald-900/20' },
-                { label: isRTL ? 'مادة' : 'Subjects', value: stats.totalSubjects, icon: BookOpen, gradient: 'from-purple-500 to-purple-600', light: 'bg-purple-50 dark:bg-purple-900/20' },
-                { label: isRTL ? 'حصة/أسبوع' : 'Sessions/wk', value: stats.totalSessions, icon: Calendar, gradient: 'from-amber-500 to-amber-600', light: 'bg-amber-50 dark:bg-amber-900/20' },
-                { label: isRTL ? 'متوسط الحضور' : 'Avg Attend.', value: `${stats.avgAttendance}%`, icon: TrendingUp, gradient: 'from-cyan-500 to-cyan-600', light: 'bg-cyan-50 dark:bg-cyan-900/20' },
+                { label: t('students'), value: stats.totalStudents, icon: Users, gradient: 'from-emerald-500 to-emerald-600', light: 'bg-emerald-50 dark:bg-emerald-900/20' },
+                { label: t('subjects'), value: stats.totalSubjects, icon: BookOpen, gradient: 'from-purple-500 to-purple-600', light: 'bg-purple-50 dark:bg-purple-900/20' },
+                { label: t('perWeek'), value: stats.totalSessions, icon: Calendar, gradient: 'from-amber-500 to-amber-600', light: 'bg-amber-50 dark:bg-amber-900/20' },
+                { label: t('avgAttendance'), value: `${stats.avgAttendance}%`, icon: TrendingUp, gradient: 'from-cyan-500 to-cyan-600', light: 'bg-cyan-50 dark:bg-cyan-900/20' },
               ].map(({ label, value, icon: Icon, gradient, light }) => (
                 <Card key={label} className={`${light} border-0 shadow-sm`}>
                   <CardContent className="p-3 flex items-center gap-3">
@@ -506,9 +1042,7 @@ export default function TeacherClassesPage() {
             <>
               <div className="flex items-center justify-between">
                 <p className="text-sm text-muted-foreground font-tajawal">
-                  {isRTL
-                    ? `عرض ${filteredClasses.length} من ${classes.length} فصل`
-                    : `Showing ${filteredClasses.length} of ${classes.length} classes`}
+                  {t('showingXOfYClasses').replace ? t('showingXOfYClasses').replace('{0}', filteredClasses.length).replace('{1}', classes.length) : `${filteredClasses.length} / ${classes.length}`}
                 </p>
                 <Select value={sortBy} onValueChange={setSortBy}>
                   <SelectTrigger className="w-[140px] h-8 text-xs">
@@ -516,10 +1050,10 @@ export default function TeacherClassesPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="grade">{isRTL ? 'المرحلة' : 'By Grade'}</SelectItem>
-                    <SelectItem value="name">{isRTL ? 'الاسم' : 'By Name'}</SelectItem>
+                    <SelectItem value="grade">{t('gradeLevel')}</SelectItem>
+                    <SelectItem value="name">{t('name')}</SelectItem>
                     <SelectItem value="students">{t('byStudents')}</SelectItem>
-                    <SelectItem value="attendance">{isRTL ? 'الحضور' : 'By Attendance'}</SelectItem>
+                    <SelectItem value="attendance">{t('attendance2')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -560,6 +1094,19 @@ export default function TeacherClassesPage() {
         )}
         </div>
       </div>
+
+      {renderSettingsModal()}
+      {renderAddMorePrompt()}
+      {renderAddClassDialog()}
+      {renderImportDialog()}
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        accept={acceptMap[importType] || '*'}
+        onChange={handleFileSelected}
+      />
     </Sidebar>
   );
 }
