@@ -227,7 +227,7 @@ export default function TeacherClassesPage() {
   };
 
   const handleAddClass = async () => {
-    if (!addClassForm.name || !addClassForm.grade) {
+    if (!addClassForm.name || !addClassForm.grade || !addClassForm.section) {
       nassaqError(t('pleaseFillAllFields'));
       return;
     }
@@ -236,6 +236,8 @@ export default function TeacherClassesPage() {
       await api.post('/classes/create', {
         name_ar: addClassForm.name,
         grade_id: addClassForm.grade,
+        section: addClassForm.section,
+        weekly_periods: addClassForm.weekly_count,
         capacity: 30,
       });
       toast.success(t('classAddedSuccessfully'));
