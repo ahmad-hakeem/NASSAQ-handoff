@@ -463,6 +463,34 @@ async def create_bulk_grades(
             except Exception as e:
                 logging.getLogger(__name__).warning("Grade notification failed for student %s: %s", g.student_id, e)
 
+    try:
+        import asyncio
+        from engines.portfolio_evidence_engine import PortfolioEvidenceEngine
+        _pe = PortfolioEvidenceEngine(db)
+        a_type = (assessment.get("assessment_type") or "exam").lower()
+        ev_type = "exam_results"
+        if "quiz" in a_type:
+            ev_type = "quiz_results"
+        elif "performance" in a_type or "task" in a_type:
+            ev_type = "performance_task"
+        a_title = assessment.get("title", "تقييم")
+        asyncio.create_task(_pe.capture_evidence(
+            teacher_id=current_user["id"],
+            school_id=tenant_id or "",
+            evidence_type=ev_type,
+            title_ar=f"رصد درجات: {a_title}",
+            title_en=f"Grade Entry: {a_title}",
+            description_ar=f"تم رصد {result['created']} درجة جديدة",
+            description_en=f"Recorded {result['created']} new grades",
+            source="auto", source_entity_type="assessment",
+            source_entity_id=data.assessment_id,
+            class_id=assessment.get("class_id"),
+            subject_id=assessment.get("subject_id"),
+            metadata={"created": result["created"], "updated": result["updated"]},
+        ))
+    except Exception as _pe_err:
+        logging.getLogger(__name__).debug("Portfolio evidence (bulk_grades) failed: %s", _pe_err)
+
     return {
         "success": True,
         "created": result["created"],

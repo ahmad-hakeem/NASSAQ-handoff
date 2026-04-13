@@ -128,6 +128,27 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
             }
             await gd_insert(db.session, "notifications", notification_doc)
         
+        if status == "sent" and message.audience == "parents":
+            try:
+                import asyncio
+                from engines.portfolio_evidence_engine import PortfolioEvidenceEngine
+                _pe = PortfolioEvidenceEngine(db)
+                asyncio.create_task(_pe.capture_evidence(
+                    teacher_id=current_user["id"],
+                    school_id=school_id or "",
+                    evidence_type="parent_communication_log",
+                    title_ar=f"تواصل مع أولياء الأمور: {message.title}",
+                    title_en=f"Parent Communication: {message.title}",
+                    description_ar=f"رسالة إلى {recipient_count} ولي أمر",
+                    description_en=f"Message to {recipient_count} parents",
+                    source="auto", source_entity_type="message",
+                    source_entity_id=message_id,
+                    metadata={"recipient_count": recipient_count, "audience": "parents"},
+                ))
+            except Exception as _pe_err:
+                import logging
+                logging.getLogger(__name__).debug("Portfolio evidence (parent_comm) failed: %s", _pe_err)
+
         return {
             "message": "تم إرسال الرسالة بنجاح" if status == "sent" else "تمت جدولة الرسالة بنجاح",
             "id": message_id,

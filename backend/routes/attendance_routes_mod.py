@@ -353,6 +353,27 @@ async def create_bulk_attendance(
         actor_email=current_user.get("email"),
     )
 
+    try:
+        import asyncio
+        from engines.portfolio_evidence_engine import PortfolioEvidenceEngine
+        _pe = PortfolioEvidenceEngine(db)
+        asyncio.create_task(_pe.capture_evidence(
+            teacher_id=current_user["id"],
+            school_id=t_id or "",
+            evidence_type="attendance_record",
+            title_ar=f"سجل حضور: {bulk_data.date}",
+            title_en=f"Attendance Record: {bulk_data.date}",
+            description_ar=f"تسجيل حضور {result['created']} طالب",
+            description_en=f"Recorded attendance for {result['created']} students",
+            source="auto", source_entity_type="attendance_bulk",
+            source_entity_id=f"{bulk_data.class_id}_{bulk_data.date}",
+            class_id=bulk_data.class_id,
+            metadata={"created": result["created"], "updated": result["updated"]},
+            event_date=bulk_data.date,
+        ))
+    except Exception as _pe_err:
+        logging.getLogger(__name__).debug("Portfolio evidence (bulk_attendance) failed: %s", _pe_err)
+
     return {
         "message": "تم تسجيل الحضور بنجاح",
         "message_en": "Attendance recorded successfully",

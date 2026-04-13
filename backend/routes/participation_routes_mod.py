@@ -164,6 +164,28 @@ async def record_bulk_participation(
         await gd_insert(db.session, "participation_records", record)
         created += 1
 
+    try:
+        import asyncio
+        from engines.portfolio_evidence_engine import PortfolioEvidenceEngine
+        _pe = PortfolioEvidenceEngine(db)
+        asyncio.create_task(_pe.capture_evidence(
+            teacher_id=current_user["id"],
+            school_id=school_id or "",
+            evidence_type="participation_tracking",
+            title_ar=f"متابعة مشاركة: {today}",
+            title_en=f"Participation Tracking: {today}",
+            description_ar=f"تسجيل {created} مشاركة للفصل",
+            description_en=f"Recorded {created} participations for class",
+            source="auto", source_entity_type="participation_bulk",
+            source_entity_id=f"{data.class_id}_{today}",
+            class_id=data.class_id,
+            subject_id=data.subject_id,
+            metadata={"created": created, "errors_count": len(errors)},
+            event_date=today,
+        ))
+    except Exception as _pe_err:
+        logging.getLogger(__name__).debug("Portfolio evidence (participation) failed: %s", _pe_err)
+
     return {"created": created, "errors": errors, "total_submitted": len(data.records)}
 
 

@@ -529,6 +529,25 @@ class TeacherSessionEngine:
         if attendance_drafts:
             await gd_insert_many(self.session, "session_attendance", attendance_drafts)
         
+        try:
+            import asyncio
+            from engines.portfolio_evidence_engine import PortfolioEvidenceEngine
+            _pe = PortfolioEvidenceEngine(self)
+            asyncio.create_task(_pe.capture_evidence(
+                teacher_id=teacher_id, school_id=school_id or "",
+                evidence_type="lesson_plan",
+                title_ar=f"خطة درس: {subject_name} - {class_name}",
+                title_en=f"Lesson Plan: {subject_name} - {class_name}",
+                description_ar=f"بدء حصة {subject_name} للفصل {class_name}",
+                description_en=f"Started session for {subject_name} in {class_name}",
+                source="auto", source_entity_type="class_session",
+                source_entity_id=session_id,
+                class_id=class_id, subject_id=subject_id,
+                event_date=today,
+            ))
+        except Exception as _pe_err:
+            logger.debug("Portfolio evidence (lesson_plan) failed: %s", _pe_err)
+
         return {
             "session_record_id": session_id,
             "session_status": SessionStatus.IN_PROGRESS,
@@ -1419,6 +1438,43 @@ class TeacherSessionEngine:
             actor_id=teacher_id,
             metadata={"summary_generated": True}
         )
+
+        try:
+            import asyncio
+            from engines.portfolio_evidence_engine import PortfolioEvidenceEngine
+            _pe = PortfolioEvidenceEngine(self)
+            _session_date = session.get("date", "")
+            if len(interactions) >= 5:
+                asyncio.create_task(_pe.capture_evidence(
+                    teacher_id=teacher_id, school_id=school_id,
+                    evidence_type="applied_lesson_report",
+                    title_ar=f"تقرير درس مطبق: {_session_date}",
+                    title_en=f"Applied Lesson Report: {_session_date}",
+                    description_ar=f"حصة مكتملة - {len(interactions)} تفاعل، حضور {attendance_rate}%",
+                    description_en=f"Completed session - {len(interactions)} interactions, {attendance_rate}% attendance",
+                    source="auto", source_entity_type="class_session",
+                    source_entity_id=session_id,
+                    class_id=class_id, subject_id=subject_id,
+                    metadata={"interactions": len(interactions), "attendance_rate": attendance_rate,
+                              "duration": round(duration)},
+                    event_date=_session_date,
+                ))
+            if total > 0:
+                asyncio.create_task(_pe.capture_evidence(
+                    teacher_id=teacher_id, school_id=school_id,
+                    evidence_type="attendance_record",
+                    title_ar=f"سجل حضور الحصة: {_session_date}",
+                    title_en=f"Session Attendance: {_session_date}",
+                    description_ar=f"حضور {present}/{total} طالب",
+                    description_en=f"Attendance {present}/{total} students",
+                    source="auto", source_entity_type="class_session",
+                    source_entity_id=session_id,
+                    class_id=class_id, subject_id=subject_id,
+                    metadata={"present": present, "absent": absent, "late": late, "total": total},
+                    event_date=_session_date,
+                ))
+        except Exception as _pe_err:
+            logger.debug("Portfolio evidence (end_session) failed: %s", _pe_err)
 
         return SessionSummaryResponse(
             session_record_id=session_id,
