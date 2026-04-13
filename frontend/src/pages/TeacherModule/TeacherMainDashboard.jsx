@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { formatFullDate } from '../../utils/hijriDate';
+import { formatFullDate, formatHijriDate } from '../../utils/hijriDate';
 import { Sidebar } from '../../components/layout/Sidebar';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -14,21 +14,121 @@ import {
   Clock, CheckCircle2, AlertCircle, ChevronLeft,
   ChevronRight, FileText, CalendarDays,
   RefreshCw, MessageSquare, Play, Target, Activity, Flame, Award,
-  Timer, CircleDot, School, Sparkles, Zap, TrendingUp, Star
+  Timer, CircleDot, School, Sparkles, Zap, TrendingUp, Star,
+  FolderOpen, ArrowLeft, ArrowRight, Check
 } from 'lucide-react';
 import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 
 import { useTranslation } from '../../contexts/ThemeContext';
 const HAKIM_CHARACTER = '/hakim-poses/teacher-helper.png';
 
-const TeacherDayProgress = ({ isRTL }) => {
+const PeriodTimeline = ({ upcomingLessons, totalPeriods, currentPeriod, isSchoolTime, isRTL, t }) => {
+  const periods = [];
+  for (let i = 1; i <= totalPeriods; i++) {
+    const lesson = upcomingLessons.find(l => l.period === i);
+    let status = 'upcoming';
+    if (isSchoolTime) {
+      if (i < currentPeriod) status = 'done';
+      else if (i === currentPeriod) status = 'active';
+    }
+    periods.push({ number: i, status, lesson });
+  }
+
+  const completed = periods.filter(p => p.status === 'done').length;
+  const remaining = periods.filter(p => p.status === 'upcoming').length;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="font-cairo font-bold text-sm text-foreground flex items-center gap-2">
+          <Clock className="h-4 w-4 text-brand-turquoise" />
+          {t('schoolDayTimeline')}
+        </h3>
+        <div className="flex items-center gap-3 text-xs font-tajawal text-muted-foreground">
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            {completed} {t('periodsCompleted')}
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-600" />
+            {remaining} {t('periodsRemaining')}
+          </span>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-1.5">
+        {periods.map((period) => (
+          <div
+            key={period.number}
+            className={`flex-1 relative group cursor-default`}
+          >
+            <div className={`h-10 rounded-lg flex items-center justify-center transition-colors duration-300 border ${
+              period.status === 'done'
+                ? 'bg-emerald-500/10 border-emerald-500/30 dark:bg-emerald-500/15'
+                : period.status === 'active'
+                ? 'bg-brand-turquoise/15 border-brand-turquoise/40 ring-2 ring-brand-turquoise/30 shadow-sm'
+                : 'bg-muted/50 border-border/50'
+            }`}>
+              {period.status === 'done' ? (
+                <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+              ) : period.status === 'active' ? (
+                <div className="relative">
+                  <span className="font-cairo font-bold text-sm text-brand-turquoise">{period.number}</span>
+                  <span className="absolute -top-0.5 -end-1 w-2 h-2 bg-brand-turquoise rounded-full animate-ping" />
+                </div>
+              ) : (
+                <span className="font-cairo text-sm text-muted-foreground">{period.number}</span>
+              )}
+            </div>
+
+            {period.lesson && (
+              <div className="absolute bottom-full mb-2 start-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-20 w-36">
+                <div className="bg-popover border border-border rounded-lg shadow-lg p-2 text-xs font-tajawal">
+                  <p className="font-bold font-cairo text-foreground truncate">{period.lesson.subject}</p>
+                  <p className="text-muted-foreground truncate">{period.lesson.class}</p>
+                  <p className="text-muted-foreground">{period.lesson.time}</p>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+export default function TeacherMainDashboard() {
   const { t } = useTranslation();
-  const { api } = useAuth();
+  const { user, api, isRTL } = useAuth();
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [now, setNow] = useState(new Date());
+  const [stats, setStats] = useState({
+    myClasses: 0,
+    myStudents: 0,
+    todayLessons: 0,
+    pendingAttendance: 0,
+    pendingAssessments: 0,
+    upcomingLessons: [],
+    totalSessions: 0,
+    subjectsCount: 0
+  });
+  const [recentActivities, setRecentActivities] = useState([]);
+  const [classes, setClasses] = useState([]);
+  const [teachingMetrics, setTeachingMetrics] = useState(null);
+  const [classHealthData, setClassHealthData] = useState([]);
+  const [riskAlerts, setRiskAlerts] = useState([]);
+  const [hakimLoading, setHakimLoading] = useState(false);
   const [dayStatus, setDayStatus] = useState(null);
+  const [notificationCount, setNotificationCount] = useState(0);
+
+  const teacherId = user?.teacher_id || user?.id;
+  const teacherSubject = user?.primary_subject_name || user?.specialization || '';
+  const schoolName = user?.school_name || user?.tenant_name || '';
 
   useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 60000);
+    const timer = setInterval(() => setNow(new Date()), 30000);
     return () => clearInterval(timer);
   }, []);
 
@@ -46,134 +146,6 @@ const TeacherDayProgress = ({ isRTL }) => {
     const interval = setInterval(fetchDayStatus, 60000);
     return () => clearInterval(interval);
   }, [fetchDayStatus]);
-
-  const progress = dayStatus?.progress ?? 0;
-  const isSchoolTime = dayStatus?.is_school_time ?? false;
-  const currentPeriod = dayStatus?.current_period ?? 0;
-  const totalPeriods = dayStatus?.total_periods ?? 7;
-  const isBreak = dayStatus?.is_break ?? false;
-  const dayStart = dayStatus?.day_start ?? '07:00';
-  const dayEnd = dayStatus?.day_end ?? '13:15';
-
-  const formatTimeLabel = (timeStr) => {
-    const [h, m] = timeStr.split(':').map(Number);
-    if (isRTL) return `${h}:${m.toString().padStart(2, '0')} ${h < 12 ? 'صباحاً' : 'مساءً'}`;
-    const h12 = h > 12 ? h - 12 : h === 0 ? 12 : h;
-    return `${h12}:${m.toString().padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
-  };
-
-  const dateInfo = useMemo(() => {
-    try {
-      return formatFullDate(now, isRTL ? 'ar' : 'en');
-    } catch (e) { console.error('Date format error:', e); return null; }
-  }, [now, isRTL]);
-
-  const periodLabel = isBreak
-    ? (t('break'))
-    : (isRTL ? `الحصة ${currentPeriod} من ${totalPeriods}` : `Period ${currentPeriod} of ${totalPeriods}`);
-
-  return (
-    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-800 via-slate-900 to-brand-navy p-3.5 sm:p-5 text-white border border-white/5">
-      <div className="absolute inset-0 nassaq-pattern opacity-[0.04] pointer-events-none" style={{ backgroundImage: "url('/nassaq-pattern.png')" }} />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_50%,rgba(56,189,248,0.05),transparent)]" />
-      <div className="relative z-10">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
-          <div className="flex items-center gap-3 sm:gap-4">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-brand-turquoise/15 backdrop-blur flex items-center justify-center border border-brand-turquoise/20 flex-shrink-0">
-              <Calendar className="h-5 w-5 sm:h-6 sm:w-6 text-brand-turquoise" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-base sm:text-xl font-bold font-cairo">
-                {dateInfo?.weekday || now.toLocaleDateString(isRTL ? 'ar-SA' : 'en-US', { weekday: 'long' })}
-              </p>
-              <p className="text-xs sm:text-sm text-white/50 font-tajawal truncate">
-                {dateInfo?.full || ''}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 sm:gap-5">
-            {isSchoolTime && (
-              <div className="flex items-center gap-2 sm:gap-3 bg-white/5 backdrop-blur rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 border border-white/10">
-                <div className="relative flex-shrink-0">
-                  {isBreak ? (
-                    <Timer className="h-4 w-4 sm:h-5 sm:w-5 text-amber-400" />
-                  ) : (
-                    <>
-                      <CircleDot className="h-4 w-4 sm:h-5 sm:w-5 text-emerald-400" />
-                      <span className="absolute -top-0.5 -right-0.5 w-2 h-2 sm:w-2.5 sm:h-2.5 bg-emerald-400 rounded-full animate-ping" />
-                    </>
-                  )}
-                </div>
-                <div>
-                  <p className="text-[10px] sm:text-xs text-white/40 font-tajawal">{isBreak ? (t('current')) : (t('currentPeriod'))}</p>
-                  <p className="text-sm sm:text-base font-bold font-cairo">{periodLabel}</p>
-                </div>
-              </div>
-            )}
-            <div className="text-center flex-shrink-0">
-              <p className="text-xl sm:text-2xl font-bold font-cairo tabular-nums">
-                {now.toLocaleTimeString(isRTL ? 'ar-SA' : 'en-US', { hour: '2-digit', minute: '2-digit' })}
-              </p>
-              <p className="text-[9px] sm:text-[10px] text-white/40 font-tajawal">
-                {isSchoolTime
-                  ? (t('schoolInSession'))
-                  : (t('outsideSchoolHours'))}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-4">
-          <div className="flex items-center justify-between mb-1.5 font-tajawal">
-            <span className="text-[10px] text-white/40">{formatTimeLabel(dayStart)}</span>
-            <span className={`font-cairo font-bold ${progress > 0 && isSchoolTime ? 'text-sm text-emerald-400' : 'text-xs text-white/50'}`}>
-              {isRTL ? `${progress}% من اليوم الدراسي` : `${progress}% of school day`}
-            </span>
-            <span className="text-[10px] text-white/40">{formatTimeLabel(dayEnd)}</span>
-          </div>
-          <div className="h-2 bg-white/5 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-brand-turquoise to-emerald-400 rounded-full transition-all duration-1000 relative"
-              style={{ width: `${progress}%` }}
-            >
-              {progress > 0 && (
-                <span className="absolute end-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-lg shadow-brand-turquoise/50" />
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export default function TeacherMainDashboard() {
-  const { t } = useTranslation();
-  const { user, api, isRTL } = useAuth();
-  const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [stats, setStats] = useState({
-    myClasses: 0,
-    myStudents: 0,
-    todayLessons: 0,
-    pendingAttendance: 0,
-    pendingAssessments: 0,
-    upcomingLessons: [],
-    totalSessions: 0,
-    subjectsCount: 0
-  });
-  const [recentActivities, setRecentActivities] = useState([]);
-  const [classes, setClasses] = useState([]);
-  const [teachingMetrics, setTeachingMetrics] = useState(null);
-  const [classHealthData, setClassHealthData] = useState([]);
-  const [riskAlerts, setRiskAlerts] = useState([]);
-  const [hakimLoading, setHakimLoading] = useState(false);
-
-  const teacherId = user?.teacher_id || user?.id;
-  const teacherSubject = user?.primary_subject_name || user?.specialization || '';
-  const schoolName = user?.school_name || user?.tenant_name || '';
 
   const fetchTeacherData = useCallback(async () => {
     if (!teacherId) return;
@@ -200,6 +172,7 @@ export default function TeacherMainDashboard() {
             class: lesson.class_name,
             class_id: lesson.class_id,
             subject_id: lesson.subject_id,
+            lesson_topic: lesson.lesson_topic || lesson.lesson_name || '',
             status: lesson.status || 'upcoming'
           })) || []
         });
@@ -216,6 +189,7 @@ export default function TeacherMainDashboard() {
     } finally {
       setLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, teacherId, isRTL]);
 
   const fetchMetrics = useCallback(async () => {
@@ -235,8 +209,16 @@ export default function TeacherMainDashboard() {
     } catch (e) { console.error('Error fetching teacher metrics:', e); }
   }, [teacherId, api]);
 
+  const fetchNotificationCount = useCallback(async () => {
+    try {
+      const res = await api.get('/notifications/unread-count').catch(() => null);
+      if (res?.data) setNotificationCount(res.data.count || 0);
+    } catch (e) { /* silent */ }
+  }, [api]);
+
   useEffect(() => { fetchTeacherData(); }, [fetchTeacherData]);
   useEffect(() => { fetchMetrics(); }, [fetchMetrics]);
+  useEffect(() => { fetchNotificationCount(); }, [fetchNotificationCount]);
 
   useEffect(() => {
     const fetchHakimData = async () => {
@@ -268,13 +250,47 @@ export default function TeacherMainDashboard() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([fetchTeacherData(), fetchMetrics()]);
+    await Promise.all([fetchTeacherData(), fetchMetrics(), fetchDayStatus(), fetchNotificationCount()]);
     setRefreshing(false);
     toast.success(t('dataRefreshed'));
   };
 
-  const currentLesson = stats.upcomingLessons.length > 0 ? stats.upcomingLessons[0] : null;
+  const dateInfo = useMemo(() => {
+    try {
+      return formatFullDate(now, isRTL ? 'ar' : 'en');
+    } catch (e) { return null; }
+  }, [now, isRTL]);
+
+  const progress = dayStatus?.progress ?? 0;
+  const isSchoolTime = dayStatus?.is_school_time ?? false;
+  const currentPeriod = dayStatus?.current_period ?? 0;
+  const totalPeriods = dayStatus?.total_periods ?? 7;
+  const isBreak = dayStatus?.is_break ?? false;
+  const schoolDayNumber = dayStatus?.school_day_number ?? dayStatus?.day_number ?? 0;
+  const dayStart = dayStatus?.day_start ?? '07:00';
+  const dayEnd = dayStatus?.day_end ?? '13:15';
+
+  const currentLesson = stats.upcomingLessons.find(l => l.period === currentPeriod) || stats.upcomingLessons[0] || null;
+  const nextLesson = stats.upcomingLessons.find(l => l.period > currentPeriod) || (stats.upcomingLessons.length > 1 ? stats.upcomingLessons[1] : null);
   const NavArrow = isRTL ? ChevronLeft : ChevronRight;
+
+  const handleStartClass = (lesson) => {
+    const lessonData = {
+      lesson,
+      schedule_session_id: lesson.schedule_session_id,
+      class_id: lesson.class_id,
+      subject_id: lesson.subject_id
+    };
+    sessionStorage.setItem('current_lesson', JSON.stringify(lessonData));
+    navigate('/teacher/session/start', { state: lessonData });
+  };
+
+  const formatTimeLabel = (timeStr) => {
+    const [h, m] = timeStr.split(':').map(Number);
+    if (isRTL) return `${h}:${m.toString().padStart(2, '0')} ${h < 12 ? 'صباحاً' : 'مساءً'}`;
+    const h12 = h > 12 ? h - 12 : h === 0 ? 12 : h;
+    return `${h12}:${m.toString().padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+  };
 
   if (loading) {
     return (
@@ -289,122 +305,325 @@ export default function TeacherMainDashboard() {
     );
   }
 
-  const metricCards = [
-    {
-      title: isRTL ? 'حصص اليوم' : "Today's Lessons",
-      value: stats.todayLessons,
-      subtitle: t('scheduledForToday'),
-      icon: CalendarDays,
-      gradient: 'from-violet-500 to-violet-600',
-      onClick: () => navigate('/teacher/schedule'),
-    },
-    {
-      title: t('myClasses'),
-      value: stats.myClasses,
-      subtitle: t('assignedClasses'),
-      icon: BookOpen,
-      gradient: 'from-blue-500 to-blue-600',
-      onClick: () => navigate('/teacher/classes'),
-    },
-    {
-      title: t('myStudents'),
-      value: stats.myStudents,
-      subtitle: isRTL ? 'إجمالي الطلاب' : 'Total students',
-      icon: Users,
-      gradient: 'from-emerald-500 to-emerald-600',
-      onClick: () => navigate('/teacher/students'),
-    },
-    {
-      title: t('openTasks'),
-      value: stats.pendingAttendance,
-      subtitle: t('awaitingCompletion'),
-      icon: AlertCircle,
-      gradient: stats.pendingAttendance > 0 ? 'from-orange-500 to-orange-600' : 'from-slate-500 to-slate-600',
-      onClick: () => navigate('/teacher/tasks'),
-    },
-  ];
-
   return (
     <Sidebar>
       <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50/50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950" dir={isRTL ? 'rtl' : 'ltr'}>
         <div className="p-4 md:p-6 space-y-5 max-w-[1400px] mx-auto">
 
-          <div className="flex items-center justify-end">
-            <Button size="sm" variant="outline" onClick={handleRefresh} disabled={refreshing}
-              className="rounded-xl border-border/50 hover:bg-muted gap-2 font-tajawal text-xs">
-              <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-              {t('refresh')}
-            </Button>
+          {/* Top Action Bar */}
+          <div className="flex items-center justify-between">
+            <h1 className="font-cairo font-bold text-xl text-foreground">{t('teacherDashboardTitle')}</h1>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="rounded-xl gap-2 font-tajawal text-xs hover:bg-brand-turquoise/10 hover:text-brand-turquoise"
+                onClick={() => navigate('/teacher/schedule')}
+              >
+                <Calendar className="h-4 w-4" />
+                {t('mySchedule')}
+              </Button>
+
+              <div className="relative">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="rounded-xl gap-2 font-tajawal text-xs hover:bg-brand-purple/10 hover:text-brand-purple"
+                  onClick={() => navigate('/teacher/achievements')}
+                >
+                  <Award className="h-4 w-4" />
+                  {t('viewPortfolio')}
+                </Button>
+              </div>
+
+              <div className="relative">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="rounded-xl hover:bg-muted relative"
+                  onClick={() => navigate('/notifications')}
+                >
+                  <Bell className="h-4.5 w-4.5" />
+                  {notificationCount > 0 && (
+                    <span className="absolute -top-0.5 -end-0.5 min-w-[18px] h-[18px] rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center px-1 border-2 border-background">
+                      {notificationCount > 9 ? '9+' : notificationCount}
+                    </span>
+                  )}
+                </Button>
+              </div>
+
+              <Button size="sm" variant="outline" onClick={handleRefresh} disabled={refreshing}
+                className="rounded-xl border-border/50 hover:bg-muted gap-2 font-tajawal text-xs">
+                <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+                {t('refresh')}
+              </Button>
+            </div>
           </div>
 
-          {/* Hero Header */}
-          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-brand-navy via-brand-navy to-slate-900 p-4 sm:p-6 md:p-8 text-white border border-white/5">
+          {/* Teacher Info Rectangle */}
+          <div className="relative overflow-hidden rounded-2xl bg-brand-navy p-5 md:p-6 text-white border border-white/5">
             <div className="absolute inset-0 nassaq-pattern opacity-[0.05] pointer-events-none" style={{ backgroundImage: "url('/nassaq-pattern.png')" }} />
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_20%,rgba(56,189,248,0.08),transparent)]" />
             <div className="absolute top-0 end-0 w-48 md:w-64 h-48 md:h-64 rounded-full bg-brand-turquoise/5 blur-3xl" />
-            <div className="absolute bottom-0 start-0 w-36 md:w-48 h-36 md:h-48 rounded-full bg-brand-purple/5 blur-3xl" />
 
             <div className="relative z-10">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 md:gap-6">
-                <div className="flex items-center gap-3 sm:gap-5">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
                   <div className="relative flex-shrink-0">
-                    <Avatar className="h-14 w-14 sm:h-20 sm:w-20 border-[3px] border-brand-turquoise/40 shadow-2xl shadow-brand-turquoise/20 ring-4 ring-white/5">
+                    <Avatar className="h-16 w-16 border-[3px] border-brand-turquoise/40 shadow-2xl shadow-brand-turquoise/20 ring-4 ring-white/5">
                       <AvatarImage src={user?.avatar_url} alt={user?.full_name} />
-                      <AvatarFallback className="bg-gradient-to-br from-brand-turquoise to-brand-purple text-white text-lg sm:text-2xl font-bold">
+                      <AvatarFallback className="bg-gradient-to-br from-brand-turquoise to-brand-purple text-white text-xl font-bold">
                         {user?.full_name?.charAt(0) || 'م'}
                       </AvatarFallback>
                     </Avatar>
-                    <div className="absolute -bottom-1 -end-1 w-5 sm:w-7 h-5 sm:h-7 rounded-lg bg-emerald-500 flex items-center justify-center border-2 border-brand-navy shadow-lg">
-                      <CheckCircle2 className="h-2.5 sm:h-3.5 w-2.5 sm:w-3.5 text-white" />
+                    <div className="absolute -bottom-1 -end-1 w-6 h-6 rounded-lg bg-emerald-500 flex items-center justify-center border-2 border-brand-navy shadow-lg">
+                      <CheckCircle2 className="h-3 w-3 text-white" />
                     </div>
                   </div>
                   <div className="min-w-0">
-                    <h1 className="font-cairo text-lg sm:text-2xl md:text-3xl font-bold truncate">
-                      {isRTL ? `أهلاً أستاذ ${user?.full_name || 'المعلم'}` : `Welcome, ${user?.full_name || 'Teacher'}`}
-                    </h1>
-                    <p className="text-brand-turquoise font-bold font-cairo text-sm sm:text-lg mt-0.5 truncate">
-                      {teacherSubject ? (isRTL ? `معلم ${teacherSubject}` : `${teacherSubject} Teacher`) : (t('teacher'))}
+                    <h2 className="font-cairo text-xl md:text-2xl font-bold truncate">
+                      {t('welcomeTeacher').replace('{0}', user?.full_name || t('teacher'))}
+                    </h2>
+                    <p className="text-brand-turquoise font-bold font-cairo text-sm mt-0.5 truncate">
+                      {teacherSubject ? t('teacherOf').replace('{0}', teacherSubject) : t('teacher')}
                     </p>
-                    <div className="flex items-center gap-2 mt-1.5 sm:mt-2">
-                      <div className="flex items-center gap-1.5 text-white/40 text-xs sm:text-sm font-tajawal bg-white/5 rounded-lg px-2 sm:px-2.5 py-0.5 sm:py-1">
-                        <School className="h-3 sm:h-3.5 w-3 sm:w-3.5 flex-shrink-0" />
-                        <span className="truncate max-w-[140px] sm:max-w-none">{schoolName || (t('school'))}</span>
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <div className="flex items-center gap-1.5 text-white/40 text-xs font-tajawal bg-white/5 rounded-lg px-2.5 py-1">
+                        <School className="h-3.5 w-3.5 flex-shrink-0" />
+                        <span className="truncate max-w-[200px]">{schoolName || (t('school'))}</span>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex gap-2 sm:gap-3">
-                  <Button
-                    className="flex-1 sm:flex-none bg-gradient-to-r from-brand-turquoise to-cyan-500 hover:from-brand-turquoise/90 hover:to-cyan-400 text-white rounded-xl h-10 sm:h-12 px-3 sm:px-6 font-cairo text-xs sm:text-base shadow-lg shadow-brand-turquoise/20 hover:shadow-xl transition-all hover:scale-[1.02]"
-                    onClick={() => navigate('/teacher/schedule')}
+                <div className="flex items-center gap-4 md:gap-6 flex-shrink-0">
+                  {/* Current Date */}
+                  <div className="hidden md:flex items-center gap-3 bg-white/5 backdrop-blur rounded-xl px-4 py-2.5 border border-white/10">
+                    <CalendarDays className="h-5 w-5 text-brand-turquoise" />
+                    <div>
+                      <p className="text-sm font-bold font-cairo">{dateInfo?.weekday || ''}</p>
+                      <p className="text-[11px] text-white/50 font-tajawal">{dateInfo?.full || ''}</p>
+                    </div>
+                  </div>
+
+                  {/* Current Time */}
+                  <div className="text-center">
+                    <p className="text-2xl md:text-3xl font-bold font-cairo tabular-nums">
+                      {now.toLocaleTimeString(isRTL ? 'ar-SA' : 'en-US', { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                    <p className="text-[10px] text-white/40 font-tajawal">
+                      {isSchoolTime ? t('schoolInSession') : t('outsideSchoolHours')}
+                    </p>
+                  </div>
+
+                  {/* School Day Number */}
+                  {schoolDayNumber > 0 && (
+                    <div className="hidden lg:flex flex-col items-center bg-brand-turquoise/10 border border-brand-turquoise/20 rounded-xl px-4 py-2">
+                      <span className="text-[10px] text-brand-turquoise/70 font-tajawal">{t('schoolDayNumber')}</span>
+                      <span className="text-2xl font-bold font-cairo text-brand-turquoise">{schoolDayNumber}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Day Progress Bar */}
+              <div className="mt-5">
+                <div className="flex items-center justify-between mb-1.5 font-tajawal">
+                  <span className="text-[10px] text-white/40">{formatTimeLabel(dayStart)}</span>
+                  <div className="flex items-center gap-3">
+                    {isSchoolTime && !isBreak && (
+                      <span className="text-xs text-white/60 flex items-center gap-1.5">
+                        <CircleDot className="h-3.5 w-3.5 text-emerald-400" />
+                        {t('periodOf').replace('{0}', currentPeriod).replace('{1}', totalPeriods)}
+                      </span>
+                    )}
+                    {isBreak && (
+                      <span className="text-xs text-amber-400 flex items-center gap-1.5">
+                        <Timer className="h-3.5 w-3.5" />
+                        {t('break')}
+                      </span>
+                    )}
+                    <span className={`font-cairo font-bold text-sm ${progress > 0 && isSchoolTime ? 'text-emerald-400' : 'text-white/50'}`}>
+                      {progress}%
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-white/40">{formatTimeLabel(dayEnd)}</span>
+                </div>
+                <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-brand-turquoise rounded-full transition-[width] duration-1000 relative"
+                    style={{ width: `${progress}%` }}
                   >
-                    <Calendar className="h-4 sm:h-5 w-4 sm:w-5 me-1.5 sm:me-2" />
-                    {t('mySchedule')}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="flex-1 sm:flex-none border-white/15 text-white hover:bg-white/10 rounded-xl h-10 sm:h-12 px-3 sm:px-6 font-cairo text-xs sm:text-base backdrop-blur-sm"
-                    onClick={() => navigate('/teacher/achievements')}
-                  >
-                    <Award className="h-4 sm:h-5 w-4 sm:w-5 me-1.5 sm:me-2" />
-                    {isRTL ? 'إنجازاتي' : 'Achievements'}
-                  </Button>
+                    {progress > 0 && (
+                      <span className="absolute end-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-lg shadow-brand-turquoise/50" />
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
-          <TeacherDayProgress isRTL={isRTL} />
+          {/* Period Timeline */}
+          <Card className="border border-border/50 shadow-sm p-4">
+            <PeriodTimeline
+              upcomingLessons={stats.upcomingLessons}
+              totalPeriods={totalPeriods}
+              currentPeriod={currentPeriod}
+              isSchoolTime={isSchoolTime}
+              isRTL={isRTL}
+              t={t}
+            />
+          </Card>
+
+          {/* School Day Section: Current + Next Class */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* Current Class - Large Card */}
+            <div className="lg:col-span-2">
+              {currentLesson ? (
+                <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-brand-turquoise/8 via-brand-turquoise/4 to-transparent border-2 border-brand-turquoise/25 p-5 md:p-6 shadow-sm">
+                  <div className="absolute top-0 end-0 w-32 h-32 rounded-full bg-brand-turquoise/5 blur-2xl" />
+                  <div className="relative z-10">
+                    <div className="flex items-center justify-between mb-4">
+                      <Badge className="bg-brand-turquoise/15 text-brand-turquoise border-brand-turquoise/25 font-cairo text-xs px-3 py-1">
+                        <CircleDot className="h-3 w-3 me-1.5 animate-pulse" />
+                        {t('currentClassNow')}
+                      </Badge>
+                      <div className="flex items-center gap-1.5 text-muted-foreground text-sm font-tajawal">
+                        <Clock className="h-4 w-4" />
+                        <span className="font-mono font-bold">{currentLesson.time}</span>
+                        {currentLesson.end_time && (
+                          <>
+                            <span className="text-muted-foreground/50">—</span>
+                            <span className="font-mono">{currentLesson.end_time}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0 flex-1">
+                        <h3 className="font-cairo font-bold text-2xl text-foreground mb-1">{currentLesson.subject}</h3>
+                        <div className="flex items-center gap-3 text-sm text-muted-foreground font-tajawal mb-1">
+                          <span className="flex items-center gap-1.5">
+                            <BookOpen className="h-3.5 w-3.5 flex-shrink-0" />
+                            {currentLesson.class}
+                          </span>
+                          <span className="text-border">•</span>
+                          <span>{t('periodNumber')} {currentLesson.period}</span>
+                        </div>
+                        {currentLesson.lesson_topic && (
+                          <p className="text-xs text-muted-foreground/70 font-tajawal mt-1">
+                            {t('lessonTopic')}: {currentLesson.lesson_topic}
+                          </p>
+                        )}
+                      </div>
+
+                      <Button
+                        size="lg"
+                        className="bg-brand-navy hover:bg-brand-navy/90 text-white rounded-xl px-8 py-3 font-cairo font-bold text-base shadow-lg shadow-brand-navy/20 hover:shadow-xl transition-shadow flex-shrink-0"
+                        onClick={() => handleStartClass(currentLesson)}
+                      >
+                        <Play className="h-5 w-5 me-2" />
+                        {t('startClass')}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-2xl border-2 border-dashed border-border/50 p-8 text-center">
+                  <Calendar className="h-12 w-12 mx-auto mb-3 text-muted-foreground/20" />
+                  <p className="text-muted-foreground font-tajawal text-lg font-medium">{t('noClassesScheduled')}</p>
+                  <p className="text-muted-foreground/60 font-tajawal text-sm mt-1">{t('enjoyYourDay')}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Next Class - Smaller Card */}
+            <div>
+              {nextLesson ? (
+                <div className="rounded-2xl border border-border/50 bg-card p-5 shadow-sm hover:shadow-md transition-shadow h-full flex flex-col justify-between">
+                  <div>
+                    <Badge variant="outline" className="font-cairo text-xs mb-3 text-muted-foreground border-border">
+                      {t('nextUpcomingClass')}
+                    </Badge>
+                    <h4 className="font-cairo font-bold text-lg text-foreground mb-1">{nextLesson.subject}</h4>
+                    <div className="space-y-1.5 text-sm text-muted-foreground font-tajawal">
+                      <p className="flex items-center gap-1.5">
+                        <BookOpen className="h-3.5 w-3.5 flex-shrink-0" />
+                        {nextLesson.class}
+                      </p>
+                      <p className="flex items-center gap-1.5">
+                        <Clock className="h-3.5 w-3.5 flex-shrink-0" />
+                        {nextLesson.time}
+                        {nextLesson.end_time && ` — ${nextLesson.end_time}`}
+                      </p>
+                      <p className="flex items-center gap-1.5">
+                        <Target className="h-3.5 w-3.5 flex-shrink-0" />
+                        {t('periodNumber')} {nextLesson.period}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    className="w-full mt-4 rounded-xl font-cairo border-brand-turquoise/30 text-brand-turquoise hover:bg-brand-turquoise/10"
+                    onClick={() => handleStartClass(nextLesson)}
+                  >
+                    <Play className="h-4 w-4 me-2" />
+                    {t('startClass')}
+                  </Button>
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-border/50 bg-card p-5 shadow-sm h-full flex flex-col items-center justify-center text-center">
+                  <CheckCircle2 className="h-10 w-10 text-emerald-400/40 mb-2" />
+                  <p className="text-sm text-muted-foreground font-tajawal">
+                    {t('noUpcomingClasses')}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
 
           {/* Metric Cards */}
           <section>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 md:gap-4">
-              {metricCards.map((card, i) => (
+              {[
+                {
+                  title: t('todaysLessons'),
+                  value: stats.todayLessons,
+                  subtitle: t('scheduledForToday'),
+                  icon: CalendarDays,
+                  gradient: 'from-violet-500 to-violet-600',
+                  onClick: () => navigate('/teacher/schedule'),
+                },
+                {
+                  title: t('myClasses'),
+                  value: stats.myClasses,
+                  subtitle: t('assignedClasses'),
+                  icon: BookOpen,
+                  gradient: 'from-blue-500 to-blue-600',
+                  onClick: () => navigate('/teacher/classes'),
+                },
+                {
+                  title: t('myStudents'),
+                  value: stats.myStudents,
+                  subtitle: t('totalStudents'),
+                  icon: Users,
+                  gradient: 'from-emerald-500 to-emerald-600',
+                  onClick: () => navigate('/teacher/students'),
+                },
+                {
+                  title: t('openTasks'),
+                  value: stats.pendingAttendance,
+                  subtitle: t('awaitingCompletion'),
+                  icon: AlertCircle,
+                  gradient: stats.pendingAttendance > 0 ? 'from-orange-500 to-orange-600' : 'from-slate-500 to-slate-600',
+                  onClick: () => navigate('/teacher/tasks'),
+                },
+              ].map((card, i) => (
                 <button
                   key={i}
                   onClick={card.onClick}
-                  className={`relative overflow-hidden rounded-xl sm:rounded-2xl bg-gradient-to-br ${card.gradient} p-3 sm:p-5 text-white cursor-pointer group shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-[1.02] border border-white/10 text-start w-full`}
+                  className={`relative overflow-hidden rounded-xl sm:rounded-2xl bg-gradient-to-br ${card.gradient} p-3 sm:p-5 text-white cursor-pointer group shadow-lg hover:shadow-xl transition-shadow duration-300 border border-white/10 text-start w-full`}
                 >
                   <div className="absolute top-0 end-0 w-20 sm:w-24 h-20 sm:h-24 rounded-full bg-white/5 -translate-y-1/2 translate-x-1/2" />
                   <div className="relative z-10 flex items-start justify-between">
@@ -425,115 +644,6 @@ export default function TeacherMainDashboard() {
             </div>
           </section>
 
-          {/* Today's Schedule */}
-          <Card className="border border-border/50 shadow-sm overflow-hidden">
-            <CardHeader className="pb-3 bg-gradient-to-r from-brand-turquoise/5 to-transparent border-b border-border/30">
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-3 text-xl font-cairo">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-turquoise to-cyan-600 flex items-center justify-center shadow-lg shadow-brand-turquoise/20">
-                    <Clock className="h-5 w-5 text-white" />
-                  </div>
-                  {t('todaysSchedule')}
-                </CardTitle>
-                <Button variant="ghost" size="sm" className="rounded-xl font-cairo text-brand-turquoise hover:bg-brand-turquoise/10 gap-1" onClick={() => navigate('/teacher/schedule')}>
-                  {t('fullSchedule2')}
-                  <NavArrow className="h-4 w-4" />
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="p-5 space-y-4">
-              {currentLesson && (
-                <div className="rounded-2xl bg-gradient-to-r from-brand-turquoise/8 via-brand-turquoise/4 to-transparent border border-brand-turquoise/20 p-4 sm:p-5">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
-                    <div className="flex items-center gap-3 sm:gap-4">
-                      <div className="relative flex-shrink-0">
-                        <div className="w-11 h-11 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl bg-gradient-to-br from-brand-turquoise to-brand-navy flex items-center justify-center shadow-lg shadow-brand-turquoise/20">
-                          <Play className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
-                        </div>
-                        <span className="absolute -top-1 -right-1 w-3 sm:w-4 h-3 sm:h-4 bg-emerald-500 rounded-full border-2 border-white dark:border-slate-900 animate-pulse" />
-                      </div>
-                      <div className="min-w-0">
-                        <Badge className="bg-brand-turquoise/15 text-brand-turquoise border-brand-turquoise/25 mb-1 sm:mb-1.5 font-cairo text-[10px] sm:text-xs">
-                          {t('currentNextClass')}
-                        </Badge>
-                        <h3 className="text-base sm:text-lg font-bold font-cairo text-foreground truncate">{currentLesson.subject}</h3>
-                        <p className="text-xs sm:text-sm text-muted-foreground font-tajawal flex items-center gap-1.5 sm:gap-2 mt-0.5">
-                          <BookOpen className="h-3 w-3 sm:h-3.5 sm:w-3.5 flex-shrink-0" /> <span className="truncate">{currentLesson.class}</span>
-                          <span className="text-border">•</span>
-                          <Clock className="h-3 w-3 sm:h-3.5 sm:w-3.5 flex-shrink-0" /> {currentLesson.time}
-                        </p>
-                      </div>
-                    </div>
-                    <Button
-                      className="w-full sm:w-auto bg-gradient-to-r from-brand-turquoise to-cyan-500 hover:from-brand-turquoise/90 hover:to-cyan-400 text-white rounded-xl h-10 sm:h-12 px-4 sm:px-6 font-cairo text-sm sm:text-base shadow-lg shadow-brand-turquoise/20 hover:shadow-xl transition-all hover:scale-[1.02]"
-                      onClick={() => {
-                        if (!currentLesson.class_id) return;
-                        const lessonData = {
-                          lesson: currentLesson,
-                          schedule_session_id: currentLesson.schedule_session_id || currentLesson.id,
-                          class_id: currentLesson.class_id,
-                          subject_id: currentLesson.subject_id
-                        };
-                        sessionStorage.setItem('current_lesson', JSON.stringify(lessonData));
-                        navigate('/teacher/session/start', { state: lessonData });
-                      }}
-                    >
-                      <Play className="h-4 sm:h-5 w-4 sm:w-5 me-1.5 sm:me-2" />
-                      {isRTL ? 'ابدأ الحصة' : 'Start Session'}
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              <div className="space-y-2">
-                {stats.upcomingLessons.length === 0 ? (
-                  <div className="text-center py-12 text-muted-foreground">
-                    <Calendar className="h-14 w-14 mx-auto mb-3 opacity-15" />
-                    <p className="font-cairo text-lg">{isRTL ? 'لا توجد حصص في هذا اليوم' : 'No lessons on this day'}</p>
-                  </div>
-                ) : (
-                  stats.upcomingLessons.map((lesson, index) => (
-                    <button
-                      key={index}
-                      className={`flex items-center justify-between p-3 sm:p-4 rounded-xl border transition-all cursor-pointer group w-full text-start ${
-                        index === 0
-                          ? 'bg-brand-turquoise/5 border-brand-turquoise/20'
-                          : 'bg-muted/30 border-border/50 hover:border-brand-turquoise/20 hover:bg-muted/50'
-                      }`}
-                      onClick={() => lesson.class_id && navigate(`/teacher/class/${lesson.class_id}`)}
-                    >
-                      <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-                        <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex flex-col items-center justify-center flex-shrink-0 ${
-                          index === 0
-                            ? 'bg-gradient-to-br from-brand-turquoise to-brand-navy text-white shadow-md'
-                            : 'bg-muted text-muted-foreground'
-                        }`}>
-                          <span className="text-[8px] sm:text-[9px] font-tajawal leading-none">{t('p')}</span>
-                          <span className="font-bold text-base sm:text-lg font-cairo leading-none">{lesson.period || (index + 1)}</span>
-                        </div>
-                        <div className="min-w-0">
-                          <p className="font-bold font-cairo text-sm sm:text-base text-foreground truncate">{lesson.subject}</p>
-                          <div className="flex items-center gap-2 sm:gap-3 text-[11px] sm:text-xs text-muted-foreground font-tajawal mt-0.5">
-                            <span className="flex items-center gap-1 truncate"><BookOpen className="h-3 w-3 flex-shrink-0" /> <span className="truncate">{lesson.class}</span></span>
-                            <span className="flex items-center gap-1 flex-shrink-0"><Clock className="h-3 w-3" /> {lesson.time}</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-                        {index === 0 && (
-                          <Badge className="bg-brand-turquoise/15 text-brand-turquoise border-brand-turquoise/25 font-cairo text-[10px] sm:text-xs hidden sm:inline-flex">
-                            {t('next2')}
-                          </Badge>
-                        )}
-                        <NavArrow className="h-4 w-4 text-muted-foreground/50 group-hover:text-brand-turquoise transition-colors" />
-                      </div>
-                    </button>
-                  ))
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
           {/* Teaching Performance */}
           {teachingMetrics && (
             <Card className="border border-border/50 shadow-sm overflow-hidden">
@@ -545,7 +655,7 @@ export default function TeacherMainDashboard() {
                     </div>
                     <div>
                       <h3 className="font-cairo font-bold text-foreground text-lg">{t('teachingPerformance')}</h3>
-                      <p className="text-xs text-muted-foreground font-tajawal">{isRTL ? `بيانات من ${teachingMetrics.classCount} فصل` : `Data from ${teachingMetrics.classCount} classes`}</p>
+                      <p className="text-xs text-muted-foreground font-tajawal">{t('dataFrom').replace('{0}', teachingMetrics.classCount)}</p>
                     </div>
                   </div>
                 </div>
@@ -591,7 +701,7 @@ export default function TeacherMainDashboard() {
                   </div>
                 ) : (
                   recentActivities.map((activity, index) => (
-                    <div key={index} className="flex items-start gap-3 p-3 rounded-xl bg-muted/30 border border-border/50 hover:border-brand-turquoise/20 transition-all group">
+                    <div key={index} className="flex items-start gap-3 p-3 rounded-xl bg-muted/30 border border-border/50 hover:border-brand-turquoise/20 transition-colors group">
                       <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
                         activity.type === 'attendance' ? 'bg-emerald-100 dark:bg-emerald-900/30' :
                         activity.type === 'assessment' ? 'bg-blue-100 dark:bg-blue-900/30' : 'bg-orange-100 dark:bg-orange-900/30'
@@ -633,11 +743,11 @@ export default function TeacherMainDashboard() {
                       { icon: ClipboardCheck, label: t('attendance3'), path: '/teacher/attendance', gradient: 'from-emerald-500 to-emerald-600' },
                       { icon: FileText, label: t('assessments'), path: '/teacher/assessments', gradient: 'from-blue-500 to-blue-600' },
                       { icon: Star, label: t('behavior'), path: '/teacher/behavior', gradient: 'from-purple-500 to-purple-600' },
-                      { icon: MessageSquare, label: isRTL ? 'التواصل' : 'Communication', path: '/teacher/communication', gradient: 'from-amber-500 to-orange-500' },
+                      { icon: MessageSquare, label: t('communication'), path: '/teacher/communication', gradient: 'from-amber-500 to-orange-500' },
                     ].map((action, index) => (
                       <button
                         key={index}
-                        className="flex flex-col items-center gap-2.5 p-4 rounded-xl border border-border/50 bg-background hover:border-brand-turquoise/30 hover:shadow-md transition-all group"
+                        className="flex flex-col items-center gap-2.5 p-4 rounded-xl border border-border/50 bg-background hover:border-brand-turquoise/30 hover:shadow-md transition-shadow group"
                         onClick={() => navigate(action.path)}
                       >
                         <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${action.gradient} flex items-center justify-center group-hover:scale-110 transition-transform shadow-md`}>
@@ -713,11 +823,11 @@ export default function TeacherMainDashboard() {
                       <div>
                         <h4 className="text-sm font-bold text-muted-foreground mb-3 font-cairo flex items-center gap-2">
                           <Activity className="h-4 w-4 text-brand-turquoise" />
-                          {isRTL ? 'صحة الفصول' : 'Class Health'}
+                          {t('classHealth')}
                         </h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                           {classHealthData.map(cls => (
-                            <div key={cls.class_id} className={`p-4 rounded-xl border transition-all hover:shadow-md ${
+                            <div key={cls.class_id} className={`p-4 rounded-xl border transition-shadow hover:shadow-md ${
                               cls.health_score >= 80 ? 'border-emerald-200/50 bg-emerald-50/50 dark:bg-emerald-950/20' :
                               cls.health_score >= 65 ? 'border-blue-200/50 bg-blue-50/50 dark:bg-blue-950/20' :
                               cls.health_score >= 50 ? 'border-yellow-200/50 bg-yellow-50/50 dark:bg-yellow-950/20' :
@@ -734,7 +844,7 @@ export default function TeacherMainDashboard() {
                               </div>
                               <Progress value={cls.health_score} className="h-1.5" />
                               <div className="flex justify-between mt-2 text-xs text-muted-foreground font-tajawal">
-                                <span>{isRTL ? `${cls.total_students} طالب` : `${cls.total_students} students`}</span>
+                                <span>{cls.total_students} {t('studentsCount2')}</span>
                                 <span>{cls.health_label_ar || cls.health_category}</span>
                               </div>
                             </div>
