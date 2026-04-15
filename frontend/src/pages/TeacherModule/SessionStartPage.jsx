@@ -611,7 +611,7 @@ function StudentCard({ student, index, onUpdate, theme, themeStyles, t, isDark }
                 const badge = HEALTH_BADGES[cond] || HEALTH_BADGES.social_case;
                 const Icon = badge.icon;
                 return (
-                  <span key={cond} className={`w-4 h-4 rounded-full ${badge.bg} flex items-center justify-center`} title={t(cond) || cond}>
+                  <span key={cond} className={`w-4 h-4 rounded-full ${badge.bg} flex items-center justify-center`} title={t(`healthBadge${cond.charAt(0).toUpperCase()}${cond.slice(1).replace(/_([a-z])/g, (_, c) => c.toUpperCase())}`) || cond}>
                     <Icon className={`h-2.5 w-2.5 ${badge.color}`} />
                   </span>
                 );

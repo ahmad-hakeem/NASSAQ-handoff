@@ -250,7 +250,7 @@ export default function SessionTeachPage() {
           evalMode, groups, stats, mode: mode?.id, actionTab, followupData, followupColumns,
           customPositiveBehaviours, customNegativeBehaviours, customSkills
         }));
-        if (Object.keys(followupData).length > 0) {
+        if (followupColumns.length > 0 || Object.keys(followupData).length > 0) {
           api.post(`/session/${sessionId}/followup-record`, {
             columns: followupColumns, data: followupData
           }).catch(() => {});
@@ -1700,7 +1700,14 @@ export default function SessionTeachPage() {
       </Dialog>
 
       {/* Evaluation Settings Modal */}
-      <Dialog open={showSettingsModal} onOpenChange={setShowSettingsModal}>
+      <Dialog open={showSettingsModal} onOpenChange={(open) => {
+        setShowSettingsModal(open);
+        if (!open && sessionId && (followupColumns.length > 0 || Object.keys(followupData).length > 0)) {
+          api.post(`/session/${sessionId}/followup-record`, {
+            columns: followupColumns, data: followupData
+          }).catch(() => {});
+        }
+      }}>
         <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto" dir={isRTL ? 'rtl' : 'ltr'}>
           <DialogHeader>
             <DialogTitle className="font-cairo flex items-center gap-2">
@@ -2312,6 +2319,7 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
     const questionsCount = summary.questions_asked || 0;
     const correctCount = summary.correct_answers || 0;
     try {
+      const classId = sessionInfo?.class_id || sessionInfo?.classId;
       const notifPayload = {
         title: `${t('sessionSummary')} — ${subjectName}`,
         title_en: `Session Summary — ${subjectName}`,
@@ -2330,10 +2338,12 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
         recipient_role: 'parent',
         related_entity: 'session',
         related_entity_id: summary.session_record_id,
+        scope_class_id: classId,
       };
       const adminNotif = {
         ...notifPayload,
         recipient_role: 'admin',
+        scope_class_id: undefined,
       };
       const results = await Promise.allSettled([
         api.post('/notifications', notifPayload),
