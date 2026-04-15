@@ -2095,6 +2095,84 @@ async def get_session_report(
     return report
 
 
+@router.get("/session/{session_id}/followup-record")
+async def get_followup_record(
+    session_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    await _verify_session_owner(session_id, current_user)
+    record = await gd_find_one(db.session, "followup_records", {"session_id": session_id})
+    if not record:
+        return {
+            "session_id": session_id,
+            "columns": [
+                {"id": "participation", "name": "مشاركة", "maxGrade": 10, "type": "grade"},
+                {"id": "homework", "name": "واجب", "maxGrade": 10, "type": "grade"},
+                {"id": "performance_task", "name": "مهمة أدائية", "maxGrade": 10, "type": "grade"},
+                {"id": "test", "name": "اختبار", "maxGrade": 10, "type": "grade"},
+            ],
+            "data": {},
+        }
+    return {
+        "session_id": session_id,
+        "columns": record.get("columns", []),
+        "data": record.get("data", {}),
+    }
+
+
+@router.post("/session/{session_id}/followup-record")
+async def save_followup_record(
+    session_id: str,
+    payload: dict = Body(...),
+    current_user: dict = Depends(get_current_user)
+):
+    await _verify_session_owner(session_id, current_user)
+    from datetime import datetime
+    existing = await gd_find_one(db.session, "followup_records", {"session_id": session_id})
+    record_data = {
+        "session_id": session_id,
+        "columns": payload.get("columns", []),
+        "data": payload.get("data", {}),
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+    if existing:
+        await gd_update_one(db.session, "followup_records", {"session_id": session_id}, {"$set": record_data})
+    else:
+        record_data["created_at"] = datetime.utcnow().isoformat()
+        await gd_insert(db.session, "followup_records", record_data)
+    return {"success": True, "session_id": session_id}
+
+
+@router.post("/session/{session_id}/followup-record/column")
+async def add_followup_column(
+    session_id: str,
+    payload: dict = Body(...),
+    current_user: dict = Depends(get_current_user)
+):
+    await _verify_session_owner(session_id, current_user)
+    column = {
+        "id": payload.get("id", f"col_{int(__import__('time').time() * 1000)}"),
+        "name": payload.get("name", "عمود جديد"),
+        "maxGrade": payload.get("maxGrade", 10),
+        "type": payload.get("type", "grade"),
+    }
+    existing = await gd_find_one(db.session, "followup_records", {"session_id": session_id})
+    if existing:
+        columns = existing.get("columns", [])
+        columns.append(column)
+        await gd_update_one(db.session, "followup_records", {"session_id": session_id}, {"$set": {"columns": columns}})
+    else:
+        from datetime import datetime
+        await gd_insert(db.session, "followup_records", {
+            "session_id": session_id,
+            "columns": [column],
+            "data": {},
+            "created_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat(),
+        })
+    return {"success": True, "column": column}
+
+
 @router.get("/teacher/{teacher_id}/sessions-history")
 async def get_teacher_sessions_history(
     teacher_id: str,

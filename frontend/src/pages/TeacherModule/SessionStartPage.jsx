@@ -267,8 +267,8 @@ export default function SessionStartPage() {
               <Play className="h-12 w-12 text-white drop-shadow-lg" />
             </div>
           </div>
-          <h2 className={`font-cairo text-3xl font-bold ${themeStyles.text} mb-3`}>جارٍ بدء الحصة…</h2>
-          <p className={`${themeStyles.textSub} text-base mb-6 font-tajawal`}>يتم التحقق وإعداد سجل الحضور</p>
+          <h2 className={`font-cairo text-3xl font-bold ${themeStyles.text} mb-3`}>{t('startingSession')}</h2>
+          <p className={`${themeStyles.textSub} text-base mb-6 font-tajawal`}>{t('verifyingAndPreparingAttendance')}</p>
           <div className="flex items-center justify-center gap-3">
             <div className="w-2.5 h-2.5 rounded-full bg-brand-turquoise animate-bounce" style={{ animationDelay: '0ms' }} />
             <div className="w-2.5 h-2.5 rounded-full bg-brand-turquoise animate-bounce" style={{ animationDelay: '150ms' }} />
@@ -298,9 +298,9 @@ export default function SessionStartPage() {
 
           <div className="space-y-4">
             <h1 className="font-cairo text-5xl font-black text-white tracking-tight">
-              ابدأ الشرح الآن
+              {t('startTeachingNow')}
             </h1>
-            <p className="text-brand-turquoise/80 text-xl font-tajawal">جارٍ تجهيز واجهة التفاعل...</p>
+            <p className="text-brand-turquoise/80 text-xl font-tajawal">{t('preparingInteractionInterface')}</p>
           </div>
 
           <div className="flex items-center justify-center gap-4 text-white/50 text-sm font-tajawal">
@@ -569,6 +569,8 @@ function StudentCard({ student, index, onUpdate, theme, themeStyles, t, isDark }
   const avatarSrc = student.avatar_url || getAvatarSvg(student.gender || 'male', index);
   const isFemale = student.gender === 'female';
 
+  const conditions = student.health_conditions || student.conditions || [];
+
   const handleToggle = () => {
     onUpdate(student.id, isAbsent ? 'present' : 'absent');
   };
@@ -576,10 +578,10 @@ function StudentCard({ student, index, onUpdate, theme, themeStyles, t, isDark }
   return (
     <button
       onClick={handleToggle}
-      className={`w-full rounded-xl border ${style.card} overflow-hidden transition-all duration-200 shadow-md ${style.glow} active:scale-[0.97] flex items-center gap-3 p-3 text-start`}
+      className={`w-full rounded-xl border ${style.card} overflow-hidden transition-colors duration-200 shadow-sm ${style.glow} active:scale-[0.97] flex items-center gap-3 p-3 text-start`}
     >
       <div className="relative flex-shrink-0">
-        <div className={`w-12 h-12 rounded-full ring-2 ${style.ring} ring-offset-2 ${themeStyles.ringOffset} overflow-hidden transition-all ${isAbsent ? 'opacity-50 grayscale' : ''}`}>
+        <div className={`w-12 h-12 rounded-full ring-2 ${style.ring} ring-offset-2 ${themeStyles.ringOffset} overflow-hidden transition-opacity duration-200 ${isAbsent ? 'opacity-50 grayscale' : ''}`}>
           <img
             src={avatarSrc}
             alt={student.full_name}
@@ -590,14 +592,33 @@ function StudentCard({ student, index, onUpdate, theme, themeStyles, t, isDark }
           />
         </div>
         <div className={`absolute -bottom-0.5 -end-0.5 w-5 h-5 rounded-full ${style.bg} flex items-center justify-center border-2 ${isDark ? 'border-slate-900' : 'border-white'} shadow-sm`}>
-          <span className="text-white text-[8px] font-bold">{cfg.short}</span>
+          {isAbsent ? (
+            <UserX className="h-2.5 w-2.5 text-white" />
+          ) : (
+            <UserCheck className="h-2.5 w-2.5 text-white" />
+          )}
         </div>
       </div>
 
       <div className="flex-1 min-w-0">
-        <p className={`${themeStyles.text} font-medium text-sm truncate font-cairo ${isAbsent ? 'line-through opacity-60' : ''}`}>
-          {student.full_name || `طالب ${index + 1}`}
-        </p>
+        <div className="flex items-center gap-1.5">
+          <p className={`${themeStyles.text} font-medium text-sm truncate font-cairo ${isAbsent ? 'line-through opacity-60' : ''}`}>
+            {student.full_name || `${t('student')} ${index + 1}`}
+          </p>
+          {conditions.length > 0 && (
+            <div className="flex items-center gap-0.5 flex-shrink-0">
+              {conditions.slice(0, 3).map((cond) => {
+                const badge = HEALTH_BADGES[cond] || HEALTH_BADGES.social_case;
+                const Icon = badge.icon;
+                return (
+                  <span key={cond} className={`w-4 h-4 rounded-full ${badge.bg} flex items-center justify-center`} title={t(cond) || cond}>
+                    <Icon className={`h-2.5 w-2.5 ${badge.color}`} />
+                  </span>
+                );
+              })}
+            </div>
+          )}
+        </div>
         <div className="flex items-center gap-2 mt-0.5">
           <span className={`${themeStyles.textMuted} text-xs font-mono`}>{student.student_code}</span>
           {student.gender && (
@@ -606,13 +627,13 @@ function StudentCard({ student, index, onUpdate, theme, themeStyles, t, isDark }
                 ? (isDark ? 'bg-pink-500/15 text-pink-400' : 'bg-pink-100 text-pink-600')
                 : (isDark ? 'bg-sky-500/15 text-sky-400' : 'bg-sky-100 text-sky-600')
             }`}>
-              {isFemale ? 'طالبة' : 'طالب'}
+              {isFemale ? t('femaleStudent') : t('maleStudent')}
             </span>
           )}
         </div>
       </div>
 
-      <Badge className={`${style.bg} text-white text-xs font-cairo shadow-sm`}>{cfg.label}</Badge>
+      <Badge className={`${style.bg} text-white text-xs font-cairo shadow-sm`}>{isAbsent ? t('absent') : t('present')}</Badge>
     </button>
   );
 }

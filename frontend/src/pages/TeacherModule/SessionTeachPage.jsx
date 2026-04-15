@@ -17,14 +17,15 @@ import {
   ThumbsDown, Minus, ChevronDown, BarChart2, MessageCircle,
   Smile, Frown, Activity, Heart, Send, Trophy, Sparkles,
   StickyNote, Plus, Trash2, PenLine, UserCheck,
-  Download, History, FileSpreadsheet
+  Download, History, FileSpreadsheet,
+  Settings, UsersRound, User, Table2, GripVertical, Search
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 import { useTranslation } from '../../contexts/ThemeContext';
 const GENDER_COLORS = {
-  male: { bg: 'bg-sky-600', ring: 'ring-sky-400', label: 'طلاب', icon: '👦', light: 'bg-sky-900/30' },
-  female: { bg: 'bg-pink-600', ring: 'ring-pink-400', label: 'طالبات', icon: '👧', light: 'bg-pink-900/30' },
+  male: { bg: 'bg-sky-600', ring: 'ring-sky-400', label: 'طلاب', icon: 'M', light: 'bg-sky-900/30' },
+  female: { bg: 'bg-pink-600', ring: 'ring-pink-400', label: 'طالبات', icon: 'F', light: 'bg-pink-900/30' },
 };
 
 const MODES = [
@@ -70,6 +71,7 @@ function useSessionTimer(startTimeStr) {
 
 export default function SessionTeachPage() {
   const { user, api, isRTL } = useAuth();
+  const { t } = useTranslation();
   const { nassaqError } = useNassaqAlert();
   const navigate = useNavigate();
   const location = useLocation();
@@ -102,6 +104,15 @@ export default function SessionTeachPage() {
   const [newNote, setNewNote] = useState('');
   const [noteType, setNoteType] = useState('session');
   const [liveMetrics, setLiveMetrics] = useState(null);
+  const [evalMode, setEvalMode] = useState('individual');
+  const [groups, setGroups] = useState([]);
+  const [showGroupModal, setShowGroupModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showFollowupRecord, setShowFollowupRecord] = useState(false);
+  const [followupData, setFollowupData] = useState({});
+  const [followupColumns, setFollowupColumns] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
   const flashRef = useRef(null);
   useEffect(() => { return () => { if (flashRef.current) clearInterval(flashRef.current); }; }, []);
   const timer = useSessionTimer(startTime);
@@ -222,9 +233,84 @@ export default function SessionTeachPage() {
     if (!sessionId) return;
     loadNotes();
     loadLiveMetrics();
+    loadFollowupRecord();
     const interval = setInterval(loadLiveMetrics, 30000);
     return () => clearInterval(interval);
   }, [sessionId, loadNotes, loadLiveMetrics]);
+
+  const autoSaveRef = useRef(null);
+  useEffect(() => {
+    if (!sessionId) return;
+    const saveState = () => {
+      try {
+        sessionStorage.setItem(`session_state_${sessionId}`, JSON.stringify({
+          evalMode, groups, stats, mode: mode?.id, actionTab, followupData, followupColumns
+        }));
+        if (Object.keys(followupData).length > 0) {
+          api.post(`/session/${sessionId}/followup-record`, {
+            columns: followupColumns, data: followupData
+          }).catch(() => {});
+        }
+      } catch (e) { /* ignore */ }
+    };
+    autoSaveRef.current = setInterval(saveState, 10000);
+    return () => { if (autoSaveRef.current) clearInterval(autoSaveRef.current); };
+  }, [sessionId, evalMode, groups, stats, mode, actionTab, followupData, followupColumns, api]);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    try {
+      const saved = sessionStorage.getItem(`session_state_${sessionId}`);
+      if (saved) {
+        const state = JSON.parse(saved);
+        if (state.evalMode) setEvalMode(state.evalMode);
+        if (state.groups?.length) setGroups(state.groups);
+        if (state.followupData && Object.keys(state.followupData).length > 0) setFollowupData(state.followupData);
+        if (state.followupColumns?.length) setFollowupColumns(state.followupColumns);
+      }
+    } catch (e) { /* ignore */ }
+  }, [sessionId]);
+
+  const autoGroupByLevel = (studentsList = null) => {
+    const list = studentsList || students.filter(s => s.attendance_status === 'present');
+    const levels = { high: [], medium: [], low: [], unassigned: [] };
+    list.forEach(s => {
+      const score = s.correct_answers || s.correctAnswers || 0;
+      const count = s.interaction_count || s.interactionCount || 0;
+      if (count >= 5 && score >= 3) levels.high.push(s);
+      else if (count >= 2) levels.medium.push(s);
+      else if (count > 0) levels.low.push(s);
+      else levels.unassigned.push(s);
+    });
+    const newGroups = [];
+    if (levels.high.length > 0) newGroups.push({ id: 'g-high', name: t('advancedLevel'), color: 'bg-green-600', students: levels.high.map(s => s.id) });
+    if (levels.medium.length > 0) newGroups.push({ id: 'g-medium', name: t('intermediateLevel'), color: 'bg-blue-600', students: levels.medium.map(s => s.id) });
+    if (levels.low.length > 0) newGroups.push({ id: 'g-low', name: t('beginnerLevel'), color: 'bg-amber-600', students: levels.low.map(s => s.id) });
+    setGroups(newGroups);
+    toast.success(t('groupsCreatedAutomatically'));
+  };
+
+  const loadFollowupRecord = useCallback(async () => {
+    if (!sessionId) return;
+    try {
+      const res = await api.get(`/session/${sessionId}/followup-record`);
+      setFollowupData(res.data?.data || {});
+      setFollowupColumns(res.data?.columns || [
+        { id: 'participation', name: t('participation'), maxGrade: 10 },
+        { id: 'homework', name: t('homework'), maxGrade: 10 },
+        { id: 'performance_task', name: t('performanceTask'), maxGrade: 10 },
+        { id: 'test', name: t('test'), maxGrade: 10 },
+      ]);
+    } catch (e) {
+      setFollowupData([]);
+      setFollowupColumns([
+        { id: 'participation', name: t('participation'), maxGrade: 10 },
+        { id: 'homework', name: t('homework'), maxGrade: 10 },
+        { id: 'performance_task', name: t('performanceTask'), maxGrade: 10 },
+        { id: 'test', name: t('test'), maxGrade: 10 },
+      ]);
+    }
+  }, [api, sessionId, t]);
 
   const [remainingMinutes, setRemainingMinutes] = useState(null);
 
@@ -573,6 +659,14 @@ export default function SessionTeachPage() {
   const hasGenderSplit = femaleStudents.length > 0 && maleStudents.length > 0;
   const accuracy = stats.questions > 0 ? Math.round((stats.correct / stats.questions) * 100) : 0;
 
+  const filteredStudents = searchQuery
+    ? presentStudents.filter(s => s.full_name?.toLowerCase().includes(searchQuery.toLowerCase()))
+    : presentStudents;
+  const getGroupForStudent = (studentId) => groups.find(g => g.students?.includes(studentId));
+  const unassignedStudents = evalMode === 'group'
+    ? filteredStudents.filter(s => !groups.some(g => g.students?.includes(s.id)))
+    : [];
+
   if (reviewData) {
     return (
       <SectionErrorBoundary name="SessionReviewPhase" isRTL={isRTL}>
@@ -617,7 +711,7 @@ export default function SessionTeachPage() {
                 {mode && (
                   <span className="hidden sm:inline-flex items-center gap-1 bg-green-500/20 text-green-400 text-[10px] px-2 py-0.5 rounded-full border border-green-500/30 animate-pulse">
                     <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
-                    يشرح الدرس الآن
+                    {t('teachingNow')}
                   </span>
                 )}
               </div>
@@ -628,24 +722,62 @@ export default function SessionTeachPage() {
           {/* Live stats bar */}
           <div className="hidden md:flex items-center gap-4 text-xs text-white/70">
             <span className="flex items-center gap-1">
-              <Users className="h-3.5 w-3.5" /> {presentStudents.length} حاضر
+              <Users className="h-3.5 w-3.5" /> {presentStudents.length} {t('present')}
             </span>
             <span className="flex items-center gap-1">
-              <Activity className="h-3.5 w-3.5" /> {stats.questions} سؤال
+              <Activity className="h-3.5 w-3.5" /> {stats.questions} {t('question')}
             </span>
             <span className={`flex items-center gap-1 ${accuracy >= 60 ? 'text-green-400' : 'text-red-400'}`}>
-              <BarChart2 className="h-3.5 w-3.5" /> {accuracy}% صحيح
+              <BarChart2 className="h-3.5 w-3.5" /> {accuracy}% {t('correct')}
             </span>
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Mode selector */}
+            <button
+              onClick={() => setShowSearch(v => !v)}
+              className="p-1.5 rounded-lg bg-white/10 text-white/60 hover:bg-white/20 transition-colors"
+              title={t('search')}
+            >
+              <Search className="h-3.5 w-3.5" />
+            </button>
+
+            <div className="hidden sm:flex items-center bg-white/10 rounded-lg p-0.5">
+              <button
+                onClick={() => setEvalMode('individual')}
+                className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition-colors ${
+                  evalMode === 'individual' ? 'bg-brand-turquoise text-white' : 'text-white/50 hover:text-white/80'
+                }`}
+              >
+                <User className="h-3 w-3" />
+                {t('individual')}
+              </button>
+              <button
+                onClick={() => setEvalMode('group')}
+                className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition-colors ${
+                  evalMode === 'group' ? 'bg-brand-turquoise text-white' : 'text-white/50 hover:text-white/80'
+                }`}
+              >
+                <UsersRound className="h-3 w-3" />
+                {t('groups')}
+              </button>
+            </div>
+
+            {evalMode === 'group' && (
+              <button
+                onClick={() => setShowGroupModal(true)}
+                className="p-1.5 rounded-lg bg-purple-600/30 text-purple-300 hover:bg-purple-600/50 transition-colors border border-purple-500/30"
+                title={t('manageGroups')}
+              >
+                <Settings className="h-3.5 w-3.5" />
+              </button>
+            )}
+
             <div className="flex gap-1">
               {MODES.map(m => (
                 <button
                   key={m.id}
                   onClick={() => handleSetMode(m)}
-                  className={`hidden sm:flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-all ${
+                  className={`hidden sm:flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
                     mode?.id === m.id ? `${m.color} text-white` : 'bg-white/10 text-white/60 hover:bg-white/20'
                   }`}
                 >
@@ -654,6 +786,13 @@ export default function SessionTeachPage() {
                 </button>
               ))}
             </div>
+            <button
+              onClick={() => setShowSettingsModal(true)}
+              className="p-1.5 rounded-lg bg-white/10 text-white/60 hover:bg-white/20 transition-colors"
+              title={t('evaluationSettings')}
+            >
+              <Settings className="h-3.5 w-3.5" />
+            </button>
             <Button
               size="sm"
               variant="destructive"
@@ -661,7 +800,7 @@ export default function SessionTeachPage() {
               onClick={() => setShowEndDialog(true)}
               disabled={reviewLoading}
             >
-              {reviewLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : 'إنهاء'}
+              {reviewLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : t('endSession')}
             </Button>
           </div>
         </div>
@@ -673,10 +812,10 @@ export default function SessionTeachPage() {
         }`}>
           <Clock className="h-4 w-4" />
           {timeWarning === 'ended'
-            ? 'انتهى وقت الحصة'
+            ? t('sessionTimeEnded')
             : remainingMinutes !== null
-              ? `تبقى ${remainingMinutes} ${remainingMinutes === 1 ? 'دقيقة' : 'دقائق'} على نهاية الحصة`
-              : 'تبقى 10 دقائق على نهاية الحصة'
+              ? `${t('timeRemaining')}: ${remainingMinutes} ${t('minutes')}`
+              : `${t('timeRemaining')}: 10 ${t('minutes')}`
           }
         </div>
       )}
@@ -686,6 +825,28 @@ export default function SessionTeachPage() {
 
         {/* ── Console (left 2/3) ── */}
         <div className="flex-1 flex flex-col overflow-hidden p-3 gap-3">
+
+          {/* Search bar */}
+          {showSearch && (
+            <div className="flex-none">
+              <div className="relative">
+                <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder={t('searchStudentByName')}
+                  className="w-full bg-white/10 text-white text-sm rounded-xl ps-10 pe-4 py-2.5 placeholder-white/30 outline-none border border-white/10 focus:border-brand-turquoise/50 transition-colors"
+                  autoFocus
+                />
+                {searchQuery && (
+                  <button onClick={() => setSearchQuery('')} className="absolute end-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white">
+                    <XCircle className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Hakim AI Selection Overlay */}
           {showHakim && (
@@ -705,7 +866,7 @@ export default function SessionTeachPage() {
           <button
             onClick={selectRandom}
             disabled={loading}
-            className={`flex-none w-full h-14 rounded-xl font-cairo font-bold text-white text-base flex items-center justify-center gap-2 shadow-lg hover:opacity-90 active:scale-95 transition-all disabled:opacity-60 ${
+            className={`flex-none w-full h-14 rounded-xl font-cairo font-bold text-white text-base flex items-center justify-center gap-2 shadow-lg hover:opacity-90 active:scale-95 transition-colors disabled:opacity-60 ${
               selectedStudent
                 ? 'bg-gradient-to-r from-amber-500 to-orange-600'
                 : 'bg-gradient-to-r from-brand-turquoise to-brand-navy'
@@ -716,7 +877,7 @@ export default function SessionTeachPage() {
             ) : selectedStudent ? (
               <><Shuffle className="h-5 w-5" /> اختيار عشوائي آخر</>
             ) : (
-              <><Shuffle className="h-5 w-5" /> اختيار طالب عشوائي</>
+              <><Shuffle className="h-5 w-5" /> {t('randomStudentPick')}</>
             )}
           </button>
 
@@ -724,7 +885,7 @@ export default function SessionTeachPage() {
           <div className="sm:hidden grid grid-cols-3 gap-2">
             {MODES.map(m => (
               <button key={m.id} onClick={() => handleSetMode(m)}
-                className={`rounded-lg py-2 text-xs font-medium flex flex-col items-center gap-1 transition-all ${
+                className={`rounded-lg py-2 text-xs font-medium flex flex-col items-center gap-1 transition-colors ${
                   mode?.id === m.id ? `${m.color} text-white ring-2 ring-white/30` : 'bg-white/10 text-white/60'
                 }`}>
                 <m.icon className="h-4 w-4" />
@@ -748,9 +909,9 @@ export default function SessionTeachPage() {
                   mode.id === 'review' ? 'text-purple-300' :
                   mode.id === 'homework' ? 'text-blue-300' : 'text-amber-300'
                 }`}>
-                  {mode.id === 'review' ? 'نمط المراجعة — مراجعة الدرس والمشاركة الصفية' :
-                   mode.id === 'homework' ? 'نمط الواجب — متابعة حل الواجبات (حل / ما حل)' :
-                   'نمط الاختبار — أسئلة سريعة وتقييم الإجابات'}
+                  {mode.id === 'review' ? t('reviewModeDesc') :
+                   mode.id === 'homework' ? t('homeworkModeDesc') :
+                   t('quizModeDesc')}
                 </span>
               </div>
               <span className={`w-2 h-2 rounded-full animate-pulse ${
@@ -760,17 +921,64 @@ export default function SessionTeachPage() {
             </div>
           )}
 
-          {/* Student grid — gender split */}
+          {/* Student grid — individual or group mode */}
           <div className="flex-1 overflow-y-auto">
             {!mode ? (
               <div className="h-full flex items-center justify-center text-white/40 text-sm">
-                اختر نمط الحصة أعلاه للبدء
+                {t('selectSessionModeToStart')}
+              </div>
+            ) : evalMode === 'group' && groups.length > 0 ? (
+              <div className="space-y-3">
+                {groups.map(group => {
+                  const groupStudents = filteredStudents.filter(s => group.students?.includes(s.id));
+                  if (groupStudents.length === 0) return null;
+                  return (
+                    <div key={group.id}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className={`w-3 h-3 rounded-full ${group.color}`} />
+                        <span className="text-white/70 text-xs font-medium font-cairo">{group.name} ({groupStudents.length})</span>
+                        <div className="flex-1 h-px bg-white/10" />
+                      </div>
+                      <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2">
+                        {groupStudents.map((student) => (
+                          <StudentCard
+                            key={student.id}
+                            student={student}
+                            isFlashing={flashId === student.id}
+                            isSelected={selectedStudent?.id === student.id}
+                            onClick={() => handleStudentClick(student)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+                {unassignedStudents.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="w-3 h-3 rounded-full bg-slate-500" />
+                      <span className="text-white/50 text-xs font-medium font-cairo">{t('unassigned')} ({unassignedStudents.length})</span>
+                      <div className="flex-1 h-px bg-white/10" />
+                    </div>
+                    <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2">
+                      {unassignedStudents.map((student) => (
+                        <StudentCard
+                          key={student.id}
+                          student={student}
+                          isFlashing={flashId === student.id}
+                          isSelected={selectedStudent?.id === student.id}
+                          onClick={() => handleStudentClick(student)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             ) : hasGenderSplit ? (
               <div className="space-y-3">
                 {[
-                  { key: 'male', students: maleStudents },
-                  { key: 'female', students: femaleStudents },
+                  { key: 'male', students: searchQuery ? filteredStudents.filter(s => s.gender !== 'female') : maleStudents },
+                  { key: 'female', students: searchQuery ? filteredStudents.filter(s => s.gender === 'female') : femaleStudents },
                 ].filter(g => g.students.length > 0).map(group => {
                   const gc = GENDER_COLORS[group.key];
                   return (
@@ -797,7 +1005,7 @@ export default function SessionTeachPage() {
               </div>
             ) : (
               <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2">
-                {presentStudents.map((student) => (
+                {filteredStudents.map((student) => (
                   <StudentCard
                     key={student.id}
                     student={student}
@@ -836,15 +1044,15 @@ export default function SessionTeachPage() {
                 <div className="flex items-center gap-3 mt-2">
                   <div className="flex-1 bg-white/5 rounded-lg px-2 py-1 text-center">
                     <div className="text-blue-400 text-xs font-bold">{selectedStudent.participation_count || selectedStudent.interactionCount || 0}</div>
-                    <div className="text-white/30 text-[9px]">مشاركات</div>
+                    <div className="text-white/30 text-[9px]">{t('participations')}</div>
                   </div>
                   <div className="flex-1 bg-white/5 rounded-lg px-2 py-1 text-center">
                     <div className="text-green-400 text-xs font-bold">{selectedStudent.correct_answers || selectedStudent.correctAnswers || 0}</div>
-                    <div className="text-white/30 text-[9px]">صحيحة</div>
+                    <div className="text-white/30 text-[9px]">{t('correct')}</div>
                   </div>
                   <div className="flex-1 bg-white/5 rounded-lg px-2 py-1 text-center">
                     <div className="text-purple-400 text-xs font-bold">{selectedStudent.interaction_count || selectedStudent.interactionCount || 0}</div>
-                    <div className="text-white/30 text-[9px]">تفاعلات</div>
+                    <div className="text-white/30 text-[9px]">{t('interaction')}</div>
                   </div>
                 </div>
               </div>
@@ -940,7 +1148,7 @@ export default function SessionTeachPage() {
                           <button
                             key={student.id}
                             onClick={() => toggleHomework(student.id)}
-                            className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-all active:scale-[0.97] ${
+                            className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors active:scale-[0.97] ${
                               isDone
                                 ? 'bg-green-600/20 border border-green-500/30'
                                 : 'bg-white/5 border border-white/10 hover:border-white/20'
@@ -981,7 +1189,7 @@ export default function SessionTeachPage() {
                         <button
                           key={cat.id}
                           onClick={() => setBehaviourCategory(cat.id)}
-                          className={`flex-1 py-1.5 rounded text-xs font-medium text-white transition-all ${
+                          className={`flex-1 py-1.5 rounded text-xs font-medium text-white transition-colors ${
                             behaviourCategory === cat.id ? cat.color : 'bg-white/10 text-white/60'
                           }`}
                         >
@@ -994,7 +1202,7 @@ export default function SessionTeachPage() {
                         <button
                           key={b.id}
                           onClick={() => recordBehaviour(b)}
-                          className="bg-white/10 hover:bg-white/20 text-white rounded-lg py-2 px-1 text-xs text-center transition-all"
+                          className="bg-white/10 hover:bg-white/20 text-white rounded-lg py-2 px-1 text-xs text-center transition-colors"
                         >
                           <div className="font-medium truncate">{b.label}</div>
                           <div className={`text-[10px] mt-0.5 ${b.points.startsWith('-') ? 'text-red-400' : 'text-green-400'}`}>{b.points}</div>
@@ -1017,7 +1225,7 @@ export default function SessionTeachPage() {
                         <button
                           key={skill.id}
                           onClick={() => recordSkill(skill)}
-                          className="bg-purple-900/40 hover:bg-purple-800/60 text-white rounded-lg py-2 px-1 text-xs text-center transition-all border border-purple-500/20"
+                          className="bg-purple-900/40 hover:bg-purple-800/60 text-white rounded-lg py-2 px-1 text-xs text-center transition-colors border border-purple-500/20"
                         >
                           <div className="font-medium truncate">{skill.name_ar || skill.name}</div>
                           <div className="text-[10px] mt-0.5 text-purple-300">+3</div>
@@ -1136,7 +1344,7 @@ export default function SessionTeachPage() {
                     <button
                       key={nt.id}
                       onClick={() => setNoteType(nt.id)}
-                      className={`flex-1 py-1 rounded text-[10px] font-medium transition-all ${
+                      className={`flex-1 py-1 rounded text-[10px] font-medium transition-colors ${
                         noteType === nt.id ? 'bg-amber-600 text-white' : 'bg-white/10 text-white/50'
                       }`}
                     >
@@ -1161,7 +1369,7 @@ export default function SessionTeachPage() {
                   <button
                     onClick={addNote}
                     disabled={!newNote.trim()}
-                    className="bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white rounded px-2 py-1.5 transition-all"
+                    className="bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white rounded px-2 py-1.5 transition-colors"
                   >
                     <Plus className="h-3.5 w-3.5" />
                   </button>
@@ -1187,39 +1395,39 @@ export default function SessionTeachPage() {
                       </div>
                     </div>
                     <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">
-                      <div className="h-full bg-green-500 transition-all" style={{ width: `${liveMetrics.attendance?.rate || 0}%` }} />
+                      <div className="h-full bg-green-500 transition-colors" style={{ width: `${liveMetrics.attendance?.rate || 0}%` }} />
                     </div>
-                    <div className="text-center text-white/50 text-[10px]">{liveMetrics.attendance?.rate || 0}% حضور</div>
+                    <div className="text-center text-white/50 text-[10px]">{liveMetrics.attendance?.rate || 0}% {t('present')}</div>
                   </div>
 
                   <div className="bg-white/5 rounded-lg p-3 space-y-2">
-                    <h4 className="text-white/60 text-[10px] font-medium uppercase tracking-wider">التفاعل</h4>
+                    <h4 className="text-white/60 text-[10px] font-medium uppercase tracking-wider">{t('interaction')}</h4>
                     <div className="grid grid-cols-3 gap-2 text-center">
                       <div>
                         <div className="text-blue-400 text-lg font-bold">{liveMetrics.interaction?.total_questions || 0}</div>
-                        <div className="text-white/40 text-[10px]">أسئلة</div>
+                        <div className="text-white/40 text-[10px]">{t('questions')}</div>
                       </div>
                       <div>
                         <div className="text-green-400 text-lg font-bold">{liveMetrics.interaction?.correct_answers || 0}</div>
-                        <div className="text-white/40 text-[10px]">صحيح</div>
+                        <div className="text-white/40 text-[10px]">{t('correct')}</div>
                       </div>
                       <div>
                         <div className="text-red-400 text-lg font-bold">{liveMetrics.interaction?.wrong_answers || 0}</div>
-                        <div className="text-white/40 text-[10px]">خطأ</div>
+                        <div className="text-white/40 text-[10px]">{t('error')}</div>
                       </div>
                     </div>
                     <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">
-                      <div className="h-full bg-blue-500 transition-all" style={{ width: `${liveMetrics.interaction?.accuracy_rate || 0}%` }} />
+                      <div className="h-full bg-blue-500 transition-colors" style={{ width: `${liveMetrics.interaction?.accuracy_rate || 0}%` }} />
                     </div>
-                    <div className="text-center text-white/50 text-[10px]">{liveMetrics.interaction?.accuracy_rate || 0}% دقة</div>
+                    <div className="text-center text-white/50 text-[10px]">{liveMetrics.interaction?.accuracy_rate || 0}% {t('accuracy')}</div>
                   </div>
 
                   <div className="bg-white/5 rounded-lg p-3 space-y-2">
-                    <h4 className="text-white/60 text-[10px] font-medium uppercase tracking-wider">المشاركة</h4>
+                    <h4 className="text-white/60 text-[10px] font-medium uppercase tracking-wider">{t('participationLabel')}</h4>
                     <div className="grid grid-cols-2 gap-2 text-center">
                       <div>
                         <div className="text-purple-400 text-lg font-bold">{liveMetrics.interaction?.unique_participants || 0}</div>
-                        <div className="text-white/40 text-[10px]">مشارك</div>
+                        <div className="text-white/40 text-[10px]">{t('participant')}</div>
                       </div>
                       <div>
                         <div className="text-amber-400 text-lg font-bold">{liveMetrics.interaction?.not_interacted || 0}</div>
@@ -1227,7 +1435,7 @@ export default function SessionTeachPage() {
                       </div>
                     </div>
                     <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">
-                      <div className="h-full bg-purple-500 transition-all" style={{ width: `${liveMetrics.interaction?.participation_rate || 0}%` }} />
+                      <div className="h-full bg-purple-500 transition-colors" style={{ width: `${liveMetrics.interaction?.participation_rate || 0}%` }} />
                     </div>
                   </div>
 
@@ -1263,14 +1471,38 @@ export default function SessionTeachPage() {
         </div>
       </div>
 
+      {/* Follow-up record bottom bar */}
+      <div className="flex-none bg-slate-800 border-t border-white/10 px-4 py-2 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowFollowupRecord(true)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-brand-turquoise/20 text-brand-turquoise text-xs font-medium hover:bg-brand-turquoise/30 transition-colors border border-brand-turquoise/30"
+          >
+            <Table2 className="h-3.5 w-3.5" />
+            {t('followupRecord')}
+          </button>
+          {evalMode === 'group' && groups.length > 0 && (
+            <span className="text-white/40 text-[10px]">
+              {groups.length} {t('groups')} | {unassignedStudents.length} {t('unassigned')}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2 text-white/30 text-[10px]">
+          <span className="flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+            {t('autoSaveActive')}
+          </span>
+        </div>
+      </div>
+
       {/* End Session Confirmation Dialog */}
       <Dialog open={showEndDialog} onOpenChange={setShowEndDialog}>
         <DialogContent className="max-w-sm" dir={isRTL ? 'rtl' : 'ltr'}>
           <DialogHeader>
-            <DialogTitle className="font-cairo text-center">إنهاء الحصة</DialogTitle>
+            <DialogTitle className="font-cairo text-center">{t('endSession')}</DialogTitle>
           </DialogHeader>
           <p className="text-center text-muted-foreground text-sm py-2">
-            سيتم عرض ملخص الحصة للمراجعة قبل الإنهاء النهائي.
+            {t('endSessionConfirmDesc')}
           </p>
           {(() => {
             const ops = checkPendingOps();
@@ -1288,14 +1520,270 @@ export default function SessionTeachPage() {
             ) : null;
           })()}
           <div className="flex gap-2">
-            <Button variant="outline" className="flex-1" onClick={() => setShowEndDialog(false)}>إلغاء</Button>
+            <Button variant="outline" className="flex-1" onClick={() => setShowEndDialog(false)}>{t('cancel')}</Button>
             <Button
               className="flex-1 bg-red-600 hover:bg-red-700"
               onClick={startEndReview}
               disabled={reviewLoading}
             >
-              {reviewLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'مراجعة وإنهاء'}
+              {reviewLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : t('reviewAndEnd')}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Group Management Modal */}
+      <Dialog open={showGroupModal} onOpenChange={setShowGroupModal}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto" dir={isRTL ? 'rtl' : 'ltr'}>
+          <DialogHeader>
+            <DialogTitle className="font-cairo flex items-center gap-2">
+              <UsersRound className="h-5 w-5 text-purple-500" />
+              {t('manageGroups')}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <button
+              onClick={() => autoGroupByLevel()}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600/20 text-purple-400 text-sm font-medium hover:bg-purple-600/30 transition-colors border border-purple-500/30"
+            >
+              <Zap className="h-4 w-4" />
+              {t('autoGroupByLevel')}
+            </button>
+
+            {groups.map((group, gi) => (
+              <div key={group.id} className="bg-slate-100 dark:bg-slate-800 rounded-xl p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-3 h-3 rounded-full ${group.color}`} />
+                    <input
+                      value={group.name}
+                      onChange={e => {
+                        const updated = [...groups];
+                        updated[gi] = { ...updated[gi], name: e.target.value };
+                        setGroups(updated);
+                      }}
+                      className="bg-transparent text-sm font-cairo font-bold outline-none border-b border-transparent focus:border-brand-turquoise w-32"
+                    />
+                    <span className="text-xs text-muted-foreground">({group.students?.length || 0})</span>
+                  </div>
+                  <button
+                    onClick={() => setGroups(groups.filter((_, i) => i !== gi))}
+                    className="p-1 text-red-400 hover:text-red-500"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {(group.students || []).map(sid => {
+                    const st = presentStudents.find(s => s.id === sid);
+                    if (!st) return null;
+                    return (
+                      <span key={sid} className="inline-flex items-center gap-1 bg-white dark:bg-slate-700 px-2 py-1 rounded-lg text-[11px]">
+                        {st.full_name?.split(' ').slice(0, 2).join(' ')}
+                        <button
+                          onClick={() => {
+                            const updated = [...groups];
+                            updated[gi] = { ...updated[gi], students: updated[gi].students.filter(id => id !== sid) };
+                            setGroups(updated);
+                          }}
+                          className="text-red-400 hover:text-red-500"
+                        >
+                          <XCircle className="h-3 w-3" />
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+                <select
+                  className="w-full text-xs p-1.5 rounded-lg border bg-white dark:bg-slate-700 dark:border-slate-600"
+                  value=""
+                  onChange={e => {
+                    if (!e.target.value) return;
+                    const sid = parseInt(e.target.value);
+                    const updated = groups.map((g, i) => ({
+                      ...g,
+                      students: i === gi
+                        ? [...(g.students || []), sid]
+                        : (g.students || []).filter(id => id !== sid)
+                    }));
+                    setGroups(updated);
+                  }}
+                >
+                  <option value="">{t('addStudentToGroup')}</option>
+                  {presentStudents
+                    .filter(s => !group.students?.includes(s.id))
+                    .map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
+                </select>
+              </div>
+            ))}
+
+            <button
+              onClick={() => setGroups([...groups, {
+                id: `group_${Date.now()}`,
+                name: `${t('group')} ${groups.length + 1}`,
+                color: ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-orange-500', 'bg-pink-500', 'bg-cyan-500'][groups.length % 6],
+                students: []
+              }])}
+              className="w-full flex items-center justify-center gap-2 py-2 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 text-muted-foreground text-sm hover:border-brand-turquoise hover:text-brand-turquoise transition-colors"
+            >
+              <Plus className="h-4 w-4" />
+              {t('addNewGroup')}
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Evaluation Settings Modal */}
+      <Dialog open={showSettingsModal} onOpenChange={setShowSettingsModal}>
+        <DialogContent className="max-w-md" dir={isRTL ? 'rtl' : 'ltr'}>
+          <DialogHeader>
+            <DialogTitle className="font-cairo flex items-center gap-2">
+              <Settings className="h-5 w-5 text-brand-turquoise" />
+              {t('evaluationSettings')}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">{t('evaluationMode')}</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setEvalMode('individual')}
+                  className={`flex items-center justify-center gap-2 p-3 rounded-xl border-2 text-sm font-medium transition-colors ${
+                    evalMode === 'individual' ? 'border-brand-turquoise bg-brand-turquoise/10 text-brand-turquoise' : 'border-slate-200 dark:border-slate-700'
+                  }`}
+                >
+                  <User className="h-4 w-4" />
+                  {t('individual')}
+                </button>
+                <button
+                  onClick={() => setEvalMode('group')}
+                  className={`flex items-center justify-center gap-2 p-3 rounded-xl border-2 text-sm font-medium transition-colors ${
+                    evalMode === 'group' ? 'border-brand-turquoise bg-brand-turquoise/10 text-brand-turquoise' : 'border-slate-200 dark:border-slate-700'
+                  }`}
+                >
+                  <UsersRound className="h-4 w-4" />
+                  {t('groups')}
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">{t('followupColumns')}</label>
+              {followupColumns.map((col, ci) => (
+                <div key={col.id} className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 rounded-lg p-2">
+                  <GripVertical className="h-3.5 w-3.5 text-muted-foreground flex-none" />
+                  <input
+                    value={col.name}
+                    onChange={e => {
+                      const updated = [...followupColumns];
+                      updated[ci] = { ...updated[ci], name: e.target.value };
+                      setFollowupColumns(updated);
+                    }}
+                    className="flex-1 bg-transparent text-sm outline-none"
+                  />
+                  <input
+                    type="number"
+                    value={col.maxGrade}
+                    onChange={e => {
+                      const updated = [...followupColumns];
+                      updated[ci] = { ...updated[ci], maxGrade: parseInt(e.target.value) || 0 };
+                      setFollowupColumns(updated);
+                    }}
+                    className="w-14 text-center text-xs bg-white dark:bg-slate-700 rounded border px-1 py-0.5"
+                    min={0}
+                    max={100}
+                  />
+                  <span className="text-[10px] text-muted-foreground">{t('maxGrade')}</span>
+                  {followupColumns.length > 1 && (
+                    <button onClick={() => setFollowupColumns(followupColumns.filter((_, i) => i !== ci))} className="text-red-400 hover:text-red-500">
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  )}
+                </div>
+              ))}
+              <button
+                onClick={() => setFollowupColumns([...followupColumns, {
+                  id: `col_${Date.now()}`,
+                  name: t('newColumn'),
+                  maxGrade: 10,
+                  type: 'grade'
+                }])}
+                className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-600 text-muted-foreground text-xs hover:text-brand-turquoise hover:border-brand-turquoise transition-colors"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                {t('addColumn')}
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Follow-up Record (كشف المتابعة) Dialog */}
+      <Dialog open={showFollowupRecord} onOpenChange={setShowFollowupRecord}>
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-hidden flex flex-col" dir={isRTL ? 'rtl' : 'ltr'}>
+          <DialogHeader>
+            <DialogTitle className="font-cairo flex items-center gap-2">
+              <FileSpreadsheet className="h-5 w-5 text-brand-turquoise" />
+              {t('followupRecord')}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead className="sticky top-0 bg-slate-100 dark:bg-slate-800">
+                <tr>
+                  <th className="border px-3 py-2 text-start font-cairo font-bold text-xs">#</th>
+                  <th className="border px-3 py-2 text-start font-cairo font-bold text-xs">{t('studentName')}</th>
+                  {followupColumns.map(col => (
+                    <th key={col.id} className="border px-3 py-2 text-center font-cairo font-bold text-xs">
+                      <div>{col.name}</div>
+                      <div className="text-[10px] text-muted-foreground font-normal">/{col.maxGrade}</div>
+                    </th>
+                  ))}
+                  <th className="border px-3 py-2 text-center font-cairo font-bold text-xs">{t('total')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {presentStudents.map((student, si) => {
+                  const studentData = followupData[student.id] || {};
+                  const total = followupColumns.reduce((sum, col) => sum + (studentData[col.id] || 0), 0);
+                  const maxTotal = followupColumns.reduce((sum, col) => sum + col.maxGrade, 0);
+                  return (
+                    <tr key={student.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                      <td className="border px-3 py-1.5 text-xs text-muted-foreground">{si + 1}</td>
+                      <td className="border px-3 py-1.5 text-xs font-medium">{student.full_name}</td>
+                      {followupColumns.map(col => (
+                        <td key={col.id} className="border px-1 py-1">
+                          <input
+                            type="number"
+                            value={studentData[col.id] || ''}
+                            onChange={e => {
+                              const val = Math.min(parseInt(e.target.value) || 0, col.maxGrade);
+                              setFollowupData(prev => ({
+                                ...prev,
+                                [student.id]: { ...(prev[student.id] || {}), [col.id]: val }
+                              }));
+                            }}
+                            className="w-full text-center text-xs bg-transparent outline-none border rounded p-1 focus:border-brand-turquoise"
+                            min={0}
+                            max={col.maxGrade}
+                          />
+                        </td>
+                      ))}
+                      <td className="border px-3 py-1.5 text-center text-xs font-bold">
+                        <span className={total >= maxTotal * 0.6 ? 'text-green-600' : total >= maxTotal * 0.3 ? 'text-amber-600' : 'text-red-600'}>
+                          {total}
+                        </span>
+                        <span className="text-muted-foreground">/{maxTotal}</span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex-none pt-3 border-t flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">{presentStudents.length} {t('students')}</span>
+            <Button size="sm" onClick={() => setShowFollowupRecord(false)}>{t('close')}</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -1305,21 +1793,22 @@ export default function SessionTeachPage() {
 }
 
 function SessionReviewPhase({ reviewData, sessionInfo, closingNote, setClosingNote, onConfirm, onBack, loading, isRTL }) {
+  const { t } = useTranslation();
   const r = reviewData;
   return (
     <div className="min-h-screen bg-slate-900 p-4 flex items-center justify-center" dir={isRTL ? 'rtl' : 'ltr'}>
       <div className="w-full max-w-lg space-y-4 pb-6 max-h-screen overflow-y-auto">
         <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-5 border border-white/10 text-center">
           <ClipboardCheck className="h-12 w-12 mx-auto mb-2 text-amber-400" />
-          <h1 className="font-cairo text-xl font-bold text-white">مراجعة ملخص الحصة</h1>
+          <h1 className="font-cairo text-xl font-bold text-white">{t('sessionSummaryReview')}</h1>
           <p className="text-white/50 text-sm mt-1">{sessionInfo?.subject_name || sessionInfo?.subjectName} — {sessionInfo?.class_name || sessionInfo?.className}</p>
-          <div className="mt-3 text-2xl font-mono font-bold text-white">{r.duration_minutes || 0} <span className="text-sm text-white/50">دقيقة</span></div>
+          <div className="mt-3 text-2xl font-mono font-bold text-white">{r.duration_minutes || 0} <span className="text-sm text-white/50">{t('durationMinutes')}</span></div>
         </div>
 
         {r.warnings?.length > 0 && (
           <div className="bg-amber-900/30 border border-amber-500/30 rounded-xl p-4 space-y-2">
             <h3 className="text-amber-400 text-sm font-bold font-cairo flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4" /> تنبيهات
+              <AlertTriangle className="h-4 w-4" /> {t('warnings')}
             </h3>
             {r.warnings.map((w, i) => (
               <div key={i} className="flex items-center gap-2 text-amber-300 text-xs">
@@ -1332,16 +1821,16 @@ function SessionReviewPhase({ reviewData, sessionInfo, closingNote, setClosingNo
 
         <div className="bg-slate-800 rounded-xl p-4">
           <h3 className="text-white/70 text-sm mb-3 font-cairo font-bold flex items-center gap-2">
-            <Users className="h-4 w-4 text-green-400" /> بيانات الحضور
+            <Users className="h-4 w-4 text-green-400" /> {t('attendanceData')}
           </h3>
           <div className="grid grid-cols-3 gap-2">
             {[
-              { label: 'مسجلين', value: r.attendance?.total, color: 'text-white' },
-              { label: 'حاضر', value: r.attendance?.present, color: 'text-green-400' },
-              { label: 'غائب', value: r.attendance?.absent, color: 'text-red-400' },
-              { label: 'متأخر', value: r.attendance?.late, color: 'text-amber-400' },
-              { label: 'مستأذن', value: r.attendance?.excused, color: 'text-blue-400' },
-              { label: 'نسبة الحضور', value: `${r.attendance?.rate || 0}%`, color: 'text-emerald-400' },
+              { label: t('registered'), value: r.attendance?.total, color: 'text-white' },
+              { label: t('present'), value: r.attendance?.present, color: 'text-green-400' },
+              { label: t('absent'), value: r.attendance?.absent, color: 'text-red-400' },
+              { label: t('late'), value: r.attendance?.late, color: 'text-amber-400' },
+              { label: t('excused'), value: r.attendance?.excused, color: 'text-blue-400' },
+              { label: t('attendanceRate'), value: `${r.attendance?.rate || 0}%`, color: 'text-emerald-400' },
             ].map(item => (
               <div key={item.label} className="bg-white/5 rounded-lg p-2 text-center">
                 <div className={`text-lg font-bold ${item.color}`}>{item.value ?? 0}</div>
@@ -1353,16 +1842,16 @@ function SessionReviewPhase({ reviewData, sessionInfo, closingNote, setClosingNo
 
         <div className="bg-slate-800 rounded-xl p-4">
           <h3 className="text-white/70 text-sm mb-3 font-cairo font-bold flex items-center gap-2">
-            <Activity className="h-4 w-4 text-blue-400" /> بيانات التفاعل
+            <Activity className="h-4 w-4 text-blue-400" /> {t('interactionData')}
           </h3>
           <div className="grid grid-cols-3 gap-2">
             {[
-              { label: 'مشاركات', value: r.interactions?.total_participations, color: 'text-blue-400' },
-              { label: 'طلاب شاركوا', value: r.interactions?.participating_students, color: 'text-purple-400' },
-              { label: 'أسئلة', value: r.interactions?.questions_asked, color: 'text-cyan-400' },
-              { label: 'إجابات صحيحة', value: r.interactions?.correct_answers, color: 'text-green-400' },
-              { label: 'إجابات خاطئة', value: r.interactions?.wrong_answers, color: 'text-red-400' },
-              { label: 'معدل المشاركة', value: `${r.interactions?.participation_rate || 0}%`, color: 'text-emerald-400' },
+              { label: t('participations'), value: r.interactions?.total_participations, color: 'text-blue-400' },
+              { label: t('participatingStudents'), value: r.interactions?.participating_students, color: 'text-purple-400' },
+              { label: t('questions'), value: r.interactions?.questions_asked, color: 'text-cyan-400' },
+              { label: t('correctAnswers'), value: r.interactions?.correct_answers, color: 'text-green-400' },
+              { label: t('wrongAnswers'), value: r.interactions?.wrong_answers, color: 'text-red-400' },
+              { label: t('participationRate'), value: `${r.interactions?.participation_rate || 0}%`, color: 'text-emerald-400' },
             ].map(item => (
               <div key={item.label} className="bg-white/5 rounded-lg p-2 text-center">
                 <div className={`text-lg font-bold ${item.color}`}>{item.value ?? 0}</div>
@@ -1375,18 +1864,18 @@ function SessionReviewPhase({ reviewData, sessionInfo, closingNote, setClosingNo
         {(r.behaviours?.total > 0) && (
           <div className="bg-slate-800 rounded-xl p-4">
             <h3 className="text-white/70 text-sm mb-3 font-cairo font-bold flex items-center gap-2">
-              <Heart className="h-4 w-4 text-pink-400" /> بيانات السلوك
+              <Heart className="h-4 w-4 text-pink-400" /> {t('behaviourData')}
             </h3>
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-green-900/30 rounded-lg p-3 text-center">
                 <ThumbsUp className="h-5 w-5 text-green-400 mx-auto mb-1" />
                 <div className="text-xl font-bold text-green-400">{r.behaviours?.positive || 0}</div>
-                <div className="text-white/50 text-[10px]">سلوك إيجابي</div>
+                <div className="text-white/50 text-[10px]">{t('positiveBehaviour')}</div>
               </div>
               <div className="bg-red-900/30 rounded-lg p-3 text-center">
                 <ThumbsDown className="h-5 w-5 text-red-400 mx-auto mb-1" />
                 <div className="text-xl font-bold text-red-400">{r.behaviours?.negative || 0}</div>
-                <div className="text-white/50 text-[10px]">سلوك سلبي</div>
+                <div className="text-white/50 text-[10px]">{t('negativeBehaviour')}</div>
               </div>
             </div>
           </div>
@@ -1395,16 +1884,16 @@ function SessionReviewPhase({ reviewData, sessionInfo, closingNote, setClosingNo
         {(r.skills?.recorded > 0) && (
           <div className="bg-slate-800 rounded-xl p-4">
             <h3 className="text-white/70 text-sm mb-3 font-cairo font-bold flex items-center gap-2">
-              <Star className="h-4 w-4 text-purple-400" /> بيانات المهارات
+              <Star className="h-4 w-4 text-purple-400" /> {t('skillsData')}
             </h3>
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-purple-900/30 rounded-lg p-3 text-center">
                 <div className="text-xl font-bold text-purple-400">{r.skills?.recorded}</div>
-                <div className="text-white/50 text-[10px]">مهارة مسجلة</div>
+                <div className="text-white/50 text-[10px]">{t('recordedSkill')}</div>
               </div>
               <div className="bg-indigo-900/30 rounded-lg p-3 text-center">
                 <div className="text-xl font-bold text-indigo-400">{r.skills?.students_count}</div>
-                <div className="text-white/50 text-[10px]">طالب</div>
+                <div className="text-white/50 text-[10px]">{t('student')}</div>
               </div>
             </div>
           </div>
@@ -1412,16 +1901,16 @@ function SessionReviewPhase({ reviewData, sessionInfo, closingNote, setClosingNo
 
         <div className="bg-slate-800 rounded-xl p-4">
           <h3 className="text-white/70 text-sm mb-3 font-cairo font-bold flex items-center gap-2">
-            <StickyNote className="h-4 w-4 text-amber-400" /> الملاحظات
+            <StickyNote className="h-4 w-4 text-amber-400" /> {t('notesLabel')}
           </h3>
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-amber-900/30 rounded-lg p-3 text-center">
               <div className="text-xl font-bold text-amber-400">{r.notes?.total || 0}</div>
-              <div className="text-white/50 text-[10px]">إجمالي الملاحظات</div>
+              <div className="text-white/50 text-[10px]">{t('totalNotes')}</div>
             </div>
             <div className="bg-orange-900/30 rounded-lg p-3 text-center">
               <div className="text-xl font-bold text-orange-400">{r.notes?.teacher_notes || 0}</div>
-              <div className="text-white/50 text-[10px]">ملاحظات المعلم</div>
+              <div className="text-white/50 text-[10px]">{t('teacherNotes')}</div>
             </div>
           </div>
         </div>
@@ -1429,7 +1918,7 @@ function SessionReviewPhase({ reviewData, sessionInfo, closingNote, setClosingNo
         {r.needs_attention?.length > 0 && (
           <div className="bg-slate-800 rounded-xl p-4">
             <h3 className="text-white/70 text-sm mb-3 font-cairo font-bold flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-amber-400" /> يحتاج متابعة
+              <AlertTriangle className="h-4 w-4 text-amber-400" /> {t('needsAttention')}
             </h3>
             {r.needs_attention.map((s, i) => (
               <div key={i} className="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
@@ -1443,7 +1932,7 @@ function SessionReviewPhase({ reviewData, sessionInfo, closingNote, setClosingNo
         {r.top_participants?.length > 0 && (
           <div className="bg-slate-800 rounded-xl p-4">
             <h3 className="text-white/70 text-sm mb-3 font-cairo font-bold flex items-center gap-2">
-              <Award className="h-4 w-4 text-amber-400" /> الأكثر تفاعلاً
+              <Award className="h-4 w-4 text-amber-400" /> {t('topParticipants')}
             </h3>
             {r.top_participants.map((p, i) => (
               <div key={i} className="flex items-center justify-between py-1.5">
@@ -1451,7 +1940,7 @@ function SessionReviewPhase({ reviewData, sessionInfo, closingNote, setClosingNo
                   <span className="text-amber-400 text-xs font-bold w-5">#{i + 1}</span>
                   <span className="text-white text-sm">{p.name}</span>
                 </div>
-                <span className="text-green-400 text-xs">{p.correct_answers} ✓ | {p.participations} مشاركة</span>
+                <span className="text-green-400 text-xs">{p.correct_answers} ✓ | {p.participations} {t('participation')}</span>
               </div>
             ))}
           </div>
@@ -1459,32 +1948,31 @@ function SessionReviewPhase({ reviewData, sessionInfo, closingNote, setClosingNo
 
         <div className="bg-slate-800 rounded-xl p-4">
           <h3 className="text-white/70 text-sm mb-3 font-cairo font-bold flex items-center gap-2">
-            <PenLine className="h-4 w-4 text-cyan-400" /> ملاحظة ختامية
+            <PenLine className="h-4 w-4 text-cyan-400" /> {t('closingNoteLabel')}
           </h3>
           <Textarea
             value={closingNote}
             onChange={(e) => setClosingNote(e.target.value)}
-            placeholder="أضف ملاحظة ختامية للحصة... (اختياري)"
+            placeholder={t('closingNotePlaceholder')}
             className="bg-slate-900 border-white/10 text-white placeholder:text-white/30 resize-none text-sm font-cairo"
             rows={3}
           />
-          <p className="text-white/30 text-[10px] mt-1">مثال: مستوى فهم الطلاب، تقدم الدرس، خطة المتابعة</p>
         </div>
 
         <div className="flex gap-3 pt-2">
           <button
             onClick={onBack}
-            className="flex-1 h-12 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-cairo font-bold text-sm transition-all"
+            className="flex-1 h-12 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-cairo font-bold text-sm transition-colors"
           >
-            العودة للحصة
+            {t('back')}
           </button>
           <button
             onClick={onConfirm}
             disabled={loading}
-            className="flex-1 h-12 rounded-xl bg-red-600 hover:bg-red-500 disabled:opacity-60 text-white font-cairo font-bold text-sm flex items-center justify-center gap-2 transition-all"
+            className="flex-1 h-12 rounded-xl bg-red-600 hover:bg-red-500 disabled:opacity-60 text-white font-cairo font-bold text-sm flex items-center justify-center gap-2 transition-colors"
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-            تأكيد إنهاء الحصة
+            {t('confirmAndEnd')}
           </button>
         </div>
       </div>
@@ -1511,7 +1999,7 @@ function StudentCard({ student, isFlashing, isSelected, onClick }) {
   return (
     <button
       onClick={onClick}
-      className={`relative rounded-xl p-2 text-center transition-all duration-150 ${
+      className={`relative rounded-xl p-2 text-center transition-colors duration-150 ${
         isFlashing
           ? 'bg-brand-turquoise ring-4 ring-brand-turquoise/50 scale-110 z-10 shadow-xl shadow-brand-turquoise/30'
           : isSelected
@@ -1551,7 +2039,7 @@ function ActionButton({ color, icon, label, sub, onClick }) {
   return (
     <button
       onClick={onClick}
-      className={`${color} text-white rounded-lg py-3 px-2 flex flex-col items-center gap-1 transition-all active:scale-95`}
+      className={`${color} text-white rounded-lg py-3 px-2 flex flex-col items-center gap-1 transition-colors active:scale-95`}
     >
       {icon}
       <span className="text-xs font-medium">{label}</span>
@@ -1657,18 +2145,18 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.08),transparent_60%)]" />
           <div className="relative z-10">
             <Trophy className="h-14 w-14 mx-auto mb-3 text-amber-300" />
-            <h1 className="font-cairo text-2xl font-bold">انتهت الحصة</h1>
+            <h1 className="font-cairo text-2xl font-bold">{t('sessionEnded')}</h1>
             <p className="text-white/70 mt-1">{sessionInfo?.subject_name || sessionInfo?.subjectName} — {sessionInfo?.class_name || sessionInfo?.className}</p>
-            <div className="mt-4 text-3xl font-mono font-bold">{summary.duration_minutes || 0} <span className="text-lg text-white/60">دقيقة</span></div>
+            <div className="mt-4 text-3xl font-mono font-bold">{summary.duration_minutes || 0} <span className="text-lg text-white/60">{t('durationMinutes')}</span></div>
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           {[
-            { label: 'حاضر', value: summary.present_count, color: 'text-green-400', bg: 'bg-green-900/30', icon: '✅' },
-            { label: 'غائب', value: summary.absent_count, color: 'text-red-400', bg: 'bg-red-900/30', icon: '❌' },
-            { label: 'أسئلة', value: summary.questions_asked, color: 'text-blue-400', bg: 'bg-blue-900/30', icon: '❓' },
-            { label: 'إجابات صحيحة', value: summary.correct_answers, color: 'text-amber-400', bg: 'bg-amber-900/30', icon: '🎯' },
+            { label: t('present'), value: summary.present_count, color: 'text-green-400', bg: 'bg-green-900/30', icon: <UserCheck className="h-5 w-5 text-green-400" /> },
+            { label: t('absent'), value: summary.absent_count, color: 'text-red-400', bg: 'bg-red-900/30', icon: <XCircle className="h-5 w-5 text-red-400" /> },
+            { label: t('questions'), value: summary.questions_asked, color: 'text-blue-400', bg: 'bg-blue-900/30', icon: <FileQuestion className="h-5 w-5 text-blue-400" /> },
+            { label: t('correctAnswers'), value: summary.correct_answers, color: 'text-amber-400', bg: 'bg-amber-900/30', icon: <CheckCircle2 className="h-5 w-5 text-amber-400" /> },
           ].map(item => (
             <div key={item.label} className={`${item.bg} rounded-xl p-4 text-center`}>
               <div className="text-lg mb-1">{item.icon}</div>
@@ -1681,7 +2169,7 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
         {(hasBehaviours || hasSkills) && (
           <div className="bg-slate-800 rounded-xl p-4">
             <h3 className="text-white/70 text-sm mb-3 flex items-center gap-2">
-              <Heart className="h-4 w-4 text-pink-400" /> السلوك والمهارات
+              <Heart className="h-4 w-4 text-pink-400" /> {t('behaviourData')}
             </h3>
             <div className={`grid ${hasSkills ? 'grid-cols-3' : 'grid-cols-2'} gap-3`}>
               {hasBehaviours && (
@@ -1689,12 +2177,12 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
                   <div className="bg-green-900/30 rounded-lg p-3 text-center">
                     <ThumbsUp className="h-5 w-5 text-green-400 mx-auto mb-1" />
                     <div className="text-xl font-bold text-green-400">{summary.positive_behaviours || 0}</div>
-                    <div className="text-white/50 text-[10px]">سلوك إيجابي</div>
+                    <div className="text-white/50 text-[10px]">{t('positiveBehaviour')}</div>
                   </div>
                   <div className="bg-red-900/30 rounded-lg p-3 text-center">
                     <ThumbsDown className="h-5 w-5 text-red-400 mx-auto mb-1" />
                     <div className="text-xl font-bold text-red-400">{summary.negative_behaviours || 0}</div>
-                    <div className="text-white/50 text-[10px]">سلوك سلبي</div>
+                    <div className="text-white/50 text-[10px]">{t('negativeBehaviour')}</div>
                   </div>
                 </>
               )}
@@ -1702,7 +2190,7 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
                 <div className="bg-purple-900/30 rounded-lg p-3 text-center">
                   <Star className="h-5 w-5 text-purple-400 mx-auto mb-1" />
                   <div className="text-xl font-bold text-purple-400">{summary.skills_recorded}</div>
-                  <div className="text-white/50 text-[10px]">مهارة مسجلة</div>
+                  <div className="text-white/50 text-[10px]">{t('recordedSkill')}</div>
                 </div>
               )}
             </div>
@@ -1712,12 +2200,12 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
         {summary.participation_rate !== undefined && (
           <div className="bg-slate-800 rounded-xl p-4">
             <div className="flex justify-between text-sm text-white/70 mb-2">
-              <span>معدل المشاركة</span>
+              <span>{t('participationRate')}</span>
               <span className="text-white font-bold">{Math.round(summary.participation_rate)}%</span>
             </div>
             <div className="h-2.5 bg-slate-700 rounded-full overflow-hidden">
               <div
-                className="h-full bg-gradient-to-r from-brand-turquoise to-brand-navy transition-all"
+                className="h-full bg-gradient-to-r from-brand-turquoise to-brand-navy transition-colors"
                 style={{ width: `${summary.participation_rate}%` }}
               />
             </div>
@@ -1727,7 +2215,7 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
         {summary.needs_attention?.length > 0 && (
           <div className="bg-slate-800 rounded-xl p-4">
             <h3 className="text-white/70 text-sm mb-3 flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-amber-400" /> يحتاج متابعة
+              <AlertTriangle className="h-4 w-4 text-amber-400" /> {t('needsAttention')}
             </h3>
             {summary.needs_attention.map((s, i) => (
               <div key={i} className="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
@@ -1741,7 +2229,7 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
         {summary.top_participants?.length > 0 && (
           <div className="bg-slate-800 rounded-xl p-4">
             <h3 className="text-white/70 text-sm mb-3 flex items-center gap-2">
-              <Award className="h-4 w-4 text-amber-400" /> الأكثر تفاعلاً
+              <Award className="h-4 w-4 text-amber-400" /> {t('topParticipants')}
             </h3>
             {summary.top_participants.map((p, i) => (
               <div key={i} className="flex items-center justify-between py-1.5">
@@ -1757,20 +2245,20 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
               <button
                 onClick={sendParentNotifications}
                 disabled={sendingNotif}
-                className="w-full mt-3 h-10 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white text-xs font-cairo font-bold flex items-center justify-center gap-2 transition-all"
+                className="w-full mt-3 h-10 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white text-xs font-cairo font-bold flex items-center justify-center gap-2 transition-colors"
               >
                 {sendingNotif ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   <Send className="h-4 w-4" />
                 )}
-                إرسال تقرير إيجابي لأولياء الأمور
+                {t('sendReportToParents')}
               </button>
             )}
             {notifSent && (
               <div className="mt-3 flex items-center justify-center gap-2 text-emerald-400 text-xs">
                 <CheckCircle2 className="h-4 w-4" />
-                <span>تم الإرسال بنجاح</span>
+                <span>{t('sentSuccessfully')}</span>
               </div>
             )}
           </div>
@@ -1780,25 +2268,25 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
           <button
             onClick={exportReport}
             disabled={exporting}
-            className="h-11 rounded-xl bg-slate-700 hover:bg-slate-600 disabled:opacity-60 text-white font-cairo font-bold text-sm flex items-center justify-center gap-2 transition-all"
+            className="h-11 rounded-xl bg-slate-700 hover:bg-slate-600 disabled:opacity-60 text-white font-cairo font-bold text-sm flex items-center justify-center gap-2 transition-colors"
           >
             {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-            تصدير التقرير
+            {t('exportReport')}
           </button>
           <button
             onClick={() => navigate('/teacher/classes?tab=sessions')}
-            className="h-11 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-cairo font-bold text-sm flex items-center justify-center gap-2 transition-all"
+            className="h-11 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-cairo font-bold text-sm flex items-center justify-center gap-2 transition-colors"
           >
             <History className="h-4 w-4" />
-            سجل الحصص
+            {t('sessionLog')}
           </button>
         </div>
 
         <button
           onClick={onHome}
-          className="w-full h-12 rounded-xl bg-brand-turquoise text-white font-cairo font-bold text-base hover:opacity-90 transition-all shadow-lg shadow-brand-turquoise/20"
+          className="w-full h-12 rounded-xl bg-brand-turquoise text-white font-cairo font-bold text-base hover:opacity-90 transition-colors shadow-lg shadow-brand-turquoise/20"
         >
-          العودة للرئيسية
+          {t('backToHome')}
         </button>
       </div>
     </div>
