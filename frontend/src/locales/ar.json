@@ -3394,5 +3394,11 @@
   "skillItemsHint": "المهارات المتاحة لتسجيل أداء الطلاب",
   "gradeType": "درجة",
   "checkType": "تحقق",
-  "textType": "نص"
+  "textType": "نص",
+  "addItem": "إضافة عنصر",
+  "sessionSummary": "ملخص الحصة",
+  "sessionSummaryMessage": "انتهت حصة {{subject}} ({{class}}). المدة: {{duration}} دقيقة. حاضرون: {{present}}، غائبون: {{absent}}. أسئلة: {{questions}}، إجابات صحيحة: {{correct}}.",
+  "sendSummaryToParentsAndAdmin": "إرسال الملخص لأولياء الأمور والإدارة",
+  "reportSentToParentsAndAdmin": "تم إرسال الملخص لأولياء الأمور والإدارة",
+  "failedToSendNotifications": "فشل إرسال الإشعارات"
 }

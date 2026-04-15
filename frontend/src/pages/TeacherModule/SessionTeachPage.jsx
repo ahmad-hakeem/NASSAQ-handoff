@@ -109,6 +109,9 @@ export default function SessionTeachPage() {
   const [showGroupModal, setShowGroupModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showFollowupRecord, setShowFollowupRecord] = useState(false);
+  const [customPositiveBehaviours, setCustomPositiveBehaviours] = useState([]);
+  const [customNegativeBehaviours, setCustomNegativeBehaviours] = useState([]);
+  const [customSkills, setCustomSkills] = useState([]);
   const [followupData, setFollowupData] = useState({});
   const [followupColumns, setFollowupColumns] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -244,7 +247,8 @@ export default function SessionTeachPage() {
     const saveState = () => {
       try {
         sessionStorage.setItem(`session_state_${sessionId}`, JSON.stringify({
-          evalMode, groups, stats, mode: mode?.id, actionTab, followupData, followupColumns
+          evalMode, groups, stats, mode: mode?.id, actionTab, followupData, followupColumns,
+          customPositiveBehaviours, customNegativeBehaviours, customSkills
         }));
         if (Object.keys(followupData).length > 0) {
           api.post(`/session/${sessionId}/followup-record`, {
@@ -267,6 +271,9 @@ export default function SessionTeachPage() {
         if (state.groups?.length) setGroups(state.groups);
         if (state.followupData && Object.keys(state.followupData).length > 0) setFollowupData(state.followupData);
         if (state.followupColumns?.length) setFollowupColumns(state.followupColumns);
+        if (state.customPositiveBehaviours?.length) setCustomPositiveBehaviours(state.customPositiveBehaviours);
+        if (state.customNegativeBehaviours?.length) setCustomNegativeBehaviours(state.customNegativeBehaviours);
+        if (state.customSkills?.length) setCustomSkills(state.customSkills);
       }
     } catch (e) { /* ignore */ }
   }, [sessionId]);
@@ -1805,23 +1812,59 @@ export default function SessionTeachPage() {
                   <span className="text-[10px] font-bold text-green-600 dark:text-green-400 flex items-center gap-1">
                     <ThumbsUp className="h-3 w-3" /> {t('positiveBehaviour')}
                   </span>
-                  {(sessionInfo?.positive_behaviours || ['مشاركة فعالة', 'التزام', 'تعاون', 'إبداع']).map((b, i) => (
+                  {[...(sessionInfo?.positive_behaviours || []), ...customPositiveBehaviours].map((b, i) => (
                     <div key={i} className="text-[10px] text-slate-600 dark:text-slate-400 flex items-center gap-1">
                       <CheckCircle2 className="h-2.5 w-2.5 text-green-500 flex-none" />
-                      {b}
+                      <span className="flex-1">{b}</span>
+                      {i >= (sessionInfo?.positive_behaviours?.length || 0) && (
+                        <button onClick={() => setCustomPositiveBehaviours(prev => prev.filter((_, j) => j !== i - (sessionInfo?.positive_behaviours?.length || 0)))} className="text-red-400 hover:text-red-500">
+                          <XCircle className="h-2.5 w-2.5" />
+                        </button>
+                      )}
                     </div>
                   ))}
+                  <div className="flex items-center gap-1 mt-1">
+                    <input
+                      className="flex-1 text-[10px] bg-white dark:bg-slate-700 rounded border px-1.5 py-0.5 outline-none focus:border-green-500"
+                      placeholder={t('addItem')}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && e.target.value.trim()) {
+                          setCustomPositiveBehaviours(prev => [...prev, e.target.value.trim()]);
+                          e.target.value = '';
+                        }
+                      }}
+                    />
+                    <Plus className="h-3 w-3 text-green-500" />
+                  </div>
                 </div>
                 <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-2 space-y-1">
                   <span className="text-[10px] font-bold text-red-600 dark:text-red-400 flex items-center gap-1">
                     <ThumbsDown className="h-3 w-3" /> {t('negativeBehaviour')}
                   </span>
-                  {(sessionInfo?.negative_behaviours || ['عدم انتباه', 'تأخر', 'إزعاج']).map((b, i) => (
+                  {[...(sessionInfo?.negative_behaviours || []), ...customNegativeBehaviours].map((b, i) => (
                     <div key={i} className="text-[10px] text-slate-600 dark:text-slate-400 flex items-center gap-1">
                       <XCircle className="h-2.5 w-2.5 text-red-500 flex-none" />
-                      {b}
+                      <span className="flex-1">{b}</span>
+                      {i >= (sessionInfo?.negative_behaviours?.length || 0) && (
+                        <button onClick={() => setCustomNegativeBehaviours(prev => prev.filter((_, j) => j !== i - (sessionInfo?.negative_behaviours?.length || 0)))} className="text-red-400 hover:text-red-500">
+                          <Trash2 className="h-2.5 w-2.5" />
+                        </button>
+                      )}
                     </div>
                   ))}
+                  <div className="flex items-center gap-1 mt-1">
+                    <input
+                      className="flex-1 text-[10px] bg-white dark:bg-slate-700 rounded border px-1.5 py-0.5 outline-none focus:border-red-500"
+                      placeholder={t('addItem')}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && e.target.value.trim()) {
+                          setCustomNegativeBehaviours(prev => [...prev, e.target.value.trim()]);
+                          e.target.value = '';
+                        }
+                      }}
+                    />
+                    <Plus className="h-3 w-3 text-red-500" />
+                  </div>
                 </div>
               </div>
             </div>
@@ -1835,15 +1878,47 @@ export default function SessionTeachPage() {
               </label>
               <p className="text-[11px] text-muted-foreground">{t('skillItemsHint')}</p>
               <div className="flex flex-wrap gap-1.5">
-                {(skillTypes.length > 0
-                  ? skillTypes.map(s => s.name || s.label || s)
-                  : ['قراءة', 'كتابة', 'تحدث', 'استماع', 'تفكير نقدي']
-                ).map((skill, i) => (
-                  <span key={i} className="inline-flex items-center gap-1 bg-purple-50 dark:bg-purple-900/20 px-2 py-1 rounded-lg text-[11px] text-purple-700 dark:text-purple-300">
-                    <Star className="h-2.5 w-2.5" />
-                    {skill}
-                  </span>
-                ))}
+                {[
+                  ...(skillTypes.length > 0 ? skillTypes.map(s => s.name || s.label || s) : []),
+                  ...customSkills
+                ].map((skill, i) => {
+                  const isCustom = i >= (skillTypes.length > 0 ? skillTypes.length : 0);
+                  return (
+                    <span key={i} className="inline-flex items-center gap-1 bg-purple-50 dark:bg-purple-900/20 px-2 py-1 rounded-lg text-[11px] text-purple-700 dark:text-purple-300">
+                      <Star className="h-2.5 w-2.5" />
+                      {skill}
+                      {isCustom && (
+                        <button onClick={() => setCustomSkills(prev => prev.filter((_, j) => j !== i - (skillTypes.length > 0 ? skillTypes.length : 0)))} className="text-red-400 hover:text-red-500">
+                          <XCircle className="h-2.5 w-2.5" />
+                        </button>
+                      )}
+                    </span>
+                  );
+                })}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <input
+                  className="flex-1 text-[11px] bg-white dark:bg-slate-700 rounded-lg border px-2 py-1 outline-none focus:border-purple-500"
+                  placeholder={t('addItem')}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && e.target.value.trim()) {
+                      setCustomSkills(prev => [...prev, e.target.value.trim()]);
+                      e.target.value = '';
+                    }
+                  }}
+                />
+                <button
+                  onClick={e => {
+                    const input = e.currentTarget.previousElementSibling;
+                    if (input?.value?.trim()) {
+                      setCustomSkills(prev => [...prev, input.value.trim()]);
+                      input.value = '';
+                    }
+                  }}
+                  className="p-1 rounded-lg bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 hover:bg-purple-200 dark:hover:bg-purple-900/50 transition-colors"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </button>
               </div>
             </div>
           </div>
@@ -2228,35 +2303,53 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
   }, []);
 
   const sendParentNotifications = async () => {
-    if (!summary.top_participants?.length) return;
     setSendingNotif(true);
     const subjectName = sessionInfo?.subject_name || sessionInfo?.subjectName || '';
+    const className = sessionInfo?.class_name || sessionInfo?.className || '';
+    const durationMin = summary.duration_minutes || 0;
+    const presentCount = summary.present_count || 0;
+    const absentCount = summary.absent_count || 0;
+    const questionsCount = summary.questions_asked || 0;
+    const correctCount = summary.correct_answers || 0;
     try {
-      const promises = summary.top_participants.map(p =>
-        api.post('/notifications', {
-          title: `تقرير إيجابي — ${p.name}`,
-          title_en: `Positive Report — ${p.name}`,
-          message: `تميّز ${p.name} في حصة ${subjectName} اليوم — ${p.correct_answers} إجابة صحيحة`,
-          message_en: `${p.name} excelled in ${subjectName} today — ${p.correct_answers} correct answers`,
-          notification_type: 'communication',
-          priority: 'medium',
-          recipient_role: 'parent',
-          related_entity: 'student',
-          related_entity_id: p.student_id,
-        })
-      );
-      const results = await Promise.allSettled(promises);
+      const notifPayload = {
+        title: `${t('sessionSummary')} — ${subjectName}`,
+        title_en: `Session Summary — ${subjectName}`,
+        message: `${t('sessionSummaryMessage', {
+          subject: subjectName,
+          class: className,
+          duration: durationMin,
+          present: presentCount,
+          absent: absentCount,
+          questions: questionsCount,
+          correct: correctCount
+        })}`,
+        message_en: `Session for ${subjectName} (${className}) completed. Duration: ${durationMin} min. Present: ${presentCount}, Absent: ${absentCount}. Questions: ${questionsCount}, Correct: ${correctCount}.`,
+        notification_type: 'communication',
+        priority: 'medium',
+        recipient_role: 'parent',
+        related_entity: 'session',
+        related_entity_id: summary.session_record_id,
+      };
+      const adminNotif = {
+        ...notifPayload,
+        recipient_role: 'admin',
+      };
+      const results = await Promise.allSettled([
+        api.post('/notifications', notifPayload),
+        api.post('/notifications', adminNotif),
+      ]);
       const successCount = results.filter(r => r.status === 'fulfilled').length;
       if (successCount > 0) {
         setNotifSent(true);
-        toast.success(`تم إرسال ${successCount} تقرير إيجابي لأولياء الأمور`);
+        toast.success(t('reportSentToParentsAndAdmin'));
         confetti({ particleCount: 50, spread: 60, origin: { y: 0.7 }, colors: ['#10b981', '#34d399', '#6ee7b7'] });
       } else {
-        nassaqError('فشل إرسال الإشعارات');
+        nassaqError(t('failedToSendNotifications'));
       }
     } catch (e) {
       console.error('Error sending notifications:', e);
-      nassaqError('فشل إرسال الإشعارات');
+      nassaqError(t('failedToSendNotifications'));
     } finally {
       setSendingNotif(false);
     }
@@ -2405,27 +2498,26 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
                 <Badge className="bg-amber-900/50 text-amber-300 text-xs">{p.correct_answers} ✓</Badge>
               </div>
             ))}
+          </div>
+        )}
 
-            {!notifSent && (
-              <button
-                onClick={sendParentNotifications}
-                disabled={sendingNotif}
-                className="w-full mt-3 h-10 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white text-xs font-cairo font-bold flex items-center justify-center gap-2 transition-colors"
-              >
-                {sendingNotif ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Send className="h-4 w-4" />
-                )}
-                {t('sendReportToParents')}
-              </button>
+        {!notifSent ? (
+          <button
+            onClick={sendParentNotifications}
+            disabled={sendingNotif}
+            className="w-full h-11 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white text-sm font-cairo font-bold flex items-center justify-center gap-2 transition-colors"
+          >
+            {sendingNotif ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Send className="h-4 w-4" />
             )}
-            {notifSent && (
-              <div className="mt-3 flex items-center justify-center gap-2 text-emerald-400 text-xs">
-                <CheckCircle2 className="h-4 w-4" />
-                <span>{t('sentSuccessfully')}</span>
-              </div>
-            )}
+            {t('sendSummaryToParentsAndAdmin')}
+          </button>
+        ) : (
+          <div className="flex items-center justify-center gap-2 text-emerald-400 text-sm py-2">
+            <CheckCircle2 className="h-4 w-4" />
+            <span>{t('sentSuccessfully')}</span>
           </div>
         )}
 

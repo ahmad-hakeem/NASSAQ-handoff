@@ -2132,7 +2132,6 @@ async def save_followup_record(
     current_user: dict = Depends(get_current_user)
 ):
     await _verify_session_owner(session_id, current_user)
-    from datetime import datetime
     session = await gd_find_one(db.session, "teacher_sessions", {"id": session_id})
     c_id = session.get("class_id") if session else None
     s_id = session.get("subject_id") if session else None
@@ -2162,7 +2161,7 @@ async def add_followup_column(
 ):
     await _verify_session_owner(session_id, current_user)
     column = {
-        "id": payload.get("id", f"col_{int(__import__('time').time() * 1000)}"),
+        "id": payload.get("id", f"col_{int(datetime.utcnow().timestamp() * 1000)}"),
         "name": payload.get("name", "عمود جديد"),
         "maxGrade": payload.get("maxGrade", 10),
         "type": payload.get("type", "grade"),
@@ -2177,7 +2176,6 @@ async def add_followup_column(
         columns.append(column)
         await gd_update_one(db.session, "followup_records", lookup, {"$set": {"columns": columns}})
     else:
-        from datetime import datetime
         await gd_insert(db.session, "followup_records", {
             **lookup,
             "session_id": session_id,

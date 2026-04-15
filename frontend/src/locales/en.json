@@ -3394,5 +3394,11 @@
   "skillItemsHint": "Skills available for recording student performance",
   "gradeType": "Grade",
   "checkType": "Check",
-  "textType": "Text"
+  "textType": "Text",
+  "addItem": "Add item",
+  "sessionSummary": "Session Summary",
+  "sessionSummaryMessage": "Session for {{subject}} ({{class}}) completed. Duration: {{duration}} min. Present: {{present}}, Absent: {{absent}}. Questions: {{questions}}, Correct: {{correct}}.",
+  "sendSummaryToParentsAndAdmin": "Send Summary to Parents & Admin",
+  "reportSentToParentsAndAdmin": "Summary sent to parents and admin",
+  "failedToSendNotifications": "Failed to send notifications"
 }
