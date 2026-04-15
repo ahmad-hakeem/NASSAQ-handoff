@@ -1955,11 +1955,14 @@ async def get_skills_types(
             s["created_at"] = now
         await gd_insert_many(db.session, "skills_types", [dict(s) for s in DEFAULT_SKILLS_TYPES])
         if audit_engine:
-            await audit_engine.log(
-                action=AuditAction.SYSTEM_CONFIG,
-                performed_by="system",
-                details={"event": "skills_types_seeded", "count": len(DEFAULT_SKILLS_TYPES)}
-            )
+            try:
+                await audit_engine.log(
+                    action=AuditAction.SYSTEM_CONFIG,
+                    performed_by=current_user.get("id", "system"),
+                    details={"event": "skills_types_seeded", "count": len(DEFAULT_SKILLS_TYPES)}
+                )
+            except Exception:
+                logger.debug("Skipped audit log for skills_types seed (FK constraint)")
         skills = await gd_find(db.session, "skills_types", {}, limit=100)
     return skills
 
