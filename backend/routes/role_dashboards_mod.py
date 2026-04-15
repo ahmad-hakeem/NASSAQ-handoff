@@ -1594,6 +1594,7 @@ async def get_session_by_schedule_id(
     session = await gd_find_one(db.session, "class_sessions", {"schedule_session_id": schedule_session_id})
     if not session:
         raise HTTPException(status_code=404, detail="الجلسة غير موجودة")
+    await _verify_session_owner(session["id"], current_user)
     return session
 
 

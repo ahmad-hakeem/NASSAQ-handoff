@@ -318,7 +318,7 @@ export default function SessionStartPage() {
           <div className="w-72 mx-auto">
             <div className="h-2 bg-white/10 rounded-full overflow-hidden">
               <div
-                className="h-full bg-gradient-to-r from-brand-turquoise to-cyan-400 rounded-full transition-all duration-100"
+                className="h-full bg-gradient-to-r from-brand-turquoise to-cyan-400 rounded-full transition-[width] duration-100"
                 style={{ width: `${transitionProgress * 100}%` }}
               />
             </div>
@@ -343,7 +343,7 @@ export default function SessionStartPage() {
     <div className={`min-h-screen ${themeStyles.bg} flex flex-col transition-colors duration-300`} dir={isRTL ? 'rtl' : 'ltr'}>
       <header className={`${themeStyles.headerBg} border-b px-4 py-3 sticky top-0 z-20 transition-colors duration-300`}>
         <div className="max-w-5xl mx-auto flex items-center justify-between gap-3">
-          <button onClick={() => navigate('/teacher')} className={`${themeStyles.textSub} ${isDark ? 'hover:text-white' : 'hover:text-gray-900'} p-2 rounded-xl ${themeStyles.btnBg} transition-all border`}>
+          <button onClick={() => navigate('/teacher')} className={`${themeStyles.textSub} ${isDark ? 'hover:text-white' : 'hover:text-gray-900'} p-2 rounded-xl ${themeStyles.btnBg} transition-colors border`}>
             <ArrowRight className="h-5 w-5" />
           </button>
 
@@ -361,7 +361,7 @@ export default function SessionStartPage() {
             {hasBothGenders && (
               <button
                 onClick={() => setGenderSplit(v => !v)}
-                className={`p-2 rounded-xl transition-all border ${genderSplit
+                className={`p-2 rounded-xl transition-colors border ${genderSplit
                   ? 'bg-brand-turquoise/20 text-brand-turquoise border-brand-turquoise/30'
                   : `${themeStyles.btnBg} ${themeStyles.btnText}`
                 }`}
@@ -372,7 +372,7 @@ export default function SessionStartPage() {
             )}
             <button
               onClick={toggleTheme}
-              className={`p-2 rounded-xl transition-all border ${themeStyles.btnBg} ${themeStyles.btnText}`}
+              className={`p-2 rounded-xl transition-colors border ${themeStyles.btnBg} ${themeStyles.btnText}`}
               title={isDark ? 'الوضع الفاتح' : 'الوضع الداكن'}
             >
               {isDark ? <Sun className="h-4 w-4 text-amber-400" /> : <Moon className="h-4 w-4" />}
@@ -409,7 +409,7 @@ export default function SessionStartPage() {
                 { key: 'present', icon: UserCheck, label: t('present'), gradient: 'from-emerald-500 to-emerald-600', numColor: isDark ? 'text-emerald-400' : 'text-emerald-600' },
                 { key: 'absent', icon: UserX, label: t('absent'), gradient: 'from-red-500 to-red-600', numColor: isDark ? 'text-red-400' : 'text-red-600' },
               ].map(s => (
-                <div key={s.key} className={`${themeStyles.statBg} rounded-xl p-3 text-center border transition-all duration-300 hover:scale-[1.02]`}>
+                <div key={s.key} className={`${themeStyles.statBg} rounded-xl p-3 text-center border transition-colors duration-300 hover:scale-[1.02]`}>
                   <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${s.gradient} flex items-center justify-center mx-auto mb-2 shadow-sm`}>
                     <s.icon className="h-4 w-4 text-white" />
                   </div>
@@ -421,8 +421,8 @@ export default function SessionStartPage() {
 
             <div className={`h-3 ${themeStyles.progressBg} rounded-full overflow-hidden flex transition-colors duration-300`}>
               {stats.total > 0 && <>
-                <div className="bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all duration-500 rounded-s-full" style={{ width: `${(stats.present / stats.total) * 100}%` }} />
-                <div className="bg-gradient-to-r from-red-500 to-red-400 transition-all duration-500 rounded-e-full" style={{ width: `${(stats.absent / stats.total) * 100}%` }} />
+                <div className="bg-gradient-to-r from-emerald-500 to-emerald-400 transition-[width] duration-500 rounded-s-full" style={{ width: `${(stats.present / stats.total) * 100}%` }} />
+                <div className="bg-gradient-to-r from-red-500 to-red-400 transition-[width] duration-500 rounded-e-full" style={{ width: `${(stats.absent / stats.total) * 100}%` }} />
               </>}
             </div>
           </div>
@@ -430,13 +430,13 @@ export default function SessionStartPage() {
           <div className="flex gap-2">
             <button
               onClick={() => markAll('present')}
-              className="flex-1 h-12 rounded-xl bg-gradient-to-r from-emerald-600/20 to-emerald-500/10 border border-emerald-500/30 text-emerald-500 text-sm font-medium font-cairo hover:from-emerald-600/30 hover:to-emerald-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+              className="flex-1 h-12 rounded-xl bg-gradient-to-r from-emerald-600/20 to-emerald-500/10 border border-emerald-500/30 text-emerald-500 text-sm font-medium font-cairo hover:from-emerald-600/30 hover:to-emerald-500/20 active:scale-[0.98] transition-colors flex items-center justify-center gap-2"
             >
               <UserCheck className="h-4 w-4" /> {t('allPresent')}
             </button>
             <button
               onClick={() => markAll('absent')}
-              className="flex-1 h-12 rounded-xl bg-gradient-to-r from-red-600/20 to-red-500/10 border border-red-500/30 text-red-500 text-sm font-medium font-cairo hover:from-red-600/30 hover:to-red-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+              className="flex-1 h-12 rounded-xl bg-gradient-to-r from-red-600/20 to-red-500/10 border border-red-500/30 text-red-500 text-sm font-medium font-cairo hover:from-red-600/30 hover:to-red-500/20 active:scale-[0.98] transition-colors flex items-center justify-center gap-2"
             >
               <UserX className="h-4 w-4" /> {t('allAbsent')}
             </button>
@@ -512,7 +512,7 @@ export default function SessionStartPage() {
           <button
             onClick={approveAttendance}
             disabled={saving || students.length === 0}
-            className="w-full h-14 rounded-2xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-cairo font-bold text-lg flex items-center justify-center gap-3 transition-all shadow-xl shadow-emerald-500/30 active:scale-[0.98]"
+            className="w-full h-14 rounded-2xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-cairo font-bold text-lg flex items-center justify-center gap-3 transition-colors shadow-xl shadow-emerald-500/30 active:scale-[0.98]"
           >
             {saving ? (
               <Loader2 className="h-6 w-6 animate-spin" />

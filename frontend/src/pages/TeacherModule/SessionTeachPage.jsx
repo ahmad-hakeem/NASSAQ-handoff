@@ -24,34 +24,44 @@ import confetti from 'canvas-confetti';
 
 import { useTranslation } from '../../contexts/ThemeContext';
 const GENDER_COLORS = {
-  male: { bg: 'bg-sky-600', ring: 'ring-sky-400', label: 'طلاب', icon: 'M', light: 'bg-sky-900/30' },
-  female: { bg: 'bg-pink-600', ring: 'ring-pink-400', label: 'طالبات', icon: 'F', light: 'bg-pink-900/30' },
+  male: { bg: 'bg-sky-600', ring: 'ring-sky-400', label: 'طلاب', labelKey: 'maleStudents', icon: 'M', light: 'bg-sky-900/30' },
+  female: { bg: 'bg-pink-600', ring: 'ring-pink-400', label: 'طالبات', labelKey: 'femaleStudents', icon: 'F', light: 'bg-pink-900/30' },
 };
 
 const MODES = [
-  { id: 'review', label: 'مراجعة', icon: BookOpen, color: 'bg-purple-600' },
-  { id: 'homework', label: 'واجب', icon: ClipboardCheck, color: 'bg-blue-600' },
-  { id: 'quiz', label: 'اختبار', icon: FileQuestion, color: 'bg-amber-600' },
+  { id: 'review', label: 'مراجعة', labelKey: 'modeReview', icon: BookOpen, color: 'bg-purple-600' },
+  { id: 'homework', label: 'واجب', labelKey: 'modeHomework', icon: ClipboardCheck, color: 'bg-blue-600' },
+  { id: 'quiz', label: 'اختبار', labelKey: 'modeQuiz', icon: FileQuestion, color: 'bg-amber-600' },
 ];
 
 const PARTICIPATION = [
-  { id: 'active', label: 'مشاركة', icon: Hand, color: 'bg-green-500', score: '+2' },
-  { id: 'initiative', label: 'مبادرة', icon: Zap, color: 'bg-purple-500', score: '+3' },
-  { id: 'inactive', label: 'لا يتفاعل', icon: Minus, color: 'bg-amber-500', score: '0' },
-  { id: 'refused', label: 'رفض', icon: XCircle, color: 'bg-red-500', score: '-1' },
+  { id: 'active', label: 'مشاركة', labelKey: 'participationActive', icon: Hand, color: 'bg-green-500', score: '+2' },
+  { id: 'initiative', label: 'مبادرة', labelKey: 'participationInitiative', icon: Zap, color: 'bg-purple-500', score: '+3' },
+  { id: 'inactive', label: 'لا يتفاعل', labelKey: 'participationInactive', icon: Minus, color: 'bg-amber-500', score: '0' },
+  { id: 'refused', label: 'رفض', labelKey: 'participationRefused', icon: XCircle, color: 'bg-red-500', score: '-1' },
 ];
 
 const BEHAVIOURS = {
   positive: [
-    { id: 'respect', label: 'احترام', points: '+2' },
-    { id: 'commitment', label: 'التزام', points: '+2' },
-    { id: 'helping_others', label: 'مساعدة الآخرين', points: '+2' },
+    { id: 'respect', label: 'احترام', labelKey: 'behaviourRespect', points: '+2' },
+    { id: 'commitment', label: 'التزام', labelKey: 'behaviourCommitment', points: '+2' },
+    { id: 'helping_others', label: 'مساعدة الآخرين', labelKey: 'behaviourHelpingOthers', points: '+2' },
   ],
   negative: [
-    { id: 'disruption', label: 'إزعاج', points: '-2' },
-    { id: 'non_compliance', label: 'عدم التزام', points: '-2' },
-    { id: 'interruption', label: 'مقاطعة', points: '-1' },
+    { id: 'disruption', label: 'إزعاج', labelKey: 'behaviourDisruption', points: '-2' },
+    { id: 'non_compliance', label: 'عدم التزام', labelKey: 'behaviourNonCompliance', points: '-2' },
+    { id: 'interruption', label: 'مقاطعة', labelKey: 'behaviourInterruption', points: '-1' },
   ],
+};
+
+const LOG_ICONS = {
+  correct: CheckCircle2,
+  wrong: XCircle,
+  skip: Minus,
+  note: StickyNote,
+  behaviour: ThumbsUp,
+  skill: Star,
+  participation: Hand,
 };
 
 function useSessionTimer(startTimeStr) {
@@ -125,17 +135,18 @@ export default function SessionTeachPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!sessionId) {
-      nassaqError('لم يتم العثور على جلسة نشطة');
+      nassaqError(t('noActiveSessionFound'));
       navigate('/teacher');
       return;
     }
-    loadStudents();
-    loadSessionInfo();
+    loadStudents().then(studentList => {
+      loadSessionInfo(studentList);
+    });
     loadSkillTypes();
     loadActivityLog();
   }, [sessionId]);
 
-  const loadSessionInfo = async () => {
+  const loadSessionInfo = async (studentList) => {
     try {
       const res = await api.get(`/session/${sessionId}`);
       if (res.data) {
@@ -151,7 +162,7 @@ export default function SessionTeachPage() {
           if (found) {
             setMode(found);
             setActionTab(getTabForMode(found.id));
-            if (found.id === 'homework') loadHomeworkStatuses();
+            if (found.id === 'homework') loadHomeworkStatuses(studentList);
           }
         }
         if (res.data.stats) {
@@ -184,8 +195,10 @@ export default function SessionTeachPage() {
         isFlashing: false,
       }));
       setStudents(list);
+      return list;
     } catch (e) {
       console.error('Error loading students:', e);
+      return [];
     }
   };
 
@@ -204,9 +217,9 @@ export default function SessionTeachPage() {
       if (entries.length > 0) {
         setActivityLog(entries);
         setStats(prev => {
-          const questions = entries.filter(e => e.emoji === '✅' || e.emoji === '❌' || e.emoji === '⏭️').length;
-          const correct = entries.filter(e => e.emoji === '✅').length;
-          const participation = entries.filter(e => e.emoji === '🙋' || e.emoji === '😶').length;
+          const questions = entries.filter(e => e.emoji === 'correct' || e.emoji === 'wrong' || e.emoji === 'skip' || e.emoji === '✅' || e.emoji === '❌' || e.emoji === '⏭️').length;
+          const correct = entries.filter(e => e.emoji === 'correct' || e.emoji === '✅').length;
+          const participation = entries.filter(e => e.emoji === 'participation' || e.emoji === '🙋' || e.emoji === '😶').length;
           return {
             questions: Math.max(prev.questions, questions),
             correct: Math.max(prev.correct, correct),
@@ -369,23 +382,23 @@ export default function SessionTeachPage() {
         student_id: selectedStudent?.id || null,
       });
       setNewNote('');
-      toast.success('تم إضافة الملاحظة');
+      toast.success(t('noteAdded'));
       loadNotes();
-      addLog('📝', `ملاحظة: ${newNote.slice(0, 30)}...`, 'text-amber-600');
+      addLog('note', `${t('note')}: ${newNote.slice(0, 30)}...`, 'text-amber-600');
     } catch (e) {
       console.error('Error adding note:', e);
-      nassaqError('خطأ في إضافة الملاحظة');
+      nassaqError(t('errorAddingNote'));
     }
   };
 
   const deleteNote = async (noteId) => {
     try {
       await api.delete(`/session/${sessionId}/note/${noteId}`);
-      toast.success('تم حذف الملاحظة');
+      toast.success(t('noteDeleted'));
       loadNotes();
     } catch (e) {
       console.error('Error deleting note:', e);
-      nassaqError('خطأ في حذف الملاحظة');
+      nassaqError(t('errorDeletingNote'));
     }
   };
 
@@ -398,14 +411,22 @@ export default function SessionTeachPage() {
 
   const [homeworkLoading, setHomeworkLoading] = useState(false);
 
-  const loadHomeworkStatuses = async () => {
+  const loadHomeworkStatuses = async (studentList) => {
+    const list = studentList || students;
     setHomeworkLoading(true);
     try {
       const res = await api.get(`/session/${sessionId}/homework`);
-      setHomeworkStatuses(res.data?.statuses || {});
+      const serverStatuses = res.data?.statuses || {};
+      const presentIds = list.filter(s => s.attendance_status === 'present').map(s => s.id);
+      const merged = {};
+      presentIds.forEach(id => { merged[id] = serverStatuses[id] || 'done'; });
+      setHomeworkStatuses(merged);
     } catch (e) {
       console.error('Error loading homework statuses:', e);
-      nassaqError('خطأ في تحميل حالات الواجب');
+      const presentIds = list.filter(s => s.attendance_status === 'present').map(s => s.id);
+      const defaults = {};
+      presentIds.forEach(id => { defaults[id] = 'done'; });
+      setHomeworkStatuses(defaults);
     } finally {
       setHomeworkLoading(false);
     }
@@ -422,14 +443,14 @@ export default function SessionTeachPage() {
       });
       const studentName = students.find(s => s.id === studentId)?.full_name?.split(' ')[0] || '';
       if (newStatus === 'done') {
-        toast.success(`✅ حل — ${studentName}`);
+        toast.success(`${t('submitted')} — ${studentName}`);
       } else {
-        toast.success(`❌ ما حل — ${studentName}`);
+        toast.success(`${t('notSubmitted')} — ${studentName}`);
       }
     } catch (e) {
       console.error('Error toggling homework:', e);
       setHomeworkStatuses(prev => ({ ...prev, [studentId]: current || 'not_done' }));
-      nassaqError('خطأ في تحديث حالة الواجب');
+      nassaqError(t('errorUpdatingHomework'));
     }
   };
 
@@ -440,10 +461,10 @@ export default function SessionTeachPage() {
       setMode(m);
       setActionTab(getTabForMode(m.id));
       if (m.id === 'homework') loadHomeworkStatuses();
-      toast.success(`تم تفعيل نمط: ${m.label}`, { id: 'session-mode' });
+      toast.success(`${t('modeActivated')}: ${t(m.labelKey)}`, { id: 'session-mode' });
     } catch (e) {
       console.error('Error setting session mode:', e);
-      nassaqError('خطأ في تحديد النمط');
+      nassaqError(t('errorSettingMode'));
     }
   };
 
@@ -455,7 +476,7 @@ export default function SessionTeachPage() {
 
     const presentStudents = students.filter(s => s.attendance_status === 'present');
     if (!presentStudents.length) {
-      nassaqError('لا يوجد طلاب حاضرون');
+      nassaqError(t('noPresentStudents'));
       setLoading(false);
       setShowHakim(false);
       return;
@@ -521,16 +542,16 @@ export default function SessionTeachPage() {
         confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 }, colors: ['#10b981', '#fbbf24', '#6366f1'] });
         setTimeout(() => confetti({ particleCount: 40, angle: 60, spread: 55, origin: { x: 0 } }), 200);
         setTimeout(() => confetti({ particleCount: 40, angle: 120, spread: 55, origin: { x: 1 } }), 400);
-        toast.success(`🎉 ${selectedStudent.full_name?.split(' ')[0]} أجاب صحيحاً! +${change} نقطة`);
-        addLog('✅', `${selectedStudent.full_name?.split(' ')[0]} — إجابة صحيحة (+${change})`, 'text-green-700');
+        toast.success(`${selectedStudent.full_name?.split(' ')[0]} ${t('answeredCorrectly')} +${change}`);
+        addLog('correct', `${selectedStudent.full_name?.split(' ')[0]} — ${t('correctAnswer')} (+${change})`, 'text-green-700');
         setStats(p => ({ ...p, questions: p.questions + 1, correct: p.correct + 1 }));
       } else if (result === 'wrong') {
-        toast.info(`❌ ${selectedStudent.full_name?.split(' ')[0]} — إجابة خاطئة`);
-        addLog('❌', `${selectedStudent.full_name?.split(' ')[0]} — إجابة خاطئة`, 'text-red-600');
+        toast.info(`${selectedStudent.full_name?.split(' ')[0]} — ${t('wrongAnswer')}`);
+        addLog('wrong', `${selectedStudent.full_name?.split(' ')[0]} — ${t('wrongAnswer')}`, 'text-red-600');
         setStats(p => ({ ...p, questions: p.questions + 1 }));
       } else {
-        toast.success(`⏭️ ${selectedStudent.full_name?.split(' ')[0]} — لم يجب (${change} نقطة)`);
-        addLog('⏭️', `${selectedStudent.full_name?.split(' ')[0]} — لم يجب (${change})`, 'text-amber-600');
+        toast.success(`${selectedStudent.full_name?.split(' ')[0]} — ${t('didNotAnswer')} (${change})`);
+        addLog('skip', `${selectedStudent.full_name?.split(' ')[0]} — ${t('didNotAnswer')} (${change})`, 'text-amber-600');
         setStats(p => ({ ...p, questions: p.questions + 1 }));
       }
       setStudents(prev => prev.map(s =>
@@ -548,7 +569,7 @@ export default function SessionTeachPage() {
       } : null);
     } catch (e) {
       console.error('Error recording answer:', e);
-      nassaqError('خطأ في تسجيل الإجابة');
+      nassaqError(t('errorRecordingAnswer'));
     }
   };
 
@@ -560,9 +581,8 @@ export default function SessionTeachPage() {
         type: pType.id,
       });
       const change = res.data?.score_change || 0;
-      const emoji = pType.id === 'active' || pType.id === 'initiative' ? '🙋' : pType.id === 'refused' ? '🚫' : '😐';
-      toast.success(`${emoji} ${pType.label} — ${selectedStudent.full_name?.split(' ')[0]}`);
-      addLog(emoji, `${selectedStudent.full_name?.split(' ')[0]} — ${pType.label} (${change > 0 ? '+' : ''}${change})`, change >= 0 ? 'text-blue-700' : 'text-amber-700');
+      toast.success(`${t(pType.labelKey)} — ${selectedStudent.full_name?.split(' ')[0]}`);
+      addLog('participation', `${selectedStudent.full_name?.split(' ')[0]} — ${t(pType.labelKey)} (${change > 0 ? '+' : ''}${change})`, change >= 0 ? 'text-blue-700' : 'text-amber-700');
       setStats(p => ({ ...p, participation: p.participation + 1 }));
       setStudents(prev => prev.map(s =>
         s.id === selectedStudent.id ? { ...s, interactionCount: s.interactionCount + 1 } : s
@@ -575,7 +595,7 @@ export default function SessionTeachPage() {
       } : null);
     } catch (e) {
       console.error('Error recording participation:', e);
-      nassaqError('خطأ في تسجيل المشاركة');
+      nassaqError(t('errorRecordingParticipation'));
     }
   };
 
@@ -589,28 +609,35 @@ export default function SessionTeachPage() {
         details: behaviourNote || null,
       });
       const change = res.data?.score_change || 0;
-      const emoji = behaviourCategory === 'negative' ? '⚠️' : behaviourCategory === 'skill' ? '⭐' : '👍';
-      toast.success(`${emoji} سلوك: ${bType.label} — ${selectedStudent.full_name?.split(' ')[0]}`);
-      addLog(emoji, `${selectedStudent.full_name?.split(' ')[0]} — ${bType.label} (${change > 0 ? '+' : ''}${change})`, behaviourCategory === 'negative' ? 'text-red-600' : 'text-purple-700');
+      toast.success(`${t('behaviour')}: ${bType.label || t(bType.labelKey)} — ${selectedStudent.full_name?.split(' ')[0]}`);
+      addLog('behaviour', `${selectedStudent.full_name?.split(' ')[0]} — ${bType.label || t(bType.labelKey)} (${change > 0 ? '+' : ''}${change})`, behaviourCategory === 'negative' ? 'text-red-600' : 'text-purple-700');
       setBehaviourNote('');
     } catch (e) {
       console.error('Error recording behaviour:', e);
-      nassaqError('خطأ في تسجيل السلوك');
+      nassaqError(t('errorRecordingBehaviour'));
     }
   };
 
   const recordSkill = async (skill) => {
     if (!selectedStudent) return;
+    const isCustom = String(skill.id).startsWith('custom_');
     try {
-      const res = await api.post(`/session/${sessionId}/skill`, {
-        student_id: selectedStudent.id,
-        skill_type_id: skill.id,
-        notes: skillNote || null,
-      });
-      const change = res.data?.score_change || 0;
+      if (isCustom) {
+        await api.post(`/session/${sessionId}/note`, {
+          student_id: selectedStudent.id,
+          content: `${t('skill')}: ${skill.name_ar || skill.name}${skillNote ? ' - ' + skillNote : ''}`,
+          type: 'skill',
+        });
+      } else {
+        await api.post(`/session/${sessionId}/skill`, {
+          student_id: selectedStudent.id,
+          skill_type_id: skill.id,
+          notes: skillNote || null,
+        });
+      }
       confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 }, colors: ['#8b5cf6', '#a78bfa', '#c4b5fd'] });
-      toast.success(`⭐ مهارة: ${skill.name_ar || skill.name} — ${selectedStudent.full_name?.split(' ')[0]}`);
-      addLog('⭐', `${selectedStudent.full_name?.split(' ')[0]} — ${skill.name_ar || skill.name} (+${change})`, 'text-purple-700');
+      toast.success(`${t('skill')}: ${skill.name_ar || skill.name} — ${selectedStudent.full_name?.split(' ')[0]}`);
+      addLog(Star, `${selectedStudent.full_name?.split(' ')[0]} — ${skill.name_ar || skill.name}`, 'text-purple-700');
       setSkillNote('');
       setStudents(prev => prev.map(s =>
         s.id === selectedStudent.id ? { ...s, interactionCount: s.interactionCount + 1 } : s
@@ -622,7 +649,7 @@ export default function SessionTeachPage() {
       } : null);
     } catch (e) {
       console.error('Error recording skill:', e);
-      nassaqError('خطأ في تسجيل المهارة');
+      nassaqError(t('errorRecordingSkill'));
     }
   };
 
@@ -955,7 +982,8 @@ export default function SessionTeachPage() {
               <div className="h-full flex items-center justify-center text-white/40 text-sm">
                 {t('selectSessionModeToStart')}
               </div>
-            ) : evalMode === 'group' && groups.length > 0 ? (
+            ) : evalMode === 'group' ? (
+              groups.length > 0 ? (
               <div className="space-y-3">
                 {groups.map(group => {
                   const groupStudents = filteredStudents.filter(s => group.students?.includes(s.id));
@@ -1002,6 +1030,19 @@ export default function SessionTeachPage() {
                   </div>
                 )}
               </div>
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center text-white/40 text-sm gap-3 py-8">
+                  <UsersRound className="h-10 w-10 text-white/20" />
+                  <p className="font-cairo">{t('noGroupsCreated')}</p>
+                  <button
+                    onClick={() => setShowGroupModal(true)}
+                    className="px-4 py-2 rounded-xl bg-purple-600/20 text-purple-400 text-sm font-medium hover:bg-purple-600/30 transition-colors border border-purple-500/30 flex items-center gap-2"
+                  >
+                    <UsersRound className="h-4 w-4" />
+                    {t('manageGroups')}
+                  </button>
+                </div>
+              )
             ) : hasGenderSplit ? (
               <div className="space-y-3">
                 {[
@@ -1088,11 +1129,11 @@ export default function SessionTeachPage() {
               {/* Tabs */}
               <div className="flex border-b border-white/10">
                 {[
-                  { id: 'question', label: 'سؤال', icon: MessageCircle, forMode: 'quiz' },
-                  { id: 'participation', label: 'مشاركة', icon: Hand, forMode: 'review' },
-                  { id: 'homework', label: 'واجب', icon: ClipboardCheck, forMode: 'homework' },
-                  { id: 'behaviour', label: 'سلوك', icon: ThumbsUp },
-                  { id: 'skill', label: 'مهارة', icon: Star },
+                  { id: 'question', labelKey: 'question', icon: MessageCircle, forMode: 'quiz' },
+                  { id: 'participation', labelKey: 'participationTab', icon: Hand, forMode: 'review' },
+                  { id: 'homework', labelKey: 'modeHomework', icon: ClipboardCheck, forMode: 'homework' },
+                  { id: 'behaviour', labelKey: 'behaviour', icon: ThumbsUp },
+                  { id: 'skill', labelKey: 'skill', icon: Star },
                 ].map(tab => {
                   const isRecommended = tab.forMode && mode?.id === tab.forMode;
                   return (
@@ -1104,7 +1145,7 @@ export default function SessionTeachPage() {
                     }`}
                   >
                     <tab.icon className="h-3.5 w-3.5" />
-                    {tab.label}
+                    {t(tab.labelKey)}
                     {isRecommended && actionTab !== tab.id && (
                       <span className="absolute top-1 end-2 w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
                     )}
@@ -1164,14 +1205,14 @@ export default function SessionTeachPage() {
                       </div>
                     ) : <>
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-white/60 text-xs font-cairo">اضغط على الطالب لتبديل حالة الواجب</span>
+                      <span className="text-white/60 text-xs font-cairo">{t('homeworkMarkNotSubmitted')}</span>
                       <span className="text-blue-400 text-xs font-bold font-cairo">
-                        {Object.values(homeworkStatuses).filter(s => s === 'done').length}/{students.filter(s => s.attendance_status === 'present').length} حل
+                        {Object.values(homeworkStatuses).filter(s => s === 'done').length}/{students.filter(s => s.attendance_status === 'present').length} {t('submitted')}
                       </span>
                     </div>
                     <div className="max-h-[300px] overflow-y-auto space-y-1.5 scrollbar-thin">
                       {students.filter(s => s.attendance_status === 'present').map(student => {
-                        const isDone = homeworkStatuses[student.id] === 'done';
+                        const isDone = homeworkStatuses[student.id] !== 'not_done';
                         return (
                           <button
                             key={student.id}
@@ -1185,7 +1226,7 @@ export default function SessionTeachPage() {
                             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
                               isDone ? 'bg-green-600 text-white' : 'bg-white/10 text-white/40'
                             }`}>
-                              {isDone ? '✅' : '❌'}
+                              {isDone ? <CheckCircle2 className="h-4 w-4 text-green-400" /> : <XCircle className="h-4 w-4 text-red-400" />}
                             </div>
                             <span className={`flex-1 text-start text-sm font-cairo truncate ${
                               isDone ? 'text-white' : 'text-white/50 line-through'
@@ -1211,8 +1252,8 @@ export default function SessionTeachPage() {
                   <div className="space-y-2">
                     <div className="flex gap-1 mb-2">
                       {[
-                        { id: 'positive', label: '👍 إيجابي', color: 'bg-green-600' },
-                        { id: 'negative', label: '⚠️ سلبي', color: 'bg-red-600' },
+                        { id: 'positive', labelKey: 'positive', icon: ThumbsUp, color: 'bg-green-600' },
+                        { id: 'negative', labelKey: 'negative', icon: AlertTriangle, color: 'bg-red-600' },
                       ].map(cat => (
                         <button
                           key={cat.id}
@@ -1221,12 +1262,19 @@ export default function SessionTeachPage() {
                             behaviourCategory === cat.id ? cat.color : 'bg-white/10 text-white/60'
                           }`}
                         >
-                          {cat.label}
+                          <span className="flex items-center justify-center gap-1"><cat.icon className="h-3 w-3" />{t(cat.labelKey)}</span>
                         </button>
                       ))}
                     </div>
                     <div className="grid grid-cols-3 gap-1.5">
-                      {(BEHAVIOURS[behaviourCategory] || []).map(b => (
+                      {[
+                        ...(BEHAVIOURS[behaviourCategory] || []),
+                        ...(behaviourCategory === 'positive' ? customPositiveBehaviours : customNegativeBehaviours).map(name => ({
+                          id: `custom_${name}`,
+                          label: name,
+                          points: behaviourCategory === 'positive' ? '+2' : '-2'
+                        }))
+                      ].map(b => (
                         <button
                           key={b.id}
                           onClick={() => recordBehaviour(b)}
@@ -1249,7 +1297,10 @@ export default function SessionTeachPage() {
                 {actionTab === 'skill' && (
                   <div className="space-y-2">
                     <div className="grid grid-cols-3 gap-1.5">
-                      {skillTypes.map(skill => (
+                      {[
+                        ...skillTypes,
+                        ...customSkills.map(name => ({ id: `custom_${name}`, name, name_ar: name }))
+                      ].map(skill => (
                         <button
                           key={skill.id}
                           onClick={() => recordSkill(skill)}
@@ -1260,8 +1311,8 @@ export default function SessionTeachPage() {
                         </button>
                       ))}
                     </div>
-                    {skillTypes.length === 0 && (
-                      <p className="text-white/40 text-xs text-center py-2">لا توجد مهارات مسجلة</p>
+                    {skillTypes.length === 0 && customSkills.length === 0 && (
+                      <p className="text-white/40 text-xs text-center py-2">{t('noSkillsRegistered')}</p>
                     )}
                     <input
                       className="w-full bg-white/10 text-white text-xs rounded px-2 py-1.5 placeholder-white/30 outline-none"
@@ -1280,9 +1331,9 @@ export default function SessionTeachPage() {
         <div className="hidden lg:flex flex-col w-72 border-r border-white/10 bg-slate-800/50 overflow-hidden">
           <div className="flex border-b border-white/10">
             {[
-              { id: 'log', label: 'النشاط', icon: Activity },
-              { id: 'notes', label: 'ملاحظات', icon: StickyNote },
-              { id: 'metrics', label: 'المؤشرات', icon: BarChart2 },
+              { id: 'log', labelKey: 'activityLog', icon: Activity },
+              { id: 'notes', labelKey: 'notes', icon: StickyNote },
+              { id: 'metrics', labelKey: 'metrics', icon: BarChart2 },
             ].map(tab => (
               <button
                 key={tab.id}
@@ -1292,7 +1343,7 @@ export default function SessionTeachPage() {
                 }`}
               >
                 <tab.icon className="h-3.5 w-3.5" />
-                {tab.label}
+                {t(tab.labelKey)}
                 {tab.id === 'notes' && notes.length > 0 && (
                   <span className="bg-amber-500 text-white text-[9px] rounded-full w-4 h-4 flex items-center justify-center">{notes.length}</span>
                 )}
@@ -1308,7 +1359,13 @@ export default function SessionTeachPage() {
                 ) : (
                   activityLog.map(log => (
                     <div key={log.id} className="bg-white/5 rounded-lg px-2.5 py-2">
-                      <p className={`text-xs font-medium ${log.color}`}>{log.emoji} {log.text}</p>
+                      <p className={`text-xs font-medium ${log.color} flex items-center gap-1`}>
+                        {(() => {
+                          const IconComp = LOG_ICONS[log.emoji];
+                          return IconComp ? <IconComp className="h-3 w-3 inline-block flex-shrink-0" /> : <span>{log.emoji}</span>;
+                        })()}
+                        <span>{log.text}</span>
+                      </p>
                       <p className="text-white/30 text-[10px] mt-0.5">{log.time}</p>
                     </div>
                   ))
@@ -1316,17 +1373,17 @@ export default function SessionTeachPage() {
               </div>
               <div className="border-t border-white/10 p-3 space-y-2">
                 <div className="flex justify-between text-xs text-white/50">
-                  <span>أسئلة</span><span className="text-white font-bold">{stats.questions}</span>
+                  <span>{t('questions')}</span><span className="text-white font-bold">{stats.questions}</span>
                 </div>
                 <div className="flex justify-between text-xs text-white/50">
-                  <span>صحيح</span><span className="text-green-400 font-bold">{stats.correct}</span>
+                  <span>{t('correct')}</span><span className="text-green-400 font-bold">{stats.correct}</span>
                 </div>
                 <div className="flex justify-between text-xs text-white/50">
-                  <span>دقة</span>
+                  <span>{t('accuracy')}</span>
                   <span className={`font-bold ${accuracy >= 60 ? 'text-green-400' : 'text-red-400'}`}>{accuracy}%</span>
                 </div>
                 <div className="flex justify-between text-xs text-white/50">
-                  <span>تفاعل</span><span className="text-blue-400 font-bold">{stats.participation}</span>
+                  <span>{t('interaction')}</span><span className="text-blue-400 font-bold">{stats.participation}</span>
                 </div>
               </div>
             </>
@@ -1364,10 +1421,10 @@ export default function SessionTeachPage() {
               <div className="border-t border-white/10 p-2 space-y-2">
                 <div className="flex gap-1">
                   {[
-                    { id: 'session', label: 'عامة' },
-                    { id: 'student', label: 'طالب' },
-                    { id: 'behavioural', label: 'سلوكية' },
-                    { id: 'followup', label: 'متابعة' },
+                    { id: 'session', labelKey: 'general' },
+                    { id: 'student', labelKey: 'student' },
+                    { id: 'behavioural', labelKey: 'behaviour' },
+                    { id: 'followup', labelKey: 'followUp' },
                   ].map(nt => (
                     <button
                       key={nt.id}
@@ -1376,7 +1433,7 @@ export default function SessionTeachPage() {
                         noteType === nt.id ? 'bg-amber-600 text-white' : 'bg-white/10 text-white/50'
                       }`}
                     >
-                      {nt.label}
+                      {t(nt.labelKey)}
                     </button>
                   ))}
                 </div>
@@ -1486,7 +1543,7 @@ export default function SessionTeachPage() {
                   </div>
 
                   <div className="text-center text-white/30 text-[10px] mt-2">
-                    ⏱️ {liveMetrics.duration_minutes || 0} دقيقة | 📝 {liveMetrics.notes_count || 0} ملاحظة
+                    <Clock className="h-3 w-3 inline-block" /> {liveMetrics.duration_minutes || 0} {t('minutes')} | <StickyNote className="h-3 w-3 inline-block" /> {liveMetrics.notes_count || 0} {t('notes')}
                   </div>
                 </>
               ) : (
