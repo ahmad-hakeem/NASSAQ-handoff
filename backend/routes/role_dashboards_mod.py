@@ -2102,7 +2102,7 @@ async def get_followup_record(
     current_user: dict = Depends(get_current_user)
 ):
     await _verify_session_owner(session_id, current_user)
-    session = await gd_find_one(db.session, "teacher_sessions", {"id": session_id})
+    session = await gd_find_one(db.session, "class_sessions", {"id": session_id})
     if session:
         lookup = {"class_id": session.get("class_id"), "subject_id": session.get("subject_id")}
     else:
@@ -2133,7 +2133,7 @@ async def save_followup_record(
     current_user: dict = Depends(get_current_user)
 ):
     await _verify_session_owner(session_id, current_user)
-    session = await gd_find_one(db.session, "teacher_sessions", {"id": session_id})
+    session = await gd_find_one(db.session, "class_sessions", {"id": session_id})
     c_id = session.get("class_id") if session else None
     s_id = session.get("subject_id") if session else None
     lookup = {"class_id": c_id, "subject_id": s_id} if c_id and s_id else {"session_id": session_id}
@@ -2167,7 +2167,7 @@ async def add_followup_column(
         "maxGrade": payload.get("maxGrade", 10),
         "type": payload.get("type", "grade"),
     }
-    session = await gd_find_one(db.session, "teacher_sessions", {"id": session_id})
+    session = await gd_find_one(db.session, "class_sessions", {"id": session_id})
     c_id = session.get("class_id") if session else None
     s_id = session.get("subject_id") if session else None
     lookup = {"class_id": c_id, "subject_id": s_id} if c_id and s_id else {"session_id": session_id}

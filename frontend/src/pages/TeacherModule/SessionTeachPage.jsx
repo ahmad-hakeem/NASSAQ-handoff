@@ -637,7 +637,7 @@ export default function SessionTeachPage() {
       }
       confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 }, colors: ['#8b5cf6', '#a78bfa', '#c4b5fd'] });
       toast.success(`${t('skill')}: ${skill.name_ar || skill.name} — ${selectedStudent.full_name?.split(' ')[0]}`);
-      addLog(Star, `${selectedStudent.full_name?.split(' ')[0]} — ${skill.name_ar || skill.name}`, 'text-purple-700');
+      addLog('skill', `${selectedStudent.full_name?.split(' ')[0]} — ${skill.name_ar || skill.name}`, 'text-purple-700');
       setSkillNote('');
       setStudents(prev => prev.map(s =>
         s.id === selectedStudent.id ? { ...s, interactionCount: s.interactionCount + 1 } : s
