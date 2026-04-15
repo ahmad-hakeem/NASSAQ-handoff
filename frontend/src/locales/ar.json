@@ -3384,5 +3384,15 @@
   "randomStudentPick": "اختيار طالب عشوائي",
   "topParticipants": "الأكثر تفاعلاً",
   "closingNoteExample": "مثال: مستوى فهم الطلاب، تقدم الدرس، خطة المتابعة",
-  "sessionEnded": "انتهت الحصة"
+  "sessionEnded": "انتهت الحصة",
+  "evaluatedStudents": "الطلاب المقيّمون",
+  "notesSent": "ملاحظات مرسلة",
+  "unassignedStudents": "طلاب غير مصنفين",
+  "behaviourItems": "عناصر السلوك",
+  "behaviourItemsHint": "عناصر السلوك المتاحة للتقييم أثناء الحصة",
+  "skillItems": "المهارات",
+  "skillItemsHint": "المهارات المتاحة لتسجيل أداء الطلاب",
+  "gradeType": "درجة",
+  "checkType": "تحقق",
+  "textType": "نص"
 }

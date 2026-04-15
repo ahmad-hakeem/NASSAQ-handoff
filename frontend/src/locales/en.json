@@ -3384,5 +3384,15 @@
   "randomStudentPick": "Random Student Pick",
   "topParticipants": "Top Participants",
   "closingNoteExample": "E.g.: Student comprehension level, lesson progress, follow-up plan",
-  "sessionEnded": "Session Ended"
+  "sessionEnded": "Session Ended",
+  "evaluatedStudents": "Evaluated Students",
+  "notesSent": "Notes Sent",
+  "unassignedStudents": "Unassigned Students",
+  "behaviourItems": "Behaviour Items",
+  "behaviourItemsHint": "Behaviour items available for evaluation during the session",
+  "skillItems": "Skills",
+  "skillItemsHint": "Skills available for recording student performance",
+  "gradeType": "Grade",
+  "checkType": "Check",
+  "textType": "Text"
 }

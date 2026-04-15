@@ -271,46 +271,67 @@ export default function SessionTeachPage() {
     } catch (e) { /* ignore */ }
   }, [sessionId]);
 
+  const [dragStudent, setDragStudent] = useState(null);
+
   const autoGroupByLevel = (studentsList = null) => {
     const list = studentsList || students.filter(s => s.attendance_status === 'present');
     const levels = { high: [], medium: [], low: [], unassigned: [] };
     list.forEach(s => {
-      const score = s.correct_answers || s.correctAnswers || 0;
-      const count = s.interaction_count || s.interactionCount || 0;
-      if (count >= 5 && score >= 3) levels.high.push(s);
-      else if (count >= 2) levels.medium.push(s);
-      else if (count > 0) levels.low.push(s);
-      else levels.unassigned.push(s);
+      const level = s.level || s.student_level || s.academic_level;
+      if (level === 'advanced' || level === 'high' || level === 'متقدم') levels.high.push(s);
+      else if (level === 'intermediate' || level === 'medium' || level === 'متوسط') levels.medium.push(s);
+      else if (level === 'beginner' || level === 'low' || level === 'مبتدئ') levels.low.push(s);
+      else {
+        const score = s.correct_answers || s.correctAnswers || 0;
+        const count = s.interaction_count || s.interactionCount || 0;
+        if (count >= 5 && score >= 3) levels.high.push(s);
+        else if (count >= 2) levels.medium.push(s);
+        else if (count > 0) levels.low.push(s);
+        else levels.unassigned.push(s);
+      }
     });
     const newGroups = [];
     if (levels.high.length > 0) newGroups.push({ id: 'g-high', name: t('advancedLevel'), color: 'bg-green-600', students: levels.high.map(s => s.id) });
     if (levels.medium.length > 0) newGroups.push({ id: 'g-medium', name: t('intermediateLevel'), color: 'bg-blue-600', students: levels.medium.map(s => s.id) });
     if (levels.low.length > 0) newGroups.push({ id: 'g-low', name: t('beginnerLevel'), color: 'bg-amber-600', students: levels.low.map(s => s.id) });
+    if (levels.unassigned.length > 0 && newGroups.length === 0) {
+      newGroups.push({ id: 'g-all', name: t('group') + ' 1', color: 'bg-slate-600', students: levels.unassigned.map(s => s.id) });
+    }
     setGroups(newGroups);
     toast.success(t('groupsCreatedAutomatically'));
   };
+
+  const handleDragStart = (studentId) => setDragStudent(studentId);
+  const handleDropOnGroup = (groupIndex) => {
+    if (!dragStudent) return;
+    const updated = groups.map((g, i) => ({
+      ...g,
+      students: i === groupIndex
+        ? [...new Set([...(g.students || []), dragStudent])]
+        : (g.students || []).filter(id => id !== dragStudent)
+    }));
+    setGroups(updated);
+    setDragStudent(null);
+  };
+
+  const defaultColumns = [
+    { id: 'participation', name: t('participation'), maxGrade: 10, type: 'grade' },
+    { id: 'homework', name: t('homework'), maxGrade: 10, type: 'grade' },
+    { id: 'performance_task', name: t('performanceTask'), maxGrade: 10, type: 'grade' },
+    { id: 'test', name: t('test'), maxGrade: 10, type: 'grade' },
+  ];
 
   const loadFollowupRecord = useCallback(async () => {
     if (!sessionId) return;
     try {
       const res = await api.get(`/session/${sessionId}/followup-record`);
       setFollowupData(res.data?.data || {});
-      setFollowupColumns(res.data?.columns || [
-        { id: 'participation', name: t('participation'), maxGrade: 10 },
-        { id: 'homework', name: t('homework'), maxGrade: 10 },
-        { id: 'performance_task', name: t('performanceTask'), maxGrade: 10 },
-        { id: 'test', name: t('test'), maxGrade: 10 },
-      ]);
+      if (res.data?.columns?.length) setFollowupColumns(res.data.columns);
+      else if (followupColumns.length === 0) setFollowupColumns(defaultColumns);
     } catch (e) {
-      setFollowupData([]);
-      setFollowupColumns([
-        { id: 'participation', name: t('participation'), maxGrade: 10 },
-        { id: 'homework', name: t('homework'), maxGrade: 10 },
-        { id: 'performance_task', name: t('performanceTask'), maxGrade: 10 },
-        { id: 'test', name: t('test'), maxGrade: 10 },
-      ]);
+      if (followupColumns.length === 0) setFollowupColumns(defaultColumns);
     }
-  }, [api, sessionId, t]);
+  }, [api, sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [remainingMinutes, setRemainingMinutes] = useState(null);
 
@@ -1551,7 +1572,13 @@ export default function SessionTeachPage() {
             </button>
 
             {groups.map((group, gi) => (
-              <div key={group.id} className="bg-slate-100 dark:bg-slate-800 rounded-xl p-3 space-y-2">
+              <div
+                key={group.id}
+                className={`bg-slate-100 dark:bg-slate-800 rounded-xl p-3 space-y-2 ${dragStudent ? 'border-2 border-dashed border-transparent hover:border-brand-turquoise' : ''}`}
+                onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('border-brand-turquoise'); }}
+                onDragLeave={e => e.currentTarget.classList.remove('border-brand-turquoise')}
+                onDrop={e => { e.preventDefault(); e.currentTarget.classList.remove('border-brand-turquoise'); handleDropOnGroup(gi); }}
+              >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className={`w-3 h-3 rounded-full ${group.color}`} />
@@ -1578,7 +1605,14 @@ export default function SessionTeachPage() {
                     const st = presentStudents.find(s => s.id === sid);
                     if (!st) return null;
                     return (
-                      <span key={sid} className="inline-flex items-center gap-1 bg-white dark:bg-slate-700 px-2 py-1 rounded-lg text-[11px]">
+                      <span
+                        key={sid}
+                        draggable
+                        onDragStart={() => handleDragStart(sid)}
+                        onDragEnd={() => setDragStudent(null)}
+                        className="inline-flex items-center gap-1 bg-white dark:bg-slate-700 px-2 py-1 rounded-lg text-[11px] cursor-grab active:cursor-grabbing"
+                      >
+                        <GripVertical className="h-3 w-3 text-muted-foreground flex-none" />
                         {st.full_name?.split(' ').slice(0, 2).join(' ')}
                         <button
                           onClick={() => {
@@ -1599,7 +1633,7 @@ export default function SessionTeachPage() {
                   value=""
                   onChange={e => {
                     if (!e.target.value) return;
-                    const sid = parseInt(e.target.value);
+                    const sid = e.target.value;
                     const updated = groups.map((g, i) => ({
                       ...g,
                       students: i === gi
@@ -1616,6 +1650,31 @@ export default function SessionTeachPage() {
                 </select>
               </div>
             ))}
+
+            {(() => {
+              const assignedIds = new Set(groups.flatMap(g => g.students || []));
+              const unassigned = presentStudents.filter(s => !assignedIds.has(s.id));
+              if (unassigned.length === 0 || groups.length === 0) return null;
+              return (
+                <div className="bg-slate-200/50 dark:bg-slate-700/30 rounded-xl p-3 space-y-2 border border-dashed border-slate-400/30">
+                  <div className="text-xs font-medium text-muted-foreground">{t('unassignedStudents')} ({unassigned.length})</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {unassigned.map(s => (
+                      <span
+                        key={s.id}
+                        draggable
+                        onDragStart={() => handleDragStart(s.id)}
+                        onDragEnd={() => setDragStudent(null)}
+                        className="inline-flex items-center gap-1 bg-white dark:bg-slate-600 px-2 py-1 rounded-lg text-[11px] cursor-grab active:cursor-grabbing"
+                      >
+                        <GripVertical className="h-3 w-3 text-muted-foreground flex-none" />
+                        {s.full_name?.split(' ').slice(0, 2).join(' ')}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
 
             <button
               onClick={() => setGroups([...groups, {
@@ -1635,14 +1694,14 @@ export default function SessionTeachPage() {
 
       {/* Evaluation Settings Modal */}
       <Dialog open={showSettingsModal} onOpenChange={setShowSettingsModal}>
-        <DialogContent className="max-w-md" dir={isRTL ? 'rtl' : 'ltr'}>
+        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto" dir={isRTL ? 'rtl' : 'ltr'}>
           <DialogHeader>
             <DialogTitle className="font-cairo flex items-center gap-2">
               <Settings className="h-5 w-5 text-brand-turquoise" />
               {t('evaluationSettings')}
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-5">
             <div className="space-y-2">
               <label className="text-sm font-medium">{t('evaluationMode')}</label>
               <div className="grid grid-cols-2 gap-2">
@@ -1667,8 +1726,13 @@ export default function SessionTeachPage() {
               </div>
             </div>
 
+            <div className="border-t border-slate-200 dark:border-slate-700" />
+
             <div className="space-y-2">
-              <label className="text-sm font-medium">{t('followupColumns')}</label>
+              <label className="text-sm font-medium flex items-center gap-2">
+                <FileSpreadsheet className="h-4 w-4 text-brand-turquoise" />
+                {t('followupColumns')}
+              </label>
               {followupColumns.map((col, ci) => (
                 <div key={col.id} className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 rounded-lg p-2">
                   <GripVertical className="h-3.5 w-3.5 text-muted-foreground flex-none" />
@@ -1681,6 +1745,19 @@ export default function SessionTeachPage() {
                     }}
                     className="flex-1 bg-transparent text-sm outline-none"
                   />
+                  <select
+                    value={col.type || 'grade'}
+                    onChange={e => {
+                      const updated = [...followupColumns];
+                      updated[ci] = { ...updated[ci], type: e.target.value };
+                      setFollowupColumns(updated);
+                    }}
+                    className="text-[10px] bg-white dark:bg-slate-700 rounded border px-1 py-0.5"
+                  >
+                    <option value="grade">{t('gradeType')}</option>
+                    <option value="check">{t('checkType')}</option>
+                    <option value="text">{t('textType')}</option>
+                  </select>
                   <input
                     type="number"
                     value={col.maxGrade}
@@ -1714,6 +1791,61 @@ export default function SessionTeachPage() {
                 {t('addColumn')}
               </button>
             </div>
+
+            <div className="border-t border-slate-200 dark:border-slate-700" />
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium flex items-center gap-2">
+                <Heart className="h-4 w-4 text-pink-500" />
+                {t('behaviourItems')}
+              </label>
+              <p className="text-[11px] text-muted-foreground">{t('behaviourItemsHint')}</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-2 space-y-1">
+                  <span className="text-[10px] font-bold text-green-600 dark:text-green-400 flex items-center gap-1">
+                    <ThumbsUp className="h-3 w-3" /> {t('positiveBehaviour')}
+                  </span>
+                  {(sessionInfo?.positive_behaviours || ['مشاركة فعالة', 'التزام', 'تعاون', 'إبداع']).map((b, i) => (
+                    <div key={i} className="text-[10px] text-slate-600 dark:text-slate-400 flex items-center gap-1">
+                      <CheckCircle2 className="h-2.5 w-2.5 text-green-500 flex-none" />
+                      {b}
+                    </div>
+                  ))}
+                </div>
+                <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-2 space-y-1">
+                  <span className="text-[10px] font-bold text-red-600 dark:text-red-400 flex items-center gap-1">
+                    <ThumbsDown className="h-3 w-3" /> {t('negativeBehaviour')}
+                  </span>
+                  {(sessionInfo?.negative_behaviours || ['عدم انتباه', 'تأخر', 'إزعاج']).map((b, i) => (
+                    <div key={i} className="text-[10px] text-slate-600 dark:text-slate-400 flex items-center gap-1">
+                      <XCircle className="h-2.5 w-2.5 text-red-500 flex-none" />
+                      {b}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-200 dark:border-slate-700" />
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium flex items-center gap-2">
+                <Star className="h-4 w-4 text-purple-500" />
+                {t('skillItems')}
+              </label>
+              <p className="text-[11px] text-muted-foreground">{t('skillItemsHint')}</p>
+              <div className="flex flex-wrap gap-1.5">
+                {(skillTypes.length > 0
+                  ? skillTypes.map(s => s.name || s.label || s)
+                  : ['قراءة', 'كتابة', 'تحدث', 'استماع', 'تفكير نقدي']
+                ).map((skill, i) => (
+                  <span key={i} className="inline-flex items-center gap-1 bg-purple-50 dark:bg-purple-900/20 px-2 py-1 rounded-lg text-[11px] text-purple-700 dark:text-purple-300">
+                    <Star className="h-2.5 w-2.5" />
+                    {skill}
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
@@ -1745,28 +1877,57 @@ export default function SessionTeachPage() {
               <tbody>
                 {presentStudents.map((student, si) => {
                   const studentData = followupData[student.id] || {};
-                  const total = followupColumns.reduce((sum, col) => sum + (studentData[col.id] || 0), 0);
-                  const maxTotal = followupColumns.reduce((sum, col) => sum + col.maxGrade, 0);
+                  const numericCols = followupColumns.filter(c => c.type !== 'text');
+                  const total = numericCols.reduce((sum, col) => sum + (Number(studentData[col.id]) || 0), 0);
+                  const maxTotal = numericCols.reduce((sum, col) => sum + col.maxGrade, 0);
                   return (
                     <tr key={student.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
                       <td className="border px-3 py-1.5 text-xs text-muted-foreground">{si + 1}</td>
                       <td className="border px-3 py-1.5 text-xs font-medium">{student.full_name}</td>
                       {followupColumns.map(col => (
                         <td key={col.id} className="border px-1 py-1">
-                          <input
-                            type="number"
-                            value={studentData[col.id] || ''}
-                            onChange={e => {
-                              const val = Math.min(parseInt(e.target.value) || 0, col.maxGrade);
-                              setFollowupData(prev => ({
-                                ...prev,
-                                [student.id]: { ...(prev[student.id] || {}), [col.id]: val }
-                              }));
-                            }}
-                            className="w-full text-center text-xs bg-transparent outline-none border rounded p-1 focus:border-brand-turquoise"
-                            min={0}
-                            max={col.maxGrade}
-                          />
+                          {col.type === 'check' ? (
+                            <div className="flex items-center justify-center">
+                              <input
+                                type="checkbox"
+                                checked={!!studentData[col.id]}
+                                onChange={e => {
+                                  setFollowupData(prev => ({
+                                    ...prev,
+                                    [student.id]: { ...(prev[student.id] || {}), [col.id]: e.target.checked ? 1 : 0 }
+                                  }));
+                                }}
+                                className="w-4 h-4 rounded border-slate-300 text-brand-turquoise focus:ring-brand-turquoise"
+                              />
+                            </div>
+                          ) : col.type === 'text' ? (
+                            <input
+                              type="text"
+                              value={studentData[col.id] || ''}
+                              onChange={e => {
+                                setFollowupData(prev => ({
+                                  ...prev,
+                                  [student.id]: { ...(prev[student.id] || {}), [col.id]: e.target.value }
+                                }));
+                              }}
+                              className="w-full text-center text-xs bg-transparent outline-none border rounded p-1 focus:border-brand-turquoise"
+                            />
+                          ) : (
+                            <input
+                              type="number"
+                              value={studentData[col.id] || ''}
+                              onChange={e => {
+                                const val = Math.min(parseInt(e.target.value) || 0, col.maxGrade);
+                                setFollowupData(prev => ({
+                                  ...prev,
+                                  [student.id]: { ...(prev[student.id] || {}), [col.id]: val }
+                                }));
+                              }}
+                              className="w-full text-center text-xs bg-transparent outline-none border rounded p-1 focus:border-brand-turquoise"
+                              min={0}
+                              max={col.maxGrade}
+                            />
+                          )}
                         </td>
                       ))}
                       <td className="border px-3 py-1.5 text-center text-xs font-bold">
@@ -1848,9 +2009,11 @@ function SessionReviewPhase({ reviewData, sessionInfo, closingNote, setClosingNo
             {[
               { label: t('participations'), value: r.interactions?.total_participations, color: 'text-blue-400' },
               { label: t('participatingStudents'), value: r.interactions?.participating_students, color: 'text-purple-400' },
+              { label: t('evaluatedStudents'), value: r.interactions?.evaluated_students ?? r.interactions?.participating_students, color: 'text-indigo-400' },
               { label: t('questions'), value: r.interactions?.questions_asked, color: 'text-cyan-400' },
               { label: t('correctAnswers'), value: r.interactions?.correct_answers, color: 'text-green-400' },
               { label: t('wrongAnswers'), value: r.interactions?.wrong_answers, color: 'text-red-400' },
+              { label: t('notesSent'), value: r.notes?.sent_to_parents ?? 0, color: 'text-emerald-400' },
               { label: t('participationRate'), value: `${r.interactions?.participation_rate || 0}%`, color: 'text-emerald-400' },
             ].map(item => (
               <div key={item.label} className="bg-white/5 rounded-lg p-2 text-center">
@@ -2155,8 +2318,10 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
           {[
             { label: t('present'), value: summary.present_count, color: 'text-green-400', bg: 'bg-green-900/30', icon: <UserCheck className="h-5 w-5 text-green-400" /> },
             { label: t('absent'), value: summary.absent_count, color: 'text-red-400', bg: 'bg-red-900/30', icon: <XCircle className="h-5 w-5 text-red-400" /> },
+            { label: t('evaluatedStudents'), value: summary.evaluated_students ?? summary.present_count, color: 'text-indigo-400', bg: 'bg-indigo-900/30', icon: <ClipboardCheck className="h-5 w-5 text-indigo-400" /> },
             { label: t('questions'), value: summary.questions_asked, color: 'text-blue-400', bg: 'bg-blue-900/30', icon: <FileQuestion className="h-5 w-5 text-blue-400" /> },
             { label: t('correctAnswers'), value: summary.correct_answers, color: 'text-amber-400', bg: 'bg-amber-900/30', icon: <CheckCircle2 className="h-5 w-5 text-amber-400" /> },
+            { label: t('notesSent'), value: summary.notes_sent ?? 0, color: 'text-emerald-400', bg: 'bg-emerald-900/30', icon: <Send className="h-5 w-5 text-emerald-400" /> },
           ].map(item => (
             <div key={item.label} className={`${item.bg} rounded-xl p-4 text-center`}>
               <div className="text-lg mb-1">{item.icon}</div>

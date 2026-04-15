@@ -2101,7 +2101,12 @@ async def get_followup_record(
     current_user: dict = Depends(get_current_user)
 ):
     await _verify_session_owner(session_id, current_user)
-    record = await gd_find_one(db.session, "followup_records", {"session_id": session_id})
+    session = await gd_find_one(db.session, "teacher_sessions", {"id": session_id})
+    if session:
+        lookup = {"class_id": session.get("class_id"), "subject_id": session.get("subject_id")}
+    else:
+        lookup = {"session_id": session_id}
+    record = await gd_find_one(db.session, "followup_records", lookup)
     if not record:
         return {
             "session_id": session_id,
@@ -2128,15 +2133,21 @@ async def save_followup_record(
 ):
     await _verify_session_owner(session_id, current_user)
     from datetime import datetime
-    existing = await gd_find_one(db.session, "followup_records", {"session_id": session_id})
+    session = await gd_find_one(db.session, "teacher_sessions", {"id": session_id})
+    c_id = session.get("class_id") if session else None
+    s_id = session.get("subject_id") if session else None
+    lookup = {"class_id": c_id, "subject_id": s_id} if c_id and s_id else {"session_id": session_id}
+    existing = await gd_find_one(db.session, "followup_records", lookup)
     record_data = {
+        "class_id": c_id,
+        "subject_id": s_id,
         "session_id": session_id,
         "columns": payload.get("columns", []),
         "data": payload.get("data", {}),
         "updated_at": datetime.utcnow().isoformat(),
     }
     if existing:
-        await gd_update_one(db.session, "followup_records", {"session_id": session_id}, {"$set": record_data})
+        await gd_update_one(db.session, "followup_records", lookup, {"$set": record_data})
     else:
         record_data["created_at"] = datetime.utcnow().isoformat()
         await gd_insert(db.session, "followup_records", record_data)
@@ -2156,14 +2167,19 @@ async def add_followup_column(
         "maxGrade": payload.get("maxGrade", 10),
         "type": payload.get("type", "grade"),
     }
-    existing = await gd_find_one(db.session, "followup_records", {"session_id": session_id})
+    session = await gd_find_one(db.session, "teacher_sessions", {"id": session_id})
+    c_id = session.get("class_id") if session else None
+    s_id = session.get("subject_id") if session else None
+    lookup = {"class_id": c_id, "subject_id": s_id} if c_id and s_id else {"session_id": session_id}
+    existing = await gd_find_one(db.session, "followup_records", lookup)
     if existing:
         columns = existing.get("columns", [])
         columns.append(column)
-        await gd_update_one(db.session, "followup_records", {"session_id": session_id}, {"$set": {"columns": columns}})
+        await gd_update_one(db.session, "followup_records", lookup, {"$set": {"columns": columns}})
     else:
         from datetime import datetime
         await gd_insert(db.session, "followup_records", {
+            **lookup,
             "session_id": session_id,
             "columns": [column],
             "data": {},
