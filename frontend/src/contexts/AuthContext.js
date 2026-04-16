@@ -219,7 +219,6 @@ export const AuthProvider = ({ children }) => {
         toast.error('تعذر تحميل بيانات المستخدم');
       }
     } finally {
-      clearTimeout(timeoutId);
       setLoading(false);
     }
   }, [token, api]);
