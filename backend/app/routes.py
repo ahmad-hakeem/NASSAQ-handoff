@@ -241,7 +241,10 @@ def _register_static_fallback(app):
             file_path = frontend_build / full_path
             if file_path.exists() and file_path.is_file():
                 return FileResponse(str(file_path))
-            return FileResponse(str(frontend_build / "index.html"))
+            return FileResponse(
+                str(frontend_build / "index.html"),
+                headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"},
+            )
     else:
         @app.get("/")
         async def root_redirect():
