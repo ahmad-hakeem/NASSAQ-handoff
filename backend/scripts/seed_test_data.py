@@ -1125,12 +1125,17 @@ async def main():
 
     # Clean up previous operational data to ensure idempotency
     print("\n[cleanup] Clearing previous operational data...")
-    from sqlalchemy import text as _sql_text2
+    from sqlalchemy import text as _sql_text2, bindparam
     school_ids = [s["id"] for s in schools.values()]
-    ids_literal = ", ".join(f"'{sid}'" for sid in school_ids)
     async with SeedDB() as db:
-        await db.session.execute(_sql_text2(f"DELETE FROM attendance WHERE school_id IN ({ids_literal})"))
-        await db.session.execute(_sql_text2(f"DELETE FROM behaviour_records WHERE school_id IN ({ids_literal})"))
+        await db.session.execute(
+            _sql_text2("DELETE FROM attendance WHERE school_id IN :ids").bindparams(bindparam("ids", expanding=True)),
+            {"ids": school_ids},
+        )
+        await db.session.execute(
+            _sql_text2("DELETE FROM behaviour_records WHERE school_id IN :ids").bindparams(bindparam("ids", expanding=True)),
+            {"ids": school_ids},
+        )
     print("  ✓ Cleared attendance and behaviour records")
 
     # Behaviour records — DB-direct (split per school to avoid large transactions)
