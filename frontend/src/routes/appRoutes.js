@@ -350,6 +350,27 @@ export default function AppRoutes() {
         <ProtectedRoute allowedRoles={SCHOOL_ROLES}><SubjectsPage /></ProtectedRoute>
       } />
 
+      {/* School-prefixed aliases for principal-facing navigation (used by readiness panel fix links) */}
+      <Route path="/school/classes" element={
+        <ProtectedRoute allowedRoles={SCHOOL_ROLES}><ClassesPage /></ProtectedRoute>
+      } />
+      <Route path="/school/classes/:classId" element={
+        <ProtectedRoute allowedRoles={SCHOOL_ROLES}><ClassDetailPage /></ProtectedRoute>
+      } />
+      <Route path="/school/subjects" element={
+        <ProtectedRoute allowedRoles={SCHOOL_ROLES}><SubjectsPage /></ProtectedRoute>
+      } />
+      <Route path="/school/teachers" element={
+        <ProtectedRoute allowedRoles={SCHOOL_ROLES}><UsersClassesManagement /></ProtectedRoute>
+      } />
+      <Route path="/school/students" element={
+        <ProtectedRoute allowedRoles={SCHOOL_ROLES}><StudentsPage /></ProtectedRoute>
+      } />
+      <Route path="/school/students/:studentId" element={
+        <ProtectedRoute allowedRoles={SCHOOL_ROLES}><AdminStudentProfilePage /></ProtectedRoute>
+      } />
+      <Route path="/academic-structure" element={<Navigate to="/school/settings?section=academic" replace />} />
+
       {/* Scheduling */}
       <Route path="/admin/schedule" element={
         <ProtectedRoute allowedRoles={SCHOOL_ROLES}><SchedulePageNew /></ProtectedRoute>
