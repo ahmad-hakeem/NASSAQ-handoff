@@ -121,8 +121,8 @@ async def student_headers(tenant_a):
 
 
 @pytest_asyncio.fixture
-async def platform_admin_headers():
-    return _headers(await _mk_user(UserRole.PLATFORM_ADMIN, str(uuid.uuid4())))
+async def platform_admin_headers(tenant_a):
+    return _headers(await _mk_user(UserRole.PLATFORM_ADMIN, tenant_a))
 
 
 @pytest_asyncio.fixture

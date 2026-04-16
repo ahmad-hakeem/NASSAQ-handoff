@@ -1,4 +1,8 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
+const StudentPerformanceDashboard = lazy(() =>
+  import('../components/student-performance/StudentPerformanceDashboard'));
+const STUDENT_PERF_ROLES = ['school_admin', 'school_sub_admin', 'school_principal'];
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme , useTranslation } from '../contexts/ThemeContext';
@@ -593,7 +597,8 @@ const TeacherMonitoringSection = ({ isRTL, api }) => {
 
 export const AIInsightsPage = () => {
   const { t } = useTranslation();
-  const { api } = useAuth();
+  const { api, user } = useAuth();
+  const canSeeStudentPerf = STUDENT_PERF_ROLES.includes(user?.role);
   const { isRTL, toggleTheme, toggleLanguage, isDark } = useTheme();
   const navigate = useNavigate();
 
@@ -760,6 +765,14 @@ export const AIInsightsPage = () => {
         </header>
 
         <div className="relative z-10 p-6 max-w-[1600px] mx-auto space-y-6">
+          <Tabs defaultValue="insights" dir={isRTL ? 'rtl' : 'ltr'}>
+            <TabsList>
+              <TabsTrigger value="insights">{t('aiInsights')}</TabsTrigger>
+              {canSeeStudentPerf && (
+                <TabsTrigger value="student-performance">{t('studentPerformance')}</TabsTrigger>
+              )}
+            </TabsList>
+            <TabsContent value="insights" className="space-y-6 mt-6">
 
           {/* ══════ HERO — PERFORMANCE SCORE ══════ */}
           <div className="ai-slide-in">
@@ -941,6 +954,15 @@ export const AIInsightsPage = () => {
               </div>
             </div>
           </div>
+            </TabsContent>
+            {canSeeStudentPerf && (
+              <TabsContent value="student-performance" className="mt-6">
+                <Suspense fallback={<div className="p-6 text-center">{t('loading')}</div>}>
+                  <StudentPerformanceDashboard />
+                </Suspense>
+              </TabsContent>
+            )}
+          </Tabs>
         </div>
       </div>
       <HakimAssistant />
