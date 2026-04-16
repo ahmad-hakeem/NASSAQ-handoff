@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import { Sidebar } from '../../components/layout/Sidebar';
@@ -11,6 +11,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar'
 import { Switch } from '../../components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../../components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/tabs';
+import { ImageCropModal } from '../../components/ui/ImageCropModal';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import HakimPresence from '../../components/hakim/HakimPresence';
@@ -80,7 +81,7 @@ export default function TeacherSettingsPage() {
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ current_password: '', new_password: '', confirm_password: '' });
   const [showPw, setShowPw] = useState({ current: false, new: false, confirm: false });
-  const fileInputRef = useRef(null);
+  const [cropModalOpen, setCropModalOpen] = useState(false);
 
   const teacherId = user?.teacher_id || user?.id;
   const schoolName = user?.school_name || user?.tenant_id || '';
@@ -219,32 +220,18 @@ export default function TeacherSettingsPage() {
     }
   };
 
-  const handleAvatarUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-    if (!allowed.includes(file.type)) {
-      nassaqError(t('unsupportedFormatJpgPngWebpOnly'));
-      return;
+  const handleAvatarCropSave = async (base64) => {
+    try {
+      await api.post('/users/me/avatar', { image_data: base64 });
+      setProfile(p => ({ ...p, avatar_url: base64 }));
+      window.dispatchEvent(new CustomEvent('user-updated', { detail: { avatar_url: base64 } }));
+      await refreshUser?.();
+      toast.success(t('profilePictureUpdated'));
+    } catch (err) {
+      console.error('Error uploading avatar:', err);
+      nassaqError(err?.response?.data?.detail || t('errorUploadingImage'));
+      throw err;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      nassaqError(t('imageMustBeUnder5mb2'));
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const base64 = reader.result;
-      try {
-        await api.post('/users/me/avatar', { image_data: base64 });
-        setProfile(p => ({ ...p, avatar_url: base64 }));
-        await refreshUser?.();
-        toast.success(t('profilePictureUpdated'));
-      } catch (e) {
-        console.error('Error uploading avatar:', e);
-        nassaqError(t('errorUploadingImage'));
-      }
-    };
-    reader.readAsDataURL(file);
   };
 
   const removeAvatar = async () => {
@@ -357,10 +344,9 @@ export default function TeacherSettingsPage() {
                         <AvatarImage src={profile.avatar_url} />
                         <AvatarFallback className="bg-brand-navy text-white text-2xl font-cairo">{profile.full_name?.charAt(0) || 'م'}</AvatarFallback>
                       </Avatar>
-                      <button type="button" onClick={() => fileInputRef.current?.click()} className="absolute -bottom-1 -end-1 z-10 w-7 h-7 rounded-full bg-brand-turquoise text-white flex items-center justify-center shadow-md hover:scale-110 transition-transform cursor-pointer">
+                      <button type="button" onClick={() => setCropModalOpen(true)} className="absolute -bottom-1 -end-1 z-10 w-7 h-7 rounded-full bg-brand-turquoise text-white flex items-center justify-center shadow-md hover:scale-110 transition-transform cursor-pointer">
                         <Camera className="h-3.5 w-3.5" />
                       </button>
-                      <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleAvatarUpload} />
                     </div>
                     <h3 className="font-bold text-lg mt-3 font-cairo text-foreground">{profile.full_name}</h3>
                     <Badge variant="outline" className="mt-1 text-brand-turquoise border-brand-turquoise/30 bg-brand-turquoise/5">
@@ -498,7 +484,7 @@ export default function TeacherSettingsPage() {
                           </Avatar>
                           <div className="space-y-2">
                             <div className="flex items-center gap-2">
-                              <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                              <Button variant="outline" size="sm" onClick={() => setCropModalOpen(true)}>
                                 <Upload className="h-4 w-4 me-1.5" />{t('uploadPhoto')}
                               </Button>
                               {profile.avatar_url && (
@@ -816,6 +802,12 @@ export default function TeacherSettingsPage() {
           </div>
         </div>
       </div>
+      <ImageCropModal
+        open={cropModalOpen}
+        onOpenChange={setCropModalOpen}
+        onSave={handleAvatarCropSave}
+        isRTL={isRTL}
+      />
     </Sidebar>
   );
 }

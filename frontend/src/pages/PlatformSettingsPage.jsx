@@ -16,6 +16,7 @@ import { ScrollArea } from '../components/ui/scroll-area';
 import { Separator } from '../components/ui/separator';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
+import { ImageCropModal } from '../components/ui/ImageCropModal';
 import {
   Select,
   SelectContent,
@@ -567,21 +568,15 @@ export const PlatformSettingsPage = () => {
     }
   };
   
-  // Upload profile picture
-  const fileInputRef = React.useRef(null);
-  const handleUploadProfilePicture = async (file) => {
-    if (!file) return;
-    const maxSize = 5 * 1024 * 1024;
-    if (file.size > maxSize) {
-      nassaqError(t('imageMustBeUnder5mb'));
-      return;
-    }
-    if (!file.type.startsWith('image/')) {
-      nassaqError(t('pleaseSelectAnImageFile'));
-      return;
-    }
+  // Upload profile picture (cropped base64 from ImageCropModal)
+  const [profilePicCropOpen, setProfilePicCropOpen] = React.useState(false);
+  const handleUploadProfilePicture = async (base64) => {
+    if (!base64 || typeof base64 !== 'string' || !base64.startsWith('data:image/')) return;
     setLoading(true);
     try {
+      const res = await fetch(base64);
+      const blob = await res.blob();
+      const file = new File([blob], 'avatar.jpg', { type: blob.type || 'image/jpeg' });
       const formData = new FormData();
       formData.append('file', file);
       const response = await api.post('/settings/account/upload-picture', formData, {
@@ -595,9 +590,9 @@ export const PlatformSettingsPage = () => {
     } catch (error) {
       console.error('Error uploading picture:', error);
       nassaqError(isRTL ? 'فشل رفع الصورة' : 'Failed to upload picture');
+      throw error;
     } finally {
       setLoading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
   
@@ -922,20 +917,13 @@ export const PlatformSettingsPage = () => {
                         </div>
                         <div>
                           <h4 className="font-medium mb-2">{t('profilePicture')}</h4>
-                          <input
-                            ref={fileInputRef}
-                            type="file"
-                            accept="image/png,image/jpeg,image/webp"
-                            className="hidden"
-                            onChange={(e) => handleUploadProfilePicture(e.target.files?.[0])}
-                          />
                           <div className="flex gap-2">
                             <Button
                               variant="outline"
                               size="sm"
                               className="rounded-xl"
                               disabled={loading}
-                              onClick={() => fileInputRef.current?.click()}
+                              onClick={() => setProfilePicCropOpen(true)}
                             >
                               <Upload className="h-4 w-4 me-2" />
                               {t('uploadImage')}
@@ -2039,6 +2027,12 @@ export const PlatformSettingsPage = () => {
           </DialogContent>
         </Dialog>
       </div>
+      <ImageCropModal
+        open={profilePicCropOpen}
+        onOpenChange={setProfilePicCropOpen}
+        onSave={handleUploadProfilePicture}
+        isRTL={isRTL}
+      />
     </Sidebar>
   );
 };
