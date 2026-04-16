@@ -64,7 +64,7 @@ export function createApiService(api) {
     notifications: {
       list: (params) => api.get('/notifications', { params }),
       markRead: (id) => api.put(`/notifications/${id}/read`),
-      markAllRead: () => api.put('/notifications/read-all'),
+      markAllRead: () => api.put('/notifications/mark-all-read'),
     },
 
     settings: {

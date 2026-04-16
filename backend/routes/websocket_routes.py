@@ -230,8 +230,8 @@ def create_websocket_routes(db, decode_token):
                                 from db import async_session_factory
                                 async with async_session_factory() as ws_session:
                                     await gd_update_one(ws_session, "notifications",
-                                        {"id": notification_id, "recipient_id": user_id},
-                                        {"read_status": True, "read_at": datetime.now(timezone.utc).isoformat()}
+                                        {"id": notification_id, "user_id": user_id},
+                                        {"is_read": True, "read_at": datetime.now(timezone.utc).isoformat()}
                                     )
                                     await ws_session.commit()
                     except json.JSONDecodeError:
@@ -375,53 +375,52 @@ async def send_realtime_notification(
         **(extra_data or {})
     }
     
+    def _build_db_row(uid: str) -> dict:
+        return {
+            "id": str(uuid.uuid4()),
+            "user_id": uid,
+            "tenant_id": target_tenant,
+            "title": type_config["title_ar"],
+            "message": message_ar,
+            "type": notification_type,
+            "priority": type_config["priority"],
+            "is_read": False,
+            "extra_data": {
+                "title_en": type_config["title_en"],
+                "message_en": message_en,
+                "icon": type_config["icon"],
+                "sound": type_config["sound"],
+                **(extra_data or {}),
+            },
+        }
+
     # Send to targets
     if broadcast_all:
         await manager.broadcast_to_all(notification)
-        
-        # Save to all users in DB
         if save_to_db:
             users = await gd_find(db.session, "users", {"is_active": True}, limit=10000)
             for user in users:
-                await gd_insert(db.session, "notifications", {
-                    **notification,
-                    "id": str(uuid.uuid4()),
-                    "recipient_id": user["id"]
-                })
+                await gd_insert(db.session, "notifications", _build_db_row(user["id"]))
     
     elif target_users:
         for user_id in target_users:
             await manager.send_personal_message(notification, user_id)
-            
             if save_to_db:
-                await gd_insert(db.session, "notifications", {
-                    **notification,
-                    "recipient_id": user_id
-                })
+                await gd_insert(db.session, "notifications", _build_db_row(user_id))
     
     elif target_roles:
         await manager.broadcast_to_roles(notification, target_roles)
-        
         if save_to_db:
             for role in target_roles:
                 users = await gd_find(db.session, "users", {"role": role, "is_active": True}, limit=1000)
                 for user in users:
-                    await gd_insert(db.session, "notifications", {
-                        **notification,
-                        "id": str(uuid.uuid4()),
-                        "recipient_id": user["id"]
-                    })
+                    await gd_insert(db.session, "notifications", _build_db_row(user["id"]))
     
     elif target_tenant:
         await manager.broadcast_to_tenant(notification, target_tenant)
-        
         if save_to_db:
             users = await gd_find(db.session, "users", {"tenant_id": target_tenant, "is_active": True}, limit=1000)
             for user in users:
-                await gd_insert(db.session, "notifications", {
-                    **notification,
-                    "id": str(uuid.uuid4()),
-                    "recipient_id": user["id"]
-                })
+                await gd_insert(db.session, "notifications", _build_db_row(user["id"]))
     
     return notification_id

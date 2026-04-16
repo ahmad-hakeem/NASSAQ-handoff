@@ -34,6 +34,41 @@ class MessageResponse(BaseModel):
     sent_at: Optional[str] = None
 
 
+async def _resolve_recipient_ids(db, audience: str, school_id: Optional[str], audience_ids: List[str]) -> List[str]:
+    """Resolve target user_ids for a given audience scope.
+
+    For the ``custom`` audience the supplied IDs are validated against the
+    sender's tenant scope so a school principal/admin cannot inject
+    notifications into other tenants.
+    """
+    if audience == "custom":
+        clean_ids = [uid for uid in (audience_ids or []) if uid]
+        if not clean_ids:
+            return []
+        scope = {"id": {"$in": clean_ids}, "is_active": True}
+        if school_id:
+            scope["tenant_id"] = school_id
+        users = await gd_find(db.session, "users", scope, limit=10000)
+        return [u["id"] for u in users if u.get("id")]
+
+    base = {"is_active": True}
+    if school_id:
+        base["tenant_id"] = school_id
+
+    if audience == "all":
+        users = await gd_find(db.session, "users", base, limit=10000)
+    elif audience == "teachers":
+        users = await gd_find(db.session, "users", {**base, "role": {"$in": ["teacher", "independent_teacher", "school_teacher"]}}, limit=10000)
+    elif audience == "students":
+        users = await gd_find(db.session, "users", {**base, "role": "student"}, limit=10000)
+    elif audience == "parents":
+        users = await gd_find(db.session, "users", {**base, "role": "parent"}, limit=10000)
+    else:
+        users = []
+
+    return [u["id"] for u in users if u.get("id")]
+
+
 def create_communication_routes(db, get_current_user, require_roles, UserRole):
     """Create communication router"""
     router = APIRouter(prefix="/communication", tags=["Communication"])
@@ -112,21 +147,29 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
         
         await gd_insert(db.session, "messages", message_doc)
         
-        # Create notifications for recipients if sent immediately
+        # Create per-user in-app notifications if sent immediately
         if status == "sent":
-            # Create in-app notifications
-            notification_doc = {
-                "id": str(uuid.uuid4()),
-                "message_id": message_id,
-                "title": message.title,
-                "content": message.content,
-                "type": "announcement",
-                "school_id": school_id,
-                "audience": message.audience,
-                "created_at": now,
-                "read_by": []
-            }
-            await gd_insert(db.session, "notifications", notification_doc)
+            recipient_ids = await _resolve_recipient_ids(
+                db, message.audience, school_id, message.audience_ids or []
+            )
+            for uid in recipient_ids:
+                await gd_insert(db.session, "notifications", {
+                    "id": str(uuid.uuid4()),
+                    "user_id": uid,
+                    "tenant_id": school_id,
+                    "title": message.title,
+                    "message": message.content,
+                    "type": "announcement",
+                    "priority": "normal",
+                    "is_read": False,
+                    "extra_data": {
+                        "message_id": message_id,
+                        "audience": message.audience,
+                    },
+                })
+            # Update actual sent_count to reflect per-user fan-out
+            await gd_update_one(db.session, "messages", {"id": message_id}, {"sent_count": len(recipient_ids)})
+            recipient_count = len(recipient_ids)
         
         if status == "sent" and message.audience == "parents":
             try:
@@ -362,14 +405,27 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
         
         await gd_insert(db.session, "messages", message_doc)
         
-        # Create notifications for recipients (simplified)
-        # In production, this should be a background task
+        # Fan-out per-user notifications (platform-wide broadcast)
+        recipient_ids = await _resolve_recipient_ids(db, message.audience, None, message.audience_ids or [])
+        for uid in recipient_ids:
+            await gd_insert(db.session, "notifications", {
+                "id": str(uuid.uuid4()),
+                "user_id": uid,
+                "title": message.title,
+                "message": message.content,
+                "type": "broadcast",
+                "priority": "normal",
+                "is_read": False,
+                "extra_data": {"message_id": message_id, "audience": message.audience},
+            })
+        actual_count = len(recipient_ids)
+        await gd_update_one(db.session, "messages", {"id": message_id}, {"sent_count": actual_count})
         
         return {
             "success": True,
             "message_id": message_id,
-            "recipients_count": recipient_count,
-            "message": f"تم إرسال الرسالة إلى {recipient_count} مستخدم"
+            "recipients_count": actual_count,
+            "message": f"تم إرسال الرسالة إلى {actual_count} مستخدم"
         }
     
     @router.get("/received")
