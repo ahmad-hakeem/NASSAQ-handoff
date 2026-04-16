@@ -1050,3 +1050,17 @@ Sub-pages (accessible from within classes/sessions, not top-level sidebar):
 - **Frontend null-safety** (`TeacherMainDashboard.jsx`): Protected `timeStr.split()` with null check
 - **Frontend null-safety** (`AssessmentPage.jsx`): Protected `student.name.split()` with fallback
 - **JSON.parse crash protection** (`AuthContext.js`): Wrapped sessionStorage JSON.parse calls in try-catch to prevent app crash from malformed data
+
+### Comprehensive Arabic-Language Test Data Seed
+- **Script**: `backend/scripts/seed_test_data.py` — fully idempotent, re-runnable
+- **Run**: `cd backend && python scripts/seed_test_data.py` (takes ~3–5 minutes)
+- **Credentials file**: `TEST_CREDENTIALS.md` at project root (generated on each run)
+- **Two isolated school tenants** (Gulf region, Arabic names):
+  - **FARABI-001** — مدرسة الفارابي للتعليم الأساسي (domain: `faarabi.edu`, city: الرياض)
+  - **IBNSINA-001** — Ibn Sina International Academy (domain: `ibnsina.edu`, city: جدة)
+- **Per school**: 2 school admins, 18 teachers, 252 students (grades 1–12, 18 classes), 252 parents
+- **Academic structure**: 14 subjects, 8 daily time slots, 279 teacher-subject-class assignments, 630 timetable sessions
+- **Operational data per school**: ~1,000 behaviour records (4 weeks), 5,292 attendance records (Sun–Thu), 10 product hub issues
+- **Default password for all accounts**: `Test@1234`
+- **Platform admin**: `admin@nassaq.com` / `Test@1234`
+- All seeding uses DB-direct ORM inserts (no API round-trips); structural data is upserted (safe to re-run)
