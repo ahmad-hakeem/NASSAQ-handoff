@@ -565,13 +565,13 @@ export const Sidebar = ({ children }) => {
                     <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${isGroupExpanded ? 'rotate-180' : ''}`} />
                   </button>
                   {isGroupExpanded && (
-                    <div className="ms-7 mt-0.5 space-y-0.5" dir={isRTL ? 'rtl' : 'ltr'}>
+                    <div className={`mt-0.5 space-y-0.5 ${isRTL ? 'mr-7' : 'ml-7'}`}>
                       {item.subItems.map(sub => (
                         <Link
                           key={sub.href}
                           to={sub.href}
                           onClick={() => setMobileOpen(false)}
-                          className={`block py-1.5 px-3 rounded-md text-sm text-start transition-colors duration-150 ${
+                          className={`block py-1.5 px-3 rounded-md text-sm transition-colors duration-150 ${isRTL ? 'text-right' : 'text-left'} ${
                             isActive(sub.href)
                               ? 'text-brand-turquoise bg-white/10 font-medium'
                               : 'text-white/60 hover:text-white hover:bg-white/5'
