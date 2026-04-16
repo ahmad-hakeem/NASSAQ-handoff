@@ -115,7 +115,7 @@ async def _run_hakim_analysis(issue: dict) -> dict:
         existing_summaries = []
         for ex in all_issues[:30]:
             existing_summaries.append(
-                f"[{ex.get('id','')[:8]}] {ex.get('title','')} | {ex.get('section','')} > {ex.get('page','')} | {ex.get('current_behavior','')[:100]}"
+                f"[{ex.get('id','')}] {ex.get('title','')} | {ex.get('section','')} > {ex.get('page','')} | {ex.get('current_behavior','')[:100]}"
             )
 
         prompt = f"""You are Hakim (حكيم), an AI product intelligence assistant for NASSAQ school management system.
@@ -461,22 +461,30 @@ async def create_issue(data: IssueCreate, current_user: dict = Depends(get_curre
     issue["generated_prompt"] = await _generate_prompt(issue)
     issue["ai"]["generated_prompt"] = issue["generated_prompt"]
 
-    if hakim_analysis.get("duplicate_ids"):
-        for dup_id in hakim_analysis["duplicate_ids"][:3]:
-            dup_entry = {
-                "id": str(uuid.uuid4()),
-                "issue_id": issue_id,
-                "duplicate_of": dup_id,
-                "confidence": 0.0,
-                "detected_by": "hakim",
-                "created_at": now.isoformat(),
-            }
-            await gd_insert(db.session, "issue_duplicates_map", dup_entry)
-            await audit_duplicate_detected(issue_id, current_user, dup_id)
-
     issue["system"]["last_status_changed_at"] = now.isoformat()
 
+    # Insert the main issue FIRST so foreign-key constraints on issue_duplicates_map are satisfied
     await gd_insert(db.session, "product_issues", {**issue, "_id": issue_id})
+
+    if hakim_analysis.get("duplicate_ids"):
+        for dup_id in hakim_analysis["duplicate_ids"][:3]:
+            try:
+                existing = await gd_find_one(db.session, "product_issues", {"id": dup_id, "is_deleted": {"$ne": True}})
+                if not existing:
+                    logger.warning(f"[ProductHub] Skipping duplicate entry: issue {dup_id} not found in product_issues")
+                    continue
+                dup_entry = {
+                    "id": str(uuid.uuid4()),
+                    "issue_id": issue_id,
+                    "duplicate_of": dup_id,
+                    "confidence": 0.0,
+                    "detected_by": "hakim",
+                    "created_at": now.isoformat(),
+                }
+                await gd_insert(db.session, "issue_duplicates_map", dup_entry)
+                await audit_duplicate_detected(issue_id, current_user, dup_id)
+            except Exception as dup_err:
+                logger.warning(f"[ProductHub] Failed to record duplicate for {dup_id}: {dup_err}")
 
     await handle_issue_created(issue_id, issue, current_user)
     await audit_issue_created(issue_id, current_user, issue)
