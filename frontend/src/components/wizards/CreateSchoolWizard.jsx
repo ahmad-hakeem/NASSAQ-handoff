@@ -476,8 +476,8 @@ ${createdSchool?.tenant_code}
               </div>
             </DialogHeader>
             
-            {/* Content — no-scroll on desktop, controlled scroll on mobile */}
-            <div className="flex-1 min-h-0 p-6 md:overflow-hidden overflow-y-auto" ref={formRef}>
+            {/* Content — always allow vertical scroll so no field is clipped */}
+            <div className="flex-1 min-h-0 p-6 overflow-y-auto" ref={formRef}>
               {/* Step 1: School Profile — grid layout */}
               {currentStep === 1 && (
                 <div className="h-full flex flex-col" data-testid="wizard-step-1">
