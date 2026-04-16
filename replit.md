@@ -1082,3 +1082,10 @@ Sub-pages (accessible from within classes/sessions, not top-level sidebar):
 ### sql_utils.py TENANT_ALIAS
 - Only `tenant_id` ↔ `school_id` is auto-aliased
 - All other field name mismatches (like `account_type` vs `type`, `full_name` vs `name`) must be explicitly mapped before calling `gd_insert`
+
+### ApprovalEvent FK (April 2026)
+- `approval_events.request_id` FK now references `registration_requests.id` (was incorrectly pointing to `approval_requests.id`)
+- Migration `l1m2n3o4p5q6` cleans orphaned rows and re-creates the FK
+- `_emit_event()` in `approval_engine.py` uses `begin_nested()` savepoints so event failures don't corrupt the parent transaction
+- Registration route validates `account_type` server-side against allowed set: school, teacher, parent, student
+- Notification creation uses correct ORM field names: `user_id`, `type`, `is_read`

@@ -915,7 +915,7 @@ class ApprovalEvent(Base):
     __tablename__ = "approval_events"
 
     id = Column(String, primary_key=True, default=_uuid)
-    request_id = Column(String, ForeignKey("approval_requests.id", ondelete="CASCADE"), nullable=False, index=True)
+    request_id = Column(String, ForeignKey("registration_requests.id", ondelete="CASCADE"), nullable=False, index=True)
     event_type = Column(String, nullable=False)
     from_status = Column(String, nullable=True)
     to_status = Column(String, nullable=True)

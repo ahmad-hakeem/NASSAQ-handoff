@@ -98,6 +98,21 @@ async def check_school_name(name: str = Query(..., min_length=2)):
 async def create_registration_request(request_data: RegistrationRequest):
     """Create a new registration request for admin review"""
 
+    VALID_ACCOUNT_TYPES = {"school", "teacher", "parent", "student"}
+    account_type = (request_data.account_type or "").strip().lower()
+    if not account_type or account_type not in VALID_ACCOUNT_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail="يرجى اختيار نوع الحساب"
+        )
+
+    full_name = (request_data.full_name or "").strip()
+    if not full_name or len(full_name) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail="يرجى إدخال الاسم الكامل"
+        )
+
     raw_phone = request_data.phone or ''
     phone_clean = re.sub(r'[\s\-]', '', raw_phone)
     if phone_clean:
@@ -127,12 +142,14 @@ async def create_registration_request(request_data: RegistrationRequest):
     request_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
     submission_data = request_data.model_dump()
+    submission_data["account_type"] = account_type
+    submission_data["full_name"] = full_name
 
     request_doc = {
         "id": request_id,
-        "type": request_data.account_type,
-        "name": request_data.full_name,
         **submission_data,
+        "type": account_type,
+        "name": full_name,
         "status": "pending_review",
         "source": "public_signup",
         "payload_snapshot": submission_data,
@@ -146,11 +163,11 @@ async def create_registration_request(request_data: RegistrationRequest):
     }
     
     await gd_insert(db.session, "registration_requests", request_doc)
-    logger.info(f"[ApprovalQueue] Created registration request id={request_id[:8]}… type={request_data.account_type} status=pending_review source=public_signup")
+    logger.info(f"[ApprovalQueue] Created registration request id={request_id[:8]}… type={account_type} status=pending_review source=public_signup")
 
     try:
         from engines.approval_engine import _emit_event, _get_db
-        await _emit_event(_get_db(), "approval_request_created", request_id, request_data.account_type,
+        await _emit_event(_get_db(), "approval_request_created", request_id, account_type,
                           status_after="pending_review",
                           details={"source": "public_signup"})
     except Exception as e:
@@ -163,10 +180,10 @@ async def create_registration_request(request_data: RegistrationRequest):
             "event_type": "Account Request Created",
             "entity_type": "registration_request",
             "entity_id": request_id,
-            "actor_name": request_data.full_name,
+            "actor_name": full_name,
             "actor_id": None,
             "details": {
-                "account_type": request_data.account_type,
+                "account_type": account_type,
                 "source": "public_signup",
             },
             "timestamp": now,
@@ -183,13 +200,13 @@ async def create_registration_request(request_data: RegistrationRequest):
         for admin in admin_users:
             notif_docs.append({
                 "id": str(uuid.uuid4()),
-                "recipient_id": admin["id"],
-                "notification_type": "registration_request",
+                "user_id": admin["id"],
+                "type": "registration_request",
                 "title": "طلب تسجيل جديد",
-                "message": f"طلب تسجيل جديد من {request_data.full_name} ({request_data.account_type})",
-                "read_status": False,
+                "message": f"طلب تسجيل جديد من {full_name} ({account_type})",
+                "is_read": False,
                 "action_url": "/admin/users?tab=requests",
-                "metadata": {"request_id": request_id, "account_type": request_data.account_type},
+                "metadata": {"request_id": request_id, "account_type": account_type},
                 "created_at": now
             })
         if notif_docs:
@@ -199,11 +216,11 @@ async def create_registration_request(request_data: RegistrationRequest):
     
     return RegistrationRequestResponse(
         id=request_id,
-        full_name=request_data.full_name,
+        full_name=full_name,
         phone=request_data.phone,
         email=request_data.email,
         national_id=request_data.national_id,
-        account_type=request_data.account_type,
+        account_type=account_type,
         status="pending_review",
         school_name=request_data.school_name,
         school_email=request_data.school_email,

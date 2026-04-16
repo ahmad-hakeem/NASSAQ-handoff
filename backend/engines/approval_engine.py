@@ -149,8 +149,14 @@ async def _emit_event(database, event_type: str, request_id: str, request_type: 
         timestamp=datetime.now(timezone.utc),
     )
     try:
-        session.add(obj)
-        await session.flush()
+        nested = await session.begin_nested()
+        try:
+            session.add(obj)
+            await session.flush()
+            await nested.commit()
+        except Exception:
+            await nested.rollback()
+            raise
     except Exception as e:
         logger.error(f"Failed to emit approval event {event_type}: {e}")
 
