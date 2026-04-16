@@ -1342,19 +1342,53 @@ async def send_message(
     current_user: dict = Depends(get_current_user)
 ):
     """Send message to parents - إرسال رسالة لأولياء الأمور"""
-    message = {
+    sender_user_id = current_user.get("id")
+
+    raw_recipients = data.get("recipient_ids") or []
+    if isinstance(raw_recipients, str):
+        raw_recipients = [raw_recipients]
+    single = data.get("recipient_id")
+    if single and single not in raw_recipients:
+        raw_recipients.append(single)
+
+    resolved_recipient_id = None
+    for rid in raw_recipients:
+        if not rid:
+            continue
+        user = await gd_find_one(db.session, "users", {"id": rid})
+        if user:
+            resolved_recipient_id = user["id"]
+            break
+        student = await gd_find_one(db.session, "students", {"id": rid})
+        if not student:
+            student = await gd_find_one(db.session, "students", {"parent_id": rid})
+        if student:
+            parent_user = None
+            if student.get("parent_email"):
+                parent_user = await gd_find_one(db.session, "users", {"email": student["parent_email"], "role": "parent"})
+            if not parent_user and student.get("parent_phone"):
+                parent_user = await gd_find_one(db.session, "users", {"phone": student["parent_phone"], "role": "parent"})
+            if not parent_user and student.get("parent_name"):
+                parent_user = await gd_find_one(db.session, "users", {"full_name": student["parent_name"], "role": "parent"})
+            if parent_user:
+                resolved_recipient_id = parent_user["id"]
+                break
+
+    message_doc = {
         "id": str(uuid.uuid4()),
-        **data,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "status": "sent"
+        "sender_id": sender_user_id,
+        "recipient_id": resolved_recipient_id,
+        "school_id": current_user.get("tenant_id"),
+        "subject": data.get("subject"),
+        "body": data.get("body"),
+        "is_read": False,
+        "read_at": None,
+        "created_at": datetime.now(timezone.utc),
     }
-    
-    await gd_insert(db.session, "messages", message)
-    message.pop("_id", None)
-    
-    # TODO: Send actual notifications (email/SMS) to parents
-    
-    return {"message": "تم إرسال الرسالة", "data": message}
+
+    await gd_insert(db.session, "messages", message_doc)
+
+    return {"message": "تم إرسال الرسالة", "data": {"id": message_doc["id"]}}
 
 
 @router.get("/grades")
