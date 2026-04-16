@@ -3448,12 +3448,12 @@
   "yrs": "سنة",
   "za": "أبجدي ي-أ",
   "commandCenter": "مركز القيادة",
-  "welcomeUser": "مرحباً، {{name}}",
-  "welcomeUserWithTitle": "مرحباً {{title}}، {{name}}",
-  "previewingSchool": "معاينة: {{name}}",
+  "welcomeUser": "مرحباً، {name}",
+  "welcomeUserWithTitle": "مرحباً {title}، {name}",
+  "previewingSchool": "معاينة: {name}",
   "addTimeSlot": "إضافة فترة",
   "periodLabel": "حصة",
-  "subjectsCount": "{{count}} مادة",
+  "subjectsCount": "{count} مادة",
   "categoryCore": "أساسي",
   "categoryElective": "اختياري"
 }

@@ -3448,12 +3448,12 @@
   "yrs": "yrs",
   "za": "Z-A",
   "commandCenter": "Command Center",
-  "welcomeUser": "Welcome, {{name}}",
-  "welcomeUserWithTitle": "Welcome {{title}}, {{name}}",
-  "previewingSchool": "Previewing: {{name}}",
+  "welcomeUser": "Welcome, {name}",
+  "welcomeUserWithTitle": "Welcome {title}, {name}",
+  "previewingSchool": "Previewing: {name}",
   "addTimeSlot": "Add Time Slot",
   "periodLabel": "Period",
-  "subjectsCount": "{{count}} subjects",
+  "subjectsCount": "{count} subjects",
   "categoryCore": "Core",
   "categoryElective": "Elective"
 }

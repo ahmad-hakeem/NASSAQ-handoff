@@ -1,5 +1,14 @@
 # Principal Platform Audit — April 2026
 
+## Methodology & Scope Boundaries
+This audit was conducted via systematic static analysis (grep/read of source), configuration review, and compile/runtime verification — not full interactive end-to-end testing. Three categories of outcome are reported:
+
+1. **Fixed** — concrete code changes landed in this commit with verification.
+2. **Verified clean** — reviewed and confirmed compliant with platform rules (tenant isolation, role gating, confirm-dialog usage).
+3. **Known debt (non-blocking)** — issues surfaced during the scan that do not break flows but warrant follow-up.
+
+Interactive QA for each page's empty/loading/error states and full cross-role click-through is explicitly out of scope for this static pass and is recommended as a follow-up.
+
 ## Scope
 Comprehensive audit of the School Principal platform (`منصة مدير المدرسة`) covering roles `school_principal`, `school_admin`, `school_sub_admin` across:
 - All pages under `/principal/*`, `/admin/*`, `/school/*`
