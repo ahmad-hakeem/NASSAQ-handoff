@@ -17,7 +17,6 @@ const getWsUrl = () => {
     }
     return wsUrl;
   }
-  // When using dev proxy, derive WS URL from the current window location
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${proto}//${window.location.host}`;
 };

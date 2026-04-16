@@ -20,4 +20,12 @@ module.exports = function (app) {
       },
     })
   );
+
+  app.use(
+    '/system',
+    createProxyMiddleware({
+      target: 'http://localhost:8000',
+      changeOrigin: true,
+    })
+  );
 };

@@ -103,10 +103,10 @@ class UserResponse(BaseModel):
     avatar_url: Optional[str] = None
     is_active: bool
     must_change_password: bool = False
-    has_generic_name: bool = False
+    has_generic_name: Optional[bool] = False
     preferred_language: str = "ar"
-    preferred_theme: str = "light"
-    created_at: str
+    preferred_theme: Optional[str] = "light"
+    created_at: Optional[str] = None
     teacher_id: Optional[str] = None
     student_id: Optional[str] = None
     parent_id: Optional[str] = None
@@ -476,16 +476,16 @@ class ClassResponse(BaseModel):
     name: str
     grade: Optional[Union[int, str]] = None
     section: Optional[str] = None
-    capacity: int = 30
+    capacity: Optional[int] = 30
     school_id: str
     class_teacher_id: Optional[str] = None
     grade_id: Optional[str] = None
     grade_level_id: Optional[str] = None
     academic_year_id: Optional[str] = None
-    is_active: bool = True
+    is_active: Optional[bool] = True
     created_at: Optional[str] = None
-    current_students: int = 0
-    student_count: int = 0
+    current_students: Optional[int] = 0
+    student_count: Optional[int] = 0
     homeroom_teacher_id: Optional[str] = None
     homeroom_teacher_name: Optional[str] = None
     name_ar: Optional[str] = None

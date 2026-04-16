@@ -48,10 +48,10 @@ class UserResponse(BaseModel):
     avatar_url: Optional[str] = None
     is_active: bool
     must_change_password: bool = False
-    has_generic_name: bool = False
-    preferred_language: str
-    preferred_theme: str
-    created_at: str
+    has_generic_name: Optional[bool] = False
+    preferred_language: str = "ar"
+    preferred_theme: Optional[str] = "light"
+    created_at: Optional[str] = None
 
 
 class TokenResponse(BaseModel):

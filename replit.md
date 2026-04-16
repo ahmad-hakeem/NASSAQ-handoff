@@ -118,6 +118,14 @@ Every task must follow these principles before delivery:
 - **Error message sanitization**: Replaced `str(e)` in API responses with safe Arabic messages in `auth_routes_mod.py`, `teacher_registration_routes.py`, `audit_routes.py`, `user_routes_mod.py`
 - **WebSocket token URL removed**: `websocket_routes.py` no longer accepts `?token=` query parameter — token must be sent via post-connection `{type: "auth", token: "..."}` message only
 
+### Cross-Platform Integration Verification (April 2026)
+- **Pydantic model fixes**: `UserResponse` fields (`has_generic_name`, `preferred_theme`, `created_at`) and `ClassResponse` fields (`capacity`, `is_active`, `current_students`, `student_count`) changed from required to `Optional` with defaults — DB records with NULL values were causing HTTP 500 on `/api/users` and `/api/classes`
+- **Skills-types FK fix**: `role_dashboards_mod.py` auto-seed audit log insert changed from `performed_by="system"` to `performed_by=current_user.id` — the `audit_logs.performed_by` FK constraint requires a valid user ID
+- **System proxy**: `setupProxy.js` now includes `/system` proxy rule alongside `/api` — health check endpoints route correctly through CRA dev proxy
+- **WebSocket**: Uses `/api/ws/notifications` path, proxied through existing `/api` rule with `ws: true` — no separate WS proxy needed
+- **Student user account**: Created student role user (`fares.student@nassaq-test.com`) linked to existing student record for full portal testing
+- **Verified platforms**: Platform Admin, School Principal, School Admin, Teacher, Student, Parent — 53/53 endpoints passing across all 6 roles
+
 ### Post-Fix Documentation
 Each fix report must include: root cause, why it wasn't caught before, what changed, how recurrence is prevented, what was tested
 
