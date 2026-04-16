@@ -544,6 +544,18 @@ async def reset_user_password(
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
     await gd_insert(db.session, "audit_logs", audit_log)
+
+    try:
+        from engines.email_service import send_admin_password_reset_notification
+        user_email = user.get("email", "")
+        if user_email:
+            send_admin_password_reset_notification(
+                to_email=user_email,
+                user_name=user.get("full_name", ""),
+                admin_name=current_user.get("full_name", "المدير"),
+            )
+    except Exception as e:
+        logger.warning(f"Failed to send admin reset notification email: {e}")
     
     return {"message": "تم إعادة تعيين كلمة المرور بنجاح"}
 

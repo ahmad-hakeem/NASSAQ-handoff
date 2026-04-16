@@ -32,6 +32,7 @@ dependencies = [
     "qrcode>=8.2",
     "reportlab>=4.4",
     "requests>=2.32",
+    "resend>=2.28.1",
     "sqlalchemy[asyncio]>=2.0.41",
     "stripe>=14.4",
     "uvicorn>=0.25",

@@ -69,6 +69,8 @@ import SchoolSettingsPagePro from "../pages/SchoolSettingsPagePro";
 import { AIInsightsPage } from "../pages/AIInsightsPage";
 import { AccountSettingsPage } from "../pages/AccountSettingsPage";
 import ForcePasswordChange from "../pages/ForcePasswordChange";
+import ForgotPasswordPage from "../pages/ForgotPasswordPage";
+import ResetPasswordPage from "../pages/ResetPasswordPage";
 import RegistrationConfirmationPage from "../pages/RegistrationConfirmationPage";
 import UsersManagement from "../pages/UsersManagement";
 import UserDetailsPage from "../pages/UserDetailsPage";
@@ -114,6 +116,8 @@ export default function AppRoutes() {
       <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
       <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
       <Route path="/registration-confirmation" element={<RegistrationConfirmationPage />} />
+      <Route path="/forgot-password" element={<PublicRoute><ForgotPasswordPage /></PublicRoute>} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/teacher-register" element={<TeacherSelfRegistration />} />
 
       {/* Force Password Change */}

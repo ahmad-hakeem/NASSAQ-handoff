@@ -486,6 +486,112 @@ def get_role_display_name(role: str) -> str:
 
 
 
+# ============== FORGOT / RESET PASSWORD ==============
+import hashlib
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def check_new_password(cls, v: str) -> str:
+        return validate_password_complexity(v)
+
+RESET_TOKEN_EXPIRE = timedelta(hours=1)
+
+def _create_reset_token(user_id: str) -> str:
+    payload = {
+        "sub": user_id,
+        "purpose": "password_reset",
+        "jti": str(uuid.uuid4()),
+        "exp": datetime.now(timezone.utc) + RESET_TOKEN_EXPIRE,
+        "iat": datetime.now(timezone.utc),
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+def _token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+@router.post("/auth/forgot-password")
+async def forgot_password(request: ForgotPasswordRequest):
+    user = await gd_find_one(db.session, "users", {"email": request.email})
+
+    if user and user.get("is_active", True):
+        token = _create_reset_token(user["id"])
+        await gd_update_one(db.session, "users", {"id": user["id"]}, {
+            "reset_token_hash": _token_hash(token),
+            "reset_token_created_at": datetime.now(timezone.utc).isoformat(),
+        })
+
+        from engines.email_service import send_password_reset_email
+        send_password_reset_email(
+            to_email=request.email,
+            user_name=user.get("full_name", ""),
+            reset_token=token,
+        )
+
+        audit_log = {
+            "id": str(uuid.uuid4()),
+            "action": "password_reset_requested",
+            "action_by": user["id"],
+            "action_by_name": user.get("full_name", ""),
+            "target_type": "user",
+            "target_id": user["id"],
+            "details": {"email": request.email},
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        await gd_insert(db.session, "audit_logs", audit_log)
+
+    return {"message": "إذا كان البريد الإلكتروني مسجلاً، ستصلك رسالة لإعادة تعيين كلمة المرور"}
+
+@router.post("/auth/reset-password")
+async def reset_password(request: ResetPasswordRequest):
+    try:
+        payload = jwt.decode(request.token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=400, detail="انتهت صلاحية رابط إعادة التعيين. يرجى طلب رابط جديد")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=400, detail="رابط إعادة التعيين غير صالح")
+
+    if payload.get("purpose") != "password_reset":
+        raise HTTPException(status_code=400, detail="رابط إعادة التعيين غير صالح")
+
+    user_id = payload.get("sub")
+    user = await gd_find_one(db.session, "users", {"id": user_id})
+    if not user:
+        raise HTTPException(status_code=400, detail="رابط إعادة التعيين غير صالح")
+
+    stored_hash = user.get("reset_token_hash", "")
+    if not stored_hash or stored_hash != _token_hash(request.token):
+        raise HTTPException(status_code=400, detail="تم استخدام هذا الرابط مسبقاً. يرجى طلب رابط جديد")
+
+    await gd_update_one(db.session, "users", {"id": user_id}, {
+        "password_hash": hash_password(request.new_password),
+        "reset_token_hash": None,
+        "reset_token_created_at": None,
+        "must_change_password": False,
+        "password_changed_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    })
+
+    audit_log = {
+        "id": str(uuid.uuid4()),
+        "action": "password_reset_completed",
+        "action_by": user_id,
+        "action_by_name": user.get("full_name", ""),
+        "target_type": "user",
+        "target_id": user_id,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    await gd_insert(db.session, "audit_logs", audit_log)
+
+    return {"message": "تم تعيين كلمة المرور الجديدة بنجاح. يمكنك تسجيل الدخول الآن"}
+
+
 # ============== PASSWORD CHANGE ROUTE ==============
 class PasswordChangeRequest(BaseModel):
     current_password: str
