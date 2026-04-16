@@ -632,7 +632,7 @@ class SmartSchedulingEngine:
         for cls in classes:
             class_id = cls.get("id") or cls.get("class_id")
             class_name = cls.get("name") or cls.get("name_ar", "")
-            grade_id = cls.get("grade_id", "")
+            grade_id = cls.get("grade_id") or cls.get("grade_level") or cls.get("level") or "unknown"
             
             grade_subjects = await gd_find(self.session, "grade_subjects", {"school_id": school_id, "grade_id": grade_id, "is_active": True}, limit=50)
             

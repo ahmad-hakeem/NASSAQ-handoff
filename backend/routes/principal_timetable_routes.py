@@ -206,11 +206,11 @@ async def _get_school_data(school_id: str) -> Dict[str, Any]:
     }
 
 async def _get_active_timetable(school_id: str) -> Optional[Dict]:
-    published = await gd_find_one(db.session, "timetables", {"school_id": school_id, "status": "published"}, sort=[("created_at", -1)])
-    if published:
-        return published
-    draft = await gd_find_one(db.session, "timetables", {"school_id": school_id, "status": "draft"}, sort=[("created_at", -1)])
-    return draft
+    for status in ("published", "active", "draft"):
+        tt = await gd_find_one(db.session, "timetables", {"school_id": school_id, "status": status}, sort=[("created_at", -1)])
+        if tt:
+            return tt
+    return None
 
 
 # ─────────────────────────────────────────────
@@ -244,7 +244,7 @@ async def get_timetable_summary(
             "quality_score": stats.get("optimization_score", 0),
             "conflicts_count": real_conflicts,
             "warnings_count": active_tt.get("warnings_count", 0),
-            "sessions_count": stats.get("total_sessions", 0),
+            "sessions_count": stats.get("total_sessions") or active_tt.get("total_sessions", 0),
             "generated_at": active_tt.get("generated_at") or active_tt.get("created_at"),
             "generated_by": active_tt.get("generated_by") or active_tt.get("created_by", "النظام"),
             "published_at": active_tt.get("published_at"),
