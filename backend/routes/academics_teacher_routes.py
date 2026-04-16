@@ -409,7 +409,7 @@ class TeacherWizardCreate(BaseModel):
 @router.post("/teachers/create")
 async def create_teacher_wizard(
     data: TeacherWizardCreate,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN]))
 ):
     """Create a new teacher via wizard"""
     school_id = current_user.get("tenant_id")
@@ -480,7 +480,22 @@ async def create_teacher_wizard(
     existing = await gd_find_one(db.session, "users", {"email": email})
     if existing:
         raise HTTPException(status_code=400, detail="البريد الإلكتروني مسجل مسبقاً")
-    
+
+    # Check if phone exists (uniqueness across users)
+    if phone:
+        existing_phone = await gd_find_one(db.session, "users", {"phone": phone})
+        if existing_phone:
+            raise HTTPException(status_code=400, detail="رقم الهاتف مسجل مسبقاً")
+
+    # Check if national_id is unique among teachers in same school
+    if national_id:
+        existing_nid = await gd_find_one(
+            db.session, "teachers",
+            {"national_id": national_id, "school_id": school_id}
+        )
+        if existing_nid:
+            raise HTTPException(status_code=400, detail="رقم الهوية الوطنية مسجل مسبقاً")
+
     # Get school info
     school = await gd_find_one(db.session, "schools", {"id": school_id})
     school_code = school.get("code", "NSS") if school else "NSS"

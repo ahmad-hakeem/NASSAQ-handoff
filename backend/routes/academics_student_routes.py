@@ -529,7 +529,7 @@ async def check_parent_exists(
     phone: Optional[str] = None,
     email: Optional[str] = None,
     national_id: Optional[str] = None,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN]))
 ):
     """Check if parent already exists and return their students (siblings)"""
     school_id = current_user.get("tenant_id")
@@ -596,7 +596,7 @@ async def get_parents(
 @router.get("/student-wizard/search-parents")
 async def search_parents(
     q: str = "",
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN]))
 ):
     """Search for existing parents by name or phone"""
     school_id = current_user.get("tenant_id")
@@ -625,7 +625,11 @@ async def search_parents(
         children = []
         
         if student_ids:
-            students = await gd_find(db.session, "students", {"id": {"$in": student_ids}}, limit=10)
+            students = await gd_find(
+                db.session, "students",
+                {"id": {"$in": student_ids}, "school_id": school_id},
+                limit=10,
+            )
             children = [{"name": s.get("full_name")} for s in students]
         
         result.append({
@@ -645,7 +649,7 @@ async def search_parents(
 @router.post("/student-wizard/create")
 async def create_student_with_wizard(
     data: StudentWizardCreate,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN]))
 ):
     """Create student with parent and health info via wizard"""
     school_id = current_user.get("tenant_id")
@@ -657,21 +661,45 @@ async def create_student_with_wizard(
     school = await gd_find_one(db.session, "schools", {"id": school_id})
     if not school:
         raise HTTPException(status_code=404, detail="المدرسة غير موجودة")
-    
-    # Generate student number: NSS-CODE-GRADE-XXXX
+
+    # Validate student email uniqueness if provided
+    if data.email:
+        existing_student_user = await gd_find_one(db.session, "users", {"email": data.email})
+        if existing_student_user:
+            raise HTTPException(status_code=400, detail="البريد الإلكتروني للطالب مسجل مسبقاً")
+
+    # Validate link_to_parent_id belongs to same school (tenant isolation)
+    if data.link_to_parent_id:
+        existing_parent = await gd_find_one(
+            db.session, "parents",
+            {"id": data.link_to_parent_id, "school_id": school_id}
+        )
+        if not existing_parent:
+            raise HTTPException(status_code=404, detail="ولي الأمر غير موجود في هذه المدرسة")
+
+    # Generate student number: NSS-CODE-GRADE-XXXX using actual grade number
     school_code = school.get("code", "NSS")
-    grade_num = data.grade_id[-1] if data.grade_id else "0"
-    
+    grade_num = "0"
+    if data.grade_id:
+        grade_level_doc = await gd_find_one(
+            db.session, "grade_levels",
+            {"id": data.grade_id, "school_id": school_id}
+        ) or await gd_find_one(db.session, "grade_levels", {"id": data.grade_id})
+        if grade_level_doc and grade_level_doc.get("grade") is not None:
+            grade_num = str(grade_level_doc.get("grade"))
+
     # Count existing students to generate sequential number
     student_count = await gd_count(db.session, "students", {"school_id": school_id})
     student_number = f"NSS-{school_code}-{grade_num}-{str(student_count + 1).zfill(4)}"
     
     student_id = str(uuid.uuid4())
     
-    # Get class info
+    # Get class info (enforce tenant isolation)
     class_doc = None
     if data.class_id:
-        class_doc = await gd_find_one(db.session, "classes", {"id": data.class_id})
+        class_doc = await gd_find_one(db.session, "classes", {"id": data.class_id, "school_id": school_id})
+        if not class_doc:
+            raise HTTPException(status_code=404, detail="الفصل غير موجود في هذه المدرسة")
     
     # Create student
     student_doc = {

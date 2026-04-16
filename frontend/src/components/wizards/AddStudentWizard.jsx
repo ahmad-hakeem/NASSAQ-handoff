@@ -445,8 +445,12 @@ export default function AddStudentWizard({
                     <Select value={studentData.grade_id} onValueChange={(val) => setStudentData({...studentData, grade_id: val})}>
                       <SelectTrigger className="h-10 rounded-lg"><SelectValue placeholder={t('selectGrade')} /></SelectTrigger>
                       <SelectContent>
-                        {grades.length > 0 ? grades.map(grade => (<SelectItem key={grade.id} value={grade.id}>{isRTL ? (grade.name_ar || grade.name) : (grade.name_en || grade.name)}</SelectItem>)) : (
-                          <><SelectItem value="grade-1">الصف الأول</SelectItem><SelectItem value="grade-2">الصف الثاني</SelectItem><SelectItem value="grade-3">الصف الثالث</SelectItem><SelectItem value="grade-4">الصف الرابع</SelectItem><SelectItem value="grade-5">الصف الخامس</SelectItem><SelectItem value="grade-6">الصف السادس</SelectItem></>
+                        {grades.length > 0 ? (
+                          grades.map(grade => (<SelectItem key={grade.id} value={grade.id}>{isRTL ? (grade.name_ar || grade.name) : (grade.name_en || grade.name)}</SelectItem>))
+                        ) : (
+                          <div className="px-2 py-3 text-xs text-muted-foreground text-center">
+                            {isRTL ? 'لا توجد صفوف متاحة — يُرجى إضافتها من الإعدادات' : 'No grades available — add from settings first'}
+                          </div>
                         )}
                       </SelectContent>
                     </Select>
@@ -456,8 +460,12 @@ export default function AddStudentWizard({
                     <Select value={studentData.class_id} onValueChange={(val) => setStudentData({...studentData, class_id: val})}>
                       <SelectTrigger className="h-10 rounded-lg"><SelectValue placeholder={t('selectClass')} /></SelectTrigger>
                       <SelectContent>
-                        {classes.length > 0 ? classes.map(cls => (<SelectItem key={cls.id} value={cls.id}>{cls.name}</SelectItem>)) : (
-                          <><SelectItem value="class-a">شعبة أ</SelectItem><SelectItem value="class-b">شعبة ب</SelectItem></>
+                        {classes.length > 0 ? (
+                          classes.map(cls => (<SelectItem key={cls.id} value={cls.id}>{cls.name}</SelectItem>))
+                        ) : (
+                          <div className="px-2 py-3 text-xs text-muted-foreground text-center">
+                            {isRTL ? 'لا توجد فصول متاحة' : 'No classes available'}
+                          </div>
                         )}
                       </SelectContent>
                     </Select>

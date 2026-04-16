@@ -60,7 +60,16 @@ async def create_class_wizard(
         raise HTTPException(status_code=400, detail="المستخدم غير مرتبط بمدرسة")
     
     class_id = str(uuid.uuid4())
-    
+
+    # Validate homeroom teacher belongs to same school (tenant isolation)
+    if data.homeroom_teacher_id:
+        teacher_doc = await gd_find_one(
+            db.session, "teachers",
+            {"id": data.homeroom_teacher_id, "school_id": school_id}
+        )
+        if not teacher_doc:
+            raise HTTPException(status_code=404, detail="المعلم غير موجود في هذه المدرسة")
+
     # Get grade level info - try by UUID first, then by code/number
     grade_level = await gd_find_one(db.session, "grade_levels", {"id": data.grade_id, "school_id": school_id})
     if not grade_level:
@@ -104,9 +113,12 @@ async def create_class_wizard(
     
     await gd_insert(db.session, "classes", class_doc)
     
-    # Assign students to class
+    # Assign students to class (enforce tenant isolation via school_id filter)
     if data.student_ids:
-        await gd_update_many(db.session, "students", {"id": {"$in": data.student_ids}}, {
+        await gd_update_many(
+            db.session, "students",
+            {"id": {"$in": data.student_ids}, "school_id": school_id},
+            {
                 "class_id": class_id,
                 "grade": data.grade,
                 "section": data.section,
