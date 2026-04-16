@@ -317,8 +317,16 @@ async def _run_readiness_checks(school_id: str):
 
     # ─── PHASE 5: Constraints & Validation ───
     p5_score, p5_issues = 0, []
-    hard_count = await gd_count(db.session, "timetable_hard_constraints", {"is_active": True})
-    soft_count = await gd_count(db.session, "timetable_soft_constraints", {"is_active": True})
+    # Count constraints that apply to this school: those scoped explicitly to
+    # the school, plus system/global rows (school_id missing or marked system).
+    _scope_filter = {"$or": [
+        {"school_id": school_id},
+        {"is_system": True},
+        {"school_id": None},
+        {"school_id": {"$exists": False}},
+    ]}
+    hard_count = await gd_count(db.session, "timetable_hard_constraints", {"is_active": True, **_scope_filter})
+    soft_count = await gd_count(db.session, "timetable_soft_constraints", {"is_active": True, **_scope_filter})
 
     if hard_count > 0:
         p5_score += 4

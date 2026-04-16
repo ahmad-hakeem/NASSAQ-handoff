@@ -667,7 +667,7 @@ async def get_insights(
         raise HTTPException(status_code=400, detail="School context required")
 
     if timetable_id:
-        tt = await gd_find_one(db.session, "timetables", {"id": timetable_id})
+        tt = await gd_find_one(db.session, "timetables", {"id": timetable_id, "school_id": school_id})
     else:
         tt = await _get_active_timetable(school_id)
 
@@ -880,6 +880,10 @@ async def generate_timetable(
         raise HTTPException(status_code=503, detail="Scheduling engine not available")
 
     try:
+        # The engine resolves the active academic_year / term from the school
+        # internally (see SmartSchedulingEngine.generate_timetable), so we only
+        # forward identity here. Forwarding term_id from a different table can
+        # cause semester-fallback issues across mixed data setups.
         result = await smart_engine.generate_timetable(
             school_id=school_id,
             created_by="principal"
@@ -945,7 +949,8 @@ async def generate_timetable(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=422, detail="خطأ في معالجة البيانات")
+        logger.exception("Timetable generation failed for school=%s", school_id)
+        raise HTTPException(status_code=500, detail="تعذّر توليد الجدول. يرجى مراجعة سجلات النظام.")
 
 
 # ─────────────────────────────────────────────
