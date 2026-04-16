@@ -347,11 +347,17 @@ export function AcademicStructureContent() {
     setShowExamDialog(true);
   };
 
+  const formatDate = (val) => {
+    if (!val) return '';
+    return String(val).slice(0, 10);
+  };
+
   const getDaysBetween = (start, end) => {
     try {
-      const s = new Date(start);
-      const e = new Date(end);
-      return Math.ceil((e - s) / (1000 * 60 * 60 * 24)) + 1;
+      const s = new Date(formatDate(start));
+      const e = new Date(formatDate(end));
+      const diff = Math.ceil((e - s) / (1000 * 60 * 60 * 24)) + 1;
+      return Math.abs(diff);
     } catch (e) { console.error('Error calculating days between dates:', e); return 0; }
   };
 
@@ -487,11 +493,11 @@ export function AcademicStructureContent() {
                       <div className="space-y-2 text-sm text-gray-600">
                         <div className="flex justify-between">
                           <span>تاريخ البدء</span>
-                          <span className="font-medium">{year.start_date}</span>
+                          <span className="font-medium">{formatDate(year.start_date)}</span>
                         </div>
                         <div className="flex justify-between">
                           <span>تاريخ الانتهاء</span>
-                          <span className="font-medium">{year.end_date}</span>
+                          <span className="font-medium">{formatDate(year.end_date)}</span>
                         </div>
                         <div className="flex justify-between">
                           <span>المدة</span>
@@ -503,7 +509,7 @@ export function AcademicStructureContent() {
                         <Button size="sm" variant="outline" className="text-xs gap-1" onClick={(e) => {
                           e.stopPropagation();
                           setEditingItem(year);
-                          setYearForm({ name: year.name, name_en: year.name_en || '', start_date: year.start_date, end_date: year.end_date, is_current: year.is_current });
+                          setYearForm({ name: year.name, name_en: year.name_en || '', start_date: formatDate(year.start_date), end_date: formatDate(year.end_date), is_current: year.is_current });
                           setShowYearDialog(true);
                         }}>
                           <Edit2 className="h-3 w-3" /> تعديل
@@ -618,8 +624,8 @@ export function AcademicStructureContent() {
                         </div>
 
                         <div className="space-y-1.5 text-sm text-gray-600 mb-3">
-                          <div className="flex justify-between"><span>البداية</span><span className="font-medium">{term.start_date}</span></div>
-                          <div className="flex justify-between"><span>النهاية</span><span className="font-medium">{term.end_date}</span></div>
+                          <div className="flex justify-between"><span>البداية</span><span className="font-medium">{formatDate(term.start_date)}</span></div>
+                          <div className="flex justify-between"><span>النهاية</span><span className="font-medium">{formatDate(term.end_date)}</span></div>
                           <div className="flex justify-between"><span>الإجازات</span><span className="font-medium">{termHolidays.length}</span></div>
                           <div className="flex justify-between"><span>فترات الاختبار</span><span className="font-medium">{termExams.length}</span></div>
                         </div>
@@ -627,7 +633,7 @@ export function AcademicStructureContent() {
                         <div className="flex gap-2">
                           <Button size="sm" variant="outline" className="text-xs gap-1 flex-1" onClick={() => {
                             setEditingItem(term);
-                            setTermForm({ name: term.name, name_en: term.name_en || '', start_date: term.start_date, end_date: term.end_date, is_current: term.is_current });
+                            setTermForm({ name: term.name, name_en: term.name_en || '', start_date: formatDate(term.start_date), end_date: formatDate(term.end_date), is_current: term.is_current });
                             setShowTermDialog(true);
                           }}>
                             <Edit2 className="h-3 w-3" /> تعديل
@@ -717,7 +723,7 @@ export function AcademicStructureContent() {
                           <div key={term.id}>
                             <div className="flex items-center justify-between text-sm mb-1">
                               <span className="font-medium">{term.name}</span>
-                              <span className="text-gray-500">{term.start_date} → {term.end_date} ({days} يوم)</span>
+                              <span className="text-gray-500">{formatDate(term.start_date)} → {formatDate(term.end_date)} ({days} يوم)</span>
                             </div>
                             <div className="w-full bg-gray-100 rounded-full h-3">
                               <div className={`${colors[idx % 3]} h-3 rounded-full transition-all`} style={{ width: `${pct}%` }} />
@@ -746,14 +752,14 @@ export function AcademicStructureContent() {
                             <CalendarDays className="h-4 w-4 text-amber-600" />
                             <div>
                               <p className="font-medium text-sm">{h.name}</p>
-                              <p className="text-xs text-gray-500">{h.start_date} → {h.end_date} ({getDaysBetween(h.start_date, h.end_date)} يوم)</p>
+                              <p className="text-xs text-gray-500">{formatDate(h.start_date)} → {formatDate(h.end_date)} ({getDaysBetween(h.start_date, h.end_date)} يوم)</p>
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
                             <Badge variant="outline" className="text-xs">{HOLIDAY_TYPES.find(t => t.value === h.type)?.label || h.type}</Badge>
                             <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => {
                               setEditingItem(h);
-                              setHolidayForm({ name: h.name, name_en: h.name_en || '', start_date: h.start_date, end_date: h.end_date, type: h.type, custom_type: h.custom_type || '', term_id: h.term_id || '' });
+                              setHolidayForm({ name: h.name, name_en: h.name_en || '', start_date: formatDate(h.start_date), end_date: formatDate(h.end_date), type: h.type, custom_type: h.custom_type || '', term_id: h.term_id || '' });
                               setShowHolidayDialog(true);
                             }}>
                               <Edit2 className="h-3.5 w-3.5" />

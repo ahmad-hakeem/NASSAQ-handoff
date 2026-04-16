@@ -59,6 +59,13 @@ class AcademicYearResponse(BaseModel):
     created_at: str
 
 
+def _normalize_date_str(val) -> str:
+    """Return YYYY-MM-DD regardless of whether val is a datetime, date, or ISO string."""
+    if val is None:
+        return ""
+    return str(val)[:10]
+
+
 def normalize_academic_year(doc: dict) -> dict:
     d = dict(doc)
     if "name" not in d and "name_ar" in d:
@@ -69,6 +76,9 @@ def normalize_academic_year(doc: dict) -> dict:
         d["status"] = "active" if d.get("is_current") else "draft"
     if "created_at" not in d:
         d["created_at"] = d.get("updated_at", "")
+    for field in ("start_date", "end_date"):
+        if d.get(field):
+            d[field] = _normalize_date_str(d[field])
     return d
 
 @router.post("/academic-years", response_model=AcademicYearResponse)
@@ -252,7 +262,12 @@ async def get_terms(
         query["academic_year_id"] = academic_year_id
     
     terms = await gd_find(db.session, "terms", query, order_by="start_date", desc_order=True, limit=100)
-    return [TermResponse(**t) for t in terms]
+    normalized = []
+    for t in terms:
+        t["start_date"] = _normalize_date_str(t.get("start_date"))
+        t["end_date"] = _normalize_date_str(t.get("end_date"))
+        normalized.append(t)
+    return [TermResponse(**t) for t in normalized]
 
 @router.get("/terms/{term_id}", response_model=TermResponse)
 async def get_term(
