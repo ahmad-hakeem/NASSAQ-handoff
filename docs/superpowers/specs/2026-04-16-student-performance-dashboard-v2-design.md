@@ -33,7 +33,9 @@ v2 resolves the drift by **reusing and extending** existing endpoints, **unifyin
 PDF/Excel export · WebSocket live updates · Parent/teacher views · Intervention history tracking · Cross-class comparisons · Push notifications on status change.
 
 ### Target roles
-`school_admin`, `school_sub_admin`, `school_principal`. Platform admin excluded (not their workflow).
+`school_admin`, `school_sub_admin`, `school_principal`. Platform admin excluded (not their workflow — they have separate platform-level AI endpoints).
+
+See §10 for the full RBAC matrix and enforcement rules.
 
 ---
 
@@ -462,7 +464,58 @@ No new backend route file — all endpoints live in `ai_routes_mod.py` to stay c
 
 ---
 
-## 10. Acceptance criteria
+## 10. RBAC compliance
+
+This feature **must** use the project's existing RBAC primitives. No custom role checks, no inline role lists scattered across handlers.
+
+### 10.1 Enforcement primitives
+
+- **Enum:** `UserRole` from `backend/dependencies.py` (values: `school_admin`, `school_sub_admin`, `school_principal`, `platform_admin`, `teacher`, `independent_teacher`, `student`, `parent`, …).
+- **Decorator:** `require_roles([...])` from `backend/dependencies.py`. FastAPI dependency; returns `current_user` dict on success, raises `403` on role mismatch.
+- **Tenant isolation:** Every read/write includes `school_id = current_user["tenant_id"]`. Documents without a matching `school_id` are invisible. This is enforced in every query — not optional, not batched into a trust boundary elsewhere.
+
+### 10.2 Endpoint role matrix
+
+| Endpoint | Method | Allowed roles | Notes |
+|---|---|---|---|
+| `/ai/insights/students-overview` | GET | `SCHOOL_ADMIN`, `SCHOOL_SUB_ADMIN`, `SCHOOL_PRINCIPAL` | New. `require_roles` gate. Platform admin excluded. |
+| `/ai/insights/recommendations-ai` | GET | `SCHOOL_ADMIN`, `SCHOOL_SUB_ADMIN`, `SCHOOL_PRINCIPAL` | New. Same gate. |
+| `/ai/insights/intervention` | POST | `SCHOOL_ADMIN`, `SCHOOL_SUB_ADMIN`, `SCHOOL_PRINCIPAL` | New. Same gate. Mutating. |
+| `/ai/insights/at-risk-students` | GET | `SCHOOL_ADMIN`, `SCHOOL_SUB_ADMIN`, `SCHOOL_PRINCIPAL` | **Existing — currently ungated.** This revision adds `require_roles`. Considered a security fix, not a breaking change (no non-admin callers in code audit). |
+
+### 10.3 Frontend tab gate
+
+The new tab is shown only when `user.role` ∈ `{school_admin, school_sub_admin, school_principal}`. This is a UX convenience, not a security boundary — the real gate is §10.2. Never rely on the tab being hidden to protect data.
+
+### 10.4 Intervention-specific authorization
+
+- `notify_parent`: requires the student's `school_id` to equal `current_user["tenant_id"]`. Parent must belong to the same school. Reject with 404 if the student isn't in the caller's tenant (never 403, to avoid leaking existence).
+- `remedial_plan` and `schedule_followup`: same tenant check. `created_by` = `current_user["id"]`. Audit-write only; no edits in this release.
+- All three intervention branches write an `audit_log` row via the existing audit middleware pattern (`action=intervention.<action_type>`, `resource_type=student`, `resource_id=student_id`).
+
+### 10.5 Test matrix (to be encoded in plan)
+
+| Scenario | Expected |
+|---|---|
+| `school_admin` calls any new endpoint in own tenant | 200 |
+| `school_sub_admin` calls any new endpoint in own tenant | 200 |
+| `school_principal` calls any new endpoint in own tenant | 200 |
+| `teacher` calls any new endpoint | 403 |
+| `parent` calls any new endpoint | 403 |
+| `student` calls any new endpoint | 403 |
+| `platform_admin` calls any new endpoint | 403 |
+| `school_admin` intervenes on a student from a different `school_id` | 404 |
+| Unauthenticated request | 401 |
+| `school_admin` of tenant A never sees a single row from tenant B in `students-overview` | data-isolation test with seeded two-tenant fixture |
+
+### 10.6 Non-goals for RBAC
+
+- No row-level sub-delegation (e.g., sub-admin restricted to a subset of classes). Out of scope.
+- No PII redaction beyond existing field policies. Student names and parent ids are already visible to the allowed roles elsewhere.
+
+---
+
+## 11. Acceptance criteria
 
 - [ ] Tab visible only for `school_admin`, `school_sub_admin`, `school_principal`.
 - [ ] KPI cards show live counts from `students-overview` that sum to `total_students`.
