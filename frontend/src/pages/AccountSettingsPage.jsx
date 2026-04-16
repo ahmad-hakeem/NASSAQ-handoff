@@ -521,7 +521,7 @@ export const AccountSettingsPage = () => {
                   </span>
                   <span className="flex items-center gap-1.5">
                     <Clock className="h-3.5 w-3.5" />
-                    {isRTL ? 'آخر تحديث: ' : 'Updated: '}
+                    {t('updatedLabel')}
                     {user?.updated_at ? new Date(user.updated_at).toLocaleDateString(isRTL ? 'ar-SA' : 'en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}
                   </span>
                 </div>
@@ -571,7 +571,7 @@ export const AccountSettingsPage = () => {
                           {isGenericName(profile.full_name) && (
                             <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
                               <AlertTriangle className="h-3 w-3 flex-shrink-0" />
-                              {isRTL ? 'يجب استخدام اسمك الشخصي الحقيقي بدلاً من اسم عام أو وظيفي' : 'You must use your real personal name, not a generic role title'}
+                              {t('realNameHint')}
                             </p>
                           )}
                         </FieldGroup>
@@ -581,7 +581,7 @@ export const AccountSettingsPage = () => {
                         <FieldGroup label={t('email2')} icon={Mail}>
                           <Input type="email" value={profile.email} onChange={(e) => setProfile({ ...profile, email: e.target.value })} className="rounded-xl" data-testid="profile-email" dir="ltr" />
                         </FieldGroup>
-                        <FieldGroup label={isRTL ? 'رقم الهاتف' : 'Phone Number'} icon={Phone}>
+                        <FieldGroup label={t('phoneNumber')} icon={Phone}>
                           <Input value={profile.phone} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} className="rounded-xl" data-testid="profile-phone" dir="ltr" placeholder="+966 5xx xxx xxxx" />
                         </FieldGroup>
                       </div>
@@ -707,7 +707,7 @@ export const AccountSettingsPage = () => {
                             <p className="text-xs text-muted-foreground">{t('addAnExtraLayerOfSecurity')}</p>
                           </div>
                         </div>
-                        <Button variant="outline" size="sm" className="rounded-lg text-xs">{isRTL ? 'تفعيل' : 'Enable'}</Button>
+                        <Button variant="outline" size="sm" className="rounded-lg text-xs">{t('enable')}</Button>
                       </div>
                     </CardContent>
                   </Card>
@@ -759,7 +759,7 @@ export const AccountSettingsPage = () => {
                       <div className="space-y-2">
                         <NotificationRow title={t('emailNotifications')} desc={t('receiveNotificationsViaEmail')} checked={notifications.email_notifications} onChange={(v) => setNotifications({ ...notifications, email_notifications: v })} />
                         <NotificationRow title={t('smsNotifications')} desc={t('receiveNotificationsViaSms')} checked={notifications.sms_notifications} onChange={(v) => setNotifications({ ...notifications, sms_notifications: v })} />
-                        <NotificationRow title={isRTL ? 'إشعارات المتصفح' : 'Push Notifications'} desc={t('instantBrowserPushNotifications')} checked={notifications.push_notifications} onChange={(v) => setNotifications({ ...notifications, push_notifications: v })} />
+                        <NotificationRow title={t('pushNotifications')} desc={t('instantBrowserPushNotifications')} checked={notifications.push_notifications} onChange={(v) => setNotifications({ ...notifications, push_notifications: v })} />
                       </div>
                     </div>
                     <div>

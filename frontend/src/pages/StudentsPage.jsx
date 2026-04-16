@@ -344,7 +344,7 @@ export const StudentsPage = () => {
                         onValueChange={(value) => setNewStudent({ ...newStudent, class_id: value })}
                       >
                         <SelectTrigger className="rounded-xl">
-                          <SelectValue placeholder={isRTL ? 'اختر الفصل' : 'Select Class'} />
+                          <SelectValue placeholder={t('selectClass')} />
                         </SelectTrigger>
                         <SelectContent>
                           {classes.filter(c => c.school_id === newStudent.school_id).map(cls => (
@@ -384,7 +384,7 @@ export const StudentsPage = () => {
                   
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label>{isRTL ? 'اسم ولي الأمر' : 'Parent Name'}</Label>
+                      <Label>{t('parentName')}</Label>
                       <Input
                         value={newStudent.parent_name}
                         onChange={(e) => setNewStudent({ ...newStudent, parent_name: e.target.value })}
@@ -392,7 +392,7 @@ export const StudentsPage = () => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>{isRTL ? 'هاتف ولي الأمر' : 'Parent Phone'}</Label>
+                      <Label>{t('parentPhone')}</Label>
                       <Input
                         value={newStudent.parent_phone}
                         onChange={(e) => setNewStudent({ ...newStudent, parent_phone: e.target.value })}
@@ -436,7 +436,7 @@ export const StudentsPage = () => {
                     <TableHeader>
                       <TableRow>
                         <TableHead>{t('student3')}</TableHead>
-                        <TableHead>{isRTL ? 'رقم الطالب' : 'Student #'}</TableHead>
+                        <TableHead>{t('studentNumber')}</TableHead>
                         <TableHead>{t('class')}</TableHead>
                         <TableHead>{t('school')}</TableHead>
                         <TableHead>{t('parent')}</TableHead>
@@ -449,7 +449,7 @@ export const StudentsPage = () => {
                         <TableRow>
                           <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
                             <GraduationCap className="h-12 w-12 mx-auto mb-4 opacity-20" />
-                            <p>{isRTL ? 'لا يوجد طلاب' : 'No students found'}</p>
+                            <p>{t('noStudentsFound')}</p>
                           </TableCell>
                         </TableRow>
                       ) : (

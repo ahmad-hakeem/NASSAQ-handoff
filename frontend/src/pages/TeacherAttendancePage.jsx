@@ -290,7 +290,7 @@ export const TeacherAttendancePage = () => {
             <div>
               <h1 className="font-cairo text-2xl font-bold text-foreground flex items-center gap-2">
                 <CalendarCheck className="h-7 w-7 text-brand-turquoise" />
-                {isRTL ? 'إدارة حضور المعلمين والاداريين' : 'Staff Attendance Management'}
+                {t('staffAttendanceMgmt')}
               </h1>
               <p className="text-sm text-muted-foreground font-tajawal">
                 {t('trackAndManageStaffAttendanceInTheSchool')}
@@ -336,7 +336,7 @@ export const TeacherAttendancePage = () => {
             <TabsList className="grid w-full max-w-md grid-cols-2">
               <TabsTrigger value="record" className="rounded-xl">
                 <CalendarCheck className="h-4 w-4 me-2" />
-                {isRTL ? 'تسجيل الحضور' : 'Record'}
+                {t('recordAttendance')}
               </TabsTrigger>
               <TabsTrigger value="summary" className="rounded-xl">
                 <BarChart3 className="h-4 w-4 me-2" />

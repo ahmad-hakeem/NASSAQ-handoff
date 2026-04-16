@@ -378,7 +378,7 @@ export const TeacherAssignmentsPage = () => {
                       onValueChange={(value) => setNewAssignment({ ...newAssignment, class_id: value })}
                     >
                       <SelectTrigger className="rounded-xl" data-testid="class-select">
-                        <SelectValue placeholder={isRTL ? 'اختر الفصل' : 'Select Class'} />
+                        <SelectValue placeholder={t('selectClass')} />
                       </SelectTrigger>
                       <SelectContent>
                         {classes.map(cls => (
@@ -400,7 +400,7 @@ export const TeacherAssignmentsPage = () => {
                       onValueChange={(value) => setNewAssignment({ ...newAssignment, subject_id: value })}
                     >
                       <SelectTrigger className="rounded-xl" data-testid="subject-select">
-                        <SelectValue placeholder={isRTL ? 'اختر المادة' : 'Select Subject'} />
+                        <SelectValue placeholder={t('selectSubject')} />
                       </SelectTrigger>
                       <SelectContent>
                         {subjects.map(subject => (
@@ -476,7 +476,7 @@ export const TeacherAssignmentsPage = () => {
                 </div>
                 <div>
                   <p className="text-2xl font-bold">{teachers.length}</p>
-                  <p className="text-sm text-muted-foreground">{isRTL ? 'معلم' : 'Teachers'}</p>
+                  <p className="text-sm text-muted-foreground">{t('teachersLabel')}</p>
                 </div>
               </CardContent>
             </Card>
@@ -498,7 +498,7 @@ export const TeacherAssignmentsPage = () => {
                 </div>
                 <div>
                   <p className="text-2xl font-bold">{subjects.length}</p>
-                  <p className="text-sm text-muted-foreground">{isRTL ? 'مادة' : 'Subjects'}</p>
+                  <p className="text-sm text-muted-foreground">{t('subjectsLabel')}</p>
                 </div>
               </CardContent>
             </Card>
@@ -575,7 +575,7 @@ export const TeacherAssignmentsPage = () => {
                               </TooltipProvider>
                               
                               <Badge variant="secondary" className="text-xs">
-                                {teacherData.assignments.length} {isRTL ? 'إسناد' : 'assignments'}
+                                {teacherData.assignments.length} {t('assignmentsCount')}
                               </Badge>
                             </div>
                           </div>
@@ -633,7 +633,7 @@ export const TeacherAssignmentsPage = () => {
                               <TableCell>
                                 <Badge variant="secondary" className="rounded-lg">
                                   <Clock className="h-3 w-3 me-1" />
-                                  {assignment.weekly_sessions} {isRTL ? 'حصص' : 'sessions'}
+                                  {assignment.weekly_sessions} {t('sessionsLabel')}
                                 </Badge>
                               </TableCell>
                               <TableCell>

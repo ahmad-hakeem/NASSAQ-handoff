@@ -267,7 +267,7 @@ const PredictionsPanel = ({ predictions, isRTL }) => {
                         <Badge className={`text-[10px] ${colors.badge} border-0`}>
                           {pred.impact === 'positive' ? (t('positive')) :
                             pred.impact === 'high' ? (t('needsAction')) :
-                              (isRTL ? 'متوسط' : 'Moderate')}
+                              (t('moderate'))}
                         </Badge>
                       </div>
                       <h4 className="font-cairo font-bold text-foreground text-sm leading-snug">
@@ -387,10 +387,10 @@ const RiskStudentsPanel = ({ students, isRTL, onNavigate }) => {
           {students.length > 0 && (
             <div className="flex items-center gap-1.5">
               <Badge className="bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400 border-0 font-cairo text-[10px]">
-                {students.filter(s => s.risk_level >= 70).length} {isRTL ? 'مرتفع' : 'high'}
+                {students.filter(s => s.risk_level >= 70).length} {t('highRiskShort')}
               </Badge>
               <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 border-0 font-cairo text-[10px]">
-                {students.filter(s => s.risk_level >= 50 && s.risk_level < 70).length} {isRTL ? 'متوسط' : 'mod'}
+                {students.filter(s => s.risk_level >= 50 && s.risk_level < 70).length} {t('modShort')}
               </Badge>
             </div>
           )}
@@ -532,14 +532,14 @@ const TeacherMonitoringSection = ({ isRTL, api }) => {
   const behaviorPositiveRate = d.totalBehavior > 0 ? Math.round((d.positiveBehavior / d.totalBehavior) * 100) : 0;
 
   const monitorCards = [
-    { label: isRTL ? 'الحضور' : 'Attendance', value: `${d.attendanceRate}%`, icon: ClipboardCheck, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-950/30', detail: isRTL ? `${d.attendance.present} حاضر | ${d.attendance.absent} غائب | ${d.attendance.late} متأخر` : `${d.attendance.present} present | ${d.attendance.absent} absent | ${d.attendance.late} late` },
-    { label: isRTL ? 'المعدل الأكاديمي' : 'Avg Grade', value: d.avgGrade || '-', icon: Award, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/30', detail: isRTL ? 'متوسط درجات أعمال السنة' : 'Average coursework grade' },
-    { label: isRTL ? 'السلوك الإيجابي' : 'Positive Behavior', value: d.positiveBehavior, icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-950/30', detail: `${behaviorPositiveRate}% ${isRTL ? 'من إجمالي السلوك' : 'of total behavior'}` },
-    { label: isRTL ? 'السلوك السلبي' : 'Negative Behavior', value: d.negativeBehavior, icon: TrendingDown, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/30', detail: `${d.warningBehavior} ${isRTL ? 'تحذيرات' : 'warnings'}` },
-    { label: isRTL ? 'إجمالي الطلاب' : 'Total Students', value: d.totalStudents, icon: Users, color: 'text-brand-navy', bg: 'bg-blue-50 dark:bg-blue-950/30', detail: isRTL ? 'المسجلون في المدرسة' : 'Enrolled in school' },
-    { label: isRTL ? 'المواد المقيّمة' : 'Subjects Assessed', value: d.skillsAssessed, icon: Star, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/30', detail: `${isRTL ? 'معدل النجاح' : 'Pass rate'}: ${d.avgSkillScore}%` },
-    { label: isRTL ? 'نسبة المشاركة' : 'Participation', value: `${d.participationRate}%`, icon: Activity, color: 'text-cyan-600', bg: 'bg-cyan-50 dark:bg-cyan-950/30', detail: isRTL ? 'تفاعل الطلاب في الأنشطة' : 'Student engagement in activities' },
-    { label: isRTL ? 'سجلات السلوك' : 'Behavior Records', value: d.totalBehavior, icon: Eye, color: 'text-violet-600', bg: 'bg-violet-50 dark:bg-violet-950/30', detail: isRTL ? 'إجمالي سجلات الرصد' : 'Total monitoring records' },
+    { label: t('attendanceLabel'), value: `${d.attendanceRate}%`, icon: ClipboardCheck, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-950/30', detail: isRTL ? `${d.attendance.present} حاضر | ${d.attendance.absent} غائب | ${d.attendance.late} متأخر` : `${d.attendance.present} present | ${d.attendance.absent} absent | ${d.attendance.late} late` },
+    { label: t('avgGrade'), value: d.avgGrade || '-', icon: Award, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/30', detail: t('avgCourseworkGrade') },
+    { label: t('positiveBehavior'), value: d.positiveBehavior, icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-950/30', detail: `${behaviorPositiveRate}% ${t('ofTotalBehavior')}` },
+    { label: t('negativeBehavior'), value: d.negativeBehavior, icon: TrendingDown, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/30', detail: `${d.warningBehavior} ${t('warnings')}` },
+    { label: t('totalStudentsLabel'), value: d.totalStudents, icon: Users, color: 'text-brand-navy', bg: 'bg-blue-50 dark:bg-blue-950/30', detail: t('enrolledInSchool') },
+    { label: t('subjectsAssessed'), value: d.skillsAssessed, icon: Star, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/30', detail: `${t('passRate')}: ${d.avgSkillScore}%` },
+    { label: t('participation'), value: `${d.participationRate}%`, icon: Activity, color: 'text-cyan-600', bg: 'bg-cyan-50 dark:bg-cyan-950/30', detail: t('studentEngagement') },
+    { label: t('behaviorRecords'), value: d.totalBehavior, icon: Eye, color: 'text-violet-600', bg: 'bg-violet-50 dark:bg-violet-950/30', detail: t('totalBehaviorMonitoring') },
   ];
 
   return (
@@ -550,10 +550,10 @@ const TeacherMonitoringSection = ({ isRTL, api }) => {
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-turquoise to-teal-600 flex items-center justify-center shadow-md shadow-brand-turquoise/20">
               <UserCheck className="h-4.5 w-4.5 text-white" />
             </div>
-            {isRTL ? 'رؤى رصد المعلم' : 'Teacher Monitoring Insights'}
+            {t('teacherMonitoringInsights')}
           </CardTitle>
           <Badge className="bg-brand-turquoise/10 text-brand-turquoise border-0 font-cairo text-xs px-2.5">
-            {isRTL ? 'بيانات حية' : 'Live Data'}
+            {t('liveData')}
           </Badge>
         </div>
       </CardHeader>
@@ -577,14 +577,14 @@ const TeacherMonitoringSection = ({ isRTL, api }) => {
         <div className="mt-4 space-y-3">
           <div>
             <div className="flex justify-between text-sm mb-1">
-              <span className="text-muted-foreground text-xs font-tajawal">{isRTL ? 'نسبة الحضور الإجمالية' : 'Overall Attendance Rate'}</span>
+              <span className="text-muted-foreground text-xs font-tajawal">{t('overallAttendanceRate')}</span>
               <span className="font-bold font-cairo text-xs">{d.attendanceRate}%</span>
             </div>
             <Progress value={d.attendanceRate} className="h-2" />
           </div>
           <div>
             <div className="flex justify-between text-sm mb-1">
-              <span className="text-muted-foreground text-xs font-tajawal">{isRTL ? 'نسبة السلوك الإيجابي' : 'Positive Behavior Rate'}</span>
+              <span className="text-muted-foreground text-xs font-tajawal">{t('positiveBehaviorRate')}</span>
               <span className="font-bold font-cairo text-xs">{behaviorPositiveRate}%</span>
             </div>
             <Progress value={behaviorPositiveRate} className="h-2" />
@@ -740,7 +740,7 @@ export const AIInsightsPage = () => {
               </div>
               <div>
                 <h1 className="font-cairo text-xl font-bold text-foreground flex items-center gap-2">
-                  {isRTL ? 'رؤى الذكاء الاصطناعي' : 'AI Smart Insights'}
+                  {t('aiSmartInsights')}
                   <Sparkles className="h-4 w-4 text-brand-gold" />
                 </h1>
                 <p className="text-xs text-muted-foreground font-tajawal">
@@ -879,7 +879,7 @@ export const AIInsightsPage = () => {
               icon={Shield}
               label={t('atriskStudents')}
               value={studentRisks.length}
-              subLabel={highRiskCount > 0 ? `${highRiskCount} ${isRTL ? 'خطر مرتفع' : 'critical'}` : (t('safe'))}
+              subLabel={highRiskCount > 0 ? `${highRiskCount} ${t('critical')}` : (t('safe'))}
               gradient="from-rose-500 to-red-600"
               onClick={() => document.getElementById('risks-section')?.scrollIntoView({ behavior: 'smooth' })}
               delay={400}

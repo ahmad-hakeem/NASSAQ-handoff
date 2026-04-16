@@ -312,7 +312,7 @@ export const ClassesPage = () => {
                         onValueChange={(value) => setNewClass({ ...newClass, grade_level: value })}
                       >
                         <SelectTrigger className="rounded-xl" data-testid="class-grade-select">
-                          <SelectValue placeholder={isRTL ? 'اختر المرحلة' : 'Select Grade'} />
+                          <SelectValue placeholder={t('selectGrade')} />
                         </SelectTrigger>
                         <SelectContent>
                           {gradeLevels.map(level => (
@@ -411,9 +411,9 @@ export const ClassesPage = () => {
                     <TableHeader>
                       <TableRow>
                         <TableHead>{t('class')}</TableHead>
-                        <TableHead>{isRTL ? 'المرحلة' : 'Grade'}</TableHead>
+                        <TableHead>{t('gradeLabel')}</TableHead>
                         <TableHead>{t('school')}</TableHead>
-                        <TableHead>{isRTL ? 'معلم الفصل' : 'Homeroom'}</TableHead>
+                        <TableHead>{t('homeroomLabel')}</TableHead>
                         <TableHead>{t('students')}</TableHead>
                         <TableHead>{t('status2')}</TableHead>
                         <TableHead className="w-12"></TableHead>

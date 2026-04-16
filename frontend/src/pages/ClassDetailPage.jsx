@@ -129,7 +129,7 @@ const StudentCard = ({ student, isRTL, onView, onEdit, onDelete, onAction, viewM
           <Badge variant={student.is_active !== false ? 'default' : 'destructive'}
             className={`text-[10px] h-5 rounded-full border-0 ${student.is_active !== false ? tc.badge : ''}`}>
             <span className={`w-1.5 h-1.5 rounded-full me-1 ${student.is_active !== false ? tc.badgeDot : 'bg-red-500'}`} />
-            {student.is_active !== false ? (t('active')) : (isRTL ? 'معلق' : 'Suspended')}
+            {student.is_active !== false ? (t('active')) : (t('suspended'))}
           </Badge>
           <DropdownMenu>
             <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
@@ -196,7 +196,7 @@ const StudentCard = ({ student, isRTL, onView, onEdit, onDelete, onAction, viewM
               <DropdownMenuItem onClick={() => onAction(student, 'reset-password')}><Key className="h-3.5 w-3.5 me-2" />{t('resetPassword')}</DropdownMenuItem>
               <DropdownMenuItem onClick={() => onAction(student, student.is_active !== false ? 'suspend' : 'activate')}>
                 {student.is_active !== false ? <UserX className="h-3.5 w-3.5 me-2" /> : <UserCheck className="h-3.5 w-3.5 me-2" />}
-                {student.is_active !== false ? (isRTL ? 'تعليق الحساب' : 'Suspend') : (isRTL ? 'تفعيل الحساب' : 'Activate')}
+                {student.is_active !== false ? (t('suspendAccount')) : (t('activateAccount'))}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => onDelete(student)} className="text-red-600"><Trash2 className="h-3.5 w-3.5 me-2" />{t('delete')}</DropdownMenuItem>
@@ -221,7 +221,7 @@ const StudentCard = ({ student, isRTL, onView, onEdit, onDelete, onAction, viewM
           <Badge variant={student.is_active !== false ? 'default' : 'destructive'}
             className={`text-[10px] h-5 rounded-full border-0 ${student.is_active !== false ? tc.badge : ''}`}>
             <span className={`w-1.5 h-1.5 rounded-full me-1 ${student.is_active !== false ? tc.badgeDot : 'bg-red-500'}`} />
-            {student.is_active !== false ? (t('active')) : (isRTL ? 'معلق' : 'Suspended')}
+            {student.is_active !== false ? (t('active')) : (t('suspended'))}
           </Badge>
           <ChevronRight className={`h-3.5 w-3.5 text-muted-foreground/30 group-hover:${tc.accent} group-hover:translate-x-0.5 transition-all`} />
         </div>
@@ -353,7 +353,7 @@ export default function ClassDetailPage() {
       }
     } catch (error) {
       const msg = error.response?.data?.detail;
-      nassaqError(typeof msg === 'string' ? msg : (isRTL ? 'فشلت العملية' : 'Operation failed'));
+      nassaqError(typeof msg === 'string' ? msg : (t('operationFailed')));
     }
   };
 
@@ -476,7 +476,7 @@ export default function ClassDetailPage() {
                     </div>
                     <div className="flex items-center gap-1.5">
                       <Users className="h-3.5 w-3.5 shrink-0" />
-                      <span>{students.length} {isRTL ? 'طالب' : 'students'}</span>
+                      <span>{students.length} {t('studentsLower')}</span>
                     </div>
                     {classData.academic_year_id && (
                       <div className="flex items-center gap-1.5">

@@ -341,7 +341,7 @@ export const CommunicationCenterPage = () => {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="font-cairo text-2xl font-bold text-foreground">
-                {isRTL ? 'مركز التواصل والإشعارات' : 'Communication & Notifications Center'}
+                {t('communicationCenter')}
               </h1>
               <p className="text-sm text-muted-foreground font-tajawal">
                 {t('sendAndReceiveMessagesAndNotifications')}
@@ -594,7 +594,7 @@ export const CommunicationCenterPage = () => {
                     </div>
                     <div>
                       <Label className="text-sm font-medium mb-2 block">
-                        {isRTL ? 'نص الرسالة' : 'Message Content'} *
+                        {t('messageContent')} *
                       </Label>
                       <Textarea value={newMessage.content}
                         onChange={(e) => setNewMessage(prev => ({ ...prev, content: e.target.value }))}
@@ -639,7 +639,7 @@ export const CommunicationCenterPage = () => {
                     <CardHeader>
                       <CardTitle className="font-cairo text-lg flex items-center gap-2">
                         <FileText className="h-5 w-5 text-brand-purple" />
-                        {isRTL ? 'قوالب جاهزة' : 'Quick Templates'}
+                        {t('quickTemplates')}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-2">
@@ -828,7 +828,7 @@ export const CommunicationCenterPage = () => {
                   />
                 </div>
                 <div>
-                  <Label>{isRTL ? 'نص الرسالة' : 'Message Content'}</Label>
+                  <Label>{t('messageContent')}</Label>
                   <Textarea
                     value={selectedMessage.content}
                     onChange={(e) => setSelectedMessage({...selectedMessage, content: e.target.value})}
@@ -875,7 +875,7 @@ export const CommunicationCenterPage = () => {
               {templates.length === 0 ? (
                 <div className="text-center py-12">
                   <FileText className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
-                  <p className="text-muted-foreground">{isRTL ? 'لا توجد قوالب' : 'No templates available'}</p>
+                  <p className="text-muted-foreground">{t('noTemplates')}</p>
                 </div>
               ) : (
                 templates.map((template) => {

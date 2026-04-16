@@ -240,7 +240,7 @@ const StudentCard = ({ student, isRTL, onEdit, onDelete, onView, onAction, viewM
           <Badge variant={student.is_active !== false ? 'default' : 'destructive'}
             className={`text-[10px] h-5 rounded-full border-0 ${student.is_active !== false ? tc.badge : ''}`}>
             <span className={`w-1.5 h-1.5 rounded-full me-1 ${student.is_active !== false ? tc.badgeDot : 'bg-red-500'}`} />
-            {student.is_active !== false ? (t('active')) : (isRTL ? 'معلق' : 'Suspended')}
+            {student.is_active !== false ? (t('active')) : (t('suspended'))}
           </Badge>
           <DropdownMenu>
             <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
@@ -283,7 +283,7 @@ const StudentCard = ({ student, isRTL, onEdit, onDelete, onView, onAction, viewM
               <DropdownMenuItem onClick={() => onAction(student, 'reset-password')}><Key className="h-3.5 w-3.5 me-2" />{t('resetPassword')}</DropdownMenuItem>
               <DropdownMenuItem onClick={() => onAction(student, student.is_active !== false ? 'suspend' : 'activate')}>
                 {student.is_active !== false ? <UserX className="h-3.5 w-3.5 me-2" /> : <UserCheck className="h-3.5 w-3.5 me-2" />}
-                {student.is_active !== false ? (isRTL ? 'تعليق الحساب' : 'Suspend') : (isRTL ? 'تفعيل الحساب' : 'Activate')}
+                {student.is_active !== false ? (t('suspendAccount')) : (t('activateAccount'))}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => onDelete(student)} className="text-red-600"><Trash2 className="h-3.5 w-3.5 me-2" />{t('delete')}</DropdownMenuItem>
@@ -308,7 +308,7 @@ const StudentCard = ({ student, isRTL, onEdit, onDelete, onView, onAction, viewM
           <Badge variant={student.is_active !== false ? 'default' : 'destructive'}
             className={`text-[10px] h-5 rounded-full border-0 ${student.is_active !== false ? tc.badge : ''}`}>
             <span className={`w-1.5 h-1.5 rounded-full me-1 ${student.is_active !== false ? tc.badgeDot : 'bg-red-500'}`} />
-            {student.is_active !== false ? (t('active')) : (isRTL ? 'معلق' : 'Suspended')}
+            {student.is_active !== false ? (t('active')) : (t('suspended'))}
           </Badge>
           <ChevronRight className={`h-3.5 w-3.5 text-muted-foreground/30 group-hover:${tc.accent} group-hover:translate-x-0.5 transition-all`} />
         </div>
@@ -329,11 +329,11 @@ const TeacherCard = ({ teacher, isRTL, onEdit, onDelete, onView, onAction, viewM
           <div className="flex-1 min-w-0 flex items-center gap-4">
             <h3 className="font-semibold text-sm truncate w-[140px]">{teacher.full_name}</h3>
             <span className="text-xs text-muted-foreground truncate hidden sm:inline">{teacher.specialization || (t('teacher'))}</span>
-            <span className="text-xs text-muted-foreground hidden md:inline">{teacher.weekly_periods || teacher.sessions_count || '-'} {isRTL ? 'حصة/أسبوع' : 'sessions/wk'}</span>
+            <span className="text-xs text-muted-foreground hidden md:inline">{teacher.weekly_periods || teacher.sessions_count || '-'} {t('sessionsPerWeek')}</span>
           </div>
           <Badge className={`text-[10px] h-5 rounded-full border-0 ${teacher.is_active !== false ? tc.badge : 'bg-red-100 text-red-700'}`}>
             <span className={`w-1.5 h-1.5 rounded-full me-1 ${teacher.is_active !== false ? tc.badgeDot : 'bg-red-500'}`} />
-            {teacher.is_active !== false ? (t('active')) : (isRTL ? 'معلق' : 'Suspended')}
+            {teacher.is_active !== false ? (t('active')) : (t('suspended'))}
           </Badge>
           <DropdownMenu>
             <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
@@ -375,7 +375,7 @@ const TeacherCard = ({ teacher, isRTL, onEdit, onDelete, onView, onAction, viewM
               <DropdownMenuItem onClick={() => onAction(teacher, 'reset-password')}><Key className="h-3.5 w-3.5 me-2" />{t('resetPassword')}</DropdownMenuItem>
               <DropdownMenuItem onClick={() => onAction(teacher, teacher.is_active !== false ? 'suspend' : 'activate')}>
                 {teacher.is_active !== false ? <UserX className="h-3.5 w-3.5 me-2" /> : <UserCheck className="h-3.5 w-3.5 me-2" />}
-                {teacher.is_active !== false ? (isRTL ? 'تعليق الحساب' : 'Suspend') : (isRTL ? 'تفعيل الحساب' : 'Activate')}
+                {teacher.is_active !== false ? (t('suspendAccount')) : (t('activateAccount'))}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => onDelete(teacher)} className="text-red-600"><Trash2 className="h-3.5 w-3.5 me-2" />{t('delete')}</DropdownMenuItem>
@@ -392,13 +392,13 @@ const TeacherCard = ({ teacher, isRTL, onEdit, onDelete, onView, onAction, viewM
           </div>
           <div className="flex items-center gap-2 text-muted-foreground">
             <Clock className="h-3 w-3 shrink-0" />
-            <span>{teacher.weekly_periods || teacher.sessions_count || '-'} {isRTL ? 'حصة/أسبوع' : 'sessions/wk'}</span>
+            <span>{teacher.weekly_periods || teacher.sessions_count || '-'} {t('sessionsPerWeek')}</span>
           </div>
         </div>
         <div className="flex items-center justify-between pt-2.5 border-t border-border/40">
           <Badge className={`text-[10px] h-5 rounded-full border-0 ${teacher.is_active !== false ? tc.badge : 'bg-red-100 text-red-700'}`}>
             <span className={`w-1.5 h-1.5 rounded-full me-1 ${teacher.is_active !== false ? tc.badgeDot : 'bg-red-500'}`} />
-            {teacher.is_active !== false ? (t('active')) : (isRTL ? 'معلق' : 'Suspended')}
+            {teacher.is_active !== false ? (t('active')) : (t('suspended'))}
           </Badge>
           <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/30 group-hover:text-emerald-500 group-hover:translate-x-0.5 transition-all" />
         </div>
@@ -418,7 +418,7 @@ const ParentCard = ({ parent, isRTL, onView, onAction, onDelete, viewMode = 'gri
           <ParentAvatar parent={parent} size="sm" />
           <div className="flex-1 min-w-0 flex items-center gap-4">
             <h3 className="font-semibold text-sm truncate w-[140px]">{parent.full_name}</h3>
-            <span className="text-xs text-muted-foreground truncate hidden sm:inline">{parent.relationship || (isRTL ? 'ولي أمر' : 'Parent')}</span>
+            <span className="text-xs text-muted-foreground truncate hidden sm:inline">{parent.relationship || (t('parentRole'))}</span>
             <span className="text-xs text-muted-foreground hidden md:inline">{parent.children_count || 0} {t('children')}</span>
           </div>
           <Badge className={`text-[10px] h-5 rounded-full border-0 ${tc.badge}`}>
@@ -440,7 +440,7 @@ const ParentCard = ({ parent, isRTL, onView, onAction, onDelete, viewMode = 'gri
             <ParentAvatar parent={parent} />
             <div className="min-w-0">
               <h3 className="font-semibold text-sm truncate max-w-[140px]">{parent.full_name}</h3>
-              <p className="text-[10px] text-muted-foreground">{parent.relationship || (isRTL ? 'ولي أمر' : 'Parent')}</p>
+              <p className="text-[10px] text-muted-foreground">{parent.relationship || (t('parentRole'))}</p>
             </div>
           </div>
           <DropdownMenu>
@@ -475,7 +475,7 @@ const ParentCard = ({ parent, isRTL, onView, onAction, onDelete, viewMode = 'gri
           )}
           <div className="flex items-center gap-2 text-muted-foreground">
             <Heart className="h-3 w-3 shrink-0" />
-            <span>{parent.children_count || 0} {isRTL ? 'أبناء مسجلين' : 'registered children'}</span>
+            <span>{parent.children_count || 0} {t('registeredChildren')}</span>
           </div>
           {parent.children?.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-1">
@@ -493,7 +493,7 @@ const ParentCard = ({ parent, isRTL, onView, onAction, onDelete, viewMode = 'gri
         <div className="flex items-center justify-between pt-2.5 border-t border-border/40">
           <Badge className={`text-[10px] h-5 rounded-full border-0 ${tc.badge}`}>
             <Shield className="h-2.5 w-2.5 me-1" />
-            {parent.relationship || (isRTL ? 'ولي أمر' : 'Parent')}
+            {parent.relationship || (t('parentRole'))}
           </Badge>
           <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/30 group-hover:text-amber-500 group-hover:translate-x-0.5 transition-all" />
         </div>
@@ -571,7 +571,7 @@ const ClassCard = ({ classItem, isRTL, onEdit, onDelete, onView, viewMode = 'gri
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
           <Users className="h-3 w-3 shrink-0" />
-          <span>{classItem.student_count || 0} / {classItem.capacity || 30} {isRTL ? 'طالب' : 'students'}</span>
+          <span>{classItem.student_count || 0} / {classItem.capacity || 30} {t('studentsLower')}</span>
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
           <UserCheck className="h-3 w-3 shrink-0" />
@@ -757,7 +757,7 @@ const AddPickerDialog = ({ open, onClose, isRTL, onSelect }) => {
             <GraduationCap className="h-7 w-7 text-white" />
           </div>
           <p className="font-semibold text-sm">{t('student')}</p>
-          <p className="text-[11px] text-muted-foreground mt-1">{isRTL ? 'إضافة طالب جديد' : 'Add new student'}</p>
+          <p className="text-[11px] text-muted-foreground mt-1">{t('addNewStudent')}</p>
         </button>
         <button onClick={() => onSelect('teacher')}
           className="group p-5 rounded-xl border-2 border-border hover:border-emerald-500 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/10 transition-all text-center">
@@ -765,15 +765,15 @@ const AddPickerDialog = ({ open, onClose, isRTL, onSelect }) => {
             <UserPlus className="h-7 w-7 text-white" />
           </div>
           <p className="font-semibold text-sm">{t('teacher')}</p>
-          <p className="text-[11px] text-muted-foreground mt-1">{isRTL ? 'إضافة معلم جديد' : 'Add new teacher'}</p>
+          <p className="text-[11px] text-muted-foreground mt-1">{t('addNewTeacher')}</p>
         </button>
         <button onClick={() => onSelect('class')}
           className="group p-5 rounded-xl border-2 border-border hover:border-purple-500 hover:bg-purple-50/50 dark:hover:bg-purple-950/10 transition-all text-center">
           <div className={`w-14 h-14 mx-auto mb-3 rounded-xl bg-gradient-to-br ${THEME_COLORS.class.gradient} flex items-center justify-center group-hover:scale-110 transition-transform shadow-md`}>
             <School className="h-7 w-7 text-white" />
           </div>
-          <p className="font-semibold text-sm">{isRTL ? 'فصل' : 'Class'}</p>
-          <p className="text-[11px] text-muted-foreground mt-1">{isRTL ? 'إنشاء فصل جديد' : 'Create new class'}</p>
+          <p className="font-semibold text-sm">{t('classLabel')}</p>
+          <p className="text-[11px] text-muted-foreground mt-1">{t('createNewClass')}</p>
         </button>
       </div>
     </DialogContent>
@@ -1043,7 +1043,7 @@ export default function UsersClassesManagement() {
   };
 
   const handleDelete = (item, type) => {
-    const typeLabels = { student: isRTL ? 'الطالب' : 'student', teacher: isRTL ? 'المعلم' : 'teacher', parent: isRTL ? 'ولي الأمر' : 'parent', class: isRTL ? 'الفصل' : 'class' };
+    const typeLabels = { student: t('studentLower'), teacher: t('teacherLower'), parent: t('parentLower'), class: t('classLower') };
     const msg = isRTL
       ? `هل أنت متأكد من حذف ${typeLabels[type]}؟ سيتم حذف جميع البيانات المرتبطة نهائياً.`
       : `Are you sure you want to delete this ${type}? All related data will be permanently removed.`;
@@ -1118,7 +1118,7 @@ export default function UsersClassesManagement() {
       }
     } catch (error) {
       const msg = error.response?.data?.detail;
-      nassaqError(typeof msg === 'string' ? msg : (isRTL ? 'فشلت العملية' : 'Operation failed'));
+      nassaqError(typeof msg === 'string' ? msg : (t('operationFailed')));
     }
   };
 
@@ -1220,7 +1220,7 @@ export default function UsersClassesManagement() {
         return;
       }
       await api.put(ep, updateData);
-      const entityLabel = selectedItemType === 'student' ? (isRTL ? 'الطالب' : 'student') : selectedItemType === 'teacher' ? (isRTL ? 'المعلم' : 'teacher') : (isRTL ? 'الفصل' : 'class');
+      const entityLabel = selectedItemType === 'student' ? (t('studentLower')) : selectedItemType === 'teacher' ? (t('teacherLower')) : (t('classLower'));
       toast.success(isRTL ? `تم حفظ بيانات ${entityLabel} في قاعدة البيانات بنجاح` : `${entityLabel} data saved to database successfully`);
       setEditDialogOpen(false);
       setSelectedItem(null);
@@ -1402,13 +1402,13 @@ export default function UsersClassesManagement() {
       return (
         <Card className="p-12 text-center border-dashed">
           <EmptyIcon className="h-16 w-16 mx-auto text-muted-foreground/15 mb-4" />
-          <p className="text-muted-foreground font-medium">{isRTL ? 'لا توجد نتائج' : 'No results found'}</p>
+          <p className="text-muted-foreground font-medium">{t('noResults')}</p>
           <p className="text-sm text-muted-foreground/60 mt-1">
             {searchQuery ? (t('tryADifferentSearch')) : (t('addANewItemToStart'))}
           </p>
           {!searchQuery && type !== 'parents' && (
             <Button variant="outline" className="mt-4" onClick={() => setShowAddPicker(true)}>
-              <Plus className="h-4 w-4 me-1.5" />{isRTL ? 'إضافة' : 'Add New'}
+              <Plus className="h-4 w-4 me-1.5" />{t('addNew')}
             </Button>
           )}
         </Card>
@@ -1462,7 +1462,7 @@ export default function UsersClassesManagement() {
         <header className="sticky top-0 z-30 glass border-b border-border/50 px-6 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="font-cairo text-2xl font-bold">{isRTL ? 'إدارة المستخدمين والفصول' : 'Users & Classes Management'}</h1>
+              <h1 className="font-cairo text-2xl font-bold">{t('usersClassesMgmt')}</h1>
               <p className="text-sm text-muted-foreground font-tajawal">{t('comprehensiveManagementCenterForAccountsAndClasses')}</p>
             </div>
             <div className="flex items-center gap-2">
@@ -1564,10 +1564,10 @@ export default function UsersClassesManagement() {
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => setSortBy('date_desc')} className={sortBy === 'date_desc' ? 'bg-accent' : ''}>
-                    <Clock className="h-3.5 w-3.5 me-2" />{isRTL ? 'الأحدث أولاً' : 'Newest First'}
+                    <Clock className="h-3.5 w-3.5 me-2" />{t('newestFirst')}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setSortBy('date_asc')} className={sortBy === 'date_asc' ? 'bg-accent' : ''}>
-                    <Clock className="h-3.5 w-3.5 me-2" />{isRTL ? 'الأقدم أولاً' : 'Oldest First'}
+                    <Clock className="h-3.5 w-3.5 me-2" />{t('oldestFirst')}
                   </DropdownMenuItem>
                   {activeTab === 'students' && (
                     <>
@@ -1670,7 +1670,7 @@ export default function UsersClassesManagement() {
                                 })}
                               </div>
                             </div>
-                            <Button variant="outline" onClick={() => downloadTemplate(importType)} disabled={downloadingTemplate} className="w-full">{downloadingTemplate ? <Loader2 className="h-4 w-4 me-2 animate-spin" /> : <Download className="h-4 w-4 me-2" />}{downloadingTemplate ? (isRTL ? 'جاري التحميل...' : 'Downloading...') : (t('downloadTemplate2'))}</Button>
+                            <Button variant="outline" onClick={() => downloadTemplate(importType)} disabled={downloadingTemplate} className="w-full">{downloadingTemplate ? <Loader2 className="h-4 w-4 me-2 animate-spin" /> : <Download className="h-4 w-4 me-2" />}{downloadingTemplate ? (t('downloading')) : (t('downloadTemplate2'))}</Button>
                             <div className="border-2 border-dashed rounded-xl p-5 text-center hover:border-brand-turquoise/50 transition-colors">
                               <Input type="file" accept=".xlsx,.xls,.csv" onChange={handleFileSelect} className="hidden" id="file-upload" />
                               <label htmlFor="file-upload" className="cursor-pointer">
@@ -1812,9 +1812,9 @@ export default function UsersClassesManagement() {
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div><span className="text-muted-foreground">{t('email')}:</span> <span className="font-medium">{selectedItem.email || '-'}</span></div>
                   <div><span className="text-muted-foreground">{t('phone2')}:</span> <span className="font-medium">{selectedItem.phone || '-'}</span></div>
-                  <div><span className="text-muted-foreground">{t('experience2')}:</span> <span className="font-medium">{selectedItem.years_of_experience || 0} {isRTL ? 'سنة' : 'years'}</span></div>
+                  <div><span className="text-muted-foreground">{t('experience2')}:</span> <span className="font-medium">{selectedItem.years_of_experience || 0} {t('yearsLabel')}</span></div>
                   <div><span className="text-muted-foreground">{t('status2')}:</span>
-                    <Badge variant={selectedItem.is_active !== false ? 'default' : 'secondary'} className="ms-1">{selectedItem.is_active !== false ? (t('active')) : (isRTL ? 'معلق' : 'Suspended')}</Badge>
+                    <Badge variant={selectedItem.is_active !== false ? 'default' : 'secondary'} className="ms-1">{selectedItem.is_active !== false ? (t('active')) : (t('suspended'))}</Badge>
                   </div>
                 </div>
               </div>
@@ -1825,13 +1825,13 @@ export default function UsersClassesManagement() {
                   <ParentAvatar parent={selectedItem} size="lg" />
                   <div>
                     <h3 className="font-bold text-lg">{selectedItem.full_name}</h3>
-                    <p className="text-sm text-muted-foreground">{selectedItem.relationship || (isRTL ? 'ولي أمر' : 'Parent')}</p>
+                    <p className="text-sm text-muted-foreground">{selectedItem.relationship || (t('parentRole'))}</p>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div><span className="text-muted-foreground">{t('phone2')}:</span> <span className="font-medium" dir="ltr">{selectedItem.phone || '-'}</span></div>
                   <div><span className="text-muted-foreground">{t('email')}:</span> <span className="font-medium">{selectedItem.email || '-'}</span></div>
-                  <div><span className="text-muted-foreground">{isRTL ? 'الهوية' : 'National ID'}:</span> <span className="font-medium">{selectedItem.national_id || '-'}</span></div>
+                  <div><span className="text-muted-foreground">{t('nationalId')}:</span> <span className="font-medium">{selectedItem.national_id || '-'}</span></div>
                   <div><span className="text-muted-foreground">{t('children3')}:</span> <span className="font-medium">{selectedItem.children_count || 0}</span></div>
                 </div>
                 {selectedItem.children?.length > 0 && (
@@ -1915,7 +1915,7 @@ export default function UsersClassesManagement() {
                   <>
                     <div className="grid grid-cols-2 gap-3 text-sm">
                       <div><span className="text-muted-foreground">{t('capacity2')}:</span> <span className="font-medium">{selectedItem.student_count || 0} / {selectedItem.capacity || 30}</span></div>
-                      <div><span className="text-muted-foreground">{isRTL ? 'معلم الفصل' : 'Homeroom'}:</span> <span className="font-medium">{selectedItem.homeroom_teacher_name || '-'}</span></div>
+                      <div><span className="text-muted-foreground">{t('homeroomLabel')}:</span> <span className="font-medium">{selectedItem.homeroom_teacher_name || '-'}</span></div>
                     </div>
                     <Progress value={((selectedItem.student_count || 0) / (selectedItem.capacity || 30)) * 100} className="h-2" />
                   </>
@@ -1960,7 +1960,7 @@ export default function UsersClassesManagement() {
         <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
           <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
-              <DialogTitle>{isRTL ? 'تعديل البيانات' : 'Edit Details'}</DialogTitle>
+              <DialogTitle>{t('editDetails')}</DialogTitle>
             </DialogHeader>
             {selectedItem && (
               <div className="space-y-4">

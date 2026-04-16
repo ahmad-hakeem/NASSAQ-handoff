@@ -815,7 +815,7 @@ function CommitteesTab({ committees, setCommittees, isRTL, apiClasses, apiTeache
                       {Object.entries(s.classDistribution).map(([cls, count]) => (
                         <div key={cls} className="flex items-center justify-between text-sm">
                           <span>{cls}</span>
-                          <Badge variant="secondary">{count} {isRTL ? 'طالب' : 'students'}</Badge>
+                          <Badge variant="secondary">{count} {t('studentsLower')}</Badge>
                         </div>
                       ))}
                     </div>
@@ -1187,7 +1187,7 @@ export const AssessmentPage = () => {
               <div className="p-2.5 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-lg">
                 <ClipboardList className="h-6 w-6" />
               </div>
-              {isRTL ? 'إدارة الاختبارات والتقييمات' : 'Exams & Assessments Management'}
+              {t('examsAssessmentsMgmt')}
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
               {t('organizeExamsPeriodsCommitteesAndSeatingCards')}

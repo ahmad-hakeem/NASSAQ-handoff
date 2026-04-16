@@ -786,7 +786,7 @@ export const AttendancePage = () => {
                   {/* Daily Trend */}
                   <Card className="card-nassaq">
                     <CardHeader>
-                      <CardTitle className="font-cairo">{isRTL ? 'التقرير اليومي' : 'Daily Trend'}</CardTitle>
+                      <CardTitle className="font-cairo">{t('dailyTrend')}</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <Table>
@@ -797,7 +797,7 @@ export const AttendancePage = () => {
                             <TableHead>{t('present')}</TableHead>
                             <TableHead>{t('absent')}</TableHead>
                             <TableHead>{t('late')}</TableHead>
-                            <TableHead>{isRTL ? 'نسبة الحضور' : 'Rate'}</TableHead>
+                            <TableHead>{t('attendanceRate')}</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>

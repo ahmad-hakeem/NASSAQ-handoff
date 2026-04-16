@@ -80,7 +80,42 @@ Also destructured `nassaqConfirm` from the hook in both files. Verified no remai
 | `frontend/src/pages/SubjectsPage.jsx` | 88, 89 | `core/elective` labels → `t('categoryCore')`, `t('categoryElective')` |
 | `frontend/src/pages/SubjectsPage.jsx` | 242 | subjects count → `t('subjectsCount', {count})` |
 
-Added 9 new keys to both `ar.json` and `en.json`: `commandCenter`, `welcomeUser`, `welcomeUserWithTitle`, `previewingSchool`, `addTimeSlot`, `periodLabel`, `subjectsCount`, `categoryCore`, `categoryElective`.
+Added 9 new keys to both `ar.json` and `en.json` in the first pass: `commandCenter`, `welcomeUser`, `welcomeUserWithTitle`, `previewingSchool`, `addTimeSlot`, `periodLabel`, `subjectsCount`, `categoryCore`, `categoryElective`.
+
+**Second pass — full principal-scope i18n sweep** (after architect feedback widened the scope): executed a systematic regex scan of every principal-facing page for `isRTL ? '…' : '…'` ternaries containing user-visible text, and applied batch replacements across 11 pages:
+
+| File | Replacements |
+|---|---|
+| `UsersClassesManagement.jsx` | 39 |
+| `AIInsightsPage.jsx` | 24 |
+| `TeacherAssignmentsPage.jsx` | 6 |
+| `ClassDetailPage.jsx` | 6 |
+| `StudentsPage.jsx` | 5 |
+| `CommunicationCenterPage.jsx` | 5 |
+| `AccountSettingsPage.jsx` | 5 |
+| `ClassesPage.jsx` | 3 |
+| `TeacherAttendancePage.jsx` | 2 |
+| `AttendancePage.jsx` | 2 |
+| `AssessmentPage.jsx` | 2 |
+| **Total** | **99** |
+
+Additional ~50 translation keys added to both locale files for the batch (e.g. `suspendAccount`, `activateAccount`, `parentRole`, `sessionsPerWeek`, `operationFailed`, `addNew`, `newestFirst`, `dailyTrend`, `quickTemplates`, `staffAttendanceMgmt`, `examsAssessmentsMgmt`, `aiSmartInsights`, `teacherMonitoringInsights`, `overallAttendanceRate`, `positiveBehaviorRate`, `liveData`, `critical`, `passRate`, etc.).
+
+After the sweep, `grep -c "isRTL ? '[^']*' : '[^']*'"` over these 11 pages returns:
+```
+UsersClassesManagement.jsx: 0
+ClassesPage.jsx: 0
+StudentsPage.jsx: 0
+ClassDetailPage.jsx: 0
+TeacherAssignmentsPage.jsx: 0
+TeacherAttendancePage.jsx: 0
+AttendancePage.jsx: 0
+AssessmentPage.jsx: 0
+AIInsightsPage.jsx: 4     ← all legitimate (locale codes, CSS dir)
+AccountSettingsPage.jsx: 4  ← all legitimate (locale codes, field selector)
+CommunicationCenterPage.jsx: 1  ← legitimate (Intl locale code)
+```
+The remaining 9 are all legitimate non-text uses — `isRTL ? 'ar-SA' : 'en-US'` for `Intl` APIs, `isRTL ? 'rtl' : 'ltr'` for `dir`, `isRTL ? 'right-0' : 'left-0'` for Tailwind CSS, and `isRTL ? 'ar' : 'en'` as a field-name selector.
 
 ### 3. Settings Route-Guard Bypass (MEDIUM severity, fixed)
 **Issue** (flagged by architect review): `Sidebar.jsx` correctly hid the School Settings link from `school_sub_admin` via `SCHOOL_PRINCIPAL_ROLES`, but the underlying routes `/principal/settings` and `/school/settings` in `appRoutes.js` were still gated on `SCHOOL_ROLES` (which includes `school_sub_admin`). A sub-admin could navigate directly by URL and load `SchoolSettingsPagePro`.
