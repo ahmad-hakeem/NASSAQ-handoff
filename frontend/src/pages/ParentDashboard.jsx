@@ -151,10 +151,10 @@ export default function ParentDashboard() {
                   <AvatarFallback className={`text-xs ${
                     selectedChildIndex === index ? 'bg-white/20 text-white' : 'bg-indigo-100 text-indigo-600'
                   }`}>
-                    {child.name.charAt(0)}
+                    {(child.name || '').charAt(0)}
                   </AvatarFallback>
                 </Avatar>
-                <span className="text-sm font-medium">{child.name.split(' ')[0]}</span>
+                <span className="text-sm font-medium">{(child.name || '').split(' ')[0]}</span>
               </button>
             ))}
           </div>
@@ -184,11 +184,11 @@ export default function ParentDashboard() {
                   <div className="flex items-center gap-3">
                     <Avatar className="h-12 w-12 border-2 border-indigo-200">
                       <AvatarFallback className="bg-indigo-100 text-indigo-600 font-bold">
-                        {selectedChild.name.charAt(0)}
+                        {(selectedChild.name || '').charAt(0)}
                       </AvatarFallback>
                     </Avatar>
                     <div>
-                      <h2 className="font-cairo font-bold">{selectedChild.name}</h2>
+                      <h2 className="font-cairo font-bold">{selectedChild.name || ''}</h2>
                       <p className="text-sm text-muted-foreground">{selectedChild.className}</p>
                     </div>
                   </div>

@@ -67,8 +67,10 @@ export const AuthProvider = ({ children }) => {
   
   // School Context Switching (Platform Admin -> School Manager simulation)
   const [schoolContext, setSchoolContext] = useState(() => {
-    const saved = sessionStorage.getItem('nassaq_school_context');
-    return saved ? JSON.parse(saved) : null;
+    try {
+      const saved = sessionStorage.getItem('nassaq_school_context');
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
   });
   const [isImpersonating, setIsImpersonating] = useState(() => {
     return sessionStorage.getItem('nassaq_impersonating') === 'true';
@@ -90,7 +92,8 @@ export const AuthProvider = ({ children }) => {
     
     const savedContext = sessionStorage.getItem('nassaq_school_context');
     if (savedContext) {
-      const ctx = JSON.parse(savedContext);
+      let ctx = null;
+      try { ctx = JSON.parse(savedContext); } catch {}
       if (ctx?.school_id) {
         config.headers['X-School-Context'] = ctx.school_id;
       }

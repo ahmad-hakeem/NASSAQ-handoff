@@ -426,7 +426,7 @@ async def check_schedule_conflicts(
             if room_id:
                 if room_id in rooms_seen:
                     room_doc = await gd_find_one(db.session, "classrooms", {"id": room_id})
-                    room_name = room_doc.get("name_ar") or room_doc.get("name") if room_doc else "غير معروف"
+                    room_name = (room_doc.get("name_ar") or room_doc.get("name")) if room_doc else "غير معروف"
                     conflicts.append({
                         "id": str(uuid.uuid4()),
                         "type": "room_overlap",

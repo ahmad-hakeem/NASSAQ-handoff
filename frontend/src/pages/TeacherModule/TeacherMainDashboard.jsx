@@ -307,6 +307,7 @@ export default function TeacherMainDashboard() {
   };
 
   const formatTimeLabel = (timeStr) => {
+    if (!timeStr) return '';
     const [h, m] = timeStr.split(':').map(Number);
     const h12 = h > 12 ? h - 12 : h === 0 ? 12 : h;
     const ampm = h < 12 ? t('am') : t('pm');

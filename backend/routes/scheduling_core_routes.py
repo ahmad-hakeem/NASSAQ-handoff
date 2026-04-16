@@ -188,9 +188,9 @@ async def create_teacher_assignment(
 
     return TeacherAssignmentResponse(
         **assignment_doc,
-        teacher_name=teacher.get("full_name") or teacher.get("full_name_ar") if teacher else None,
-        class_name=class_doc.get("name") or class_doc.get("name_ar") if class_doc else None,
-        subject_name=subject.get("name") or subject.get("name_ar") if subject else None
+        teacher_name=(teacher.get("full_name") or teacher.get("full_name_ar")) if teacher else None,
+        class_name=(class_doc.get("name") or class_doc.get("name_ar")) if class_doc else None,
+        subject_name=(subject.get("name") or subject.get("name_ar")) if subject else None
     )
 
 @router.get("/teacher-assignments", response_model=List[TeacherAssignmentResponse])

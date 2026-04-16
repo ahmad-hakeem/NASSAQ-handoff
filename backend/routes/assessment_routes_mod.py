@@ -528,7 +528,7 @@ async def get_grades_for_assessment(
             student_code=student.get('student_code') if student else None,
             score=g['score'],
             max_score=g['max_score'],
-            percentage=g.get('percentage', round((g['score'] / g['max_score']) * 100, 2)),
+            percentage=g.get('percentage', round((g['score'] / g['max_score']) * 100, 2) if g.get('max_score') else 0),
             notes=g.get('notes'),
             recorded_by=g['recorded_by'],
             recorded_at=g['recorded_at']

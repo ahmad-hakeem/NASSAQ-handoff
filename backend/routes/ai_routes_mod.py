@@ -296,7 +296,7 @@ async def hakim_contextual_message(req: HakimContextualRequest, current_user: di
         school_context = ""
         if school_id:
             school = await gd_find_one(db.session, "schools", {"id": school_id})
-            school_name = school.get("name_ar") or school.get("name", "") if school else ""
+            school_name = (school.get("name_ar") or school.get("name", "")) if school else ""
             if school_name:
                 school_context = f"\nاسم المدرسة: {school_name}"
 
@@ -589,7 +589,7 @@ async def chat_with_hakim(message: HakimChatRequest, current_user: dict = Depend
             total_att = await gd_count(db.session, "attendance", attendance_query)
             present_att = await gd_count(db.session, "attendance", {**attendance_query, "status": "present"})
             att_rate = round((present_att / total_att) * 100, 1) if total_att > 0 else 0
-            school_name = school.get("name_ar") or school.get("name", "") if school else ""
+            school_name = (school.get("name_ar") or school.get("name", "")) if school else ""
             school_context = f"""
 بيانات المدرسة الحالية ({school_name}):
 - عدد الطلاب: {total_students}

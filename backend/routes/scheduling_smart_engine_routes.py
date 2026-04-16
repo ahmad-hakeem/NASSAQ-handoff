@@ -367,8 +367,8 @@ async def smart_get_timetable_sessions(
         if not subject:
             subject = await gd_find_one(db.session, "reference_subjects", {"id": session.get("subject_id")})
         
-        session["teacher_name"] = teacher.get("full_name") or teacher.get("full_name_ar") if teacher else ""
-        session["class_name"] = cls.get("name") or cls.get("name_ar") if cls else ""
+        session["teacher_name"] = (teacher.get("full_name") or teacher.get("full_name_ar")) if teacher else ""
+        session["class_name"] = (cls.get("name") or cls.get("name_ar")) if cls else ""
         session["subject_name"] = subject.get("name_ar", "") if subject else ""
         enriched_sessions.append(session)
     

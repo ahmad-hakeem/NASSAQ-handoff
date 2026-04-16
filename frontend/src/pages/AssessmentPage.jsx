@@ -614,7 +614,7 @@ function CommitteesTab({ committees, setCommittees, isRTL, apiClasses, apiTeache
                     <XCircle className="h-5 w-5 text-red-500" />
                   ) : student ? (
                     <>
-                      <span className="font-medium leading-tight">{student.name.split(' ').slice(0, 2).join(' ')}</span>
+                      <span className="font-medium leading-tight">{(student.name || '').split(' ').slice(0, 2).join(' ')}</span>
                       <Badge className="mt-1 text-[9px] bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400">{student.seatNumber}</Badge>
                     </>
                   ) : (

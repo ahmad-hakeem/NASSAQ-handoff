@@ -881,7 +881,7 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
             student = await gd_find_one(db.session, "students", {"user_id": current_user.get("id")})
         
         class_id = student.get("class_id") if student else None
-        grade_id = student.get("grade_id") or student.get("grade") if student else None
+        grade_id = (student.get("grade_id") or student.get("grade")) if student else None
         
         query = {"school_id": school_id}
         if class_id:
@@ -1094,7 +1094,7 @@ def setup_homework_routes(router, db, get_current_user, require_roles, UserRole)
             student = await gd_find_one(db.session, "students", {"user_id": current_user.get("id")})
         
         class_id = student.get("class_id") if student else None
-        grade_id = student.get("grade_id") or student.get("grade") if student else None
+        grade_id = (student.get("grade_id") or student.get("grade")) if student else None
         
         # Build query for assignments
         query = {"school_id": school_id, "is_active": True}

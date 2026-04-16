@@ -1030,3 +1030,14 @@ Sub-pages (accessible from within classes/sessions, not top-level sidebar):
 - **SchoolSettingsPagePro.jsx**: Removed "المنهج الرسمي" section (static section) entirely; Changed from 3-column to 2-column section buttons; Removed timetable-specific tabs (timings, unavailability, constraints) from dynamic section; Dynamic section now shows only school-info, classes, teacher-assignments
 - **PrincipalTimetablePage.jsx**: Added `pageView` state (timetable/settings); Added toggle buttons; When in settings view, renders `DynamicSettingsContent` with timetable-specific tabs (timings, unavailability, constraints) via `useSchoolSettings` hook
 - **Dependencies**: Added `openpyxl` for Excel file parsing in calendar import
+
+### End-to-End Bug Fix Sweep (Teacher Platform Testing)
+- **Python operator precedence bug** (7 backend files): Fixed `a.get("x") or b.get("y") if obj else default` → `(a.get("x") or b.get("y")) if obj else default` in `role_dashboards_mod.py`, `ai_routes_mod.py`, `scheduling_smart_engine_routes.py`, `scheduling_generation_routes.py`, `scheduling_core_routes.py`, `student_portal_routes.py`, `parent_portal_routes.py`
+- **ZeroDivisionError** (`assessment_routes_mod.py`): Added guard for `max_score=0` in grade percentage calculation
+- **Missing role checks** (`role_dashboards_mod.py`): Added `require_roles` to grading endpoints that previously allowed any authenticated user
+- **IDOR security fix** (`role_dashboards_mod.py`): Added resource-level tenant/school authorization on grading endpoints to prevent cross-school grade access
+- **Role consistency** (`role_dashboards_mod.py`): Added `SCHOOL_SUB_ADMIN` to save grades endpoint to match read endpoint
+- **Frontend null-safety** (`ParentDashboard.jsx`): Protected `child.name.charAt()` and `child.name.split()` with fallback
+- **Frontend null-safety** (`TeacherMainDashboard.jsx`): Protected `timeStr.split()` with null check
+- **Frontend null-safety** (`AssessmentPage.jsx`): Protected `student.name.split()` with fallback
+- **JSON.parse crash protection** (`AuthContext.js`): Wrapped sessionStorage JSON.parse calls in try-catch to prevent app crash from malformed data

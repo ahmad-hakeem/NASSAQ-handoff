@@ -840,7 +840,7 @@ async def get_teacher_schedule(
                 subject = await gd_find_one(db.session, "subjects", {"id": assignment.get("subject_id")})
                 session["class_name"] = cls.get("name") if cls else "غير محدد"
                 session["class_id"] = assignment.get("class_id")
-                session["subject_name"] = subject.get("name_ar") or subject.get("name_en") if subject else "غير محدد"
+                session["subject_name"] = (subject.get("name_ar") or subject.get("name_en")) if subject else "غير محدد"
             slot = await gd_find_one(db.session, "time_slots", {"id": session.get("time_slot_id")})
             if slot:
                 session["slot_number"] = slot.get("slot_number")
@@ -919,9 +919,16 @@ async def get_teacher_assessments(
 @router.get("/assessments/{assessment_id}/grades")
 async def get_assessment_grades(
     assessment_id: str,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_roles([UserRole.TEACHER, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN, UserRole.PLATFORM_ADMIN]))
 ):
     """Get grades for an assessment"""
+    if current_user.get("role") != UserRole.PLATFORM_ADMIN:
+        assessment = await gd_find_one(db.session, "assessments", {"id": assessment_id})
+        if not assessment:
+            raise HTTPException(status_code=404, detail="Assessment not found")
+        user_tenant = current_user.get("tenant_id")
+        if user_tenant and assessment.get("school_id") and assessment["school_id"] != user_tenant:
+            raise HTTPException(status_code=403, detail="Access denied")
     grades = await gd_find(db.session, "grades", {"assessment_id": assessment_id}, limit=200)
     return grades
 
@@ -930,9 +937,16 @@ async def get_assessment_grades(
 async def save_assessment_grades(
     assessment_id: str,
     data: dict = Body(...),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_roles([UserRole.TEACHER, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN, UserRole.PLATFORM_ADMIN]))
 ):
     """Save grades for assessment - حفظ درجات التقييم"""
+    if current_user.get("role") != UserRole.PLATFORM_ADMIN:
+        assessment = await gd_find_one(db.session, "assessments", {"id": assessment_id})
+        if not assessment:
+            raise HTTPException(status_code=404, detail="Assessment not found")
+        user_tenant = current_user.get("tenant_id")
+        if user_tenant and assessment.get("school_id") and assessment["school_id"] != user_tenant:
+            raise HTTPException(status_code=403, detail="Access denied")
     grades = data.get("grades", [])
     
     for grade in grades:
