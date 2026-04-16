@@ -133,10 +133,26 @@ async def create_notification(
     if current_user['role'] not in ['platform_admin', 'school_principal', 'school_sub_admin', 'school_admin', 'teacher']:
         raise HTTPException(status_code=403, detail="Not authorized to create notifications")
     
+    resolved_user_id = notification.recipient_id
+    if resolved_user_id:
+        user_exists = await gd_find_one(db.session, "users", {"id": resolved_user_id})
+        if not user_exists:
+            student = await gd_find_one(db.session, "students", {"id": resolved_user_id})
+            if student and student.get("parent_phone"):
+                parent_user = await gd_find_one(db.session, "users", {"phone": student["parent_phone"], "role": "parent"})
+                if parent_user:
+                    resolved_user_id = parent_user["id"]
+                else:
+                    raise HTTPException(status_code=404, detail="لم يتم العثور على حساب ولي الأمر")
+            elif student:
+                raise HTTPException(status_code=404, detail="لا يوجد ولي أمر مرتبط بهذا الطالب")
+            else:
+                raise HTTPException(status_code=404, detail="المستخدم غير موجود")
+
     notification_id = str(uuid.uuid4())
     notification_doc = {
         "id": notification_id,
-        "user_id": notification.recipient_id,
+        "user_id": resolved_user_id,
         "title": notification.title,
         "message": notification.message,
         "type": notification.notification_type.value if notification.notification_type else None,
