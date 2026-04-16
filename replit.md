@@ -126,6 +126,15 @@ Every task must follow these principles before delivery:
 - **Student user account**: Created student role user (`fares.student@nassaq-test.com`) linked to existing student record for full portal testing
 - **Verified platforms**: Platform Admin, School Principal, School Admin, Teacher, Student, Parent — 53/53 endpoints passing across all 6 roles
 
+### Teacher Platform Bug Audit (April 16, 2026)
+- **Sidebar layout bug**: `TeacherSessionsManagePage.jsx` used `<Sidebar />` as sibling with `<main>` instead of wrapper pattern — fixed to match all other teacher pages
+- **confirm() violation**: `TeacherResourcesPage.jsx` used native `confirm()` for delete — replaced with `nassaqConfirm()` from `useNassaqAlert()`
+- **Hardcoded i18n strings**: 10+ `isRTL ? 'Arabic' : 'English'` violations across `TeacherSettingsPage.jsx`, `TeacherSessionsManagePage.jsx`, `SessionsManageTab.jsx` — replaced with `t()` calls
+- **Gender/RTL inversion**: `SessionStartPage.jsx` swapped male/female columns based on `isRTL` direction instead of actual gender — fixed to use gender data
+- **useCallback stale closures**: Removed unnecessary `isRTL` from dependency arrays in 4 files (`TeacherClassesPage`, `TeacherAttendanceManagePage`, `TeacherSchedulePage`, `TeacherStudentsPage`); added missing `nassaqError` and `t` deps
+- **New i18n keys**: Added 14 translation keys to both `ar.json` and `en.json` for previously hardcoded strings
+- **Result**: Clean compile with 0 warnings, all teacher module pages verified
+
 ### Post-Fix Documentation
 Each fix report must include: root cause, why it wasn't caught before, what changed, how recurrence is prevented, what was tested
 

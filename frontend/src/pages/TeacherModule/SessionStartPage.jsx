@@ -445,9 +445,9 @@ export default function SessionStartPage() {
           {showSplit ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <GenderSection
-                students={isRTL ? males : females}
-                gender={isRTL ? 'male' : 'female'}
-                label={isRTL ? 'طلاب' : 'طالبات'}
+                students={males}
+                gender="male"
+                label={t('maleStudents')}
                 theme={theme}
                 themeStyles={themeStyles}
                 t={t}
@@ -455,8 +455,8 @@ export default function SessionStartPage() {
                 onUpdate={updateAttendance}
               />
               <GenderSection
-                students={isRTL ? females : males}
-                gender={isRTL ? 'female' : 'male'}
+                students={females}
+                gender="female"
                 label={t('key_mf5bvm')}
                 theme={theme}
                 themeStyles={themeStyles}

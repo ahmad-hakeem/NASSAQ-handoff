@@ -165,9 +165,8 @@ export default function TeacherSessionsManagePage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-gray-50" dir={isRTL ? 'rtl' : 'ltr'}>
-      <Sidebar />
-      <main className="flex-1 overflow-auto">
+    <Sidebar>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900" dir={isRTL ? 'rtl' : 'ltr'}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
@@ -271,7 +270,7 @@ export default function TeacherSessionsManagePage() {
                 </p>
                 <Button className="mt-4" onClick={() => navigate('/teacher/schedule')}>
                   <Calendar className="w-4 h-4" />
-                  <span className={isRTL ? 'mr-2' : 'ml-2'}>{isRTL ? 'عرض الجدول' : 'View Schedule'}</span>
+                  <span className="ms-2">{t('viewSchedule')}</span>
                 </Button>
               </CardContent>
             </Card>
@@ -279,9 +278,7 @@ export default function TeacherSessionsManagePage() {
             <div className="space-y-3">
               <div className="text-sm text-gray-500 flex items-center gap-2">
                 <FileText className="w-4 h-4" />
-                {isRTL
-                  ? `عرض ${filteredSessions.length} حصة من أصل ${totalCount || sessions.length}`
-                  : `Showing ${filteredSessions.length} of ${totalCount || sessions.length} sessions`}
+                {t('showingXOfYSessions').replace('{x}', filteredSessions.length).replace('{y}', totalCount || sessions.length)}
               </div>
               {filteredSessions.map((session) => (
                 <Card
@@ -310,14 +307,14 @@ export default function TeacherSessionsManagePage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
                             <h3 className="font-semibold text-gray-900 truncate">
-                              {session.subject_name || (isRTL ? 'حصة دراسية' : 'Class Session')}
+                              {session.subject_name || t('classSession')}
                             </h3>
                             {getStatusBadge(session.status)}
                           </div>
                           <div className="flex items-center gap-4 text-sm text-gray-500 flex-wrap">
                             <span className="flex items-center gap-1">
                               <Users className="w-3.5 h-3.5" />
-                              {session.class_name || (isRTL ? 'فصل' : 'Class')}
+                              {session.class_name || t('class2')}
                             </span>
                             <span className="flex items-center gap-1">
                               <Calendar className="w-3.5 h-3.5" />
@@ -400,7 +397,7 @@ export default function TeacherSessionsManagePage() {
                   </div>
                   <div className="flex-1">
                     <h3 className="font-semibold text-lg">
-                      {selectedSession.subject_name || (isRTL ? 'حصة' : 'Session')}
+                      {selectedSession.subject_name || t('session3')}
                     </h3>
                     <p className="text-sm text-gray-500">{selectedSession.class_name}</p>
                   </div>
@@ -445,7 +442,7 @@ export default function TeacherSessionsManagePage() {
                         const negB = behaviours.reduce((sum, s) => sum + (s.behaviours?.filter(b => b.category === 'negative').length || 0), 0);
                         return [
                           { label: t('correct'), value: rpt.correct_answers || 0, color: 'text-green-600', bg: 'bg-green-50', icon: '✅' },
-                          { label: isRTL ? 'خطأ' : 'Wrong', value: wrongCount, color: 'text-red-600', bg: 'bg-red-50', icon: '❌' },
+                          { label: t('wrong'), value: wrongCount, color: 'text-red-600', bg: 'bg-red-50', icon: '❌' },
                           { label: t('positive'), value: posB, color: 'text-emerald-600', bg: 'bg-emerald-50', icon: '👍' },
                           { label: t('negative'), value: negB, color: 'text-orange-600', bg: 'bg-orange-50', icon: '⚠️' },
                         ];
@@ -501,7 +498,7 @@ export default function TeacherSessionsManagePage() {
                       }).map(s => ({
                         name: s.name,
                         reason: s.behaviours?.some(b => b.category === 'negative')
-                          ? (isRTL ? 'سلوك سلبي' : 'Negative behaviour')
+                          ? t('negativeBehavior')
                           : (t('wrongAnswers'))
                       }));
                       if (needsAtt.length === 0) return null;
@@ -525,7 +522,7 @@ export default function TeacherSessionsManagePage() {
                       <div className="bg-blue-50 rounded-lg p-3">
                         <h4 className="text-sm font-medium text-blue-700 mb-2 flex items-center gap-1.5">
                           <StickyNote className="w-4 h-4" />
-                          {isRTL ? `الملاحظات (${sessionReport.notes.length})` : `Notes (${sessionReport.notes.length})`}
+                          {t('notesCount').replace('{count}', sessionReport.notes.length)}
                         </h4>
                         {sessionReport.notes.slice(0, 5).map((note, i) => (
                           <div key={i} className="py-1 border-b border-blue-100 last:border-0">
@@ -571,7 +568,7 @@ export default function TeacherSessionsManagePage() {
         </Dialog>
 
         <HakimAssistant />
-      </main>
-    </div>
+      </div>
+    </Sidebar>
   );
 }

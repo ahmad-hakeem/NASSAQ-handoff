@@ -238,7 +238,7 @@ export default function TeacherSettingsPage() {
         await api.post('/users/me/avatar', { image_data: base64 });
         setProfile(p => ({ ...p, avatar_url: base64 }));
         await refreshUser?.();
-        toast.success(isRTL ? 'تم تحديث الصورة الشخصية' : 'Profile picture updated');
+        toast.success(t('profilePictureUpdated'));
       } catch (e) {
         console.error('Error uploading avatar:', e);
         nassaqError(t('errorUploadingImage'));
@@ -419,9 +419,9 @@ export default function TeacherSettingsPage() {
                             {[
                               { label: t('myClasses'), value: teachingStats.classesCount || 0, icon: BookOpen, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-900/30' },
                               { label: t('myStudents'), value: teachingStats.studentsCount || 0, icon: Users, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-900/30' },
-                              { label: isRTL ? 'معدل الحضور' : 'Attendance', value: `${teachingStats.avgAttendance || 0}%`, icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-900/30' },
-                              { label: isRTL ? 'المشاركة' : 'Participation', value: `${teachingStats.avgParticipation || 0}%`, icon: Activity, color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-900/30' },
-                              { label: isRTL ? 'إجمالي الحصص' : 'Sessions', value: teachingStats.totalSessions || 0, icon: Flame, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-900/30' },
+                              { label: t('attendanceRateLabel'), value: `${teachingStats.avgAttendance || 0}%`, icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-900/30' },
+                              { label: t('participation'), value: `${teachingStats.avgParticipation || 0}%`, icon: Activity, color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-900/30' },
+                              { label: t('totalSessionsLabel'), value: teachingStats.totalSessions || 0, icon: Flame, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-900/30' },
                             ].map(stat => (
                               <div key={stat.label} className={`flex items-center gap-2.5 p-3 rounded-xl ${stat.bg} border border-transparent`}>
                                 <stat.icon className={`h-5 w-5 ${stat.color} shrink-0`} />
@@ -455,7 +455,7 @@ export default function TeacherSettingsPage() {
                             <Input value={profile.email} onChange={(e) => setProfile({ ...profile, email: e.target.value })} type="email" dir="ltr" />
                           </div>
                           <div className="space-y-2">
-                            <Label className="flex items-center gap-1.5 text-sm font-cairo"><Phone className="h-3.5 w-3.5 text-muted-foreground" />{isRTL ? 'رقم الجوال' : 'Phone Number'}</Label>
+                            <Label className="flex items-center gap-1.5 text-sm font-cairo"><Phone className="h-3.5 w-3.5 text-muted-foreground" />{t('phoneNumber')}</Label>
                             <Input value={profile.phone} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} dir="ltr" placeholder="+966 5XX XXX XXXX" />
                           </div>
                           <div className="space-y-2">
@@ -503,7 +503,7 @@ export default function TeacherSettingsPage() {
                               </Button>
                               {profile.avatar_url && (
                                 <Button variant="outline" size="sm" onClick={removeAvatar} className="text-red-500 hover:text-red-600">
-                                  <Trash2 className="h-4 w-4 me-1.5" />{isRTL ? 'حذف' : 'Remove'}
+                                  <Trash2 className="h-4 w-4 me-1.5" />{t('remove')}
                                 </Button>
                               )}
                             </div>
@@ -676,7 +676,7 @@ export default function TeacherSettingsPage() {
                               {isDark ? <span className="text-lg">🌙</span> : <span className="text-lg">☀️</span>}
                             </div>
                             <div>
-                              <p className="font-medium font-cairo">{isRTL ? 'المظهر' : 'Appearance'}</p>
+                              <p className="font-medium font-cairo">{t('appearance')}</p>
                               <p className="text-xs text-muted-foreground font-cairo">{isDark ? (t('darkModeEnabled2')) : (t('lightModeEnabled2'))}</p>
                             </div>
                           </div>

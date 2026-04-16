@@ -108,7 +108,7 @@ export default function TeacherAttendanceManagePage() {
     } finally {
       setLoading(false);
     }
-  }, [api, selectedClass, selectedDate, isRTL]);
+  }, [api, selectedClass, selectedDate, nassaqError, t]);
 
   useEffect(() => {
     fetchClasses();

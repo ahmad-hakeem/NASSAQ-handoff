@@ -3455,5 +3455,19 @@
   "followUp": "Follow-up",
   "positive": "Positive",
   "negative": "Negative",
-  "minutes": "min"
+  "minutes": "min",
+  "viewSchedule": "View Schedule",
+  "classSession": "Class Session",
+  "class2": "Class",
+  "session3": "Session",
+  "wrong": "Wrong",
+  "negativeBehavior": "Negative behaviour",
+  "notesCount": "Notes ({count})",
+  "showingXOfYSessions": "Showing {x} of {y} sessions",
+  "appearance": "Appearance",
+  "phoneNumber": "Phone Number",
+  "remove": "Remove",
+  "profilePictureUpdated": "Profile picture updated",
+  "attendanceRateLabel": "Attendance",
+  "totalSessionsLabel": "Sessions"
 }

@@ -127,7 +127,7 @@ export default function TeacherSchedulePage() {
     } finally {
       setLoading(false);
     }
-  }, [api, teacherId, isRTL, nassaqError]);
+  }, [api, teacherId, nassaqError, t]);
 
   useEffect(() => { fetchSchedule(); }, [fetchSchedule]);
 

@@ -117,7 +117,7 @@ export default function TeacherClassesPage() {
     } finally {
       setLoading(false);
     }
-  }, [api, teacherId, isRTL]);
+  }, [api, teacherId, nassaqError, t]);
 
   useEffect(() => {
     fetchClasses();
@@ -172,7 +172,7 @@ export default function TeacherClassesPage() {
     } finally {
       setSettingsLoading(false);
     }
-  }, [api, teacherId]);
+  }, [api, teacherId, nassaqError, t]);
 
   const handleSubjectChange = (subjectId) => {
     setSettingsSubject(subjectId);

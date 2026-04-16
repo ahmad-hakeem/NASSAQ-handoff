@@ -93,7 +93,7 @@ export default function TeacherStudentsPage() {
     } finally {
       setLoading(false);
     }
-  }, [api, selectedClass, isRTL]);
+  }, [api, selectedClass, nassaqError, t]);
 
   useEffect(() => {
     fetchClasses();

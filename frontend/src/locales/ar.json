@@ -3455,5 +3455,19 @@
   "followUp": "متابعة",
   "positive": "إيجابي",
   "negative": "سلبي",
-  "minutes": "دقيقة"
+  "minutes": "دقيقة",
+  "viewSchedule": "عرض الجدول",
+  "classSession": "حصة دراسية",
+  "class2": "فصل",
+  "session3": "حصة",
+  "wrong": "خطأ",
+  "negativeBehavior": "سلوك سلبي",
+  "notesCount": "الملاحظات ({count})",
+  "showingXOfYSessions": "عرض {x} حصة من أصل {y}",
+  "appearance": "المظهر",
+  "phoneNumber": "رقم الجوال",
+  "remove": "حذف",
+  "profilePictureUpdated": "تم تحديث الصورة الشخصية",
+  "attendanceRateLabel": "معدل الحضور",
+  "totalSessionsLabel": "إجمالي الحصص"
 }

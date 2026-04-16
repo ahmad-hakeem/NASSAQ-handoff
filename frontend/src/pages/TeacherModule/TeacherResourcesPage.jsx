@@ -42,7 +42,7 @@ export default function TeacherResourcesPage() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const { nassaqError, nassaqWarning } = useNassaqAlert();
+  const { nassaqError, nassaqWarning, nassaqConfirm } = useNassaqAlert();
   const [newResource, setNewResource] = useState({
     title: '',
     description: '',
@@ -115,17 +115,15 @@ export default function TeacherResourcesPage() {
   };
 
   const deleteResource = async (resourceId) => {
-    if (!confirm(t('areYouSureYouWantToDeleteThisResource'))) {
-      return;
-    }
-
-    try {
-      await api.delete(`/resources/${resourceId}`);
-      toast.success(t('resourceDeleted'));
-      fetchData();
-    } catch (error) {
-      nassaqError(t('errorDeleting'));
-    }
+    nassaqConfirm(t('areYouSureYouWantToDeleteThisResource'), async () => {
+      try {
+        await api.delete(`/resources/${resourceId}`);
+        toast.success(t('resourceDeleted'));
+        fetchData();
+      } catch (error) {
+        nassaqError(t('errorDeleting'));
+      }
+    });
   };
 
   const filteredResources = resources.filter(r => {
