@@ -579,9 +579,7 @@ export const PlatformSettingsPage = () => {
       const file = new File([blob], 'avatar.jpg', { type: blob.type || 'image/jpeg' });
       const formData = new FormData();
       formData.append('file', file);
-      const response = await api.post('/settings/account/upload-picture', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      const response = await api.post('/settings/account/upload-picture', formData);
       if (response.data?.profile_picture) {
         setAccountData(prev => ({ ...prev, profilePicture: response.data.profile_picture }));
         toast.success(t('pictureUploadedSuccessfully'));

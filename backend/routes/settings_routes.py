@@ -604,9 +604,11 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
             await gd_update_one(db.session, "users", {"id": current_user.get("id")}, {"profile_picture": data_url, "avatar_url": data_url})
             
             return {"success": True, "profile_picture": data_url}
+        except HTTPException:
+            raise
         except Exception as e:
             import logging as _log
-            _log.getLogger("nassaq").error(f"Operation error: {e}")
+            _log.getLogger("nassaq").error(f"upload_profile_picture error: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="حدث خطأ داخلي في الخادم")
     
     @router.delete("/account/profile-picture")
