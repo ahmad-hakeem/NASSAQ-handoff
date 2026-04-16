@@ -61,7 +61,7 @@ import { Link } from 'react-router-dom';
 export const SubjectsPage = () => {
   const { user, api } = useAuth();
   const { isRTL, toggleTheme, toggleLanguage, isDark } = useTheme();
-  const { nassaqError, nassaqWarning } = useNassaqAlert();
+  const { nassaqError, nassaqWarning, nassaqConfirm } = useNassaqAlert();
   const { t } = useTranslation();
   const [subjects, setSubjects] = useState([]);
   const [schools, setSchools] = useState([]);
@@ -85,8 +85,8 @@ export const SubjectsPage = () => {
   });
 
   const categoryOptions = [
-    { value: 'core', label: isRTL ? 'أساسي' : 'Core' },
-    { value: 'elective', label: isRTL ? 'اختياري' : 'Elective' },
+    { value: 'core', label: t('categoryCore') },
+    { value: 'elective', label: t('categoryElective') },
     { value: 'language', label: t('language2') },
     { value: 'science', label: t('science') },
     { value: 'math', label: t('mathematics') },
@@ -171,17 +171,18 @@ export const SubjectsPage = () => {
   };
 
   const handleDeleteSubject = async (subjectId) => {
-    if (!confirm(t('areYouSureYouWantToDeleteThisSubject'))) {
-      return;
-    }
-    
-    try {
-      await api.delete(`/subjects/${subjectId}`);
-      toast.success(t('subjectDeleted'));
-      setSubjects(prev => prev.filter(s => s.id !== subjectId));
-    } catch (error) {
-      nassaqError(t('failedToDeleteSubject'));
-    }
+    nassaqConfirm(
+      t('areYouSureYouWantToDeleteThisSubject'),
+      async () => {
+        try {
+          await api.delete(`/subjects/${subjectId}`);
+          toast.success(t('subjectDeleted'));
+          setSubjects(prev => prev.filter(s => s.id !== subjectId));
+        } catch (error) {
+          nassaqError(t('failedToDeleteSubject'));
+        }
+      }
+    );
   };
 
   const openEditDialog = (subject) => {
@@ -239,7 +240,7 @@ export const SubjectsPage = () => {
                   {t('subjectsManagement')}
                 </h1>
                 <p className="text-sm text-muted-foreground font-tajawal">
-                  {isRTL ? `${filteredSubjects.length} مادة` : `${filteredSubjects.length} subjects`}
+                  {t('subjectsCount', { count: filteredSubjects.length })}
                 </p>
               </div>
             </div>

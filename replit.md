@@ -132,6 +132,17 @@ Every task must follow these principles before delivery:
 - **Registration request IntegrityError**: Production 500 errors on `POST /registration-requests` — `type` column null despite validation. Root cause: `**submission_data` spread mixed Pydantic fields with ORM columns unpredictably via `dict_to_model`. Fixed by explicitly mapping ORM columns (`type`, `name`, `email`, `phone`, `school_name`) and storing remaining fields in `data` JSONB column. Ensured `account_type` and `full_name` preserved in `data` for downstream queries.
 - **Files changed**: `backend/engines/smart_scheduling_engine.py`, `backend/engines/scheduling_engine.py`, `backend/routes/registration_routes_mod.py`
 
+### Principal Platform Audit (April 16, 2026)
+- **Scope**: Full audit of the School Principal platform (`school_principal`, `school_admin`, `school_sub_admin`) across all `/principal/*`, `/admin/*`, `/school/*` routes and their backend counterparts.
+- **confirm() violations eliminated**: `TimeSlotsPage.jsx` (delete time slot) and `SubjectsPage.jsx` (delete subject) were using native `confirm()` — both refactored to `nassaqConfirm()` with async callback pattern. Grep across `frontend/src/**/*.{jsx,js}` now returns 0 native `confirm()`/`alert()` calls.
+- **Hardcoded i18n strings fixed**: `PrincipalDashboard.jsx:85-93` (command center header, welcome/preview text), `SchoolDashboard.jsx:28,31` (command center + welcome), `TimeSlotsPage.jsx:262,437,450` (add-slot button, duration, period badge), `SubjectsPage.jsx:88-89,242` (category labels, subjects count).
+- **New i18n keys** (9 added to both `ar.json` and `en.json`): `commandCenter`, `welcomeUser`, `welcomeUserWithTitle`, `previewingSchool`, `addTimeSlot`, `periodLabel`, `subjectsCount`, `categoryCore`, `categoryElective`.
+- **Settings route-guard bypass fixed** (found via architect review): Sidebar correctly hid School Settings from `school_sub_admin`, but `appRoutes.js` had `/principal/settings` and `/school/settings` gated on `SCHOOL_ROLES` (which includes sub_admin) — direct URL would load the page. Added `SCHOOL_PRINCIPAL_ROLES = ['school_principal','school_admin']` constant and applied to both routes. Backend `school_settings_routes.py`/`school_settings_mod.py` already enforced `require_roles([SCHOOL_PRINCIPAL, SCHOOL_ADMIN, PLATFORM_ADMIN])` so writes were never exploitable — this was a defense-in-depth UX fix.
+- **Verified**: Sidebar role gating at `Sidebar.jsx:334` consistent with route guards. Backend tenant isolation confirmed — `principal_management_routes.py` uses `gd_*` helpers with `tenant_id` across 133 query sites.
+- **Known remaining i18n debt** (tracked for follow-up, non-blocking): `AIInsightsPage.jsx` (~40+ `isRTL ? ... : ...` literals), `ClassesPage.jsx` (3), `StudentsPage.jsx` (5) — strings render correctly in both languages but need `t()` migration.
+- **Compile**: 0 new warnings introduced (1 pre-existing `react-hooks/exhaustive-deps` in `TimeSlotsPage`/`SubjectsPage` predates this audit).
+- **Report**: `docs/PRINCIPAL_AUDIT_APRIL_2026.md`
+
 ### Teacher Platform Bug Audit (April 16, 2026)
 - **Sidebar layout bug**: `TeacherSessionsManagePage.jsx` used `<Sidebar />` as sibling with `<main>` instead of wrapper pattern — fixed to match all other teacher pages
 - **confirm() violation**: `TeacherResourcesPage.jsx` used native `confirm()` for delete — replaced with `nassaqConfirm()` from `useNassaqAlert()`

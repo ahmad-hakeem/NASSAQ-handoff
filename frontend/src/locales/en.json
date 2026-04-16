@@ -3446,5 +3446,14 @@
   "yourSessions": "Your sessions",
   "youWillReceiveAnEmailNotificationUponApproval": "You will receive an email notification upon approval",
   "yrs": "yrs",
-  "za": "Z-A"
+  "za": "Z-A",
+  "commandCenter": "Command Center",
+  "welcomeUser": "Welcome, {{name}}",
+  "welcomeUserWithTitle": "Welcome {{title}}, {{name}}",
+  "previewingSchool": "Previewing: {{name}}",
+  "addTimeSlot": "Add Time Slot",
+  "periodLabel": "Period",
+  "subjectsCount": "{{count}} subjects",
+  "categoryCore": "Core",
+  "categoryElective": "Elective"
 }

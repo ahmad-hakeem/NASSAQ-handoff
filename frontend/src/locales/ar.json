@@ -3446,5 +3446,14 @@
   "yourSessions": "حصصك أنت",
   "youWillReceiveAnEmailNotificationUponApproval": "ستتلقى إشعاراً بالبريد الإلكتروني عند الموافقة",
   "yrs": "سنة",
-  "za": "أبجدي ي-أ"
+  "za": "أبجدي ي-أ",
+  "commandCenter": "مركز القيادة",
+  "welcomeUser": "مرحباً، {{name}}",
+  "welcomeUserWithTitle": "مرحباً {{title}}، {{name}}",
+  "previewingSchool": "معاينة: {{name}}",
+  "addTimeSlot": "إضافة فترة",
+  "periodLabel": "حصة",
+  "subjectsCount": "{{count}} مادة",
+  "categoryCore": "أساسي",
+  "categoryElective": "اختياري"
 }

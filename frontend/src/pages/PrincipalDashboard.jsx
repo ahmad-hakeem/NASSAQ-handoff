@@ -82,14 +82,14 @@ export default function PrincipalDashboard() {
               </div>
               <div className="min-w-0">
                 <h1 className="font-cairo text-lg sm:text-xl font-bold text-foreground truncate">
-                  {isRTL ? 'مركز القيادة' : 'Command Center'}
+                  {t('commandCenter')}
                 </h1>
                 <p className="text-xs sm:text-sm text-muted-foreground font-tajawal truncate">
-                  {isImpersonating && schoolContext 
-                    ? (isRTL ? `معاينة: ${schoolContext.school_name}` : `Previewing: ${schoolContext.school_name}`)
-                    : (isRTL 
-                        ? `مرحباً${user?.title && user?.title !== 'none' ? ` ${user.title}` : ''}، ${user?.full_name}` 
-                        : `Welcome${user?.title && user?.title !== 'none' ? ` ${user.title}` : ''}, ${user?.full_name}`)
+                  {isImpersonating && schoolContext
+                    ? t('previewingSchool', { name: schoolContext.school_name })
+                    : (user?.title && user?.title !== 'none'
+                        ? t('welcomeUserWithTitle', { title: user.title, name: user?.full_name || '' })
+                        : t('welcomeUser', { name: user?.full_name || '' }))
                   }
                 </p>
               </div>

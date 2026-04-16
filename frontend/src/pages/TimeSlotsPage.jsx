@@ -63,7 +63,7 @@ export const TimeSlotsPage = () => {
   const [submitting, setSubmitting] = useState(false);
   const [seeding, setSeeding] = useState(false);
   
-  const { nassaqError, nassaqWarning } = useNassaqAlert();
+  const { nassaqError, nassaqWarning, nassaqConfirm } = useNassaqAlert();
   const [newSlot, setNewSlot] = useState({
     name: '',
     name_en: '',
@@ -143,17 +143,18 @@ export const TimeSlotsPage = () => {
   };
 
   const handleDeleteSlot = async (slotId) => {
-    if (!confirm(t('areYouSureYouWantToDeleteThisTimeSlot'))) {
-      return;
-    }
-    
-    try {
-      await api.delete(`/time-slots/${slotId}`);
-      toast.success(t('timeSlotDeleted'));
-      setTimeSlots(prev => prev.filter(s => s.id !== slotId));
-    } catch (error) {
-      nassaqError(t('failedToDeleteTimeSlot'));
-    }
+    nassaqConfirm(
+      t('areYouSureYouWantToDeleteThisTimeSlot'),
+      async () => {
+        try {
+          await api.delete(`/time-slots/${slotId}`);
+          toast.success(t('timeSlotDeleted'));
+          setTimeSlots(prev => prev.filter(s => s.id !== slotId));
+        } catch (error) {
+          nassaqError(t('failedToDeleteTimeSlot'));
+        }
+      }
+    );
   };
 
   const handleSeedTimeSlots = async () => {
@@ -259,7 +260,7 @@ export const TimeSlotsPage = () => {
                 <DialogTrigger asChild>
                   <Button className="bg-brand-turquoise hover:bg-brand-turquoise-light rounded-xl" data-testid="add-slot-btn">
                     <Plus className="h-5 w-5 me-2" />
-                    {isRTL ? 'إضافة فترة' : 'Add Time Slot'}
+                    {t('addTimeSlot')}
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-[500px]">
@@ -434,7 +435,7 @@ export const TimeSlotsPage = () => {
                             <Clock className="h-3 w-3" />
                             {formatTime(slot.start_time)} - {formatTime(slot.end_time)}
                             <Badge variant="secondary" className="ms-2 text-xs">
-                              {slot.duration_minutes} {isRTL ? 'دقيقة' : 'min'}
+                              {slot.duration_minutes} {t('minutes')}
                             </Badge>
                           </div>
                         </div>
@@ -447,7 +448,7 @@ export const TimeSlotsPage = () => {
                           </Badge>
                         ) : (
                           <Badge className="bg-brand-turquoise/10 text-brand-turquoise">
-                            {isRTL ? 'حصة' : 'Period'}
+                            {t('periodLabel')}
                           </Badge>
                         )}
                         

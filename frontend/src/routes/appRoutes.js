@@ -104,6 +104,7 @@ import {
 } from "../pages/ParentPortal";
 
 const SCHOOL_ROLES = ['school_principal', 'school_admin', 'school_sub_admin'];
+const SCHOOL_PRINCIPAL_ROLES = ['school_principal', 'school_admin'];
 const TEACHER_ROLES = ['teacher', 'independent_teacher'];
 const SCHOOL_TEACHING_ROLES = [...SCHOOL_ROLES, ...TEACHER_ROLES];
 const ALL_AUTHENTICATED_ROLES = ['platform_admin', ...SCHOOL_ROLES, ...TEACHER_ROLES, 'student', 'parent'];
@@ -391,10 +392,10 @@ export default function AppRoutes() {
 
       {/* School Principal Settings & Reports */}
       <Route path="/principal/settings" element={
-        <ProtectedRoute allowedRoles={SCHOOL_ROLES}><SchoolSettingsPagePro /></ProtectedRoute>
+        <ProtectedRoute allowedRoles={SCHOOL_PRINCIPAL_ROLES}><SchoolSettingsPagePro /></ProtectedRoute>
       } />
       <Route path="/school/settings" element={
-        <ProtectedRoute allowedRoles={SCHOOL_ROLES}><SchoolSettingsPagePro /></ProtectedRoute>
+        <ProtectedRoute allowedRoles={SCHOOL_PRINCIPAL_ROLES}><SchoolSettingsPagePro /></ProtectedRoute>
       } />
       <Route path="/school/academic-structure" element={<Navigate to="/school/settings?section=academic" replace />} />
       <Route path="/principal/academic-structure" element={<Navigate to="/school/settings?section=academic" replace />} />

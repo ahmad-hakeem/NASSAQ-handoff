@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme, useTranslation } from '../contexts/ThemeContext';
 import { Sidebar } from '../components/layout/Sidebar';
 import { HakimAssistant } from '../components/hakim/HakimAssistant';
 import HakimPresence from '../components/hakim/HakimPresence';
@@ -16,6 +16,7 @@ import {
 export const SchoolDashboard = () => {
   const { user } = useAuth();
   const { isRTL, toggleTheme, toggleLanguage, isDark } = useTheme();
+  const { t } = useTranslation();
 
   return (
     <Sidebar>
@@ -25,10 +26,10 @@ export const SchoolDashboard = () => {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="font-cairo text-2xl font-bold">
-                {isRTL ? 'مركز القيادة' : 'Command Center'}
+                {t('commandCenter')}
               </h1>
               <p className="text-sm text-muted-foreground font-tajawal">
-                {isRTL ? `مرحباً، ${user?.full_name}` : `Welcome, ${user?.full_name}`}
+                {t('welcomeUser', { name: user?.full_name || '' })}
               </p>
             </div>
             
