@@ -139,7 +139,8 @@ async def get_academic_overview(
                 break
 
         try:
-            end = datetime.strptime(current_year.get("end_date", ""), "%Y-%m-%d")
+            raw_end = str(current_year.get("end_date", "") or "")[:10]
+            end = datetime.strptime(raw_end, "%Y-%m-%d")
             now_date = datetime.now(timezone.utc).replace(tzinfo=None)
             remaining_days = max(0, (end - now_date).days)
         except Exception as e:
@@ -156,6 +157,9 @@ async def get_academic_overview(
             d["name_en"] = d["year"]
         if "status" not in d:
             d["status"] = "active" if d.get("is_current") else "draft"
+        for field in ("start_date", "end_date"):
+            if d.get(field):
+                d[field] = str(d[field])[:10]
         return d
 
     return {
@@ -179,8 +183,8 @@ async def publish_academic_year(
     if not year:
         raise HTTPException(status_code=404, detail="العام الدراسي غير موجود")
 
-    if year.get("status") == "active" and year.get("is_current"):
-        raise HTTPException(status_code=400, detail="العام الدراسي منشور بالفعل")
+    if year.get("is_current"):
+        raise HTTPException(status_code=400, detail="العام الدراسي معين كعام حالي بالفعل")
 
     terms = await gd_find(db.session, "terms", {"academic_year_id": year_id, "school_id": school_id}, limit=10)
     if not terms:

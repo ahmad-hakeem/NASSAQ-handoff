@@ -538,12 +538,12 @@ export function AcademicStructureContent() {
                     <Badge className={`${statusCfg(selectedYear.status).color} text-xs mr-2`}>{statusCfg(selectedYear.status).label}</Badge>
                   </div>
                   <div className="flex gap-2 flex-wrap">
-                    {selectedYear.status !== 'active' && selectedYear.status !== 'archived' && (
+                    {!selectedYear.is_current && selectedYear.status !== 'archived' && (
                       <Button size="sm" onClick={handlePublish} disabled={saving} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5">
-                        <Send className="h-3.5 w-3.5" /> نشر العام الدراسي
+                        <Send className="h-3.5 w-3.5" /> تعيين كعام حالي
                       </Button>
                     )}
-                    {selectedYear.status === 'active' && (
+                    {selectedYear.is_current && (
                       <Button size="sm" variant="outline" onClick={handleClose} disabled={saving} className="text-amber-700 border-amber-300 gap-1.5">
                         <X className="h-3.5 w-3.5" /> إغلاق العام
                       </Button>
@@ -601,9 +601,15 @@ export function AcademicStructureContent() {
                   const days = getDaysBetween(term.start_date, term.end_date);
                   const termHolidays = holidays.filter(h => h.term_id === term.id);
                   const termExams = examPeriods.filter(e => e.term_id === term.id);
+                  const hasInvertedDates = term.start_date && term.end_date && formatDate(term.start_date) > formatDate(term.end_date);
                   return (
-                    <Card key={term.id} className={`transition-all hover:shadow-md ${term.is_current ? 'border-2 border-emerald-500 ring-2 ring-emerald-500/20' : ''}`}>
+                    <Card key={term.id} className={`transition-all hover:shadow-md ${term.is_current ? 'border-2 border-emerald-500 ring-2 ring-emerald-500/20' : ''} ${hasInvertedDates ? 'border-2 border-red-400' : ''}`}>
                       <CardContent className="p-5">
+                        {hasInvertedDates && (
+                          <div className="mb-2 text-xs text-red-600 bg-red-50 rounded px-2 py-1 flex items-center gap-1">
+                            <span>⚠️</span> تاريخ البداية بعد تاريخ النهاية — يرجى تعديل الفصل
+                          </div>
+                        )}
                         <div className="flex items-start justify-between mb-3">
                           <div>
                             <h3 className="font-bold text-[#1B3A5C]">{term.name}</h3>
