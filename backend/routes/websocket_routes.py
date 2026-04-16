@@ -139,19 +139,38 @@ def create_websocket_routes(db, decode_token):
         """WebSocket endpoint للإشعارات الفورية"""
         
         await websocket.accept()
-        
+
         auth_token = None
+        client_gone = False
         try:
             raw = await asyncio.wait_for(websocket.receive_text(), timeout=10)
             msg = json.loads(raw)
             if msg.get("type") == "auth":
                 auth_token = msg.get("token")
-        except (asyncio.TimeoutError, json.JSONDecodeError, Exception):
+        except WebSocketDisconnect:
+            # Client closed before sending auth message — nothing more to do.
+            client_gone = True
+        except asyncio.TimeoutError:
+            # Auth message never arrived in time.
             pass
-        
+        except json.JSONDecodeError:
+            # Malformed auth payload.
+            pass
+        except Exception as e:
+            logger.debug(f"WebSocket auth-receive failed: {e}")
+
+        if client_gone:
+            return
+
         if not auth_token:
-            await websocket.send_json({"type": "error", "message": "Token required"})
-            await websocket.close(code=4001, reason="Token required")
+            try:
+                await websocket.send_json({"type": "error", "message": "Token required"})
+            except Exception:
+                pass
+            try:
+                await websocket.close(code=4001, reason="Token required")
+            except Exception:
+                pass
             return
         
         try:

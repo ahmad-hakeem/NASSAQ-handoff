@@ -807,14 +807,32 @@ async def delete_integration(
 
 
 # ============== PLATFORM CONTACT API (PUBLIC) ==============
+import time as _time_pc
+_public_contact_cache = {"data": None, "expires": 0}
+_PUBLIC_CONTACT_TTL = 120  # seconds — contact info changes rarely
+
+
 @router.get("/public/contact-info")
 async def get_public_contact_info():
-    """Get public contact information for landing page (no auth required)"""
+    """Get public contact information for landing page (no auth required)."""
+    _now = _time_pc.monotonic()
+    if _public_contact_cache["data"] and _now < _public_contact_cache["expires"]:
+        try:
+            from middleware.cache_metrics import record_hit
+            record_hit()
+        except Exception:
+            pass
+        return _public_contact_cache["data"]
+    try:
+        from middleware.cache_metrics import record_miss
+        record_miss()
+    except Exception:
+        pass
+
     settings = await gd_find_one(db.session, "platform_settings", {"type": "platform"})
-    
+
     if not settings:
-        # Return defaults
-        return {
+        result = {
             "primary_email": "info@nassaqapp.com",
             "support_email": "support@nassaqapp.com",
             "primary_phone": "+966 11 234 5678",
@@ -830,9 +848,12 @@ async def get_public_contact_info():
                 "youtube": ""
             }
         }
-    
+        _public_contact_cache["data"] = result
+        _public_contact_cache["expires"] = _now + _PUBLIC_CONTACT_TTL
+        return result
+
     contact = settings.get("contact", {})
-    return {
+    result = {
         "primary_email": contact.get("primary_email", "info@nassaqapp.com"),
         "support_email": contact.get("support_email", "support@nassaqapp.com"),
         "primary_phone": contact.get("primary_phone", "+966 11 234 5678"),
@@ -843,6 +864,9 @@ async def get_public_contact_info():
         "owner_name": contact.get("owner_name", "شركة نَسَّق للتقنية التعليمية"),
         "social_media": contact.get("social_media", {})
     }
+    _public_contact_cache["data"] = result
+    _public_contact_cache["expires"] = _now + _PUBLIC_CONTACT_TTL
+    return result
 
 
 
@@ -1075,7 +1099,11 @@ async def update_contact_settings(
     }
     
     await gd_upsert(db.session, "platform_settings", {"type": "platform"}, update_data)
-    
+
+    # Invalidate public contact-info cache so updates are reflected immediately.
+    _public_contact_cache["data"] = None
+    _public_contact_cache["expires"] = 0
+
     return {"message": "تم تحديث بيانات التواصل بنجاح", "settings": settings.model_dump()}
 
 
