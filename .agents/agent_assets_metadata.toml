@@ -6,3 +6,9 @@ id = "-5mORokbsqOAC2184-v_B"
 uri = "file://.local/teacher_module_analysis.md"
 type = "text"
 title = "Teacher Module — Complete Analysis Report"
+
+[[outputs]]
+id = "cZQDBdjJBUCJYumcjFmP8"
+uri = "file://client_update_april_7_16.md"
+type = "text"
+title = "تقرير التحديثات — منصة نَسَّق (7-16 أبريل 2026)"
