@@ -28,6 +28,7 @@ from shared_models import (
     HakimMessage, HakimResponse
 )
 from openai import OpenAI
+from typing import Literal
 
 router = APIRouter()
 
@@ -1162,121 +1163,369 @@ async def get_ai_alerts(
 
     return alerts
 
+_OVERVIEW_CACHE: Dict[str, tuple] = {}
+_OVERVIEW_TTL_SEC = 300
+
+
+@router.get("/ai/insights/students-overview")
+async def get_students_overview(
+    refresh: int = 0,
+    current_user: dict = Depends(require_roles([
+        UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN, UserRole.SCHOOL_PRINCIPAL
+    ])),
+):
+    school_id = current_user.get("tenant_id")
+    if not school_id:
+        raise HTTPException(400, "لم يتم تحديد المدرسة")
+
+    now_ts = datetime.now(timezone.utc).timestamp()
+    cached = _OVERVIEW_CACHE.get(school_id)
+    if not refresh and cached and now_ts - cached[0] < _OVERVIEW_TTL_SEC:
+        return cached[1]
+
+    students = await gd_find(db.session, "students", {"school_id": school_id}, limit=500)
+    if not students:
+        empty = {
+            "summary": {
+                "total_students": 0,
+                "stable": {"count": 0, "percentage": 0},
+                "needs_followup": {"count": 0, "percentage": 0},
+                "at_risk": {"count": 0, "percentage": 0},
+                "excelling": {"count": 0, "percentage": 0},
+            },
+            "risk_map": [],
+            "intervention_list": [],
+            "root_causes": {
+                "attendance": {"count": 0, "percentage": 0},
+                "participation": {"count": 0, "percentage": 0},
+                "behaviour": {"count": 0, "percentage": 0},
+                "academic": {"count": 0, "percentage": 0},
+            },
+            "last_updated": datetime.now(timezone.utc).isoformat(),
+        }
+        _OVERVIEW_CACHE[school_id] = (now_ts, empty)
+        return empty
+
+    ids = [s["id"] for s in students]
+    risks = await hakim_engine.analyze_students_risk_batch(school_id, ids, days_back=30)
+
+    class_ids = list({r["class_id"] for r in risks if r.get("class_id")})
+    class_docs = await gd_find(db.session, "classes", {"id": {"$in": class_ids}}, limit=500) if class_ids else []
+    class_name = {c["id"]: c.get("name", "") for c in class_docs}
+
+    academic_scores = sorted([r["breakdown"]["academic"] for r in risks], reverse=True)
+    top_q = academic_scores[max(len(academic_scores) // 4 - 1, 0)] if academic_scores else 0
+
+    buckets = {"stable": [], "needs_followup": [], "at_risk": [], "excelling": []}
+    enriched = []
+    for r in risks:
+        cat_raw = r["risk_category"]
+        if cat_raw == "low":
+            ui_cat = "stable"
+        elif cat_raw == "medium":
+            ui_cat = "needs_followup"
+        else:
+            ui_cat = "at_risk"
+        if r["risk_score"] >= 90 and r["breakdown"]["academic"] >= top_q:
+            ui_cat = "excelling"
+        buckets[ui_cat].append(r)
+
+        weakest_key = min(r["breakdown"].items(), key=lambda kv: kv[1])[0]
+        enriched.append({
+            **r,
+            "ui_category": ui_cat,
+            "weakest": weakest_key,
+            "class_name": class_name.get(r.get("class_id"), ""),
+        })
+
+    total = len(risks)
+
+    def _pct(n):
+        return round((n / total) * 100, 1) if total else 0
+
+    summary = {
+        "total_students": total,
+        "stable": {"count": len(buckets["stable"]), "percentage": _pct(len(buckets["stable"]))},
+        "needs_followup": {"count": len(buckets["needs_followup"]), "percentage": _pct(len(buckets["needs_followup"]))},
+        "at_risk": {"count": len(buckets["at_risk"]), "percentage": _pct(len(buckets["at_risk"]))},
+        "excelling": {"count": len(buckets["excelling"]), "percentage": _pct(len(buckets["excelling"]))},
+    }
+
+    risk_map = [
+        {
+            "student_id": e["student_id"],
+            "name": e["student_name"],
+            "class_name": e["class_name"],
+            "x_academic": e["breakdown"]["academic"],
+            "y_engagement": round((e["breakdown"]["attendance"] + e["breakdown"]["participation"]) / 2, 1),
+            "risk_score": e["risk_score"],
+            "category": e["ui_category"],
+            "factors": e["factors"],
+        }
+        for e in enriched
+    ]
+
+    intervention_items = [e for e in enriched if e["ui_category"] in ("at_risk", "needs_followup")]
+    intervention_items.sort(key=lambda x: x["risk_score"])
+    intervention_items = intervention_items[:50]
+    LABELS = {
+        "attendance": "انخفاض الحضور",
+        "participation": "انخفاض المشاركة",
+        "behaviour": "مشاكل سلوكية",
+        "academic": "تدني الأداء الأكاديمي",
+    }
+    intervention_list = [
+        {
+            "student_id": e["student_id"],
+            "name": e["student_name"],
+            "class_name": e["class_name"],
+            "category": e["ui_category"],
+            "issue_type": e["weakest"],
+            "issue_label_ar": LABELS[e["weakest"]],
+            "risk_score": e["risk_score"],
+            "parent_id": e.get("parent_id"),
+        }
+        for e in intervention_items
+    ]
+
+    cause_counts = {"attendance": 0, "participation": 0, "behaviour": 0, "academic": 0}
+    at_risk_like = [e for e in enriched if e["risk_score"] < 75]
+    for e in at_risk_like:
+        cause_counts[e["weakest"]] += 1
+    causes_total = sum(cause_counts.values()) or 1
+    root_causes = {
+        k: {"count": v, "percentage": round((v / causes_total) * 100, 1)}
+        for k, v in cause_counts.items()
+    }
+
+    payload = {
+        "summary": summary,
+        "risk_map": risk_map,
+        "intervention_list": intervention_list,
+        "root_causes": root_causes,
+        "last_updated": datetime.now(timezone.utc).isoformat(),
+    }
+    _OVERVIEW_CACHE[school_id] = (now_ts, payload)
+    return payload
+
+
+def _invalidate_overview_cache(school_id: str) -> None:
+    _OVERVIEW_CACHE.pop(school_id, None)
+
+
+class InterventionRequest(BaseModel):
+    student_id: str
+    action_type: Literal["notify_parent", "remedial_plan", "schedule_followup"]
+    data: Dict[str, Any] = Field(default_factory=dict)
+
+
+@router.post("/ai/insights/intervention")
+async def post_intervention(
+    body: InterventionRequest,
+    current_user: dict = Depends(require_roles([
+        UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN, UserRole.SCHOOL_PRINCIPAL
+    ])),
+):
+    school_id = current_user.get("tenant_id")
+    if not school_id:
+        raise HTTPException(400, "لم يتم تحديد المدرسة")
+
+    student = await gd_find_one(db.session, "students",
+                                {"id": body.student_id, "school_id": school_id})
+    if not student:
+        raise HTTPException(404, "الطالب غير موجود")
+
+    now = datetime.now(timezone.utc)
+    intervention_id = str(uuid.uuid4())
+    d = body.data or {}
+
+    if body.action_type == "notify_parent":
+        parent_id = student.get("parent_id")
+        if not parent_id:
+            raise HTTPException(400, "لا يوجد ولي أمر مسجل للطالب")
+        message = (d.get("message") or "").strip()
+        if not message:
+            raise HTTPException(400, "نص الرسالة مطلوب")
+        from routes.notification_routes_mod import create_notification_internal
+        await create_notification_internal(
+            title="متابعة أداء الطالب",
+            message=message,
+            recipient_id=parent_id,
+            notification_type=d.get("issue_type", "general"),
+            priority="high",
+            sender_id=current_user.get("id"),
+            related_entity="student",
+            related_entity_id=body.student_id,
+            school_id=school_id,
+        )
+        msg_ar = "تم إرسال الرسالة لولي الأمر بنجاح"
+
+    elif body.action_type == "remedial_plan":
+        doc = {
+            "id": intervention_id,
+            "school_id": school_id,
+            "student_id": body.student_id,
+            "type": "plan",
+            "status": "active",
+            "title": d.get("title", "خطة علاجية"),
+            "description": d.get("description", ""),
+            "data": {
+                "issue_type": d.get("issue_type", "academic"),
+                "start_date": now.strftime("%Y-%m-%d"),
+                "target_date": d.get("target_date"),
+                "milestones": [{"text": m, "completed": False} for m in (d.get("milestones") or [])],
+            },
+            "created_by": current_user.get("id"),
+            "created_at": now, "updated_at": now,
+        }
+        await gd_insert(db.session, "ai_interventions", doc)
+        msg_ar = "تم إنشاء الخطة العلاجية بنجاح"
+
+    else:  # schedule_followup
+        doc = {
+            "id": intervention_id,
+            "school_id": school_id,
+            "student_id": body.student_id,
+            "type": "followup",
+            "status": "active",
+            "title": "متابعة",
+            "description": d.get("notes", ""),
+            "data": {
+                "issue_type": d.get("issue_type", "attendance"),
+                "follow_up_date": d.get("follow_up_date"),
+                "notes": d.get("notes", ""),
+            },
+            "created_by": current_user.get("id"),
+            "created_at": now, "updated_at": now,
+        }
+        await gd_insert(db.session, "ai_interventions", doc)
+        msg_ar = "تمت جدولة المتابعة بنجاح"
+
+    await gd_insert(db.session, "audit_logs", {
+        "id": str(uuid.uuid4()),
+        "school_id": school_id,
+        "performed_by": current_user.get("id"),
+        "actor_role": current_user.get("role"),
+        "action": f"intervention.{body.action_type}",
+        "entity_type": "student",
+        "entity_id": body.student_id,
+        "target_id": body.student_id,
+        "target_type": "student",
+        "details": {"intervention_id": intervention_id, "issue_type": d.get("issue_type")},
+        "created_at": now,
+    })
+
+    _invalidate_overview_cache(school_id)
+    return {"success": True, "intervention_id": intervention_id, "message_ar": msg_ar}
+
+
+_REC_CACHE: dict[str, tuple[float, dict]] = {}
+_REC_TTL_SEC = 900
+_ICONS = {"quantitative": "📊", "academic": "🎯", "statistical_alert": "⚠️",
+          "positive": "✅", "administrative": "📋"}
+
+
+async def _call_openai_for_recommendations(prompt: str) -> str:
+    client = get_openai_client()
+    if client is None:
+        raise RuntimeError("openai_unavailable")
+    resp = client.chat.completions.create(
+        model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+        messages=[
+            {"role": "system", "content": "أنت مستشار تعليمي. أجب حصراً بمصفوفة JSON دون نص إضافي."},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.4,
+        response_format={"type": "json_object"},
+    )
+    return resp.choices[0].message.content or "[]"
+
+
+def _build_recs_prompt(overview: dict) -> str:
+    s = overview["summary"]
+    rc = overview["root_causes"]
+    top_causes = ", ".join(
+        f"{k}({v['count']})" for k, v in sorted(rc.items(), key=lambda kv: -kv[1]["count"])[:2]
+    )
+    return (
+        "أنت مستشار تعليمي ذكي. بناءً على بيانات مدرسة:\n"
+        f"- إجمالي الطلاب: {s['total_students']}\n"
+        f"- في فئة الخطر: {s['at_risk']['count']}\n"
+        f"- يحتاجون متابعة: {s['needs_followup']['count']}\n"
+        f"- أسباب التعثر الشائعة: {top_causes}\n"
+        "قدّم ما بين 4 إلى 6 توصيات كقائمة JSON حصراً بالصيغة:\n"
+        '[{"type":"quantitative|academic|statistical_alert|positive|administrative","text":"..."}]'
+    )
+
+
+def _fallback_recommendation(overview: dict) -> list[dict]:
+    at_risk = overview["summary"]["at_risk"]["count"]
+    total = overview["summary"]["total_students"] or 1
+    pct = round((at_risk / total) * 100)
+    return [{"type": "statistical_alert",
+             "text": f"{at_risk} طالب في فئة الخطر حالياً ({pct}%). يُنصح بمراجعة قائمة التدخل.",
+             "icon": _ICONS["statistical_alert"]}]
+
+
+@router.get("/ai/insights/recommendations-ai")
+async def get_recommendations_ai(
+    current_user: dict = Depends(require_roles([
+        UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN, UserRole.SCHOOL_PRINCIPAL
+    ])),
+):
+    school_id = current_user["tenant_id"]
+    now = datetime.now(timezone.utc).timestamp()
+    cached = _REC_CACHE.get(school_id)
+    if cached and now - cached[0] < _REC_TTL_SEC:
+        return cached[1]
+
+    overview = await get_students_overview(refresh=0, current_user=current_user)
+    prompt = _build_recs_prompt(overview)
+    try:
+        raw = await _call_openai_for_recommendations(prompt)
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict):
+            parsed = parsed.get("recommendations") or parsed.get("items") or []
+        if not (isinstance(parsed, list) and parsed):
+            raise ValueError("invalid model output")
+        clean = []
+        for item in parsed[:6]:
+            t = item.get("type")
+            text = (item.get("text") or "").strip()
+            if t in _ICONS and text:
+                clean.append({"type": t, "text": text, "icon": _ICONS[t]})
+        if not clean:
+            raise ValueError("empty after validation")
+        payload = {"recommendations": clean,
+                   "generated_at": datetime.now(timezone.utc).isoformat(),
+                   "source": "openai"}
+    except Exception:
+        payload = {"recommendations": _fallback_recommendation(overview),
+                   "generated_at": datetime.now(timezone.utc).isoformat(),
+                   "source": "fallback"}
+
+    _REC_CACHE[school_id] = (now, payload)
+    return payload
+
+
 @router.get("/ai/insights/at-risk-students")
 async def get_at_risk_students(
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_roles([
+        UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN, UserRole.SCHOOL_PRINCIPAL
+    ])),
 ):
-    """Get list of students who may need intervention based on real data"""
-    school_id = current_user.get("tenant_id")
-    q = {"school_id": school_id} if school_id else {}
-    at_risk = []
-
-    students = await gd_find(db.session, "students", q, limit=500)
-    month_ago_str = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%d")
-    month_ago_iso = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
-
-    student_ids = [s["id"] for s in students]
-
-    att_pipeline = [
-        {"$match": {"student_id": {"$in": student_ids}, "date": {"$gte": month_ago_str}}},
-        {"$group": {
-            "_id": {"student_id": "$student_id", "status": "$status"},
-            "count": {"$sum": 1}
-        }}
-    ]
-    att_raw = await _gd_aggregate(db.session, "attendance", att_pipeline)
-    att_data = {}
-    for r in att_raw:
-        sid = r["_id"]["student_id"]
-        status = r["_id"]["status"]
-        if sid not in att_data:
-            att_data[sid] = {"total": 0, "absent": 0}
-        att_data[sid]["total"] += r["count"]
-        if status == "absent":
-            att_data[sid]["absent"] += r["count"]
-
-    behaviour_pipeline = [
-        {"$match": {"student_id": {"$in": student_ids}, "type": "negative", "created_at": {"$gte": month_ago_iso}}},
-        {"$group": {"_id": "$student_id", "count": {"$sum": 1}}}
-    ]
-    behaviour_raw = await _gd_aggregate(db.session, "behaviour_records", behaviour_pipeline)
-    behaviour_counts = {r["_id"]: r["count"] for r in behaviour_raw}
-
-    grades_pipeline = [
-        {"$match": {"student_id": {"$in": student_ids}}},
-        {"$group": {
-            "_id": "$student_id",
-            "avg_percentage": {"$avg": "$percentage"},
-            "count": {"$sum": 1}
-        }}
-    ]
-    grades_raw = await _gd_aggregate(db.session, "grades", grades_pipeline)
-    grades_data = {r["_id"]: r for r in grades_raw}
-
-    for student in students:
-        sid = student["id"]
-        factors = []
-        risk_score = 100
-
-        s_att = att_data.get(sid, {"total": 0, "absent": 0})
-        if s_att["total"] > 0:
-            absence_rate = (s_att["absent"] / s_att["total"]) * 100
-            if absence_rate > 30:
-                risk_score -= 35
-                factors.append(f"غياب مرتفع ({absence_rate:.0f}%)")
-            elif absence_rate > 15:
-                risk_score -= 20
-                factors.append(f"غياب متوسط ({absence_rate:.0f}%)")
-
-        grade_info = grades_data.get(sid)
-        if grade_info and grade_info.get("avg_percentage") is not None:
-            avg_grade = grade_info["avg_percentage"]
-            if avg_grade < 50:
-                risk_score -= 30
-                factors.append(f"أداء أكاديمي ضعيف ({avg_grade:.0f}%)")
-            elif avg_grade < 65:
-                risk_score -= 15
-                factors.append(f"أداء أكاديمي متوسط ({avg_grade:.0f}%)")
-
-        neg_behaviour = behaviour_counts.get(sid, 0)
-        if neg_behaviour >= 3:
-            risk_score -= 20
-            factors.append(f"سلوك سلبي متكرر ({neg_behaviour} مرات)")
-        elif neg_behaviour >= 1:
-            risk_score -= 10
-            factors.append(f"ملاحظات سلوكية ({neg_behaviour})")
-
-        if risk_score < 70 and factors:
-            risk_type = "academic"
-            if any("غياب" in f for f in factors):
-                risk_type = "attendance"
-            if any("سلوك" in f for f in factors):
-                risk_type = "behavioral"
-
-            at_risk.append({
-                "id": sid,
-                "name": student.get("full_name", "غير معروف"),
-                "class_id": student.get("class_id"),
-                "risk_level": max(0, risk_score),
-                "risk_type": risk_type,
-                "factors": factors
-            })
-
-    at_risk.sort(key=lambda x: x["risk_level"])
-    at_risk = at_risk[:20]
-
-    class_ids_needed = list(set(r.get("class_id") for r in at_risk if r.get("class_id")))
-    if class_ids_needed:
-        classes_docs = await gd_find(db.session, "classes", {"id": {"$in": class_ids_needed}}, limit=200)
-        class_name_map = {c["id"]: c.get("name", "") for c in classes_docs}
-    else:
-        class_name_map = {}
-
-    for r in at_risk:
-        r["grade"] = class_name_map.get(r.get("class_id"), "")
-        r.pop("class_id", None)
-
-    return at_risk
+    overview = await get_students_overview(refresh=0, current_user=current_user)
+    result = []
+    for row in overview["intervention_list"][:20]:
+        result.append({
+            "id": row["student_id"],
+            "name": row["name"],
+            "grade": row["class_name"],
+            "risk_level": row["risk_score"],
+            "risk_type": row["issue_type"],
+            "factors": [row["issue_label_ar"]],
+        })
+    return result
 
 
 

@@ -713,8 +713,10 @@ async def test_intervention_writes_audit_log(client, school_admin_headers, a_stu
             "data": {"follow_up_date": "2026-04-30"}}
     r = await client.post("/ai/insights/intervention", json=body, headers=school_admin_headers)
     assert r.status_code == 200
-    logs = await db.gd_find("audit_logs",
-        {"resource_id": a_student["id"], "action": "intervention.schedule_followup"})
+    from engines.sql_utils import gd_find
+    from dependencies import db as _db
+    logs = await gd_find(_db.session, "audit_logs",
+        {"entity_id": a_student["id"], "action": "intervention.schedule_followup"})
     assert logs, "audit row missing"
 
 @pytest.mark.asyncio
@@ -782,47 +784,56 @@ async def post_intervention(
     elif body.action_type == "remedial_plan":
         doc = {
             "id": intervention_id,
-            "student_id": body.student_id, "school_id": school_id,
-            "created_by": current_user.get("id"),
+            "school_id": school_id,
+            "student_id": body.student_id,
             "type": "plan",
-            "issue_type": d.get("issue_type", "academic"),
-            "description": d.get("description", ""),
-            "start_date": now.strftime("%Y-%m-%d"),
-            "target_date": d.get("target_date"),
-            "milestones": [{"text": m, "completed": False} for m in (d.get("milestones") or [])],
-            "follow_up_date": None, "follow_up_notes": "",
             "status": "active",
+            "title": d.get("title", "خطة علاجية"),
+            "description": d.get("description", ""),
+            "data": {
+                "issue_type": d.get("issue_type", "academic"),
+                "start_date": now.strftime("%Y-%m-%d"),
+                "target_date": d.get("target_date"),
+                "milestones": [{"text": m, "completed": False} for m in (d.get("milestones") or [])],
+            },
+            "created_by": current_user.get("id"),
             "created_at": now, "updated_at": now,
         }
-        await gd_insert(db.session, "remedial_plans", doc)
+        await gd_insert(db.session, "ai_interventions", doc)
         msg_ar = "تم إنشاء الخطة العلاجية بنجاح"
 
     elif body.action_type == "schedule_followup":
         doc = {
             "id": intervention_id,
-            "student_id": body.student_id, "school_id": school_id,
-            "created_by": current_user.get("id"),
+            "school_id": school_id,
+            "student_id": body.student_id,
             "type": "followup",
-            "issue_type": d.get("issue_type", "attendance"),
-            "description": "", "start_date": now.strftime("%Y-%m-%d"),
-            "target_date": d.get("follow_up_date"),
-            "follow_up_date": d.get("follow_up_date"),
-            "follow_up_notes": d.get("notes", ""),
-            "milestones": [], "status": "active",
+            "status": "active",
+            "title": "متابعة",
+            "description": d.get("notes", ""),
+            "data": {
+                "issue_type": d.get("issue_type", "attendance"),
+                "follow_up_date": d.get("follow_up_date"),
+                "notes": d.get("notes", ""),
+            },
+            "created_by": current_user.get("id"),
             "created_at": now, "updated_at": now,
         }
-        await gd_insert(db.session, "remedial_plans", doc)
+        await gd_insert(db.session, "ai_interventions", doc)
         msg_ar = "تمت جدولة المتابعة بنجاح"
 
-    # --- audit-log write (spec §10.4) ---
+    # --- audit-log write (spec §10.4) — column names match pg_models.AuditLog ---
     await gd_insert(db.session, "audit_logs", {
         "id": str(uuid.uuid4()),
-        "user_id": current_user.get("id"),
-        "tenant_id": school_id,
+        "school_id": school_id,
+        "performed_by": current_user.get("id"),
+        "actor_role": current_user.get("role"),
         "action": f"intervention.{body.action_type}",
-        "resource_type": "student",
-        "resource_id": body.student_id,
-        "metadata": {"intervention_id": intervention_id, "issue_type": d.get("issue_type")},
+        "entity_type": "student",
+        "entity_id": body.student_id,
+        "target_id": body.student_id,
+        "target_type": "student",
+        "details": {"intervention_id": intervention_id, "issue_type": d.get("issue_type")},
         "created_at": now,
     })
 

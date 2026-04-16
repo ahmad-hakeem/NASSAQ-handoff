@@ -24,6 +24,17 @@ def register_middleware(app: FastAPI):
         _p = request.url.path
         if _p.startswith("/api/ws/") or _p == "/ws":
             return await call_next(request)
+
+        import os as _os
+        if _os.environ.get("TESTING") == "1":
+            existing = db.session
+            if existing is not None:
+                try:
+                    await existing.flush()
+                except Exception:
+                    pass
+                return await call_next(request)
+
         async with async_session_factory() as session:
             db.set_session(session)
             try:

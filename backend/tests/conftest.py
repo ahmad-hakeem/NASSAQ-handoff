@@ -44,6 +44,7 @@ async def _mk_user(role: UserRole, tenant_id: str) -> dict:
         "email": f"{uid}@t.test",
         "full_name": f"{role.value} user",
         "is_active": True,
+        "password_hash": "x",
     }
     await gd_insert(db.session, "users", user)
     return user
@@ -60,7 +61,7 @@ def _headers(user: dict) -> dict:
 
 @pytest_asyncio.fixture
 async def client():
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test/api") as c:
         yield c
 
 
@@ -146,6 +147,7 @@ async def _seed_student(school_id: str, with_parent: bool = True, class_id=None)
             "email": f"p-{parent_id}@t.test",
             "full_name": f"Parent-{parent_id[:6]}",
             "is_active": True,
+            "password_hash": "x",
         })
     sid = str(uuid.uuid4())
     await gd_insert(db.session, "students", {
@@ -159,6 +161,12 @@ async def _seed_student(school_id: str, with_parent: bool = True, class_id=None)
     return {"id": sid, "school_id": school_id, "parent_id": parent_id}
 
 
+class _SchoolBundle:
+    def __init__(self, id_, students):
+        self.id = id_
+        self.students = students
+
+
 @pytest_asyncio.fixture
 async def seeded_school(tenant_a):
     cls = str(uuid.uuid4())
@@ -166,13 +174,7 @@ async def seeded_school(tenant_a):
     students = []
     for _ in range(10):
         students.append(await _seed_student(tenant_a, True, cls))
-
-    class _S:
-        id = tenant_a
-        db = globals()["db"]
-        students = students
-
-    return _S()
+    return _SchoolBundle(tenant_a, students)
 
 
 @pytest_asyncio.fixture
@@ -180,12 +182,7 @@ async def many_students_school(tenant_a):
     cls = str(uuid.uuid4())
     await gd_insert(db.session, "classes", {"id": cls, "school_id": tenant_a, "name": "Big"})
     students = [await _seed_student(tenant_a, True, cls) for _ in range(120)]
-
-    class _S:
-        id = tenant_a
-        students = students
-
-    return _S()
+    return _SchoolBundle(tenant_a, students)
 
 
 @pytest_asyncio.fixture
