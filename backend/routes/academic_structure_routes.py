@@ -292,10 +292,15 @@ async def auto_create_terms(
         raise HTTPException(status_code=400, detail="توجد فصول دراسية بالفعل لهذا العام")
 
     try:
-        start = datetime.strptime(year["start_date"], "%Y-%m-%d")
-        end = datetime.strptime(year["end_date"], "%Y-%m-%d")
+        raw_start = year.get("start_date") or ""
+        raw_end = year.get("end_date") or ""
+        start = datetime.strptime(str(raw_start)[:10], "%Y-%m-%d")
+        end = datetime.strptime(str(raw_end)[:10], "%Y-%m-%d")
     except (ValueError, TypeError):
-        raise HTTPException(status_code=400, detail="تواريخ العام الدراسي غير صحيحة")
+        raise HTTPException(status_code=400, detail="تواريخ العام الدراسي غير صحيحة أو غير مضبوطة، يرجى تعديل العام الدراسي وتحديد تواريخ صحيحة")
+
+    if (end - start).days <= 0:
+        raise HTTPException(status_code=400, detail="تاريخ انتهاء العام الدراسي يجب أن يكون بعد تاريخ البدء")
 
     total_days = (end - start).days
     term_duration = total_days // num_terms

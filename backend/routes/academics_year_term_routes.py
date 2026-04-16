@@ -186,7 +186,7 @@ class TermBase(BaseModel):
     start_date: str
     end_date: str
     is_current: bool = False
-    school_id: str
+    school_id: Optional[str] = None
 
 class TermResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -208,10 +208,14 @@ async def create_term(
     """Create a new term/semester"""
     term_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
-    
+
+    effective_school_id = current_user.get("tenant_id") or current_user.get("school_id") or data.school_id
+    if not effective_school_id:
+        raise HTTPException(status_code=400, detail="لم يتم تحديد المدرسة")
+
     # If setting as current, unset other current terms for this school
     if data.is_current:
-        await gd_update_many(db.session, "terms", {"school_id": data.school_id, "is_current": True}, {"is_current": False})
+        await gd_update_many(db.session, "terms", {"school_id": effective_school_id, "is_current": True}, {"is_current": False})
     
     term_doc = {
         "id": term_id,
@@ -221,7 +225,7 @@ async def create_term(
         "start_date": data.start_date,
         "end_date": data.end_date,
         "is_current": data.is_current,
-        "school_id": data.school_id,
+        "school_id": effective_school_id,
         "created_at": now,
         "updated_at": now,
         "created_by": current_user.get("id")
