@@ -45,7 +45,10 @@ async def _resolve_recipient_ids(db, audience: str, school_id: Optional[str], au
         clean_ids = [uid for uid in (audience_ids or []) if uid]
         if not clean_ids:
             return []
-        scope = {"id": {"$in": clean_ids}, "is_active": True}
+        # Don't filter by is_active here — historically some users have a NULL
+        # is_active flag and would silently drop out of the recipient list,
+        # producing a "message sent" response with no actual notification.
+        scope = {"id": {"$in": clean_ids}, "is_active": {"$ne": False}}
         if school_id:
             scope["tenant_id"] = school_id
         users = await gd_find(db.session, "users", scope, limit=10000)
@@ -454,10 +457,31 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
             audience_filter.append("students")
         elif user_role == "parent":
             audience_filter.append("parents")
-        
-        query["audience"] = {"$in": audience_filter}
-        
-        messages = await gd_find(db.session, "messages", query, order_by="sent_at", desc_order=True, limit=50)
+
+        # Pull the broadcast audiences in one query and any custom-targeted
+        # message in another, then merge.  We can't express JSON-array
+        # containment cleanly through the gd_find filter helpers, so we
+        # post-filter the small set of custom messages in Python.  Without
+        # this, direct messages sent from the platform/school admin to a
+        # specific user (audience="custom" with audience_ids=[user_id])
+        # never appear in the recipient's inbox.
+        broadcast_query = {**query, "audience": {"$in": audience_filter}}
+        custom_query = {**query, "audience": "custom"}
+
+        broadcast_msgs = await gd_find(db.session, "messages", broadcast_query, order_by="sent_at", desc_order=True, limit=50)
+        custom_msgs = await gd_find(db.session, "messages", custom_query, order_by="sent_at", desc_order=True, limit=200)
+        custom_msgs = [m for m in custom_msgs if user_id in (m.get("audience_ids") or [])]
+
+        seen_ids = set()
+        messages = []
+        for m in (broadcast_msgs + custom_msgs):
+            mid = m.get("id")
+            if mid in seen_ids:
+                continue
+            seen_ids.add(mid)
+            messages.append(m)
+        messages.sort(key=lambda m: m.get("sent_at") or "", reverse=True)
+        messages = messages[:50]
         
         # Add read status
         for msg in messages:

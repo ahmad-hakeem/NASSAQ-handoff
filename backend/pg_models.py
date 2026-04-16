@@ -635,6 +635,7 @@ class Notification(Base):
     read_at = Column(DateTime(timezone=True), nullable=True)
     action_url = Column(String, nullable=True)
     extra_data = Column("metadata", JSONB, nullable=True)
+    data = Column(JSONB, nullable=True, default=dict)
     created_at = Column(DateTime(timezone=True), default=_utcnow)
 
     user = relationship("User", back_populates="notifications", foreign_keys=[user_id], lazy="selectin")
@@ -903,6 +904,7 @@ class Message(Base):
     is_read = Column(Boolean, default=False)
     read_at = Column(DateTime(timezone=True), nullable=True)
     extra_data = Column("metadata", JSONB, nullable=True)
+    data = Column(JSONB, nullable=True, default=dict)
     created_at = Column(DateTime(timezone=True), default=_utcnow)
 
     __table_args__ = (
