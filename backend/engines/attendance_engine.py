@@ -225,7 +225,7 @@ class AttendanceEngine:
         from pg_models import Attendance, Class, Student
         now = datetime.now(timezone.utc)
 
-        stmt = select(Class).where(Class.id == class_id, Class.tenant_id == tenant_id).limit(1)
+        stmt = select(Class).where(Class.id == class_id, Class.school_id == tenant_id).limit(1)
         result = await self.session.execute(stmt)
         class_doc = result.scalars().first()
         if not class_doc:
