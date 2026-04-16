@@ -358,7 +358,7 @@ async def get_school_info(
         "name_ar": school.get("name_ar", school.get("name")),
         "school_name_ar": school.get("name_ar", school.get("name")),
         "name_en": school.get("name_en"),
-        "type": school.get("type"),
+        "type": school.get("school_type") or school.get("type"),
         "stage": school.get("stage"),
         "city": school.get("city"),
         "region": school.get("region"),
@@ -402,6 +402,10 @@ async def update_school_info_direct(
         raise HTTPException(status_code=422, detail="رقم جوال المدير مطلوب")
     if "stage" in update_data and update_data.get("stage") != "secondary_pathways":
         update_data["educational_pathway"] = None
+    # The schools table column is `school_type`; the API exposes it as `type`.
+    # Persist to both for backward compatibility so the value isn't dropped on save.
+    if "type" in update_data:
+        update_data["school_type"] = update_data["type"]
     if "name_ar" in update_data and "name" not in update_data:
         update_data["name"] = update_data["name_ar"]
     elif "name" in update_data and "name_ar" not in update_data:
@@ -725,6 +729,8 @@ async def update_school_info(
     old_school = await gd_find_one(db.session, "schools", {"id": school_id})
     
     update_data = {k: v for k, v in data.model_dump().items() if v is not None}
+    if "type" in update_data:
+        update_data["school_type"] = update_data["type"]
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
     update_data["updated_by"] = current_user["id"]
     
