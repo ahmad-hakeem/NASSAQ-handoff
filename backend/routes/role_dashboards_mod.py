@@ -21,7 +21,7 @@ from dependencies import (
     hakim_engine, reporting_engine, export_engine, session_engine,
     REPORT_TYPES, generate_student_qr_code
 )
-from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_aggregate
 
 
 from shared_models import (
