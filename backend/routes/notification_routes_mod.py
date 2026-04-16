@@ -138,14 +138,16 @@ async def create_notification(
         user_exists = await gd_find_one(db.session, "users", {"id": resolved_user_id})
         if not user_exists:
             student = await gd_find_one(db.session, "students", {"id": resolved_user_id})
+            if not student:
+                student = await gd_find_one(db.session, "students", {"parent_id": resolved_user_id})
             if student:
                 parent_user = None
-                if student.get("parent_id"):
-                    parent_user = await gd_find_one(db.session, "users", {"id": student["parent_id"]})
-                if not parent_user and student.get("parent_email"):
+                if student.get("parent_email"):
                     parent_user = await gd_find_one(db.session, "users", {"email": student["parent_email"], "role": "parent"})
                 if not parent_user and student.get("parent_phone"):
                     parent_user = await gd_find_one(db.session, "users", {"phone": student["parent_phone"], "role": "parent"})
+                if not parent_user and student.get("parent_name"):
+                    parent_user = await gd_find_one(db.session, "users", {"full_name": student["parent_name"], "role": "parent"})
                 if parent_user:
                     resolved_user_id = parent_user["id"]
                 else:
