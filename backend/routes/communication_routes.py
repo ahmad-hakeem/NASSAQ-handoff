@@ -438,8 +438,13 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
         current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN]))
     ):
         """Update a scheduled message"""
-        # Find the message
-        message = await gd_find_one(db.session, "messages", {"id": message_id})
+        query = {"id": message_id}
+        if current_user['role'] != 'platform_admin':
+            tenant_id = current_user.get("tenant_id")
+            if tenant_id:
+                query["school_id"] = tenant_id
+
+        message = await gd_find_one(db.session, "messages", query)
         if not message:
             raise HTTPException(status_code=404, detail="الرسالة غير موجودة")
         
@@ -469,8 +474,13 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
         current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN]))
     ):
         """Send a scheduled message immediately"""
-        # Find the message
-        message = await gd_find_one(db.session, "messages", {"id": message_id})
+        query = {"id": message_id}
+        if current_user['role'] != 'platform_admin':
+            tenant_id = current_user.get("tenant_id")
+            if tenant_id:
+                query["school_id"] = tenant_id
+
+        message = await gd_find_one(db.session, "messages", query)
         if not message:
             raise HTTPException(status_code=404, detail="الرسالة غير موجودة")
         
@@ -512,7 +522,13 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
         current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN]))
     ):
         """Delete a message"""
-        result = await gd_delete_one(db.session, "messages", {"id": message_id})
+        query = {"id": message_id}
+        if current_user['role'] != 'platform_admin':
+            tenant_id = current_user.get("tenant_id")
+            if tenant_id:
+                query["school_id"] = tenant_id
+
+        result = await gd_delete_one(db.session, "messages", query)
         
         if result == 0:
             raise HTTPException(status_code=404, detail="الرسالة غير موجودة")

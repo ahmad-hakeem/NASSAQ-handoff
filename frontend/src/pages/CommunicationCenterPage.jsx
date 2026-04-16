@@ -157,7 +157,7 @@ export const CommunicationCenterPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [api, isRTL]);
+  }, [api]);
 
   useEffect(() => {
     fetchData();

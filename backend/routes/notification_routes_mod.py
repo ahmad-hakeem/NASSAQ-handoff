@@ -106,6 +106,12 @@ async def create_notification_internal(
 ):
     """Internal helper to create notifications from other engines"""
     notification_id = str(uuid.uuid4())
+    sender_name_resolved = None
+    if sender_id:
+        sender_user = await gd_find_one(db.session, "users", {"id": sender_id})
+        if sender_user:
+            sender_name_resolved = sender_user.get("full_name", "")
+
     notification_doc = {
         "id": notification_id,
         "user_id": recipient_id,
@@ -114,6 +120,8 @@ async def create_notification_internal(
         "type": notification_type,
         "priority": priority,
         "action_url": action_url,
+        "sender_id": sender_id,
+        "sender_name": sender_name_resolved,
         "tenant_id": school_id,
         "is_read": False,
         "read_at": None,
@@ -247,6 +255,8 @@ async def create_bulk_notifications(
             "type": data.notification_type.value if data.notification_type else None,
             "priority": data.priority.value if data.priority else "normal",
             "action_url": data.action_url,
+            "sender_id": current_user['id'],
+            "sender_name": current_user.get('full_name', ''),
             "tenant_id": current_user.get('tenant_id'),
             "is_read": False,
             "read_at": None,
@@ -294,7 +304,7 @@ async def get_my_notifications(
             read_status=n.get('is_read', False),
             read_at=n.get('read_at'),
             created_at=n['created_at'],
-            sender_name=None
+            sender_name=n.get('sender_name')
         ))
     
     return result
