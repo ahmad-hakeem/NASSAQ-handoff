@@ -203,55 +203,93 @@ def setup_admin_routes(db, get_current_user, require_roles, UserRole):
         current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.PLATFORM_OPERATIONS_MANAGER]))
     ):
         try:
-            schools = await gd_find(db.session, "schools", {}, limit=100)
+            from sqlalchemy import text as _sa_text
+            session = db.session
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+            sql = _sa_text("""
+                SELECT
+                    s.id,
+                    s.name,
+                    s.name_en,
+                    s.status,
+                    s.city,
+                    s.region,
+                    s.school_type,
+                    s.stage,
+                    s.created_at,
+                    s.updated_at,
+                    COALESCE(st.cnt, 0) AS student_count,
+                    COALESCE(t.cnt,  0) AS teacher_count,
+                    COALESCE(c.cnt,  0) AS class_count,
+                    COALESCE(p.cnt,  0) AS parent_count,
+                    COALESCE(tt.published, 0) AS published_timetable_count
+                FROM schools s
+                LEFT JOIN (SELECT school_id, COUNT(*) AS cnt FROM students  GROUP BY school_id) st ON st.school_id = s.id
+                LEFT JOIN (SELECT school_id, COUNT(*) AS cnt FROM teachers  GROUP BY school_id) t  ON t.school_id  = s.id
+                LEFT JOIN (SELECT school_id, COUNT(*) AS cnt FROM classes   GROUP BY school_id) c  ON c.school_id  = s.id
+                LEFT JOIN (SELECT school_id, COUNT(*) AS cnt FROM parents   GROUP BY school_id) p  ON p.school_id  = s.id
+                LEFT JOIN (
+                    SELECT school_id, COUNT(*) AS published
+                    FROM timetable_runs WHERE status = 'published'
+                    GROUP BY school_id
+                ) tt ON tt.school_id = s.id
+                ORDER BY s.created_at DESC NULLS LAST
+                LIMIT 100
+            """)
+            rows = (await session.execute(sql)).mappings().all()
+            school_ids = [r["id"] for r in rows]
+
+            sessions_today_map: Dict[str, int] = {}
+            if school_ids:
+                from pg_models import GenericDocument
+                from sqlalchemy import select as _select, func as _func
+                stmt = (
+                    _select(GenericDocument.data["school_id"].astext.label("sid"), _func.count())
+                    .where(GenericDocument._collection == "class_sessions")
+                    .where(GenericDocument.data["date"].astext == today)
+                    .where(GenericDocument.data["school_id"].astext.in_(school_ids))
+                    .group_by(GenericDocument.data["school_id"].astext)
+                )
+                for sid, cnt in (await session.execute(stmt)).all():
+                    sessions_today_map[sid] = cnt
+
             result = []
-            for school in schools:
-                sid = school.get("id", "")
-                tenant_id = school.get("tenant_id") or sid
-                student_count = await gd_count(db.session, "students", {"school_id": {"$in": [sid, tenant_id]}})
-                if student_count == 0:
-                    student_count = await gd_count(db.session, "students", {"tenant_id": tenant_id})
-                teacher_count = await gd_count(db.session, "teachers", {"school_id": {"$in": [sid, tenant_id]}})
-                if teacher_count == 0:
-                    teacher_count = await gd_count(db.session, "users", {"role": "teacher", "tenant_id": tenant_id})
-                class_count = await gd_count(db.session, "classes", {"tenant_id": tenant_id})
-                if class_count == 0:
-                    class_count = await gd_count(db.session, "classes", {"school_id": sid})
-                parent_count = await gd_count(db.session, "parents", {"school_id": {"$in": [sid, tenant_id]}})
-                if parent_count == 0:
-                    parent_count = await gd_count(db.session, "users", {"role": "parent", "tenant_id": tenant_id})
+            for r in rows:
+                sid = r["id"]
+                student_count = int(r["student_count"] or 0)
+                teacher_count = int(r["teacher_count"] or 0)
+                class_count = int(r["class_count"] or 0)
+                parent_count = int(r["parent_count"] or 0)
+                has_timetable = (r["published_timetable_count"] or 0) > 0
+                setup_score = sum([
+                    teacher_count > 0,
+                    student_count > 0,
+                    class_count > 0,
+                    has_timetable,
+                ]) * 25
 
-                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-                sessions_today = await gd_count(db.session, "class_sessions", {
-                    "school_id": {"$in": [sid, tenant_id]}, "date": today
-                })
-
-                has_teachers = teacher_count > 0
-                has_students = student_count > 0
-                has_classes = class_count > 0
-                has_timetable = await gd_count(db.session, "timetable_runs", {
-                    "school_id": {"$in": [sid, tenant_id]}, "status": "published"
-                }) > 0
-                setup_score = sum([has_teachers, has_students, has_classes, has_timetable]) * 25
+                created_at = r["created_at"].isoformat() if r["created_at"] else ""
+                updated_at = r["updated_at"].isoformat() if r["updated_at"] else ""
 
                 result.append({
                     "id": sid,
-                    "name": school.get("name", ""),
-                    "name_en": school.get("name_en", ""),
-                    "status": school.get("status", "active"),
-                    "city": school.get("city", ""),
-                    "region": school.get("region", ""),
-                    "school_type": school.get("school_type", ""),
-                    "stage": school.get("stage", ""),
+                    "name": r["name"] or "",
+                    "name_en": r["name_en"] or "",
+                    "status": r["status"] or "active",
+                    "city": r["city"] or "",
+                    "region": r["region"] or "",
+                    "school_type": r["school_type"] or "",
+                    "stage": r["stage"] or "",
                     "student_count": student_count,
                     "teacher_count": teacher_count,
                     "class_count": class_count,
                     "parent_count": parent_count,
-                    "sessions_today": sessions_today,
+                    "sessions_today": sessions_today_map.get(sid, 0),
                     "setup_score": setup_score,
                     "has_timetable": has_timetable,
-                    "created_at": school.get("created_at", ""),
-                    "last_activity": school.get("updated_at") or school.get("created_at", ""),
+                    "created_at": created_at,
+                    "last_activity": updated_at or created_at,
                 })
             return {"schools": result}
         except Exception as e:

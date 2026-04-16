@@ -12,9 +12,44 @@ from datetime import datetime, timezone, timedelta
 import uuid, os, logging, json, random, re, io, base64
 
 import time as _time
+import asyncio as _asyncio
 
 _cc_stats_cache = {"data": None, "expires": 0}
 _CC_STATS_TTL = 30
+
+# Simple async TTL cache for dashboard endpoints.
+# Stores: {key: (expires_at, value)}.  Coalesces concurrent misses via per-key locks.
+_stats_cache: Dict[Any, tuple] = {}
+_stats_locks: Dict[Any, _asyncio.Lock] = {}
+
+
+def _stats_get(key):
+    entry = _stats_cache.get(key)
+    if entry and entry[0] > _time.time():
+        try:
+            from middleware.cache_metrics import record_hit
+            record_hit()
+        except Exception:
+            pass
+        return entry[1]
+    try:
+        from middleware.cache_metrics import record_miss
+        record_miss()
+    except Exception:
+        pass
+    return None
+
+
+def _stats_set(key, value, ttl: int):
+    _stats_cache[key] = (_time.time() + ttl, value)
+
+
+def _stats_lock(key) -> _asyncio.Lock:
+    lock = _stats_locks.get(key)
+    if lock is None:
+        lock = _asyncio.Lock()
+        _stats_locks[key] = lock
+    return lock
 
 from dependencies import (
     db, get_current_user, require_roles, UserRole, SchoolStatus,
@@ -226,6 +261,19 @@ async def get_super_admin_dashboard_stats(
     Get comprehensive statistics for Super Admin leadership dashboard.
     All statistics are fetched live from the database.
     """
+    _CACHE_KEY = ("super_admin_dashboard_stats",)
+    _CACHE_TTL = 30
+    cached = _stats_get(_CACHE_KEY)
+    if cached is not None:
+        return cached
+    async with _stats_lock(_CACHE_KEY):
+        cached = _stats_get(_CACHE_KEY)
+        if cached is not None:
+            return cached
+        return await _compute_super_admin_dashboard_stats(_CACHE_KEY, _CACHE_TTL)
+
+
+async def _compute_super_admin_dashboard_stats(_CACHE_KEY, _CACHE_TTL):
     try:
         import asyncio
         now = datetime.now(timezone.utc)
@@ -275,7 +323,7 @@ async def get_super_admin_dashboard_stats(
         students_growth_rate = (students_last_month / max(total_students - students_last_month, 1)) * 100 if total_students > 0 else 0
         teachers_growth_rate = (teachers_last_month / max(total_teachers - teachers_last_month, 1)) * 100 if total_teachers > 0 else 0
         
-        return SuperAdminDashboardStats(
+        result = SuperAdminDashboardStats(
             total_schools=total_schools,
             total_students=total_students,
             total_teachers=total_teachers,
@@ -297,6 +345,8 @@ async def get_super_admin_dashboard_stats(
             teachers_growth_rate=round(teachers_growth_rate, 1),
             last_updated=now.isoformat()
         )
+        _stats_set(_CACHE_KEY, result, _CACHE_TTL)
+        return result
         
     except Exception as e:
         logger.error(f"Error fetching super admin stats: {e}")
