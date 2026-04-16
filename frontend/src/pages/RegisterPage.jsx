@@ -172,7 +172,16 @@ export const RegisterPage = () => {
       case 3:
         isValid = validateStep3();
         if (isValid && formData.accountType === 'teacher') {
-          navigate('/teacher-register', { replace: true });
+          navigate('/teacher-register', {
+            replace: true,
+            state: {
+              prefill: {
+                full_name: formData.full_name,
+                phone: formData.phone,
+              },
+              acceptedPrivacy: true,
+            },
+          });
           return;
         }
         break;

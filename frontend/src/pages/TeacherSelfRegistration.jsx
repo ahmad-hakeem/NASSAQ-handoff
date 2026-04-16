@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -55,6 +55,8 @@ export const TeacherSelfRegistration = () => {
   const { nassaqError, nassaqWarning } = useNassaqAlert();
   const [searchParams] = useSearchParams();
   const inviteCode = searchParams.get('invite');
+  const location = useLocation();
+  const prefill = location.state?.prefill || {};
   
   // Step management
   const [currentStep, setCurrentStep] = useState(1);
@@ -73,9 +75,9 @@ export const TeacherSelfRegistration = () => {
   // Form data
   const [formData, setFormData] = useState({
     // Step 1: البيانات الأساسية
-    full_name: '',
+    full_name: prefill.full_name || '',
     national_id: '',
-    phone: '',
+    phone: prefill.phone || '',
     email: '',
     password: '',
     confirm_password: '',
