@@ -196,7 +196,7 @@ export const NotificationsPage = () => {
   const unreadCount = notifications.filter(n => !n.read_status).length;
   const typeBreakdown = useMemo(() => {
     const counts = {};
-    notifications.forEach(n => { const t = n.notification_type || 'system'; counts[t] = (counts[t] || 0) + 1; });
+    notifications.forEach(n => { const nType = n.notification_type || 'system'; counts[nType] = (counts[nType] || 0) + 1; });
     return counts;
   }, [notifications]);
 

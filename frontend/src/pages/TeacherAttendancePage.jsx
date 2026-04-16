@@ -192,7 +192,7 @@ export const TeacherAttendancePage = () => {
       return;
     }
 
-    const unrecordedTeachers = teachers.filter(t => !attendanceRecords[t.id]?.status);
+    const unrecordedTeachers = teachers.filter(teacher => !attendanceRecords[teacher.id]?.status);
     if (unrecordedTeachers.length > 0) {
       nassaqWarning(
         isRTL 
