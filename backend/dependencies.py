@@ -132,7 +132,7 @@ def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
         expire = datetime.now(timezone.utc) + expires_delta
     else:
         expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE)
-    to_encode.update({"exp": expire, "type": "access"})
+    to_encode.update({"exp": expire, "type": "access", "jti": str(uuid.uuid4())})
     return jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
@@ -157,6 +157,18 @@ async def get_current_user(
         user_id = payload.get("sub")
         if not user_id:
             raise HTTPException(status_code=401, detail="Invalid token")
+
+        jti = payload.get("jti")
+        if jti:
+            try:
+                from engines.sql_utils import gd_find_one as _gd_find_one
+                revoked = await _gd_find_one(db.session, "revoked_tokens", {"jti": jti})
+                if revoked:
+                    raise HTTPException(status_code=401, detail="Token has been revoked")
+            except HTTPException:
+                raise
+            except Exception:
+                pass
 
         user = await gd_find_one(db.session, "users", {"id": user_id})
 

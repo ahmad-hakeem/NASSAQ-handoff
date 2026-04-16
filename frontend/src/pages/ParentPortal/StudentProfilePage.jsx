@@ -39,20 +39,19 @@ const StudentProfilePage = () => {
   const [editing, setEditing] = useState(false);
   const [showAchievements, setShowAchievements] = useState(false);
 
-  const fetchProfile = async () => {
-    try {
-      const res = await api.get(`/parent-portal/child/${childId}/profile`);
-      setProfile(res.data);
-    } catch {
-      setProfile(null);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        const res = await api.get(`/parent-portal/child/${childId}/profile`);
+        setProfile(res.data);
+      } catch {
+        setProfile(null);
+      } finally {
+        setLoading(false);
+      }
+    };
     fetchProfile();
-  }, [childId]);
+  }, [childId, api]);
 
   if (loading) {
     return (

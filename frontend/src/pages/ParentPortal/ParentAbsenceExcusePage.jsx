@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import PortalLayout from '../../components/portal/PortalLayout';
@@ -36,11 +36,7 @@ const ParentAbsenceExcusePage = () => {
   const [reason, setReason] = useState('');
   const [attachmentName, setAttachmentName] = useState('');
 
-  useEffect(() => {
-    fetchData();
-  }, [token]);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       const [childrenRes, excusesRes] = await Promise.all([
         api.get('/parent-portal/children'),
@@ -55,7 +51,11 @@ const ParentAbsenceExcusePage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [api]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -72,7 +72,7 @@ const ParentAbsenceExcusePage = () => {
         attachment_name: attachmentName || null,
       });
       toast.success(t('excuseSubmittedSuccessfully'));
-      setExcuses(prev => [res.data.excuse, ...prev]);
+      fetchData();
       setAbsenceDate('');
       setReason('');
       setAttachmentName('');

@@ -31,7 +31,7 @@ const ParentMessagesPage = () => {
       }
     };
     fetchMessages();
-  }, [token]);
+  }, [token, api]);
 
   if (loading) {
     return (

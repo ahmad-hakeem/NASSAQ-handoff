@@ -85,7 +85,7 @@ export default function SessionStartPage() {
     }
     const timer = setTimeout(() => { nassaqError('لم يتم تحديد الحصة'); navigate('/teacher/home'); }, 600);
     return () => clearTimeout(timer);
-  }, [location.state, navigate]);
+  }, [location.state, navigate, nassaqError]);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {

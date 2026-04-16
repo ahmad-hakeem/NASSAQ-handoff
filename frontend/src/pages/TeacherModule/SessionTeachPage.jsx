@@ -139,11 +139,13 @@ export default function SessionTeachPage() {
       navigate('/teacher');
       return;
     }
+    let isMounted = true;
     loadStudents().then(studentList => {
-      loadSessionInfo(studentList);
+      if (isMounted) loadSessionInfo(studentList);
     });
     loadSkillTypes();
     loadActivityLog();
+    return () => { isMounted = false; };
   }, [sessionId]);
 
   const loadSessionInfo = async (studentList) => {
@@ -272,7 +274,7 @@ export default function SessionTeachPage() {
     };
     autoSaveRef.current = setInterval(saveState, 10000);
     return () => { if (autoSaveRef.current) clearInterval(autoSaveRef.current); };
-  }, [sessionId, evalMode, groups, stats, mode, actionTab, followupData, followupColumns, api]);
+  }, [sessionId, evalMode, groups, stats, mode, actionTab, followupData, followupColumns, api, customPositiveBehaviours, customNegativeBehaviours, customSkills]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -460,7 +462,7 @@ export default function SessionTeachPage() {
       await api.post(`/session/${sessionId}/mode`, { mode: m.id });
       setMode(m);
       setActionTab(getTabForMode(m.id));
-      if (m.id === 'homework') loadHomeworkStatuses();
+      if (m.id === 'homework' && students.length > 0) loadHomeworkStatuses();
       toast.success(`${t('modeActivated')}: ${t(m.labelKey)}`, { id: 'session-mode' });
     } catch (e) {
       console.error('Error setting session mode:', e);

@@ -38,7 +38,7 @@ const ParentChildrenPage = () => {
       }
     };
     fetchChildren();
-  }, [token]);
+  }, [token, api]);
 
   if (loading) {
     return (

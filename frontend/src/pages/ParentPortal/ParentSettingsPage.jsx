@@ -51,7 +51,7 @@ const ParentSettingsPage = () => {
       }
     };
     fetchSettings();
-  }, [token]);
+  }, [token, api]);
 
   const handleSave = async () => {
     setSaving(true);

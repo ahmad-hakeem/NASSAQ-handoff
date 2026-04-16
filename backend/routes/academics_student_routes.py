@@ -114,9 +114,10 @@ async def get_students(
 ):
     """Get all students or filter by school/class"""
     query = {"is_active": {"$ne": False}}
-    if school_id:
-        query["school_id"] = school_id
-    elif current_user.get("role") != UserRole.PLATFORM_ADMIN.value:
+    if current_user.get("role") == UserRole.PLATFORM_ADMIN.value:
+        if school_id:
+            query["school_id"] = school_id
+    else:
         query["school_id"] = current_user.get("tenant_id")
     
     if class_id:
@@ -140,7 +141,10 @@ async def get_students(
     return result
 
 @router.get("/classes/options/grades")
-async def get_class_grades_options(current_user: dict = Depends(get_current_user)):
+async def get_class_grades_options(current_user: dict = Depends(require_roles([
+    UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN,
+    UserRole.SCHOOL_SUB_ADMIN, UserRole.TEACHER
+]))):
     """Get available grade levels for class creation"""
     school_id = current_user.get("tenant_id")
     
@@ -175,7 +179,10 @@ async def get_class_grades_options(current_user: dict = Depends(get_current_user
     return {"grades": result_grades}
 
 @router.get("/classes/options/teachers")
-async def get_class_teachers_options(current_user: dict = Depends(get_current_user)):
+async def get_class_teachers_options(current_user: dict = Depends(require_roles([
+    UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN,
+    UserRole.SCHOOL_SUB_ADMIN, UserRole.TEACHER
+]))):
     """Get available teachers for homeroom assignment"""
     school_id = current_user.get("tenant_id")
     
@@ -194,7 +201,10 @@ async def get_class_teachers_options(current_user: dict = Depends(get_current_us
     return {"teachers": result_teachers}
 
 @router.get("/classes/options/students")
-async def get_class_students_options(current_user: dict = Depends(get_current_user)):
+async def get_class_students_options(current_user: dict = Depends(require_roles([
+    UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN,
+    UserRole.SCHOOL_SUB_ADMIN, UserRole.TEACHER
+]))):
     """Get available students for class assignment"""
     school_id = current_user.get("tenant_id") or current_user.get("school_id")
     
@@ -276,6 +286,12 @@ async def get_student(student_id: str, current_user: dict = Depends(get_current_
     student = await gd_find_one(db.session, "students", {"id": student_id})
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
+
+    if current_user.get("role") != UserRole.PLATFORM_ADMIN.value:
+        user_school = current_user.get("tenant_id")
+        student_school = student.get("school_id")
+        if user_school and student_school and student_school != user_school:
+            raise HTTPException(status_code=403, detail="غير مصرح لك بعرض بيانات هذا الطالب")
     
     class_name = None
     if student.get("class_id"):
@@ -392,12 +408,10 @@ async def transfer_student_class(
 
     if old_class_id:
         await _gd_pull(db.session, "classes", {"id": old_class_id, "school_id": school_id}, {"student_ids": student_id})
-        old_count = await gd_count(db.session, "students", {"class_id": old_class_id, "school_id": school_id})
-        await gd_update_one(db.session, "classes", {"id": old_class_id, "school_id": school_id}, {"student_count": old_count})
+        await _gd_inc(db.session, "classes", {"id": old_class_id, "school_id": school_id}, "student_count", -1)
 
     await _gd_addtoset(db.session, "classes", {"id": target_class_id, "school_id": school_id}, {"student_ids": student_id})
-    new_count = await gd_count(db.session, "students", {"class_id": target_class_id, "school_id": school_id})
-    await gd_update_one(db.session, "classes", {"id": target_class_id, "school_id": school_id}, {"student_count": new_count})
+    await _gd_inc(db.session, "classes", {"id": target_class_id, "school_id": school_id}, "student_count", 1)
 
     student_name = student.get("full_name", "")
     target_name = target_class.get("name_ar") or target_class.get("name", "")

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import PortalLayout from '../../components/portal/PortalLayout';
@@ -43,11 +43,7 @@ const ParentMeetingRequestPage = () => {
   const [details, setDetails] = useState('');
   const [contactPreference, setContactPreference] = useState('in_person');
 
-  useEffect(() => {
-    fetchMeetings();
-  }, [token]);
-
-  const fetchMeetings = async () => {
+  const fetchMeetings = useCallback(async () => {
     try {
       const res = await api.get('/parent-portal/meeting-requests');
       setMeetings(res.data?.meetings || []);
@@ -56,7 +52,11 @@ const ParentMeetingRequestPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [api]);
+
+  useEffect(() => {
+    fetchMeetings();
+  }, [fetchMeetings]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -74,7 +74,7 @@ const ParentMeetingRequestPage = () => {
         contact_preference: contactPreference,
       });
       toast.success(t('meetingRequestSubmittedSuccessfully'));
-      setMeetings(prev => [res.data.meeting, ...prev]);
+      fetchMeetings();
       setPreferredDate('');
       setPreferredTime('');
       setTopic('');

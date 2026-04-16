@@ -1199,3 +1199,15 @@ class GenericDocument(Base):
 
 
 issue_number_seq = Sequence("issue_number_seq", start=1, increment=1)
+
+
+class RevokedToken(Base):
+    __tablename__ = "revoked_tokens"
+
+    jti = Column(String(36), primary_key=True, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    revoked_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("ix_revoked_tokens_expires_at", "expires_at"),
+    )

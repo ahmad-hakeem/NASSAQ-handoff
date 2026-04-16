@@ -357,6 +357,21 @@ class HakimAIEngine:
         self, teacher_id: str, school_id: str, days_back: int = 30
     ) -> Dict[str, Any]:
         """Analyze session metrics and teaching patterns for a teacher."""
+        try:
+            return await self._analyze_teacher_sessions_impl(teacher_id, school_id, days_back)
+        except Exception as e:
+            import logging
+            logging.getLogger("nassaq.hakim").error(f"analyze_teacher_sessions failed: {e}", exc_info=True)
+            return {
+                "teacher_id": teacher_id,
+                "error": "تعذّر تحليل بيانات المعلم مؤقتاً",
+                "analyzed_at": datetime.now(timezone.utc).isoformat(),
+            }
+
+    async def _analyze_teacher_sessions_impl(
+        self, teacher_id: str, school_id: str, days_back: int = 30
+    ) -> Dict[str, Any]:
+        """Internal implementation for teacher session analysis."""
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime("%Y-%m-%d")
 
         sessions = await gd_find(self.session, "class_sessions", {
@@ -418,12 +433,14 @@ class HakimAIEngine:
         ))
 
         classes_taught = list(set(s.get("class_id") for s in sessions if s.get("class_id")))
+        all_classes = await gd_find(self.session, "classes", {"id": {"$in": classes_taught}, "school_id": school_id})
+        class_lookup = {c["id"]: c for c in all_classes}
         class_breakdown = []
         for cid in classes_taught:
             c_sessions = [s for s in sessions if s.get("class_id") == cid]
-            c_sids = [s["id"] for s in c_sessions]
+            c_sids = {s["id"] for s in c_sessions}
             c_interactions = sum(1 for i in interactions if i["session_id"] in c_sids)
-            cls = await gd_find_one(self.session, "classes", {"id": cid, "school_id": school_id})
+            cls = class_lookup.get(cid, {})
             class_breakdown.append({
                 "class_id": cid,
                 "class_name": cls.get("name") if cls else cid,
@@ -464,6 +481,21 @@ class HakimAIEngine:
         self, class_id: str, school_id: str, days_back: int = 30
     ) -> Dict[str, Any]:
         """Compute a composite health score for a class."""
+        try:
+            return await self._analyze_class_health_impl(class_id, school_id, days_back)
+        except Exception as e:
+            import logging
+            logging.getLogger("nassaq.hakim").error(f"analyze_class_health failed: {e}", exc_info=True)
+            return {
+                "class_id": class_id,
+                "error": "تعذّر تحليل صحة الفصل مؤقتاً",
+                "analyzed_at": datetime.now(timezone.utc).isoformat(),
+            }
+
+    async def _analyze_class_health_impl(
+        self, class_id: str, school_id: str, days_back: int = 30
+    ) -> Dict[str, Any]:
+        """Internal implementation for class health analysis."""
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime("%Y-%m-%d")
 
         students = await gd_find(self.session, "students", {

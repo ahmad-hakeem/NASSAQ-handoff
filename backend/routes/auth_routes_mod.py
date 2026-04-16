@@ -235,15 +235,31 @@ async def refresh_token(body: RefreshTokenRequest):
 @router.post("/auth/logout")
 async def logout(
     request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
     current_user: dict = Depends(get_current_user)
 ):
     """
-    Logout endpoint — records audit trail for session end.
-    JWT is stateless so no server-side invalidation; client must discard the token.
+    Logout endpoint — revokes the JWT by inserting its jti into revoked_tokens,
+    then records an audit trail for session end.
     """
     user_id = current_user.get("id") or str(current_user.get("_id", ""))
     ip_address = request.client.host if request.client else None
     user_agent = request.headers.get("user-agent")
+
+    try:
+        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        jti = payload.get("jti")
+        exp = payload.get("exp")
+        if jti and exp:
+            from datetime import timezone as _tz
+            expires_at = datetime.fromtimestamp(exp, tz=_tz.utc)
+            await gd_insert(db.session, "revoked_tokens", {
+                "jti": jti,
+                "expires_at": expires_at.isoformat(),
+                "revoked_at": datetime.now(_tz.utc).isoformat(),
+            })
+    except Exception:
+        pass
 
     await audit_engine.log_auth_event(
         action=AuditAction.LOGOUT.value,

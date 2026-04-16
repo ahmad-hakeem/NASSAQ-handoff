@@ -37,24 +37,23 @@ const ChildSchedulePage = () => {
   const [viewMode, setViewMode] = useState('list');
 
   useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [scheduleRes, childRes] = await Promise.all([
+          api.get(`/parent-portal/child/${childId}/schedule`),
+          api.get(`/parent-portal/child/${childId}`).catch(() => ({ data: null }))
+        ]);
+        setSchedule(scheduleRes.data);
+        setChild(childRes.data);
+      } catch (error) {
+        console.error('Error fetching schedule:', error);
+        nassaqError(t('errorFetchingSchedule'));
+      } finally {
+        setLoading(false);
+      }
+    };
     fetchData();
-  }, [childId, token]);
-
-  const fetchData = async () => {
-    try {
-      const [scheduleRes, childRes] = await Promise.all([
-        api.get(`/parent-portal/child/${childId}/schedule`),
-        api.get(`/parent-portal/child/${childId}`).catch(() => ({ data: null }))
-      ]);
-      setSchedule(scheduleRes.data);
-      setChild(childRes.data);
-    } catch (error) {
-      console.error('Error fetching schedule:', error);
-      nassaqError(t('errorFetchingSchedule'));
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [childId, token, api, nassaqError, t]);
 
   const handlePrint = () => {
     window.print();
