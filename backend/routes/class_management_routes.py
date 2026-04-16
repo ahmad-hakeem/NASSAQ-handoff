@@ -41,11 +41,11 @@ def create_class_management_routes(db, get_current_user):
         request: CreateClassRequest,
         current_user: dict = Depends(get_current_user)
     ):
-        tenant_id = current_user.get("tenant_id")
+        tenant_id = current_user.get("tenant_id") or current_user.get("school_id")
         if not tenant_id:
             raise HTTPException(status_code=400, detail="Tenant ID required")
         
-        allowed_roles = ["platform_admin", "school_principal", "school_sub_admin"]
+        allowed_roles = ["platform_admin", "school_principal", "school_sub_admin", "teacher", "school_admin"]
         if current_user.get("role") not in allowed_roles:
             raise HTTPException(status_code=403, detail="Permission denied")
         

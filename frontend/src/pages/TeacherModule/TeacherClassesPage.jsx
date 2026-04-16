@@ -76,6 +76,7 @@ export default function TeacherClassesPage() {
   const [showAddClassDialog, setShowAddClassDialog] = useState(false);
   const [addClassForm, setAddClassForm] = useState({ name: '', grade: '', section: '', weekly_count: 5 });
   const [addingClass, setAddingClass] = useState(false);
+  const [gradeOptions, setGradeOptions] = useState([]);
 
   const [showImportDialog, setShowImportDialog] = useState(false);
   const fileInputRef = useRef(null);
@@ -226,6 +227,21 @@ export default function TeacherClassesPage() {
     }));
   };
 
+  const fetchGradeOptions = useCallback(async () => {
+    try {
+      const res = await api.get('/classes/options/grades').catch(() => ({ data: { grades: [] } }));
+      const grades = res.data?.grades || [];
+      setGradeOptions(grades);
+    } catch (err) {
+      console.error('Error fetching grades:', err);
+    }
+  }, [api]);
+
+  const handleOpenAddClassDialog = () => {
+    fetchGradeOptions();
+    setShowAddClassDialog(true);
+  };
+
   const handleAddClass = async () => {
     if (!addClassForm.name || !addClassForm.grade || !addClassForm.section) {
       nassaqError(t('pleaseFillAllFields'));
@@ -237,7 +253,6 @@ export default function TeacherClassesPage() {
         name_ar: addClassForm.name,
         grade_id: addClassForm.grade,
         section: addClassForm.section,
-        weekly_periods: addClassForm.weekly_count,
         capacity: 30,
       });
       toast.success(t('classAddedSuccessfully'));
@@ -246,7 +261,9 @@ export default function TeacherClassesPage() {
       fetchClasses();
     } catch (err) {
       console.error('Error adding class:', err);
-      nassaqError(t('errorAddingClass'));
+      const detail = err.response?.data?.detail;
+      const msg = typeof detail === 'string' ? detail : t('errorAddingClass');
+      nassaqError(msg);
     } finally {
       setAddingClass(false);
     }
@@ -784,7 +801,11 @@ export default function TeacherClassesPage() {
                   <SelectValue placeholder={t('gradeLevel')} />
                 </SelectTrigger>
                 <SelectContent>
-                  {[1,2,3,4,5,6].map(g => (
+                  {gradeOptions.length > 0 ? gradeOptions.map(g => (
+                    <SelectItem key={g.id} value={g.id}>
+                      {isRTL ? (g.name_ar || g.name) : (g.name_en || g.name)}
+                    </SelectItem>
+                  )) : [1,2,3,4,5,6].map(g => (
                     <SelectItem key={g} value={String(g)}>
                       {t('gradeLevel')} {g}
                     </SelectItem>
@@ -883,7 +904,7 @@ export default function TeacherClassesPage() {
                     variant="outline"
                     size="sm"
                     className="h-9 gap-1.5"
-                    onClick={() => setShowAddClassDialog(true)}
+                    onClick={handleOpenAddClassDialog}
                   >
                     <Plus className="h-4 w-4" />
                     <span className="hidden sm:inline">{t('addClass')}</span>

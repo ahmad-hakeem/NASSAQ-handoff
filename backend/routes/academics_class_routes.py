@@ -54,15 +54,19 @@ async def create_class_wizard(
     current_user: dict = Depends(get_current_user)
 ):
     """Create a new class via wizard"""
-    school_id = current_user.get("tenant_id")
+    school_id = current_user.get("tenant_id") or current_user.get("school_id")
     
     if not school_id:
         raise HTTPException(status_code=400, detail="المستخدم غير مرتبط بمدرسة")
     
     class_id = str(uuid.uuid4())
     
-    # Get grade level info
-    grade_level = await gd_find_one(db.session, "grade_levels", {"id": data.grade_id})
+    # Get grade level info - try by UUID first, then by code/number
+    grade_level = await gd_find_one(db.session, "grade_levels", {"id": data.grade_id, "school_id": school_id})
+    if not grade_level:
+        grade_level = await gd_find_one(db.session, "grade_levels", {"id": data.grade_id})
+    if not grade_level:
+        grade_level = await gd_find_one(db.session, "grade_levels", {"code": data.grade_id, "school_id": school_id})
     
     # Derive grade number from grade_level if not provided
     grade_number = data.grade
@@ -83,19 +87,15 @@ async def create_class_wizard(
     
     grade_name = grade_level.get("name_ar") if grade_level else f"الصف {grade_number}"
     
-    # Create class document
+    # Create class document - use correct field names for ORM model
     class_doc = {
         "id": class_id,
         "school_id": school_id,
         "name": class_name,
-        "name_ar": class_name,
         "name_en": data.name_en or f"Grade {grade_number} - {data.section or 'A'}",
-        "grade_level_id": data.grade_id,
-        "grade": grade_number,
-        "section": data.section or "أ",
-        "class_type": data.class_type,
+        "grade_id": grade_level.get("id") if grade_level else data.grade_id,
+        "grade_level": data.grade_id,
         "capacity": data.capacity,
-        "student_count": len(data.student_ids),
         "homeroom_teacher_id": data.homeroom_teacher_id,
         "is_active": True,
         "created_at": datetime.now(timezone.utc).isoformat(),
