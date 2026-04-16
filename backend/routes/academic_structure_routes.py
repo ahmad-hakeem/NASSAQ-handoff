@@ -124,6 +124,14 @@ async def get_academic_overview(
 
     all_years = await gd_find(db.session, "academic_years", {"school_id": school_id}, order_by="start_date", desc_order=True, limit=50)
 
+    if not current_year:
+        for y in all_years:
+            if y.get("status") == "active":
+                current_year = y
+                break
+    if not current_year and all_years:
+        current_year = all_years[0]
+
     current_term = None
     terms_count = 0
     remaining_days = 0
@@ -134,9 +142,16 @@ async def get_academic_overview(
 
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         for t in terms:
-            if t.get("start_date", "") <= today <= t.get("end_date", ""):
+            sd = str(t.get("start_date", "") or "")[:10]
+            ed = str(t.get("end_date", "") or "")[:10]
+            if sd <= today <= ed:
                 current_term = t
                 break
+        if not current_term:
+            for t in terms:
+                if t.get("is_current"):
+                    current_term = t
+                    break
 
         try:
             raw_end = str(current_year.get("end_date", "") or "")[:10]
@@ -554,8 +569,10 @@ async def get_academic_calendar(
             pass
 
     try:
-        year_start = datetime.strptime(year.get("start_date", ""), "%Y-%m-%d")
-        year_end = datetime.strptime(year.get("end_date", ""), "%Y-%m-%d")
+        raw_start = str(year.get("start_date", "") or "")[:10]
+        raw_end = str(year.get("end_date", "") or "")[:10]
+        year_start = datetime.strptime(raw_start, "%Y-%m-%d")
+        year_end = datetime.strptime(raw_end, "%Y-%m-%d")
         total_days = (year_end - year_start).days + 1
         weekends = sum(1 for d in range(total_days) if (year_start + timedelta(days=d)).weekday() >= 4)
         school_days = total_days - weekends - total_holiday_days
