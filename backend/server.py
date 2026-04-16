@@ -54,6 +54,7 @@ from fastapi import FastAPI, APIRouter, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from sqlalchemy.exc import IntegrityError
 
 
 def create_app() -> FastAPI:
@@ -78,6 +79,33 @@ def create_app() -> FastAPI:
                     "code": f"HTTP_{exc.status_code}",
                     "message": detail,
                 },
+            },
+        )
+
+    @application.exception_handler(IntegrityError)
+    async def integrity_exception_handler(request: Request, exc: IntegrityError):
+        # Convert race-condition unique/foreign-key violations into a clean 409
+        # instead of leaking a 500 to the client.
+        msg = str(getattr(exc, "orig", exc))
+        lower = msg.lower()
+        if "unique" in lower or "duplicate" in lower:
+            code = "DUPLICATE_RECORD"
+            user_msg = "هذا السجل موجود مسبقاً"
+        elif "foreign key" in lower:
+            code = "INVALID_REFERENCE"
+            user_msg = "مرجع غير صالح في البيانات المُرسَلة"
+        else:
+            code = "DATA_CONFLICT"
+            user_msg = "تعارض في البيانات"
+        logger.warning(
+            "IntegrityError on %s %s: %s",
+            request.method, request.url.path, msg,
+        )
+        return JSONResponse(
+            status_code=409,
+            content={
+                "success": False,
+                "error": {"code": code, "message": user_msg},
             },
         )
 

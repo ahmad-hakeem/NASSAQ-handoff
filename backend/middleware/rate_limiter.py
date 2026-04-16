@@ -74,6 +74,11 @@ RATE_LIMITS = {
     "/api/reports/export": {"max": 10, "window": 120},
     "/api/hakim/analyze": {"max": 5, "window": 60},
     "/api/auth/change-password": {"max": 5, "window": 300},
+    "/api/teachers/create": {"max": 20, "window": 60},
+    "/api/classes/create": {"max": 30, "window": 60},
+    "/api/student-wizard/create": {"max": 30, "window": 60},
+    "/api/student-wizard/check-parent": {"max": 60, "window": 60},
+    "/api/student-wizard/search-parents": {"max": 60, "window": 60},
 }
 
 
