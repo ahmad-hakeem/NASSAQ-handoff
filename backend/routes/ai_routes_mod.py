@@ -1346,11 +1346,21 @@ async def post_intervention(
         message = (d.get("message") or "").strip()
         if not message:
             raise HTTPException(400, "نص الرسالة مطلوب")
+        parent_rec = await gd_find_one(db.session, "parents",
+                                       {"id": parent_id, "school_id": school_id})
+        parent_user_id = None
+        if parent_rec and parent_rec.get("email"):
+            parent_user = await gd_find_one(db.session, "users",
+                                            {"email": parent_rec["email"]})
+            if parent_user:
+                parent_user_id = parent_user.get("id")
+        if not parent_user_id:
+            raise HTTPException(400, "ولي الأمر ليس لديه حساب مستخدم مفعّل")
         from routes.notification_routes_mod import create_notification_internal
         await create_notification_internal(
             title="متابعة أداء الطالب",
             message=message,
-            recipient_id=parent_id,
+            recipient_id=parent_user_id,
             notification_type=d.get("issue_type", "general"),
             priority="high",
             sender_id=current_user.get("id"),
