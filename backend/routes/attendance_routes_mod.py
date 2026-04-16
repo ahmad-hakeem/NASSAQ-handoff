@@ -354,10 +354,9 @@ async def create_bulk_attendance(
     )
 
     try:
-        import asyncio
         from engines.portfolio_evidence_engine import PortfolioEvidenceEngine
         _pe = PortfolioEvidenceEngine(db)
-        asyncio.create_task(_pe.capture_evidence(
+        await _pe.capture_evidence(
             teacher_id=current_user["id"],
             school_id=t_id or "",
             evidence_type="attendance_record",
@@ -370,7 +369,7 @@ async def create_bulk_attendance(
             class_id=bulk_data.class_id,
             metadata={"created": result["created"], "updated": result["updated"]},
             event_date=bulk_data.date,
-        ))
+        )
     except Exception as _pe_err:
         logging.getLogger(__name__).debug("Portfolio evidence (bulk_attendance) failed: %s", _pe_err)
 
