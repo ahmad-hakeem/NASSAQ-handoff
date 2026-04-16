@@ -28,6 +28,11 @@ def register_middleware(app: FastAPI):
             db.set_session(session)
             try:
                 response = await call_next(request)
+                if not session.in_transaction():
+                    return response
+                if request.method in ("GET", "HEAD", "OPTIONS"):
+                    await session.rollback()
+                    return response
                 if session.is_active and not session.in_nested_transaction():
                     try:
                         await session.commit()
@@ -72,7 +77,7 @@ def register_middleware(app: FastAPI):
     @app.middleware("http")
     async def audit_log_middleware(request: Request, call_next):
         from middleware.audit_middleware import _should_audit, _derive_action, _derive_severity, parse_device_info, _extract_real_ip, _sanitize_query_params as _sanitize_qp
-        import time, uuid as _uuid
+        import asyncio, time, uuid as _uuid
         from datetime import datetime, timezone
 
         method = request.method
@@ -139,11 +144,20 @@ def register_middleware(app: FastAPI):
                     "success": 200 <= response.status_code < 400,
                 },
             }
-            from repositories import Repos
-            async with async_session_factory() as audit_session:
-                audit_repos = Repos(audit_session)
-                await audit_repos.audit_logs.insert_one(audit_doc)
-                await audit_session.commit()
+
+            async def _persist_audit(doc):
+                try:
+                    from repositories import Repos
+                    async with async_session_factory() as audit_session:
+                        audit_repos = Repos(audit_session)
+                        await audit_repos.audit_logs.insert_one(doc)
+                        await audit_session.commit()
+                except Exception as _e:
+                    import logging as _lg
+                    _lg.getLogger("nassaq.audit").debug(f"Audit persist failed: {_e}")
+
+            task = asyncio.create_task(_persist_audit(audit_doc))
+            task.add_done_callback(lambda t: t.exception())
         except Exception as _e:
             import logging as _lg
             _lg.getLogger("nassaq.audit").debug(f"Audit middleware: {_e}")
