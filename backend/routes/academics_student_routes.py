@@ -37,6 +37,23 @@ async def get_school_id_from_context(current_user: dict, x_school_context: str =
         return x_school_context
     return current_user.get("tenant_id")
 
+
+def _independent_workspace_id(current_user: dict) -> Optional[str]:
+    """Return the independent-teacher workspace id for the current user, if applicable."""
+    role = current_user.get("role")
+    account_type = current_user.get("account_type") or (current_user.get("data") or {}).get("account_type")
+    if role != "independent_teacher" and account_type != "independent_teacher":
+        return None
+    user_id = current_user.get("id") or current_user.get("_id")
+    if not user_id:
+        return None
+    return f"itw_{user_id}"
+
+
+def _scoped_school_id(current_user: dict) -> Optional[str]:
+    """Resolve a school/tenant id for a user, falling back to their personal workspace."""
+    return current_user.get("tenant_id") or _independent_workspace_id(current_user)
+
 # ============== STUDENTS ROUTES ==============
 @router.post("/students", response_model=StudentResponse)
 async def create_student(
@@ -143,11 +160,11 @@ async def get_students(
 @router.get("/classes/options/grades")
 async def get_class_grades_options(current_user: dict = Depends(require_roles([
     UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN,
-    UserRole.SCHOOL_SUB_ADMIN, UserRole.TEACHER
+    UserRole.SCHOOL_SUB_ADMIN, UserRole.TEACHER, UserRole.INDEPENDENT_TEACHER
 ]))):
     """Get available grade levels for class creation"""
-    school_id = current_user.get("tenant_id")
-    
+    school_id = _scoped_school_id(current_user)
+
     grades = await gd_find(db.session, "grade_levels", {"school_id": school_id} if school_id else {}, limit=100)
     
     result_grades = []
@@ -172,20 +189,22 @@ async def get_class_grades_options(current_user: dict = Depends(require_roles([
             "9": ("الصف التاسع", "Grade 9"), "10": ("الصف العاشر", "Grade 10"),
             "11": ("الصف الحادي عشر", "Grade 11"), "12": ("الصف الثاني عشر", "Grade 12"),
         }
+        if not grade_levels:
+            grade_levels = [str(i) for i in range(1, 13)]
         for gl in grade_levels:
             names = grade_names.get(gl, (f"الصف {gl}", f"Grade {gl}"))
             result_grades.append({"id": gl, "name_ar": names[0], "name_en": names[1], "grade": int(gl) if gl.isdigit() else None, "stage": "ابتدائي" if gl.isdigit() and int(gl) <= 6 else "متوسط/ثانوي"})
-    
+
     return {"grades": result_grades}
 
 @router.get("/classes/options/teachers")
 async def get_class_teachers_options(current_user: dict = Depends(require_roles([
     UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN,
-    UserRole.SCHOOL_SUB_ADMIN, UserRole.TEACHER
+    UserRole.SCHOOL_SUB_ADMIN, UserRole.TEACHER, UserRole.INDEPENDENT_TEACHER
 ]))):
     """Get available teachers for homeroom assignment"""
-    school_id = current_user.get("tenant_id")
-    
+    school_id = _scoped_school_id(current_user)
+
     teachers = await gd_find(db.session, "teachers", {"school_id": school_id, "is_active": {"$ne": False}} if school_id else {"is_active": {"$ne": False}}, limit=200)
     
     result_teachers = []
@@ -203,11 +222,11 @@ async def get_class_teachers_options(current_user: dict = Depends(require_roles(
 @router.get("/classes/options/students")
 async def get_class_students_options(current_user: dict = Depends(require_roles([
     UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN,
-    UserRole.SCHOOL_SUB_ADMIN, UserRole.TEACHER
+    UserRole.SCHOOL_SUB_ADMIN, UserRole.TEACHER, UserRole.INDEPENDENT_TEACHER
 ]))):
     """Get available students for class assignment"""
-    school_id = current_user.get("tenant_id") or current_user.get("school_id")
-    
+    school_id = _scoped_school_id(current_user) or current_user.get("school_id")
+
     query = {"school_id": school_id, "is_active": {"$ne": False}} if school_id else {"is_active": {"$ne": False}}
     students = await gd_find(db.session, "students", query, limit=500)
     
