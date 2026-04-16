@@ -130,18 +130,17 @@ async def create_registration_request(request_data: RegistrationRequest):
 
     request_doc = {
         "id": request_id,
+        "type": request_data.account_type,
+        "name": request_data.full_name,
         **submission_data,
         "status": "pending_review",
         "source": "public_signup",
         "payload_snapshot": submission_data,
         "linked_entity_type": None,
         "linked_entity_id": None,
-        "linked_user_id": None,
-        "linked_school_id": None,
         "review_notes": None,
         "reviewed_at": None,
         "reviewed_by": None,
-        "priority": "normal",
         "created_at": now,
         "updated_at": now
     }
@@ -206,10 +205,19 @@ async def create_registration_request(request_data: RegistrationRequest):
         national_id=request_data.national_id,
         account_type=request_data.account_type,
         status="pending_review",
+        school_name=request_data.school_name,
+        school_email=request_data.school_email,
+        school_phone=request_data.school_phone,
+        school_city=request_data.school_city,
+        school_address=request_data.school_address,
+        student_capacity=request_data.student_capacity,
+        school_code=request_data.school_code,
+        specialization=request_data.specialization,
         subject=request_data.subject,
         educational_level=request_data.educational_level,
         school_mentioned=request_data.school_mentioned,
         country=request_data.country,
+        years_of_experience=request_data.years_of_experience,
         created_at=request_doc["created_at"]
     )
 

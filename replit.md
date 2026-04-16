@@ -1068,3 +1068,17 @@ Sub-pages (accessible from within classes/sessions, not top-level sidebar):
 - **Default password for all accounts**: `Test@1234`
 - **Platform admin**: `admin@nassaq.com` / `Test@1234`
 - All seeding uses DB-direct ORM inserts (no API round-trips); structural data is upserted (safe to re-run)
+
+## Critical Field Mapping Notes
+
+### registration_requests table
+- **ORM model** (`pg_models.py`): uses `type` (NOT NULL) and `name` columns
+- **Pydantic model** (`shared_models.py`): uses `account_type` and `full_name` fields
+- **Fix applied**: `registration_routes_mod.py` explicitly maps `type = account_type` and `name = full_name` before DB insert
+- Extra Pydantic fields (`account_type`, `full_name`, `school_city`, etc.) are stored in the JSONB `data` column via `dict_to_model`
+- The approval engine reads `account_type` from the merged dict (JSONB `data` → top-level via `model_to_dict`)
+- The approval queue (`get_queue`) filters directly on `RegistrationRequest.type` column
+
+### sql_utils.py TENANT_ALIAS
+- Only `tenant_id` ↔ `school_id` is auto-aliased
+- All other field name mismatches (like `account_type` vs `type`, `full_name` vs `name`) must be explicitly mapped before calling `gd_insert`
