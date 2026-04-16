@@ -168,16 +168,39 @@ export const AuthProvider = ({ children }) => {
       return;
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    const PUBLIC_PATHS = ['/', '/login', '/register', '/about', '/contact', '/pricing', '/forgot-password'];
+    const isPublicPath = PUBLIC_PATHS.includes(window.location.pathname);
+
+    const fetchWithTimeout = async (timeoutMs) => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        return await api.get('/auth/me', { signal: controller.signal });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    };
 
     try {
-      const response = await api.get('/auth/me', { signal: controller.signal });
+      let response;
+      try {
+        response = await fetchWithTimeout(20000);
+      } catch (firstErr) {
+        const isTimeout = firstErr.name === 'CanceledError' || firstErr.code === 'ERR_CANCELED';
+        if (isTimeout) {
+          console.warn('fetchUser timed out after 20s, retrying once...');
+          response = await fetchWithTimeout(20000);
+        } else {
+          throw firstErr;
+        }
+      }
       setUser(response.data);
     } catch (error) {
       if (error.name === 'CanceledError' || error.code === 'ERR_CANCELED') {
-        console.error('fetchUser timed out after 10s');
-        toast.error('انتهت مهلة الاتصال — يرجى تحديث الصفحة');
+        console.error('fetchUser timed out after retry');
+        if (!isPublicPath) {
+          toast.error('انتهت مهلة الاتصال — يرجى تحديث الصفحة');
+        }
       } else if (error.response?.status === 401) {
         const newAccess = await attemptTokenRefresh();
         if (newAccess) {
