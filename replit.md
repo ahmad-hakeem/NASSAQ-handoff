@@ -1089,3 +1089,13 @@ Sub-pages (accessible from within classes/sessions, not top-level sidebar):
 - `_emit_event()` in `approval_engine.py` uses `begin_nested()` savepoints so event failures don't corrupt the parent transaction
 - Registration route validates `account_type` server-side against allowed set: school, teacher, parent, student
 - Notification creation uses correct ORM field names: `user_id`, `type`, `is_read`
+
+### Production Audit Fixes (April 2026 - Account Creation)
+- **Password hashing**: `student_management_engine.py` was storing plaintext passwords for students and parents — now uses bcrypt
+- **Sibling linking**: `_gd_addtoset` call in `student_creation_routes.py` had wrong signature (string instead of dict) — fixed
+- **Role check**: `school_admin` was missing from allowed roles in `student_management_routes.py` — added
+- **Class wizard auth**: `create_class_wizard` had no role check (any user could create classes) — now requires admin roles
+- **Login safety**: `verify_password` could crash with ValueError on non-bcrypt hashes — now catches and returns False
+- **School verification**: `SchoolApprovalHandler.verify_after_approve` used `principal.school_id` (non-existent attr) instead of `principal.tenant_id` — fixed
+- **Student wizard field mapping**: `student_creation_routes.py` used `student_id` (dropped by ORM) instead of `student_number`, `grade_id` instead of `grade`, `student_count` instead of `current_students` — all corrected to match Student/Class ORM columns
+- **QR code generation**: Updated to read `student_number` with fallback to `student_id`

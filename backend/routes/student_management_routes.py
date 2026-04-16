@@ -176,7 +176,7 @@ def create_student_routes(db, get_current_user):
             raise HTTPException(status_code=400, detail="Tenant ID required")
         
         # Check permissions
-        allowed_roles = ["platform_admin", "school_principal", "school_sub_admin"]
+        allowed_roles = ["platform_admin", "school_principal", "school_admin", "school_sub_admin"]
         if current_user.get("role") not in allowed_roles:
             raise HTTPException(status_code=403, detail="Permission denied")
         

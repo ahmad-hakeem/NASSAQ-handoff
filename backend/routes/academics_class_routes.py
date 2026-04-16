@@ -51,7 +51,7 @@ class ClassWizardCreate(BaseModel):
 @router.post("/classes/create")
 async def create_class_wizard(
     data: ClassWizardCreate,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN]))
 ):
     """Create a new class via wizard"""
     school_id = current_user.get("tenant_id") or current_user.get("school_id")

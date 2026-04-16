@@ -403,10 +403,13 @@ class StudentManagementEngine:
             if existing:
                 username = f"{username}_{secrets.token_hex(2)}"
 
+            import bcrypt
+            hashed_pw = bcrypt.hashpw(temp_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
             user_obj = User(
                 id=str(uuid.uuid4()),
                 email=f"{username}@nassaq.student.local",
-                password_hash=temp_password,
+                password_hash=hashed_pw,
                 role="student",
                 tenant_id=tenant_id,
                 full_name=student_doc["full_name_ar"],
@@ -458,10 +461,13 @@ class StudentManagementEngine:
 
             email = parent_doc.get("email") or f"{username}@nassaq.parent.local"
 
+            import bcrypt
+            hashed_pw = bcrypt.hashpw(temp_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
             user_obj = User(
                 id=str(uuid.uuid4()),
                 email=email,
-                password_hash=temp_password,
+                password_hash=hashed_pw,
                 role="parent",
                 tenant_id=tenant_id,
                 full_name=parent_doc["name_ar"],

@@ -77,7 +77,7 @@ def generate_qr_code(student_data: dict) -> str:
     توليد QR Code للطالب
     """
     qr = qrcode.QRCode(version=1, box_size=10, border=5)
-    qr_data = f"NASSAQ-STUDENT|{student_data.get('id')}|{student_data.get('student_id')}|{student_data.get('full_name')}"
+    qr_data = f"NASSAQ-STUDENT|{student_data.get('id')}|{student_data.get('student_number', student_data.get('student_id', ''))}|{student_data.get('full_name')}"
     qr.add_data(qr_data)
     qr.make(fit=True)
     
@@ -281,26 +281,20 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
         student_doc = {
             "id": student_id,
             "user_id": user_id,
-            "student_id": student_id_code,
+            "student_number": student_id_code,
             "full_name": request.full_name,
             "email": student_email,
             "national_id": request.national_id,
             "gender": request.gender,
             "date_of_birth": request.date_of_birth,
-            "education_level": request.education_level,
-            "grade_id": request.grade_id,
+            "grade": request.grade_id,
             "class_id": request.class_id,
             "parent_id": parent.get("id"),
-            "sibling_ids": [s.get("id") for s in siblings],
             "school_id": school_id,
             "is_active": True,
             "created_at": now,
             "created_by": current_user.get("id"),
         }
-        
-        # Add health data if provided
-        if request.health:
-            student_doc["health"] = request.health.model_dump()
         
         # Generate QR Code
         qr_code = generate_qr_code(student_doc)
@@ -316,11 +310,11 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
             sibling_ids = [s.get("id") for s in siblings]
             # Update siblings to include new student
             for sib_id in sibling_ids:
-                await _gd_addtoset(db.session, "students", {"id": sib_id}, "sibling_ids", student_id)
+                await _gd_addtoset(db.session, "students", {"id": sib_id}, {"sibling_ids": student_id})
         
         # Update class student count
         if request.class_id:
-            await _gd_inc(db.session, "classes", {"id": request.class_id}, {"student_count": 1})
+            await _gd_inc(db.session, "classes", {"id": request.class_id}, {"current_students": 1})
         
         # Get class and grade info for response
         class_info = None

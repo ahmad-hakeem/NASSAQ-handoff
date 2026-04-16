@@ -453,7 +453,7 @@ class SchoolApprovalHandler(ApprovalHandler):
         principal = res2.scalars().first()
         if not principal:
             return f"Post-approval verification failed: principal user {principal_id} not found"
-        if principal.school_id != school_id:
+        if principal.tenant_id != school_id:
             return f"Post-approval verification failed: principal not linked to school"
         if not principal.is_active:
             return f"Post-approval verification failed: principal user is not active"
