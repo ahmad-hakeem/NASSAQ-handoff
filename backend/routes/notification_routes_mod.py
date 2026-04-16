@@ -133,6 +133,40 @@ async def create_notification(
     if current_user['role'] not in ['platform_admin', 'school_principal', 'school_sub_admin', 'school_admin', 'teacher']:
         raise HTTPException(status_code=403, detail="Not authorized to create notifications")
     
+    if notification.recipient_role and not notification.recipient_id:
+        query = {"role": notification.recipient_role}
+        tenant_id = current_user.get('tenant_id')
+        if tenant_id:
+            query['tenant_id'] = tenant_id
+        role_users = await gd_find(db.session, "users", query, limit=1000)
+        if not role_users:
+            raise HTTPException(status_code=404, detail="لم يتم العثور على مستخدمين بهذا الدور")
+
+        created_ids = []
+        for role_user in role_users:
+            notification_id = str(uuid.uuid4())
+            notification_doc = {
+                "id": notification_id,
+                "user_id": role_user["id"],
+                "title": notification.title,
+                "message": notification.message,
+                "type": notification.notification_type.value if notification.notification_type else None,
+                "priority": notification.priority.value if notification.priority else "normal",
+                "action_url": notification.action_url,
+                "related_entity": notification.related_entity,
+                "related_entity_id": notification.related_entity_id,
+                "sender_id": current_user['id'],
+                "sender_name": current_user.get('full_name', ''),
+                "tenant_id": tenant_id,
+                "is_read": False,
+                "read_at": None,
+                "created_at": datetime.now(timezone.utc),
+            }
+            await gd_insert(db.session, "notifications", notification_doc)
+            created_ids.append(notification_id)
+
+        return {"success": True, "notification_id": created_ids[0] if created_ids else None, "created_count": len(created_ids), "message": f"تم إرسال {len(created_ids)} إشعار بنجاح"}
+
     resolved_user_id = notification.recipient_id
     if resolved_user_id:
         user_exists = await gd_find_one(db.session, "users", {"id": resolved_user_id})
@@ -154,6 +188,8 @@ async def create_notification(
                     raise HTTPException(status_code=404, detail="لم يتم العثور على حساب ولي الأمر")
             else:
                 raise HTTPException(status_code=404, detail="المستخدم غير موجود")
+    else:
+        raise HTTPException(status_code=400, detail="يجب تحديد المستلم أو الدور")
 
     notification_id = str(uuid.uuid4())
     notification_doc = {
@@ -164,6 +200,10 @@ async def create_notification(
         "type": notification.notification_type.value if notification.notification_type else None,
         "priority": notification.priority.value if notification.priority else "normal",
         "action_url": notification.action_url,
+        "related_entity": notification.related_entity,
+        "related_entity_id": notification.related_entity_id,
+        "sender_id": current_user['id'],
+        "sender_name": current_user.get('full_name', ''),
         "tenant_id": current_user.get('tenant_id'),
         "is_read": False,
         "read_at": None,
