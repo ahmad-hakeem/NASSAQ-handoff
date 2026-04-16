@@ -224,6 +224,7 @@ class AttendanceEngine:
     ) -> Dict[str, Any]:
         from pg_models import Attendance, Class, Student
         now = datetime.now(timezone.utc)
+        parsed_date = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc) if isinstance(date_str, str) else date_str
 
         stmt = select(Class).where(Class.id == class_id, Class.school_id == tenant_id).limit(1)
         result = await self.session.execute(stmt)
@@ -249,7 +250,7 @@ class AttendanceEngine:
 
         stmt = select(Attendance).where(
             Attendance.class_id == class_id,
-            Attendance.date == date_str,
+            Attendance.date == parsed_date,
             Attendance.school_id == tenant_id,
             Attendance.student_id.in_(student_ids),
         )
@@ -283,7 +284,7 @@ class AttendanceEngine:
                         id=str(uuid.uuid4()),
                         student_id=student_id,
                         class_id=class_id,
-                        date=date_str,
+                        date=parsed_date,
                         status=att_status,
                         notes=notes,
                         recorded_by=recorded_by,
