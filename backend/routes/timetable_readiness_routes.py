@@ -124,16 +124,37 @@ async def _run_readiness_checks(school_id: str):
     active_days = _parse_working_days_from_settings(settings)
     periods_per_day = settings.get("periods_per_day") or settings.get("periodsPerDay") or 0
     period_duration = settings.get("period_duration") or settings.get("periodDuration") or 0
-    day_start = settings.get("school_day_start") or settings.get("day_start") or settings.get("dayStart") or ""
-    academic_year = settings.get("academic_year") or settings.get("academicYear") or ""
-    current_semester = settings.get("current_semester") or settings.get("currentSemester") or ""
+    day_start = (settings.get("school_day_start") or settings.get("day_start") or
+                 settings.get("dayStart") or settings.get("start_time") or "")
+    custom = settings.get("custom_settings") or {}
+    if isinstance(custom, dict):
+        academic_year = (settings.get("academic_year") or settings.get("academicYear") or
+                         custom.get("academic_year") or custom.get("academicYear") or "")
+        current_semester = (settings.get("current_semester") or settings.get("currentSemester") or
+                            custom.get("current_semester") or custom.get("currentSemester") or "")
+    else:
+        academic_year = settings.get("academic_year") or settings.get("academicYear") or ""
+        current_semester = settings.get("current_semester") or settings.get("currentSemester") or ""
+
+    if not academic_year:
+        cur_year_row = await gd_find_one(db.session, "academic_years", {"school_id": school_id, "is_current": True})
+        if cur_year_row:
+            academic_year = cur_year_row.get("name") or cur_year_row.get("id") or ""
+    if not current_semester:
+        cur_term_row = await gd_find_one(db.session, "terms", {"school_id": school_id, "is_current": True})
+        if cur_term_row:
+            current_semester = cur_term_row.get("name") or cur_term_row.get("id") or ""
 
     ts_count = await gd_count(db.session, "time_slots", {"school_id": school_id, "type": {"$ne": "break"}})
     classes_count = await gd_count(db.session, "classes", {"school_id": school_id, "is_active": {"$ne": False}})
     teachers_count = await gd_count(db.session, "users", {"school_id": school_id, "role": "teacher", "is_active": {"$ne": False}})
     subjects_count = await gd_count(db.session, "subjects", {"school_id": school_id})
-    teacher_subject_count = await gd_count(db.session, "teacher_subjects", {"school_id": school_id})
-    class_subject_count = await gd_count(db.session, "class_subjects", {"school_id": school_id})
+    teacher_subject_count = await gd_count(db.session, "teacher_assignments", {"school_id": school_id})
+    if teacher_subject_count == 0:
+        teacher_subject_count = await gd_count(db.session, "teacher_subjects", {"school_id": school_id})
+    class_subject_count = await gd_count(db.session, "teacher_assignments", {"school_id": school_id})
+    if class_subject_count == 0:
+        class_subject_count = await gd_count(db.session, "class_subjects", {"school_id": school_id})
     grade_subject_count = await gd_count(db.session, "grade_subjects", {"school_id": school_id})
 
     phases = {}
@@ -208,15 +229,17 @@ async def _run_readiness_checks(school_id: str):
         p1_score += 3
     else:
         p1_issues.append(ReadinessIssue(id="no-academic-year", type=IssueType.CRITICAL, category="time_structure",
-            message_ar="لم يتم تحديد العام الدراسي", message_en="Academic year not set",
-            fix_link="/school/settings?tab=overview", fix_action="تحديد العام الدراسي"))
+            message_ar="لم يتم تحديد العام الدراسي الحالي — يرجى تعيين عام دراسي كعام حالي",
+            message_en="No active academic year set",
+            fix_link="/academic-structure", fix_action="تحديد العام الدراسي"))
 
     if current_semester:
         p1_score += 2
     else:
         p1_issues.append(ReadinessIssue(id="no-semester", type=IssueType.CRITICAL, category="time_structure",
-            message_ar="لم يتم تحديد الفصل الدراسي", message_en="Semester not set",
-            fix_link="/school/settings?tab=overview", fix_action="تحديد الفصل الدراسي"))
+            message_ar="لم يتم تحديد الفصل الدراسي الحالي — يرجى تعيين فصل دراسي كفصل حالي",
+            message_en="No active semester/term set",
+            fix_link="/academic-structure", fix_action="تحديد الفصل الدراسي"))
 
     add_phase("time_structure", 1, "الهيكل الزمني", "Time Structure", p1_score, 25, p1_issues)
 
@@ -326,7 +349,15 @@ async def _run_readiness_checks(school_id: str):
     total_available_slots = len(active_days) * periods_per_day * classes_count if periods_per_day and classes_count else 0
 
     total_required = 0
-    if class_subject_count > 0:
+    ta_list = await gd_find(db.session, "teacher_assignments", {"school_id": school_id}, limit=5000) if teacher_subject_count > 0 else []
+    if ta_list:
+        seen_class_subject = set()
+        for ta in ta_list:
+            cs_key = (str(ta.get("class_id", "")), str(ta.get("subject_id", "") or ta.get("subject_name", "")))
+            if cs_key not in seen_class_subject:
+                seen_class_subject.add(cs_key)
+                total_required += ta.get("weekly_sessions") or ta.get("periods_per_week") or ta.get("weekly_periods") or 4
+    elif class_subject_count > 0:
         cs_list = await gd_find(db.session, "class_subjects", {"school_id": school_id})
         for cs in cs_list:
             total_required += cs.get("weekly_periods") or cs.get("weekly_sessions") or 4
@@ -360,7 +391,7 @@ async def _run_readiness_checks(school_id: str):
             teacher_user = await gd_find_one(db.session, "users", {"id": ta["_id"], "school_id": school_id, "role": "teacher"})
             if not teacher_user:
                 teacher_user = await gd_find_one(db.session, "teachers", {"id": ta["_id"], "school_id": school_id})
-            t_name = (teacher_user.get("name_ar") or teacher_user.get("name")) if teacher_user else str(ta["_id"])[:8]
+            t_name = (teacher_user.get("name_ar") or teacher_user.get("full_name") or teacher_user.get("name") or str(ta["_id"])[:8]) if teacher_user else str(ta["_id"])[:8]
             overloaded_teachers.append({"id": str(ta["_id"]), "name": t_name, "load": ta["total"], "max": max_load})
 
     if overloaded_teachers:
