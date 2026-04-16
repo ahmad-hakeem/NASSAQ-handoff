@@ -199,13 +199,19 @@ async def get_current_user(
                 user["student_id"] = student.get("id")
 
         if user.get("role") == UserRole.PARENT.value and not user.get("parent_id"):
-            parent = await gd_find_one(db.session, "parents", {"email": user.get("email")})
+            parent = None
+            if user.get("email"):
+                parent = await gd_find_one(db.session, "parents", {"email": user.get("email")})
+            if not parent and user.get("phone"):
+                parent = await gd_find_one(db.session, "parents", {"phone": user.get("phone")})
+            if not parent and user.get("national_id"):
+                parent = await gd_find_one(db.session, "parents", {"national_id": user.get("national_id")})
             if parent:
                 user["parent_id"] = parent.get("id")
             else:
                 link = await gd_find_one(db.session, "guardian_links", {"parent_ref": user.get("id"), "is_active": True})
                 if link:
-                    user["parent_id"] = link.get("parent_ref")
+                    user["parent_id"] = link.get("parent_id") or link.get("parent_ref")
 
         if payload.get("is_impersonating"):
             user["is_impersonating"] = True

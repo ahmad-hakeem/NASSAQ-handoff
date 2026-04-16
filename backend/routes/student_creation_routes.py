@@ -129,7 +129,17 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
             if student_ids:
                 siblings = await gd_find(db.session, "students", {"id": {"$in": student_ids}}, limit=20)
                 linked_students = siblings
-            
+
+            # Enrich with linked user_id (parents table has no user_id column;
+            # link is by email) so downstream code can write guardian_links
+            if not existing_parent.get("user_id") and existing_parent.get("email"):
+                linked_user = await gd_find_one(db.session, "users", {
+                    "email": existing_parent["email"],
+                    "role": UserRole.PARENT.value
+                })
+                if linked_user:
+                    existing_parent["user_id"] = linked_user.get("id")
+
             return {
                 "parent": existing_parent,
                 "is_new": False,
@@ -164,6 +174,8 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
         
         parent_doc = {
             "id": parent_id,
+            # parents table has no user_id column; keep this field for
+            # downstream code (e.g. guardian_links) while harmless for the ORM
             "user_id": user_id,
             "full_name": parent_data["full_name"],
             "national_id": parent_data.get("national_id"),
@@ -230,6 +242,13 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
             if existing_parent:
                 student_ids = existing_parent.get("student_ids", [])
                 siblings = await gd_find(db.session, "students", {"id": {"$in": student_ids}}, limit=20)
+                if not existing_parent.get("user_id") and existing_parent.get("email"):
+                    linked_user = await gd_find_one(db.session, "users", {
+                        "email": existing_parent["email"],
+                        "role": UserRole.PARENT.value
+                    })
+                    if linked_user:
+                        existing_parent["user_id"] = linked_user.get("id")
                 parent_result = {
                     "parent": existing_parent,
                     "is_new": False,
@@ -290,6 +309,10 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
             "grade": request.grade_id,
             "class_id": request.class_id,
             "parent_id": parent.get("id"),
+            "parent_user_id": parent.get("user_id"),
+            "parent_name": parent.get("full_name"),
+            "parent_phone": parent.get("phone"),
+            "parent_email": parent.get("email"),
             "school_id": school_id,
             "is_active": True,
             "created_at": now,
@@ -304,6 +327,26 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
         
         # Link student to parent
         await _gd_addtoset(db.session, "parents", {"id": parent.get("id")}, {"student_ids": student_id})
+
+        # Create canonical guardian_link record so downstream queries work (idempotent)
+        parent_user_id = parent.get("user_id")
+        if parent_user_id:
+            existing_link = await gd_find_one(db.session, "guardian_links", {
+                "parent_ref": parent_user_id,
+                "student_id": student_id,
+            })
+            if not existing_link:
+                await gd_insert(db.session, "guardian_links", {
+                    "id": str(uuid.uuid4()),
+                    "parent_ref": parent_user_id,
+                    "parent_id": parent.get("id"),
+                    "student_id": student_id,
+                    "relationship": parent.get("relationship", "guardian"),
+                    "tenant_id": school_id,
+                    "is_active": True,
+                    "created_at": now,
+                    "created_by": current_user.get("id"),
+                })
         
         # Link siblings
         if siblings:
@@ -536,16 +579,19 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
                 student_doc = {
                     "id": student_id,
                     "user_id": user_id,
-                    "student_id": student_id_code,
+                    "student_number": student_id_code,
                     "full_name": student_data.get("full_name"),
                     "email": student_email,
                     "national_id": student_data.get("national_id"),
                     "gender": student_data.get("gender", "male"),
                     "date_of_birth": student_data.get("date_of_birth"),
-                    "education_level": student_data.get("education_level"),
-                    "grade_id": student_data.get("grade_id"),
+                    "grade": student_data.get("grade_id") or student_data.get("grade") or student_data.get("education_level"),
                     "class_id": student_data.get("class_id"),
                     "parent_id": parent_result["parent"].get("id"),
+                    "parent_user_id": parent_result["parent"].get("user_id"),
+                    "parent_name": parent_result["parent"].get("full_name"),
+                    "parent_phone": parent_result["parent"].get("phone"),
+                    "parent_email": parent_result["parent"].get("email"),
                     "school_id": school_id,
                     "is_active": True,
                     "created_at": now,
@@ -560,6 +606,26 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
                 
                 # Link to parent
                 await _gd_addtoset(db.session, "parents", {"id": parent_result["parent"].get("id")}, {"student_ids": student_id})
+
+                # Canonical guardian_link (idempotent)
+                parent_user_id = parent_result["parent"].get("user_id")
+                if parent_user_id:
+                    existing_link = await gd_find_one(db.session, "guardian_links", {
+                        "parent_ref": parent_user_id,
+                        "student_id": student_id,
+                    })
+                    if not existing_link:
+                        await gd_insert(db.session, "guardian_links", {
+                            "id": str(uuid.uuid4()),
+                            "parent_ref": parent_user_id,
+                            "parent_id": parent_result["parent"].get("id"),
+                            "student_id": student_id,
+                            "relationship": parent_result["parent"].get("relationship", "guardian"),
+                            "tenant_id": school_id,
+                            "is_active": True,
+                            "created_at": now,
+                            "created_by": current_user.get("id"),
+                        })
                 
                 results["success"] += 1
                 results["new_students"] += 1

@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 SAUDI_TZ = ZoneInfo("Asia/Riyadh")
 import uuid
-from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert
 
 import logging
 
@@ -22,30 +22,79 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
 
     router = APIRouter(prefix="/parent-portal", tags=["Parent Portal"])
 
-    def _parent_or_conditions(parent_id: str, parent_phone: Optional[str]) -> list:
-        conditions = [
-            {"parent_id": parent_id},
-            {"parent_user_id": parent_id},
-        ]
+    def _parent_or_conditions(parent_user_id: str, parent_phone: Optional[str], parent_record_id: Optional[str] = None, parent_email: Optional[str] = None) -> list:
+        """Build an $or list that matches students regardless of whether the
+        backing code stored parent link as user.id or as parents.id, and
+        provides safe fallbacks by parent phone/email as well.
+        """
+        conditions = []
+        seen = set()
+        for pid in (parent_user_id, parent_record_id):
+            if pid and pid not in seen:
+                conditions.append({"parent_id": pid})
+                conditions.append({"parent_user_id": pid})
+                seen.add(pid)
         if parent_phone:
             conditions.append({"parent_phone": parent_phone})
+        if parent_email:
+            conditions.append({"parent_email": parent_email})
         return conditions
 
-    async def _get_linked_student_ids(parent_id: str, school_id: Optional[str] = None) -> List[str]:
-        query = {"parent_ref": parent_id, "is_active": True}
+    def _parent_refs(current_user: dict) -> List[str]:
+        """Return all identifiers that may have been used as a parent link: user.id
+        and parents.id (if resolvable)."""
+        refs = []
+        uid = current_user.get("id")
+        pid = current_user.get("parent_id")
+        if uid:
+            refs.append(uid)
+        if pid and pid != uid:
+            refs.append(pid)
+        return refs
+
+    async def _get_linked_student_ids(current_user: dict, school_id: Optional[str] = None) -> List[str]:
+        refs = _parent_refs(current_user)
+        if not refs:
+            return []
+        query = {"parent_ref": {"$in": refs}, "is_active": True}
         if school_id:
             query["tenant_id"] = school_id
-        links = await gd_find(db.session, "guardian_links", query, limit=20)
-        return [l["student_id"] for l in links]
+        links = await gd_find(db.session, "guardian_links", query, limit=50)
+        # also honour parents.student_ids array on the parent record
+        student_ids = {l["student_id"] for l in links if l.get("student_id")}
+        parent_record_id = current_user.get("parent_id")
+        if parent_record_id:
+            parent_rec = await gd_find_one(db.session, "parents", {"id": parent_record_id})
+            if parent_rec and isinstance(parent_rec.get("student_ids"), list):
+                for sid in parent_rec["student_ids"]:
+                    if sid:
+                        student_ids.add(sid)
+        return list(student_ids)
 
-    async def _find_children(parent_id: str, parent_phone: Optional[str], school_id: Optional[str] = None):
-        or_conditions = _parent_or_conditions(parent_id, parent_phone)
+    async def _find_children(current_user_or_id, parent_phone: Optional[str] = None, school_id: Optional[str] = None):
+        """Back-compat signature: accepts either a full user dict or a user id
+        followed by parent_phone/school_id."""
+        if isinstance(current_user_or_id, dict):
+            current_user = current_user_or_id
+            parent_user_id = current_user.get("id")
+            parent_phone = parent_phone or current_user.get("phone")
+            school_id = school_id or current_user.get("tenant_id")
+        else:
+            current_user = {"id": current_user_or_id, "phone": parent_phone, "tenant_id": school_id}
+            parent_user_id = current_user_or_id
+
+        parent_record_id = current_user.get("parent_id")
+        parent_email = current_user.get("email")
+
+        or_conditions = _parent_or_conditions(parent_user_id, parent_phone, parent_record_id, parent_email)
+        if not or_conditions:
+            return []
         student_query = {"$or": or_conditions}
         if school_id:
             student_query["school_id"] = school_id
         children = await gd_find(db.session, "students", student_query, limit=50)
         found_ids = {c.get("id") for c in children}
-        linked_ids = await _get_linked_student_ids(parent_id, school_id)
+        linked_ids = await _get_linked_student_ids(current_user, school_id)
         missing_ids = [sid for sid in linked_ids if sid not in found_ids]
         if missing_ids:
             extra_q = {"id": {"$in": missing_ids}}
@@ -66,7 +115,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         parent_phone = current_user.get("phone")
         school_id = current_user.get("tenant_id")
 
-        children = await _find_children(parent_id, parent_phone, school_id)
+        children = await _find_children(current_user, parent_phone, school_id)
 
         school_name_cache = {}
         children_data = []
@@ -144,7 +193,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         parent_phone = current_user.get("phone")
         school_id = current_user.get("tenant_id")
 
-        students = await _find_children(parent_id, parent_phone, school_id)
+        students = await _find_children(current_user, parent_phone, school_id)
 
         school_name_cache = {}
         children = []
@@ -188,22 +237,38 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
 
     # ============= CHILD DETAILS =============
 
-    async def _verify_parent_access(parent_id: str, parent_phone: Optional[str], child_id: str, school_id: Optional[str] = None):
-        student_query = {"id": child_id, "$or": _parent_or_conditions(parent_id, parent_phone)}
+    async def _verify_parent_access(parent_id: str, parent_phone: Optional[str], child_id: str, school_id: Optional[str] = None, *, current_user: Optional[dict] = None):
+        parent_record_id = (current_user or {}).get("parent_id")
+        parent_email = (current_user or {}).get("email")
+        or_conds = _parent_or_conditions(parent_id, parent_phone, parent_record_id, parent_email)
+        student_query = {"id": child_id}
+        if or_conds:
+            student_query["$or"] = or_conds
         if school_id:
             student_query["school_id"] = school_id
         child = await gd_find_one(db.session, "students", student_query)
         if child:
             return child
-        link_query = {"parent_ref": parent_id, "student_id": child_id, "is_active": True}
-        if school_id:
-            link_query["tenant_id"] = school_id
-        link = await gd_find_one(db.session, "guardian_links", link_query)
-        if link:
-            fallback_q = {"id": child_id}
+        # Fallback 1: guardian_links
+        refs = [pid for pid in (parent_id, parent_record_id) if pid]
+        if refs:
+            link_query = {"parent_ref": {"$in": refs}, "student_id": child_id, "is_active": True}
             if school_id:
-                fallback_q["school_id"] = school_id
-            return await gd_find_one(db.session, "students", fallback_q)
+                link_query["tenant_id"] = school_id
+            link = await gd_find_one(db.session, "guardian_links", link_query)
+            if link:
+                fallback_q = {"id": child_id}
+                if school_id:
+                    fallback_q["school_id"] = school_id
+                return await gd_find_one(db.session, "students", fallback_q)
+        # Fallback 2: parents.student_ids
+        if parent_record_id:
+            parent_rec = await gd_find_one(db.session, "parents", {"id": parent_record_id})
+            if parent_rec and child_id in (parent_rec.get("student_ids") or []):
+                fallback_q = {"id": child_id}
+                if school_id:
+                    fallback_q["school_id"] = school_id
+                return await gd_find_one(db.session, "students", fallback_q)
         return None
 
     @router.get("/child/{child_id}")
@@ -215,7 +280,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         parent_id = current_user.get("id")
         parent_phone = current_user.get("phone")
 
-        child = await _verify_parent_access(parent_id, parent_phone, child_id, current_user.get("tenant_id"))
+        child = await _verify_parent_access(parent_id, parent_phone, child_id, current_user.get("tenant_id"), current_user=current_user)
 
         if not child:
             raise HTTPException(status_code=403, detail="غير مصرح لك بالوصول لهذا الطالب")
@@ -254,20 +319,27 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         parent_id = current_user.get("id")
         parent_phone = current_user.get("phone")
 
-        child = await _verify_parent_access(parent_id, parent_phone, child_id, current_user.get("tenant_id"))
+        child = await _verify_parent_access(parent_id, parent_phone, child_id, current_user.get("tenant_id"), current_user=current_user)
 
         if not child:
             raise HTTPException(status_code=403, detail="غير مصرح لك بالوصول لهذا الطالب")
 
         query = {"student_id": child_id}
+        school_id = current_user.get("tenant_id")
+        if school_id:
+            query["school_id"] = school_id
         if subject:
-            query["subject"] = subject
+            query["$or"] = [
+                {"subject": subject},
+                {"subject_name": subject},
+                {"subject_id": subject},
+            ]
 
         grades = await gd_find(db.session, "grades", query, order_by="date", desc_order=True, limit=500)
 
         subjects_data = {}
         for grade in grades:
-            subj = grade.get("subject", "غير محدد")
+            subj = grade.get("subject_name") or grade.get("subject") or grade.get("subject_id") or "غير محدد"
             if subj not in subjects_data:
                 subjects_data[subj] = {"subject": subj, "grades": [], "total_score": 0, "total_max": 0}
 
@@ -308,7 +380,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         parent_id = current_user.get("id")
         parent_phone = current_user.get("phone")
 
-        child = await _verify_parent_access(parent_id, parent_phone, child_id, current_user.get("tenant_id"))
+        child = await _verify_parent_access(parent_id, parent_phone, child_id, current_user.get("tenant_id"), current_user=current_user)
 
         if not child:
             raise HTTPException(status_code=403, detail="غير مصرح لك بالوصول لهذا الطالب")
@@ -364,7 +436,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         parent_id = current_user.get("id")
         parent_phone = current_user.get("phone")
 
-        child = await _verify_parent_access(parent_id, parent_phone, child_id, current_user.get("tenant_id"))
+        child = await _verify_parent_access(parent_id, parent_phone, child_id, current_user.get("tenant_id"), current_user=current_user)
 
         if not child:
             raise HTTPException(status_code=403, detail="غير مصرح لك بالوصول لهذا الطالب")
@@ -426,7 +498,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         parent_phone = current_user.get("phone")
         school_id = current_user.get("tenant_id")
 
-        child = await _verify_parent_access(parent_id, parent_phone, child_id, school_id)
+        child = await _verify_parent_access(parent_id, parent_phone, child_id, school_id, current_user=current_user)
         if not child:
             raise HTTPException(status_code=403, detail="غير مصرح لك بالوصول لهذا الطالب")
 
@@ -568,7 +640,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         parent_phone = current_user.get("phone")
         school_id = current_user.get("tenant_id")
 
-        child = await _verify_parent_access(parent_id, parent_phone, child_id, school_id)
+        child = await _verify_parent_access(parent_id, parent_phone, child_id, school_id, current_user=current_user)
         if not child:
             raise HTTPException(status_code=403, detail="غير مصرح لك بالوصول لهذا الطالب")
 
@@ -684,7 +756,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
     ):
         parent_id = current_user.get("id")
         parent_phone = current_user.get("phone")
-        child = await _verify_parent_access(parent_id, parent_phone, child_id, current_user.get("tenant_id"))
+        child = await _verify_parent_access(parent_id, parent_phone, child_id, current_user.get("tenant_id"), current_user=current_user)
         if not child:
             raise HTTPException(status_code=403, detail="غير مصرح")
 
@@ -717,7 +789,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
     ):
         parent_id = current_user.get("id")
         parent_phone = current_user.get("phone")
-        child = await _verify_parent_access(parent_id, parent_phone, child_id, current_user.get("tenant_id"))
+        child = await _verify_parent_access(parent_id, parent_phone, child_id, current_user.get("tenant_id"), current_user=current_user)
         if not child:
             raise HTTPException(status_code=403, detail="غير مصرح")
 
@@ -739,7 +811,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
     ):
         parent_id = current_user.get("id")
         parent_phone = current_user.get("phone")
-        child = await _verify_parent_access(parent_id, parent_phone, child_id, current_user.get("tenant_id"))
+        child = await _verify_parent_access(parent_id, parent_phone, child_id, current_user.get("tenant_id"), current_user=current_user)
         if not child:
             raise HTTPException(status_code=403, detail="غير مصرح")
 
@@ -759,7 +831,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         parent_id = current_user.get("id")
         parent_phone = current_user.get("phone")
         school_id = current_user.get("tenant_id")
-        child = await _verify_parent_access(parent_id, parent_phone, child_id, school_id)
+        child = await _verify_parent_access(parent_id, parent_phone, child_id, school_id, current_user=current_user)
         if not child:
             raise HTTPException(status_code=403, detail="غير مصرح")
 
@@ -808,7 +880,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         parent_id = current_user.get("id")
         parent_phone = current_user.get("phone")
         school_id = current_user.get("tenant_id")
-        child = await _verify_parent_access(parent_id, parent_phone, child_id, school_id)
+        child = await _verify_parent_access(parent_id, parent_phone, child_id, school_id, current_user=current_user)
         if not child:
             raise HTTPException(status_code=403, detail="غير مصرح")
 
@@ -858,7 +930,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         parent_id = current_user.get("id")
         parent_phone = current_user.get("phone")
         school_id = current_user.get("tenant_id")
-        child = await _verify_parent_access(parent_id, parent_phone, child_id, school_id)
+        child = await _verify_parent_access(parent_id, parent_phone, child_id, school_id, current_user=current_user)
         if not child:
             raise HTTPException(status_code=403, detail="غير مصرح")
 
@@ -1051,7 +1123,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
                 "role": {"$in": ["school_admin", "school_principal"]}
             })
         elif recipient_type == "teacher":
-            children = await _find_children(parent_id, current_user.get("phone"), school_id)
+            children = await _find_children(current_user, current_user.get("phone"), school_id)
             if children:
                 child = children[0]
                 if child.get("class_id"):
@@ -1107,14 +1179,18 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
     ):
         """رسائل ولي الأمر"""
         parent_id = current_user.get("id")
+        school_id = current_user.get("tenant_id")
 
-        messages = await gd_find(db.session, "messages", {
+        msg_query = {
             "$or": [
                 {"sender_id": parent_id},
                 {"receiver_id": parent_id},
                 {"recipient_ids": parent_id}
             ]
-        }, order_by="created_at", desc_order=True, limit=50)
+        }
+        if school_id:
+            msg_query["school_id"] = school_id
+        messages = await gd_find(db.session, "messages", msg_query, order_by="created_at", desc_order=True, limit=50)
 
         return {
             "messages": [
@@ -1198,7 +1274,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         parent_id = current_user.get("id")
         parent_phone = current_user.get("phone")
 
-        child = await _verify_parent_access(parent_id, parent_phone, child_id, current_user.get("tenant_id"))
+        child = await _verify_parent_access(parent_id, parent_phone, child_id, current_user.get("tenant_id"), current_user=current_user)
 
         if not child:
             raise HTTPException(status_code=403, detail="غير مصرح لك بالوصول لهذا الطالب")
@@ -1257,7 +1333,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         parent_id = current_user.get("id")
         parent_phone = current_user.get("phone")
 
-        child = await _verify_parent_access(parent_id, parent_phone, child_id, current_user.get("tenant_id"))
+        child = await _verify_parent_access(parent_id, parent_phone, child_id, current_user.get("tenant_id"), current_user=current_user)
         if not child:
             raise HTTPException(status_code=403, detail="غير مصرح لك بالوصول لهذا الطالب")
 
@@ -1329,7 +1405,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         parent_id = current_user.get("id")
         parent_phone = current_user.get("phone")
 
-        child = await _verify_parent_access(parent_id, parent_phone, child_id, current_user.get("tenant_id"))
+        child = await _verify_parent_access(parent_id, parent_phone, child_id, current_user.get("tenant_id"), current_user=current_user)
         if not child:
             raise HTTPException(status_code=403, detail="غير مصرح")
 
@@ -1347,7 +1423,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         parent_id = current_user.get("id")
         parent_phone = current_user.get("phone")
 
-        child = await _verify_parent_access(parent_id, parent_phone, child_id, current_user.get("tenant_id"))
+        child = await _verify_parent_access(parent_id, parent_phone, child_id, current_user.get("tenant_id"), current_user=current_user)
         if not child:
             raise HTTPException(status_code=403, detail="غير مصرح")
 
@@ -1439,7 +1515,12 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         """تحديث إعدادات ولي الأمر"""
         now = datetime.now(timezone.utc).isoformat()
 
-        await gd_update_one(db.session, "user_preferences", {"user_id": current_user["id"]}, {**data, "updated_at": now})
+        await gd_upsert(
+            db.session,
+            "user_preferences",
+            {"user_id": current_user["id"]},
+            {**data, "user_id": current_user["id"], "updated_at": now},
+        )
 
         return {"message": "تم تحديث الإعدادات بنجاح"}
 
@@ -1471,7 +1552,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         parent_phone = current_user.get("phone")
         school_id = current_user.get("tenant_id")
 
-        students = await _find_children(parent_id, parent_phone, school_id)
+        students = await _find_children(current_user, parent_phone, school_id)
 
         reports = []
         for s in students:
@@ -1542,7 +1623,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         if open_total >= 3:
             raise HTTPException(status_code=429, detail="لقد وصلت للحد الأقصى من الطلبات المفتوحة (3)")
 
-        children = await _find_children(parent_id, current_user.get("phone"), school_id)
+        children = await _find_children(current_user, current_user.get("phone"), school_id)
         child_ids = [c.get("id") for c in children]
         if child_id not in child_ids:
             raise HTTPException(status_code=403, detail="Child not linked to this parent")
