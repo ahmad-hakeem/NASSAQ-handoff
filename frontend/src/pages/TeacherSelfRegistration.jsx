@@ -50,7 +50,7 @@ const BG_PATTERN = 'https://customer-assets.emergentagent.com/job_f5ea20bb-5cf5-
 export const TeacherSelfRegistration = () => {
   const { t } = useTranslation();
   const { isRTL, toggleLanguage } = useTheme();
-  const { api } = useAuth();
+  const { api, updateToken } = useAuth();
   const navigate = useNavigate();
   const { nassaqError, nassaqWarning } = useNassaqAlert();
   const [searchParams] = useSearchParams();
@@ -316,17 +316,20 @@ export const TeacherSelfRegistration = () => {
         referred_by: formData.referred_by || null,
       });
       
-      const { access_token, refresh_token, user: userData } = response.data;
-      localStorage.setItem('nassaq_token', access_token);
+      const { access_token, refresh_token } = response.data;
       localStorage.removeItem('nassaq_refresh_token');
       if (refresh_token) {
         sessionStorage.setItem('nassaq_refresh_token', refresh_token);
       }
-      
+
+      // Hydrate the auth context (sets token, fetches /auth/me, updates user)
+      // so the user is fully signed in without a full page reload.
+      await updateToken(access_token);
+
       toast.success(t('accountCreatedSuccessfullyLoggingIn'));
-      
+
       setTimeout(() => {
-        window.location.href = '/dashboard';
+        navigate('/teacher', { replace: true });
       }, 800);
     } catch (error) {
       console.error('Submission error:', error);
