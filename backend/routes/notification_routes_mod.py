@@ -138,14 +138,18 @@ async def create_notification(
         user_exists = await gd_find_one(db.session, "users", {"id": resolved_user_id})
         if not user_exists:
             student = await gd_find_one(db.session, "students", {"id": resolved_user_id})
-            if student and student.get("parent_phone"):
-                parent_user = await gd_find_one(db.session, "users", {"phone": student["parent_phone"], "role": "parent"})
+            if student:
+                parent_user = None
+                if student.get("parent_id"):
+                    parent_user = await gd_find_one(db.session, "users", {"id": student["parent_id"]})
+                if not parent_user and student.get("parent_email"):
+                    parent_user = await gd_find_one(db.session, "users", {"email": student["parent_email"], "role": "parent"})
+                if not parent_user and student.get("parent_phone"):
+                    parent_user = await gd_find_one(db.session, "users", {"phone": student["parent_phone"], "role": "parent"})
                 if parent_user:
                     resolved_user_id = parent_user["id"]
                 else:
                     raise HTTPException(status_code=404, detail="لم يتم العثور على حساب ولي الأمر")
-            elif student:
-                raise HTTPException(status_code=404, detail="لا يوجد ولي أمر مرتبط بهذا الطالب")
             else:
                 raise HTTPException(status_code=404, detail="المستخدم غير موجود")
 
