@@ -301,6 +301,10 @@ class SmartSchedulingEngine:
         # 3. Check academic term/semester
         if academic_year:
             academic_term = await gd_find_one(self.session, "academic_terms", {"school_id": school_id, "academic_year_id": academic_year.get("id"), "is_active": True})
+            if not academic_term:
+                academic_term = await gd_find_one(self.session, "terms", {"school_id": school_id, "academic_year_id": academic_year.get("id"), "is_current": True})
+            if not academic_term:
+                academic_term = await gd_find_one(self.session, "terms", {"school_id": school_id, "is_current": True})
             if academic_term:
                 summary["academic_term"] = academic_term.get("name")
         
@@ -614,20 +618,26 @@ class SmartSchedulingEngine:
         """
         demands = []
         
-        # Get all classes
         classes = await gd_find(self.session, "classes", {"school_id": school_id, "is_active": {"$ne": False}}, limit=500)
+        
+        all_assignments_cache = await gd_find(self.session, "teacher_assignments", {"school_id": school_id, "is_active": True}, limit=5000)
+        all_teachers_cache = await gd_find(self.session, "teachers", {"school_id": school_id, "is_active": {"$ne": False}}, limit=500)
+        
+        assignments_by_subject = {}
+        for a in all_assignments_cache:
+            sid = a.get("subject_id")
+            if sid:
+                assignments_by_subject.setdefault(sid, []).append(a)
         
         for cls in classes:
             class_id = cls.get("id") or cls.get("class_id")
             class_name = cls.get("name") or cls.get("name_ar", "")
             grade_id = cls.get("grade_id", "")
             
-            # Get subjects for this grade
             grade_subjects = await gd_find(self.session, "grade_subjects", {"school_id": school_id, "grade_id": grade_id, "is_active": True}, limit=50)
             
             if not grade_subjects:
-                all_assignments = await gd_find(self.session, "teacher_assignments", {"school_id": school_id, "is_active": True}, limit=200)
-                assignments = [a for a in all_assignments if a.get("class_id") == class_id or not a.get("class_id")]
+                assignments = [a for a in all_assignments_cache if a.get("class_id") == class_id or not a.get("class_id")]
                 
                 seen_subjects = set()
                 for assignment in assignments:
@@ -648,21 +658,17 @@ class SmartSchedulingEngine:
                 weekly_periods = gs.get("weekly_periods") or gs.get("weekly_hours") or gs.get("weekly_sessions", 4)
                 total_periods += weekly_periods
                 
-                # Find suitable teachers for this subject
                 suitable_teachers = []
                 
-                # From teacher_assignments
-                all_subject_assigns = await gd_find(self.session, "teacher_assignments", {"school_id": school_id, "subject_id": subject_id, "is_active": True}, limit=50)
-                teacher_assigns = [a for a in all_subject_assigns if a.get("class_id") == class_id or not a.get("class_id") or a.get("grade_id") == grade_id or class_id in (a.get("section_ids") or [])]
+                subject_assigns = assignments_by_subject.get(subject_id, [])
+                teacher_assigns = [a for a in subject_assigns if a.get("class_id") == class_id or not a.get("class_id") or a.get("grade_id") == grade_id or class_id in (a.get("section_ids") or [])]
                 
                 for ta in teacher_assigns:
                     if ta.get("teacher_id") not in suitable_teachers:
                         suitable_teachers.append(ta.get("teacher_id"))
                 
-                # If no specific assignment, find any teacher who can teach this subject
                 if not suitable_teachers:
-                    all_school_teachers = await gd_find(self.session, "teachers", {"school_id": school_id, "is_active": {"$ne": False}}, limit=500)
-                    teachers_with_subject = [t for t in all_school_teachers if t.get("primary_subject_id") == subject_id or subject_id in (t.get("subject_ids") or []) or t.get("specialization") == subject_id]
+                    teachers_with_subject = [t for t in all_teachers_cache if t.get("primary_subject_id") == subject_id or subject_id in (t.get("subject_ids") or []) or t.get("specialization") == subject_id]
                     
                     for t in teachers_with_subject:
                         tid = t.get("id") or t.get("teacher_id")
@@ -907,6 +913,21 @@ class SmartSchedulingEngine:
             scheduled_count = 0
             
             # Distribute periods across days
+            if not working_days:
+                unscheduled.append(UnscheduledDemand(
+                    id=str(uuid.uuid4()),
+                    run_id=run_id,
+                    school_id=school_id,
+                    class_id=class_id,
+                    grade_id=demand["grade_id"],
+                    subject_id=subject_id,
+                    required_periods=weekly_periods,
+                    scheduled_periods=0,
+                    remaining_periods=weekly_periods,
+                    reason_ar="لا توجد أيام عمل محددة",
+                    reason_en="No working days defined"
+                ))
+                continue
             periods_per_working_day = max(1, weekly_periods // len(working_days))
             remaining = weekly_periods
             
@@ -1938,27 +1959,24 @@ class SmartSchedulingEngine:
             capacity_issues = self._analyze_capacity_issues(demands, resources, settings, optimized_sessions)
             
             auto_name = f"الجدول المدرسي - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+            
+            semester_val = 1
+            if term_id:
+                term_doc = await gd_find_one(self.session, "terms", {"id": term_id})
+                if term_doc:
+                    semester_val = term_doc.get("semester", 1) or 1
+            
             timetable_doc = {
                 "id": timetable_id,
                 "school_id": school_id,
-                "academic_year_id": academic_year_id,
-                "term_id": term_id,
+                "academic_year": academic_year_id or "",
+                "semester": semester_val,
                 "name": auto_name,
-                "version_name": auto_name,
                 "status": TimetableStatus.DRAFT.value,
-                "version_number": 1,
-                "is_published": False,
-                "created_by": created_by,
+                "version": 1,
+                "total_sessions": len(optimized_sessions),
                 "created_at": now,
                 "updated_at": now,
-                "statistics": {
-                    "total_sessions": len(optimized_sessions),
-                    "total_demand": total_demand,
-                    "completion_rate": (len(optimized_sessions) / total_demand * 100) if total_demand > 0 else 0,
-                    "conflicts_count": len(conflicts),
-                    "optimization_score": optimization_score
-                },
-                "capacity_issues": capacity_issues
             }
             await gd_insert(self.session, "timetables", timetable_doc)
             
@@ -1991,7 +2009,12 @@ class SmartSchedulingEngine:
                 "completion_percentage": 100,
                 "conflicts_count": len(conflicts),
                 "unscheduled_count": len(unscheduled),
-                "timetable_id": timetable_id
+                "timetable_id": timetable_id,
+                "created_by": created_by,
+                "optimization_score": optimization_score,
+                "total_demand": total_demand,
+                "completion_rate": (len(optimized_sessions) / total_demand * 100) if total_demand > 0 else 0,
+                "capacity_issues": capacity_issues,
             })
             
             await self._log_run(run_id, "info", "اكتمل توليد الجدول", {

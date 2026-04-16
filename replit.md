@@ -693,6 +693,10 @@ Routed at `/principal/settings` and `/school/settings`. Two sections:
 - `periods_per_day` in settings = raw DB value (7); `teaching_period_numbers` = actual teaching-only period numbers [1,2,3,5,6]
 - DB time_slots for school-noor-ahlia: 10 slots (P1-P2=teaching, break, P4-P5=teaching, prayer, P7=teaching, break, P9-P10=teaching) = 7 teaching + 2 break + 1 prayer
 - **CRITICAL**: `slot_number` is sequential (1-10 including breaks/prayers); `period_number` counts only teaching periods (1-7). Sessions use `period_number` (teaching-only). The filter-options API returns both fields on time_slots. Frontend matching in TimetableGridSection and SchedulePageNew uses `slot.period_number` to match `session.period_number`. The move endpoint resolves time slots by DB `period_number` field first, fallback to `slot_number`.
+- **Data source mapping**: `grade_subjects` collection is typically empty; engine falls back to `teacher_assignments` ORM table for demand building. `academic_terms` table may be empty; engine also checks `terms` generic_documents collection.
+- **Timetables ORM columns**: `id, school_id, name, name_en, academic_year, semester, effective_from, effective_to, working_days, status, total_sessions, version, created_at, updated_at` — no `data` column, so extra metadata is stored in `timetable_runs` (generic_documents).
+- **ZeroDivisionError guard**: `generate_draft_timetable` safely skips all demands when `working_days` is empty, adding UnscheduledDemand records instead of crashing.
+- **Query caching**: `build_academic_demand` pre-loads `teacher_assignments` (limit=5000) and `teachers` (limit=500) once, then filters in-memory per class/subject to avoid redundant DB queries.
 
 ### Official Curriculum API Endpoints
 - Stats: `GET /api/official-curriculum/stats`
