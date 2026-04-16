@@ -108,21 +108,16 @@ async def create_notification_internal(
     notification_id = str(uuid.uuid4())
     notification_doc = {
         "id": notification_id,
+        "user_id": recipient_id,
         "title": title,
-        "title_en": title_en,
         "message": message,
-        "message_en": message_en,
-        "notification_type": notification_type,
+        "type": notification_type,
         "priority": priority,
-        "recipient_id": recipient_id,
-        "sender_id": sender_id,
-        "related_entity": related_entity,
-        "related_entity_id": related_entity_id,
         "action_url": action_url,
-        "school_id": school_id,
-        "read_status": False,
+        "tenant_id": school_id,
+        "is_read": False,
         "read_at": None,
-        "created_at": datetime.now(timezone.utc).isoformat()
+        "created_at": datetime.now(timezone.utc),
     }
     await gd_insert(db.session, "notifications", notification_doc)
     return notification_id
@@ -141,22 +136,16 @@ async def create_notification(
     notification_id = str(uuid.uuid4())
     notification_doc = {
         "id": notification_id,
+        "user_id": notification.recipient_id,
         "title": notification.title,
-        "title_en": notification.title_en,
         "message": notification.message,
-        "message_en": notification.message_en,
-        "notification_type": notification.notification_type.value,
-        "priority": notification.priority.value,
-        "recipient_id": notification.recipient_id,
-        "recipient_role": notification.recipient_role,
-        "sender_id": current_user['id'],
-        "related_entity": notification.related_entity,
-        "related_entity_id": notification.related_entity_id,
+        "type": notification.notification_type.value if notification.notification_type else None,
+        "priority": notification.priority.value if notification.priority else "normal",
         "action_url": notification.action_url,
-        "school_id": current_user.get('tenant_id'),
-        "read_status": False,
+        "tenant_id": current_user.get('tenant_id'),
+        "is_read": False,
         "read_at": None,
-        "created_at": datetime.now(timezone.utc).isoformat()
+        "created_at": datetime.now(timezone.utc),
     }
     
     await gd_insert(db.session, "notifications", notification_doc)
@@ -190,22 +179,16 @@ async def create_bulk_notifications(
         notification_id = str(uuid.uuid4())
         notification_doc = {
             "id": notification_id,
+            "user_id": recipient_id,
             "title": data.title,
-            "title_en": data.title_en,
             "message": data.message,
-            "message_en": data.message_en,
-            "notification_type": data.notification_type.value,
-            "priority": data.priority.value,
-            "recipient_id": recipient_id,
-            "recipient_role": data.recipient_role,
-            "sender_id": current_user['id'],
-            "related_entity": data.related_entity,
-            "related_entity_id": data.related_entity_id,
+            "type": data.notification_type.value if data.notification_type else None,
+            "priority": data.priority.value if data.priority else "normal",
             "action_url": data.action_url,
-            "school_id": current_user.get('tenant_id'),
-            "read_status": False,
+            "tenant_id": current_user.get('tenant_id'),
+            "is_read": False,
             "read_at": None,
-            "created_at": datetime.now(timezone.utc).isoformat()
+            "created_at": datetime.now(timezone.utc),
         }
         await gd_insert(db.session, "notifications", notification_doc)
         created_count += 1
@@ -222,44 +205,34 @@ async def get_my_notifications(
 ):
     """Get notifications for current user"""
     tenant_id = current_user.get("tenant_id")
-    query = {
-        "$or": [
-            {"recipient_id": current_user['id']},
-            {"recipient_role": current_user['role']}
-        ]
-    }
+    query = {"user_id": current_user['id']}
     if tenant_id:
-        query["school_id"] = tenant_id
+        query["tenant_id"] = tenant_id
     
     if notification_type:
-        query['notification_type'] = notification_type
+        query['type'] = notification_type
     if read_status is not None:
-        query['read_status'] = read_status
+        query['is_read'] = read_status
     
     notifications = await gd_find(db.session, "notifications", query, order_by="created_at", desc_order=True, offset=skip, limit=limit)
     
     result = []
     for n in notifications:
-        sender_name = None
-        if n.get('sender_id'):
-            sender = await gd_find_one(db.session, "users", {"id": n['sender_id']})
-            sender_name = sender.get('full_name') if sender else None
-        
         result.append(NotificationResponse(
             id=n['id'],
-            title=n['title'],
+            title=n.get('title', ''),
             title_en=n.get('title_en'),
-            message=n['message'],
+            message=n.get('message', ''),
             message_en=n.get('message_en'),
-            notification_type=n['notification_type'],
-            priority=n['priority'],
+            notification_type=n.get('type', 'system'),
+            priority=n.get('priority', 'normal'),
             related_entity=n.get('related_entity'),
             related_entity_id=n.get('related_entity_id'),
             action_url=n.get('action_url'),
-            read_status=n.get('read_status', False),
+            read_status=n.get('is_read', False),
             read_at=n.get('read_at'),
             created_at=n['created_at'],
-            sender_name=sender_name
+            sender_name=None
         ))
     
     return result
@@ -268,11 +241,8 @@ async def get_my_notifications(
 async def get_unread_count(current_user: dict = Depends(get_current_user)):
     """Get count of unread notifications"""
     count = await gd_count(db.session, "notifications", {
-        "$or": [
-            {"recipient_id": current_user['id']},
-            {"recipient_role": current_user['role']}
-        ],
-        "read_status": False
+        "user_id": current_user['id'],
+        "is_read": False
     })
     return {"unread_count": count}
 
@@ -287,12 +257,12 @@ async def mark_notification_as_read(
         raise HTTPException(status_code=404, detail="Notification not found")
     
     # Verify the notification belongs to the user
-    if notification.get('recipient_id') != current_user['id'] and notification.get('recipient_role') != current_user['role']:
+    if notification.get('user_id') != current_user['id']:
         raise HTTPException(status_code=403, detail="Not authorized to access this notification")
     
     await gd_update_one(db.session, "notifications", {"id": notification_id}, {
-            "read_status": True,
-            "read_at": datetime.now(timezone.utc).isoformat()
+            "is_read": True,
+            "read_at": datetime.now(timezone.utc)
         })
     
     return {"success": True, "message": "Notification marked as read"}
@@ -301,14 +271,11 @@ async def mark_notification_as_read(
 async def mark_all_notifications_as_read(current_user: dict = Depends(get_current_user)):
     """Mark all notifications as read for current user"""
     result = await gd_update_many(db.session, "notifications", {
-            "$or": [
-                {"recipient_id": current_user['id']},
-                {"recipient_role": current_user['role']}
-            ],
-            "read_status": False
+            "user_id": current_user['id'],
+            "is_read": False
         }, {
-            "read_status": True,
-            "read_at": datetime.now(timezone.utc).isoformat()
+            "is_read": True,
+            "read_at": datetime.now(timezone.utc)
         })
     
     return {"success": True, "marked_count": result}
@@ -324,7 +291,7 @@ async def delete_notification(
         raise HTTPException(status_code=404, detail="Notification not found")
     
     # Verify the notification belongs to the user or user is admin
-    if notification.get('recipient_id') != current_user['id'] and current_user['role'] not in ['platform_admin', 'school_principal']:
+    if notification.get('user_id') != current_user['id'] and current_user['role'] not in ['platform_admin', 'school_principal']:
         raise HTTPException(status_code=403, detail="Not authorized to delete this notification")
     
     await gd_delete_one(db.session, "notifications", {"id": notification_id})
@@ -341,20 +308,20 @@ async def get_notification_analytics(
     
     query = {}
     if current_user.get('tenant_id'):
-        query['school_id'] = current_user['tenant_id']
+        query['tenant_id'] = current_user['tenant_id']
     
     total = await gd_count(db.session, "notifications", query)
     
-    read_query = {**query, "read_status": True}
+    read_query = {**query, "is_read": True}
     read_count = await gd_count(db.session, "notifications", read_query)
     
-    unread_query = {**query, "read_status": False}
+    unread_query = {**query, "is_read": False}
     unread_count = await gd_count(db.session, "notifications", unread_query)
     
     # By type
     by_type = {}
     for ntype in ["system", "attendance", "schedule", "assessment", "behaviour", "communication", "announcement"]:
-        type_query = {**query, "notification_type": ntype}
+        type_query = {**query, "type": ntype}
         by_type[ntype] = await gd_count(db.session, "notifications", type_query)
     
     # By priority
