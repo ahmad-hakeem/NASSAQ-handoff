@@ -1,7 +1,7 @@
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 
-const ROLE_DASHBOARDS = {
+export const ROLE_DASHBOARDS = {
   platform_admin: "/admin",
   school_principal: "/principal",
   school_sub_admin: "/school",

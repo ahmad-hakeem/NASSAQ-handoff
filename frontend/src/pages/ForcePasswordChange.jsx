@@ -8,12 +8,13 @@ import { toast } from 'sonner';
 import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
 import { Eye, EyeOff, Lock, Shield, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { ROLE_DASHBOARDS } from '../components/guards/RouteGuards';
 
 
 import { useTranslation } from '../contexts/ThemeContext';
 export default function ForcePasswordChange() {
   const navigate = useNavigate();
-  const { user, logout, api } = useAuth();
+  const { user, logout, api, refreshUser, updateUser } = useAuth();
   const { t } = useTranslation();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
@@ -84,16 +85,18 @@ export default function ForcePasswordChange() {
       });
       
       toast.success(t('passwordChangedSuccessfully2'));
-      
-      // Redirect based on user role
+
+      // Optimistically clear the flag locally so the route guard doesn't bounce
+      // us back to /change-password before /auth/me returns.
+      updateUser({ must_change_password: false });
+
+      const refreshed = await refreshUser();
+      const effectiveRole = refreshed?.role || user?.role;
+      const target = ROLE_DASHBOARDS[effectiveRole] || '/';
+
+      // Redirect to the user's role-based dashboard
       setTimeout(() => {
-        if (user?.role === 'platform_admin') {
-          navigate('/admin');
-        } else if (user?.role === 'teacher') {
-          navigate('/teacher');
-        } else {
-          navigate('/');
-        }
+        navigate(target, { replace: true });
       }, 1500);
       
     } catch (error) {
