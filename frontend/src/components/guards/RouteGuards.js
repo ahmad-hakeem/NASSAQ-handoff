@@ -8,6 +8,7 @@ export const ROLE_DASHBOARDS = {
   school_admin: "/principal",
   platform_operations_manager: "/admin",
   teacher: "/teacher",
+  independent_teacher: "/teacher",
   student: "/student",
   parent: "/parent",
 };

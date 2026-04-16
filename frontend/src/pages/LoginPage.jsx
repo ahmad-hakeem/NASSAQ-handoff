@@ -126,6 +126,7 @@ export const LoginPage = () => {
             navigate('/admin');
             break;
           case 'teacher':
+          case 'independent_teacher':
             navigate('/teacher');
             break;
           case 'student':

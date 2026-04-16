@@ -104,8 +104,9 @@ import {
 } from "../pages/ParentPortal";
 
 const SCHOOL_ROLES = ['school_principal', 'school_admin', 'school_sub_admin'];
-const SCHOOL_TEACHING_ROLES = [...SCHOOL_ROLES, 'teacher'];
-const ALL_AUTHENTICATED_ROLES = ['platform_admin', ...SCHOOL_ROLES, 'teacher', 'student', 'parent'];
+const TEACHER_ROLES = ['teacher', 'independent_teacher'];
+const SCHOOL_TEACHING_ROLES = [...SCHOOL_ROLES, ...TEACHER_ROLES];
+const ALL_AUTHENTICATED_ROLES = ['platform_admin', ...SCHOOL_ROLES, ...TEACHER_ROLES, 'student', 'parent'];
 const PRODUCT_HUB_ROLES = ['platform_admin', 'platform_operations_manager', 'school_principal', 'school_admin', 'teacher'];
 
 export default function AppRoutes() {
@@ -188,53 +189,53 @@ export default function AppRoutes() {
 
       {/* Teacher Routes */}
       <Route path="/teacher" element={
-        <ProtectedRoute allowedRoles={['teacher']}><TeacherResponsiveDashboard /></ProtectedRoute>
+        <ProtectedRoute allowedRoles={TEACHER_ROLES}><TeacherResponsiveDashboard /></ProtectedRoute>
       } />
       <Route path="/teacher/home" element={
-        <ProtectedRoute allowedRoles={['teacher']}><TeacherHomePage /></ProtectedRoute>
+        <ProtectedRoute allowedRoles={TEACHER_ROLES}><TeacherHomePage /></ProtectedRoute>
       } />
       <Route path="/teacher/session/start" element={
-        <ProtectedRoute allowedRoles={['teacher']}><SessionStartPage /></ProtectedRoute>
+        <ProtectedRoute allowedRoles={TEACHER_ROLES}><SessionStartPage /></ProtectedRoute>
       } />
       <Route path="/teacher/session/teach" element={
-        <ProtectedRoute allowedRoles={['teacher']}><SessionTeachPage /></ProtectedRoute>
+        <ProtectedRoute allowedRoles={TEACHER_ROLES}><SessionTeachPage /></ProtectedRoute>
       } />
       <Route path="/teacher/schedule" element={
-        <ProtectedRoute allowedRoles={['teacher']}><TeacherSchedulePage /></ProtectedRoute>
+        <ProtectedRoute allowedRoles={TEACHER_ROLES}><TeacherSchedulePage /></ProtectedRoute>
       } />
       <Route path="/teacher/classes" element={
-        <ProtectedRoute allowedRoles={['teacher']}><TeacherClassesPage /></ProtectedRoute>
+        <ProtectedRoute allowedRoles={TEACHER_ROLES}><TeacherClassesPage /></ProtectedRoute>
       } />
       <Route path="/teacher/class/:classId" element={
-        <ProtectedRoute allowedRoles={['teacher']}><TeacherClassDetailPage /></ProtectedRoute>
+        <ProtectedRoute allowedRoles={TEACHER_ROLES}><TeacherClassDetailPage /></ProtectedRoute>
       } />
       <Route path="/teacher/tasks" element={
-        <ProtectedRoute allowedRoles={['teacher']}><TeacherTasksPage /></ProtectedRoute>
+        <ProtectedRoute allowedRoles={TEACHER_ROLES}><TeacherTasksPage /></ProtectedRoute>
       } />
       <Route path="/teacher/attendance" element={
-        <ProtectedRoute allowedRoles={['teacher']}><TeacherAttendanceManagePage /></ProtectedRoute>
+        <ProtectedRoute allowedRoles={TEACHER_ROLES}><TeacherAttendanceManagePage /></ProtectedRoute>
       } />
       <Route path="/teacher/assessments" element={
-        <ProtectedRoute allowedRoles={['teacher']}><TeacherAssessmentsPage /></ProtectedRoute>
+        <ProtectedRoute allowedRoles={TEACHER_ROLES}><TeacherAssessmentsPage /></ProtectedRoute>
       } />
       <Route path="/teacher/behavior" element={
-        <ProtectedRoute allowedRoles={['teacher']}><TeacherBehaviorPage /></ProtectedRoute>
+        <ProtectedRoute allowedRoles={TEACHER_ROLES}><TeacherBehaviorPage /></ProtectedRoute>
       } />
       <Route path="/teacher/students" element={
-        <ProtectedRoute allowedRoles={['teacher']}><TeacherStudentsPage /></ProtectedRoute>
+        <ProtectedRoute allowedRoles={TEACHER_ROLES}><TeacherStudentsPage /></ProtectedRoute>
       } />
       <Route path="/teacher/sessions" element={<Navigate to="/teacher/classes?tab=sessions" replace />} />
       <Route path="/teacher/achievements" element={
-        <ProtectedRoute allowedRoles={['teacher']}><TeacherAchievementsPage /></ProtectedRoute>
+        <ProtectedRoute allowedRoles={TEACHER_ROLES}><TeacherAchievementsPage /></ProtectedRoute>
       } />
       <Route path="/teacher/communication" element={
-        <ProtectedRoute allowedRoles={['teacher']}><TeacherCommunicationPage /></ProtectedRoute>
+        <ProtectedRoute allowedRoles={TEACHER_ROLES}><TeacherCommunicationPage /></ProtectedRoute>
       } />
       <Route path="/teacher/resources" element={
-        <ProtectedRoute allowedRoles={['teacher']}><TeacherResourcesPage /></ProtectedRoute>
+        <ProtectedRoute allowedRoles={TEACHER_ROLES}><TeacherResourcesPage /></ProtectedRoute>
       } />
       <Route path="/teacher/settings" element={
-        <ProtectedRoute allowedRoles={['teacher']}><TeacherSettingsPage /></ProtectedRoute>
+        <ProtectedRoute allowedRoles={TEACHER_ROLES}><TeacherSettingsPage /></ProtectedRoute>
       } />
 
       {/* Student Portal Routes */}
