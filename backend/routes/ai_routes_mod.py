@@ -794,34 +794,42 @@ async def get_ai_insights_overview(
     total_teachers = await gd_count(db.session, "teachers", {"school_id": school_id}) if school_id else 0
     
     # Get attendance data
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     attendance_query = {"school_id": school_id} if school_id else {}
     attendance_count = await gd_count(db.session, "attendance", {**attendance_query, "status": "present"})
     total_attendance = await gd_count(db.session, "attendance", attendance_query)
-    attendance_rate = round((attendance_count / total_attendance) * 100, 1) if total_attendance > 0 else 85
-    
-    # Calculate score based on multiple factors
-    base_score = 70
-    attendance_bonus = min(15, (attendance_rate - 80) / 2) if attendance_rate > 80 else 0
-    student_teacher_ratio = total_students / total_teachers if total_teachers > 0 else 20
-    ratio_bonus = max(0, 15 - abs(student_teacher_ratio - 15))  # Best ratio is around 15:1
-    
-    overall_score = int(min(100, base_score + attendance_bonus + ratio_bonus))
-    
-    # Determine trend
-    trend = "up"
-    trend_value = round(3.2 + (overall_score - 85) / 10, 1)
-    
+
+    has_attendance_data = total_attendance > 0
+    has_any_data = total_students > 0 or total_teachers > 0 or has_attendance_data
+
+    attendance_rate = round((attendance_count / total_attendance) * 100, 1) if has_attendance_data else 0
+    student_teacher_ratio = round(total_students / total_teachers, 1) if total_teachers > 0 else 0
+
+    # Only compute a performance score when there's real data to base it on.
+    # Otherwise return 0 so the UI doesn't show fabricated metrics for empty schools.
+    if has_any_data:
+        base_score = 70
+        attendance_bonus = min(15, (attendance_rate - 80) / 2) if attendance_rate > 80 else 0
+        ratio_bonus = max(0, 15 - abs(student_teacher_ratio - 15)) if total_teachers > 0 else 0
+        overall_score = int(min(100, base_score + attendance_bonus + ratio_bonus))
+        trend = "up"
+        trend_value = round(3.2 + (overall_score - 85) / 10, 1)
+    else:
+        overall_score = 0
+        trend = "flat"
+        trend_value = 0
+
     return {
         "overall_score": overall_score,
         "trend": trend,
         "trend_value": abs(trend_value),
+        "has_data": has_any_data,
         "last_updated": datetime.now(timezone.utc).isoformat(),
         "metrics": {
             "attendance_rate": attendance_rate,
-            "student_teacher_ratio": round(student_teacher_ratio, 1),
+            "student_teacher_ratio": student_teacher_ratio,
             "total_students": total_students,
-            "total_teachers": total_teachers
+            "total_teachers": total_teachers,
+            "has_attendance_data": has_attendance_data,
         }
     }
 
