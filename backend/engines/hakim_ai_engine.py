@@ -197,6 +197,174 @@ class HakimAIEngine:
         }, limit=5000)
         return [s["id"] for s in sessions]
 
+    async def analyze_students_risk_batch(
+        self, school_id: str, student_ids: List[str], days_back: int = 30
+    ) -> List[Dict[str, Any]]:
+        """Batch variant of analyze_student_risk. Produces identical per-student results."""
+        if not student_ids:
+            return []
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime("%Y-%m-%d")
+
+        att_rows = await gd_find(self.session, "attendance", {
+            "school_id": school_id,
+            "student_id": {"$in": student_ids},
+            "date": {"$gte": cutoff},
+        }, limit=50000)
+        att_map = {sid: {"total": 0, "present": 0} for sid in student_ids}
+        for r in att_rows:
+            sid = r.get("student_id")
+            if sid not in att_map:
+                continue
+            att_map[sid]["total"] += 1
+            if r.get("status") in ("present", "late"):
+                att_map[sid]["present"] += 1
+
+        session_ids = await self._get_school_session_ids(school_id, cutoff)
+
+        sa_map = {sid: 0 for sid in student_ids}
+        inter_all_map: Dict[str, List[dict]] = {sid: [] for sid in student_ids}
+        inter_beh_map: Dict[str, List[dict]] = {sid: [] for sid in student_ids}
+        if session_ids:
+            sa_rows = await gd_find(self.session, "session_attendance", {
+                "student_id": {"$in": student_ids},
+                "status": "present",
+                "session_id": {"$in": session_ids},
+            }, limit=50000)
+            for r in sa_rows:
+                sid = r.get("student_id")
+                if sid in sa_map:
+                    sa_map[sid] += 1
+
+            inter_rows = await gd_find(self.session, "session_interactions", {
+                "student_id": {"$in": student_ids},
+                "session_id": {"$in": session_ids},
+            }, limit=50000)
+            for r in inter_rows:
+                sid = r.get("student_id")
+                if sid not in inter_all_map:
+                    continue
+                inter_all_map[sid].append(r)
+                if r.get("interaction_type") == "behaviour":
+                    inter_beh_map[sid].append(r)
+
+        ds_rows = await gd_find(self.session, "student_daily_scores", {
+            "school_id": school_id,
+            "student_id": {"$in": student_ids},
+            "date": {"$gte": cutoff},
+        }, limit=50000)
+        ds_map: Dict[str, List[dict]] = {sid: [] for sid in student_ids}
+        for r in ds_rows:
+            sid = r.get("student_id")
+            if sid in ds_map:
+                ds_map[sid].append(r)
+
+        gr_rows = await gd_find(self.session, "student_grades", {
+            "tenant_id": school_id,
+            "student_id": {"$in": student_ids},
+        }, limit=50000)
+        gr_map: Dict[str, List[dict]] = {sid: [] for sid in student_ids}
+        for r in gr_rows:
+            sid = r.get("student_id")
+            if sid in gr_map:
+                gr_map[sid].append(r)
+
+        students_docs = await gd_find(self.session, "students", {
+            "id": {"$in": student_ids}, "school_id": school_id,
+        }, limit=len(student_ids))
+        students_map = {s["id"]: s for s in students_docs}
+
+        def score_attendance(a: dict) -> float:
+            if a["total"] == 0:
+                return 100.0
+            return (a["present"] / a["total"]) * 100
+
+        def score_participation(sessions_present: int, interactions_all: list) -> float:
+            if not session_ids:
+                return 50.0
+            if sessions_present == 0:
+                return 50.0
+            ratio = len(interactions_all) / max(sessions_present, 1)
+            return min(100.0, ratio * 100)
+
+        def score_behaviour(interactions_beh: list) -> float:
+            if not session_ids:
+                return 75.0
+            if not interactions_beh:
+                return 75.0
+            positive = sum(
+                1 for i in interactions_beh
+                if (i.get("behaviour_type") == "positive")
+                or (i.get("behaviour_category") in ("positive", "respect", "teamwork"))
+            )
+            total = len(interactions_beh)
+            if total == 0:
+                return 75.0
+            return min(100.0, (positive / total) * 100 + 25)
+
+        def score_academic(daily_scores: list, grades: list) -> float:
+            if daily_scores:
+                total_score = sum(s.get("score", 0) for s in daily_scores)
+                max_possible = len(daily_scores) * 5
+                if max_possible <= 0:
+                    return 60.0
+                return min(100.0, (total_score / max_possible) * 100)
+            if grades:
+                avg = sum(g.get("percentage", 0) for g in grades) / len(grades)
+                return min(100.0, avg)
+            return 60.0
+
+        analyzed_at = datetime.now(timezone.utc).isoformat()
+        results: List[Dict[str, Any]] = []
+        for sid in student_ids:
+            att_s = score_attendance(att_map[sid])
+            part_s = score_participation(sa_map[sid], inter_all_map[sid])
+            beh_s = score_behaviour(inter_beh_map[sid])
+            acad_s = score_academic(ds_map.get(sid, []), gr_map.get(sid, []))
+
+            risk_score = round(
+                att_s * RISK_WEIGHTS["attendance"]
+                + part_s * RISK_WEIGHTS["participation"]
+                + beh_s * RISK_WEIGHTS["behaviour"]
+                + acad_s * RISK_WEIGHTS["academic"],
+                1,
+            )
+            category, label_ar = "low", "منخفض"
+            for lo, hi, cat, label in RISK_CATEGORIES:
+                if lo <= risk_score < hi:
+                    category, label_ar = cat, label
+                    break
+
+            factors = []
+            if att_s < 50:
+                factors.append("انخفاض الحضور")
+            if part_s < 50:
+                factors.append("انخفاض المشاركة")
+            if beh_s < 50:
+                factors.append("مشاكل سلوكية")
+            if acad_s < 50:
+                factors.append("تدني الأداء الأكاديمي")
+
+            s = students_map.get(sid, {})
+            results.append({
+                "student_id": sid,
+                "student_name": s.get("full_name"),
+                "class_id": s.get("class_id"),
+                "parent_id": s.get("parent_id"),
+                "risk_score": risk_score,
+                "risk_category": category,
+                "risk_label_ar": label_ar,
+                "factors": factors,
+                "breakdown": {
+                    "attendance": round(att_s, 1),
+                    "participation": round(part_s, 1),
+                    "behaviour": round(beh_s, 1),
+                    "academic": round(acad_s, 1),
+                },
+                "period_days": days_back,
+                "analyzed_at": analyzed_at,
+            })
+        return results
+
     # ------------------------------------------------------------------
     # 2. Participation Intelligence
     # ------------------------------------------------------------------
