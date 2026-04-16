@@ -71,7 +71,6 @@ build = ["bash", "/home/runner/workspace/build.sh"]
   JWT_SECRET_KEY = "mkzodaGeExRnHqMNLu1DwiC6dBT2ic5hRmr-hUCogRaqhuGh0r2ZLEFhLVbG-s43"
   CORS_ORIGINS = "https://nassaq.com,https://www.nassaq.com"
 FRONTEND_URL = "https://nassaq.com"
-MOUNIRAH_RESET_PASSWORD = "Mounirah@2026"
 
   [userenv.development]
   JWT_SECRET_KEY = "mkzodaGeExRnHqMNLu1DwiC6dBT2ic5hRmr-hUCogRaqhuGh0r2ZLEFhLVbG-s43"

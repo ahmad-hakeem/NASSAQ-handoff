@@ -134,18 +134,6 @@ async def startup_tasks():
 
     await _run_with_session("Data snapshot", _data_snapshot)
 
-    mounirah_pw = os.environ.get("MOUNIRAH_RESET_PASSWORD", "")
-    if mounirah_pw:
-        async def _reset_mounirah():
-            existing = await gd_find_one(db.session, "users", {"email": "mounirah@nassaqapp.com"})
-            if existing:
-                new_hash = hash_password(mounirah_pw)
-                await gd_update_one(db.session, "users", {"email": "mounirah@nassaqapp.com"}, {"password_hash": new_hash})
-                logger.info("Password reset for mounirah@nassaqapp.com")
-            else:
-                logger.warning("mounirah@nassaqapp.com not found")
-        await _run_with_session("Reset mounirah password", _reset_mounirah)
-
     if config.seed_allowed() and not db_has_data:
         await _run_with_session("Seed admins", _seed_platform_admins)
 
