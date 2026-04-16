@@ -202,7 +202,7 @@ async def _run_readiness_checks(school_id: str):
     else:
         p1_issues.append(ReadinessIssue(id="no-working-days", type=IssueType.CRITICAL, category="time_structure",
             message_ar="لم يتم تحديد أيام الدراسة", message_en="Working days not configured",
-            fix_link="/school/settings?tab=work-days", fix_action="تحديد أيام الدراسة"))
+            fix_link="/school/settings?tab=timings", fix_action="تحديد أيام الدراسة"))
 
     if periods_per_day >= 1:
         p1_score += 5

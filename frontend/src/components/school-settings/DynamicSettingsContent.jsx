@@ -274,6 +274,45 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
 
           <Card className="bg-white shadow-sm">
             <CardHeader>
+              <CardTitle className="text-xl flex items-center gap-2"><Calendar className="h-5 w-5 text-[#1C3D74]" />أيام الدراسة</CardTitle>
+              <CardDescription>حدد أيام الدوام الرسمية للمدرسة</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-7 gap-3">
+                {[
+                  { key: 'sunday', label: 'الأحد' },
+                  { key: 'monday', label: 'الإثنين' },
+                  { key: 'tuesday', label: 'الثلاثاء' },
+                  { key: 'wednesday', label: 'الأربعاء' },
+                  { key: 'thursday', label: 'الخميس' },
+                  { key: 'friday', label: 'الجمعة' },
+                  { key: 'saturday', label: 'السبت' },
+                ].map(day => (
+                  <div
+                    key={day.key}
+                    onClick={() => handleWorkDayChange(day.key)}
+                    className={`cursor-pointer rounded-xl p-4 text-center transition-all duration-200 border-2 ${
+                      workDays[day.key]
+                        ? 'border-[#1C3D74] bg-[#1C3D74]/5 shadow-md'
+                        : 'border-slate-200 hover:border-slate-300 bg-white'
+                    }`}
+                    data-testid={`work-day-${day.key}`}
+                  >
+                    <p className={`font-bold text-sm ${workDays[day.key] ? 'text-[#1C3D74]' : 'text-slate-500'}`}>{day.label}</p>
+                    {workDays[day.key] && <CheckCircle2 className="h-4 w-4 mx-auto mt-2 text-[#1C3D74]" />}
+                  </div>
+                ))}
+              </div>
+              <p className="text-sm text-slate-500 mt-3">
+                {Object.values(workDays).filter(Boolean).length > 0
+                  ? `${Object.values(workDays).filter(Boolean).length} أيام دراسة محددة`
+                  : 'لم يتم تحديد أيام الدراسة بعد'}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-white shadow-sm">
+            <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle className="text-xl flex items-center gap-2"><Calendar className="h-5 w-5 text-[#1C3D74]" />نمط الدوام</CardTitle>

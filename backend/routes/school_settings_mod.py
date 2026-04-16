@@ -546,6 +546,41 @@ async def get_school_day_status(
     }
 
 
+_EN_TO_AR = {
+    "sunday": "الأحد", "monday": "الإثنين", "tuesday": "الثلاثاء",
+    "wednesday": "الأربعاء", "thursday": "الخميس", "friday": "الجمعة", "saturday": "السبت",
+}
+
+def _dict_to_active_ar(wd: dict) -> list:
+    return [_EN_TO_AR[d] for d, active in wd.items() if active and d in _EN_TO_AR]
+
+def _dict_to_inactive_ar(wd: dict) -> list:
+    return [_EN_TO_AR[d] for d, active in wd.items() if not active and d in _EN_TO_AR]
+
+def _resolve_working_days_ar(nested_settings: dict, settings: dict) -> list:
+    for src in (nested_settings, settings):
+        for key in ("working_days_ar", "working_days", "work_days"):
+            val = src.get(key)
+            if isinstance(val, list) and val:
+                return val
+            if isinstance(val, dict) and val:
+                return _dict_to_active_ar(val)
+    return []
+
+def _resolve_weekend_days_ar(nested_settings: dict, settings: dict) -> list:
+    for src in (nested_settings, settings):
+        for key in ("weekend_days_ar", "weekend_days"):
+            val = src.get(key)
+            if isinstance(val, list) and val:
+                return val
+    for src in (nested_settings, settings):
+        for key in ("working_days", "work_days"):
+            val = src.get(key)
+            if isinstance(val, dict) and val:
+                return _dict_to_inactive_ar(val)
+    return []
+
+
 @router.get("/school/settings")
 async def get_school_settings(
     current_user: dict = Depends(get_current_user),
@@ -626,8 +661,8 @@ async def get_school_settings(
         "periodsPerDay": nested_settings.get("periods_per_day") or settings.get("periods_per_day", 7),
         "periodDuration": nested_settings.get("period_duration_minutes") or settings.get("period_duration_minutes", 45),
         "breakDuration": nested_settings.get("break_duration_minutes") or settings.get("break_duration_minutes", 20),
-        "workingDays": nested_settings.get("working_days") or settings.get("working_days_ar", []),
-        "weekendDays": nested_settings.get("weekend_days") or settings.get("weekend_days_ar", []),
+        "workingDays": _resolve_working_days_ar(nested_settings, settings),
+        "weekendDays": _resolve_weekend_days_ar(nested_settings, settings),
         "breaks": settings.get("breaks", []),
         "attendancePattern": nested_settings.get("attendance_pattern") or settings.get("attendance_pattern", "winter"),
         # Original field names for backward compatibility
