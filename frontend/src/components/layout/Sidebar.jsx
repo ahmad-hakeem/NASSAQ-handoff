@@ -838,6 +838,7 @@ export const Sidebar = ({ children }) => {
       {/* Sidebar */}
       <aside
         data-testid="sidebar"
+        dir={isRTL ? 'rtl' : 'ltr'}
         className={`
           fixed inset-y-0 z-40 bg-brand-navy overflow-hidden
           transition-all duration-300 ease-in-out
