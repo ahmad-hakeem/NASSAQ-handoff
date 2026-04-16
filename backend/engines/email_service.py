@@ -5,7 +5,7 @@ import resend
 logger = logging.getLogger("nassaq.email")
 
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
-FROM_EMAIL = os.environ.get("FROM_EMAIL", "onboarding@resend.dev")
+FROM_EMAIL = os.environ.get("FROM_EMAIL", "noreply@nassaqapp.com")
 APP_URL = os.environ.get("APP_URL", "")
 
 LOGO_URL = "https://customer-assets.emergentagent.com/job_f5ea20bb-5cf5-462f-a7f0-958201e27f89/artifacts/q04svb5j_Nassaq%20LinkedIn%20Logo%20White.png"
