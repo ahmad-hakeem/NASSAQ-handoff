@@ -170,8 +170,9 @@ export default function SecurityCenterPage() {
     const diffMs = now - date;
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMs / 3600000);
-    if (diffMins < 60) return `${diffMins} ${t('minutesAgo')}`;
-    if (diffHours < 24) return `${diffHours} ${t('hoursAgo')}`;
+    if (diffMins < 1) return t('justNow');
+    if (diffMins < 60) return t('minutesAgo', { count: diffMins });
+    if (diffHours < 24) return t('hoursAgo', { count: diffHours });
     return date.toLocaleDateString(isRTL ? 'ar-SA' : 'en-US');
   };
   
