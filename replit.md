@@ -126,6 +126,12 @@ Every task must follow these principles before delivery:
 - **Student user account**: Created student role user (`fares.student@nassaq-test.com`) linked to existing student record for full portal testing
 - **Verified platforms**: Platform Admin, School Principal, School Admin, Teacher, Student, Parent — 53/53 endpoints passing across all 6 roles
 
+### Scheduling & Academic Structure Audit (April 16, 2026)
+- **Smart scheduling pre-validation fix**: `can_proceed` in `smart_scheduling_engine.py` was `len(critical_issues) <= 2` — allowed proceeding with missing teachers/settings/classes. Fixed to block on essential categories: `teachers`, `teacher_assignments`, `settings`, `classes`, `time_slots`, `academic_year`, `academic_term`, `grades`, `subjects`, `grade_subjects`
+- **Time slot validation**: `create_time_slot` in `scheduling_engine.py` had no validation — could create slots with end_time before start_time or overlapping with existing slots. Added `_parse_time()` method with `datetime.time` parsing (not string comparison), overlap detection, and same validation in `update_time_slot`
+- **Registration request IntegrityError**: Production 500 errors on `POST /registration-requests` — `type` column null despite validation. Root cause: `**submission_data` spread mixed Pydantic fields with ORM columns unpredictably via `dict_to_model`. Fixed by explicitly mapping ORM columns (`type`, `name`, `email`, `phone`, `school_name`) and storing remaining fields in `data` JSONB column. Ensured `account_type` and `full_name` preserved in `data` for downstream queries.
+- **Files changed**: `backend/engines/smart_scheduling_engine.py`, `backend/engines/scheduling_engine.py`, `backend/routes/registration_routes_mod.py`
+
 ### Teacher Platform Bug Audit (April 16, 2026)
 - **Sidebar layout bug**: `TeacherSessionsManagePage.jsx` used `<Sidebar />` as sibling with `<main>` instead of wrapper pattern — fixed to match all other teacher pages
 - **confirm() violation**: `TeacherResourcesPage.jsx` used native `confirm()` for delete — replaced with `nassaqConfirm()` from `useNassaqAlert()`

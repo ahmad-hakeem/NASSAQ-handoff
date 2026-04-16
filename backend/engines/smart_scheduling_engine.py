@@ -450,8 +450,10 @@ class SmartSchedulingEngine:
         
         # Determine validity
         critical_issues = [i for i in issues if i.severity == "critical"]
+        blocking_categories = {"teachers", "teacher_assignments", "settings", "classes", "time_slots", "academic_year", "academic_term", "grades", "subjects", "grade_subjects"}
+        blocking_critical = [i for i in critical_issues if i.category in blocking_categories]
         is_valid = len(critical_issues) == 0
-        can_proceed = len(critical_issues) <= 2  # Allow proceeding with up to 2 critical issues
+        can_proceed = len(blocking_critical) == 0
         
         return PreValidationResult(
             is_valid=is_valid,

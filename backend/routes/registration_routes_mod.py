@@ -145,13 +145,20 @@ async def create_registration_request(request_data: RegistrationRequest):
     submission_data["account_type"] = account_type
     submission_data["full_name"] = full_name
 
+    extra_fields = {k: v for k, v in submission_data.items() if k not in ("id", "type", "name", "email", "phone", "school_name", "status", "source")}
+    extra_fields["account_type"] = account_type
+    extra_fields["full_name"] = full_name
+
     request_doc = {
         "id": request_id,
-        **submission_data,
         "type": account_type,
         "name": full_name,
+        "email": (request_data.email or "").strip() or None,
+        "phone": phone_clean or raw_phone,
+        "school_name": (request_data.school_name or "").strip() or None,
         "status": "pending_review",
         "source": "public_signup",
+        "data": extra_fields,
         "payload_snapshot": submission_data,
         "linked_entity_type": None,
         "linked_entity_id": None,

@@ -100,6 +100,21 @@ class SchedulingEngine:
         created_by: str,
         **kwargs
     ) -> Dict[str, Any]:
+        parsed_start = self._parse_time(start_time)
+        parsed_end = self._parse_time(end_time)
+        if parsed_start >= parsed_end:
+            raise ValueError(f"وقت البداية ({start_time}) يجب أن يكون قبل وقت النهاية ({end_time})")
+
+        existing = await gd_find(self.session, "time_slots", {"tenant_id": tenant_id}, limit=100)
+        for slot in existing:
+            ex_start_str = slot.get("start_time", "")
+            ex_end_str = slot.get("end_time", "")
+            if ex_start_str and ex_end_str:
+                ex_start = self._parse_time(ex_start_str)
+                ex_end = self._parse_time(ex_end_str)
+                if parsed_start < ex_end and parsed_end > ex_start:
+                    raise ValueError(f"الحصة تتعارض مع حصة موجودة ({ex_start_str}-{ex_end_str})")
+
         slot_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
 
@@ -119,12 +134,41 @@ class SchedulingEngine:
         await gd_insert(self.session, "time_slots", slot_doc)
         return slot_doc
 
+    @staticmethod
+    def _parse_time(t_str: str) -> time:
+        parts = t_str.strip().split(":")
+        return time(int(parts[0]), int(parts[1]) if len(parts) > 1 else 0)
+
     async def update_time_slot(
         self,
         slot_id: str,
         updates: Dict[str, Any],
         updated_by: str
     ) -> Dict[str, Any]:
+        if "start_time" in updates or "end_time" in updates:
+            current = await gd_find_one(self.session, "time_slots", {"id": slot_id})
+            if current:
+                new_start = updates.get("start_time", current.get("start_time", "07:00"))
+                new_end = updates.get("end_time", current.get("end_time", "07:45"))
+                parsed_start = self._parse_time(new_start)
+                parsed_end = self._parse_time(new_end)
+                if parsed_start >= parsed_end:
+                    raise ValueError(f"وقت البداية ({new_start}) يجب أن يكون قبل وقت النهاية ({new_end})")
+
+                tenant_id = current.get("tenant_id")
+                if tenant_id:
+                    existing = await gd_find(self.session, "time_slots", {"tenant_id": tenant_id}, limit=100)
+                    for slot in existing:
+                        if slot.get("id") == slot_id:
+                            continue
+                        ex_start_str = slot.get("start_time", "")
+                        ex_end_str = slot.get("end_time", "")
+                        if ex_start_str and ex_end_str:
+                            ex_start = self._parse_time(ex_start_str)
+                            ex_end = self._parse_time(ex_end_str)
+                            if parsed_start < ex_end and parsed_end > ex_start:
+                                raise ValueError(f"الحصة تتعارض مع حصة موجودة ({ex_start_str}-{ex_end_str})")
+
         now = datetime.now(timezone.utc).isoformat()
 
         protected = ["id", "tenant_id", "created_at", "created_by"]
