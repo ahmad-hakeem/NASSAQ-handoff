@@ -3,12 +3,13 @@ import * as ScrollAreaPrimitive from "@radix-ui/react-scroll-area"
 
 import { cn } from "@/lib/utils"
 
-const ScrollArea = React.forwardRef(({ className, children, ...props }, ref) => (
+const ScrollArea = React.forwardRef(({ className, children, dir, ...props }, ref) => (
   <ScrollAreaPrimitive.Root
     ref={ref}
+    dir={dir}
     className={cn("relative overflow-hidden", className)}
     {...props}>
-    <ScrollAreaPrimitive.Viewport className="h-full w-full rounded-[inherit]">
+    <ScrollAreaPrimitive.Viewport className="h-full w-full rounded-[inherit]" style={dir ? { direction: dir } : undefined}>
       {children}
     </ScrollAreaPrimitive.Viewport>
     <ScrollBar />

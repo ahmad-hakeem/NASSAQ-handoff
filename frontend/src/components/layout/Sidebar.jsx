@@ -543,8 +543,8 @@ export const Sidebar = ({ children }) => {
       </div>
 
       {/* Menu Items */}
-      <ScrollArea className="flex-1 px-3">
-        <nav className="space-y-1 py-4">
+      <ScrollArea className="flex-1 px-3" dir={isRTL ? 'rtl' : 'ltr'}>
+        <nav className="space-y-1 py-4" dir={isRTL ? 'rtl' : 'ltr'}>
           {menuItems.map((item) => {
             const hasSubItems = item.subItems && item.subItems.length > 0;
             const isGroupExpanded = expandedGroups[item.href];
