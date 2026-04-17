@@ -107,6 +107,16 @@ export const AuthProvider = ({ children }) => {
       const config = error.config || {};
       const retryCount = config._retryCount || 0;
       const status = error.response?.status;
+
+      // Normalize wrapped error envelope { success:false, error:{code,message} }
+      // back into FastAPI-style { detail } so existing handlers keep working.
+      if (error.response?.data && typeof error.response.data === 'object') {
+        const data = error.response.data;
+        if (!data.detail && data.error && typeof data.error === 'object') {
+          const msg = data.error.message || data.error.detail || data.error.code;
+          if (msg) data.detail = msg;
+        }
+      }
       const isGet = (config.method || '').toUpperCase() === 'GET';
       const isTransient = !error.response || RETRY_STATUS_CODES.has(status);
 
