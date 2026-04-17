@@ -327,11 +327,16 @@ class SmartSchedulingEngine:
                 message_en="No academic stages defined"
             ))
         
-        # 5. Check Grades
-        grades_count = await gd_count(self.session, "grades", {"school_id": school_id, "is_active": True})
+        # 5. Check Grades (normalized collection is `grade_levels`)
+        grades_count = await gd_count(self.session, "grade_levels", {"school_id": school_id, "is_active": {"$ne": False}})
         if grades_count == 0:
-            # Check reference grades
-            grades_count = await gd_count(self.session, "grades", {"is_active": True})
+            # Fall back: derive from distinct grade values on the school's classes
+            try:
+                school_classes = await gd_find(self.session, "classes", {"school_id": school_id, "is_active": {"$ne": False}}, limit=1000)
+                derived = {c.get("grade_id") or c.get("grade_level") for c in school_classes if (c.get("grade_id") or c.get("grade_level"))}
+                grades_count = len(derived)
+            except Exception:
+                pass
         summary["grades"] = grades_count
         if grades_count == 0:
             issues.append(ValidationIssue(
