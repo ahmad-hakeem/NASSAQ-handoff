@@ -224,6 +224,7 @@ const ParentAvatar = ({ parent, size = 'md' }) => {
 };
 
 const StudentCard = ({ student, isRTL, onEdit, onDelete, onView, onAction, viewMode = 'grid' }) => {
+  const { t } = useTranslation();
   const tc = THEME_COLORS.student;
   if (viewMode === 'list') {
     return (
@@ -318,6 +319,7 @@ const StudentCard = ({ student, isRTL, onEdit, onDelete, onView, onAction, viewM
 };
 
 const TeacherCard = ({ teacher, isRTL, onEdit, onDelete, onView, onAction, viewMode = 'grid' }) => {
+  const { t } = useTranslation();
   const tc = THEME_COLORS.teacher;
   if (viewMode === 'list') {
     return (
@@ -408,6 +410,7 @@ const TeacherCard = ({ teacher, isRTL, onEdit, onDelete, onView, onAction, viewM
 };
 
 const ParentCard = ({ parent, isRTL, onView, onAction, onDelete, viewMode = 'grid' }) => {
+  const { t } = useTranslation();
   const tc = THEME_COLORS.parent;
   if (viewMode === 'list') {
     return (

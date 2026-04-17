@@ -122,6 +122,7 @@ const ClassColumn = ({
   classItem, students, isRTL, canDrag, onTransfer,
   onView, onEdit, onDelete, onAction, searchQuery
 }) => {
+  const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState(false);
   const [isDropTarget, setIsDropTarget] = useState(false);
   const dragCounterRef = useRef(0);
@@ -257,6 +258,7 @@ const UnassignedColumn = ({
   students, isRTL, canDrag, classes, onTransfer,
   onView, onEdit, onDelete, onAction, searchQuery
 }) => {
+  const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState(false);
   const [isDropTarget, setIsDropTarget] = useState(false);
   const dragCounterRef = useRef(0);
