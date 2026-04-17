@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme , useTranslation } from '../../contexts/ThemeContext';
+import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Progress } from '../../components/ui/progress';
@@ -33,22 +34,41 @@ const StudentProgressPage = () => {
   const { t } = useTranslation();
   const { token, api } = useAuth();
   const { isRTL } = useTheme();
+  const { nassaqError } = useNassaqAlert();
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState(null);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     const fetchProgress = async () => {
       try {
         const res = await api.get('/student-portal/progress');
         setProgress(res.data);
+        setError(null);
       } catch (err) {
+        // FIX (C9): Surface fetch failures to the user via the standard
+        // dialog and an inline error state instead of a silent console.error.
         console.error('Error fetching progress:', err);
+        setError(t('errorFetchingProgress'));
+        nassaqError(t('errorFetchingProgress'));
       } finally {
         setLoading(false);
       }
     };
     fetchProgress();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  if (!loading && error && !progress) {
+    return (
+      <PortalLayout portalType="student">
+        <div className="p-6 text-center text-destructive flex flex-col items-center gap-2">
+          <AlertCircle className="h-10 w-10 opacity-70" />
+          <p>{error}</p>
+        </div>
+      </PortalLayout>
+    );
+  }
 
   if (loading) {
     return (
@@ -132,7 +152,7 @@ const StudentProgressPage = () => {
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-base">
                 <BookOpen className="h-5 w-5 text-emerald-600" />
-                {isRTL ? 'المعدل حسب المادة' : 'Average by Subject'}
+                {t('averageBySubject')}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">

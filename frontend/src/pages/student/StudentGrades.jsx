@@ -56,7 +56,7 @@ export const StudentGrades = () => {
     if (percentage >= 90) return t('excellent');
     if (percentage >= 75) return t('veryGood');
     if (percentage >= 60) return t('good');
-    return isRTL ? 'يحتاج تحسين' : 'Needs Improvement';
+    return t('needsImprovement');
   };
 
   const filteredSubjects = selectedSubject === 'all' 
@@ -93,7 +93,7 @@ export const StudentGrades = () => {
           
           <Select value={selectedSubject} onValueChange={setSelectedSubject}>
             <SelectTrigger className="w-[200px] rounded-xl">
-              <SelectValue placeholder={isRTL ? 'اختر المادة' : 'Select Subject'} />
+              <SelectValue placeholder={t('selectSubject')} />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">{t('allSubjects')}</SelectItem>
@@ -110,7 +110,7 @@ export const StudentGrades = () => {
             <CardContent className="p-4 text-center">
               <Award className="h-8 w-8 mx-auto mb-2 text-brand-turquoise" />
               <p className="text-2xl font-bold">{grades?.overall_average}%</p>
-              <p className="text-xs text-muted-foreground">{isRTL ? 'المعدل العام' : 'Overall Average'}</p>
+              <p className="text-xs text-muted-foreground">{t('overallAverage')}</p>
             </CardContent>
           </Card>
           <Card className="card-nassaq">

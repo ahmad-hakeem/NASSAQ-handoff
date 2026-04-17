@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, NavLink } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useTranslation } from '../contexts/ThemeContext';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
@@ -17,6 +18,7 @@ import { formatHijriDate } from '../utils/hijriDate';
 
 export default function StudentDashboard() {
   const { user, api, isRTL = true } = useAuth();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [studentData, setStudentData] = useState(null);
@@ -331,24 +333,44 @@ export default function StudentDashboard() {
       </div>
 
       {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg z-50">
+      {/* FIX (D10, D11): Replace plain <button>s with NavLink so the active
+          route is highlighted automatically, add aria-labels for screen
+          readers, and pull the labels from the i18n catalogue. */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg z-50" aria-label={t('mainNavigation')}>
         <div className="flex items-center justify-around py-2">
-          <button className="flex flex-col items-center gap-1 p-2 text-emerald-600">
+          <NavLink
+            to="/student"
+            end
+            aria-label={t('home')}
+            className={({ isActive }) => `flex flex-col items-center gap-1 p-2 ${isActive ? 'text-emerald-600' : 'text-gray-400'}`}
+          >
             <Home className="h-6 w-6" />
-            <span className="text-xs font-medium">الرئيسية</span>
-          </button>
-          <button className="flex flex-col items-center gap-1 p-2 text-gray-400">
+            <span className="text-xs font-medium">{t('home')}</span>
+          </NavLink>
+          <NavLink
+            to="/student/schedule"
+            aria-label={t('schedule')}
+            className={({ isActive }) => `flex flex-col items-center gap-1 p-2 ${isActive ? 'text-emerald-600' : 'text-gray-400'}`}
+          >
             <CalendarDays className="h-6 w-6" />
-            <span className="text-xs">الجدول</span>
-          </button>
-          <button className="flex flex-col items-center gap-1 p-2 text-gray-400">
+            <span className="text-xs">{t('schedule')}</span>
+          </NavLink>
+          <NavLink
+            to="/student/grades"
+            aria-label={t('grades')}
+            className={({ isActive }) => `flex flex-col items-center gap-1 p-2 ${isActive ? 'text-emerald-600' : 'text-gray-400'}`}
+          >
             <BookOpen className="h-6 w-6" />
-            <span className="text-xs">الدرجات</span>
-          </button>
-          <button className="flex flex-col items-center gap-1 p-2 text-gray-400">
+            <span className="text-xs">{t('grades')}</span>
+          </NavLink>
+          <NavLink
+            to="/student/profile"
+            aria-label={t('myAccount')}
+            className={({ isActive }) => `flex flex-col items-center gap-1 p-2 ${isActive ? 'text-emerald-600' : 'text-gray-400'}`}
+          >
             <User className="h-6 w-6" />
-            <span className="text-xs">حسابي</span>
-          </button>
+            <span className="text-xs">{t('myAccount')}</span>
+          </NavLink>
         </div>
       </nav>
     </div>

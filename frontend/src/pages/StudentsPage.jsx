@@ -56,6 +56,7 @@ import {
   TableRow,
 } from '../components/ui/table';
 import { Link } from 'react-router-dom';
+import AddStudentWizard from '../components/wizards/AddStudentWizard';
 
 export const StudentsPage = () => {
   const { t } = useTranslation();
@@ -64,6 +65,9 @@ export const StudentsPage = () => {
   const [students, setStudents] = useState([]);
   const [schools, setSchools] = useState([]);
   const [classes, setClasses] = useState([]);
+  // FIX (C12 follow-up): AddStudentWizard requires a populated grades list to
+  // enable the "Next" button on step 1. Other pages fetch from `/reference/grades`.
+  const [grades, setGrades] = useState([]);
   const [loading, setLoading] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -94,12 +98,14 @@ export const StudentsPage = () => {
     try {
       // For school-level users, only fetch students and classes (tenant-scoped by backend)
       // For platform admins, also fetch schools for filtering
-      const [studentsRes, classesRes] = await Promise.all([
+      const [studentsRes, classesRes, gradesRes] = await Promise.all([
         api.get('/students'),
         api.get('/classes'),
+        api.get('/reference/grades').catch(() => ({ data: [] })),
       ]);
       setStudents(studentsRes.data);
       setClasses(classesRes.data);
+      setGrades(gradesRes.data || []);
       
       // Only fetch schools list for platform admins
       if (!isSchoolLevel) {
@@ -287,9 +293,32 @@ export const StudentsPage = () => {
               </Select>
             </div>
 
-            <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+            {/* FIX (C12): The legacy 60vh scrolling modal made it nearly
+                impossible to add a student on a phone. Use the existing
+                multi-step wizard which handles paging, validation, and
+                generated credentials. The old form below is preserved
+                temporarily but no longer reachable. */}
+            <Button
+              className="bg-brand-turquoise hover:bg-brand-turquoise-light rounded-xl"
+              data-testid="add-student-btn"
+              onClick={() => setCreateDialogOpen(true)}
+            >
+              <Plus className="h-5 w-5 me-2" />
+              {t('addStudent')}
+            </Button>
+            <AddStudentWizard
+              open={createDialogOpen}
+              onOpenChange={setCreateDialogOpen}
+              onSuccess={() => { setCreateDialogOpen(false); fetchData(); }}
+              api={api}
+              isRTL={isRTL}
+              grades={grades || []}
+              classes={classes || []}
+            />
+            {false && (
+            <Dialog open={false} onOpenChange={setCreateDialogOpen}>
               <DialogTrigger asChild>
-                <Button className="bg-brand-turquoise hover:bg-brand-turquoise-light rounded-xl" data-testid="add-student-btn">
+                <Button className="bg-brand-turquoise hover:bg-brand-turquoise-light rounded-xl">
                   <Plus className="h-5 w-5 me-2" />
                   {t('addStudent')}
                 </Button>
@@ -429,6 +458,7 @@ export const StudentsPage = () => {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
+            )}
           </div>
 
           <Card className="card-nassaq">

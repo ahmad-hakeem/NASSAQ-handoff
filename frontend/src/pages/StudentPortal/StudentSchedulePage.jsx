@@ -87,7 +87,7 @@ const StudentSchedulePage = () => {
                   <Calendar className="h-6 w-6 text-emerald-600" />
                 </div>
                 <div>
-                  <h1 className="font-bold text-lg">{isRTL ? 'الجدول الدراسي' : 'Class Schedule'}</h1>
+                  <h1 className="font-bold text-lg">{t('classSchedule')}</h1>
                   {studentInfo && (
                     <p className="text-sm text-muted-foreground">
                       {studentInfo.grade} - {studentInfo.class_name}
@@ -123,7 +123,7 @@ const StudentSchedulePage = () => {
                     <Clock className="h-5 w-5 text-emerald-600" />
                     {isRTL ? `حصص يوم ${day}` : `${day} Classes`}
                     <Badge variant="secondary" className="ms-auto">
-                      {schedule[day]?.length || 0} {isRTL ? 'حصص' : 'classes'}
+                      {schedule[day]?.length || 0} {t('classes')}
                     </Badge>
                   </CardTitle>
                 </CardHeader>

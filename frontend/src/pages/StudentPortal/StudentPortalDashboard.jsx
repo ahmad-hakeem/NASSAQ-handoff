@@ -365,7 +365,7 @@ const StudentPortalDashboard = () => {
               ) : (
                 <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
                   <TrendingUp className="h-10 w-10 mb-2 opacity-30" />
-                  <p className="text-sm">{isRTL ? 'لا توجد درجات' : 'No grades yet'}</p>
+                  <p className="text-sm">{t('noGradesYet')}</p>
                 </div>
               )}
             </CardContent>
@@ -378,7 +378,7 @@ const StudentPortalDashboard = () => {
                 <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center">
                   <Sparkles className="h-4 w-4 text-white" />
                 </div>
-                {isRTL ? 'حكيم' : 'Hakim AI'}
+                {t('hakimAi')}
               </CardTitle>
             </CardHeader>
             <CardContent>

@@ -11,7 +11,7 @@ import {
 import { NotificationBell } from '../components/notifications/NotificationBell';
 import {
   User, Edit, Star, Download, Sun, Moon, Globe, GraduationCap,
-  ChevronRight, Key, UserX, UserCheck, Trash2, Send,
+  ChevronRight, ChevronLeft, Key, UserX, UserCheck, Trash2, Send,
   Calendar, CheckCircle, Sparkles, ThumbsUp, Trophy,
   MoreVertical, Eye, BarChart3, Heart, Medal, ClipboardList, ScrollText
 } from 'lucide-react';
@@ -46,7 +46,9 @@ export default function StudentProfilePage() {
     openExportModal, handleAction, handleBack,
   } = hook;
 
-  const BackArrow = isRTL ? ChevronRight : ChevronRight;
+  // FIX (D9): The previous code used ChevronRight in both branches, breaking
+  // the visual back-arrow direction in LTR. Use the proper mirrored icon.
+  const BackArrow = isRTL ? ChevronRight : ChevronLeft;
 
   if (loading) {
     return (
@@ -173,11 +175,11 @@ export default function StudentProfilePage() {
                       {student.is_gifted && (
                         <Badge className="bg-gradient-to-r from-yellow-400 to-amber-500 text-white border-0 px-3 py-1.5 font-cairo shadow-lg text-xs">
                           <Star className="h-3.5 w-3.5 fill-white me-1" />
-                          {isRTL ? 'طالب موهوب' : 'Gifted'}
+                          {t('gifted')}
                         </Badge>
                       )}
                       <Badge variant={student.is_active !== false ? 'default' : 'destructive'} className={`text-xs px-2.5 py-1 ${student.is_active !== false ? 'bg-emerald-500/20 text-emerald-200 border-emerald-400/30' : ''}`}>
-                        {student.is_active !== false ? (t('active')) : (isRTL ? 'معلق' : 'Suspended')}
+                        {student.is_active !== false ? (t('active')) : (t('suspended'))}
                       </Badge>
                     </div>
                   </div>

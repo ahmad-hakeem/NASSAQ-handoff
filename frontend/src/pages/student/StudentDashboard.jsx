@@ -124,7 +124,7 @@ export const StudentDashboard = () => {
                 <TrendingUp className="h-6 w-6 text-blue-500" />
               </div>
               <p className="text-2xl font-bold text-blue-600">{dashboard?.average_score}%</p>
-              <p className="text-xs text-muted-foreground">{isRTL ? 'المعدل العام' : 'Average Score'}</p>
+              <p className="text-xs text-muted-foreground">{t('averageScore')}</p>
             </CardContent>
           </Card>
 

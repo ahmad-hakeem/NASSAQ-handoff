@@ -98,11 +98,12 @@ const StudentHomeworkPage = () => {
   };
 
   const getStatusLabel = (status) => {
+    // FIX (C10): Use translation keys instead of inline isRTL ternaries.
     const labels = {
       pending: t('pending5'),
-      submitted: isRTL ? 'مُسلَّم' : 'Submitted',
-      graded: isRTL ? 'مُقيَّم' : 'Graded',
-      late: isRTL ? 'متأخر' : 'Late',
+      submitted: t('submitted'),
+      graded: t('graded'),
+      late: t('late'),
     };
     return labels[status] || status;
   };
@@ -112,25 +113,25 @@ const StudentHomeworkPage = () => {
   // so they show a neutral label rather than rendering "Invalid Date" or a
   // misleading "overdue X days" derived from epoch math.
   const formatDate = (dateStr) => {
-    if (!dateStr) return isRTL ? 'بدون موعد نهائي' : 'No due date';
+    if (!dateStr) return t('noDueDate');
     try {
       const date = new Date(dateStr);
-      if (isNaN(date.getTime())) return isRTL ? 'بدون موعد نهائي' : 'No due date';
-      return date.toLocaleDateString('ar-SA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+      if (isNaN(date.getTime())) return t('noDueDate');
+      return date.toLocaleDateString(isRTL ? 'ar-SA' : 'en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
     } catch (e) {
       console.error('Error formatting date:', e);
-      return isRTL ? 'بدون موعد نهائي' : 'No due date';
+      return t('noDueDate');
     }
   };
 
   const getDaysRemaining = (dueDate) => {
-    if (!dueDate) return isRTL ? 'بدون موعد' : 'No deadline';
+    if (!dueDate) return t('noDeadline');
     const due = new Date(dueDate);
-    if (isNaN(due.getTime())) return isRTL ? 'بدون موعد' : 'No deadline';
+    if (isNaN(due.getTime())) return t('noDeadline');
     const today = new Date();
     const diff = Math.ceil((due - today) / (1000 * 60 * 60 * 24));
 
-    if (diff < 0) return isRTL ? `متأخر ${Math.abs(diff)} يوم` : `${Math.abs(diff)} days overdue`;
+    if (diff < 0) return isRTL ? `${t('overdue')} ${Math.abs(diff)} يوم` : `${Math.abs(diff)} days overdue`;
     if (diff === 0) return t('today2');
     if (diff === 1) return t('tomorrow');
     return isRTL ? `${diff} أيام متبقية` : `${diff} days left`;
@@ -200,7 +201,7 @@ const StudentHomeworkPage = () => {
                 <CheckCircle className="h-4 w-4 text-green-600" />
               </div>
               <p className="text-lg font-bold text-green-600">{totalCompleted}</p>
-              <p className="text-[10px] text-muted-foreground">{isRTL ? 'مكتمل' : 'Completed'}</p>
+              <p className="text-[10px] text-muted-foreground">{t('completed')}</p>
             </CardContent>
           </Card>
 
@@ -210,7 +211,7 @@ const StudentHomeworkPage = () => {
                 <AlertCircle className="h-4 w-4 text-red-600" />
               </div>
               <p className="text-lg font-bold text-red-600">{totalOverdue}</p>
-              <p className="text-[10px] text-muted-foreground">{isRTL ? 'متأخر' : 'Overdue'}</p>
+              <p className="text-[10px] text-muted-foreground">{t('overdue')}</p>
             </CardContent>
           </Card>
         </div>
@@ -222,10 +223,10 @@ const StudentHomeworkPage = () => {
               {t('pending5')} ({totalPending})
             </TabsTrigger>
             <TabsTrigger value="completed" className="rounded-lg text-xs">
-              {isRTL ? 'مكتمل' : 'Completed'} ({totalCompleted})
+              {t('completed')} ({totalCompleted})
             </TabsTrigger>
             <TabsTrigger value="overdue" className="rounded-lg text-xs">
-              {isRTL ? 'متأخر' : 'Overdue'} ({totalOverdue})
+              {t('overdue')} ({totalOverdue})
             </TabsTrigger>
           </TabsList>
 

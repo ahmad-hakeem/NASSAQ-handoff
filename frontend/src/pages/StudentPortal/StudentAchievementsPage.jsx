@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme , useTranslation } from '../../contexts/ThemeContext';
+import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import PortalLayout from '../../components/portal/PortalLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
@@ -71,22 +72,41 @@ const StudentAchievementsPage = () => {
   const { t } = useTranslation();
   const { token, api } = useAuth();
   const { isRTL } = useTheme();
+  const { nassaqError } = useNassaqAlert();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     const fetchAchievements = async () => {
       try {
         const res = await api.get('/student-portal/achievements');
         setData(res.data);
+        setError(null);
       } catch (err) {
+        // FIX (C9): Surface fetch failures to the user via the standard
+        // dialog and an inline error state instead of a silent console.error.
         console.error('Error fetching achievements:', err);
+        setError(t('errorFetchingAchievements'));
+        nassaqError(t('errorFetchingAchievements'));
       } finally {
         setLoading(false);
       }
     };
     fetchAchievements();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  if (!loading && error && !data) {
+    return (
+      <PortalLayout portalType="student">
+        <div className="p-6 text-center text-destructive flex flex-col items-center gap-2">
+          <AlertCircle className="h-10 w-10 opacity-70" />
+          <p>{error}</p>
+        </div>
+      </PortalLayout>
+    );
+  }
 
   if (loading) {
     return (
