@@ -493,6 +493,9 @@ const HakimAssistantInner = () => {
                 {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
               </Button>
             </div>
+            <p className="mt-2 text-[11px] leading-tight text-center text-muted-foreground/70 font-cairo select-none">
+              {t('hakimDisclaimer')}
+            </p>
           </form>
         </Card>
       )}
