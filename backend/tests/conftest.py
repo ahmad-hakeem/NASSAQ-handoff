@@ -208,3 +208,130 @@ async def student_with_parent(tenant_a):
 @pytest_asyncio.fixture
 async def orphan_student(tenant_a):
     return await _seed_student(tenant_a, with_parent=False)
+
+
+@pytest_asyncio.fixture
+async def school_a_id(tenant_a):
+    return tenant_a
+
+
+@pytest_asyncio.fixture
+async def school_b_id(tenant_b):
+    return tenant_b
+
+
+@pytest_asyncio.fixture
+async def seed_global_admin_constraint(school_b_id):
+    """Seed an administrative_constraints row scoped to school B.
+
+    The pre-fix engine fallback ignores school_id, so this row will leak
+    into requests for school A; the post-fix engine must skip it.
+    """
+    cid = str(uuid.uuid4())
+    await gd_insert(db.session, "administrative_constraints", {
+        "id": cid,
+        "school_id": school_b_id,
+        "is_active": True,
+        "name": "global-admin-constraint",
+        "constraint_type": "no_friday",
+    })
+    return cid
+
+
+@pytest_asyncio.fixture
+async def school_b_schedule_id(school_b_id):
+    """Insert a schedules row owned by school B and return its id.
+
+    Used to verify cross-tenant IDOR denial on /schedule-sessions.
+    """
+    sid = str(uuid.uuid4())
+    await gd_insert(db.session, "schedules", {
+        "id": sid,
+        "school_id": school_b_id,
+        "name": "School B Schedule",
+        "academic_year": "2025-2026",
+        "semester": 1,
+        "status": "draft",
+        "total_sessions": 0,
+    })
+    return sid
+
+
+@pytest_asyncio.fixture
+async def school_b_timetable_id(school_b_id):
+    """Insert a timetables row owned by school B and return its id."""
+    tid = str(uuid.uuid4())
+    await gd_insert(db.session, "timetables", {
+        "id": tid,
+        "school_id": school_b_id,
+        "name": "School B Timetable",
+        "academic_year": "2026-2027",
+        "semester": 1,
+        "status": "draft",
+        "version": 1,
+        "total_sessions": 0,
+    })
+    return tid
+
+
+@pytest_asyncio.fixture
+async def teacher_a_token(tenant_a):
+    user = await _mk_user(UserRole.TEACHER, tenant_a)
+    return create_access_token({
+        "sub": user["id"],
+        "role": user["role"],
+        "tenant_id": user["tenant_id"],
+    })
+
+
+@pytest_asyncio.fixture
+async def principal_a_token(tenant_a):
+    user = await _mk_user(UserRole.SCHOOL_PRINCIPAL, tenant_a)
+    return create_access_token({
+        "sub": user["id"],
+        "role": user["role"],
+        "tenant_id": user["tenant_id"],
+    })
+
+
+@pytest_asyncio.fixture
+async def school_a_version_id(tenant_a):
+    """Insert a timetables row owned by school A and return its id."""
+    tid = str(uuid.uuid4())
+    await gd_insert(db.session, "timetables", {
+        "id": tid,
+        "school_id": tenant_a,
+        "name": "School A Timetable",
+        "academic_year": "2026-2027",
+        "semester": 1,
+        "status": "draft",
+        "version": 1,
+        "total_sessions": 0,
+    })
+    return tid
+
+
+@pytest_asyncio.fixture
+async def school_a_session_id(tenant_a, school_a_version_id):
+    sid = str(uuid.uuid4())
+    await gd_insert(db.session, "timetable_sessions", {
+        "id": sid,
+        "timetable_id": school_a_version_id,
+        "school_id": tenant_a,
+        "day_of_week": "sunday",
+        "period_number": 1,
+    })
+    return sid
+
+
+@pytest_asyncio.fixture
+async def seed_school_b_constraint(school_b_id):
+    cid = str(uuid.uuid4())
+    await gd_insert(db.session, "school_constraints", {
+        "id": cid,
+        "school_id": school_b_id,
+        "is_active": True,
+        "name": "school-b-only",
+        "constraint_type": "no_first_period",
+    })
+    return cid

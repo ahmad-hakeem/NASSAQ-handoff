@@ -279,6 +279,16 @@ TENANT_SCOPED_COLLECTIONS = frozenset({
     "students", "teachers", "classes", "subjects", "attendance",
     "teacher_attendance", "schedules", "grades", "behaviour_records",
     "events", "notifications", "registration_requests",
+    "timetables",
+    "schedule_sessions",
+    "timetable_sessions",
+    "time_slots",
+    "teacher_assignments",
+    "timetable_constraints",
+    "school_constraints",
+    "administrative_constraints",
+    "admin_constraints",
+    "constraint_patterns",
 })
 
 

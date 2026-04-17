@@ -14,8 +14,28 @@ from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, g
 
 logger = logging.getLogger("nassaq.principal_timetable")
 
-_JWT_SECRET = os.environ.get('JWT_SECRET_KEY', '')
-_JWT_ALGORITHM = os.environ.get('JWT_ALGORITHM', 'HS256')
+from dependencies import get_current_user, require_roles
+from models.enums import UserRole
+from utils.tenant_scope import resolve_school_id
+
+PRINCIPAL_ROLES = [UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL]
+
+
+async def principal_school_id(
+    x_school_context: Optional[str] = Header(None, alias="X-School-Context"),
+    current_user: dict = Depends(require_roles(PRINCIPAL_ROLES)),
+) -> str:
+    """Resolve the school_id this request operates on, with full RBAC.
+
+    - PLATFORM_ADMIN: must pass X-School-Context (any school).
+    - SCHOOL_PRINCIPAL: ignores X-School-Context unless it matches their tenant.
+    """
+    override = x_school_context if (x_school_context and x_school_context != "null") else None
+    resolved = resolve_school_id(current_user, override)
+    if resolved is None:
+        raise HTTPException(status_code=400, detail="X-School-Context header is required for platform admin")
+    return resolved
+
 
 router = APIRouter(prefix="/principal/timetable", tags=["Principal Timetable"])
 
@@ -168,27 +188,6 @@ async def _get_conflict_details(timetable_id: str, school_id: str) -> list:
 
     return details
 
-async def get_school_id(x_school_context: str = Header(default=None, alias="X-School-Context"),
-                        authorization: str = Header(default=None)) -> Optional[str]:
-    if x_school_context and x_school_context != "null":
-        return x_school_context
-    if authorization:
-        try:
-            import jwt
-            token = authorization.replace("Bearer ", "")
-            payload = jwt.decode(token, _JWT_SECRET, algorithms=[_JWT_ALGORITHM])
-            school_id = payload.get("school_id") or payload.get("tenant_id")
-            if school_id:
-                return school_id
-            user_id = payload.get("sub")
-            if user_id and db is not None:
-                user = await gd_find_one(db.session, "users", {"id": user_id})
-                if user:
-                    return user.get("tenant_id") or user.get("school_id")
-        except Exception as e:
-            logger.warning(f"Failed to extract school_id from authorization token: {e}")
-    return None
-
 async def _get_school_data(school_id: str) -> Dict[str, Any]:
     school = await gd_find_one(db.session, "schools", {"id": school_id}) or {}
     settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id}) or {}
@@ -219,13 +218,9 @@ async def _get_active_timetable(school_id: str) -> Optional[Dict]:
 # ─────────────────────────────────────────────
 @router.get("/summary")
 async def get_timetable_summary(
-    x_school_context: str = Header(default=None, alias="X-School-Context"),
-    authorization: str = Header(default=None)
+    school_id: str = Depends(principal_school_id),
+    current_user: dict = Depends(get_current_user)
 ):
-    school_id = await get_school_id(x_school_context, authorization)
-    if not school_id:
-        raise HTTPException(status_code=400, detail="School context required")
-
     info = await _get_school_data(school_id)
     school = info["school"]
     settings = info["settings"]
@@ -289,13 +284,9 @@ async def get_timetable_summary(
 # ─────────────────────────────────────────────
 @router.get("/readiness")
 async def get_readiness(
-    x_school_context: str = Header(default=None, alias="X-School-Context"),
-    authorization: str = Header(default=None)
+    school_id: str = Depends(principal_school_id),
+    current_user: dict = Depends(get_current_user)
 ):
-    school_id = await get_school_id(x_school_context, authorization)
-    if not school_id:
-        raise HTTPException(status_code=400, detail="School context required")
-
     from routes.timetable_readiness_routes import _run_readiness_checks
     report = await _run_readiness_checks(school_id)
 
@@ -370,13 +361,9 @@ async def get_readiness(
 # ─────────────────────────────────────────────
 @router.get("/versions")
 async def get_versions(
-    x_school_context: str = Header(default=None, alias="X-School-Context"),
-    authorization: str = Header(default=None)
+    school_id: str = Depends(principal_school_id),
+    current_user: dict = Depends(get_current_user)
 ):
-    school_id = await get_school_id(x_school_context, authorization)
-    if not school_id:
-        raise HTTPException(status_code=400, detail="School context required")
-
     tt_list = await gd_find(db.session, "timetables",
         {"school_id": school_id, "status": {"$ne": "archived"}},
         order_by="created_at", desc_order=True, limit=20)
@@ -423,13 +410,9 @@ async def get_versions(
 # ─────────────────────────────────────────────
 @router.get("/filter-options")
 async def get_filter_options(
-    x_school_context: str = Header(default=None, alias="X-School-Context"),
-    authorization: str = Header(default=None)
+    school_id: str = Depends(principal_school_id),
+    current_user: dict = Depends(get_current_user)
 ):
-    school_id = await get_school_id(x_school_context, authorization)
-    if not school_id:
-        raise HTTPException(status_code=400, detail="School context required")
-
     classes = []
     __c_list = await gd_find(db.session, "classes", {"school_id": school_id, "is_active": {"$ne": False}})
     for c in __c_list:
@@ -547,13 +530,9 @@ async def get_timetable_grid(
     teacher_id: Optional[str] = Query(None),
     subject_id: Optional[str] = Query(None),
     day: Optional[str] = Query(None),
-    x_school_context: str = Header(default=None, alias="X-School-Context"),
-    authorization: str = Header(default=None)
+    school_id: str = Depends(principal_school_id),
+    current_user: dict = Depends(get_current_user)
 ):
-    school_id = await get_school_id(x_school_context, authorization)
-    if not school_id:
-        raise HTTPException(status_code=400, detail="School context required")
-
     if timetable_id:
         tt = await gd_find_one(db.session, "timetables", {"id": timetable_id, "school_id": school_id})
     else:
@@ -659,13 +638,9 @@ async def get_timetable_grid(
 @router.get("/insights")
 async def get_insights(
     timetable_id: Optional[str] = Query(None),
-    x_school_context: str = Header(default=None, alias="X-School-Context"),
-    authorization: str = Header(default=None)
+    school_id: str = Depends(principal_school_id),
+    current_user: dict = Depends(get_current_user)
 ):
-    school_id = await get_school_id(x_school_context, authorization)
-    if not school_id:
-        raise HTTPException(status_code=400, detail="School context required")
-
     if timetable_id:
         tt = await gd_find_one(db.session, "timetables", {"id": timetable_id, "school_id": school_id})
     else:
@@ -725,13 +700,9 @@ async def get_insights(
 @router.get("/issues")
 async def get_issues(
     timetable_id: Optional[str] = Query(None),
-    x_school_context: str = Header(default=None, alias="X-School-Context"),
-    authorization: str = Header(default=None)
+    school_id: str = Depends(principal_school_id),
+    current_user: dict = Depends(get_current_user)
 ):
-    school_id = await get_school_id(x_school_context, authorization)
-    if not school_id:
-        raise HTTPException(status_code=400, detail="School context required")
-
     if timetable_id:
         tt = await gd_find_one(db.session, "timetables", {"id": timetable_id})
     else:
@@ -869,13 +840,9 @@ class GenerateRequest(BaseModel):
 @router.post("/generate")
 async def generate_timetable(
     body: GenerateRequest,
-    x_school_context: str = Header(default=None, alias="X-School-Context"),
-    authorization: str = Header(default=None)
+    school_id: str = Depends(principal_school_id),
+    current_user: dict = Depends(get_current_user)
 ):
-    school_id = await get_school_id(x_school_context, authorization)
-    if not school_id:
-        raise HTTPException(status_code=400, detail="School context required")
-
     if smart_engine is None:
         raise HTTPException(status_code=503, detail="Scheduling engine not available")
 
@@ -886,7 +853,8 @@ async def generate_timetable(
         # cause semester-fallback issues across mixed data setups.
         result = await smart_engine.generate_timetable(
             school_id=school_id,
-            created_by="principal"
+            created_by="principal",
+            calling_user=current_user
         )
 
         if hasattr(result, 'timetable_id'):
@@ -960,13 +928,9 @@ async def generate_timetable(
 @router.get("/version/{version_id}/validate-publish")
 async def validate_before_publish(
     version_id: str,
-    x_school_context: str = Header(default=None, alias="X-School-Context"),
-    authorization: str = Header(default=None)
+    school_id: str = Depends(principal_school_id),
+    current_user: dict = Depends(get_current_user)
 ):
-    school_id = await get_school_id(x_school_context, authorization)
-    if not school_id:
-        raise HTTPException(status_code=400, detail="School context required")
-
     tt = await gd_find_one(db.session, "timetables", {"id": version_id, "school_id": school_id})
     if not tt:
         raise HTTPException(status_code=404, detail="Timetable version not found")
@@ -1104,13 +1068,9 @@ async def validate_before_publish(
 @router.post("/version/{version_id}/publish")
 async def publish_version(
     version_id: str,
-    x_school_context: str = Header(default=None, alias="X-School-Context"),
-    authorization: str = Header(default=None)
+    school_id: str = Depends(principal_school_id),
+    current_user: dict = Depends(get_current_user)
 ):
-    school_id = await get_school_id(x_school_context, authorization)
-    if not school_id:
-        raise HTTPException(status_code=400, detail="School context required")
-
     tt = await gd_find_one(db.session, "timetables", {"id": version_id, "school_id": school_id})
     if not tt:
         raise HTTPException(status_code=404, detail="Timetable version not found")
@@ -1151,19 +1111,8 @@ async def publish_version(
     if previously_published:
         await gd_update_many(db.session, "timetables", {"school_id": school_id, "status": "published", "id": {"$ne": version_id}}, {"status": "archived", "archived_at": now, "archived_by": "system_auto_archive"})
 
-    publisher_info = "principal"
-    publisher_name = "المدير"
-    if authorization:
-        try:
-            import jwt
-            token = authorization.replace("Bearer ", "")
-            payload = jwt.decode(token, _JWT_SECRET, algorithms=[_JWT_ALGORITHM])
-            publisher_info = payload.get("sub") or "principal"
-            user_doc = await gd_find_one(db.session, "users", {"id": publisher_info})
-            if user_doc:
-                publisher_name = user_doc.get("full_name") or user_doc.get("name") or publisher_info
-        except Exception as e:
-            logger.warning(f"Failed to resolve publisher info from token: {e}")
+    publisher_info = current_user.get("id") or "principal"
+    publisher_name = current_user.get("full_name") or current_user.get("name") or publisher_info
 
     school_settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
     working_days = _resolve_working_days(school_settings.get("working_days") if school_settings else None)
@@ -1293,13 +1242,9 @@ async def publish_version(
 # ─────────────────────────────────────────────
 @router.get("/previous")
 async def get_previous_timetables(
-    x_school_context: str = Header(default=None, alias="X-School-Context"),
-    authorization: str = Header(default=None)
+    school_id: str = Depends(principal_school_id),
+    current_user: dict = Depends(get_current_user)
 ):
-    school_id = await get_school_id(x_school_context, authorization)
-    if not school_id:
-        raise HTTPException(status_code=400, detail="School context required")
-
     snapshots_map = {}
     snap_list = await gd_find(db.session, "published_timetables", {"school_id": school_id})
     for snap in snap_list:
@@ -1357,15 +1302,11 @@ async def get_previous_timetables(
 @router.get("/previous/{timetable_id}/view")
 async def view_previous_timetable(
     timetable_id: str,
-    x_school_context: str = Header(default=None, alias="X-School-Context"),
-    authorization: str = Header(default=None),
+    school_id: str = Depends(principal_school_id),
+    current_user: dict = Depends(get_current_user),
     page: int = Query(1, ge=1),
     page_size: int = Query(1000, ge=1, le=1000),
 ):
-    school_id = await get_school_id(x_school_context, authorization)
-    if not school_id:
-        raise HTTPException(status_code=400, detail="School context required")
-
     snapshot = await gd_find_one(db.session, "published_timetables", {"timetable_id": timetable_id, "school_id": school_id},
         sort=[("published_at", -1)])
 
@@ -1460,13 +1401,9 @@ async def view_previous_timetable(
 @router.get("/version/{version_id}/empty-slots")
 async def get_empty_slots_details(
     version_id: str,
-    x_school_context: str = Header(default=None, alias="X-School-Context"),
-    authorization: str = Header(default=None)
+    school_id: str = Depends(principal_school_id),
+    current_user: dict = Depends(get_current_user)
 ):
-    school_id = await get_school_id(x_school_context, authorization)
-    if not school_id:
-        raise HTTPException(status_code=400, detail="School context required")
-
     school_settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
     working_days = _resolve_working_days(school_settings.get("working_days") if school_settings else None)
 
@@ -1531,13 +1468,9 @@ async def get_empty_slots_details(
 @router.post("/version/{version_id}/fill-gaps")
 async def fill_timetable_gaps(
     version_id: str,
-    x_school_context: str = Header(default=None, alias="X-School-Context"),
-    authorization: str = Header(default=None)
+    school_id: str = Depends(principal_school_id),
+    current_user: dict = Depends(get_current_user)
 ):
-    school_id = await get_school_id(x_school_context, authorization)
-    if not school_id:
-        raise HTTPException(status_code=400, detail="School context required")
-
     tt = await gd_find_one(db.session, "timetables", {"id": version_id, "school_id": school_id})
     if not tt:
         raise HTTPException(status_code=404, detail="Timetable version not found")
@@ -1755,13 +1688,9 @@ class MoveSessionRequest(BaseModel):
 @router.post("/sessions/swap")
 async def swap_sessions(
     data: SwapSessionsRequest,
-    x_school_context: str = Header(default=None, alias="X-School-Context"),
-    authorization: str = Header(default=None)
+    school_id: str = Depends(principal_school_id),
+    current_user: dict = Depends(get_current_user)
 ):
-    school_id = await get_school_id(x_school_context, authorization)
-    if not school_id:
-        raise HTTPException(status_code=400, detail="School context required")
-
     s1 = await gd_find_one(db.session, "timetable_sessions", {"id": data.session_id_1, "school_id": school_id})
     s2 = await gd_find_one(db.session, "timetable_sessions", {"id": data.session_id_2, "school_id": school_id})
 
@@ -1859,13 +1788,9 @@ async def swap_sessions(
 @router.post("/sessions/move")
 async def move_session(
     data: MoveSessionRequest,
-    x_school_context: str = Header(default=None, alias="X-School-Context"),
-    authorization: str = Header(default=None)
+    school_id: str = Depends(principal_school_id),
+    current_user: dict = Depends(get_current_user)
 ):
-    school_id = await get_school_id(x_school_context, authorization)
-    if not school_id:
-        raise HTTPException(status_code=400, detail="School context required")
-
     session = await gd_find_one(db.session, "timetable_sessions", {"id": data.session_id, "school_id": school_id})
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -1948,13 +1873,9 @@ async def move_session(
 @router.get("/session/{session_id}")
 async def get_session_details(
     session_id: str,
-    x_school_context: str = Header(default=None, alias="X-School-Context"),
-    authorization: str = Header(default=None)
+    school_id: str = Depends(principal_school_id),
+    current_user: dict = Depends(get_current_user)
 ):
-    school_id = await get_school_id(x_school_context, authorization)
-    if not school_id:
-        raise HTTPException(status_code=400, detail="School context required")
-
     session = await gd_find_one(db.session, "timetable_sessions", {"id": session_id})
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")

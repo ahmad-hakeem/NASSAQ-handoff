@@ -23,6 +23,7 @@ from dependencies import (
     REPORT_TYPES, generate_student_qr_code
 )
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
+from utils.tenant_scope import assert_school_access, resolve_school_id
 
 
 from shared_models import (
@@ -97,6 +98,7 @@ async def smart_validate_data_readiness(
     - إعدادات اليوم الدراسي
     - القيود الإدارية
     """
+    assert_school_access(current_user, str(school_id))
     result = await smart_scheduling_engine.validate_data_readiness(school_id)
     
     return {
@@ -131,13 +133,15 @@ async def smart_generate_timetable(
     7. اكتشاف التعارضات
     8. تحسين الجدول
     """
+    assert_school_access(current_user, str(school_id))
     request = request or SmartTimetableGenerateRequest()
     
     result = await smart_scheduling_engine.generate_timetable(
         school_id=school_id,
         academic_year_id=request.academic_year_id,
         term_id=request.term_id,
-        created_by=current_user.get("id", "system")
+        created_by=current_user.get("id", "system"),
+        calling_user=current_user
     )
     
     return result.model_dump()
@@ -147,7 +151,7 @@ async def smart_generate_timetable(
 @router.post("/timetable/generate-smart")
 async def generate_timetable_smart(
     request: Request,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
     """
     توليد الجدول الدراسي بالذكاء الاصطناعي - نقطة نهاية بديلة
@@ -155,18 +159,17 @@ async def generate_timetable_smart(
     """
     try:
         body = await request.json()
-        school_id = body.get("school_id")
         use_baseline = bool(body.get("use_baseline", False))
-        
-        if not school_id:
-            school_id = request.headers.get("X-School-Context") or current_user.get("tenant_id")
-        
+
+        override = body.get("school_id") or request.headers.get("X-School-Context")
+        if override is not None and not isinstance(override, str):
+            raise HTTPException(status_code=400, detail="school_id يجب أن يكون نصاً")
+        if isinstance(override, str):
+            override = override.strip() or None
+
+        school_id = resolve_school_id(current_user, override)
         if not school_id:
             raise HTTPException(status_code=400, detail="school_id مطلوب")
-
-        if not isinstance(school_id, str):
-            raise HTTPException(status_code=400, detail="school_id يجب أن يكون نصاً")
-        school_id = str(school_id).strip()
         
         # Get school settings
         settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
@@ -181,7 +184,8 @@ async def generate_timetable_smart(
             school_id=school_id,
             academic_year_id=academic_year,
             term_id=None,
-            created_by=current_user.get("id", "system")
+            created_by=current_user.get("id", "system"),
+            calling_user=current_user
         )
         
         return result.model_dump()
@@ -201,6 +205,7 @@ async def smart_get_school_timetables(
     الحصول على جميع الجداول للمدرسة
     Get all timetables for a school
     """
+    assert_school_access(current_user, str(school_id))
     timetables = await smart_scheduling_engine.get_school_timetables(school_id)
     return {
         "school_id": school_id,
@@ -219,14 +224,7 @@ async def get_timetable_versions(
     الحصول على جميع نسخ الجدول للمدرسة
     Get all timetable versions for the school
     """
-    school_id = x_school_context or current_user.get("school_id")
-    if not school_id:
-        user_roles = current_user.get("roles", [])
-        for role in user_roles:
-            if role.get("school_id"):
-                school_id = role.get("school_id")
-                break
-    
+    school_id = resolve_school_id(current_user, x_school_context)
     if not school_id:
         raise HTTPException(status_code=400, detail="معرف المدرسة مطلوب")
     
@@ -267,14 +265,7 @@ async def get_active_timetable_sessions(
     الحصول على حصص الجدول النشط (المنشور أو المسودة)
     Get sessions for the active timetable
     """
-    school_id = x_school_context or current_user.get("school_id")
-    if not school_id:
-        user_roles = current_user.get("roles", [])
-        for role in user_roles:
-            if role.get("school_id"):
-                school_id = role.get("school_id")
-                break
-    
+    school_id = resolve_school_id(current_user, x_school_context)
     if not school_id:
         raise HTTPException(status_code=400, detail="معرف المدرسة مطلوب")
     
@@ -331,6 +322,7 @@ async def smart_get_timetable(
     timetable = await smart_scheduling_engine.get_timetable(timetable_id)
     if not timetable:
         raise HTTPException(status_code=404, detail="الجدول غير موجود")
+    assert_school_access(current_user, str(timetable.get("school_id")))
     
     return timetable
 
@@ -348,6 +340,10 @@ async def smart_get_timetable_sessions(
     الحصول على حصص الجدول
     Get timetable sessions with optional filters
     """
+    timetable = await gd_find_one(db.session, "timetables", {"id": timetable_id})
+    if not timetable:
+        raise HTTPException(status_code=404, detail="الجدول غير موجود")
+    assert_school_access(current_user, str(timetable.get("school_id")))
     sessions = await smart_scheduling_engine.get_timetable_sessions(
         timetable_id=timetable_id,
         class_id=class_id,
@@ -389,6 +385,10 @@ async def smart_get_timetable_conflicts(
     الحصول على تعارضات الجدول
     Get timetable conflicts
     """
+    timetable = await gd_find_one(db.session, "timetables", {"id": timetable_id})
+    if not timetable:
+        raise HTTPException(status_code=404, detail="الجدول غير موجود")
+    assert_school_access(current_user, str(timetable.get("school_id")))
     conflicts = await smart_scheduling_engine.get_timetable_conflicts(timetable_id)
     
     return {
@@ -429,6 +429,10 @@ async def smart_publish_timetable(
     نشر الجدول
     Publish the timetable (makes it visible to teachers and students)
     """
+    timetable = await gd_find_one(db.session, "timetables", {"id": timetable_id})
+    if not timetable:
+        raise HTTPException(status_code=404, detail="الجدول غير موجود")
+    assert_school_access(current_user, str(timetable.get("school_id")))
     success = await smart_scheduling_engine.publish_timetable(
         timetable_id=timetable_id,
         published_by=current_user.get("id", "system")
@@ -458,6 +462,10 @@ async def smart_archive_timetable(
     أرشفة الجدول
     Archive the timetable
     """
+    timetable = await gd_find_one(db.session, "timetables", {"id": timetable_id})
+    if not timetable:
+        raise HTTPException(status_code=404, detail="الجدول غير موجود")
+    assert_school_access(current_user, str(timetable.get("school_id")))
     success = await smart_scheduling_engine.archive_timetable(
         timetable_id=timetable_id,
         archived_by=current_user.get("id", "system")
@@ -490,6 +498,7 @@ async def smart_pre_scheduling_check(
     - المواد بدون معلمين
     - نسبة الاستخدام المتوقعة
     """
+    assert_school_access(current_user, str(school_id))
     # Load settings
     settings = await smart_scheduling_engine.load_school_settings(school_id)
     
@@ -521,6 +530,7 @@ async def smart_get_academic_demand(
     الحصول على مصفوفة الطلب الأكاديمي
     Get Academic Demand Matrix (classes with their subjects and periods)
     """
+    assert_school_access(current_user, str(school_id))
     demands = await smart_scheduling_engine.build_academic_demand(school_id)
     
     # Enrich with names
@@ -564,6 +574,7 @@ async def smart_get_resource_availability(
     الحصول على مصفوفة توافر الموارد
     Get Resource Availability Matrix (teachers with their availability)
     """
+    assert_school_access(current_user, str(school_id))
     settings = await smart_scheduling_engine.load_school_settings(school_id)
     resources = await smart_scheduling_engine.build_resource_availability(school_id, settings)
     
@@ -601,6 +612,7 @@ async def smart_delete_timetable(
     timetable = await gd_find_one(db.session, "timetables", {"id": timetable_id})
     if not timetable:
         raise HTTPException(status_code=404, detail="الجدول غير موجود")
+    assert_school_access(current_user, str(timetable.get("school_id")))
     
     # Don't delete published timetables
     if timetable.get("status") == TimetableStatus.PUBLISHED.value:

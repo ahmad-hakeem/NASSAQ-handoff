@@ -17,14 +17,23 @@ from datetime import datetime, timezone
 from enum import Enum
 import logging, os
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_aggregate
+from dependencies import get_current_user
+from utils.tenant_scope import resolve_school_id
 
-
-_JWT_SECRET = os.environ.get('JWT_SECRET_KEY', '')
-_JWT_ALGORITHM = os.environ.get('JWT_ALGORITHM', 'HS256')
 
 logger = logging.getLogger("nassaq.timetable_readiness_routes")
 
 router = APIRouter(prefix="/timetable-readiness", tags=["Timetable Readiness"])
+
+
+async def readiness_school_id(
+    x_school_context: Optional[str] = Header(None, alias="X-School-Context"),
+    current_user: dict = Depends(get_current_user),
+) -> str:
+    resolved = resolve_school_id(current_user, x_school_context)
+    if resolved is None:
+        raise HTTPException(status_code=400, detail="X-School-Context header is required for platform admin")
+    return resolved
 
 db = None
 
@@ -97,25 +106,6 @@ def _parse_working_days_from_settings(settings):
                     return result
 
     return []
-
-
-async def _extract_school_id(x_school_context, authorization):
-    school_id = x_school_context
-    if not school_id and authorization:
-        try:
-            import jwt
-            token = authorization.replace("Bearer ", "")
-            payload = jwt.decode(token, _JWT_SECRET, algorithms=[_JWT_ALGORITHM])
-            school_id = payload.get("school_id") or payload.get("tenant_id")
-            if not school_id:
-                user_id = payload.get("sub")
-                if user_id:
-                    user = await gd_find_one(db.session, "users", {"id": user_id})
-                    if user:
-                        school_id = user.get("tenant_id") or user.get("school_id")
-        except Exception as e:
-            logger.warning(f"Failed to extract school_id from authorization token: {e}")
-    return school_id
 
 
 async def _run_readiness_checks(school_id: str):
@@ -495,24 +485,15 @@ async def _run_readiness_checks(school_id: str):
 
 @router.get("/check")
 async def check_timetable_readiness(
-    x_school_context: str = Header(default=None, alias="X-School-Context"),
-    authorization: str = Header(default=None)
+    school_id: str = Depends(readiness_school_id),
 ):
-    school_id = await _extract_school_id(x_school_context, authorization)
-    if not school_id:
-        raise HTTPException(status_code=400, detail="School context required")
     return await _run_readiness_checks(school_id)
 
 
 @router.get("/summary")
 async def get_readiness_summary(
-    x_school_context: str = Header(default=None, alias="X-School-Context"),
-    authorization: str = Header(default=None)
+    school_id: str = Depends(readiness_school_id),
 ):
-    school_id = await _extract_school_id(x_school_context, authorization)
-    if not school_id:
-        raise HTTPException(status_code=400, detail="School context required")
-
     full_report = await _run_readiness_checks(school_id)
 
     status_messages = {

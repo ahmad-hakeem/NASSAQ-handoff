@@ -23,6 +23,7 @@ from dependencies import (
     REPORT_TYPES, generate_student_qr_code
 )
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_inc
+from utils.tenant_scope import resolve_school_id, assert_school_access
 
 
 from shared_models import (
@@ -38,10 +39,11 @@ async def create_time_slot(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN]))
 ):
     """إنشاء فترة زمنية جديدة"""
+    school_id = resolve_school_id(current_user, slot_data.school_id)
     slot_id = str(uuid.uuid4())
     slot_doc = {
         "id": slot_id,
-        "school_id": slot_data.school_id,
+        "school_id": school_id,
         "name": slot_data.name,
         "name_en": slot_data.name_en,
         "start_time": slot_data.start_time,
@@ -63,10 +65,9 @@ async def get_time_slots(
 ):
     """الحصول على الفترات الزمنية"""
     query = {}
-    if school_id:
-        query["school_id"] = school_id
-    elif current_user.get("role") != UserRole.PLATFORM_ADMIN.value:
-        query["school_id"] = current_user.get("tenant_id")
+    resolved = resolve_school_id(current_user, school_id)
+    if resolved is not None:
+        query["school_id"] = resolved
     
     slots = await gd_find(db.session, "time_slots", query, order_by="start_time", desc_order=False, limit=50)
     overall_counter = 0
@@ -105,7 +106,7 @@ async def create_teacher_assignment(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN]))
 ):
     """إسناد معلم لفصل ومادة"""
-    school_id = assignment_data.school_id or current_user.get("tenant_id") or current_user.get("school_id")
+    school_id = resolve_school_id(current_user, assignment_data.school_id)
     
     duplicate_check = {
         "teacher_id": assignment_data.teacher_id,
@@ -202,10 +203,9 @@ async def get_teacher_assignments(
 ):
     """الحصول على إسنادات المعلمين"""
     query = {"is_active": True}
-    if school_id:
-        query["school_id"] = school_id
-    elif current_user.get("role") != UserRole.PLATFORM_ADMIN.value:
-        query["school_id"] = current_user.get("tenant_id")
+    resolved = resolve_school_id(current_user, school_id)
+    if resolved is not None:
+        query["school_id"] = resolved
     
     if teacher_id:
         query["teacher_id"] = teacher_id
@@ -328,10 +328,11 @@ async def create_schedule(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN]))
 ):
     """إنشاء جدول مدرسي جديد"""
+    school_id = resolve_school_id(current_user, schedule_data.school_id)
     schedule_id = str(uuid.uuid4())
     schedule_doc = {
         "id": schedule_id,
-        "school_id": schedule_data.school_id,
+        "school_id": school_id,
         "name": schedule_data.name,
         "name_en": schedule_data.name_en,
         "academic_year": schedule_data.academic_year,
@@ -355,10 +356,9 @@ async def get_schedules(
 ):
     """الحصول على الجداول المدرسية"""
     query = {}
-    if school_id:
-        query["school_id"] = school_id
-    elif current_user.get("role") != UserRole.PLATFORM_ADMIN.value:
-        query["school_id"] = current_user.get("tenant_id")
+    resolved = resolve_school_id(current_user, school_id)
+    if resolved is not None:
+        query["school_id"] = resolved
     
     if status:
         query["status"] = status
@@ -409,6 +409,11 @@ async def create_schedule_session(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN]))
 ):
     """إضافة حصة للجدول"""
+    # Tenant guard via parent schedule
+    parent_schedule = await gd_find_one(db.session, "schedules", {"id": session_data.schedule_id})
+    if not parent_schedule:
+        raise HTTPException(status_code=404, detail="الجدول غير موجود")
+    assert_school_access(current_user, str(parent_schedule.get("school_id")))
     # Check for conflicts
     existing = await gd_find_one(db.session, "schedule_sessions", {
         "schedule_id": session_data.schedule_id,
@@ -471,6 +476,10 @@ async def get_schedule_sessions(
     current_user: dict = Depends(get_current_user)
 ):
     """الحصول على حصص الجدول"""
+    schedule = await gd_find_one(db.session, "schedules", {"id": schedule_id})
+    if not schedule:
+        raise HTTPException(status_code=404, detail="الجدول غير موجود")
+    assert_school_access(current_user, str(schedule.get("school_id")))
     query = {"schedule_id": schedule_id}
     
     if day_of_week:

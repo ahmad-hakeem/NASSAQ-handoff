@@ -326,6 +326,7 @@ _Findings:_
 - **Why it matters:** Multi-tenant leak. School B's "no Math after lunch" rule (created when their `school_constraints` collection was empty) will silently distort School A's timetable. Combined with the same fallback in `engines/smart_scheduling_engine.py:442-444` for the readiness summary, the count and the enforcement disagree per tenant.
 - **Recommended fix:** Drop the fallback entirely, or add a `{"school_id": school_id}` filter to the `administrative_constraints` query. Also audit `administrative_constraints` for tenant scoping at the schema level.
 - **Effort:** S
+- **Status:** ✅ Remediated 2026-04-17 (Batch 1 plan: docs/superpowers/plans/2026-04-17-timetable-remediation-batch1.md)
 
 #### F-CN-07 — `hard_subjects_early` (SC-05) gives the early-period bonus to **every** subject, not just hard ones
 - **Severity:** Medium
@@ -435,6 +436,7 @@ _Findings:_
 - **Why it matters:** Multi-tenant boundary leak — a principal of one school can mutate (and overwrite) another school's draft timetable. This is a direct RBAC hole.
 - **Recommended fix:** Inside the route, assert `current_user["role"] == PLATFORM_ADMIN or current_user["school_id"] == school_id` before delegating; also pass user tenant into the engine and re-assert there. Same fix needed on `generate_timetable_smart` and `pre-check`/`demand-matrix`/`resource-matrix`/`validate` routes.
 - **Effort:** S
+- **Status:** ✅ Remediated 2026-04-17 (Batch 1 plan: docs/superpowers/plans/2026-04-17-timetable-remediation-batch1.md)
 
 #### F-EN-07 — Conflict detection is duplicated and inconsistent
 - **Severity:** Medium
@@ -549,6 +551,7 @@ _Findings:_
 - **Why it matters:** Direct multi-tenant data-leak / cross-tenant write hole. Any school principal can read another school's draft and published timetables, trigger expensive AI generation runs against them, publish them (overwriting the legitimate school's published version since publish flips status), or delete them. This is the concrete realization of the concern flagged in F-EN-06.
 - **Recommended fix:** Add a tenant guard at the top of every `school_id`-bearing endpoint: `if current_user.get("role") != UserRole.PLATFORM_ADMIN.value and current_user.get("tenant_id") != school_id: raise HTTPException(403, ...)`. For `timetable_id`-bearing endpoints, fetch the timetable first and compare `timetable["school_id"]` to the user's tenant. Better: wire `middleware/tenant_isolation.py`'s `validate_resource_tenant` decorator (already implemented) onto the scheduling router, or include it in `require_roles`.
 - **Effort:** M
+- **Status:** ✅ Remediated 2026-04-17 (Batch 1 plan: docs/superpowers/plans/2026-04-17-timetable-remediation-batch1.md)
 
 #### F-API-02 — Principal-timetable router authenticates by raw JWT decode and skips role enforcement
 - **Severity:** Critical
@@ -557,6 +560,7 @@ _Findings:_
 - **Why it matters:** A principal-only, security-sensitive UI surface (generate/publish/delete/swap timetable) is in practice authenticated as "anyone with any valid token plus an `X-School-Context` header". Combined with the missing tenant check on `X-School-Context`, anyone holding a valid login can publish, archive, or rewrite the timetable for any school whose UUID they know, including via revoked tokens.
 - **Recommended fix:** Replace the hand-rolled JWT decode with `current_user: dict = Depends(get_current_user)` on every handler, derive `school_id` from `current_user["tenant_id"]` (or validate `X-School-Context` against it for platform admins only), and gate write endpoints with `Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL]))`.
 - **Effort:** M
+- **Status:** ✅ Remediated 2026-04-17 (Batch 1 plan: docs/superpowers/plans/2026-04-17-timetable-remediation-batch1.md)
 
 #### F-API-03 — `timetable_readiness_routes` uses the same trust-header / raw-JWT pattern with no role check
 - **Severity:** High
@@ -565,6 +569,7 @@ _Findings:_
 - **Why it matters:** Information disclosure across tenants; also bypasses the centralized account-lock / token-revocation checks in `dependencies.get_current_user`.
 - **Recommended fix:** Add `current_user: dict = Depends(get_current_user)` and tenant binding identical to F-API-02 fix.
 - **Effort:** S
+- **Status:** ✅ Remediated 2026-04-17 (Batch 1 plan: docs/superpowers/plans/2026-04-17-timetable-remediation-batch1.md)
 
 #### F-API-04 — Tenant scoping on list/get endpoints uses `current_user["tenant_id"]` only when `school_id` query param is missing — a caller can override by passing any `school_id`
 - **Severity:** Critical
@@ -573,6 +578,7 @@ _Findings:_
 - **Why it matters:** Direct cross-tenant read of teacher assignments, schedules, schedule sessions, and time slots — i.e. who teaches what to whom in another school.
 - **Recommended fix:** Always derive `school_id` from `current_user.tenant_id`; only allow override when `current_user.role == PLATFORM_ADMIN`. Or call `TenantIsolation.apply_tenant_filter(query, current_user, "school_id")`.
 - **Effort:** S
+- **Status:** ✅ Remediated 2026-04-17 (Batch 1 plan: docs/superpowers/plans/2026-04-17-timetable-remediation-batch1.md)
 
 #### F-API-05 — `POST /smart-scheduling/generate` and `POST /principal/timetable/generate` are non-idempotent — every retry creates a new timetable row plus a full sessions write
 - **Severity:** High
@@ -669,6 +675,7 @@ _Findings:_
 - **Why it matters:** Read-side multi-tenant leak of the entire active timetable for any school whose UUID is known.
 - **Recommended fix:** Reject `x_school_context` unless `current_user.role == PLATFORM_ADMIN` or `x_school_context == current_user.tenant_id`.
 - **Effort:** S
+- **Status:** ✅ Remediated 2026-04-17 (Batch 1 plan: docs/superpowers/plans/2026-04-17-timetable-remediation-batch1.md)
 
 #### F-API-17 — Manual session edit/move/swap and "force update" allow `source_type="hybrid_adjusted"` writes against published timetables in the smart-engine routes
 - **Severity:** High
@@ -974,6 +981,7 @@ _Findings:_
 - **Why it matters:** This is the place where the project's own tenant-isolation contract is declared. The omission both (a) reinforces the existing Critical/High API & engine isolation findings — there is no defence-in-depth at the data-access layer — and (b) means the same class of bug can be reintroduced silently. Once a school grows past one tenant, the only signal of leakage will be a customer report.
 - **Recommended fix:** Add `timetables, schedule_sessions, timetable_sessions, time_slots, teacher_assignments, timetable_constraints, school_constraints, administrative_constraints, constraint_patterns` to `TENANT_SCOPED_COLLECTIONS`, then route all timetable repository calls through `gd_find` / `gd_find_one` wrappers that invoke `warn_missing_tenant_filter` (or, better, a hard `RuntimeError` in dev mode). Pair with the route-level fixes from F-API-01/02/04 and F-EN-06.
 - **Effort:** S
+- **Status:** ✅ Remediated 2026-04-17 (Batch 1 plan: docs/superpowers/plans/2026-04-17-timetable-remediation-batch1.md)
 
 #### F-XC-02 — RBAC permission system declares `SCHEDULE_PUBLISH` / `SCHEDULE_DELETE` but no scheduling route uses it; gating relies on hard-coded role lists
 - **Severity:** Medium

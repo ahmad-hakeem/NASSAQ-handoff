@@ -441,7 +441,7 @@ class SmartSchedulingEngine:
         # 13. Check Constraints
         constraints_count = await gd_count(self.session, "school_constraints", {"school_id": school_id, "is_active": True})
         if constraints_count == 0:
-            constraints_count = await gd_count(self.session, "admin_constraints", {"is_active": True})
+            constraints_count = await gd_count(self.session, "admin_constraints", {"school_id": school_id, "is_active": True})
         summary["constraints"] = constraints_count
         
         # 14. Check Holidays
@@ -1845,18 +1845,29 @@ class SmartSchedulingEngine:
         return max(0, min(100, score))
     
     # ============== MAIN GENERATION METHOD ==============
-    
+
+    def _assert_tenant(self, school_id: str, calling_user: Optional[dict]) -> None:
+        """Defence in depth — engine refuses to operate on a school the
+        caller does not belong to. Routes also enforce this; this is the
+        second wall."""
+        if calling_user is None:
+            return  # internal callers (background jobs, tests) pass None
+        from utils.tenant_scope import assert_school_access
+        assert_school_access(calling_user, school_id)
+
     async def generate_timetable(
         self,
         school_id: str,
         academic_year_id: Optional[str] = None,
         term_id: Optional[str] = None,
-        created_by: str = "system"
+        created_by: str = "system",
+        calling_user: Optional[dict] = None
     ) -> GenerationResult:
         """
         التوليد الرئيسي للجدول
         Main Timetable Generation Method
         """
+        self._assert_tenant(school_id, calling_user)
         run_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
         
@@ -1931,9 +1942,7 @@ class SmartSchedulingEngine:
             await self._log_run(run_id, "info", f"تم تحميل {len(soft_constraints_list)} قيد تفضيلي", {"soft_constraints_count": len(soft_constraints_list)})
             settings["soft_constraints"] = soft_constraints_list
 
-            constraints = await gd_find(self.session, "school_constraints", {"school_id": school_id, "is_active": True}, limit=50)
-            if not constraints:
-                constraints = await gd_find(self.session, "administrative_constraints", {"is_active": True}, limit=50)
+            constraints = await self._load_school_constraints(school_id)
 
             all_constraints = hard_constraints + constraints
             
@@ -2066,6 +2075,29 @@ class SmartSchedulingEngine:
                 message_en=f"Timetable generation failed: {str(e)}"
             )
     
+    async def _load_school_constraints(self, school_id: str) -> List[Dict[str, Any]]:
+        """Load active constraints scoped to a single school.
+
+        Looks up `school_constraints` first; if none exist for this school,
+        falls back to `administrative_constraints` *scoped to the same
+        school_id*. The fallback MUST NOT return rows from other tenants —
+        cross-tenant leakage here would let school A inherit school B's rules.
+        """
+        constraints = await gd_find(
+            self.session,
+            "school_constraints",
+            {"school_id": school_id, "is_active": True},
+            limit=50,
+        )
+        if not constraints:
+            constraints = await gd_find(
+                self.session,
+                "administrative_constraints",
+                {"school_id": school_id, "is_active": True},
+                limit=50,
+            )
+        return constraints
+
     async def _log_run(self, run_id: str, level: str, message: str, context: Dict[str, Any] = None):
         """Log run event"""
         log_doc = {

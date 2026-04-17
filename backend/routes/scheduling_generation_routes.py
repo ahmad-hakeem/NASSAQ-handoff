@@ -23,6 +23,7 @@ from dependencies import (
     REPORT_TYPES, generate_student_qr_code
 )
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
+from utils.tenant_scope import assert_school_access
 
 
 from shared_models import (
@@ -58,6 +59,7 @@ async def generate_schedule_auto(
     schedule = await gd_find_one(db.session, "schedules", {"id": schedule_id})
     if not schedule:
         raise HTTPException(status_code=404, detail="الجدول غير موجود")
+    assert_school_access(current_user, str(schedule.get("school_id")))
     
     school_id = schedule.get("school_id")
     working_days = schedule.get("working_days", ["sunday", "monday", "tuesday", "wednesday", "thursday"])

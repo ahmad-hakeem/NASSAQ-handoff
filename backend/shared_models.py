@@ -563,6 +563,7 @@ class TimeSlotCreate(BaseModel):
     slot_type: str = "class"
     label: Optional[str] = None
     day: Optional[str] = None
+    school_id: Optional[str] = None
 
 class TimeSlotResponse(BaseModel):
     model_config = ConfigDict(extra="ignore", from_attributes=True)
@@ -620,6 +621,7 @@ class SchoolScheduleCreate(BaseModel):
     start_date: Optional[str] = None
     end_date: Optional[str] = None
     status: str = "draft"
+    school_id: Optional[str] = None
 
 class SchoolScheduleResponse(BaseModel):
     model_config = ConfigDict(extra="ignore", from_attributes=True)
