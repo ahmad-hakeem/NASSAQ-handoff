@@ -17,6 +17,7 @@ logger = logging.getLogger("nassaq.principal_timetable")
 from dependencies import get_current_user, require_roles
 from models.enums import UserRole
 from utils.tenant_scope import resolve_school_id
+from routes._publish_gate import assert_publishable
 
 PRINCIPAL_ROLES = [UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL]
 
@@ -63,7 +64,31 @@ def _resolve_working_days(raw) -> list:
     return ["sunday", "monday", "tuesday", "wednesday", "thursday"]
 
 
-async def _count_real_conflicts(timetable_id: str) -> int:
+REAL_CONFLICT_TYPES = {
+    "teacher_overlap",
+    "class_overlap",
+    "room_overlap",
+    "teacher_overload",
+    "subject_quota_violation",
+    "daily_period_limit_exceeded",
+}
+
+
+def _conflict_type_value(conflict) -> Optional[str]:
+    if isinstance(conflict, dict):
+        return conflict.get("conflict_type")
+    return getattr(conflict, "conflict_type", None)
+
+
+async def _count_real_conflicts(timetable_id_or_conflicts) -> int:
+    # Polymorphic: accept either a list of conflict objects/dicts or a timetable_id.
+    if isinstance(timetable_id_or_conflicts, list):
+        return sum(
+            1 for c in timetable_id_or_conflicts
+            if _conflict_type_value(c) in REAL_CONFLICT_TYPES
+        )
+
+    timetable_id = timetable_id_or_conflicts
     teacher_conflicts = await _gd_aggregate(db.session, "timetable_sessions", [
         {"$match": {"timetable_id": timetable_id, "teacher_id": {"$nin": [None, ""]}}},
         {"$group": {
@@ -80,7 +105,15 @@ async def _count_real_conflicts(timetable_id: str) -> int:
         }},
         {"$match": {"count": {"$gt": 1}}}
     ])
-    return len(teacher_conflicts) + len(class_conflicts)
+    extra_conflicts = await gd_count(
+        db.session,
+        "timetable_conflicts",
+        {
+            "timetable_id": timetable_id,
+            "conflict_type": {"$in": list(REAL_CONFLICT_TYPES - {"teacher_overlap", "class_overlap"})},
+        },
+    )
+    return len(teacher_conflicts) + len(class_conflicts) + (extra_conflicts or 0)
 
 
 async def _get_conflict_details(timetable_id: str, school_id: str) -> list:
@@ -1079,27 +1112,11 @@ async def publish_version(
     if sessions_count == 0:
         raise HTTPException(status_code=422, detail="لا يمكن نشر جدول فارغ بدون حصص")
 
-    teacher_conflicts = await _gd_aggregate(db.session, "timetable_sessions", [
-        {"$match": {"timetable_id": version_id}},
-        {"$group": {
-            "_id": {"teacher_id": "$teacher_id", "day": "$day_of_week", "period": "$period_number"},
-            "count": {"$sum": 1}
-        }},
-        {"$match": {"count": {"$gt": 1}}}
-    ])
-    if teacher_conflicts:
-        raise HTTPException(status_code=422, detail=f"يوجد {len(teacher_conflicts)} تعارض في جدول المعلمين، يجب حلها قبل النشر")
-
-    class_conflicts = await _gd_aggregate(db.session, "timetable_sessions", [
-        {"$match": {"timetable_id": version_id}},
-        {"$group": {
-            "_id": {"class_id": "$class_id", "day": "$day_of_week", "period": "$period_number"},
-            "count": {"$sum": 1}
-        }},
-        {"$match": {"count": {"$gt": 1}}}
-    ])
-    if class_conflicts:
-        raise HTTPException(status_code=422, detail=f"يوجد {len(class_conflicts)} تعارض في جدول الفصول، يجب حلها قبل النشر")
+    # Centralised publish gate — dispatches HardConstraintRegistry and
+    # raises HTTPException(409, PUBLISH_BLOCKED) on any HIGH/CRITICAL
+    # violation. Replaces the legacy hand-rolled teacher_/class_conflicts
+    # aggregation chain.
+    await assert_publishable(smart_engine, school_id=school_id, timetable_id=version_id)
 
     now = utcnow()
 
@@ -1204,19 +1221,22 @@ async def publish_version(
     try:
         await gd_insert(db.session, "audit_logs", {
             "id": str(uuid.uuid4()),
-            "event_type": "timetable_published",
+            "action": "timetable_published",
             "school_id": school_id,
-            "timetable_id": version_id,
-            "published_by": publisher_info,
-            "published_by_name": publisher_name,
-            "published_at": now,
-            "sessions_count": len(all_sessions),
-            "classes_count": len(classes_list),
-            "previous_version_ids": previously_published,
-            "created_at": now,
+            "entity_type": "timetable",
+            "entity_id": version_id,
+            "performed_by": publisher_info,
+            "actor_name": publisher_name,
+            "timestamp": now,
+            "severity": "low",
+            "status": "success",
         })
     except Exception as e:
         logger.warning(f"Failed to insert publish history for version {version_id}: {e}")
+        try:
+            await db.session.rollback()
+        except Exception:
+            pass
 
     result_data = {
         "published_at": now,

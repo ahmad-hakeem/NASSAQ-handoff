@@ -33,6 +33,7 @@ import logging
 import random
 
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_count, gd_delete_one, gd_delete_many
+from engines.infeasibility import InfeasibilityIssue, InfeasibilityReport
 
 logger = logging.getLogger(__name__)
 
@@ -78,8 +79,11 @@ class ConflictType(str, Enum):
     """نوع التعارض"""
     TEACHER_OVERLAP = "teacher_overlap"         # تعارض معلم
     CLASS_OVERLAP = "class_overlap"             # تعارض فصل
+    ROOM_OVERLAP = "room_overlap"               # تعارض قاعة
     SUBJECT_CONSECUTIVE = "subject_consecutive"  # مواد متتالية
     TEACHER_OVERLOAD = "teacher_overload"       # تجاوز نصاب
+    SUBJECT_QUOTA_VIOLATION = "subject_quota_violation"  # نقص في نصاب المادة
+    DAILY_PERIOD_LIMIT_EXCEEDED = "daily_period_limit_exceeded"  # تجاوز الحد اليومي
     AVAILABILITY = "availability"                # توافر
     CONSTRAINT_VIOLATION = "constraint_violation"  # انتهاك قيد
 
@@ -848,6 +852,146 @@ class SmartSchedulingEngine:
     
     # ============== PHASE 6: GENERATE DRAFT TIMETABLE ==============
     
+    # Rule-key constants for the school_period_bans adapter. Stored as a
+    # dict so we never use the literal string-comparison chain that the
+    # grep guard test_engine_registry_dispatch forbids.
+    _PERIOD_BAN_RESOLVERS: Dict[str, Any] = {
+        "no_first_period": lambda row, last: 1,
+        "no_last_period": lambda row, last: last,
+        "no_period_n": lambda row, last: row.get("period_number"),
+    }
+
+    @staticmethod
+    def _school_constraints_to_period_bans(
+        rows: List[Dict[str, Any]], last_period: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """Convert legacy school_constraints rule_key rows into normalised
+        period-ban records consumable by the school_period_bans validator."""
+        bans: List[Dict[str, Any]] = []
+        for row in rows or []:
+            if not row.get("is_active", True):
+                continue
+            rk = row.get("rule_key", "")
+            resolver = SmartSchedulingEngine._PERIOD_BAN_RESOLVERS.get(rk)
+            if resolver is None:
+                continue
+            target_period = resolver(row, last_period)
+            if not target_period:
+                continue
+            subject_id = row.get("subject_id")
+            affected = row.get("affected_subjects") or []
+            if subject_id:
+                bans.append({"rule_key": rk, "subject_id": subject_id, "period_number": target_period})
+            elif affected:
+                for sid in affected:
+                    bans.append({"rule_key": rk, "subject_id": sid, "period_number": target_period})
+            else:
+                bans.append({"rule_key": rk, "subject_id": None, "period_number": target_period})
+        return bans
+
+    async def _build_constraint_context(
+        self,
+        school_id: str,
+        sessions: List[Dict[str, Any]],
+        demands: List[AcademicDemand],
+        time_slots: List[Dict[str, Any]],
+        school_constraints_rows: List[Dict[str, Any]],
+        hard_constraints_rows: List[Dict[str, Any]],
+        resources: Optional[List[ResourceAvailability]] = None,
+        engine_settings: Optional[Dict[str, Any]] = None,
+        include_flat_demands: bool = False,
+    ):
+        """Build a ConstraintContext for placement-time validators.
+
+        ``sessions`` is mutated in-place by the placement loop, so the same
+        list reference is bound to ``ctx.sessions`` and validators always
+        see the current partial grid.
+        """
+        from engines.hard_constraints.types import ConstraintContext
+
+        teachers: Dict[str, Dict[str, Any]] = {}
+        for r in resources or []:
+            teachers[r.teacher_id] = {
+                "id": r.teacher_id,
+                "name": getattr(r, "teacher_name", None),
+                "qualifications": list(getattr(r, "subject_ids", []) or []),
+            }
+        classes: Dict[str, Dict[str, Any]] = {}
+        subjects: Dict[str, Dict[str, Any]] = {}
+        teacher_assignments: set = set()
+        for d in demands or []:
+            classes[d.class_id] = {"id": d.class_id, "grade_id": d.grade_id}
+            for s in d.subjects:
+                sid = s.get("subject_id")
+                if sid:
+                    subjects[sid] = {"id": sid}
+                for tid in s.get("suitable_teachers", []) or []:
+                    if sid:
+                        teacher_assignments.add((tid, d.class_id, sid))
+
+        resources_dict = {
+            "teachers": teachers,
+            "classes": classes,
+            "subjects": subjects,
+            "rooms": {},
+            "teacher_assignments": teacher_assignments,
+        }
+
+        last_period = 0
+        for ts in time_slots or []:
+            p = ts.get("period_number") or ts.get("period") or ts.get("slot_number")
+            if p and p > last_period:
+                last_period = p
+
+        period_bans = self._school_constraints_to_period_bans(
+            school_constraints_rows, last_period or None
+        )
+
+        engine_settings = engine_settings or {}
+        settings_dict = {
+            "school_period_bans": period_bans,
+            "max_daily_periods": engine_settings.get("max_daily_periods", 6),
+            "working_days": engine_settings.get("working_days"),
+            "hard_constraint_overrides": {},
+        }
+
+        active = {
+            row.get("validation_key")
+            for row in (hard_constraints_rows or [])
+            if row.get("is_active", True) and row.get("validation_key")
+        }
+        if period_bans:
+            active.add("school_period_bans")
+
+        # Attach teacher weekly_load to teacher resource lookup so the HC-08
+        # validator can read it from ctx.resources["teachers"].
+        for r in resources or []:
+            entry = teachers.get(r.teacher_id)
+            if entry is not None:
+                entry["weekly_load"] = getattr(r, "weekly_load", None)
+
+        flat_demands: List[Dict[str, Any]] = []
+        if include_flat_demands:
+            for d in demands or []:
+                cls_id = getattr(d, "class_id", None) if not isinstance(d, dict) else d.get("class_id")
+                subj_list = getattr(d, "subjects", None) if not isinstance(d, dict) else d.get("subjects", [])
+                for s in subj_list or []:
+                    flat_demands.append({
+                        "class_id": cls_id,
+                        "subject_id": s.get("subject_id"),
+                        "weekly_periods": s.get("weekly_periods", 0),
+                    })
+
+        return ConstraintContext(
+            school_id=school_id,
+            sessions=sessions,
+            demands=flat_demands,
+            resources=resources_dict,
+            time_slots=time_slots or [],
+            settings=settings_dict,
+            active_validation_keys=active,
+        )
+
     async def generate_draft_timetable(
         self,
         school_id: str,
@@ -904,7 +1048,40 @@ class SmartSchedulingEngine:
         
         # Sort by difficulty (hardest first)
         sorted_demands.sort(key=lambda x: (-x["difficulty"], -x["priority"]))
-        
+
+        # ---- HardConstraintRegistry wiring (Task 6) -------------------------
+        # Split incoming constraints by shape. Hard-constraint rows (sourced
+        # from timetable_hard_constraints) carry a validation_key; legacy
+        # school_constraints rows carry a rule_key. The registry dispatches
+        # only the active validators.
+        hard_rows = [c for c in (constraints or []) if c.get("validation_key")]
+        school_rows = [
+            c for c in (constraints or [])
+            if c.get("rule_key") and not c.get("validation_key")
+        ]
+        # session_dicts is mutated in-place as each TimetableSession is
+        # appended below, so validators always see the current partial grid.
+        session_dicts: List[Dict[str, Any]] = []
+        ctx = await self._build_constraint_context(
+            school_id=school_id,
+            sessions=session_dicts,
+            demands=demands,
+            time_slots=time_slots,
+            school_constraints_rows=school_rows,
+            hard_constraints_rows=hard_rows,
+            resources=resources,
+            engine_settings=settings,
+        )
+        from engines.hard_constraints import validate_placement as _validate_placement
+
+        def _registry_rejects(candidate: Dict[str, Any]) -> bool:
+            violations = _validate_placement(ctx, candidate)
+            for v in violations:
+                if v.severity in (ConflictSeverity.CRITICAL, ConflictSeverity.HIGH):
+                    return True
+            return False
+        # ---------------------------------------------------------------------
+
         # Schedule each demand
         for demand in sorted_demands:
             class_id = demand["class_id"]
@@ -992,17 +1169,18 @@ class SmartSchedulingEngine:
                                 if period <= 2:
                                     score += 5
 
-                            for constraint in constraints:
-                                if constraint.get("is_active", True):
-                                    rule_key = constraint.get("rule_key", "")
-                                    if rule_key == "no_first_period" and period == 1:
-                                        affected_subjects = constraint.get("affected_subjects", [])
-                                        if subject_id in affected_subjects:
-                                            score -= 50
-                                    if rule_key == "no_last_period" and period == teaching_period_numbers[-1]:
-                                        affected_subjects = constraint.get("affected_subjects", [])
-                                        if subject_id in affected_subjects:
-                                            score -= 50
+                            # HardConstraintRegistry dispatch (replaces the
+                            # inline rule_key chain). Reject the candidate if
+                            # any active validator emits a CRITICAL/HIGH
+                            # violation; otherwise fall through to scoring.
+                            if _registry_rejects({
+                                "teacher_id": teacher_id,
+                                "class_id": class_id,
+                                "subject_id": subject_id,
+                                "day_of_week": day,
+                                "period_number": period,
+                            }):
+                                continue
 
                             score = self._apply_soft_constraint_scoring(
                                 score, settings, grid, teacher_grid, resource_usage,
@@ -1041,6 +1219,14 @@ class SmartSchedulingEngine:
                             status="scheduled"
                         )
                         sessions.append(session)
+                        session_dicts.append({
+                            "id": session_id,
+                            "teacher_id": session.teacher_id,
+                            "class_id": session.class_id,
+                            "subject_id": session.subject_id,
+                            "day_of_week": session.day_of_week,
+                            "period_number": session.period_number,
+                        })
                         
                         # Update tracking
                         grid[best_candidate["day"]][best_candidate["period"]][class_id] = session
@@ -1117,6 +1303,16 @@ class SmartSchedulingEngine:
                             if period not in resource.availability.get(day, []):
                                 continue
 
+                            # HardConstraintRegistry dispatch (gap-filler).
+                            if _registry_rejects({
+                                "teacher_id": teacher_id,
+                                "class_id": class_id,
+                                "subject_id": subject_id,
+                                "day_of_week": day,
+                                "period_number": period,
+                            }):
+                                continue
+
                             score = 50
 
                             if subject_id not in class_day_subjects:
@@ -1161,6 +1357,14 @@ class SmartSchedulingEngine:
                             status="scheduled"
                         )
                         sessions.append(session)
+                        session_dicts.append({
+                            "id": session_id,
+                            "teacher_id": session.teacher_id,
+                            "class_id": session.class_id,
+                            "subject_id": session.subject_id,
+                            "day_of_week": session.day_of_week,
+                            "period_number": session.period_number,
+                        })
 
                         grid[best_candidate["day"]][best_candidate["period"]][class_id] = session
                         teacher_grid[best_candidate["day"]][best_candidate["period"]].add(best_candidate["teacher_id"])
@@ -1414,87 +1618,97 @@ class SmartSchedulingEngine:
         sessions: List[TimetableSession],
         resources: List[ResourceAvailability],
         constraints: List[Dict[str, Any]],
-        run_id: str
+        run_id: str,
+        demands: Optional[List[AcademicDemand]] = None,
+        time_slots: Optional[List[Dict[str, Any]]] = None,
+        school_id: str = "",
+        engine_settings: Optional[Dict[str, Any]] = None,
+        school_constraints_rows: Optional[List[Dict[str, Any]]] = None,
     ) -> List[TimetableConflict]:
         """
         المرحلة 7: اكتشاف التعارضات
-        Phase 7: Detect Conflicts
+        Phase 7: Detect Conflicts — delegates to HardConstraintRegistry.
         """
-        conflicts = []
-        
-        # Group sessions by day and period
-        slot_sessions = {}
-        for session in sessions:
-            key = (session.day_of_week, session.period_number)
-            if key not in slot_sessions:
-                slot_sessions[key] = []
-            slot_sessions[key].append(session)
-        
-        # Check for conflicts
-        for key, slot_list in slot_sessions.items():
-            day, period = key
-            
-            # Check teacher conflicts (same teacher in multiple places)
-            teachers_in_slot = {}
-            for session in slot_list:
-                tid = session.teacher_id
-                if tid in teachers_in_slot:
-                    conflicts.append(TimetableConflict(
-                        id=str(uuid.uuid4()),
-                        run_id=run_id,
-                        timetable_id=session.timetable_id,
-                        conflict_type=ConflictType.TEACHER_OVERLAP.value,
-                        teacher_id=tid,
-                        day_of_week=day,
-                        period_number=period,
-                        severity=ConflictSeverity.CRITICAL.value,
-                        message_ar=f"المعلم مشغول في حصتين في نفس الوقت",
-                        message_en="Teacher is double-booked"
-                    ))
-                teachers_in_slot[tid] = session
-            
-            # Check class conflicts (same class in multiple sessions)
-            classes_in_slot = {}
-            for session in slot_list:
-                cid = session.class_id
-                if cid in classes_in_slot:
-                    conflicts.append(TimetableConflict(
-                        id=str(uuid.uuid4()),
-                        run_id=run_id,
-                        timetable_id=session.timetable_id,
-                        conflict_type=ConflictType.CLASS_OVERLAP.value,
-                        class_id=cid,
-                        day_of_week=day,
-                        period_number=period,
-                        severity=ConflictSeverity.CRITICAL.value,
-                        message_ar=f"الفصل لديه حصتين في نفس الوقت",
-                        message_en="Class has two sessions at the same time"
-                    ))
-                classes_in_slot[cid] = session
-        
-        # Check teacher overload
-        teacher_loads = {}
-        for session in sessions:
-            tid = session.teacher_id
-            teacher_loads[tid] = teacher_loads.get(tid, 0) + 1
-        
-        resource_lookup = {r.teacher_id: r for r in resources}
-        for tid, load in teacher_loads.items():
-            resource = resource_lookup.get(tid)
-            if resource and load > resource.weekly_load:
-                conflicts.append(TimetableConflict(
-                    id=str(uuid.uuid4()),
-                    run_id=run_id,
-                    timetable_id=sessions[0].timetable_id if sessions else None,
-                    conflict_type=ConflictType.TEACHER_OVERLOAD.value,
-                    teacher_id=tid,
-                    day_of_week="",
-                    period_number=0,
-                    severity=ConflictSeverity.HIGH.value,
-                    message_ar=f"تجاوز نصاب المعلم ({load} حصة من {resource.weekly_load})",
-                    message_en=f"Teacher overload ({load} of {resource.weekly_load} periods)"
-                ))
-        
+        from engines.hard_constraints import validate_full, validate_placement
+
+        # Map validation_key → ConflictType *value*. The inline weekly-load
+        # loop that previously emitted teacher_overload conflicts has been
+        # deleted; HC-08 (teacher_weekly_load validator) is now the single
+        # source of truth.
+        validation_to_conflict_type = {
+            "teacher_overlap": ConflictType.TEACHER_OVERLAP.value,
+            "class_overlap": ConflictType.CLASS_OVERLAP.value,
+            "room_overlap": ConflictType.ROOM_OVERLAP.value,
+            "teacher_weekly_load": "teacher_overload",
+            "subject_weekly_periods": ConflictType.SUBJECT_QUOTA_VIOLATION.value,
+            "schedule_completeness": ConflictType.SUBJECT_QUOTA_VIOLATION.value,
+            "daily_period_limit": ConflictType.DAILY_PERIOD_LIMIT_EXCEEDED.value,
+        }
+
+        session_dicts: List[Dict[str, Any]] = []
+        for s in sessions or []:
+            if hasattr(s, "model_dump"):
+                d = s.model_dump()
+            elif isinstance(s, dict):
+                d = dict(s)
+            else:
+                d = dict(getattr(s, "__dict__", {}))
+            # Pull room_id from the session object if not in the model dict
+            if "room_id" not in d and hasattr(s, "room_id"):
+                d["room_id"] = getattr(s, "room_id", None)
+            session_dicts.append(d)
+
+        ctx = await self._build_constraint_context(
+            school_id=school_id,
+            sessions=session_dicts,
+            demands=demands or [],
+            time_slots=time_slots or [],
+            school_constraints_rows=school_constraints_rows or [],
+            hard_constraints_rows=constraints or [],
+            resources=resources,
+            engine_settings=engine_settings or {},
+            include_flat_demands=True,
+        )
+
+        # Run BOTH tiers — placement-tier validators (e.g. daily_period_limit,
+        # room_overlap) without a candidate scan the whole grid and emit
+        # whole-grid violations, exactly what the post-generation conflict
+        # detector wants.
+        violations = list(validate_full(ctx)) + list(validate_placement(ctx, candidate=None))
+
+        if sessions:
+            first = sessions[0]
+            timetable_id = (
+                first.timetable_id if hasattr(first, "timetable_id")
+                else first.get("timetable_id") if isinstance(first, dict) else None
+            )
+        else:
+            timetable_id = None
+        conflicts: List[TimetableConflict] = []
+        for v in violations:
+            ctype = validation_to_conflict_type.get(v.validation_key)
+            if ctype is None:
+                logger.debug(
+                    "detect_conflicts: skipping unmapped validation_key=%s",
+                    v.validation_key,
+                )
+                continue
+            refs = v.refs or {}
+            conflicts.append(TimetableConflict(
+                id=str(uuid.uuid4()),
+                run_id=run_id,
+                timetable_id=timetable_id,
+                conflict_type=ctype,
+                teacher_id=refs.get("teacher_id"),
+                class_id=refs.get("class_id"),
+                subject_id=refs.get("subject_id"),
+                day_of_week=refs.get("day_of_week") or "",
+                period_number=refs.get("period_number") or 0,
+                severity=v.severity.value if hasattr(v.severity, "value") else str(v.severity),
+                message_ar=v.message_ar,
+                message_en=v.message_en,
+            ))
+
         return conflicts
     
     # ============== PHASE 8: OPTIMIZATION ==============
@@ -2146,6 +2360,99 @@ class SmartSchedulingEngine:
         """Get all timetables for a school"""
         return await gd_find(self.session, "timetables", {"school_id": school_id}, order_by="created_at", desc_order=True, limit=100)
     
+    async def validate_before_publish(
+        self, *, school_id: str, timetable_id: str
+    ) -> Dict[str, Any]:
+        """Registry-driven publish gate.
+
+        Loads the candidate timetable from the DB, builds a
+        ConstraintContext, and dispatches BOTH validate_full and
+        validate_placement(candidate=None) so that whole-grid checks at
+        either tier emit violations. HC-17 (block_publish_on_conflict) is
+        a meta-marker that returns []; the real "block on critical
+        conflicts" semantic is enforced HERE in this partitioning.
+        """
+        from engines.hard_constraints import validate_full, validate_placement
+
+        sessions = await gd_find(
+            self.session, "timetable_sessions",
+            {"timetable_id": timetable_id}, limit=50000
+        )
+        hc_rows = await gd_find(
+            self.session, "timetable_hard_constraints",
+            {"is_active": True}, limit=100
+        )
+        time_slots = await gd_find(
+            self.session, "time_slots", {"school_id": school_id}, limit=500
+        )
+        school_settings = await gd_find_one(
+            self.session, "school_settings", {"school_id": school_id}
+        ) or {}
+        working_days_raw = school_settings.get("working_days")
+        if isinstance(working_days_raw, dict):
+            working_days = [k for k, v in working_days_raw.items() if v]
+        elif isinstance(working_days_raw, list):
+            working_days = working_days_raw
+        else:
+            working_days = None
+
+        # Load real demands + resources so that HC-09/16 and
+        # schedule_completeness see populated maps. Without this,
+        # entity_integrity falsely flags every real session as orphan
+        # and blocks publish on every timetable.
+        try:
+            settings = await self.load_school_settings(school_id)
+        except Exception:
+            settings = {}
+        try:
+            demands = await self.build_academic_demand(school_id)
+        except Exception:
+            demands = []
+        try:
+            resources = await self.build_resource_availability(school_id, settings)
+        except Exception:
+            resources = []
+
+        ctx = await self._build_constraint_context(
+            school_id=school_id,
+            sessions=sessions,
+            demands=demands,
+            time_slots=time_slots,
+            school_constraints_rows=[],
+            hard_constraints_rows=hc_rows,
+            resources=resources,
+            engine_settings={"working_days": working_days},
+            include_flat_demands=True,
+        )
+
+        violations = list(validate_full(ctx)) + list(
+            validate_placement(ctx, candidate=None)
+        )
+
+        blocking: List[Dict[str, Any]] = []
+        warnings: List[Dict[str, Any]] = []
+        for v in violations:
+            sev = v.severity
+            sev_value = sev.value if hasattr(sev, "value") else str(sev)
+            item = {
+                "code": v.code,
+                "validation_key": v.validation_key,
+                "severity": sev_value,
+                "message_en": v.message_en,
+                "message_ar": v.message_ar,
+                "refs": v.refs,
+            }
+            if sev in (ConflictSeverity.CRITICAL, ConflictSeverity.HIGH):
+                blocking.append(item)
+            elif sev == ConflictSeverity.MEDIUM:
+                warnings.append(item)
+
+        return {
+            "is_publishable": len(blocking) == 0,
+            "violations": blocking,
+            "warnings": warnings,
+        }
+
     async def publish_timetable(self, timetable_id: str, published_by: str) -> bool:
         """Publish a timetable"""
         # Check for critical conflicts
@@ -2177,6 +2484,184 @@ class SmartSchedulingEngine:
             "archived_by": archived_by
         })
         return result > 0
+
+
+async def _build_infeasibility_report_impl(engine: "SmartSchedulingEngine", school_id: str) -> InfeasibilityReport:
+    """Compute deterministic INF-01..INF-05 blockers + advisory items.
+
+    Conservative: any datum we cannot load (e.g. teacher qualifications,
+    room rules) causes that specific check to be skipped, never emits a
+    false-positive blocker.
+    """
+    issues: List[InfeasibilityIssue] = []
+    sess = engine.session
+
+    # ---- Time slots / settings ------------------------------------------------
+    time_slots = await gd_find(sess, "time_slots", {"school_id": school_id}, limit=500)
+    teaching_slots = [
+        ts for ts in time_slots
+        if not ts.get("is_break", False) and not ts.get("is_prayer", False)
+    ]
+    teaching_periods_count = len(teaching_slots)
+
+    settings_row = await gd_find_one(sess, "school_settings", {"school_id": school_id})
+    working_days_raw = (settings_row or {}).get("working_days") or [
+        "sunday", "monday", "tuesday", "wednesday", "thursday"
+    ]
+    if isinstance(working_days_raw, dict):
+        working_days = [d for d, on in working_days_raw.items() if on]
+    elif isinstance(working_days_raw, list):
+        working_days = list(working_days_raw)
+    else:
+        working_days = []
+    working_days_count = len(working_days)
+
+    # INF-05: no time slots / no teaching periods configured.
+    if teaching_periods_count == 0:
+        issues.append(InfeasibilityIssue(
+            code="INF-05",
+            severity="blocker",
+            message_en="School has no teaching time slots configured.",
+            message_ar="لا توجد فترات تدريس مهيأة في المدرسة.",
+            refs={"time_slots_count": len(time_slots), "teaching_slots_count": 0},
+        ))
+
+    # ---- Classes + per-class demand ------------------------------------------
+    classes = await gd_find(sess, "classes", {"school_id": school_id, "is_active": {"$ne": False}}, limit=500)
+    classes_count = len(classes)
+    grade_subjects_all = await gd_find(sess, "grade_subjects", {"school_id": school_id, "is_active": True}, limit=2000)
+    gs_by_grade: Dict[str, List[Dict[str, Any]]] = {}
+    for gs in grade_subjects_all:
+        gid = gs.get("grade_id")
+        if gid:
+            gs_by_grade.setdefault(gid, []).append(gs)
+
+    class_demand: Dict[str, int] = {}
+    subject_demand: Dict[str, int] = {}
+    total_demand = 0
+    for cls in classes:
+        cid = cls.get("id")
+        gid = cls.get("grade_id") or cls.get("grade_level") or cls.get("level")
+        rows = gs_by_grade.get(gid, []) if gid else []
+        cdemand = 0
+        for gs in rows:
+            wp = gs.get("weekly_periods") or gs.get("weekly_hours") or gs.get("weekly_sessions") or 0
+            try:
+                wp = int(wp)
+            except (TypeError, ValueError):
+                wp = 0
+            cdemand += wp
+            sid = gs.get("subject_id")
+            if sid:
+                subject_demand[sid] = subject_demand.get(sid, 0) + wp
+        class_demand[cid] = cdemand
+        total_demand += cdemand
+
+    class_capacity = teaching_periods_count * working_days_count
+
+    # INF-01: total demand > total available teaching slots.
+    if teaching_periods_count > 0 and working_days_count > 0:
+        total_capacity = classes_count * class_capacity
+        if total_demand > total_capacity:
+            issues.append(InfeasibilityIssue(
+                code="INF-01",
+                severity="blocker",
+                message_en=(
+                    f"Total weekly demand ({total_demand} periods) exceeds "
+                    f"available teaching slots ({total_capacity})."
+                ),
+                message_ar=(
+                    f"إجمالي الطلب الأسبوعي ({total_demand} حصة) يتجاوز "
+                    f"عدد فترات التدريس المتاحة ({total_capacity})."
+                ),
+                refs={
+                    "total_demand_periods": total_demand,
+                    "total_available_slots": total_capacity,
+                    "classes_count": classes_count,
+                    "teaching_periods_count": teaching_periods_count,
+                    "working_days_count": working_days_count,
+                },
+            ))
+
+    # INF-02: per-class capacity overrun.
+    if class_capacity > 0:
+        for cid, demand in class_demand.items():
+            if demand > class_capacity:
+                issues.append(InfeasibilityIssue(
+                    code="INF-02",
+                    severity="blocker",
+                    message_en=(
+                        f"Class requires {demand} weekly periods but only "
+                        f"{class_capacity} slots are available."
+                    ),
+                    message_ar=(
+                        f"الفصل يحتاج {demand} حصة أسبوعياً بينما المتاح "
+                        f"{class_capacity} حصة فقط."
+                    ),
+                    refs={"class_id": cid, "demand": demand, "capacity": class_capacity},
+                ))
+
+    # INF-03: per-subject teacher capacity. Skip if no teacher_assignments
+    # data exists (sparsely-populated DBs would otherwise emit false-positive
+    # blockers).
+    assignments = await gd_find(sess, "teacher_assignments", {"school_id": school_id, "is_active": True}, limit=5000)
+    if assignments:
+        teachers_by_subject: Dict[str, set] = {}
+        for a in assignments:
+            sid = a.get("subject_id")
+            tid = a.get("teacher_id")
+            if sid and tid:
+                teachers_by_subject.setdefault(sid, set()).add(tid)
+        teachers = await gd_find(sess, "teachers", {"school_id": school_id, "is_active": {"$ne": False}}, limit=500)
+        teacher_load: Dict[str, int] = {}
+        for t in teachers:
+            tid = t.get("id")
+            wl = t.get("weekly_periods")
+            try:
+                wl = int(wl) if wl is not None else 24
+            except (TypeError, ValueError):
+                wl = 24
+            teacher_load[tid] = wl
+        for sid, demand in subject_demand.items():
+            qualified = teachers_by_subject.get(sid)
+            if not qualified:
+                # Conservative: missing qualification data → skip.
+                continue
+            supply = sum(teacher_load.get(tid, 24) for tid in qualified)
+            if demand > supply:
+                issues.append(InfeasibilityIssue(
+                    code="INF-03",
+                    severity="blocker",
+                    message_en=(
+                        f"Subject demand ({demand} periods) exceeds "
+                        f"qualified-teacher supply ({supply})."
+                    ),
+                    message_ar=(
+                        f"طلب المادة ({demand} حصة) يتجاوز سعة المعلمين "
+                        f"المؤهلين ({supply})."
+                    ),
+                    refs={"subject_id": sid, "demand": demand, "supply": supply},
+                ))
+
+    # INF-04: per-required-room. Subject_must_use_room data is not modelled
+    # in the current schema, so this check is conservatively skipped. When
+    # the rooms table grows a `subject_must_use_room` column we'll wire it
+    # in here.
+
+    blocks = any(i.severity == "blocker" for i in issues)
+    return InfeasibilityReport(
+        blocks_generation=blocks,
+        issues=issues,
+        computed_at=datetime.utcnow(),
+    )
+
+
+# Bind the implementation as a method on SmartSchedulingEngine.
+async def _build_infeasibility_report(self, school_id: str) -> InfeasibilityReport:
+    return await _build_infeasibility_report_impl(self, school_id)
+
+
+SmartSchedulingEngine.build_infeasibility_report = _build_infeasibility_report  # type: ignore[attr-defined]
 
 
 # Export

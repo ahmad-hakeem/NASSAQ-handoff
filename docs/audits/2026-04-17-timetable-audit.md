@@ -286,6 +286,7 @@ _Findings:_
 - **Why it matters:** 14 of the 17 "system-level rules that MUST be enforced" advertised to principals (Settings UI at `school_settings_mod.py:989-1024`) are in fact unenforced. A principal who edits HC-08's `is_active` flag in the DB to "loosen" the teacher-weekly-load gate sees no change; a principal who relies on HC-15 ("no out-of-curriculum subject") gets no protection. Audit trail and Settings UI both lie about what is actually being checked.
 - **Recommended fix:** Build a `VALIDATION_REGISTRY: Dict[str, Callable]` mapping each `validation_key` to its enforcement function. In `generate_draft_timetable` and the publish-gate, iterate `for hc in active_hard_constraints: REGISTRY[hc["validation_key"]](...)`. Mirror the pattern already used for soft constraints (`scoring_key` dispatch at `:1668-1808`).
 - **Effort:** L
+- **Status:** ✅ Remediated 2026-04-17 (Batch 2 plan: docs/superpowers/plans/2026-04-17-timetable-remediation-batch2.md)
 
 #### F-CN-02 — Publish-gate validator enforces only 3 of 17 hard constraints
 - **Severity:** High
@@ -294,6 +295,7 @@ _Findings:_
 - **Why it matters:** A draft that violates room double-booking, weekly-load quota, subject weekly periods, teacher-subject qualification, or curriculum integrity will pass `can_publish=True` and reach teacher / parent views. HC-17 ("Block publish on conflict") explicitly promises this gate exists; the gate exists in name only.
 - **Recommended fix:** Once the registry from F-CN-01 lands, replace the hand-rolled if-chain with `for hc in active_hard_constraints: REGISTRY[hc["validation_key"]].validate_publish(version_id, school_id, validation_errors)`. As a stop-gap, hand-add the missing checks to `validate_before_publish`.
 - **Effort:** M
+- **Status:** ✅ Remediated 2026-04-17 (Batch 2 plan: docs/superpowers/plans/2026-04-17-timetable-remediation-batch2.md)
 
 #### F-CN-03 — Room overlap (HC-03) is never detected anywhere in the engine or publish-gate
 - **Severity:** High
@@ -302,6 +304,7 @@ _Findings:_
 - **Why it matters:** Two teachers can be scheduled in the same room at the same time and neither the generator, conflict detector, nor publish gate will surface it; principals discover it on the day the bell rings.
 - **Recommended fix:** Add a third grouping in `detect_conflicts` keyed on `(room_id, day, period)` (skipping rows where `room_id` is null), emit `ConflictType.ROOM_OVERLAP` conflicts, and add a `room_conflicts` aggregate to `_count_real_conflicts`.
 - **Effort:** S
+- **Status:** ✅ Remediated 2026-04-17 (Batch 2 plan: docs/superpowers/plans/2026-04-17-timetable-remediation-batch2.md)
 
 #### F-CN-04 — `minimize_teacher_travel` (SC-12) is a no-op listed as active in the Settings UI
 - **Severity:** High
@@ -367,6 +370,7 @@ _Findings:_
 - **Why it matters:** A class can finish generation missing 2 of 5 Math periods with no `TimetableConflict` raised; the publish gate (F-CN-02) won't catch it either unless those slots happen to be empty, but they may be filled by a different subject.
 - **Recommended fix:** In `detect_conflicts`, add per-`(class_id, subject_id)` tally vs the demand's `weekly_periods` and emit `SUBJECT_QUOTA_VIOLATION`. Add a per-(teacher, day) tally vs a configurable `max_daily_periods`.
 - **Effort:** M
+- **Status:** ✅ Remediated 2026-04-17 (Batch 2 plan: docs/superpowers/plans/2026-04-17-timetable-remediation-batch2.md)
 
 #### F-CN-12 — Constraint violation messages are bilingual hard-coded strings with no i18n key
 - **Severity:** Low
@@ -453,6 +457,7 @@ _Findings:_
 - **Why it matters:** Admins believe they have configured a constraint; the engine ignores it; conflicts go undetected. This is the single biggest gap between "constraint configured" and "constraint enforced".
 - **Recommended fix:** Replace the if-chain with a registry of `validation_key -> Callable(session, context) -> bool` and require every constraint row to map to a validator; reject seeding constraints whose key has no validator.
 - **Effort:** M
+- **Status:** ✅ Remediated 2026-04-17 (Batch 2 plan: docs/superpowers/plans/2026-04-17-timetable-remediation-batch2.md)
 
 #### F-EN-09 — Engine has no awareness of the rich constraint model
 - **Severity:** High
@@ -461,6 +466,7 @@ _Findings:_
 - **Why it matters:** The "smart" label is misleading — generation is single-pass greedy with two soft-constraint scoring tweaks, then conflicts are catalogued rather than resolved. For real schools this produces low-quality timetables that will be heavily edited manually.
 - **Recommended fix:** Adopt a CSP / OR-Tools backbone (or at minimum backtracking with constraint propagation); accept the full constraint set as input; integrate `_analyze_capacity_issues` warnings into a pre-generation infeasibility report so users fix data before runs.
 - **Effort:** L
+- **Status:** 🟡 Partially Remediated 2026-04-17 (Batch 2: pre-generation infeasibility report INF-01..INF-05 with 422 gating shipped; CSP/backtracking rewrite deferred to Batch 3)
 
 #### F-EN-10 — Quadratic / cubic scans inside the placement loop
 - **Severity:** Medium

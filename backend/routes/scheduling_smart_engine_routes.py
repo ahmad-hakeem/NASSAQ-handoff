@@ -24,6 +24,7 @@ from dependencies import (
 )
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
 from utils.tenant_scope import assert_school_access, resolve_school_id
+from routes._publish_gate import assert_publishable
 
 
 from shared_models import (
@@ -135,7 +136,14 @@ async def smart_generate_timetable(
     """
     assert_school_access(current_user, str(school_id))
     request = request or SmartTimetableGenerateRequest()
-    
+
+    report = await smart_scheduling_engine.build_infeasibility_report(school_id)
+    if report.blocks_generation:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "GENERATION_BLOCKED", "report": report.model_dump(mode="json")},
+        )
+
     result = await smart_scheduling_engine.generate_timetable(
         school_id=school_id,
         academic_year_id=request.academic_year_id,
@@ -178,7 +186,14 @@ async def generate_timetable_smart(
         
         nested_settings = settings.get("settings", {})
         academic_year = nested_settings.get("academic_year") or settings.get("academicYear") or settings.get("academic_year")
-        
+
+        report = await smart_scheduling_engine.build_infeasibility_report(school_id)
+        if report.blocks_generation:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "GENERATION_BLOCKED", "report": report.model_dump(mode="json")},
+            )
+
         # Generate timetable
         result = await smart_scheduling_engine.generate_timetable(
             school_id=school_id,
@@ -433,6 +448,11 @@ async def smart_publish_timetable(
     if not timetable:
         raise HTTPException(status_code=404, detail="الجدول غير موجود")
     assert_school_access(current_user, str(timetable.get("school_id")))
+    await assert_publishable(
+        smart_scheduling_engine,
+        school_id=str(timetable.get("school_id")),
+        timetable_id=timetable_id,
+    )
     success = await smart_scheduling_engine.publish_timetable(
         timetable_id=timetable_id,
         published_by=current_user.get("id", "system")
@@ -508,13 +528,15 @@ async def smart_pre_scheduling_check(
     
     # Run pre-check
     result = await smart_scheduling_engine.pre_scheduling_check(school_id, demands, resources, settings)
-    
+    infeasibility_report = await smart_scheduling_engine.build_infeasibility_report(school_id)
+
     return {
         "school_id": school_id,
         "can_schedule": result["can_schedule"],
         "warnings": result["warnings"],
         "errors": result["errors"],
         "statistics": result["statistics"],
+        "infeasibility_report": infeasibility_report.model_dump(mode="json"),
         "message_ar": "يمكن بدء الجدولة" if result["can_schedule"] else "يوجد مشاكل تمنع الجدولة",
         "message_en": "Ready to schedule" if result["can_schedule"] else "Issues preventing scheduling"
     }
