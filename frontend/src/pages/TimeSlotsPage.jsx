@@ -74,7 +74,19 @@ export const TimeSlotsPage = () => {
     is_break: false,
   });
 
+  const isSchoolLevel = user?.role && !user.role.startsWith('platform_');
+  const userSchoolId = user?.tenant_id;
+
   const fetchSchools = async () => {
+    // School-level users (school_admin/principal) can't list /schools
+    // (platform-admin only). Use their own tenant_id directly.
+    if (isSchoolLevel) {
+      if (userSchoolId) {
+        setSchools([{ id: userSchoolId, name: '' }]);
+        if (!selectedSchool) setSelectedSchool(userSchoolId);
+      }
+      return;
+    }
     try {
       const res = await api.get('/schools');
       setSchools(res.data);

@@ -120,7 +120,8 @@ def _build_orm_filter_conditions(model_cls, filters: dict):
     conds = []
     if not filters:
         return conds
-    cols = _col_keys(model_cls)
+    col_map = _col_key_map(model_cls)
+    cols = set(col_map.keys())
     has_data = "data" in cols
     for k, v in filters.items():
         if k in ("_id",):
@@ -141,7 +142,7 @@ def _build_orm_filter_conditions(model_cls, filters: dict):
             if k in _SENSITIVE_FILTER_KEYS:
                 _sql_logger.warning(f"Blocked filter on sensitive column: {k}")
                 continue
-            col = getattr(model_cls, k)
+            col = getattr(model_cls, col_map[k])
             if isinstance(v, dict):
                 for op, val in v.items():
                     val = _coerce_value(col, val)
@@ -183,7 +184,7 @@ def _build_orm_filter_conditions(model_cls, filters: dict):
                 conds.append(col == v)
         elif TENANT_ALIAS.get(k) in cols:
             real_key = TENANT_ALIAS[k]
-            col = getattr(model_cls, real_key)
+            col = getattr(model_cls, col_map[real_key])
             if isinstance(v, dict):
                 for op, val in v.items():
                     if op == "$in":
@@ -195,7 +196,8 @@ def _build_orm_filter_conditions(model_cls, filters: dict):
             else:
                 conds.append(col == v)
         elif has_data:
-            json_expr = model_cls.data[k]
+            data_attr = getattr(model_cls, col_map["data"])
+            json_expr = data_attr[k]
             col_expr = json_expr.astext
             if isinstance(v, dict):
                 for op, val in v.items():
@@ -246,17 +248,25 @@ def model_to_dict(obj) -> Optional[dict]:
     mapper = sa_inspect(type(obj))
     data_val = None
     has_data_col = False
-    for col in mapper.columns:
-        if col.key in _SKIP_KEYS:
+    # Iterate column_attrs (Python attribute names) rather than columns
+    # (DB column names) so that columns whose DB name collides with a
+    # reserved class attribute (e.g. ``metadata`` on DeclarativeBase) are
+    # still read from the correct instance attribute. The dict key uses the
+    # DB column name for backward-compatible API output.
+    for attr in mapper.column_attrs:
+        py_key = attr.key
+        col = attr.columns[0]
+        out_key = col.name
+        if out_key in _SKIP_KEYS or py_key in _SKIP_KEYS:
             continue
-        val = getattr(obj, col.key, None)
+        val = getattr(obj, py_key, None)
         if isinstance(val, datetime):
             val = val.isoformat()
-        if col.key == "data":
+        if out_key == "data":
             has_data_col = True
             if isinstance(val, dict):
                 data_val = val
-        d[col.key] = val
+        d[out_key] = val
     if has_data_col and data_val:
         for k, v in data_val.items():
             if k not in d:
@@ -270,35 +280,56 @@ def models_to_dicts(objs) -> List[dict]:
     return [model_to_dict(o) for o in objs]
 
 
-def _col_keys(model_cls) -> set:
+def _col_key_map(model_cls) -> dict:
+    """Return ``{db_column_name: python_attribute_name}``.
+
+    The two differ when an ORM column declares a ``name`` that collides with
+    a reserved DeclarativeBase attribute (e.g. ``metadata``). Generic
+    helpers receive request/response keys as DB column names but must use
+    Python attribute names when calling ``getattr``/``setattr`` or passing
+    kwargs to ``Model(**kwargs)``.
+    """
     mapper = sa_inspect(model_cls)
-    return {c.key for c in mapper.columns}
+    out = {}
+    for attr in mapper.column_attrs:
+        col = attr.columns[0]
+        out[col.name] = attr.key
+    return out
+
+
+def _col_keys(model_cls) -> set:
+    return set(_col_key_map(model_cls).keys())
 
 
 def dict_to_model(model_cls, data: dict):
-    cols = _col_keys(model_cls)
+    col_map = _col_key_map(model_cls)
+    cols = set(col_map.keys())
     kwargs = {}
     extra = {}
     for k, v in data.items():
         if k == "_id":
             continue
         if k in cols:
-            kwargs[k] = _coerce_model_value(model_cls, k, v)
+            py_key = col_map[k]
+            kwargs[py_key] = _coerce_model_value(model_cls, py_key, v)
         elif TENANT_ALIAS.get(k) in cols:
             real_key = TENANT_ALIAS[k]
-            kwargs[real_key] = _coerce_model_value(model_cls, real_key, v)
+            py_key = col_map[real_key]
+            kwargs[py_key] = _coerce_model_value(model_cls, py_key, v)
         else:
             extra[k] = v
     if extra and "data" in cols:
-        existing = kwargs.get("data") or {}
+        data_py_key = col_map["data"]
+        existing = kwargs.get(data_py_key) or {}
         if isinstance(existing, dict):
-            kwargs["data"] = {**existing, **extra}
+            kwargs[data_py_key] = {**existing, **extra}
         else:
-            kwargs["data"] = extra
+            kwargs[data_py_key] = extra
     return model_cls(**kwargs)
 
 
 def _coerce_model_value(model_cls, key, val):
+    """``key`` here is a Python attribute name (already mapped from DB col)."""
     if val is None:
         return None
     try:
@@ -313,22 +344,26 @@ def _coerce_model_value(model_cls, key, val):
 def apply_updates(obj, updates: dict, model_cls=None):
     if model_cls is None:
         model_cls = type(obj)
-    cols = _col_keys(model_cls)
+    col_map = _col_key_map(model_cls)
+    cols = set(col_map.keys())
     extra = {}
     for k, v in updates.items():
         if k in ("id", "_id"):
             continue
         if k in cols:
-            v = _coerce_model_value(model_cls, k, v)
-            setattr(obj, k, v)
+            py_key = col_map[k]
+            v = _coerce_model_value(model_cls, py_key, v)
+            setattr(obj, py_key, v)
         elif TENANT_ALIAS.get(k) in cols:
             real_key = TENANT_ALIAS[k]
-            v = _coerce_model_value(model_cls, real_key, v)
-            setattr(obj, real_key, v)
+            py_key = col_map[real_key]
+            v = _coerce_model_value(model_cls, py_key, v)
+            setattr(obj, py_key, v)
         else:
             extra[k] = v
     if extra and "data" in cols:
-        current = getattr(obj, "data", None)
+        data_py_key = col_map["data"]
+        current = getattr(obj, data_py_key, None)
         current = dict(current) if isinstance(current, dict) else {}
         for ek, ev in extra.items():
             if "." in ek:
@@ -341,7 +376,7 @@ def apply_updates(obj, updates: dict, model_cls=None):
                 target[parts[-1]] = ev
             else:
                 current[ek] = ev
-        setattr(obj, "data", current)
+        setattr(obj, data_py_key, current)
 
 
 def _resolve_json_path(model_cls, field_path: str):
