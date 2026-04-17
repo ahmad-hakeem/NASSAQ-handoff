@@ -1,7 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 /**
- * يجلب مرشحي معلمين لخانة فارغة من /api/schedule/slots/candidates
+ * بناء معرف خانة مركّب يطابق عقد الـ API:
+ *   "{timetable_id}__{class_id}__{day_of_week}__{period_number}"
+ */
+export function buildSlotId({ timetable_id, class_id, day_of_week, period_number }) {
+  return `${timetable_id}__${class_id}__${day_of_week}__${period_number}`;
+}
+
+/**
+ * يجلب مرشحي معلمين لخانة فارغة من
+ *   GET /api/schedule/slots/{slot_id}/candidates
  *
  * @param {object} api  - axios instance من useAuth
  * @param {object|null} slot - { timetable_id, class_id, day_of_week, period_number, subject_id? }
@@ -22,17 +31,13 @@ export function useScheduleCandidates(api, slot, filters) {
     setLoading(true);
     setError(null);
     try {
-      const params = {
-        timetable_id: slot.timetable_id,
-        class_id: slot.class_id,
-        day_of_week: slot.day_of_week,
-        period_number: slot.period_number,
-      };
+      const slotId = buildSlotId(slot);
+      const params = {};
       if (slot.subject_id) params.subject_id = slot.subject_id;
       if (filters?.specialty) params.specialty = filters.specialty;
       if (filters?.only_available) params.only_available = true;
 
-      const res = await api.get('/schedule/slots/candidates', { params });
+      const res = await api.get(`/schedule/slots/${encodeURIComponent(slotId)}/candidates`, { params });
       if (reqIdRef.current !== reqId) return; // stale
       setCandidates(res.data?.candidates || []);
     } catch (err) {

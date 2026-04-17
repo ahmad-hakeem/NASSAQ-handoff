@@ -3,7 +3,7 @@
  * نَسَّق | NASSAQ School Management System
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Sidebar } from '../components/layout/Sidebar';
 import { useAuth } from '../contexts/AuthContext';
@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { NotificationBell } from '../components/notifications/NotificationBell';
 import CandidatesSidePanel from '../components/schedule/CandidatesSidePanel';
+import { useTranslation } from '../contexts/ThemeContext';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 const DAYS = [
@@ -123,7 +124,8 @@ const SessionCard = ({ session, viewMode, onClick, isDraggable, onDragStart, isD
 };
 
 // ─── Empty Cell ───────────────────────────────────────────────────────────
-const EmptyCell = ({ isDropTarget, isGap, canPick, onPick }) => {
+const EmptyCell = ({ isDropTarget, isGap, canPick, onPick, t }) => {
+  const tt = t || ((k) => k);
   const Tag = canPick ? 'button' : 'div';
   return (
     <Tag
@@ -150,17 +152,17 @@ const EmptyCell = ({ isDropTarget, isGap, canPick, onPick }) => {
           <svg className="h-5 w-5 text-red-400 mb-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <path d="M12 9v4m0 4h.01M12 2a10 10 0 100 20 10 10 0 000-20z" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
-          <span className="text-red-600 text-[10px] font-extrabold select-none leading-tight">غير مستوفية</span>
+          <span className="text-red-600 text-[10px] font-extrabold select-none leading-tight">{tt('schedule_empty_gap_short')}</span>
           {canPick
-            ? <span className="text-red-500 text-[9px] font-bold select-none underline">اختر معلم ←</span>
-            : <span className="text-red-400 text-[8px] font-medium select-none">تحتاج تعيين مادة</span>}
+            ? <span className="text-red-500 text-[9px] font-bold select-none underline">{tt('schedule_empty_gap_pick')}</span>
+            : <span className="text-red-400 text-[8px] font-medium select-none">{tt('schedule_empty_gap_needs_subject')}</span>}
         </>
       ) : canPick ? (
         <>
           <svg className="h-4 w-4 text-[#2BB5A0]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M12 5v14M5 12h14" strokeLinecap="round"/>
           </svg>
-          <span className="text-[#2BB5A0] text-[10px] font-bold select-none">اختر معلم</span>
+          <span className="text-[#2BB5A0] text-[10px] font-bold select-none">{tt('schedule_empty_pick_teacher')}</span>
         </>
       ) : (
         <span className="text-slate-300 text-[10px] select-none">—</span>
@@ -249,9 +251,14 @@ export default function SchedulePageNew() {
   const [draggingSessionId, setDraggingSessionId] = useState(null);
   const [dropTargetCell, setDropTargetCell]       = useState(null);
 
+  const { t } = useTranslation();
+
   // Candidates side-panel state
   const [candidatesPanelOpen, setCandidatesPanelOpen] = useState(false);
   const [activeSlot, setActiveSlot] = useState(null); // { class_id, class_name, day_of_week, period_number, ... }
+  // Session-only undo stack for candidate assignments.
+  // كل عنصر: { session_id, slot, candidate_name, ts }
+  const undoStackRef = useRef([]);
 
   const { nassaqError, nassaqWarning } = useNassaqAlert();
   const schoolId = user?.tenant_id;
@@ -532,29 +539,47 @@ export default function SchedulePageNew() {
     return null;
   }, [timeSlots, sessions, selectedClass]);
 
+  // Pop the most recent assignment from the undo stack and reverse it on the server.
+  const undoLastAssignment = useCallback(async () => {
+    const entry = undoStackRef.current.pop();
+    if (!entry) return;
+    try {
+      await api.post(`/schedule/slots/${encodeURIComponent(entry.session_id)}/unassign`);
+      setSessions(prev => prev.filter(s => s.id !== entry.session_id));
+      toast.success(t('schedule_undo_success'));
+    } catch (err) {
+      // Re-push so the user can retry; failing undo should not silently drop the entry.
+      undoStackRef.current.push(entry);
+      toast.error(err.response?.data?.detail || t('schedule_undo_failed'));
+    }
+  }, [api, t]);
+
   const handleSlotAssigned = useCallback((sessionDoc, candidate) => {
     // Optimistic add
     setSessions(prev => [...prev, sessionDoc]);
-    // Toast with undo
+    // Push onto session-only undo stack
+    undoStackRef.current.push({
+      session_id: sessionDoc.id,
+      slot: {
+        class_id: sessionDoc.class_id,
+        day_of_week: sessionDoc.day_of_week,
+        period_number: sessionDoc.period_number,
+      },
+      candidate_name: candidate?.teacher_name || sessionDoc.teacher_name,
+      ts: Date.now(),
+    });
+    // Toast with undo (drains the top of the stack)
     toast.success(
-      `تم تعيين ${candidate?.teacher_name || sessionDoc.teacher_name} للحصة`,
+      t('schedule_assign_toast').replace('{{name}}', candidate?.teacher_name || sessionDoc.teacher_name || ''),
       {
         duration: 8000,
         action: {
-          label: 'تراجع',
-          onClick: async () => {
-            try {
-              await api.post('/schedule/slots/unassign', { session_id: sessionDoc.id });
-              setSessions(prev => prev.filter(s => s.id !== sessionDoc.id));
-              toast.success('تم التراجع عن التعيين');
-            } catch (err) {
-              toast.error(err.response?.data?.detail || 'تعذّر التراجع');
-            }
-          },
+          label: t('schedule_assign_toast_undo'),
+          onClick: undoLastAssignment,
         },
       }
     );
-  }, [api]);
+  }, [t, undoLastAssignment]);
 
   const handleSkipToNextEmpty = useCallback(() => {
     if (!activeSlot) return;
@@ -571,9 +596,9 @@ export default function SchedulePageNew() {
     } else {
       setCandidatesPanelOpen(false);
       setActiveSlot(null);
-      toast.success('🎉 تم تعبئة جميع الخانات الفارغة لهذا الفصل');
+      toast.success(t('schedule_all_filled'));
     }
-  }, [activeSlot, findNextEmptyCell, classes, selectedClass, selectedTimetableId]);
+  }, [activeSlot, findNextEmptyCell, classes, selectedClass, selectedTimetableId, t]);
 
   // ── Derived ─────────────────────────────────────────────────────────────
   const currentFilter = viewMode === 'class' ? selectedClass : selectedTeacher;
@@ -1059,6 +1084,7 @@ export default function SchedulePageNew() {
                                   <EmptyCell
                                     isDropTarget={isTarget}
                                     isGap={isCellGap}
+                                    t={t}
                                     canPick={
                                       canPickCandidates
                                       && canDragDrop

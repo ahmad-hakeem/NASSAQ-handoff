@@ -9,7 +9,8 @@ import { Badge } from '../ui/badge';
 import { Switch } from '../ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Loader2, User, CheckCircle2, AlertTriangle, Sparkles, Clock } from 'lucide-react';
-import { useScheduleCandidates } from '../../hooks/useScheduleCandidates';
+import { useTranslation } from '../../contexts/ThemeContext';
+import { useScheduleCandidates, buildSlotId } from '../../hooks/useScheduleCandidates';
 
 const DAY_LABEL_AR = {
   sunday: 'الأحد', monday: 'الإثنين', tuesday: 'الثلاثاء',
@@ -23,9 +24,10 @@ export default function CandidatesSidePanel({
   api,
   teachers = [], // قائمة معلمي المدرسة لاستخراج خيارات التخصص
   subjectsForClass = [], // [{id, name}] قائمة المواد المسموح بها لهذا الفصل (اختياري)
-  onAssigned,    // (session) => void
+  onAssigned,    // (session, candidate) => void
   onSkipNext,    // () => void  للانتقال للخانة التالية
 }) {
+  const { t } = useTranslation();
   const [specialty, setSpecialty] = useState('');
   const [onlyAvailable, setOnlyAvailable] = useState(false);
   const [chosenSubjectId, setChosenSubjectId] = useState('');
@@ -63,11 +65,8 @@ export default function CandidatesSidePanel({
     if (!effectiveSlot) return;
     setAssigning(cand.teacher_id);
     try {
-      const res = await api.post('/schedule/slots/assign', {
-        timetable_id: effectiveSlot.timetable_id,
-        class_id: effectiveSlot.class_id,
-        day_of_week: effectiveSlot.day_of_week,
-        period_number: effectiveSlot.period_number,
+      const slotId = buildSlotId(effectiveSlot);
+      const res = await api.post(`/schedule/slots/${encodeURIComponent(slotId)}/assign`, {
         teacher_id: cand.teacher_id,
         subject_id: effectiveSlot.subject_id || null,
       });
@@ -78,8 +77,7 @@ export default function CandidatesSidePanel({
       // الانتقال للخانة التالية تلقائياً
       if (onSkipNext) onSkipNext();
     } catch (err) {
-      const msg = err.response?.data?.detail || 'فشل اعتماد التعيين';
-      // عرض خطأ بسيط داخل اللوحة
+      const msg = err.response?.data?.detail || t('candidates_assign_failed');
       alert(msg);
     } finally {
       setAssigning(null);
@@ -101,12 +99,12 @@ export default function CandidatesSidePanel({
         <SheetHeader className="p-5 bg-gradient-to-l from-[#1C3D74]/10 to-[#2BB5A0]/10 border-b">
           <SheetTitle className="flex items-center gap-2 text-[#1C3D74]">
             <Sparkles className="h-5 w-5" />
-            مرشحون لهذه الحصة
+            {t('candidates_panel_title')}
           </SheetTitle>
           <SheetDescription className="text-slate-700 text-xs leading-relaxed">
-            <span className="font-semibold">{slot.class_name || 'الفصل'}</span>
+            <span className="font-semibold">{slot.class_name || ''}</span>
             {' · '} <span>{dayLabel}</span>
-            {' · '} <span>الحصة {slot.period_number}</span>
+            {' · '} <span>{t('candidates_period_label')} {slot.period_number}</span>
             {slot.subject_name && (
               <> {' · '} <span className="text-emerald-700 font-medium">{slot.subject_name}</span></>
             )}
@@ -117,16 +115,16 @@ export default function CandidatesSidePanel({
         <div className="p-4 space-y-3 border-b bg-slate-50/60">
           {subjectsForClass.length > 0 && (
             <div className="flex items-center gap-2">
-              <label className="text-xs text-slate-600 font-medium shrink-0 w-16">المادة</label>
+              <label className="text-xs text-slate-600 font-medium shrink-0 w-16">{t('candidates_filter_subject')}</label>
               <Select
                 value={chosenSubjectId || ''}
                 onValueChange={(v) => setChosenSubjectId(v === '__none__' ? '' : v)}
               >
                 <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="اختر المادة" />
+                  <SelectValue placeholder={t('candidates_filter_subject_pick')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__none__" className="text-xs">— أي مادة —</SelectItem>
+                  <SelectItem value="__none__" className="text-xs">{t('candidates_filter_subject_any')}</SelectItem>
                   {subjectsForClass.map(s => (
                     <SelectItem key={s.id} value={s.id} className="text-xs">
                       {s.name || s.name_ar}
@@ -137,16 +135,16 @@ export default function CandidatesSidePanel({
             </div>
           )}
           <div className="flex items-center gap-2">
-            <label className="text-xs text-slate-600 font-medium shrink-0 w-16">التخصص</label>
+            <label className="text-xs text-slate-600 font-medium shrink-0 w-16">{t('candidates_filter_specialty')}</label>
             <Select
               value={specialty || '__all__'}
               onValueChange={(v) => setSpecialty(v === '__all__' ? '' : v)}
             >
               <SelectTrigger className="h-8 text-xs">
-                <SelectValue placeholder="جميع التخصصات" />
+                <SelectValue placeholder={t('candidates_filter_specialty_all')} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="__all__" className="text-xs">جميع التخصصات</SelectItem>
+                <SelectItem value="__all__" className="text-xs">{t('candidates_filter_specialty_all')}</SelectItem>
                 {specialtyOptions.map(s => (
                   <SelectItem key={s} value={s} className="text-xs">{s}</SelectItem>
                 ))}
@@ -155,7 +153,7 @@ export default function CandidatesSidePanel({
           </div>
 
           <div className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-slate-200">
-            <span className="text-xs text-slate-700 font-medium">المتاحون فقط في هذا الوقت</span>
+            <span className="text-xs text-slate-700 font-medium">{t('candidates_filter_only_available')}</span>
             <Switch checked={onlyAvailable} onCheckedChange={setOnlyAvailable} />
           </div>
         </div>
@@ -165,7 +163,7 @@ export default function CandidatesSidePanel({
           {loading && (
             <div className="flex flex-col items-center justify-center py-10 gap-2 text-slate-400">
               <Loader2 className="h-6 w-6 animate-spin" />
-              <span className="text-xs">جاري حساب المرشحين...</span>
+              <span className="text-xs">{t('candidates_loading')}</span>
             </div>
           )}
 
@@ -173,7 +171,7 @@ export default function CandidatesSidePanel({
             <div className="flex flex-col items-center justify-center py-10 gap-2 text-red-600">
               <AlertTriangle className="h-6 w-6" />
               <span className="text-xs text-center px-4">{error}</span>
-              <Button size="sm" variant="outline" className="text-xs" onClick={refetch}>إعادة المحاولة</Button>
+              <Button size="sm" variant="outline" className="text-xs" onClick={refetch}>{t('candidates_retry')}</Button>
             </div>
           )}
 
@@ -182,10 +180,8 @@ export default function CandidatesSidePanel({
               <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center">
                 <User className="h-7 w-7 text-slate-300" />
               </div>
-              <p className="text-sm font-medium text-slate-600">لا يوجد معلم مطابق للمعايير</p>
-              <p className="text-[11px] text-slate-400 text-center px-6">
-                جرّب إزالة بعض الفلاتر أو إلغاء "المتاحون فقط".
-              </p>
+              <p className="text-sm font-medium text-slate-600">{t('candidates_empty_title')}</p>
+              <p className="text-[11px] text-slate-400 text-center px-6">{t('candidates_empty_hint')}</p>
             </div>
           )}
 
@@ -194,6 +190,7 @@ export default function CandidatesSidePanel({
               key={c.teacher_id}
               cand={c}
               rank={idx + 1}
+              t={t}
               loading={assigning === c.teacher_id}
               disabled={!!assigning}
               onSelect={() => handleAssign(c)}
@@ -205,7 +202,7 @@ export default function CandidatesSidePanel({
   );
 }
 
-function CandidateCard({ cand, rank, onSelect, loading, disabled }) {
+function CandidateCard({ cand, rank, onSelect, loading, disabled, t }) {
   const ratio = cand.weekly_target > 0
     ? Math.min(100, Math.round((cand.weekly_load / cand.weekly_target) * 100))
     : 0;
@@ -226,13 +223,13 @@ function CandidateCard({ cand, rank, onSelect, loading, disabled }) {
             <h4 className="font-bold text-sm text-slate-800 truncate">{cand.teacher_name}</h4>
             {cand.specialty_match && (
               <Badge className="text-[9px] px-1.5 py-0 h-4 bg-emerald-100 text-emerald-700 border-emerald-200">
-                <CheckCircle2 className="h-2.5 w-2.5 ml-0.5" /> تخصص مطابق
+                <CheckCircle2 className="h-2.5 w-2.5 ml-0.5" /> {t('candidates_badge_specialty_match')}
               </Badge>
             )}
             {cand.available ? (
-              <Badge className="text-[9px] px-1.5 py-0 h-4 bg-blue-100 text-blue-700 border-blue-200">متاح</Badge>
+              <Badge className="text-[9px] px-1.5 py-0 h-4 bg-blue-100 text-blue-700 border-blue-200">{t('candidates_badge_available')}</Badge>
             ) : (
-              <Badge className="text-[9px] px-1.5 py-0 h-4 bg-red-100 text-red-700 border-red-200">مشغول</Badge>
+              <Badge className="text-[9px] px-1.5 py-0 h-4 bg-red-100 text-red-700 border-red-200">{t('candidates_badge_busy')}</Badge>
             )}
           </div>
           <p className="text-[11px] text-slate-500 mt-0.5">{cand.specialty}</p>
@@ -250,7 +247,7 @@ function CandidateCard({ cand, rank, onSelect, loading, disabled }) {
           <p className="text-[10px] text-slate-400 mt-1">{cand.reason_ar}</p>
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
-          <span className="text-[10px] text-slate-400">الدرجة</span>
+          <span className="text-[10px] text-slate-400">{t('candidates_score_label')}</span>
           <span className="text-base font-bold text-[#1C3D74] tabular-nums">{Math.round(cand.score)}</span>
         </div>
       </div>
@@ -263,7 +260,7 @@ function CandidateCard({ cand, rank, onSelect, loading, disabled }) {
         {loading
           ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
           : <CheckCircle2 className="h-3.5 w-3.5 ml-1" />}
-        {loading ? 'جاري الاعتماد...' : (cand.available ? 'اختيار وتعيين' : 'غير متاح في هذا الوقت')}
+        {loading ? t('candidates_assign_btn_loading') : (cand.available ? t('candidates_assign_btn') : t('candidates_assign_btn_busy'))}
       </Button>
     </div>
   );
