@@ -51,25 +51,34 @@ const saveViewPrefs = (userId, prefs) => {
 };
 
 // ─── Constants ──────────────────────────────────────────────────────────────
+// NASSAQ brand-cohesive day palette: each day sits at a different point on the
+// navy → teal brand spectrum. Gradients are kept (used by WaitingSessionsPanel
+// chips), but the schedule grid uses `accent` as a solid stripe for a refined,
+// non-competing look that lets subject cards remain the focal content.
 const DAYS = [
-  { key: 'sunday',    ar: 'الأحد',     color: 'from-violet-500 to-purple-600' },
-  { key: 'monday',    ar: 'الإثنين',   color: 'from-blue-500 to-indigo-600' },
-  { key: 'tuesday',   ar: 'الثلاثاء',  color: 'from-teal-500 to-cyan-600' },
-  { key: 'wednesday', ar: 'الأربعاء',  color: 'from-amber-500 to-orange-600' },
-  { key: 'thursday',  ar: 'الخميس',    color: 'from-rose-500 to-pink-600' },
+  { key: 'sunday',    ar: 'الأحد',     accent: '#1C3D74', color: 'from-[#1C3D74] to-[#2a5491]' },
+  { key: 'monday',    ar: 'الإثنين',   accent: '#2a5ba8', color: 'from-[#21508f] to-[#2a5ba8]' },
+  { key: 'tuesday',   ar: 'الثلاثاء',  accent: '#1f7a8c', color: 'from-[#1f7a8c] to-[#2a9aa0]' },
+  { key: 'wednesday', ar: 'الأربعاء',  accent: '#2BB5A0', color: 'from-[#2BB5A0] to-[#46C1BE]' },
+  { key: 'thursday',  ar: 'الخميس',    accent: '#0e8a7a', color: 'from-[#0e6e62] to-[#188571]' },
 ];
 
+// Refined subject palette: muted, sophisticated tones (600/700 family) that
+// harmonize with the brand instead of competing. Brand-leading order: teal,
+// navy/blue come first; warm/cool accents follow for variety.
+// Gradient starts deepened to 700+ shades to guarantee WCAG AA contrast
+// (≥4.5:1) for the small white text on session cards.
 const SUBJECT_PALETTE = [
-  { bg: 'bg-gradient-to-br from-emerald-500 to-teal-600',  text: 'text-white', light: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
-  { bg: 'bg-gradient-to-br from-blue-500 to-indigo-600',   text: 'text-white', light: 'bg-blue-50 text-blue-800 border-blue-200' },
-  { bg: 'bg-gradient-to-br from-purple-500 to-violet-600', text: 'text-white', light: 'bg-purple-50 text-purple-800 border-purple-200' },
-  { bg: 'bg-gradient-to-br from-amber-500 to-orange-600',  text: 'text-white', light: 'bg-amber-50 text-amber-800 border-amber-200' },
-  { bg: 'bg-gradient-to-br from-rose-500 to-pink-600',     text: 'text-white', light: 'bg-rose-50 text-rose-800 border-rose-200' },
-  { bg: 'bg-gradient-to-br from-cyan-500 to-sky-600',      text: 'text-white', light: 'bg-cyan-50 text-cyan-800 border-cyan-200' },
-  { bg: 'bg-gradient-to-br from-fuchsia-500 to-pink-600',  text: 'text-white', light: 'bg-fuchsia-50 text-fuchsia-800 border-fuchsia-200' },
-  { bg: 'bg-gradient-to-br from-lime-500 to-green-600',    text: 'text-white', light: 'bg-lime-50 text-lime-800 border-lime-200' },
-  { bg: 'bg-gradient-to-br from-slate-500 to-gray-600',    text: 'text-white', light: 'bg-slate-50 text-slate-800 border-slate-200' },
-  { bg: 'bg-gradient-to-br from-red-500 to-rose-600',      text: 'text-white', light: 'bg-red-50 text-red-800 border-red-200' },
+  { bg: 'bg-gradient-to-br from-teal-700 to-emerald-800',      text: 'text-white', light: 'bg-teal-50 text-teal-800 border-teal-200' },
+  { bg: 'bg-gradient-to-br from-[#1C3D74] to-[#2a5ba8]',       text: 'text-white', light: 'bg-blue-50 text-[#1C3D74] border-blue-200' },
+  { bg: 'bg-gradient-to-br from-emerald-700 to-green-800',     text: 'text-white', light: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
+  { bg: 'bg-gradient-to-br from-amber-700 to-orange-800',      text: 'text-white', light: 'bg-amber-50 text-amber-800 border-amber-200' },
+  { bg: 'bg-gradient-to-br from-rose-700 to-rose-800',         text: 'text-white', light: 'bg-rose-50 text-rose-800 border-rose-200' },
+  { bg: 'bg-gradient-to-br from-sky-700 to-blue-800',          text: 'text-white', light: 'bg-sky-50 text-sky-800 border-sky-200' },
+  { bg: 'bg-gradient-to-br from-violet-700 to-indigo-800',     text: 'text-white', light: 'bg-violet-50 text-violet-800 border-violet-200' },
+  { bg: 'bg-gradient-to-br from-cyan-700 to-teal-800',         text: 'text-white', light: 'bg-cyan-50 text-cyan-800 border-cyan-200' },
+  { bg: 'bg-gradient-to-br from-slate-700 to-slate-800',       text: 'text-white', light: 'bg-slate-50 text-slate-800 border-slate-200' },
+  { bg: 'bg-gradient-to-br from-fuchsia-700 to-purple-800',    text: 'text-white', light: 'bg-fuchsia-50 text-fuchsia-800 border-fuchsia-200' },
 ];
 
 const SUBJECT_NAME_MAP = {
@@ -1223,15 +1232,18 @@ export default function SchedulePageNew() {
                             >
                               {/* Day Label cell (right side in RTL = "left" of grid in user's view) */}
                               <td className="p-2 border-l border-slate-200 sticky right-0 bg-white/95 group-hover:bg-blue-50/40 transition-colors z-10">
-                                <div className={`flex flex-col items-center gap-1 px-2 py-2.5 rounded-xl bg-gradient-to-br ${day.color} text-white shadow-sm`}>
-                                  <span className="font-extrabold text-sm leading-tight">{day.ar}</span>
-                                  <div className="flex items-center gap-1.5 text-[10px] font-bold opacity-90">
-                                    <span title="حصص مجدولة">{dayFilled}</span>
-                                    <span className="opacity-60">/</span>
-                                    <span title="إجمالي">{periodSlots.length}</span>
+                                <div
+                                  className="relative flex flex-col items-stretch gap-1.5 ps-3 pe-2.5 py-2.5 rounded-xl bg-white border border-slate-200/80 shadow-[0_1px_2px_rgba(28,61,116,0.04)] hover:shadow-[0_2px_8px_rgba(28,61,116,0.08)] hover:border-slate-300 transition-all duration-200"
+                                  style={{ borderInlineStartWidth: '4px', borderInlineStartColor: day.accent }}
+                                >
+                                  <span className="font-bold text-sm leading-tight text-[#1C3D74] tracking-tight">{day.ar}</span>
+                                  <div className="flex items-baseline gap-1 text-[11px] font-semibold text-slate-600 tabular-nums">
+                                    <span className="text-[#1C3D74] font-bold" title="حصص مجدولة">{dayFilled}</span>
+                                    <span className="text-slate-300">/</span>
+                                    <span className="text-slate-500" title="إجمالي">{periodSlots.length}</span>
                                   </div>
                                   {dayWaitingCount > 0 && (
-                                    <span className="px-1.5 py-0.5 rounded-md bg-white/20 backdrop-blur text-[9px] font-bold flex items-center gap-1">
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 text-[9px] font-bold w-fit">
                                       <AlertTriangle className="h-2.5 w-2.5" />
                                       {dayWaitingCount} انتظار
                                     </span>
