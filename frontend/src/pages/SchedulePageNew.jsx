@@ -24,11 +24,31 @@ import {
   Loader2, Wand2, CheckCircle2, AlertTriangle,
   RefreshCw, Settings, Coffee, Moon, Sun, Send,
   Sparkles, User, BarChart3, Layers,
-  Play, Star, Info, AlertCircle
+  Play, Star, Info, AlertCircle,
+  CalendarDays, CalendarRange, PanelRightClose, PanelRightOpen,
 } from 'lucide-react';
 import { NotificationBell } from '../components/notifications/NotificationBell';
 import CandidatesSidePanel from '../components/schedule/CandidatesSidePanel';
+import WaitingSessionsPanel from '../components/schedule/WaitingSessionsPanel';
 import { useTranslation } from '../contexts/ThemeContext';
+
+// ─── Per-user view preferences (localStorage) ───────────────────────────────
+const VIEW_PREFS_KEY = (userId) => `nassaq.schedule.viewPrefs.${userId || 'guest'}`;
+const DEFAULT_VIEW_PREFS = {
+  viewLayout: 'week',           // 'week' | 'day'
+  selectedDay: 'sunday',
+  waitingPanelCollapsed: false,
+};
+const loadViewPrefs = (userId) => {
+  try {
+    const raw = localStorage.getItem(VIEW_PREFS_KEY(userId));
+    if (!raw) return DEFAULT_VIEW_PREFS;
+    return { ...DEFAULT_VIEW_PREFS, ...JSON.parse(raw) };
+  } catch { return DEFAULT_VIEW_PREFS; }
+};
+const saveViewPrefs = (userId, prefs) => {
+  try { localStorage.setItem(VIEW_PREFS_KEY(userId), JSON.stringify(prefs)); } catch {}
+};
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 const DAYS = [
@@ -253,6 +273,29 @@ export default function SchedulePageNew() {
 
   const { t } = useTranslation();
 
+  // ── View preferences (per-user, persisted) ─────────────────────────────
+  const [viewLayout, setViewLayout]                       = useState(DEFAULT_VIEW_PREFS.viewLayout);
+  const [selectedDay, setSelectedDay]                     = useState(DEFAULT_VIEW_PREFS.selectedDay);
+  const [waitingPanelCollapsed, setWaitingPanelCollapsed] = useState(DEFAULT_VIEW_PREFS.waitingPanelCollapsed);
+  const prefsLoadedRef = useRef(false);
+
+  // Load prefs once we know the user id.
+  useEffect(() => {
+    const prefs = loadViewPrefs(user?.id || user?.tenant_id);
+    setViewLayout(prefs.viewLayout);
+    setSelectedDay(prefs.selectedDay);
+    setWaitingPanelCollapsed(prefs.waitingPanelCollapsed);
+    prefsLoadedRef.current = true;
+  }, [user?.id, user?.tenant_id]);
+
+  // Persist on change (only after initial load to avoid clobbering with defaults).
+  useEffect(() => {
+    if (!prefsLoadedRef.current) return;
+    saveViewPrefs(user?.id || user?.tenant_id, {
+      viewLayout, selectedDay, waitingPanelCollapsed,
+    });
+  }, [viewLayout, selectedDay, waitingPanelCollapsed, user?.id, user?.tenant_id]);
+
   // Candidates side-panel state
   const [candidatesPanelOpen, setCandidatesPanelOpen] = useState(false);
   const [activeSlot, setActiveSlot] = useState(null); // { class_id, class_name, day_of_week, period_number, ... }
@@ -426,10 +469,21 @@ export default function SchedulePageNew() {
     setDropTargetCell(null);
   }, []);
 
+  // Keep a ref to the latest openCandidatesForCell so handleCellDrop never sees a stale closure.
+  const openCandidatesRef = useRef(null);
+
   const handleCellDrop = useCallback(async (e, targetDay, targetPeriod, targetSession) => {
     e.preventDefault();
     setDropTargetCell(null);
     setDraggingSessionId(null);
+
+    // Drop from waiting-sessions panel: open the candidates picker for this empty cell.
+    const waitingPayload = e.dataTransfer.getData('application/nassaq-waiting-slot');
+    if (waitingPayload) {
+      if (targetSession) return; // can't substitute into an already-filled slot here
+      openCandidatesRef.current?.(targetDay, targetPeriod);
+      return;
+    }
 
     let dragData;
     try {
@@ -512,6 +566,9 @@ export default function SchedulePageNew() {
     });
     setCandidatesPanelOpen(true);
   }, [selectedClass, selectedTimetableId, classes]);
+
+  // Always keep the ref pointing at the latest openCandidatesForCell.
+  useEffect(() => { openCandidatesRef.current = openCandidatesForCell; }, [openCandidatesForCell]);
 
   // Find the next empty cell (day,period) for the selected class, starting AFTER (fromDay,fromPeriod).
   // `extraFilled` lets the caller mark cells as already-filled in the current pass — needed to avoid
@@ -861,10 +918,84 @@ export default function SchedulePageNew() {
               </span>
             </div>
           )}
+
+          {/* View Layout Toggle (week / single day) */}
+          <div className={`flex items-center bg-slate-100 rounded-xl p-1 gap-1 ${currentFilter && sessions.length > 0 ? '' : 'mr-auto'}`} data-testid="view-layout-toggle">
+            {[
+              { id: 'week', label: 'أسبوع', Icon: CalendarRange },
+              { id: 'day',  label: 'يوم',   Icon: CalendarDays },
+            ].map(({ id, label, Icon }) => (
+              <button
+                key={id}
+                onClick={() => setViewLayout(id)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  viewLayout === id ? 'bg-white text-[#1C3D74] shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                }`}
+                data-testid={`view-layout-${id}`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Day Picker (only in single-day mode) */}
+          {viewLayout === 'day' && (
+            <Select value={selectedDay} onValueChange={setSelectedDay}>
+              <SelectTrigger className="w-[140px] h-9 text-xs border-slate-200" data-testid="day-picker">
+                <SelectValue placeholder="اختر اليوم" />
+              </SelectTrigger>
+              <SelectContent>
+                {DAYS.map(d => (
+                  <SelectItem key={d.key} value={d.key} className="text-xs">{d.ar}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+
+          {/* Waiting Panel Collapse Toggle (only meaningful in class view) */}
+          {viewMode === 'class' && !!selectedClass && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setWaitingPanelCollapsed(c => !c)}
+                    className="h-9 w-9 hidden lg:inline-flex"
+                    data-testid="toggle-waiting-panel"
+                    aria-label={waitingPanelCollapsed ? 'فتح لوحة حصص الانتظار' : 'طيّ لوحة حصص الانتظار'}
+                  >
+                    {waitingPanelCollapsed
+                      ? <PanelRightOpen className="h-4 w-4" />
+                      : <PanelRightClose className="h-4 w-4" />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {waitingPanelCollapsed ? 'فتح لوحة حصص الانتظار' : 'طيّ لوحة حصص الانتظار'}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </div>
 
+        {/* ── BODY (waiting panel + main grid) ─────────────────────── */}
+        <div className="flex items-stretch min-h-[calc(100vh-160px)]">
+          {viewMode === 'class' && !!selectedClass && (
+            <WaitingSessionsPanel
+              collapsed={waitingPanelCollapsed}
+              onToggleCollapsed={() => setWaitingPanelCollapsed(c => !c)}
+              days={DAYS}
+              periodSlots={periodSlots}
+              gridSessions={gridSessions}
+              canPick={canPickCandidates && canDragDrop}
+              onPickEmpty={openCandidatesForCell}
+              contextLabel={currentFilterName}
+            />
+          )}
+
         {/* ── MAIN CONTENT ──────────────────────────────────────────── */}
-        <main className="p-5 space-y-4 max-w-full">
+        <main className="flex-1 min-w-0 p-5 space-y-4">
 
           {/* No time slots */}
           {timeSlots.length === 0 && (
@@ -1007,119 +1138,172 @@ export default function SchedulePageNew() {
                 </div>
               </CardHeader>
 
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse min-w-[700px]">
-                  {/* Day Headers */}
-                  <thead>
-                    <tr className="bg-slate-50/80 border-b border-slate-200">
-                      <th className="w-[90px] min-w-[90px] p-3 border-l border-slate-200 text-center">
-                        <div className="flex items-center justify-center gap-1 text-xs font-medium text-slate-500">
-                          <Clock className="h-3.5 w-3.5" />
-                          الحصة
-                        </div>
-                      </th>
-                      {DAYS.map(day => (
-                        <th key={day.key} className="p-3 text-center border-l border-slate-200 min-w-[130px]">
-                          <div className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-gradient-to-r ${day.color} text-white text-xs font-bold shadow-sm`}>
-                            {day.ar}
-                          </div>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {timeSlots.map((slot, idx) => {
-                      const isBreak = slot.is_break || slot.is_prayer;
-                      if (isBreak) return <BreakRow key={slot.id} slot={slot} />;
-
-                      // period_number from DB (synced to slot_number by backend model_validator)
-                      const slotPeriodNum = slot.period_number || slot.slot_number || (idx + 1);
-                      const periodIdx     = periodSlots.findIndex(s => s.id === slot.id);
-                      const isEven        = periodIdx % 2 === 0;
-
-                      const rowGap = periodGaps[slotPeriodNum];
-                      const isRowCritical = rowGap && rowGap.empty >= 1;
-                      const isRowSevere = rowGap && rowGap.empty >= 4;
-
-                      return (
-                        <tr
-                          key={slot.id}
-                          className={`border-b ${isRowSevere ? 'border-red-200 bg-red-50/40' : isRowCritical ? 'border-amber-200 bg-amber-50/30' : 'border-slate-100'} ${!isRowCritical && (isEven ? '' : 'bg-slate-50/40')} hover:bg-blue-50/20 transition-colors group`}
-                        >
-                          {/* Period Label */}
-                          <td className={`p-2 border-l border-slate-200 group-hover:bg-blue-50/30 transition-colors ${isRowSevere ? 'bg-red-50/70' : isRowCritical ? 'bg-amber-50/50' : 'bg-white'}`}>
-                            <div className="text-center">
-                              <div className={`w-8 h-8 rounded-lg font-bold text-sm flex items-center justify-center mx-auto mb-1 ${isRowSevere ? 'bg-red-100 text-red-700 ring-2 ring-red-300' : isRowCritical ? 'bg-amber-100 text-amber-700 ring-1 ring-amber-300' : 'bg-[#1C3D74]/10 text-[#1C3D74]'}`}>
-                                {slotPeriodNum}
-                              </div>
-                              <p className="text-[9px] text-slate-400 font-mono leading-none">
-                                {slot.start_time?.substring(0, 5)}
-                              </p>
-                              <p className="text-[9px] text-slate-300 font-mono">
-                                {slot.end_time?.substring(0, 5)}
-                              </p>
-                              {rowGap && (
-                                <div className="mt-1">
-                                  <p className={`text-[9px] font-bold ${isRowSevere ? 'text-red-600' : 'text-amber-600'}`}>
-                                    {rowGap.filled}/{rowGap.total}
-                                  </p>
-                                  <p className={`text-[7px] font-medium ${isRowSevere ? 'text-red-400' : 'text-amber-400'}`}>
-                                    ناقص
-                                  </p>
-                                </div>
-                              )}
+              {/* ── TRANSPOSED GRID: days as rows, periods as columns ── */}
+              {(() => {
+                const visibleDays = viewLayout === 'day'
+                  ? DAYS.filter(d => d.key === selectedDay)
+                  : DAYS;
+                return (
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse min-w-[760px]">
+                      {/* Period Headers (top) */}
+                      <thead>
+                        <tr className="bg-slate-50/80 border-b border-slate-200">
+                          <th className="w-[110px] min-w-[110px] p-3 border-l border-slate-200 text-center sticky right-0 bg-slate-50/80 z-10">
+                            <div className="flex items-center justify-center gap-1 text-xs font-medium text-slate-500">
+                              <CalendarDays className="h-3.5 w-3.5" />
+                              اليوم
                             </div>
-                          </td>
-
-                          {/* Day Cells */}
-                          {DAYS.map(day => {
-                            const session = getSessionForCell(day.key, slotPeriodNum, currentFilter);
-                            const cellKey = `${day.key}-${slotPeriodNum}`;
-                            const isTarget = dropTargetCell === cellKey;
-                            const isCellGap = !session && rowGap && gridSessions.length > 0;
+                          </th>
+                          {timeSlots.map((slot, idx) => {
+                            const isBreak = slot.is_break || slot.is_prayer;
+                            const slotPeriodNum = slot.period_number || slot.slot_number || (idx + 1);
+                            if (isBreak) {
+                              const isPrayer = slot.is_prayer;
+                              return (
+                                <th key={slot.id} className={`w-[44px] min-w-[44px] p-1.5 border-l border-slate-200 ${isPrayer ? 'bg-emerald-50' : 'bg-amber-50'}`}>
+                                  <div className="flex flex-col items-center gap-0.5">
+                                    {isPrayer
+                                      ? <Moon className="h-3.5 w-3.5 text-emerald-600" />
+                                      : <Coffee className="h-3.5 w-3.5 text-amber-600" />}
+                                    <span className={`text-[8px] font-bold ${isPrayer ? 'text-emerald-700' : 'text-amber-700'}`}>
+                                      {isPrayer ? 'صلاة' : 'استراحة'}
+                                    </span>
+                                    <span className="text-[8px] text-slate-400 font-mono leading-none">
+                                      {slot.start_time?.substring(0, 5)}
+                                    </span>
+                                  </div>
+                                </th>
+                              );
+                            }
+                            const colGap = periodGaps[slotPeriodNum];
+                            const isColCritical = colGap && colGap.empty >= 1;
+                            const isColSevere = colGap && colGap.empty >= 4;
                             return (
-                              <td
-                                key={`${day.key}-${slot.id}`}
-                                className={`p-1.5 border-l border-slate-100 transition-colors duration-150
-                                  ${isTarget && session ? 'bg-amber-50 ring-2 ring-inset ring-amber-300 rounded' : ''}
-                                  ${isTarget && !session ? 'bg-[#46C1BE]/5' : ''}`}
-                                onDragOver={canDragDrop ? (e) => handleCellDragOver(e, day.key, slotPeriodNum) : undefined}
-                                onDragLeave={canDragDrop ? handleCellDragLeave : undefined}
-                                onDrop={canDragDrop ? (e) => handleCellDrop(e, day.key, slotPeriodNum, session) : undefined}
-                              >
-                                {session ? (
-                                  <SessionCard
-                                    session={session}
-                                    viewMode={viewMode}
-                                    onClick={() => { setSelectedSession(session); setSessionDetailOpen(true); }}
-                                    isDraggable={canDragDrop}
-                                    onDragStart={setDraggingSessionId}
-                                    isDragging={draggingSessionId === session.id}
-                                  />
-                                ) : (
-                                  <EmptyCell
-                                    isDropTarget={isTarget}
-                                    isGap={isCellGap}
-                                    t={t}
-                                    canPick={
-                                      canPickCandidates
-                                      && canDragDrop
-                                      && viewMode === 'class'
-                                      && !!selectedClass
-                                    }
-                                    onPick={() => openCandidatesForCell(day.key, slotPeriodNum)}
-                                  />
-                                )}
-                              </td>
+                              <th key={slot.id} className={`p-2 text-center border-l border-slate-200 min-w-[120px] ${isColSevere ? 'bg-red-50/70' : isColCritical ? 'bg-amber-50/50' : ''}`}>
+                                <div className="flex flex-col items-center gap-0.5">
+                                  <div className={`w-8 h-8 rounded-lg font-bold text-sm flex items-center justify-center ${isColSevere ? 'bg-red-100 text-red-700 ring-2 ring-red-300' : isColCritical ? 'bg-amber-100 text-amber-700 ring-1 ring-amber-300' : 'bg-[#1C3D74]/10 text-[#1C3D74]'}`}>
+                                    {slotPeriodNum}
+                                  </div>
+                                  <p className="text-[9px] text-slate-400 font-mono leading-none">
+                                    {slot.start_time?.substring(0, 5)}
+                                  </p>
+                                  <p className="text-[9px] text-slate-300 font-mono">
+                                    {slot.end_time?.substring(0, 5)}
+                                  </p>
+                                  {colGap && (
+                                    <p className={`text-[9px] font-bold leading-none ${isColSevere ? 'text-red-600' : 'text-amber-600'}`}>
+                                      {colGap.filled}/{colGap.total}
+                                    </p>
+                                  )}
+                                </div>
+                              </th>
                             );
                           })}
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                      </thead>
+
+                      {/* Day Rows */}
+                      <tbody>
+                        {visibleDays.map((day, dayIdx) => {
+                          const dayWaitingCount = periodSlots.reduce((sum, slot) => {
+                            const pn = slot.period_number || slot.slot_number;
+                            const filled = gridSessions.some(s =>
+                              (s.day_of_week || s.day) === day.key
+                              && (Number(s.period_number) === Number(pn) || Number(s.slot_number) === Number(pn))
+                            );
+                            return sum + (filled ? 0 : 1);
+                          }, 0);
+                          const dayFilled = periodSlots.length - dayWaitingCount;
+
+                          return (
+                            <tr
+                              key={day.key}
+                              className={`border-b border-slate-100 ${dayIdx % 2 === 1 ? 'bg-slate-50/40' : ''} hover:bg-blue-50/20 transition-colors group`}
+                            >
+                              {/* Day Label cell (right side in RTL = "left" of grid in user's view) */}
+                              <td className="p-2 border-l border-slate-200 sticky right-0 bg-white/95 group-hover:bg-blue-50/40 transition-colors z-10">
+                                <div className={`flex flex-col items-center gap-1 px-2 py-2.5 rounded-xl bg-gradient-to-br ${day.color} text-white shadow-sm`}>
+                                  <span className="font-extrabold text-sm leading-tight">{day.ar}</span>
+                                  <div className="flex items-center gap-1.5 text-[10px] font-bold opacity-90">
+                                    <span title="حصص مجدولة">{dayFilled}</span>
+                                    <span className="opacity-60">/</span>
+                                    <span title="إجمالي">{periodSlots.length}</span>
+                                  </div>
+                                  {dayWaitingCount > 0 && (
+                                    <span className="px-1.5 py-0.5 rounded-md bg-white/20 backdrop-blur text-[9px] font-bold flex items-center gap-1">
+                                      <AlertTriangle className="h-2.5 w-2.5" />
+                                      {dayWaitingCount} انتظار
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+
+                              {/* Period Cells */}
+                              {timeSlots.map((slot, idx) => {
+                                const isBreak = slot.is_break || slot.is_prayer;
+                                const slotPeriodNum = slot.period_number || slot.slot_number || (idx + 1);
+                                if (isBreak) {
+                                  const isPrayer = slot.is_prayer;
+                                  return (
+                                    <td key={`${day.key}-${slot.id}`} className={`p-1 border-l border-slate-100 ${isPrayer ? 'bg-emerald-50/60' : 'bg-amber-50/60'}`}>
+                                      <div className={`h-full min-h-[80px] rounded-lg flex items-center justify-center ${isPrayer ? 'bg-emerald-100/60' : 'bg-amber-100/60'}`}>
+                                        {isPrayer
+                                          ? <Moon className="h-4 w-4 text-emerald-500/70" />
+                                          : <Coffee className="h-4 w-4 text-amber-500/70" />}
+                                      </div>
+                                    </td>
+                                  );
+                                }
+                                const session = getSessionForCell(day.key, slotPeriodNum, currentFilter);
+                                const cellKey = `${day.key}-${slotPeriodNum}`;
+                                const isTarget = dropTargetCell === cellKey;
+                                const colGap = periodGaps[slotPeriodNum];
+                                const isCellGap = !session && colGap && gridSessions.length > 0;
+                                return (
+                                  <td
+                                    key={`${day.key}-${slot.id}`}
+                                    className={`p-1.5 border-l border-slate-100 transition-colors duration-150 align-top
+                                      ${isTarget && session ? 'bg-amber-50 ring-2 ring-inset ring-amber-300 rounded' : ''}
+                                      ${isTarget && !session ? 'bg-[#46C1BE]/5' : ''}`}
+                                    onDragOver={canDragDrop ? (e) => handleCellDragOver(e, day.key, slotPeriodNum) : undefined}
+                                    onDragLeave={canDragDrop ? handleCellDragLeave : undefined}
+                                    onDrop={canDragDrop ? (e) => handleCellDrop(e, day.key, slotPeriodNum, session) : undefined}
+                                  >
+                                    {session ? (
+                                      <SessionCard
+                                        session={session}
+                                        viewMode={viewMode}
+                                        onClick={() => { setSelectedSession(session); setSessionDetailOpen(true); }}
+                                        isDraggable={canDragDrop}
+                                        onDragStart={setDraggingSessionId}
+                                        isDragging={draggingSessionId === session.id}
+                                      />
+                                    ) : (
+                                      <EmptyCell
+                                        isDropTarget={isTarget}
+                                        isGap={isCellGap}
+                                        t={t}
+                                        canPick={
+                                          canPickCandidates
+                                          && canDragDrop
+                                          && viewMode === 'class'
+                                          && !!selectedClass
+                                        }
+                                        onPick={() => openCandidatesForCell(day.key, slotPeriodNum)}
+                                      />
+                                    )}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
             </Card>
           )}
 
@@ -1142,6 +1326,7 @@ export default function SchedulePageNew() {
             </div>
           )}
         </main>
+        </div>{/* /Body */}
 
         {/* ── GENERATE DIALOG ─────────────────────────────────────────── */}
         <Dialog open={generateDialogOpen} onOpenChange={o => { if (!generating) setGenerateDialogOpen(o); }}>
