@@ -130,9 +130,18 @@ export function useSchoolSettings() {
     setLoading(true);
 
     try {
+      // Readiness check is the slowest endpoint (~1.5–2s uncached, ~15 sequential
+      // DB queries on a shared session). It is informational and not required for
+      // the page to render, so we fire it off in the background instead of
+      // blocking the initial render on it.
+      api
+        .get('/timetable-readiness/check')
+        .then((r) => setReadinessData(r.data))
+        .catch(() => setReadinessData(null));
+
       const [
         settingsRes, teachersRes, classesRes, assignmentsRes,
-        constraintsRes, readinessRes, schoolRes,
+        constraintsRes, schoolRes,
         subjectsRes, hardConstraintsRes, softConstraintsRes
       ] = await Promise.all([
         api.get('/school/settings').catch(() => ({ data: {} })),
@@ -140,7 +149,6 @@ export function useSchoolSettings() {
         api.get('/classes').catch(() => ({ data: [] })),
         api.get('/teacher-assignments').catch(() => ({ data: [] })),
         api.get('/school/constraints').catch(() => ({ data: [] })),
-        api.get('/timetable-readiness/check').catch(() => ({ data: null })),
         api.get('/school/info').catch(() => ({ data: {} })),
         api.get('/school/subjects/unique').catch(() => ({ data: [] })),
         api.get('/school/settings/hard-constraints').catch(() => ({ data: { hard_constraints: [] } })),
@@ -152,7 +160,6 @@ export function useSchoolSettings() {
       setClasses(Array.isArray(classesRes.data) ? classesRes.data : []);
       setAssignments(Array.isArray(assignmentsRes.data) ? assignmentsRes.data : []);
       setConstraints(Array.isArray(constraintsRes.data) ? constraintsRes.data : []);
-      setReadinessData(readinessRes.data);
       setSchoolInfo(schoolRes.data || {});
       setSubjects(Array.isArray(subjectsRes.data) ? subjectsRes.data : []);
 
