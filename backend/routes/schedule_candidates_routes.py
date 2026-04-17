@@ -23,7 +23,6 @@ router = APIRouter()
 
 
 _PRINCIPAL_ROLES = [
-    UserRole.PLATFORM_ADMIN,
     UserRole.SCHOOL_PRINCIPAL,
     UserRole.SCHOOL_SUB_ADMIN,
 ]
@@ -51,11 +50,9 @@ async def _ensure_timetable_access(timetable_id: str, current_user: dict) -> dic
     tt = await gd_find_one(db.session, "timetables", {"id": timetable_id})
     if not tt:
         raise HTTPException(status_code=404, detail="الجدول غير موجود")
-    role = current_user.get("role", "")
-    if role != UserRole.PLATFORM_ADMIN.value:
-        user_tenant = current_user.get("tenant_id") or current_user.get("school_id")
-        if user_tenant and tt.get("school_id") != user_tenant:
-            raise HTTPException(status_code=403, detail="غير مصرح بالوصول إلى هذا الجدول")
+    user_tenant = current_user.get("tenant_id") or current_user.get("school_id")
+    if not user_tenant or tt.get("school_id") != user_tenant:
+        raise HTTPException(status_code=403, detail="غير مصرح بالوصول إلى هذا الجدول")
     if tt.get("status") == "published":
         raise HTTPException(status_code=400, detail="لا يمكن تعديل جدول منشور")
     return tt
@@ -66,7 +63,7 @@ async def list_slot_candidates(
     slot_id: str,
     subject_id: Optional[str] = Query(None, description="معرف المادة (اختياري)"),
     specialty: Optional[str] = Query(None, description="فلترة بالتخصص"),
-    only_available: bool = Query(False, description="عرض المتاحين فقط"),
+    available_only: bool = Query(False, description="عرض المتاحين فقط"),
     limit: int = Query(3, ge=1, le=10),
     current_user: dict = Depends(require_roles(_PRINCIPAL_ROLES)),
 ):
@@ -99,7 +96,7 @@ async def list_slot_candidates(
         period_number=period_number,
         subject_id=subject_id,
         specialty_filter=specialty,
-        only_available=only_available,
+        only_available=available_only,
         limit=limit,
     )
     return {
@@ -156,22 +153,29 @@ async def assign_slot(
     }
 
 
-@router.post("/schedule/slots/{session_id}/unassign")
+@router.post("/schedule/slots/{slot_id}/unassign")
 async def unassign_slot(
-    session_id: str,
+    slot_id: str,
     current_user: dict = Depends(require_roles(_PRINCIPAL_ROLES)),
 ):
-    """يتراجع عن تعيين سابق بحذف الحصة من الجدول.
+    """يتراجع عن تعيين خانة بحذف الحصة المرتبطة بها من الجدول.
 
-    `session_id` هنا هو معرف الحصة المعتمدة (وليس المعرف المركب للخانة الفارغة).
+    `slot_id` معرف مركب للخانة: `timetableId__classId__day__period`.
     """
-    sess = await gd_find_one(db.session, "timetable_sessions", {"id": session_id})
+    timetable_id, class_id, day_of_week, period_number = _parse_composite_slot_id(slot_id)
+    await _ensure_timetable_access(timetable_id, current_user)
+    sess = await gd_find_one(db.session, "timetable_sessions", {
+        "timetable_id": timetable_id,
+        "class_id": class_id,
+        "day_of_week": day_of_week,
+        "period_number": period_number,
+    })
     if not sess:
         raise HTTPException(status_code=404, detail="الحصة غير موجودة (ربما حُذفت بالفعل)")
-    await _ensure_timetable_access(sess.get("timetable_id"), current_user)
-    await gd_delete_one(db.session, "timetable_sessions", {"id": session_id})
+    await gd_delete_one(db.session, "timetable_sessions", {"id": sess.get("id")})
     return {
         "success": True,
-        "session_id": session_id,
+        "slot_id": slot_id,
+        "session_id": sess.get("id"),
         "message_ar": "تم التراجع عن التعيين",
     }

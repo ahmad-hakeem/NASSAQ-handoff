@@ -49,7 +49,7 @@ export default function CandidatesSidePanel({
   const { candidates, loading, error, refetch } = useScheduleCandidates(
     api,
     open ? effectiveSlot : null,
-    { specialty, only_available: onlyAvailable }
+    { specialty, available_only: onlyAvailable }
   );
 
   const specialtyOptions = useMemo(() => {

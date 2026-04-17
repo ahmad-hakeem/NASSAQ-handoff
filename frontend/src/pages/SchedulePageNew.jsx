@@ -263,11 +263,10 @@ export default function SchedulePageNew() {
   const { nassaqError, nassaqWarning } = useNassaqAlert();
   const schoolId = user?.tenant_id;
 
-  // Principal/deputy may pick candidates for empty cells
+  // Principal/deputy may pick candidates for empty cells (per spec).
   const canPickCandidates =
     user?.role === 'school_principal'
-    || user?.role === 'school_sub_admin'
-    || user?.role === 'platform_admin';
+    || user?.role === 'school_sub_admin';
 
   // ── Fetch base data ────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
@@ -514,7 +513,10 @@ export default function SchedulePageNew() {
     setCandidatesPanelOpen(true);
   }, [selectedClass, selectedTimetableId, classes]);
 
-  const findNextEmptyCell = useCallback((fromDay, fromPeriod) => {
+  // Find the next empty cell (day,period) for the selected class, starting AFTER (fromDay,fromPeriod).
+  // `extraFilled` lets the caller mark cells as already-filled in the current pass — needed to avoid
+  // a stale-closure bug where `sessions` hasn't yet reflected an optimistic insert.
+  const findNextEmptyCell = useCallback((fromDay, fromPeriod, extraFilled = []) => {
     if (!selectedClass) return null;
     const order = [];
     for (const slot of timeSlots) {
@@ -528,13 +530,16 @@ export default function SchedulePageNew() {
     const search = startIdx >= 0
       ? [...order.slice(startIdx + 1), ...order.slice(0, startIdx + 1)]
       : order;
-    for (const o of search) {
-      const exists = sessions.some(s =>
+    const isFilled = (o) => {
+      if (extraFilled.some(f => f.day === o.day && f.period === o.period)) return true;
+      return sessions.some(s =>
         (s.day_of_week || s.day) === o.day
         && (s.period_number === o.period || s.slot_number === o.period)
         && s.class_id === selectedClass
       );
-      if (!exists) return o;
+    };
+    for (const o of search) {
+      if (!isFilled(o)) return o;
     }
     return null;
   }, [timeSlots, sessions, selectedClass]);
@@ -544,7 +549,8 @@ export default function SchedulePageNew() {
     const entry = undoStackRef.current.pop();
     if (!entry) return;
     try {
-      await api.post(`/schedule/slots/${encodeURIComponent(entry.session_id)}/unassign`);
+      const slotId = `${entry.slot.timetable_id}__${entry.slot.class_id}__${entry.slot.day_of_week}__${entry.slot.period_number}`;
+      await api.post(`/schedule/slots/${encodeURIComponent(slotId)}/unassign`);
       setSessions(prev => prev.filter(s => s.id !== entry.session_id));
       toast.success(t('schedule_undo_success'));
     } catch (err) {
@@ -561,6 +567,7 @@ export default function SchedulePageNew() {
     undoStackRef.current.push({
       session_id: sessionDoc.id,
       slot: {
+        timetable_id: sessionDoc.timetable_id,
         class_id: sessionDoc.class_id,
         day_of_week: sessionDoc.day_of_week,
         period_number: sessionDoc.period_number,
@@ -583,7 +590,13 @@ export default function SchedulePageNew() {
 
   const handleSkipToNextEmpty = useCallback(() => {
     if (!activeSlot) return;
-    const next = findNextEmptyCell(activeSlot.day_of_week, activeSlot.period_number);
+    // Mark the slot we just assigned as filled to avoid stale-closure wrap-around
+    // returning the same slot before the optimistic setSessions flushes.
+    const next = findNextEmptyCell(
+      activeSlot.day_of_week,
+      activeSlot.period_number,
+      [{ day: activeSlot.day_of_week, period: activeSlot.period_number }],
+    );
     if (next) {
       const cls = classes.find(c => c.id === selectedClass);
       setActiveSlot({

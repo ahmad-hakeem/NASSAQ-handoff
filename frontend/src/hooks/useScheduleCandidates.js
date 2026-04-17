@@ -35,7 +35,7 @@ export function useScheduleCandidates(api, slot, filters) {
       const params = {};
       if (slot.subject_id) params.subject_id = slot.subject_id;
       if (filters?.specialty) params.specialty = filters.specialty;
-      if (filters?.only_available) params.only_available = true;
+      if (filters?.available_only) params.available_only = true;
 
       const res = await api.get(`/schedule/slots/${encodeURIComponent(slotId)}/candidates`, { params });
       if (reqIdRef.current !== reqId) return; // stale
@@ -51,7 +51,7 @@ export function useScheduleCandidates(api, slot, filters) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, slot?.timetable_id, slot?.class_id, slot?.day_of_week,
       slot?.period_number, slot?.subject_id,
-      filters?.specialty, filters?.only_available]);
+      filters?.specialty, filters?.available_only]);
 
   useEffect(() => { fetchCandidates(); }, [fetchCandidates]);
 
