@@ -288,7 +288,7 @@ export const Sidebar = ({ children }) => {
       {
         icon: Calendar,
         label: t('schoolSchedule'),
-        href: '/principal/timetable',
+        href: '/school/schedule',
         roles: SCHOOL_ROLES,
       },
       // 3. Users & Classes Management
