@@ -1539,9 +1539,10 @@ export default function UsersClassesManagement() {
             );
           })()}
 
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex-1 min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {(() => {
-              const tabTriggerCls = 'rounded-lg text-xs px-3 h-9 transition-all data-[state=active]:bg-[#1C3D74] data-[state=active]:text-white data-[state=active]:shadow-sm hover:text-[#1C3D74] dark:hover:text-white';
+              const tabTriggerCls = 'rounded-lg text-xs px-3 h-9 transition-all whitespace-nowrap data-[state=active]:bg-[#1C3D74] data-[state=active]:text-white data-[state=active]:shadow-sm hover:text-[#1C3D74] dark:hover:text-white';
               const tabBadgeCls = (key) =>
                 `ms-1.5 h-5 text-[10px] px-1.5 border-0 ${
                   activeTab === key
@@ -1580,8 +1581,9 @@ export default function UsersClassesManagement() {
                 </Tabs>
               );
             })()}
+            </div>
 
-            <div className="flex items-center gap-2 ms-auto">
+            <div className="flex items-center gap-2 shrink-0">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="rounded-xl h-10 gap-2 px-3">
@@ -1646,7 +1648,7 @@ export default function UsersClassesManagement() {
               <div className="relative">
                 <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input placeholder={t('search')} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-                  className="ps-10 w-[200px] lg:w-[280px] rounded-xl h-10" data-testid="search-input" />
+                  className="ps-10 w-[160px] md:w-[200px] xl:w-[260px] rounded-xl h-10" data-testid="search-input" />
               </div>
               <Button variant="outline" size="icon" onClick={handleRefresh} className="rounded-xl h-10 w-10" title={t('refresh')}>
                 <RefreshCw className="h-4 w-4" />
