@@ -67,11 +67,75 @@ async def get_reference_stages(current_user: dict = Depends(get_current_user)):
 
 @router.get("/reference/grades")
 async def get_reference_grades(current_user: dict = Depends(get_current_user)):
-    """Get all grades"""
+    """Get all grades. Falls back across reference_grades → academic_grades →
+    school's grade_levels → distinct grade values on the school's classes."""
     grades = await gd_find(db.session, "reference_grades", {}, order_by="order", desc_order=False, limit=50)
     if not grades:
         grades = await gd_find(db.session, "academic_grades", {"is_active": True}, order_by="order", desc_order=False, limit=50)
-    return grades
+
+    if grades:
+        return grades
+
+    school_id = current_user.get("school_id")
+    if not school_id:
+        return []
+
+    # Try the school's normalized grade_levels collection
+    gl = await gd_find(
+        db.session,
+        "grade_levels",
+        {"school_id": school_id, "is_active": {"$ne": False}},
+        order_by="order",
+        desc_order=False,
+        limit=50,
+    )
+    if gl:
+        return [
+            {
+                "id": g.get("id"),
+                "name": g.get("name_ar") or g.get("name") or g.get("name_en"),
+                "name_ar": g.get("name_ar"),
+                "name_en": g.get("name_en"),
+                "order": g.get("order") or g.get("grade_number") or 0,
+            }
+            for g in gl
+        ]
+
+    # Last-resort fallback: derive distinct grades from the school's classes
+    classes = await gd_find(
+        db.session,
+        "classes",
+        {"school_id": school_id, "is_active": {"$ne": False}},
+        limit=1000,
+    )
+    derived = {}
+    arabic_names = {
+        "1": "الأول الابتدائي", "2": "الثاني الابتدائي", "3": "الثالث الابتدائي",
+        "4": "الرابع الابتدائي", "5": "الخامس الابتدائي", "6": "السادس الابتدائي",
+        "7": "الأول المتوسط", "8": "الثاني المتوسط", "9": "الثالث المتوسط",
+        "10": "الأول الثانوي", "11": "الثاني الثانوي", "12": "الثالث الثانوي",
+    }
+    for c in classes:
+        gid = c.get("grade_id") or c.get("grade_level")
+        if gid is None or gid == "":
+            continue
+        key = str(gid)
+        if key in derived:
+            continue
+        try:
+            order_num = int(key)
+            display_name = arabic_names.get(key, key)
+        except (TypeError, ValueError):
+            order_num = 0
+            display_name = key
+        derived[key] = {
+            "id": key,
+            "name": display_name,
+            "name_ar": display_name,
+            "name_en": key,
+            "order": order_num,
+        }
+    return sorted(derived.values(), key=lambda x: x.get("order") or 0)
 
 @router.get("/reference/tracks")
 async def get_reference_tracks(current_user: dict = Depends(get_current_user)):
