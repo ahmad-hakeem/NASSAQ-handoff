@@ -4,7 +4,7 @@ Student Creation Routes - Advanced Student + Parent Wizard
 """
 
 from fastapi import APIRouter, HTTPException, Query, Depends
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional, List
 from datetime import datetime, timezone
 import uuid
@@ -43,6 +43,13 @@ class StudentCreateRequest(BaseModel):
     email: Optional[EmailStr] = None
     national_id: Optional[str] = None
     gender: str  # male, female
+
+    # FIX (C6): Use the shared Saudi national ID validator (Optional here).
+    @field_validator("national_id")
+    @classmethod
+    def _check_national_id(cls, v):
+        from shared_models import validate_saudi_national_id
+        return validate_saudi_national_id(v, required=False)
     date_of_birth: str
     education_level: str  # primary, middle, high
     grade_id: str

@@ -7,7 +7,24 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional, List
 from datetime import datetime, timezone, timedelta
 import uuid
+from pydantic import BaseModel, Field, ConfigDict
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
+
+
+# FIX (C2): Validate `send_student_message` payload via Pydantic so the backend
+# rejects empty subjects, oversized blobs, and missing fields with a clear 422
+# response instead of accepting any string the client sends.
+class StudentMessageRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    receiver_id: str = Field(..., min_length=1, max_length=64)
+    subject: str = Field(..., min_length=1, max_length=200)
+    content: str = Field(..., min_length=1, max_length=5000)
+
+
+# FIX (C3): A timetable filtered exclusively by `status="published"` causes
+# schools using other lifecycle states ("active", "current") to see an empty
+# schedule. Centralize the accepted "live" states so all schedule lookups agree.
+LIVE_TIMETABLE_STATUSES = ["published", "active", "current"]
 
 import logging
 
@@ -45,7 +62,8 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
         schedule_entries = []
         if student and student.get("class_id"):
             today_en = datetime.now().strftime("%A").lower()
-            timetable = await gd_find_one(db.session, "timetables", {"school_id": school_id, "status": "published"}) or await gd_find_one(db.session, "timetables", {"school_id": school_id},
+            # FIX (C3): Accept any "live" lifecycle status, not just "published".
+            timetable = await gd_find_one(db.session, "timetables", {"school_id": school_id, "status": {"$in": LIVE_TIMETABLE_STATUSES}}) or await gd_find_one(db.session, "timetables", {"school_id": school_id},
                 sort=[("created_at", -1)])
             if timetable:
                 sessions = await gd_find(db.session, "timetable_sessions", {
@@ -83,12 +101,22 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
                 "date": grade.get("date")
             })
         
-        # Calculate attendance stats
-        total_days = await gd_count(db.session, "attendance", {"student_id": student_id})
-        present_days = await gd_count(db.session, "attendance", {"student_id": student_id, "status": "present"})
-        absent_days = await gd_count(db.session, "attendance", {"student_id": student_id, "status": "absent"})
-        late_days = await gd_count(db.session, "attendance", {"student_id": student_id, "status": "late"})
-        
+        # FIX (C4): Combine four separate count queries into one fetch and tally
+        # the statuses in Python. For a typical student record (~200 rows/year)
+        # this trades a ~100-byte transfer for three saved round-trips.
+        # Limit guards against runaway memory if a record is corrupted; a
+        # student attending school for 50 years would still fit comfortably.
+        attendance_rows = await gd_find(
+            db.session,
+            "attendance",
+            {"student_id": student_id},
+            limit=10000,
+        )
+        total_days = len(attendance_rows)
+        present_days = sum(1 for r in attendance_rows if r.get("status") == "present")
+        absent_days = sum(1 for r in attendance_rows if r.get("status") == "absent")
+        late_days = sum(1 for r in attendance_rows if r.get("status") == "late")
+
         attendance_rate = (present_days / total_days * 100) if total_days > 0 else 100
         
         unread_notifications = await gd_count(db.session, "notifications", {
@@ -284,7 +312,8 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
         schedule_by_day = {day: [] for day in days_order}
         
         if student.get("class_id"):
-            timetable = await gd_find_one(db.session, "timetables", {"school_id": school_id, "status": "published"}) or await gd_find_one(db.session, "timetables", {"school_id": school_id},
+            # FIX (C3): Accept any "live" lifecycle status, not just "published".
+            timetable = await gd_find_one(db.session, "timetables", {"school_id": school_id, "status": {"$in": LIVE_TIMETABLE_STATUSES}}) or await gd_find_one(db.session, "timetables", {"school_id": school_id},
                 sort=[("created_at", -1)])
             if timetable:
                 all_sessions = await gd_find(db.session, "timetable_sessions", {
@@ -367,22 +396,25 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
     
     @router.post("/messages")
     async def send_student_message(
-        receiver_id: str,
-        subject: str,
-        content: str,
+        payload: StudentMessageRequest,
         current_user: dict = Depends(require_roles([UserRole.STUDENT]))
     ):
         """إرسال رسالة من الطالب"""
+        # FIX (C2): Pull validated values from the Pydantic body. The previous
+        # signature used three loose query params with no length checks.
+        receiver_id = payload.receiver_id
+        subject = payload.subject
+        content = payload.content
         tenant_id = current_user.get("tenant_id")
         receiver = await gd_find_one(db.session, "users", {"id": receiver_id})
         if not receiver:
             receiver = await gd_find_one(db.session, "teachers", {"id": receiver_id})
-        
+
         if not receiver:
             raise HTTPException(status_code=404, detail="المستلم غير موجود")
         if not tenant_id or (receiver.get("tenant_id") != tenant_id and receiver.get("school_id") != tenant_id):
             raise HTTPException(status_code=403, detail="لا يمكنك مراسلة مستخدم من مدرسة أخرى")
-        
+
         message = {
             "id": str(uuid.uuid4()),
             "school_id": tenant_id,
@@ -399,9 +431,9 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
             "is_read": False,
             "created_at": datetime.now(timezone.utc).isoformat()
         }
-        
+
         await gd_insert(db.session, "messages", message)
-        
+
         # Create notification for receiver
         await gd_insert(db.session, "notifications", {
             "id": str(uuid.uuid4()),
@@ -413,7 +445,7 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
             "read_status": False,
             "created_at": datetime.now(timezone.utc).isoformat()
         })
-        
+
         return {"success": True, "message_id": message["id"]}
     
     # ============= TEACHERS LIST =============
@@ -434,7 +466,8 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
         # Get teachers via timetable_sessions for this student's class
         teachers = []
         if student and student.get("class_id"):
-            timetable = await gd_find_one(db.session, "timetables", {"school_id": school_id, "status": "published"}) or await gd_find_one(db.session, "timetables", {"school_id": school_id},
+            # FIX (C3): Accept any "live" lifecycle status, not just "published".
+            timetable = await gd_find_one(db.session, "timetables", {"school_id": school_id, "status": {"$in": LIVE_TIMETABLE_STATUSES}}) or await gd_find_one(db.session, "timetables", {"school_id": school_id},
                 sort=[("created_at", -1)])
             teacher_ids_set = set()
             teacher_subject_map = {}

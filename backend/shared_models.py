@@ -3,6 +3,26 @@ NASSAQ Shared Pydantic Models
 All Pydantic models shared across route modules.
 """
 from pydantic import BaseModel, Field, ConfigDict, EmailStr, model_validator, field_validator
+import re
+
+
+# FIX (C6): Single source of truth for the Saudi national ID format. Routes used
+# inconsistent validation (some demanded exactly 10 chars, others accepted any
+# string) which let invalid IDs slip into one path and rejected valid ones in
+# another. Use `validate_saudi_national_id(value, required=...)` from any model.
+_SAUDI_NATIONAL_ID_RE = re.compile(r"^[12]\d{9}$")
+
+
+def validate_saudi_national_id(value, required: bool = True):
+    """Return the cleaned ID or raise ValueError. Pass required=False to allow None/''."""
+    if value is None or value == "":
+        if required:
+            raise ValueError("رقم الهوية الوطنية مطلوب")
+        return None
+    cleaned = str(value).strip()
+    if not _SAUDI_NATIONAL_ID_RE.match(cleaned):
+        raise ValueError("رقم الهوية الوطنية غير صالح: يجب أن يكون 10 أرقام ويبدأ بـ 1 أو 2")
+    return cleaned
 from typing import List, Optional, Any, Union
 from datetime import datetime, timezone
 from enum import Enum

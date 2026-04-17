@@ -4,7 +4,7 @@ API endpoints for student management operations
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from typing import Optional
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, field_validator
 from enum import Enum
 import logging
 
@@ -36,10 +36,24 @@ class StudentBasicInfoRequest(BaseModel):
     grade_id: str = Field(...)
     section_id: str = Field(...)
 
+    # FIX (C6): Apply the shared Saudi national ID validator.
+    @field_validator("national_id")
+    @classmethod
+    def _check_national_id(cls, v):
+        from shared_models import validate_saudi_national_id
+        return validate_saudi_national_id(v, required=True)
+
 class ParentContactInfoRequest(BaseModel):
     parent_name_ar: str = Field(..., min_length=3, max_length=100)
     parent_name_en: Optional[str] = Field(None, max_length=100)
     parent_national_id: Optional[str] = Field(None)
+
+    # FIX (C6): Use the shared validator (parent ID is optional here).
+    @field_validator("parent_national_id")
+    @classmethod
+    def _check_parent_national_id(cls, v):
+        from shared_models import validate_saudi_national_id
+        return validate_saudi_national_id(v, required=False)
     parent_phone: str = Field(...)
     parent_email: Optional[EmailStr] = None
     parent_relation: ParentRelation

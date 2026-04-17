@@ -391,16 +391,22 @@ async def update_student(
     
     return {"message": "تم تحديث بيانات الطالب وحفظها في قاعدة البيانات بنجاح", "success": True}
 
+# FIX (C13): Validate the transfer payload via Pydantic instead of pulling
+# raw values out of `request.json()`. The previous implementation accepted any
+# shape and only checked for missing keys after parsing.
+class ClassTransferRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    student_id: str = Field(..., min_length=1, max_length=64)
+    target_class_id: str = Field(..., min_length=1, max_length=64)
+
+
 @router.post("/students/transfer-class")
 async def transfer_student_class(
-    request: Request,
+    payload: ClassTransferRequest,
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
 ):
-    body = await request.json()
-    student_id = body.get("student_id")
-    target_class_id = body.get("target_class_id")
-    if not student_id or not target_class_id:
-        raise HTTPException(status_code=400, detail="student_id و target_class_id مطلوبان")
+    student_id = payload.student_id
+    target_class_id = payload.target_class_id
 
     school_id = current_user.get("tenant_id") or current_user.get("school_id")
     if not school_id:

@@ -140,7 +140,14 @@ export const StudentsPage = () => {
 
     setSubmitting(true);
     try {
-      const response = await api.post('/students', { ...newStudent, school_id: schoolId });
+      // FIX (C8): The `/students` route on student_management_routes expects
+      // `full_name_ar`, but this form historically posted `full_name`. Send
+      // both keys so the backend receives the canonical Arabic name.
+      const response = await api.post('/students', {
+        ...newStudent,
+        full_name_ar: newStudent.full_name,
+        school_id: schoolId,
+      });
       toast.success(t('studentAddedSuccessfully'));
       setCreateDialogOpen(false);
       setNewStudent({
