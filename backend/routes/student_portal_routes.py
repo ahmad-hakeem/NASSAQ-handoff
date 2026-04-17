@@ -9,6 +9,9 @@ from datetime import datetime, timezone, timedelta
 import uuid
 from pydantic import BaseModel, Field, ConfigDict
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
+# FIX (D8): Use the canonical UserRole enum for the seed-account role string
+# instead of a hardcoded "student" literal.
+from dependencies import UserRole
 
 
 # FIX (C2): Validate `send_student_message` payload via Pydantic so the backend
@@ -31,11 +34,22 @@ import logging
 logger = logging.getLogger("nassaq.student_portal_routes")
 
 
+# FIX (D5): Centralize the repeated "look up student by id, then fall back
+# to user_id" pattern that previously lived inline in every handler so that
+# the resolution rules can be changed in one place. Defined at module scope
+# so both setup_student_portal_routes and setup_homework_routes can call it.
+async def _resolve_student(db, student_id: str, user_id: str):
+    s = await gd_find_one(db.session, "students", {"id": student_id})
+    if not s:
+        s = await gd_find_one(db.session, "students", {"user_id": user_id})
+    return s
+
+
 def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
     """Setup student portal routes"""
     
     router = APIRouter(prefix="/student-portal", tags=["Student Portal"])
-    
+
     # ============= DASHBOARD =============
     
     @router.get("/dashboard")
@@ -47,9 +61,7 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
         school_id = current_user.get("tenant_id")
         
         # Get student info
-        student = await gd_find_one(db.session, "students", {"id": student_id})
-        if not student:
-            student = await gd_find_one(db.session, "students", {"user_id": current_user.get("id")})
+        student = await _resolve_student(db, student_id, current_user.get("id"))
         
         # Get today's schedule
         today = datetime.now().strftime("%A")
@@ -296,9 +308,7 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
         school_id = current_user.get("tenant_id")
         
         # Get student info
-        student = await gd_find_one(db.session, "students", {"id": student_id})
-        if not student:
-            student = await gd_find_one(db.session, "students", {"user_id": current_user.get("id")})
+        student = await _resolve_student(db, student_id, current_user.get("id"))
         
         if not student:
             return {"schedule": {}, "days": []}
@@ -459,9 +469,7 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
         school_id = current_user.get("tenant_id")
         
         # Get student info
-        student = await gd_find_one(db.session, "students", {"id": student_id})
-        if not student:
-            student = await gd_find_one(db.session, "students", {"user_id": current_user.get("id")})
+        student = await _resolve_student(db, student_id, current_user.get("id"))
         
         # Get teachers via timetable_sessions for this student's class
         teachers = []
@@ -516,9 +524,7 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
         student_id = current_user.get("student_id") or current_user.get("id")
         school_id = current_user.get("tenant_id")
         
-        student = await gd_find_one(db.session, "students", {"id": student_id})
-        if not student:
-            student = await gd_find_one(db.session, "students", {"user_id": current_user.get("id")})
+        student = await _resolve_student(db, student_id, current_user.get("id"))
         
         total_days = await gd_count(db.session, "attendance", {"student_id": student_id})
         present_days = await gd_count(db.session, "attendance", {"student_id": student_id, "status": "present"})
@@ -609,9 +615,7 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
         student_id = current_user.get("student_id") or current_user.get("id")
         school_id = current_user.get("tenant_id")
         
-        student = await gd_find_one(db.session, "students", {"id": student_id})
-        if not student:
-            student = await gd_find_one(db.session, "students", {"user_id": current_user.get("id")})
+        student = await _resolve_student(db, student_id, current_user.get("id"))
         if not student:
             raise HTTPException(status_code=404, detail="سجل الطالب غير موجود")
         
@@ -931,9 +935,7 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
         student_id = current_user.get("student_id") or current_user.get("id")
         school_id = current_user.get("tenant_id")
         
-        student = await gd_find_one(db.session, "students", {"id": student_id})
-        if not student:
-            student = await gd_find_one(db.session, "students", {"user_id": current_user.get("id")})
+        student = await _resolve_student(db, student_id, current_user.get("id"))
         
         class_id = student.get("class_id") if student else None
         grade_id = (student.get("grade_id") or student.get("grade")) if student else None
@@ -1007,7 +1009,7 @@ async def create_test_student_account(db):
         "password_hash": password_hash,
         "full_name": "طالب تجريبي",
         "full_name_en": "Test Student",
-        "role": "student",
+        "role": UserRole.STUDENT.value,
         "tenant_id": school.get("id"),
         "phone": "0512345678",
         "is_active": True,
@@ -1144,9 +1146,7 @@ def setup_homework_routes(router, db, get_current_user, require_roles, UserRole)
         school_id = current_user.get("tenant_id")
         
         # Get student info for class
-        student = await gd_find_one(db.session, "students", {"id": student_id})
-        if not student:
-            student = await gd_find_one(db.session, "students", {"user_id": current_user.get("id")})
+        student = await _resolve_student(db, student_id, current_user.get("id"))
         
         class_id = student.get("class_id") if student else None
         grade_id = (student.get("grade_id") or student.get("grade")) if student else None
@@ -1321,9 +1321,7 @@ def setup_homework_routes(router, db, get_current_user, require_roles, UserRole)
         if school_id and assignment.get("school_id") and assignment.get("school_id") != school_id:
             raise HTTPException(status_code=404, detail="الواجب غير موجود")
 
-        student = await gd_find_one(db.session, "students", {"id": student_id})
-        if not student:
-            student = await gd_find_one(db.session, "students", {"user_id": current_user.get("id")})
+        student = await _resolve_student(db, student_id, current_user.get("id"))
         if not student:
             raise HTTPException(status_code=404, detail="الطالب غير موجود")
 
@@ -1359,9 +1357,7 @@ def setup_homework_routes(router, db, get_current_user, require_roles, UserRole)
         student_id = current_user.get("student_id") or current_user.get("id")
         school_id = current_user.get("tenant_id")
 
-        student = await gd_find_one(db.session, "students", {"id": student_id})
-        if not student:
-            student = await gd_find_one(db.session, "students", {"user_id": current_user.get("id")})
+        student = await _resolve_student(db, student_id, current_user.get("id"))
         if not student:
             raise HTTPException(status_code=404, detail="الطالب غير موجود")
         student_id = student.get("id", student_id)

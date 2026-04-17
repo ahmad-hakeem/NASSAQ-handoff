@@ -42,7 +42,7 @@ import {
 
 // Assignment status badge component
 const StatusBadge = ({ status }) => {
-  const { nassaqError, nassaqWarning } = useNassaqAlert();
+  const { nassaqError } = useNassaqAlert();
   const statusConfig = {
     pending: { label: 'قيد الانتظار', color: 'bg-amber-100 text-amber-700', icon: Clock },
     submitted: { label: 'تم التسليم', color: 'bg-blue-100 text-blue-700', icon: Send },

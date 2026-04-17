@@ -8,7 +8,6 @@ import { TeacherSelfRegistration } from "../pages/TeacherSelfRegistration";
 import { AdminDashboard } from "../pages/AdminDashboard";
 import { SchoolDashboard } from "../pages/SchoolDashboard";
 import TeacherDashboard from "../pages/TeacherDashboard";
-import StudentDashboard from "../pages/StudentDashboard";
 import ParentDashboard from "../pages/ParentDashboard";
 import PrincipalDashboard from "../pages/PrincipalDashboard";
 import { TeachersPage } from "../pages/TeachersPage";
