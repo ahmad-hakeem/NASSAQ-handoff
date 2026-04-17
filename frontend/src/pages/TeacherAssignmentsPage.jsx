@@ -118,7 +118,8 @@ export const TeacherAssignmentsPage = () => {
     // (platform-admin only). Use their own tenant_id directly.
     if (isSchoolLevel) {
       if (userSchoolId) {
-        setSchools([{ id: userSchoolId, name: '' }]);
+        const label = user?.tenant_name || user?.school_name || user?.full_name || userSchoolId;
+        setSchools([{ id: userSchoolId, name: label }]);
         if (!selectedSchool) setSelectedSchool(userSchoolId);
       }
       return;
