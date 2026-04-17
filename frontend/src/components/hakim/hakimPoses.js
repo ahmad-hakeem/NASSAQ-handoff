@@ -50,7 +50,6 @@ const CONTEXT_MAP = {
   '/admin/users-management': 'guidance',
   '/principal': 'analysis',
   '/principal/dashboard': 'analysis',
-  '/principal/timetable': 'teaching',
   '/principal/users-management': 'guidance',
   '/principal/communication': 'guidance',
   '/school': 'analysis',

@@ -21,7 +21,6 @@ const PAGE_CONTEXT_MAP = {
   '/school/ai-insights': { name: 'رؤى الذكاء الاصطناعي', suggestions: ['ما أهم التنبؤات؟', 'من الطلاب المعرضون للخطر؟', 'ما التوصيات المتاحة؟'] },
   '/principal/ai-insights': { name: 'رؤى الذكاء الاصطناعي', suggestions: ['ما أهم التنبؤات؟', 'من الطلاب المعرضون للخطر؟', 'كيف أداء المدرسة؟'] },
   '/school/settings': { name: 'الإعدادات', suggestions: ['كيف أعدّل أيام الدراسة؟', 'كيف أضبط أوقات الحصص؟'] },
-  '/principal/timetable': { name: 'الجدول المدرسي', suggestions: ['كيف أولّد الجدول؟', 'كيف أنقل حصة؟', 'ما حالة الجدول الحالي؟'] },
   '/principal/users-management': { name: 'إدارة المستخدمين والفصول', suggestions: ['كيف أضيف معلم؟', 'كيف أنشئ فصل؟'] },
   '/principal/communication': { name: 'مركز التواصل', suggestions: ['كيف أرسل إشعار لأولياء الأمور؟'] },
   '/admin/attendance': { name: 'إدارة الحضور', suggestions: ['ما نسبة الحضور اليوم؟', 'من الطلاب الأكثر غياباً؟', 'كيف أسجل الحضور؟'] },

@@ -63,7 +63,6 @@ const PATH_CONTEXT_RULES = [
 
   { path: '/principal', exact: true, context: 'principal_dashboard', category: 'analysis', animLevel: ANIMATION_LEVELS.IDLE },
   { path: '/principal/dashboard', context: 'principal_dashboard', category: 'analysis', animLevel: ANIMATION_LEVELS.IDLE },
-  { path: '/principal/timetable', context: 'timetable', category: 'teaching', animLevel: ANIMATION_LEVELS.IDLE },
   { path: '/principal/users-management', context: 'users_management', category: 'guidance', animLevel: ANIMATION_LEVELS.IDLE },
   { path: '/principal/communication', context: 'communication', category: 'guidance', animLevel: ANIMATION_LEVELS.IDLE },
 

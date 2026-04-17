@@ -33,7 +33,6 @@ const StudentsPage = lazy(() => import("../pages/StudentsPage").then(m => ({ def
 const ClassesPage = lazy(() => import("../pages/ClassesPage").then(m => ({ default: m.ClassesPage })));
 const SubjectsPage = lazy(() => import("../pages/SubjectsPage").then(m => ({ default: m.SubjectsPage })));
 const SchedulePageNew = lazy(() => import("../pages/SchedulePageNew"));
-const PrincipalTimetablePage = lazy(() => import("../components/timetable").then(m => ({ default: m.PrincipalTimetablePage })));
 const TimeSlotsPage = lazy(() => import("../pages/TimeSlotsPage").then(m => ({ default: m.TimeSlotsPage })));
 const TeacherAssignmentsPage = lazy(() => import("../pages/TeacherAssignmentsPage").then(m => ({ default: m.TeacherAssignmentsPage })));
 const AttendancePage = lazy(() => import("../pages/AttendancePage").then(m => ({ default: m.AttendancePage })));
@@ -437,9 +436,7 @@ export default function AppRoutes() {
         } />
         <Route path="/school/academic-structure" element={<Navigate to="/school/settings?section=academic" replace />} />
         <Route path="/principal/academic-structure" element={<Navigate to="/school/settings?section=academic" replace />} />
-        <Route path="/principal/timetable" element={
-          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><PrincipalTimetablePage /></ProtectedRoute>
-        } />
+        <Route path="/principal/timetable" element={<Navigate to="/school/schedule" replace />} />
         <Route path="/school/teacher-class-assignments" element={
           <ProtectedRoute allowedRoles={SCHOOL_ROLES}><TeacherClassAssignmentPage /></ProtectedRoute>
         } />
