@@ -472,10 +472,10 @@ async def transfer_student_class(
 
     if old_class_id:
         await _gd_pull(db.session, "classes", {"id": old_class_id, "school_id": school_id}, {"student_ids": student_id})
-        await _gd_inc(db.session, "classes", {"id": old_class_id, "school_id": school_id}, "student_count", -1)
+        await _gd_inc(db.session, "classes", {"id": old_class_id, "school_id": school_id}, {"student_count": -1})
 
     await _gd_addtoset(db.session, "classes", {"id": target_class_id, "school_id": school_id}, {"student_ids": student_id})
-    await _gd_inc(db.session, "classes", {"id": target_class_id, "school_id": school_id}, "student_count", 1)
+    await _gd_inc(db.session, "classes", {"id": target_class_id, "school_id": school_id}, {"student_count": 1})
 
     student_name = student.get("full_name", "")
     target_name = target_class.get("name_ar") or target_class.get("name", "")
