@@ -61,3 +61,12 @@ root.render(
     <App />
   </React.StrictMode>,
 );
+
+requestAnimationFrame(() => {
+  const splash = document.getElementById("initial-splash");
+  if (splash) {
+    splash.style.transition = "opacity 200ms ease-out";
+    splash.style.opacity = "0";
+    setTimeout(() => splash.remove(), 220);
+  }
+});
