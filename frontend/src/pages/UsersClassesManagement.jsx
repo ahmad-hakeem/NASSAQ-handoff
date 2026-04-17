@@ -1539,9 +1539,9 @@ export default function UsersClassesManagement() {
             );
           })()}
 
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-3">
             {(() => {
-              const tabTriggerCls = 'rounded-lg text-xs px-3.5 h-9 transition-all data-[state=active]:bg-[#1C3D74] data-[state=active]:text-white data-[state=active]:shadow-sm hover:text-[#1C3D74] dark:hover:text-white';
+              const tabTriggerCls = 'rounded-lg text-xs px-3 h-9 transition-all data-[state=active]:bg-[#1C3D74] data-[state=active]:text-white data-[state=active]:shadow-sm hover:text-[#1C3D74] dark:hover:text-white';
               const tabBadgeCls = (key) =>
                 `ms-1.5 h-5 text-[10px] px-1.5 border-0 ${
                   activeTab === key

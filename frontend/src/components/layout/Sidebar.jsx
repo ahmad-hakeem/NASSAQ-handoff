@@ -854,7 +854,7 @@ export const Sidebar = ({ children }) => {
       {/* Main Content */}
       <main
         className={`
-          flex-1 min-h-screen bg-background w-full
+          flex-1 min-w-0 min-h-screen bg-background w-full overflow-x-hidden
           transition-all duration-300 pt-14 lg:pt-0
           ${isRTL
             ? collapsed ? 'lg:mr-20' : 'lg:mr-72'
