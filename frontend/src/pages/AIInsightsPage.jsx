@@ -472,6 +472,7 @@ const HealthRing = ({ label, value, color, icon: Icon, isRTL }) => {
 };
 
 const TeacherMonitoringSection = ({ isRTL, api }) => {
+  const { t } = useTranslation();
   const [monitorData, setMonitorData] = useState(null);
   const [monitorLoading, setMonitorLoading] = useState(true);
 
