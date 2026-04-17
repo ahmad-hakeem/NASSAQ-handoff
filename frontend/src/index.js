@@ -11,6 +11,26 @@ import App from "@/App";
 const RESIZE_OBSERVER_MSG = "ResizeObserver loop";
 const isResizeObserverErr = (m) => typeof m === "string" && m.includes(RESIZE_OBSERVER_MSG);
 
+// Prevent the "ResizeObserver loop completed with undelivered notifications"
+// warning by deferring observer callbacks to the next animation frame. This
+// avoids the synchronous re-layout that triggers the warning.
+if (typeof window !== "undefined" && window.ResizeObserver) {
+  const NativeResizeObserver = window.ResizeObserver;
+  window.ResizeObserver = class PatchedResizeObserver extends NativeResizeObserver {
+    constructor(callback) {
+      super((entries, observer) => {
+        window.requestAnimationFrame(() => {
+          try {
+            callback(entries, observer);
+          } catch (err) {
+            if (!isResizeObserverErr(err && err.message)) throw err;
+          }
+        });
+      });
+    }
+  };
+}
+
 window.addEventListener(
   "error",
   (e) => {
