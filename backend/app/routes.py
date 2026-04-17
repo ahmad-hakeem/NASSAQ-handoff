@@ -232,7 +232,7 @@ def _register_static_fallback(app):
     from fastapi.staticfiles import StaticFiles
     from fastapi.responses import FileResponse, RedirectResponse
 
-    frontend_build = Path(__file__).parent.parent.parent / "frontend" / "build"
+    frontend_build = (Path(__file__).parent.parent.parent / "frontend" / "build").resolve()
     if frontend_build.exists() and (frontend_build / "index.html").exists():
         app.mount("/static", StaticFiles(directory=str(frontend_build / "static")), name="static-assets")
 
@@ -244,18 +244,45 @@ def _register_static_fallback(app):
         _SPA_RESERVED_SEGMENTS = (
             "api", "system", "ws", "docs", "redoc", "openapi.json",
         )
+        # B-18: explicit allow-list of file extensions the SPA fallback may
+        # serve from the build directory. Anything else (.env, .yml, .json
+        # config, etc.) accidentally dropped into frontend/build/ won't leak.
+        _ALLOWED_STATIC_EXTS = {
+            ".html", ".htm", ".js", ".mjs", ".css", ".map",
+            ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".ico", ".avif",
+            ".woff", ".woff2", ".ttf", ".otf", ".eot",
+            ".json",  # manifest.json, asset-manifest.json
+            ".txt",   # robots.txt
+            ".xml",   # sitemap.xml
+            ".webmanifest",
+            ".mp3", ".mp4", ".webm", ".ogg",
+            ".pdf",
+        }
 
         @app.get("/{full_path:path}")
         async def serve_react_app(full_path: str):
             # Never let the SPA fallback swallow backend / docs paths.
-            # Return a real 404 JSON for unknown backend routes so clients
-            # (and developers) see the actual error instead of an HTML page.
             first_segment = full_path.split("/", 1)[0]
             if first_segment in _SPA_RESERVED_SEGMENTS:
                 raise _HTTPException(status_code=404, detail="Not Found")
-            file_path = frontend_build / full_path
-            if file_path.exists() and file_path.is_file():
-                return FileResponse(str(file_path))
+
+            # B-01: path-traversal guard. Resolve the requested path and
+            # confirm it stays inside the frontend_build directory before
+            # serving it. Even though Starlette currently strips '..',
+            # belt-and-braces prevents a future proxy/normaliser regression.
+            try:
+                requested = (frontend_build / full_path).resolve()
+            except (OSError, RuntimeError):
+                requested = None
+            if requested is not None and requested.is_file():
+                try:
+                    requested.relative_to(frontend_build)
+                except ValueError:
+                    raise _HTTPException(status_code=404, detail="Not Found")
+                # B-18: only serve approved extensions.
+                if requested.suffix.lower() in _ALLOWED_STATIC_EXTS:
+                    return FileResponse(str(requested))
+                # Unknown extension → fall through to SPA index instead of leaking.
             return FileResponse(
                 str(frontend_build / "index.html"),
                 headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"},

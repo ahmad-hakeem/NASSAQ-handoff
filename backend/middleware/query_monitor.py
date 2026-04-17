@@ -74,12 +74,25 @@ def _safe_params(params) -> str:
 
 
 def get_pool_stats(sync_engine: Engine) -> Dict[str, Any]:
-    """Return current connection-pool metrics."""
+    """Return current connection-pool metrics.
+
+    B-09: SQLAlchemy's ``pool.overflow()`` returns an internal counter that
+    goes negative when connections return faster than they were created.
+    Surfacing it raw on dashboards is misleading (e.g. ``-13`` looks like
+    a bug). Expose two clear values:
+
+    * ``overflow_counter`` — the raw SQLAlchemy counter (signed)
+    * ``overflow_in_use`` — actual extra connections beyond ``pool_size``
+      currently checked out (always ``>= 0``)
+    """
     pool = sync_engine.pool
+    pool_size = pool.size()
+    checked_out = pool.checkedout()
     return {
-        "pool_size": pool.size(),
-        "checked_out": pool.checkedout(),
-        "overflow": pool.overflow(),
+        "pool_size": pool_size,
+        "checked_out": checked_out,
+        "overflow_in_use": max(0, checked_out - pool_size),
+        "overflow_counter": pool.overflow(),
         "checked_in": pool.checkedin(),
         "invalid": pool.status(),
     }
@@ -92,10 +105,10 @@ async def _pool_log_loop(sync_engine: Engine) -> None:
         try:
             stats = get_pool_stats(sync_engine)
             logger.info(
-                "Pool stats: size=%d checked_out=%d overflow=%d checked_in=%d",
+                "Pool stats: size=%d checked_out=%d overflow_in_use=%d checked_in=%d",
                 stats["pool_size"],
                 stats["checked_out"],
-                stats["overflow"],
+                stats["overflow_in_use"],
                 stats["checked_in"],
             )
         except Exception as e:

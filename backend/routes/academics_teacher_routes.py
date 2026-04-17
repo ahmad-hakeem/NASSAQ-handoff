@@ -686,6 +686,36 @@ async def get_teachers(
         result.append(TeacherResponse(**t))
     return result
 
+@router.get("/teachers/me", response_model=TeacherResponse)
+async def get_my_teacher_profile(current_user: dict = Depends(get_current_user)):
+    """E-02: Return the teacher row associated with the logged-in user.
+    Resolution order: enriched JWT teacher_id → teachers.user_id → email.
+    Any role with a linked teacher row is allowed (teacher, principal-with-teaching-load, etc.)."""
+    teacher = None
+    tid = current_user.get("teacher_id")
+    if tid:
+        teacher = await gd_find_one(db.session, "teachers", {"id": tid})
+    if not teacher:
+        teacher = await gd_find_one(db.session, "teachers", {"user_id": current_user.get("id")})
+    # Fallback by email is tenant-scoped to prevent cross-tenant resolution.
+    if not teacher and current_user.get("email"):
+        q = {"email": current_user.get("email")}
+        if current_user.get("tenant_id"):
+            q["school_id"] = current_user.get("tenant_id")
+        teacher = await gd_find_one(db.session, "teachers", q)
+    if not teacher:
+        raise HTTPException(status_code=404, detail="لا يوجد ملف معلم مرتبط بالحساب")
+    # Defensive cross-tenant guard: even if a row was returned, verify it belongs
+    # to the caller's tenant when both sides have a tenant.
+    if current_user.get("tenant_id") and teacher.get("school_id") and teacher.get("school_id") != current_user.get("tenant_id"):
+        raise HTTPException(status_code=404, detail="لا يوجد ملف معلم مرتبط بالحساب")
+    if not teacher.get("full_name") and teacher.get("full_name_ar"):
+        teacher["full_name"] = teacher["full_name_ar"]
+    if not teacher.get("specialization") and teacher.get("subject_name"):
+        teacher["specialization"] = teacher["subject_name"]
+    return TeacherResponse(**teacher)
+
+
 @router.get("/teachers/{teacher_id}", response_model=TeacherResponse)
 async def get_teacher(teacher_id: str, current_user: dict = Depends(get_current_user)):
     """Get teacher by ID"""

@@ -1,0 +1,24 @@
+-- Rollback for D-05 (Session 2026-04-17, Health-checkup Session 2)
+-- The following 3 teacher rows were deleted because they had school_id IS NULL
+-- and matched the test/temp naming pattern "تجريبي" (= "experimental"):
+--
+--   id=9fb3777f-cbad-441c-b208-2cc59f8d48d9, full_name='محمد تجريبي'
+--   id=b7409927-7d16-4560-a279-5480fbafc6cb, full_name='محمد تجريبي'
+--   id=f21f23b5-bb7b-437a-87a3-befdeaff86e0, full_name='احمد تجريبي5'
+--
+-- They had no foreign-key references in timetable_entries / attendance.teacher_id /
+-- teaching_loads / exam_grades at deletion time (verified via pre-deletion FK scan).
+--
+-- To restore, replay them from the most recent platform DB snapshot taken before
+-- 2026-04-17 10:50 UTC. Example using a snapshot named `nassaq_pre_health_checkup`:
+--
+--   INSERT INTO teachers
+--   SELECT * FROM nassaq_pre_health_checkup.teachers
+--   WHERE id IN (
+--     '9fb3777f-cbad-441c-b208-2cc59f8d48d9',
+--     'b7409927-7d16-4560-a279-5480fbafc6cb',
+--     'f21f23b5-bb7b-437a-87a3-befdeaff86e0'
+--   );
+--
+-- If no snapshot is available, these rows cannot be reconstructed (they were
+-- test data and contained no production-meaningful columns beyond `full_name`).

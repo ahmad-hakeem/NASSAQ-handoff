@@ -1,9 +1,15 @@
 """
 NASSAQ — Middleware configuration.
 """
+import asyncio
 import logging
+import time
+import uuid as _uuid
+from datetime import datetime, timezone
+
 from fastapi import FastAPI, Request
 from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from db import async_session_factory
 from dependencies import db, JWT_SECRET, JWT_ALGORITHM
@@ -64,18 +70,23 @@ def register_middleware(app: FastAPI):
 
     @app.middleware("http")
     async def add_security_headers(request: Request, call_next):
-        if request.url.path == "/api/ws/notifications" or request.url.path == "/ws":
+        path = request.url.path
+        if path == "/api/ws/notifications" or path == "/ws":
             return await call_next(request)
         response = await call_next(request)
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
-        response.headers["X-XSS-Protection"] = "1; mode=block"
+        # B-20: X-XSS-Protection is deprecated and can introduce vulnerabilities;
+        # modern browsers ignore it. Removed in favour of CSP.
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=()"
+        # B-02: Removed 'unsafe-eval' (CRA build doesn't need it).
+        # 'unsafe-inline' for scripts retained until the SPA migrates to nonces;
+        # CSS still needs unsafe-inline because Tailwind/CRA inject inline style attrs.
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+            "script-src 'self' 'unsafe-inline'; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "font-src 'self' https://fonts.gstatic.com data:; "
             "img-src 'self' data: blob: https:; "
@@ -83,13 +94,17 @@ def register_middleware(app: FastAPI):
             "connect-src 'self' wss: ws:; "
             "frame-ancestors 'none';"
         )
+        # B-03: aggressive cache for hashed/static asset bundles. CRA writes
+        # files with content hashes (e.g. main.25304d41.js) so they are
+        # safe to cache for a year.
+        if path.startswith("/static/"):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
         return response
 
     @app.middleware("http")
     async def audit_log_middleware(request: Request, call_next):
+        # B-26: imports moved to module top
         from middleware.audit_middleware import _should_audit, _derive_action, _derive_severity, parse_device_info, _extract_real_ip, _sanitize_query_params as _sanitize_qp
-        import asyncio, time, uuid as _uuid
-        from datetime import datetime, timezone
 
         method = request.method
         path = request.url.path
@@ -105,9 +120,13 @@ def register_middleware(app: FastAPI):
         duration_ms = round((time.time() - start) * 1000, 1)
 
         try:
+            # B-08: prefer cached user from request.state (populated by
+            # get_current_user / RequestTracingMiddleware) and only re-decode
+            # the JWT as a last resort. Avoids duplicate per-request crypto.
             user_id = user_name = user_role = user_email = tenant_id = None
-            if hasattr(request.state, "user") and request.state.user:
-                u = request.state.user
+            cached = getattr(request.state, "user", None) or getattr(request.state, "auth_user", None)
+            if cached:
+                u = cached
                 user_id = str(u.get("id") or u.get("user_id") or "")
                 user_name = u.get("full_name") or u.get("name")
                 user_role = u.get("role")
@@ -123,6 +142,11 @@ def register_middleware(app: FastAPI):
                         user_role = payload.get("role")
                         user_email = payload.get("email")
                         tenant_id = payload.get("tenant_id")
+                        # Cache for any later middleware in this request
+                        request.state.auth_user = {
+                            "id": user_id, "role": user_role,
+                            "email": user_email, "tenant_id": tenant_id,
+                        }
                 except Exception as e:
                     logger.debug(f"Audit middleware: failed to resolve user details from token: {e}")
 
@@ -185,3 +209,9 @@ def register_middleware(app: FastAPI):
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # B-22: wire ALLOWED_HOSTS into Starlette's TrustedHostMiddleware so the
+    # config setting is actually enforced. Wildcard ("*") = no restriction.
+    _allowed_hosts = _cfg.ALLOWED_HOSTS
+    if _allowed_hosts and _allowed_hosts != ["*"]:
+        app.add_middleware(TrustedHostMiddleware, allowed_hosts=_allowed_hosts)

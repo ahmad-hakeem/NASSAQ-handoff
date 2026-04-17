@@ -23,10 +23,9 @@ import base64
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# B-16: do not call logging.basicConfig here — server.py owns the structured
+# JSON formatter. Calling basicConfig before server.py imports this module
+# briefly installs the plain-text format and competes with the JSON handler.
 logger = logging.getLogger("nassaq")
 
 from repositories import Repos
@@ -188,15 +187,57 @@ async def get_current_user(
         if "id" not in user or not user.get("id"):
             user["id"] = user_id
 
+        # E-02/E-03 + architect-review fix: scope fallback identifier lookups
+        # by school_id == user.tenant_id whenever both are present, to prevent
+        # cross-tenant resolution via shared email/phone/national_id. Also persist
+        # the resolved id back to the users row so we never re-query on subsequent
+        # requests (eliminates per-request query amplification).
+        _tenant = user.get("tenant_id")
+
+        async def _scoped_lookup(table: str, by_field: str, value):
+            """Look up a row by `by_field=value`, constrained by school_id when known."""
+            if not value:
+                return None
+            q = {by_field: value}
+            if _tenant:
+                q["school_id"] = _tenant
+            row = await gd_find_one(db.session, table, q)
+            # Last-resort: if tenant scoping returned nothing AND the user has no tenant
+            # (platform-level account or pre-link), allow unscoped lookup.
+            if not row and not _tenant:
+                row = await gd_find_one(db.session, table, {by_field: value})
+            return row
+
+        async def _persist_link(field: str, value: str):
+            try:
+                from engines.sql_utils import gd_update_one as _gd_update_one
+                await _gd_update_one(db.session, "users", {"id": user["id"]}, {field: value})
+            except Exception:
+                pass  # non-fatal; will retry on next request
+
         if user.get("role") == UserRole.TEACHER.value and not user.get("teacher_id"):
-            teacher = await gd_find_one(db.session, "teachers", {"email": user.get("email")})
+            # Prefer typed FK (teachers.user_id) — already deterministic, no scope needed.
+            teacher = await gd_find_one(db.session, "teachers", {"user_id": user.get("id")})
+            if not teacher:
+                teacher = await _scoped_lookup("teachers", "email", user.get("email"))
+            if not teacher:
+                teacher = await _scoped_lookup("teachers", "phone", user.get("phone"))
+            if not teacher:
+                teacher = await _scoped_lookup("teachers", "national_id", user.get("national_id"))
             if teacher:
                 user["teacher_id"] = teacher.get("id")
+                await _persist_link("teacher_id", teacher.get("id"))
 
         if user.get("role") == UserRole.STUDENT.value and not user.get("student_id"):
-            student = await gd_find_one(db.session, "students", {"email": user.get("email")})
+            # students table has no user_id column → use email/phone/national_id, tenant-scoped.
+            student = await _scoped_lookup("students", "email", user.get("email"))
+            if not student:
+                student = await _scoped_lookup("students", "phone", user.get("phone"))
+            if not student:
+                student = await _scoped_lookup("students", "national_id", user.get("national_id"))
             if student:
                 user["student_id"] = student.get("id")
+                await _persist_link("student_id", student.get("id"))
 
         if user.get("role") == UserRole.PARENT.value and not user.get("parent_id"):
             parent = None

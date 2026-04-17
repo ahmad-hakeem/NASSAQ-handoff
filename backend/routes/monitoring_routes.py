@@ -168,8 +168,15 @@ async def deployment_safety_check(current_user: dict = Depends(require_roles([Us
     try:
         db_ok, _ = await _pg_ping(db)
         if db_ok:
+            # B-05: replaced legacy MongoDB syntax (`db[coll].count_documents({})`)
+            # which always raised silently because Repos has no __getitem__.
+            from engines.sql_utils import gd_count
             for coll_name in ["users", "schools", "teachers", "students", "product_issues"]:
-                collection_counts[coll_name] = await db[coll_name].count_documents({})
+                try:
+                    collection_counts[coll_name] = await gd_count(db.session, coll_name, {})
+                except Exception as _ce:
+                    logger.warning(f"deployment-safety count for {coll_name} failed: {_ce}")
+                    collection_counts[coll_name] = None
     except (SQLAlchemyError, ConnectionError, OSError) as e:
         logger.error(f"Deployment safety check DB query failed: {e}")
     except Exception as e:

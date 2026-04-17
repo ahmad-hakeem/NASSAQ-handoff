@@ -299,6 +299,45 @@ async def get_class_students(
     return result
 
 
+@router.get("/students/me", response_model=StudentResponse)
+async def get_my_student_profile(current_user: dict = Depends(get_current_user)):
+    """E-03: Return the student row associated with the logged-in user.
+    Resolution order: enriched JWT student_id → email → phone → national_id."""
+    student = None
+    sid = current_user.get("student_id")
+    if sid:
+        student = await gd_find_one(db.session, "students", {"id": sid})
+
+    # Tenant-scoped fallback lookups to prevent cross-tenant resolution.
+    def _scoped(field, value):
+        q = {field: value}
+        if current_user.get("tenant_id"):
+            q["school_id"] = current_user.get("tenant_id")
+        return q
+
+    if not student and current_user.get("email"):
+        student = await gd_find_one(db.session, "students", _scoped("email", current_user.get("email")))
+    if not student and current_user.get("phone"):
+        student = await gd_find_one(db.session, "students", _scoped("phone", current_user.get("phone")))
+    if not student and current_user.get("national_id"):
+        student = await gd_find_one(db.session, "students", _scoped("national_id", current_user.get("national_id")))
+    if not student:
+        raise HTTPException(status_code=404, detail="لا يوجد ملف طالب مرتبط بالحساب")
+    # Defensive cross-tenant guard.
+    if current_user.get("tenant_id") and student.get("school_id") and student.get("school_id") != current_user.get("tenant_id"):
+        raise HTTPException(status_code=404, detail="لا يوجد ملف طالب مرتبط بالحساب")
+
+    class_name = None
+    if student.get("class_id"):
+        class_doc = await gd_find_one(db.session, "classes", {"id": student.get("class_id")})
+        if class_doc:
+            class_name = class_doc.get("name") or class_doc.get("name_ar")
+    if not student.get("full_name") and student.get("full_name_ar"):
+        student["full_name"] = student["full_name_ar"]
+    student["class_name"] = class_name
+    return StudentResponse(**student)
+
+
 @router.get("/students/{student_id}", response_model=StudentResponse)
 async def get_student(student_id: str, current_user: dict = Depends(get_current_user)):
     """Get student by ID"""

@@ -99,8 +99,12 @@ async def test_health_has_pool_stats(client: httpx.AsyncClient):
     assert pool["pool_size"] >= 1
     assert "checked_out" in pool
     assert isinstance(pool["checked_out"], int)
-    assert "overflow" in pool
-    assert isinstance(pool["overflow"], int)
+    # B-09: renamed `overflow` (raw signed counter) into two clearer keys.
+    assert "overflow_in_use" in pool
+    assert isinstance(pool["overflow_in_use"], int)
+    assert pool["overflow_in_use"] >= 0
+    assert "overflow_counter" in pool
+    assert isinstance(pool["overflow_counter"], int)
     assert "checked_in" in pool
     assert isinstance(pool["checked_in"], int)
 

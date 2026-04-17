@@ -745,7 +745,10 @@ async def import_calendar_ai(
             except Exception:
                 text_content = content.decode("utf-8", errors="replace")[:3000]
 
-        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        # B-24: standardise on AI_INTEGRATIONS_OPENAI_API_KEY across the codebase.
+        # Fall back to OPENAI_API_KEY for back-compat with older deployments.
+        _ai_key = os.getenv("AI_INTEGRATIONS_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
+        client = OpenAI(api_key=_ai_key)
         system_prompt = (
             "You are an Arabic academic calendar analyzer. "
             "Extract holidays and exam periods from the provided table data. "
