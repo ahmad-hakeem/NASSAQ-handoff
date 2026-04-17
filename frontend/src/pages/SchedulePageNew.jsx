@@ -27,6 +27,7 @@ import {
   Play, Star, Info, AlertCircle
 } from 'lucide-react';
 import { NotificationBell } from '../components/notifications/NotificationBell';
+import CandidatesSidePanel from '../components/schedule/CandidatesSidePanel';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 const DAYS = [
@@ -122,30 +123,51 @@ const SessionCard = ({ session, viewMode, onClick, isDraggable, onDragStart, isD
 };
 
 // ─── Empty Cell ───────────────────────────────────────────────────────────
-const EmptyCell = ({ isDropTarget, isGap }) => (
-  <div className={`w-full min-h-[80px] rounded-xl border-2 border-dashed relative
-    flex flex-col items-center justify-center gap-1 transition-all duration-200
-    ${isDropTarget
-      ? 'border-[#46C1BE] bg-[#46C1BE]/10 shadow-inner scale-[1.02]'
-      : isGap
-        ? 'border-red-300 bg-gradient-to-b from-red-50 to-amber-50/80 hover:border-red-400 hover:shadow-md'
-        : 'border-slate-200 bg-slate-50/50 hover:border-slate-300 hover:bg-slate-50'}`}>
-    {isDropTarget
-      ? <span className="text-[#46C1BE] text-[10px] font-bold select-none">انقل هنا ↓</span>
-      : isGap
-        ? <>
-            <div className="absolute top-1 left-1 w-4 h-4 rounded-full bg-red-500 flex items-center justify-center animate-pulse">
-              <span className="text-white text-[8px] font-black">!</span>
-            </div>
-            <svg className="h-5 w-5 text-red-400 mb-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M12 9v4m0 4h.01M12 2a10 10 0 100 20 10 10 0 000-20z" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            <span className="text-red-600 text-[10px] font-extrabold select-none leading-tight text-center">غير مستوفية</span>
-            <span className="text-red-400 text-[8px] font-medium select-none">تحتاج تعيين مادة</span>
-          </>
-        : <span className="text-slate-300 text-[10px] select-none">—</span>}
-  </div>
-);
+const EmptyCell = ({ isDropTarget, isGap, canPick, onPick }) => {
+  const Tag = canPick ? 'button' : 'div';
+  return (
+    <Tag
+      type={canPick ? 'button' : undefined}
+      onClick={canPick ? onPick : undefined}
+      className={`w-full min-h-[80px] rounded-xl border-2 border-dashed relative
+        flex flex-col items-center justify-center gap-1 transition-all duration-200 text-center
+        ${canPick ? 'cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#46C1BE]/50' : ''}
+        ${isDropTarget
+          ? 'border-[#46C1BE] bg-[#46C1BE]/10 shadow-inner scale-[1.02]'
+          : isGap
+            ? 'border-red-300 bg-gradient-to-b from-red-50 to-amber-50/80 hover:border-red-400 hover:shadow-md'
+            : canPick
+              ? 'border-[#2BB5A0]/40 bg-[#2BB5A0]/5 hover:border-[#2BB5A0] hover:bg-[#2BB5A0]/10'
+              : 'border-slate-200 bg-slate-50/50 hover:border-slate-300 hover:bg-slate-50'}`}
+    >
+      {isDropTarget ? (
+        <span className="text-[#46C1BE] text-[10px] font-bold select-none">انقل هنا ↓</span>
+      ) : isGap ? (
+        <>
+          <div className="absolute top-1 left-1 w-4 h-4 rounded-full bg-red-500 flex items-center justify-center animate-pulse">
+            <span className="text-white text-[8px] font-black">!</span>
+          </div>
+          <svg className="h-5 w-5 text-red-400 mb-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path d="M12 9v4m0 4h.01M12 2a10 10 0 100 20 10 10 0 000-20z" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          <span className="text-red-600 text-[10px] font-extrabold select-none leading-tight">غير مستوفية</span>
+          {canPick
+            ? <span className="text-red-500 text-[9px] font-bold select-none underline">اختر معلم ←</span>
+            : <span className="text-red-400 text-[8px] font-medium select-none">تحتاج تعيين مادة</span>}
+        </>
+      ) : canPick ? (
+        <>
+          <svg className="h-4 w-4 text-[#2BB5A0]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12 5v14M5 12h14" strokeLinecap="round"/>
+          </svg>
+          <span className="text-[#2BB5A0] text-[10px] font-bold select-none">اختر معلم</span>
+        </>
+      ) : (
+        <span className="text-slate-300 text-[10px] select-none">—</span>
+      )}
+    </Tag>
+  );
+};
 
 // ─── Break Row ─────────────────────────────────────────────────────────────
 const BreakRow = ({ slot }) => {
@@ -227,8 +249,18 @@ export default function SchedulePageNew() {
   const [draggingSessionId, setDraggingSessionId] = useState(null);
   const [dropTargetCell, setDropTargetCell]       = useState(null);
 
+  // Candidates side-panel state
+  const [candidatesPanelOpen, setCandidatesPanelOpen] = useState(false);
+  const [activeSlot, setActiveSlot] = useState(null); // { class_id, class_name, day_of_week, period_number, ... }
+
   const { nassaqError, nassaqWarning } = useNassaqAlert();
   const schoolId = user?.tenant_id;
+
+  // Principal/deputy may pick candidates for empty cells
+  const canPickCandidates =
+    user?.role === 'school_principal'
+    || user?.role === 'school_sub_admin'
+    || user?.role === 'platform_admin';
 
   // ── Fetch base data ────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
@@ -460,6 +492,88 @@ export default function SchedulePageNew() {
       }
     }
   }, [sessions, api, nassaqWarning, fetchSessions]);
+
+  // ── Candidates side-panel handlers ─────────────────────────────────────
+  const openCandidatesForCell = useCallback((dayKey, periodNum) => {
+    if (!selectedClass || !selectedTimetableId) return;
+    const cls = classes.find(c => c.id === selectedClass);
+    setActiveSlot({
+      timetable_id: selectedTimetableId,
+      class_id: selectedClass,
+      class_name: cls?.name || cls?.name_ar || '',
+      day_of_week: dayKey,
+      period_number: periodNum,
+    });
+    setCandidatesPanelOpen(true);
+  }, [selectedClass, selectedTimetableId, classes]);
+
+  const findNextEmptyCell = useCallback((fromDay, fromPeriod) => {
+    if (!selectedClass) return null;
+    const order = [];
+    for (const slot of timeSlots) {
+      if (slot.is_break || slot.is_prayer) continue;
+      const pn = slot.period_number || slot.slot_number;
+      for (const day of DAYS) {
+        order.push({ day: day.key, period: pn });
+      }
+    }
+    const startIdx = order.findIndex(o => o.day === fromDay && o.period === fromPeriod);
+    const search = startIdx >= 0
+      ? [...order.slice(startIdx + 1), ...order.slice(0, startIdx + 1)]
+      : order;
+    for (const o of search) {
+      const exists = sessions.some(s =>
+        (s.day_of_week || s.day) === o.day
+        && (s.period_number === o.period || s.slot_number === o.period)
+        && s.class_id === selectedClass
+      );
+      if (!exists) return o;
+    }
+    return null;
+  }, [timeSlots, sessions, selectedClass]);
+
+  const handleSlotAssigned = useCallback((sessionDoc, candidate) => {
+    // Optimistic add
+    setSessions(prev => [...prev, sessionDoc]);
+    // Toast with undo
+    toast.success(
+      `تم تعيين ${candidate?.teacher_name || sessionDoc.teacher_name} للحصة`,
+      {
+        duration: 8000,
+        action: {
+          label: 'تراجع',
+          onClick: async () => {
+            try {
+              await api.post('/schedule/slots/unassign', { session_id: sessionDoc.id });
+              setSessions(prev => prev.filter(s => s.id !== sessionDoc.id));
+              toast.success('تم التراجع عن التعيين');
+            } catch (err) {
+              toast.error(err.response?.data?.detail || 'تعذّر التراجع');
+            }
+          },
+        },
+      }
+    );
+  }, [api]);
+
+  const handleSkipToNextEmpty = useCallback(() => {
+    if (!activeSlot) return;
+    const next = findNextEmptyCell(activeSlot.day_of_week, activeSlot.period_number);
+    if (next) {
+      const cls = classes.find(c => c.id === selectedClass);
+      setActiveSlot({
+        timetable_id: selectedTimetableId,
+        class_id: selectedClass,
+        class_name: cls?.name || cls?.name_ar || '',
+        day_of_week: next.day,
+        period_number: next.period,
+      });
+    } else {
+      setCandidatesPanelOpen(false);
+      setActiveSlot(null);
+      toast.success('🎉 تم تعبئة جميع الخانات الفارغة لهذا الفصل');
+    }
+  }, [activeSlot, findNextEmptyCell, classes, selectedClass, selectedTimetableId]);
 
   // ── Derived ─────────────────────────────────────────────────────────────
   const currentFilter = viewMode === 'class' ? selectedClass : selectedTeacher;
@@ -942,7 +1056,17 @@ export default function SchedulePageNew() {
                                     isDragging={draggingSessionId === session.id}
                                   />
                                 ) : (
-                                  <EmptyCell isDropTarget={isTarget} isGap={isCellGap} />
+                                  <EmptyCell
+                                    isDropTarget={isTarget}
+                                    isGap={isCellGap}
+                                    canPick={
+                                      canPickCandidates
+                                      && canDragDrop
+                                      && viewMode === 'class'
+                                      && !!selectedClass
+                                    }
+                                    onPick={() => openCandidatesForCell(day.key, slotPeriodNum)}
+                                  />
                                 )}
                               </td>
                             );
@@ -1221,6 +1345,18 @@ export default function SchedulePageNew() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* ── CANDIDATES SIDE PANEL ─────────────────────────────────── */}
+        <CandidatesSidePanel
+          open={candidatesPanelOpen}
+          onOpenChange={(o) => { setCandidatesPanelOpen(o); if (!o) setActiveSlot(null); }}
+          slot={activeSlot}
+          api={api}
+          teachers={teachers}
+          subjectsForClass={[]}
+          onAssigned={handleSlotAssigned}
+          onSkipNext={handleSkipToNextEmpty}
+        />
 
       </div>
     </Sidebar>
