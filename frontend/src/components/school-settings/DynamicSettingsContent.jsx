@@ -49,7 +49,7 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
     handleAddBreak, handleEditBreak, handleDeleteBreak,
     handleAddUnavailability, handleDeleteUnavailability,
     handleCreateClassAssignment, handleDeleteClassAssignment,
-    nassaqWarning, user, api, setAssignments, handleOpenNoorImport,
+    nassaqWarning, nassaqError, user, api, setAssignments, handleOpenNoorImport,
   } = hook;
 
   return (
@@ -503,7 +503,11 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
                     const schoolId = user?.tenant_id || user?.school_id || 'SCH-001';
                     api.post('/teacher-assignments', { teacher_id: teacher.id, subject_id: subject.id, school_id: schoolId })
                       .then(res => { const realId = res.data?.id || res.data?.assignment_id || tempId; setAssignments(prev => prev.map(a => a.id === tempId ? { ...a, id: realId, _optimistic: false } : a)); })
-                      .catch(err => { setAssignments(prev => prev.filter(a => a.id !== tempId)); });
+                      .catch(err => {
+                        setAssignments(prev => prev.filter(a => a.id !== tempId));
+                        const msg = err?.response?.data?.detail || err?.response?.data?.error?.message || err?.message || 'تعذّر إسناد المادة للمعلم';
+                        nassaqError(msg);
+                      });
                   }
                 }
               }}

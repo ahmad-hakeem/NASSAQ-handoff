@@ -282,7 +282,7 @@ class TeacherAssignment(Base):
     id = Column(String, primary_key=True, default=_uuid)
     school_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=False, index=True)
     teacher_id = Column(String, ForeignKey("teachers.id", ondelete="CASCADE"), nullable=False, index=True)
-    class_id = Column(String, ForeignKey("classes.id", ondelete="CASCADE"), nullable=False)
+    class_id = Column(String, ForeignKey("classes.id", ondelete="CASCADE"), nullable=True)
     subject_id = Column(String, ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False)
     weekly_sessions = Column(Integer, default=4)
     periods_per_week = Column(Integer, default=4)
