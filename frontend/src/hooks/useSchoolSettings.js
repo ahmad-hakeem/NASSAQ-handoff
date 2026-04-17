@@ -442,7 +442,16 @@ export function useSchoolSettings() {
   };
 
   const getTeacherAssignments = (teacherId) => {
-    return assignments.filter(a => a.teacher_id === teacherId);
+    const all = assignments.filter(a => a.teacher_id === teacherId);
+    const seen = new Set();
+    const deduped = [];
+    for (const a of all) {
+      const key = a.subject_id;
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      deduped.push(a);
+    }
+    return deduped;
   };
 
   const getSubjectById = (subjectId) => {

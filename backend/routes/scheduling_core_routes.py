@@ -112,9 +112,10 @@ async def create_teacher_assignment(
         "teacher_id": assignment_data.teacher_id,
         "subject_id": assignment_data.subject_id,
         "school_id": school_id,
+        "class_id": assignment_data.class_id,
         "is_active": True
     }
-    
+
     existing = await gd_find_one(db.session, "teacher_assignments", duplicate_check)
     if existing:
         teacher_doc = await gd_find_one(db.session, "teachers", {"id": assignment_data.teacher_id})
@@ -123,10 +124,13 @@ async def create_teacher_assignment(
             subject_doc = await gd_find_one(db.session, "reference_subjects", {"id": assignment_data.subject_id})
         teacher_name = (teacher_doc.get("full_name_ar") or teacher_doc.get("full_name")) if teacher_doc else "المعلم"
         subject_name = (subject_doc.get("name_ar") or subject_doc.get("name")) if subject_doc else "المادة"
-        raise HTTPException(
-            status_code=409,
-            detail=f"هذه المادة ({subject_name}) مسندة بالفعل لهذا المعلم ({teacher_name}). لا يمكن تكرار نفس الإسناد."
-        )
+        if assignment_data.class_id:
+            class_doc = await gd_find_one(db.session, "classes", {"id": assignment_data.class_id})
+            class_name = (class_doc.get("name") or class_doc.get("name_ar")) if class_doc else "الفصل"
+            detail = f"المادة ({subject_name}) مسندة بالفعل للمعلم ({teacher_name}) في الفصل ({class_name})."
+        else:
+            detail = f"المادة ({subject_name}) مسندة بالفعل للمعلم ({teacher_name}) كاختصاص عام."
+        raise HTTPException(status_code=409, detail=detail)
     
     assignment_id = str(uuid.uuid4())
     assignment_doc = {
@@ -212,7 +216,7 @@ async def get_teacher_assignments(
     if class_id:
         query["class_id"] = class_id
     
-    assignments = await gd_find(db.session, "teacher_assignments", query, limit=500)
+    assignments = await gd_find(db.session, "teacher_assignments", query, limit=20000)
     
     # Get all related entities
     teacher_ids = list(set(a.get("teacher_id") for a in assignments))
