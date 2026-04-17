@@ -15,6 +15,8 @@ from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 from datetime import datetime, timezone
 from enum import Enum
+import asyncio
+import time as _time
 import logging, os
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_aggregate
 from dependencies import get_current_user
@@ -108,7 +110,43 @@ def _parse_working_days_from_settings(settings):
     return []
 
 
+# ── In-memory TTL cache + single-flight lock ────────────────────────────────
+# The readiness function issues ~15 sequential DB queries on a shared session
+# (~3s/call). It is called by both `/principal/timetable/readiness` and
+# `/timetable-readiness/check`, often nearly simultaneously on page load.
+# We cache its result per school for a short window to keep the page snappy.
+_READINESS_TTL_SEC = 30.0
+_readiness_cache: Dict[str, tuple] = {}            # school_id -> (expires_at, payload)
+_readiness_locks: Dict[str, asyncio.Lock] = {}     # school_id -> single-flight lock
+
+
+def invalidate_readiness_cache(school_id: Optional[str] = None) -> None:
+    """Drop cached readiness result(s). Called by mutating endpoints if needed."""
+    if school_id is None:
+        _readiness_cache.clear()
+    else:
+        _readiness_cache.pop(school_id, None)
+
+
 async def _run_readiness_checks(school_id: str):
+    now = _time.monotonic()
+    cached = _readiness_cache.get(school_id)
+    if cached and cached[0] > now:
+        return cached[1]
+
+    lock = _readiness_locks.setdefault(school_id, asyncio.Lock())
+    async with lock:
+        # Re-check after acquiring the lock — another waiter may have populated it.
+        cached = _readiness_cache.get(school_id)
+        now = _time.monotonic()
+        if cached and cached[0] > now:
+            return cached[1]
+        result = await _run_readiness_checks_impl(school_id)
+        _readiness_cache[school_id] = (now + _READINESS_TTL_SEC, result)
+        return result
+
+
+async def _run_readiness_checks_impl(school_id: str):
     settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id}) or {}
 
     active_days = _parse_working_days_from_settings(settings)
