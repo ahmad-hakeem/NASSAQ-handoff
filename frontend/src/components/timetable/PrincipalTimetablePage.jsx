@@ -415,10 +415,18 @@ const PrincipalTimetablePage = () => {
   const loadPageData = useCallback(async () => {
     setPageStatus('loading');
     setErrorMessage(null);
+
+    // Readiness check is the slowest endpoint (~2–3s on first load — runs ~15
+    // sequential DB queries on a shared session). It is informational only and
+    // does not gate the timetable grid, so we kick it off in the background and
+    // do NOT block the page render on it.
+    fetchReadiness().catch((err) => {
+      console.error('Readiness fetch error (non-blocking):', err);
+    });
+
     try {
-      const [, , versions] = await Promise.all([
+      const [, versions] = await Promise.all([
         fetchSummary(),
-        fetchReadiness(),
         fetchVersions(),
         fetchFilterOptions(),
         fetchClassUnavailability()
