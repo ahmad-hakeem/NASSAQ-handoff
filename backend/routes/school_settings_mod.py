@@ -1974,13 +1974,15 @@ async def _auto_populate_teacher_class_assignments(school_id: str):
                 "school_id": school_id,
                 "teacher_id": t["id"],
                 "class_id": c["id"],
-                "academic_year_id": academic_year_id,
-                "auto_assigned": True,
+                "is_active": True,
                 "created_at": now,
-                "updated_at": now,
             }
-            await gd_upsert(db.session, "teacher_class_assignments", filt, doc)
-            upserted += 1
+            try:
+                async with db.session.begin_nested():
+                    await gd_upsert(db.session, "teacher_class_assignments", filt, doc)
+                upserted += 1
+            except Exception as e:
+                logger.warning(f"auto-populate upsert failed for teacher={t['id']} class={c['id']}: {e}")
     return upserted
 
 
@@ -2004,12 +2006,14 @@ async def _ensure_teacher_linked_to_all_classes(school_id: str, teacher_id: str)
             "teacher_id": teacher_id,
             "class_id": c["id"],
             "school_id": school_id,
-            "academic_year_id": academic_year_id,
-            "auto_assigned": True,
+            "is_active": True,
             "created_at": now,
-            "updated_at": now,
         }
-        await gd_upsert(db.session, "teacher_class_assignments", filt, doc)
+        try:
+            async with db.session.begin_nested():
+                await gd_upsert(db.session, "teacher_class_assignments", filt, doc)
+        except Exception as e:
+            logger.warning(f"_ensure_teacher_linked upsert failed teacher={teacher_id} class={c['id']}: {e}")
 
 
 async def _ensure_class_linked_to_all_teachers(school_id: str, class_id: str):
@@ -2032,12 +2036,14 @@ async def _ensure_class_linked_to_all_teachers(school_id: str, class_id: str):
             "teacher_id": t["id"],
             "class_id": class_id,
             "school_id": school_id,
-            "academic_year_id": academic_year_id,
-            "auto_assigned": True,
+            "is_active": True,
             "created_at": now,
-            "updated_at": now,
         }
-        await gd_upsert(db.session, "teacher_class_assignments", filt, doc)
+        try:
+            async with db.session.begin_nested():
+                await gd_upsert(db.session, "teacher_class_assignments", filt, doc)
+        except Exception as e:
+            logger.warning(f"_ensure_class_linked upsert failed teacher={t['id']} class={class_id}: {e}")
 
 
 @router.get("/teacher-class-assignments")
@@ -2123,12 +2129,11 @@ async def create_teacher_class_assignment(
     if not school_id:
         raise HTTPException(status_code=400, detail="Missing school context")
     
-    # Check if assignment already exists
+    # Check if assignment already exists (model has no academic_year_id column)
     existing = await gd_find_one(db.session, "teacher_class_assignments", {
         "school_id": school_id,
         "teacher_id": assignment.teacher_id,
         "class_id": assignment.class_id,
-        "academic_year_id": assignment.academic_year_id
     })
     
     if existing:
@@ -2142,15 +2147,14 @@ async def create_teacher_class_assignment(
             nested = settings.get("settings", {})
             academic_year_id = nested.get("academic_year") or settings.get("academicYear")
     
-    # Create new assignment
+    # Create new assignment (model has no academic_year_id / updated_at columns)
     new_assignment = {
         "id": str(uuid.uuid4()),
         "teacher_id": assignment.teacher_id,
         "class_id": assignment.class_id,
         "school_id": school_id,
-        "academic_year_id": academic_year_id,
+        "is_active": True,
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "updated_at": datetime.now(timezone.utc).isoformat()
     }
     
     await gd_insert(db.session, "teacher_class_assignments", new_assignment)

@@ -651,7 +651,7 @@ export function useSchoolSettings() {
   const loadClassAssignments = async () => {
     setClassAssignmentsLoading(true);
     try {
-      const res = await api.get('/teacher-class-assignments?page_size=1000');
+      const res = await api.get('/teacher-class-assignments?page_size=20000');
       setClassAssignments(res.data?.data || res.data || []);
     } catch (error) {
       console.error('Error loading class assignments:', error);
@@ -679,6 +679,14 @@ export function useSchoolSettings() {
       setClassAssignments(prev => prev.filter(a => a.id !== assignmentId));
       toast.success('تم حذف الإسناد بنجاح');
     } catch (error) {
+      // If the assignment already doesn't exist on the server (stale optimistic state),
+      // drop it from local state and resync instead of surfacing an error.
+      if (error?.response?.status === 404) {
+        setClassAssignments(prev => prev.filter(a => a.id !== assignmentId));
+        await loadClassAssignments();
+        toast.success('تم حذف الإسناد بنجاح');
+        return;
+      }
       nassaqError('فشل في حذف الإسناد');
     }
   };
