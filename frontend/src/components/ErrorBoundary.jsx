@@ -3,7 +3,7 @@ import React from 'react';
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false, error: null, errorInfo: null, showDetails: false };
   }
 
   static getDerivedStateFromError(error) {
@@ -12,7 +12,12 @@ class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, errorInfo) {
     console.error('ErrorBoundary caught:', error, errorInfo);
+    this.setState({ errorInfo });
   }
+
+  toggleDetails = () => {
+    this.setState((s) => ({ showDetails: !s.showDetails }));
+  };
 
   handleReload = () => {
     window.location.reload();
@@ -56,6 +61,27 @@ class ErrorBoundary extends React.Component {
                 الصفحة الرئيسية
               </button>
             </div>
+
+            {process.env.NODE_ENV !== 'production' && this.state.error && (
+              <div className="text-start">
+                <button
+                  onClick={this.toggleDetails}
+                  className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 underline"
+                  dir="ltr"
+                >
+                  {this.state.showDetails ? 'Hide details' : 'Show technical details'}
+                </button>
+                {this.state.showDetails && (
+                  <pre
+                    dir="ltr"
+                    className="mt-3 p-3 max-h-72 overflow-auto text-[11px] leading-relaxed text-left bg-gray-900 text-red-200 rounded-lg whitespace-pre-wrap break-words"
+                  >
+                    {String(this.state.error?.stack || this.state.error?.message || this.state.error)}
+                    {this.state.errorInfo?.componentStack ? `\n\nComponent stack:${this.state.errorInfo.componentStack}` : ''}
+                  </pre>
+                )}
+              </div>
+            )}
           </div>
         </div>
       );
