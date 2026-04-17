@@ -19,7 +19,7 @@ from models.enums import UserRole
 from utils.tenant_scope import resolve_school_id
 from routes._publish_gate import assert_publishable
 
-PRINCIPAL_ROLES = [UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL]
+PRINCIPAL_ROLES = [UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]
 
 
 async def principal_school_id(
