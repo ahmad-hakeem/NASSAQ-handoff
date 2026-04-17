@@ -32,7 +32,11 @@ const StudentPortalDashboard = () => {
     const fetchAll = async () => {
       setError(false);
       try {
-        const headers = { Authorization: `Bearer ${token}` };
+        // FIX (B2): All three endpoints DO exist on the backend
+        // (student_portal_routes.py: /dashboard, /activities, /points).
+        // The dashboard call is required; points/activities are optional —
+        // if they fail (network/permission) we degrade gracefully instead
+        // of blanking the whole screen.
         const [dashRes, pointsRes, actRes] = await Promise.all([
           api.get('/student-portal/dashboard'),
           api.get('/student-portal/points').catch(() => ({ data: null })),

@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field, EmailStr
 from enum import Enum
 
 from sqlalchemy import select, func, or_
+from sqlalchemy.exc import IntegrityError
 
 from engines.sql_utils import (
     model_to_dict, models_to_dicts, dict_to_model, apply_updates,
@@ -134,8 +135,20 @@ class StudentManagementEngine:
             result = await self.session.execute(stmt)
             count = result.scalar() or 0
 
-            seq_num = str(count + 1).zfill(4)
-            return f"{prefix}{seq_num}"
+            # FIX (B9): Two concurrent student creations can both read the same
+            # `count` value and produce identical student_numbers, breaking the
+            # unique constraint. Probe for a free slot up to 20 times, then fall
+            # back to a timestamp+random suffix that cannot collide.
+            for offset in range(1, 21):
+                candidate = f"{prefix}{str(count + offset).zfill(4)}"
+                exists_stmt = select(Student.id).where(Student.student_number == candidate).limit(1)
+                exists_result = await self.session.execute(exists_stmt)
+                if exists_result.scalar() is None:
+                    return candidate
+
+            timestamp = datetime.now().strftime("%y%m%d%H%M%S")
+            random_suffix = ''.join(secrets.choice(string.digits) for _ in range(4))
+            return f"{prefix}{timestamp}{random_suffix}"
         except Exception as e:
             logger.error(f"Error generating student ID: {e}")
             timestamp = datetime.now().strftime("%y%m%d%H%M")
@@ -258,9 +271,6 @@ class StudentManagementEngine:
             if not validation["valid"]:
                 return {"success": False, "error": validation["message"], "error_en": validation["message_en"]}
 
-            student_id_formatted = await self._generate_student_id(tenant_id)
-            qr_code = self._generate_qr_code(student_id_formatted)
-
             parent_result = await self._create_or_link_parent(
                 request.parent_info,
                 tenant_id,
@@ -268,24 +278,6 @@ class StudentManagementEngine:
             )
 
             now = datetime.now(timezone.utc)
-            student_obj = Student(
-                id=str(uuid.uuid4()),
-                full_name=request.basic_info.full_name_ar,
-                full_name_en=request.basic_info.full_name_en,
-                student_number=student_id_formatted,
-                national_id=request.basic_info.national_id,
-                date_of_birth=request.basic_info.date_of_birth,
-                gender=request.basic_info.gender.value,
-                qr_code=qr_code,
-                grade=request.basic_info.grade_id,
-                class_id=request.basic_info.section_id,
-                parent_id=parent_result.get("parent_id"),
-                school_id=tenant_id,
-                is_active=True,
-                created_at=now,
-                updated_at=now,
-            )
-
             extra_data = {
                 "nationality": request.basic_info.nationality,
                 "health_info": request.health_info.dict() if request.health_info else None,
@@ -294,11 +286,53 @@ class StudentManagementEngine:
                 "created_by": created_by,
                 "updated_by": created_by,
             }
-            if hasattr(student_obj, "data"):
-                student_obj.data = extra_data
 
-            self.session.add(student_obj)
-            await self.session.flush()
+            # FIX (B9): Even with a probe in `_generate_student_id`, two concurrent
+            # creations can race between probe and INSERT. Wrap the INSERT in a
+            # retry loop on IntegrityError using a SAVEPOINT so a duplicate
+            # `student_number` collision causes a regenerate-and-retry rather
+            # than aborting the whole request transaction.
+            student_id_formatted = None
+            qr_code = None
+            last_error = None
+            for attempt in range(5):
+                student_id_formatted = await self._generate_student_id(tenant_id)
+                qr_code = self._generate_qr_code(student_id_formatted)
+
+                student_obj = Student(
+                    id=str(uuid.uuid4()),
+                    full_name=request.basic_info.full_name_ar,
+                    full_name_en=request.basic_info.full_name_en,
+                    student_number=student_id_formatted,
+                    national_id=request.basic_info.national_id,
+                    date_of_birth=request.basic_info.date_of_birth,
+                    gender=request.basic_info.gender.value,
+                    qr_code=qr_code,
+                    grade=request.basic_info.grade_id,
+                    class_id=request.basic_info.section_id,
+                    parent_id=parent_result.get("parent_id"),
+                    school_id=tenant_id,
+                    is_active=True,
+                    created_at=now,
+                    updated_at=now,
+                )
+                if hasattr(student_obj, "data"):
+                    student_obj.data = extra_data
+
+                try:
+                    async with self.session.begin_nested():
+                        self.session.add(student_obj)
+                        await self.session.flush()
+                    break
+                except IntegrityError as ie:
+                    last_error = ie
+                    logger.warning(
+                        f"Student INSERT collided on attempt {attempt + 1} "
+                        f"(student_number={student_id_formatted}); retrying."
+                    )
+                    continue
+            else:
+                raise last_error or RuntimeError("Failed to generate unique student_number after 5 attempts")
 
             user_result = await self._create_student_user_account(
                 {"student_id": student_id_formatted, "full_name_ar": request.basic_info.full_name_ar, "full_name_en": request.basic_info.full_name_en},

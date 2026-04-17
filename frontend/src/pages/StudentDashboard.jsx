@@ -41,42 +41,47 @@ export default function StudentDashboard() {
         return;
       }
       
-      const response = await api.get(`/student/dashboard/${studentId}`);
-      
+      // FIX (B1): The legacy `/student/dashboard/{id}` endpoint does not exist.
+      // The canonical endpoint is `/student-portal/dashboard` which derives the
+      // student from the authenticated user — no ID needed in the URL.
+      const response = await api.get(`/student-portal/dashboard`);
+
       if (response?.data) {
         const data = response.data;
-        
+
         setStudentData({
           name: data.student?.name || user?.full_name,
           className: data.student?.class_name || 'غير محدد',
           schoolId: data.student?.school_id
         });
-        
+
+        // Map the canonical /student-portal/dashboard shape to this legacy view.
         setStats({
-          attendanceRate: data.stats?.attendance_rate || 0,
-          averageGrade: data.stats?.average_grade || 0,
-          presentDays: data.stats?.present_days || 0,
-          absentDays: data.stats?.absent_days || 0,
-          todayLessons: data.today_schedule?.map(lesson => ({
-            time: lesson.time,
+          attendanceRate: data.attendance?.rate || 0,
+          averageGrade: data.average_score || 0,
+          presentDays: data.attendance?.present || 0,
+          absentDays: data.attendance?.absent || 0,
+          todayLessons: (data.today_schedule || []).map(lesson => ({
+            time: lesson.start_time || lesson.time,
             period: lesson.period,
             subject: lesson.subject,
             teacher: lesson.teacher,
             room: lesson.room || ''
-          })) || []
+          }))
         });
-        
-        setGrades(data.recent_grades?.map(g => ({
+
+        // FIX: Prefer the canonical `percentage` (0-100) over raw `score`
+        // because grades stored against `max_score != 100` would otherwise
+        // render incorrectly when the legacy view formats them as a percent.
+        setGrades((data.recent_grades || []).map(g => ({
           subject: g.subject,
-          grade: g.grade,
+          grade: g.percentage ?? g.score ?? g.grade,
           date: g.date
-        })) || []);
-        
-        setNotifications(data.notifications?.map(n => ({
-          title: n.title || n.message,
-          time: n.time ? new Date(n.time).toLocaleDateString('ar-SA') : 'مؤخراً',
-          type: n.type || 'info'
-        })) || []);
+        })));
+
+        // Backend returns a count of unread notifications; legacy view expects an array.
+        // Render an empty list — the standalone notifications page handles the full feed.
+        setNotifications([]);
       }
     } catch (error) {
       console.error('Error fetching student data:', error);

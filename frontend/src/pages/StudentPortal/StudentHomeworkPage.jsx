@@ -81,12 +81,17 @@ const StudentHomeworkPage = () => {
     }
   };
 
+  // FIX (B3): Backend returns one of {pending, submitted, graded, late} —
+  // not {completed, overdue}. Map all four to the correct color/label so the
+  // status badge renders correctly for every assignment.
   const getStatusColor = (status) => {
     switch (status) {
-      case 'completed':
+      case 'graded':
+      case 'submitted':
         return 'bg-green-100 text-green-700 border-green-200';
-      case 'overdue':
+      case 'late':
         return 'bg-red-100 text-red-700 border-red-200';
+      case 'pending':
       default:
         return 'bg-amber-100 text-amber-700 border-amber-200';
     }
@@ -95,27 +100,36 @@ const StudentHomeworkPage = () => {
   const getStatusLabel = (status) => {
     const labels = {
       pending: t('pending5'),
-      completed: isRTL ? 'مكتمل' : 'Completed',
-      overdue: isRTL ? 'متأخر' : 'Overdue'
+      submitted: isRTL ? 'مُسلَّم' : 'Submitted',
+      graded: isRTL ? 'مُقيَّم' : 'Graded',
+      late: isRTL ? 'متأخر' : 'Late',
     };
     return labels[status] || status;
   };
 
+  // FIX (B7 frontend integration): The backend may now return assignments with
+  // a null/missing `due_date` (instead of fabricating one). Guard both helpers
+  // so they show a neutral label rather than rendering "Invalid Date" or a
+  // misleading "overdue X days" derived from epoch math.
   const formatDate = (dateStr) => {
+    if (!dateStr) return isRTL ? 'بدون موعد نهائي' : 'No due date';
     try {
       const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return isRTL ? 'بدون موعد نهائي' : 'No due date';
       return date.toLocaleDateString('ar-SA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
     } catch (e) {
       console.error('Error formatting date:', e);
-      return dateStr;
+      return isRTL ? 'بدون موعد نهائي' : 'No due date';
     }
   };
 
   const getDaysRemaining = (dueDate) => {
-    const today = new Date();
+    if (!dueDate) return isRTL ? 'بدون موعد' : 'No deadline';
     const due = new Date(dueDate);
+    if (isNaN(due.getTime())) return isRTL ? 'بدون موعد' : 'No deadline';
+    const today = new Date();
     const diff = Math.ceil((due - today) / (1000 * 60 * 60 * 24));
-    
+
     if (diff < 0) return isRTL ? `متأخر ${Math.abs(diff)} يوم` : `${Math.abs(diff)} days overdue`;
     if (diff === 0) return t('today2');
     if (diff === 1) return t('tomorrow');

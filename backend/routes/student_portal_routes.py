@@ -1130,58 +1130,76 @@ def setup_homework_routes(router, db, get_current_user, require_roles, UserRole)
         
         # Get assignments
         assignments = await gd_find(db.session, "student_assignments", query, order_by="due_date", desc_order=True, limit=100)
-        
+
         # Get student submissions
         submissions = await gd_find(db.session, "assignment_submissions", {"student_id": student_id}, limit=500)
-        
+
         submission_map = {s.get("assignment_id"): s for s in submissions}
-        
+
+        # FIX (B4): Eliminate N+1 queries by batch-loading every subject and teacher
+        # referenced by the assignment list with a single $in query per collection.
+        subject_ids = list({a.get("subject_id") for a in assignments if a.get("subject_id")})
+        teacher_ids = list({a.get("teacher_id") for a in assignments if a.get("teacher_id")})
+
+        subject_map: dict = {}
+        if subject_ids:
+            subjects_rows = await gd_find(db.session, "subjects", {"id": {"$in": subject_ids}}, limit=len(subject_ids))
+            subject_map = {s.get("id"): s for s in subjects_rows}
+            missing_subject_ids = [sid for sid in subject_ids if sid not in subject_map]
+            if missing_subject_ids:
+                ref_rows = await gd_find(db.session, "reference_subjects", {"id": {"$in": missing_subject_ids}}, limit=len(missing_subject_ids))
+                for s in ref_rows:
+                    subject_map[s.get("id")] = s
+
+        teacher_map: dict = {}
+        if teacher_ids:
+            teachers_rows = await gd_find(db.session, "teachers", {"id": {"$in": teacher_ids}}, limit=len(teacher_ids))
+            teacher_map = {t.get("id"): t for t in teachers_rows}
+
         # Enrich assignments
         result = []
         now = datetime.now(timezone.utc)
-        
+
         for a in assignments:
             assignment_id = a.get("id")
             submission = submission_map.get(assignment_id)
-            
-            # Determine status
+
+            # FIX (B7): If due_date is missing/unparseable, leave it as None instead
+            # of silently inventing a fake one (now + 7 days). Such an assignment
+            # can never be considered "late" until a real due_date is provided.
             due_date_str = a.get("due_date")
+            due_date = None
             try:
-                if isinstance(due_date_str, str):
+                if isinstance(due_date_str, str) and due_date_str:
                     due_date = datetime.fromisoformat(due_date_str.replace('Z', '+00:00'))
-                else:
+                elif isinstance(due_date_str, datetime):
                     due_date = due_date_str
             except Exception as e:
-                logger.debug(f"Failed to parse due_date '{due_date_str}': {e}")
-                due_date = now + timedelta(days=7)
-            
+                logger.warning(f"Assignment {assignment_id} has unparseable due_date '{due_date_str}': {e}")
+                due_date = None
+
             if submission:
                 if submission.get("grade") is not None:
                     a_status = "graded"
                 else:
                     a_status = "submitted"
-            elif due_date < now:
+            elif due_date is not None and due_date < now:
                 a_status = "late"
             else:
                 a_status = "pending"
-            
+
             if status and a_status != status:
                 continue
-            
-            # Get subject name
-            subject = await gd_find_one(db.session, "subjects", {"id": a.get("subject_id")})
-            if not subject:
-                subject = await gd_find_one(db.session, "reference_subjects", {"id": a.get("subject_id")})
-            
-            # Get teacher name
-            teacher = await gd_find_one(db.session, "teachers", {"id": a.get("teacher_id")})
-            
+
+            subject = subject_map.get(a.get("subject_id"))
+            teacher = teacher_map.get(a.get("teacher_id"))
+
             result.append({
                 "id": assignment_id,
                 "title": a.get("title", ""),
                 "description": a.get("description", ""),
                 "subject_id": a.get("subject_id"),
-                "subject_name": subject.get("name_ar") if subject else "",
+                "subject_name": (subject.get("name_ar") or subject.get("name")) if subject else "",
                 "teacher_id": a.get("teacher_id"),
                 "teacher_name": (teacher.get("full_name") or teacher.get("full_name_ar")) if teacher else "",
                 "due_date": due_date_str,
@@ -1318,11 +1336,28 @@ def setup_homework_routes(router, db, get_current_user, require_roles, UserRole)
         all_grades = await gd_find(db.session, "grades", {"student_id": student_id}, limit=1000)
         overall_avg = round(sum(g.get("percentage", 0) for g in all_grades) / len(all_grades), 1) if all_grades else 0
 
+        # FIX (B5): Some grade rows store only `subject_id` (a UUID) and lack the
+        # human-readable `subject_name`. Falling back to the UUID as a grouping
+        # key produced empty radar charts and meaningless labels. Resolve every
+        # subject_id to its Arabic/English name in a single batched query and
+        # build a uuid→name map before iterating the grades.
+        subject_ids_in_grades = list({g.get("subject_id") for g in all_grades if g.get("subject_id") and not g.get("subject_name")})
+        subject_name_by_id: dict = {}
+        if subject_ids_in_grades:
+            subj_rows = await gd_find(db.session, "subjects", {"id": {"$in": subject_ids_in_grades}}, limit=len(subject_ids_in_grades))
+            for s in subj_rows:
+                subject_name_by_id[s.get("id")] = s.get("name_ar") or s.get("name") or ""
+            missing = [sid for sid in subject_ids_in_grades if sid not in subject_name_by_id]
+            if missing:
+                ref_rows = await gd_find(db.session, "reference_subjects", {"id": {"$in": missing}}, limit=len(missing))
+                for s in ref_rows:
+                    subject_name_by_id[s.get("id")] = s.get("name_ar") or s.get("name") or ""
+
         target_subjects = {"رياضيات": 0, "علوم": 0, "عربي": 0, "إنجليزي": 0, "مهارات رقمية": 0}
         subject_counts = {k: 0 for k in target_subjects}
         subject_all = {}
         for g in all_grades:
-            subj = g.get("subject_name") or g.get("subject_id", "عام")
+            subj = g.get("subject_name") or subject_name_by_id.get(g.get("subject_id")) or "عام"
             if subj not in subject_all:
                 subject_all[subj] = []
             subject_all[subj].append(g.get("percentage", 0))
