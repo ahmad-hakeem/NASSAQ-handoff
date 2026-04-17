@@ -151,8 +151,61 @@ async def startup_tasks():
     else:
         logger.info(f"DEPLOYMENT SAFETY: Seed scripts SKIPPED (environment={config.ENVIRONMENT})")
 
+    # Background task: periodically purge expired revoked tokens (D-02).
+    # Runs once at startup (after a short delay) and then every 6 hours.
+    import asyncio as _asyncio
+    from datetime import datetime as _dt, timezone as _tz
+
+    async def _purge_revoked_tokens_loop():
+        try:
+            await _asyncio.sleep(30)
+            while True:
+                try:
+                    async def _purge():
+                        from sqlalchemy import delete as _sa_delete
+                        from pg_models import RevokedToken
+                        now = _dt.now(_tz.utc)
+                        res = await db.session.execute(
+                            _sa_delete(RevokedToken).where(RevokedToken.expires_at < now)
+                        )
+                        deleted = getattr(res, "rowcount", 0) or 0
+                        if deleted:
+                            logger.info(f"Revoked-token cleanup: purged {deleted} expired token(s)")
+                    # _run_with_session handles the commit, no need to commit inside _purge
+                    await _run_with_session("Revoked token cleanup", _purge)
+                except Exception as e:
+                    logger.warning(f"Revoked-token cleanup loop: {e}")
+                await _asyncio.sleep(6 * 60 * 60)
+        except _asyncio.CancelledError:
+            logger.info("Revoked-token cleanup loop cancelled (shutdown)")
+            raise
+
+    try:
+        # Retain a handle so shutdown_tasks can cancel it cleanly.
+        global _revoked_token_cleanup_task
+        _revoked_token_cleanup_task = _asyncio.create_task(_purge_revoked_tokens_loop())
+        logger.info("Revoked-token cleanup loop scheduled (every 6h)")
+    except Exception as e:
+        logger.warning(f"Could not schedule revoked-token cleanup: {e}")
+
+
+_revoked_token_cleanup_task = None
+
 
 async def shutdown_tasks():
+    # Cancel the revoked-token cleanup loop cleanly.
+    try:
+        global _revoked_token_cleanup_task
+        if _revoked_token_cleanup_task is not None and not _revoked_token_cleanup_task.done():
+            _revoked_token_cleanup_task.cancel()
+            try:
+                await _revoked_token_cleanup_task
+            except Exception:
+                pass
+            _revoked_token_cleanup_task = None
+    except Exception as e:
+        logger.debug(f"Cleanup loop cancellation: {e}")
+
     try:
         from routes.websocket_routes import get_connection_manager
         mgr = get_connection_manager()

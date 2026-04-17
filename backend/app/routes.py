@@ -236,8 +236,23 @@ def _register_static_fallback(app):
     if frontend_build.exists() and (frontend_build / "index.html").exists():
         app.mount("/static", StaticFiles(directory=str(frontend_build / "static")), name="static-assets")
 
+        from fastapi import HTTPException as _HTTPException
+
+        # Reserved prefixes that must never be served by the SPA fallback.
+        # Match either an exact bare segment (e.g. "/api") OR a path
+        # under that segment (e.g. "/api/users") — segment-boundary aware.
+        _SPA_RESERVED_SEGMENTS = (
+            "api", "system", "ws", "docs", "redoc", "openapi.json",
+        )
+
         @app.get("/{full_path:path}")
         async def serve_react_app(full_path: str):
+            # Never let the SPA fallback swallow backend / docs paths.
+            # Return a real 404 JSON for unknown backend routes so clients
+            # (and developers) see the actual error instead of an HTML page.
+            first_segment = full_path.split("/", 1)[0]
+            if first_segment in _SPA_RESERVED_SEGMENTS:
+                raise _HTTPException(status_code=404, detail="Not Found")
             file_path = frontend_build / full_path
             if file_path.exists() and file_path.is_file():
                 return FileResponse(str(file_path))
