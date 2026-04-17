@@ -639,12 +639,24 @@ export function AcademicStructureContent() {
                             <span>⚠️</span> تاريخ البداية بعد تاريخ النهاية — يرجى تعديل الفصل
                           </div>
                         )}
-                        <div className="flex items-start justify-between mb-3">
-                          <div>
-                            <h3 className="font-bold text-[#1B3A5C]">{term.name}</h3>
-                            {term.name_en && <p className="text-xs text-gray-500">{term.name_en}</p>}
+                        <div className="flex items-start justify-between mb-3 gap-2">
+                          <div className="min-w-0 flex-1">
+                            <h3 className="font-bold text-[#1B3A5C] truncate">{term.name}</h3>
+                            {term.name_en && <p className="text-xs text-gray-500 truncate">{term.name_en}</p>}
                           </div>
-                          {term.is_current && <Badge className="bg-emerald-100 text-emerald-800 text-xs">الحالي</Badge>}
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {term.is_current && <Badge className="bg-emerald-100 text-emerald-800 text-xs">الحالي</Badge>}
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              aria-label={`حذف الفصل الدراسي ${term.name}`}
+                              title="حذف الفصل"
+                              onClick={() => handleDeleteTerm(term)}
+                              className="h-7 w-7 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
                         </div>
 
                         <div className="grid grid-cols-2 gap-2 mb-3">
@@ -682,10 +694,6 @@ export function AcademicStructureContent() {
                           </Button>
                           <Button size="sm" variant="outline" className="text-xs gap-1" onClick={() => openExamDialog(term.id)}>
                             <ClipboardCheck className="h-3 w-3" /> اختبار
-                          </Button>
-                          <Button size="sm" variant="outline" className="text-xs gap-1 text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300"
-                            onClick={() => handleDeleteTerm(term)}>
-                            <Trash2 className="h-3 w-3" /> حذف
                           </Button>
                         </div>
                       </CardContent>
