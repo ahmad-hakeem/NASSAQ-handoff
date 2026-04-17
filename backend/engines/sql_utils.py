@@ -536,13 +536,14 @@ async def _orm_find(session, model_cls, filters, order_by, desc_order, limit, of
     if conds:
         stmt = stmt.where(and_(*conds))
     if order_by:
-        cols = _col_keys(model_cls)
+        col_map = _col_key_map(model_cls)
+        cols = set(col_map.keys())
         if order_by in cols:
-            col = getattr(model_cls, order_by)
+            col = getattr(model_cls, col_map[order_by])
         elif TENANT_ALIAS.get(order_by) in cols:
-            col = getattr(model_cls, TENANT_ALIAS[order_by])
-        elif hasattr(model_cls, "data"):
-            col = model_cls.data[order_by].astext
+            col = getattr(model_cls, col_map[TENANT_ALIAS[order_by]])
+        elif "data" in cols:
+            col = getattr(model_cls, col_map["data"])[order_by].astext
         else:
             col = None
         if col is not None:
@@ -840,13 +841,14 @@ async def gd_delete_many(session, collection: str, filters: dict) -> int:
 async def gd_distinct(session, collection: str, field: str, filters: dict = None) -> List:
     orm_model = _get_orm_model(collection)
     if orm_model is not None:
-        cols = _col_keys(orm_model)
+        col_map = _col_key_map(orm_model)
+        cols = set(col_map.keys())
         if field in cols:
-            col_expr = getattr(orm_model, field)
+            col_expr = getattr(orm_model, col_map[field])
         elif TENANT_ALIAS.get(field) in cols:
-            col_expr = getattr(orm_model, TENANT_ALIAS[field])
-        elif hasattr(orm_model, "data"):
-            col_expr = orm_model.data[field].astext
+            col_expr = getattr(orm_model, col_map[TENANT_ALIAS[field]])
+        elif "data" in cols:
+            col_expr = getattr(orm_model, col_map["data"])[field].astext
         else:
             return []
         stmt = select(func.distinct(col_expr))
