@@ -930,7 +930,7 @@ export function AcademicStructureContent() {
 
       {/* Academic Year Dialog */}
       <Dialog open={showYearDialog} onOpenChange={setShowYearDialog}>
-        <DialogContent className="sm:max-w-md" dir="rtl">
+        <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto" dir="rtl">
           <DialogHeader>
             <DialogTitle>{editingItem ? 'تعديل السنة الدراسية' : 'إضافة سنة دراسية جديدة'}</DialogTitle>
           </DialogHeader>
@@ -967,7 +967,7 @@ export function AcademicStructureContent() {
 
       {/* Term Dialog */}
       <Dialog open={showTermDialog} onOpenChange={setShowTermDialog}>
-        <DialogContent className="sm:max-w-md" dir="rtl">
+        <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto" dir="rtl">
           <DialogHeader>
             <DialogTitle>{editingItem ? 'تعديل الفصل الدراسي' : 'إضافة فصل دراسي'}</DialogTitle>
           </DialogHeader>
@@ -1004,7 +1004,7 @@ export function AcademicStructureContent() {
 
       {/* Holiday Dialog */}
       <Dialog open={showHolidayDialog} onOpenChange={setShowHolidayDialog}>
-        <DialogContent className="sm:max-w-md" dir="rtl">
+        <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto" dir="rtl">
           <DialogHeader>
             <DialogTitle>{editingItem ? 'تعديل الإجازة' : 'إضافة إجازة'}</DialogTitle>
           </DialogHeader>
@@ -1066,7 +1066,7 @@ export function AcademicStructureContent() {
 
       {/* Exam Period Dialog */}
       <Dialog open={showExamDialog} onOpenChange={setShowExamDialog}>
-        <DialogContent className="sm:max-w-md" dir="rtl">
+        <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto" dir="rtl">
           <DialogHeader>
             <DialogTitle>{editingItem ? 'تعديل فترة الاختبار' : 'إضافة فترة اختبار'}</DialogTitle>
           </DialogHeader>
@@ -1135,7 +1135,7 @@ export function AcademicStructureContent() {
       </Dialog>
       {/* AI Calendar Import Dialog */}
       <Dialog open={showCalendarImportDialog} onOpenChange={setShowCalendarImportDialog}>
-        <DialogContent className="sm:max-w-lg" dir="rtl">
+        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto" dir="rtl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-[#1B3A5C]" /> استيراد التقويم الأكاديمي بالذكاء الاصطناعي
