@@ -87,10 +87,32 @@ def get_student_engine(db):
 
 # ==================== Routes ====================
 
-def create_student_routes(db, get_current_user):
-    """Create routes with database dependency"""
-    
+def create_student_routes(db, get_current_user, require_roles=None, UserRole=None):
+    """Create routes with database dependency.
+
+    require_roles & UserRole are optional for backward compat — when supplied (recommended)
+    they are used to enforce that only school staff / platform admins can manage students.
+    """
+
     engine = get_student_engine(db)
+
+    # SECURITY (A3): Build a "staff-only" dependency. If the caller didn't pass
+    # require_roles/UserRole we fall back to get_current_user (legacy behavior),
+    # but log a warning so misconfiguration is visible.
+    if require_roles is not None and UserRole is not None:
+        staff_only = require_roles([
+            UserRole.PLATFORM_ADMIN,
+            UserRole.PLATFORM_OPERATIONS_MANAGER,
+            UserRole.SCHOOL_PRINCIPAL,
+            UserRole.SCHOOL_ADMIN,
+            UserRole.SCHOOL_SUB_ADMIN,
+        ])
+    else:
+        logger.warning(
+            "create_student_routes called without require_roles/UserRole — "
+            "student management endpoints will only check authentication, not role."
+        )
+        staff_only = get_current_user
     
     # ==================== Options/Lookups ====================
     
@@ -275,7 +297,7 @@ def create_student_routes(db, get_current_user):
         search: Optional[str] = Query(None),
         skip: int = Query(0, ge=0),
         limit: int = Query(50, ge=1, le=100),
-        current_user: dict = Depends(get_current_user)
+        current_user: dict = Depends(staff_only)
     ):
         """List students with filters"""
         tenant_id = current_user.get("tenant_id")
@@ -296,7 +318,7 @@ def create_student_routes(db, get_current_user):
     @router.get("/{student_id}")
     async def get_student(
         student_id: str,
-        current_user: dict = Depends(get_current_user)
+        current_user: dict = Depends(staff_only)
     ):
         """Get student by ID"""
         tenant_id = current_user.get("tenant_id")
@@ -315,7 +337,7 @@ def create_student_routes(db, get_current_user):
     async def save_draft(
         request: SaveDraftRequest,
         draft_id: Optional[str] = Query(None),
-        current_user: dict = Depends(get_current_user)
+        current_user: dict = Depends(staff_only)
     ):
         """Save student creation draft"""
         tenant_id = current_user.get("tenant_id")
@@ -342,7 +364,7 @@ def create_student_routes(db, get_current_user):
     
     @router.get("/drafts/list")
     async def list_drafts(
-        current_user: dict = Depends(get_current_user)
+        current_user: dict = Depends(staff_only)
     ):
         """List all student drafts"""
         tenant_id = current_user.get("tenant_id")
@@ -359,7 +381,7 @@ def create_student_routes(db, get_current_user):
     @router.get("/drafts/{draft_id}")
     async def get_draft(
         draft_id: str,
-        current_user: dict = Depends(get_current_user)
+        current_user: dict = Depends(staff_only)
     ):
         """Get specific draft"""
         tenant_id = current_user.get("tenant_id")
@@ -375,7 +397,7 @@ def create_student_routes(db, get_current_user):
     @router.delete("/drafts/{draft_id}")
     async def delete_draft(
         draft_id: str,
-        current_user: dict = Depends(get_current_user)
+        current_user: dict = Depends(staff_only)
     ):
         """Delete a draft"""
         tenant_id = current_user.get("tenant_id")

@@ -136,7 +136,7 @@ def register_routes(app, api_router: APIRouter):
     attendance_router = create_attendance_router(db, get_current_user, require_roles, UserRole)
     assessment_router = create_assessment_router(db, get_current_user, require_roles, UserRole)
     teacher_registration_router = create_teacher_registration_router(db, get_current_user, require_roles, UserRole)
-    student_routes = create_student_routes(db, get_current_user)
+    student_routes = create_student_routes(db, get_current_user, require_roles, UserRole)
     teacher_management_routes = create_teacher_management_routes(db, get_current_user)
     class_management_routes = create_class_management_routes(db, get_current_user)
     notification_routes = create_notification_routes(db, get_current_user)

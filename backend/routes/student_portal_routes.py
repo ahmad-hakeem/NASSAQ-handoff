@@ -139,8 +139,12 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
     ):
         """درجات الطالب"""
         student_id = current_user.get("student_id") or current_user.get("id")
-        
+        school_id = current_user.get("tenant_id")
+
+        # Tenant isolation: enforce school_id when available to prevent cross-school data leakage
         query = {"student_id": student_id}
+        if school_id:
+            query["school_id"] = school_id
         if subject:
             query["subject"] = subject
         if assessment_type:
@@ -203,9 +207,13 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
     ):
         """سجل حضور الطالب"""
         student_id = current_user.get("student_id") or current_user.get("id")
-        
+        school_id = current_user.get("tenant_id")
+
+        # Tenant isolation: enforce school_id when available
         query = {"student_id": student_id}
-        
+        if school_id:
+            query["school_id"] = school_id
+
         # Filter by month/year if provided
         if month and year:
             start_date = f"{year}-{month:02d}-01"
@@ -321,27 +329,36 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
     ):
         """رسائل الطالب"""
         user_id = current_user.get("id")
-        
-        # Get messages where student is sender or receiver
-        messages = await gd_find(db.session, "messages", {
+        school_id = current_user.get("tenant_id")
+
+        # Tenant isolation + schema fix: pg_models uses `recipient_id`; we also accept legacy
+        # `receiver_id` for backward compat with older records stored in JSONB data column.
+        query = {
             "$or": [
                 {"sender_id": user_id},
-                {"receiver_id": user_id}
+                {"recipient_id": user_id},
+                {"receiver_id": user_id},
             ]
-        }, order_by="created_at", desc_order=True, limit=50)
-        
+        }
+        if school_id:
+            query["school_id"] = school_id
+
+        messages = await gd_find(db.session, "messages", query, order_by="created_at", desc_order=True, limit=50)
+
         return {
             "messages": [
                 {
                     "id": m.get("id"),
                     "subject": m.get("subject"),
-                    "content": m.get("content"),
+                    "content": m.get("content") or m.get("body"),
                     "sender_id": m.get("sender_id"),
                     "sender_name": m.get("sender_name"),
-                    "receiver_id": m.get("receiver_id"),
-                    "receiver_name": m.get("receiver_name"),
+                    # Expose canonical recipient_id; keep receiver_id alias for frontend backward compat
+                    "recipient_id": m.get("recipient_id") or m.get("receiver_id"),
+                    "receiver_id": m.get("recipient_id") or m.get("receiver_id"),
+                    "receiver_name": m.get("receiver_name") or m.get("recipient_name"),
                     "is_sent": m.get("sender_id") == user_id,
-                    "read_status": m.get("read_status", False),
+                    "read_status": m.get("read_status", m.get("is_read", False)),
                     "created_at": m.get("created_at")
                 }
                 for m in messages
@@ -368,14 +385,18 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
         
         message = {
             "id": str(uuid.uuid4()),
+            "school_id": tenant_id,
             "subject": subject,
             "content": content,
+            "body": content,
             "sender_id": current_user.get("id"),
             "sender_name": current_user.get("full_name"),
-            "sender_role": "student",
+            "sender_role": UserRole.STUDENT.value,
+            "recipient_id": receiver_id,
             "receiver_id": receiver_id,
             "receiver_name": receiver.get("full_name") or receiver.get("name"),
             "read_status": False,
+            "is_read": False,
             "created_at": datetime.now(timezone.utc).isoformat()
         }
         
@@ -384,6 +405,7 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
         # Create notification for receiver
         await gd_insert(db.session, "notifications", {
             "id": str(uuid.uuid4()),
+            "school_id": tenant_id,
             "recipient_id": receiver_id,
             "notification_type": "message",
             "title": f"رسالة جديدة من {current_user.get('full_name')}",
@@ -1236,17 +1258,44 @@ def setup_homework_routes(router, db, get_current_user, require_roles, UserRole)
     ):
         """تفاصيل الواجب"""
         student_id = current_user.get("student_id") or current_user.get("id")
-        
+        school_id = current_user.get("tenant_id")
+
         assignment = await gd_find_one(db.session, "student_assignments", {"id": assignment_id})
         if not assignment:
             raise HTTPException(status_code=404, detail="الواجب غير موجود")
-        
+
+        # SECURITY (A1): Verify the assignment actually belongs to the student's school
+        # AND to one of their classes/grades. Without this check any student could read
+        # any assignment by guessing the ID (IDOR).
+        if school_id and assignment.get("school_id") and assignment.get("school_id") != school_id:
+            raise HTTPException(status_code=404, detail="الواجب غير موجود")
+
+        student = await gd_find_one(db.session, "students", {"id": student_id})
+        if not student:
+            student = await gd_find_one(db.session, "students", {"user_id": current_user.get("id")})
+        if not student:
+            raise HTTPException(status_code=404, detail="الطالب غير موجود")
+
+        student_class_id = student.get("class_id")
+        student_grade_id = student.get("grade_id") or student.get("grade")
+        a_class_ids = assignment.get("class_ids") or []
+        if not isinstance(a_class_ids, list):
+            a_class_ids = [a_class_ids]
+
+        belongs_to_student = (
+            (student_class_id and assignment.get("class_id") == student_class_id)
+            or (student_class_id and student_class_id in a_class_ids)
+            or (student_grade_id and assignment.get("grade_id") == student_grade_id)
+        )
+        if not belongs_to_student:
+            raise HTTPException(status_code=404, detail="الواجب غير موجود")
+
         # Get submission
         submission = await gd_find_one(db.session, "assignment_submissions", {
             "assignment_id": assignment_id,
             "student_id": student_id
         })
-        
+
         return {
             **assignment,
             "submission": submission
