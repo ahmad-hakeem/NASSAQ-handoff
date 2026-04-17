@@ -154,7 +154,16 @@ export function AcademicStructureContent() {
       await fetchYears();
       await fetchOverview();
     } catch (e) {
-      nassaqError(e.response?.data?.detail || 'حدث خطأ أثناء حفظ العام الدراسي');
+      if (e.response?.status === 404) {
+        nassaqError('هذا العام الدراسي لم يعد موجوداً (ربما تم حذفه). أُغلقت النافذة.');
+        setShowYearDialog(false);
+        setEditingItem(null);
+        setYearForm({ name: '', name_en: '', start_date: '', end_date: '', is_current: false });
+        await fetchYears();
+        await fetchOverview();
+      } else {
+        nassaqError(e.response?.data?.detail || 'حدث خطأ أثناء حفظ العام الدراسي');
+      }
     }
     setSaving(false);
   };
@@ -281,7 +290,13 @@ export function AcademicStructureContent() {
       try {
         await api.delete(`/academic-years/${yearId}`);
         await fetchYears();
+        await fetchOverview();
         if (selectedYear?.id === yearId) setSelectedYear(null);
+        if (editingItem?.id === yearId) {
+          setShowYearDialog(false);
+          setEditingItem(null);
+          setYearForm({ name: '', name_en: '', start_date: '', end_date: '', is_current: false });
+        }
       } catch (e) {
         nassaqError(e.response?.data?.detail || 'حدث خطأ أثناء الحذف');
       }
