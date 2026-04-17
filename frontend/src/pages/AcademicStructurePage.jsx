@@ -303,6 +303,22 @@ export function AcademicStructureContent() {
     }, { title: 'تأكيد الحذف', confirmText: 'نعم، احذف', cancelText: 'إلغاء' });
   };
 
+  const handleDeleteTerm = (term) => {
+    nassaqConfirm(`هل أنت متأكد من حذف الفصل الدراسي "${term.name}"؟ لا يمكن التراجع.`, async () => {
+      try {
+        await api.delete(`/terms/${term.id}`);
+        if (selectedYear?.id) await fetchYearData(selectedYear.id);
+        if (editingItem?.id === term.id) {
+          setShowTermDialog(false);
+          setEditingItem(null);
+          setTermForm({ name: '', name_en: '', start_date: '', end_date: '', is_current: false });
+        }
+      } catch (e) {
+        nassaqError(e.response?.data?.detail || 'حدث خطأ أثناء حذف الفصل الدراسي');
+      }
+    }, { title: 'تأكيد الحذف', confirmText: 'نعم، احذف', cancelText: 'إلغاء' });
+  };
+
   const handleDeleteHoliday = (id) => {
     nassaqConfirm('هل أنت متأكد من حذف هذه الإجازة؟', async () => {
       try {
@@ -529,12 +545,10 @@ export function AcademicStructureContent() {
                         }}>
                           <Edit2 className="h-3 w-3" /> تعديل
                         </Button>
-                        {year.status !== 'active' && (
-                          <Button size="sm" variant="outline" className="text-xs gap-1 text-red-600 hover:bg-red-50"
-                            onClick={(e) => { e.stopPropagation(); handleDeleteYear(year.id); }}>
-                            <Trash2 className="h-3 w-3" /> حذف
-                          </Button>
-                        )}
+                        <Button size="sm" variant="outline" className="text-xs gap-1 text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300"
+                          onClick={(e) => { e.stopPropagation(); handleDeleteYear(year.id); }}>
+                          <Trash2 className="h-3 w-3" /> حذف
+                        </Button>
                       </div>
                     </CardContent>
                   </Card>
@@ -668,6 +682,10 @@ export function AcademicStructureContent() {
                           </Button>
                           <Button size="sm" variant="outline" className="text-xs gap-1" onClick={() => openExamDialog(term.id)}>
                             <ClipboardCheck className="h-3 w-3" /> اختبار
+                          </Button>
+                          <Button size="sm" variant="outline" className="text-xs gap-1 text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300"
+                            onClick={() => handleDeleteTerm(term)}>
+                            <Trash2 className="h-3 w-3" /> حذف
                           </Button>
                         </div>
                       </CardContent>
