@@ -9,6 +9,7 @@ import { Badge } from '../ui/badge';
 import { Switch } from '../ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Loader2, User, CheckCircle2, AlertTriangle, Sparkles, Clock } from 'lucide-react';
+import { toast } from 'sonner';
 import { useTranslation } from '../../contexts/ThemeContext';
 import { useScheduleCandidates, buildSlotId } from '../../hooks/useScheduleCandidates';
 
@@ -78,7 +79,7 @@ export default function CandidatesSidePanel({
       if (onSkipNext) onSkipNext();
     } catch (err) {
       const msg = err.response?.data?.detail || t('candidates_assign_failed');
-      alert(msg);
+      toast.error(msg);
     } finally {
       setAssigning(null);
     }

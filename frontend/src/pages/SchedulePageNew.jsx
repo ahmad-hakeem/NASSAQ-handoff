@@ -550,7 +550,11 @@ export default function SchedulePageNew() {
     if (!entry) return;
     try {
       const slotId = `${entry.slot.timetable_id}__${entry.slot.class_id}__${entry.slot.day_of_week}__${entry.slot.period_number}`;
-      await api.post(`/schedule/slots/${encodeURIComponent(slotId)}/unassign`);
+      // Pass the exact session_id so we don't accidentally remove a replacement
+      // assignment that landed in this slot after the original was made.
+      await api.post(`/schedule/slots/${encodeURIComponent(slotId)}/unassign`, {
+        session_id: entry.session_id,
+      });
       setSessions(prev => prev.filter(s => s.id !== entry.session_id));
       toast.success(t('schedule_undo_success'));
     } catch (err) {

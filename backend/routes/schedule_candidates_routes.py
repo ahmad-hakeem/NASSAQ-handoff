@@ -153,14 +153,23 @@ async def assign_slot(
     }
 
 
+class UnassignSlotRequest(BaseModel):
+    # عند التراجع من سجل التراجع نمرر معرّف الحصة الفعلي حتى لا نحذف
+    # حصة مختلفة حلّت محلّها بعد عملية تعديل أخرى.
+    session_id: Optional[str] = None
+
+
 @router.post("/schedule/slots/{slot_id}/unassign")
 async def unassign_slot(
     slot_id: str,
+    request: Optional[UnassignSlotRequest] = None,
     current_user: dict = Depends(require_roles(_PRINCIPAL_ROLES)),
 ):
     """يتراجع عن تعيين خانة بحذف الحصة المرتبطة بها من الجدول.
 
     `slot_id` معرف مركب للخانة: `timetableId__classId__day__period`.
+    عند تمرير `session_id` في جسم الطلب، نحذف هذا المعرف بالضبط (لتجنّب
+    الحالات التي حلّت فيها حصة جديدة محل القديمة بين عملية التعيين والتراجع).
     """
     timetable_id, class_id, day_of_week, period_number = _parse_composite_slot_id(slot_id)
     await _ensure_timetable_access(timetable_id, current_user)
@@ -172,6 +181,15 @@ async def unassign_slot(
     })
     if not sess:
         raise HTTPException(status_code=404, detail="الحصة غير موجودة (ربما حُذفت بالفعل)")
+
+    # إذا حدّد العميل session_id، تأكد أنه يطابق الحصة الحالية في هذه الخانة
+    requested_id = request.session_id if request else None
+    if requested_id and requested_id != sess.get("id"):
+        raise HTTPException(
+            status_code=409,
+            detail="هذه الخانة تحتوي على حصة مختلفة الآن — حدّث الجدول قبل التراجع",
+        )
+
     await gd_delete_one(db.session, "timetable_sessions", {"id": sess.get("id")})
     return {
         "success": True,
