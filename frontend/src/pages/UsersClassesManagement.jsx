@@ -1480,66 +1480,106 @@ export default function UsersClassesManagement() {
         </header>
 
         <main className="p-6 space-y-6">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <Card className={`${THEME_COLORS.student.bg} ${THEME_COLORS.student.border} cursor-pointer hover:shadow-md transition-shadow`}
-              onClick={() => handleStatClick('students')}>
-              <CardContent className="p-4 text-center">
-                <GraduationCap className={`h-7 w-7 mx-auto mb-2 ${THEME_COLORS.student.icon}`} />
-                <p className="text-2xl font-bold">{stats.totalStudents}</p>
-                <p className="text-[11px] text-muted-foreground">{t('totalStudents')}</p>
-              </CardContent>
-            </Card>
-            <Card className={`${THEME_COLORS.parent.bg} ${THEME_COLORS.parent.border} cursor-pointer hover:shadow-md transition-shadow`}
-              onClick={() => handleStatClick('parents')}>
-              <CardContent className="p-4 text-center">
-                <Heart className={`h-7 w-7 mx-auto mb-2 ${THEME_COLORS.parent.icon}`} />
-                <p className="text-2xl font-bold">{stats.totalParents}</p>
-                <p className="text-[11px] text-muted-foreground">{t('totalParents')}</p>
-              </CardContent>
-            </Card>
-            <Card className={`${THEME_COLORS.teacher.bg} ${THEME_COLORS.teacher.border} cursor-pointer hover:shadow-md transition-shadow`}
-              onClick={() => handleStatClick('teachers')}>
-              <CardContent className="p-4 text-center">
-                <UserCheck className={`h-7 w-7 mx-auto mb-2 ${THEME_COLORS.teacher.icon}`} />
-                <p className="text-2xl font-bold">{stats.totalTeachers}</p>
-                <p className="text-[11px] text-muted-foreground">{t('totalTeachers')}</p>
-              </CardContent>
-            </Card>
-            <Card className={`${THEME_COLORS.class.bg} ${THEME_COLORS.class.border} cursor-pointer hover:shadow-md transition-shadow`}
-              onClick={() => handleStatClick('classes')}>
-              <CardContent className="p-4 text-center">
-                <Building2 className={`h-7 w-7 mx-auto mb-2 ${THEME_COLORS.class.icon}`} />
-                <p className="text-2xl font-bold">{stats.totalClasses}</p>
-                <p className="text-[11px] text-muted-foreground">{t('totalClasses')}</p>
-              </CardContent>
-            </Card>
-          </div>
+          {(() => {
+            const statCards = [
+              { key: 'students', label: t('totalStudents'), value: stats.totalStudents, Icon: GraduationCap, accent: '#1C3D74' },
+              { key: 'parents',  label: t('totalParents'),  value: stats.totalParents,  Icon: Heart,         accent: '#E07A5F' },
+              { key: 'teachers', label: t('totalTeachers'), value: stats.totalTeachers, Icon: UserCheck,     accent: '#2BB5A0' },
+              { key: 'classes',  label: t('totalClasses'),  value: stats.totalClasses,  Icon: Building2,     accent: '#46C1BE' },
+            ];
+            return (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {statCards.map(({ key, label, value, Icon, accent }) => {
+                  const isActive = activeTab === key;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => handleStatClick(key)}
+                      aria-pressed={isActive}
+                      className={`group relative text-start overflow-hidden rounded-2xl bg-white dark:bg-gray-900
+                        border ${isActive ? 'border-[#2BB5A0]/40 shadow-lg shadow-[#2BB5A0]/10' : 'border-gray-200/70 dark:border-gray-800 shadow-sm'}
+                        hover:-translate-y-0.5 hover:shadow-md transition-all duration-200
+                        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2BB5A0] focus-visible:ring-offset-2`}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className="absolute inset-x-0 top-0 h-1"
+                        style={{ background: isActive
+                          ? 'linear-gradient(90deg,#1C3D74,#2BB5A0)'
+                          : accent
+                        }}
+                      />
+                      <div className="p-4 sm:p-5 flex items-start gap-3">
+                        <span
+                          className="shrink-0 inline-flex items-center justify-center w-11 h-11 rounded-xl border"
+                          style={{
+                            backgroundColor: `${accent}14`,
+                            color: accent,
+                            borderColor: `${accent}33`,
+                          }}
+                        >
+                          <Icon className="h-5 w-5" strokeWidth={2.25} />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p
+                            className="text-3xl font-extrabold leading-none tracking-tight tabular-nums text-[#1C3D74] dark:text-white"
+                          >
+                            {value}
+                          </p>
+                          <p className="mt-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 line-clamp-1">
+                            {label}
+                          </p>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })()}
 
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-            <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setActiveFilter(null); }} className="w-auto">
-              <TabsList className="bg-muted/50 rounded-xl h-10">
-                <TabsTrigger value="students" className="rounded-lg text-xs px-4" data-testid="filter-students">
-                  <GraduationCap className="h-3.5 w-3.5 me-1.5" />
-                  {t('students')} <Badge variant="secondary" className="ms-1.5 h-5 text-[10px] px-1.5">{filteredStudents.length}</Badge>
-                </TabsTrigger>
-                <TabsTrigger value="parents" className="rounded-lg text-xs px-4" data-testid="filter-parents">
-                  <Heart className="h-3.5 w-3.5 me-1.5" />
-                  {t('parents')} <Badge variant="secondary" className="ms-1.5 h-5 text-[10px] px-1.5">{filteredParents.length}</Badge>
-                </TabsTrigger>
-                <TabsTrigger value="teachers" className="rounded-lg text-xs px-4" data-testid="filter-teachers">
-                  <UserCheck className="h-3.5 w-3.5 me-1.5" />
-                  {t('teachers2')} <Badge variant="secondary" className="ms-1.5 h-5 text-[10px] px-1.5">{filteredTeachers.length}</Badge>
-                </TabsTrigger>
-                <TabsTrigger value="classes" className="rounded-lg text-xs px-4" data-testid="filter-classes">
-                  <Building2 className="h-3.5 w-3.5 me-1.5" />
-                  {t('classes2')} <Badge variant="secondary" className="ms-1.5 h-5 text-[10px] px-1.5">{filteredClasses.length}</Badge>
-                </TabsTrigger>
-                <TabsTrigger value="import-export" className="rounded-lg text-xs px-4">
-                  <FileSpreadsheet className="h-3.5 w-3.5 me-1.5" />
-                  {t('importexport')}
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
+            {(() => {
+              const tabTriggerCls = 'rounded-lg text-xs px-3.5 h-9 transition-all data-[state=active]:bg-[#1C3D74] data-[state=active]:text-white data-[state=active]:shadow-sm hover:text-[#1C3D74] dark:hover:text-white';
+              const tabBadgeCls = (key) =>
+                `ms-1.5 h-5 text-[10px] px-1.5 border-0 ${
+                  activeTab === key
+                    ? 'bg-white/20 text-white'
+                    : 'bg-gray-200/80 text-gray-600 dark:bg-gray-700/60 dark:text-gray-300'
+                }`;
+              return (
+                <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setActiveFilter(null); }} className="w-auto">
+                  <TabsList className="bg-gray-100/80 dark:bg-gray-800/60 rounded-xl h-11 p-1 gap-0.5">
+                    <TabsTrigger value="students" className={tabTriggerCls} data-testid="filter-students">
+                      <GraduationCap className="h-3.5 w-3.5 me-1.5" />
+                      {t('students')}
+                      <Badge variant="secondary" className={tabBadgeCls('students')}>{filteredStudents.length}</Badge>
+                    </TabsTrigger>
+                    <TabsTrigger value="parents" className={tabTriggerCls} data-testid="filter-parents">
+                      <Heart className="h-3.5 w-3.5 me-1.5" />
+                      {t('parents')}
+                      <Badge variant="secondary" className={tabBadgeCls('parents')}>{filteredParents.length}</Badge>
+                    </TabsTrigger>
+                    <TabsTrigger value="teachers" className={tabTriggerCls} data-testid="filter-teachers">
+                      <UserCheck className="h-3.5 w-3.5 me-1.5" />
+                      {t('teachers2')}
+                      <Badge variant="secondary" className={tabBadgeCls('teachers')}>{filteredTeachers.length}</Badge>
+                    </TabsTrigger>
+                    <TabsTrigger value="classes" className={tabTriggerCls} data-testid="filter-classes">
+                      <Building2 className="h-3.5 w-3.5 me-1.5" />
+                      {t('classes2')}
+                      <Badge variant="secondary" className={tabBadgeCls('classes')}>{filteredClasses.length}</Badge>
+                    </TabsTrigger>
+                    <TabsTrigger value="import-export"
+                      className="rounded-lg text-xs px-3.5 h-9 transition-all data-[state=active]:bg-[#2BB5A0] data-[state=active]:text-white data-[state=active]:shadow-sm hover:text-[#2BB5A0]">
+                      <FileSpreadsheet className="h-3.5 w-3.5 me-1.5" />
+                      {t('importexport')}
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              );
+            })()}
 
             <div className="flex items-center gap-2 ms-auto">
               <DropdownMenu>
