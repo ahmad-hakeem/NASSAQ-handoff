@@ -66,6 +66,8 @@ async def _resolve_recipient_ids(db, audience: str, school_id: Optional[str], au
         users = await gd_find(db.session, "users", {**base, "role": "student"}, limit=10000)
     elif audience == "parents":
         users = await gd_find(db.session, "users", {**base, "role": "parent"}, limit=10000)
+    elif audience == "schools":
+        users = await gd_find(db.session, "users", {**base, "role": {"$in": ["school_principal", "school_admin"]}}, limit=10000)
     else:
         users = []
 

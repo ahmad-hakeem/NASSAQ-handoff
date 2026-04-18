@@ -283,9 +283,9 @@ export const CommunicationNotificationsPage = () => {
     try {
       const response = await api.post('/communication/broadcast', {
         title: messageTitle,
-        message: newMessage,
-        target_audience: selectedAudience,
-        send_channels: ['system'],
+        content: newMessage,
+        audience: selectedAudience,
+        channels: ['in_app'],
         priority: 'medium'
       });
       
