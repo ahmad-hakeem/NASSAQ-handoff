@@ -2235,6 +2235,133 @@ async def get_classes_without_teachers(
         "classes": unassigned
     }
 
+
+# ---------------------------------------------------------------------------
+# Teacher ↔ Subject assignments  (collection: teacher_assignments)
+# ---------------------------------------------------------------------------
+
+class TeacherSubjectAssignmentCreate(BaseModel):
+    teacher_id: str
+    subject_id: str
+    school_id: Optional[str] = None
+
+
+@router.get("/teacher-assignments")
+async def list_teacher_subject_assignments(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+    teacher_id: Optional[str] = Query(None),
+    subject_id: Optional[str] = Query(None),
+):
+    """قائمة إسنادات المعلمين بالمواد — Teacher ↔ Subject assignments."""
+    school_id = request.headers.get("X-School-Context") or current_user.get("tenant_id")
+    if not school_id:
+        raise HTTPException(status_code=400, detail="Missing school context")
+
+    query_filter: Dict[str, Any] = {"school_id": school_id, "is_active": True}
+    if teacher_id:
+        query_filter["teacher_id"] = teacher_id
+    if subject_id:
+        query_filter["subject_id"] = subject_id
+
+    assignments = await gd_find(db.session, "teacher_assignments", query_filter, limit=5000)
+
+    t_ids = list({a.get("teacher_id") for a in assignments if a.get("teacher_id")})
+    s_ids = list({a.get("subject_id") for a in assignments if a.get("subject_id")})
+    teachers_list = await gd_find(db.session, "teachers", {"id": {"$in": t_ids}}, limit=len(t_ids) + 1) if t_ids else []
+    subjects_list = await gd_find(db.session, "subjects", {"id": {"$in": s_ids}}, limit=len(s_ids) + 1) if s_ids else []
+    teacher_map = {t["id"]: t for t in teachers_list}
+    subject_map = {s["id"]: s for s in subjects_list}
+
+    result = []
+    for a in assignments:
+        t = teacher_map.get(a.get("teacher_id"))
+        s = subject_map.get(a.get("subject_id"))
+        result.append({
+            "id": a.get("id"),
+            "teacher_id": a.get("teacher_id"),
+            "subject_id": a.get("subject_id"),
+            "school_id": a.get("school_id"),
+            "teacher_name": t.get("full_name") if t else None,
+            "subject_name": (s.get("name_ar") or s.get("name")) if s else None,
+            "created_at": a.get("created_at"),
+        })
+    return result
+
+
+@router.post("/teacher-assignments")
+async def create_teacher_subject_assignment(
+    payload: TeacherSubjectAssignmentCreate,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+):
+    """إنشاء إسناد مادة لمعلم — Assign a subject to a teacher."""
+    school_id = (
+        request.headers.get("X-School-Context")
+        or payload.school_id
+        or current_user.get("tenant_id")
+    )
+    if not school_id:
+        raise HTTPException(status_code=400, detail="Missing school context")
+
+    existing = await gd_find_one(db.session, "teacher_assignments", {
+        "school_id": school_id,
+        "teacher_id": payload.teacher_id,
+        "subject_id": payload.subject_id,
+        "is_active": True,
+    })
+    if existing:
+        return {
+            "message": "هذا الإسناد موجود بالفعل",
+            "assignment": {
+                "id": existing.get("id"),
+                "teacher_id": existing.get("teacher_id"),
+                "subject_id": existing.get("subject_id"),
+                "school_id": existing.get("school_id"),
+            },
+        }
+
+    teacher = await gd_find_one(db.session, "teachers", {"id": payload.teacher_id})
+    subject = await gd_find_one(db.session, "subjects", {"id": payload.subject_id})
+
+    new_assignment = {
+        "id": str(uuid.uuid4()),
+        "teacher_id": payload.teacher_id,
+        "subject_id": payload.subject_id,
+        "school_id": school_id,
+        "teacher_name": teacher.get("full_name") if teacher else None,
+        "subject_name": (subject.get("name_ar") or subject.get("name")) if subject else None,
+        "is_active": True,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await gd_insert(db.session, "teacher_assignments", new_assignment)
+
+    return {
+        "message": "تم إنشاء الإسناد بنجاح",
+        "assignment": new_assignment,
+    }
+
+
+@router.delete("/teacher-assignments/{assignment_id}")
+async def delete_teacher_subject_assignment(
+    assignment_id: str,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+):
+    """حذف إسناد مادة من معلم — Remove a teacher↔subject assignment."""
+    school_id = request.headers.get("X-School-Context") or current_user.get("tenant_id")
+    if not school_id:
+        raise HTTPException(status_code=400, detail="Missing school context")
+
+    result = await gd_delete_one(db.session, "teacher_assignments", {
+        "id": assignment_id,
+        "school_id": school_id,
+    })
+    if result == 0:
+        raise HTTPException(status_code=404, detail="الإسناد غير موجود")
+    return {"message": "تم حذف الإسناد بنجاح"}
+
+
 @router.get("/teacher-class-assignments/teacher/{teacher_id}")
 async def get_teacher_assignments(
     teacher_id: str,
