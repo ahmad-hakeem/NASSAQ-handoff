@@ -1413,8 +1413,8 @@ export default function SchedulePageNew() {
 
         {/* ── RESULT DIALOG ───────────────────────────────────────────── */}
         <Dialog open={resultDialogOpen} onOpenChange={setResultDialogOpen}>
-          <DialogContent className="max-w-lg" dir="rtl">
-            <DialogHeader>
+          <DialogContent className="max-w-lg max-h-[90vh] flex flex-col p-0" dir="rtl">
+            <DialogHeader className="px-6 pt-6 pb-3 shrink-0 border-b">
               <DialogTitle className="flex items-center gap-2">
                 {parseFloat(generationResult?.success_rate) >= 90
                   ? <CheckCircle2 className="h-6 w-6 text-emerald-600" />
@@ -1426,7 +1426,7 @@ export default function SchedulePageNew() {
             </DialogHeader>
 
             {generationResult && (
-              <div className="space-y-4">
+              <div className="space-y-4 px-6 py-4 overflow-y-auto flex-1">
                 {/* SVG Progress Ring */}
                 <div className="flex flex-col items-center py-3">
                   <div className="relative w-28 h-28">
