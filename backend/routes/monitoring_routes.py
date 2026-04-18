@@ -22,6 +22,79 @@ router = APIRouter(prefix="/system", tags=["Monitoring"])
 _start_time = time.time()
 _metrics_history: collections.deque = collections.deque(maxlen=30)
 _last_net_snapshot: dict = {"bytes_sent": 0, "bytes_recv": 0, "ts": 0}
+_last_cpu_snapshot: dict = {"usage_usec": 0, "ts": 0.0}
+
+CGROUP_BASE = "/sys/fs/cgroup"
+
+
+def _read_cgroup_file(path: str):
+    try:
+        with open(path, "r") as f:
+            return f.read().strip()
+    except (OSError, IOError):
+        return None
+
+
+def _container_memory():
+    """Return container memory stats from cgroup v2, or None if unavailable."""
+    current = _read_cgroup_file(f"{CGROUP_BASE}/memory.current")
+    limit = _read_cgroup_file(f"{CGROUP_BASE}/memory.max")
+    if current is None or limit is None:
+        return None
+    try:
+        used_bytes = int(current)
+        if limit == "max":
+            return None
+        limit_bytes = int(limit)
+        if limit_bytes <= 0:
+            return None
+        return {
+            "used_mb": round(used_bytes / 1024 / 1024, 1),
+            "total_mb": round(limit_bytes / 1024 / 1024, 1),
+            "available_mb": round(max(limit_bytes - used_bytes, 0) / 1024 / 1024, 1),
+            "percent": round(used_bytes / limit_bytes * 100, 1),
+        }
+    except (ValueError, TypeError):
+        return None
+
+
+def _container_cpu():
+    """Return container CPU usage as percent of allocated quota (cgroup v2)."""
+    cpu_max = _read_cgroup_file(f"{CGROUP_BASE}/cpu.max")
+    cpu_stat = _read_cgroup_file(f"{CGROUP_BASE}/cpu.stat")
+    if cpu_stat is None:
+        return None
+    try:
+        usage_usec = 0
+        for line in cpu_stat.splitlines():
+            if line.startswith("usage_usec "):
+                usage_usec = int(line.split()[1])
+                break
+        now = time.time()
+        last_usage = _last_cpu_snapshot.get("usage_usec", 0)
+        last_ts = _last_cpu_snapshot.get("ts", 0.0)
+        _last_cpu_snapshot["usage_usec"] = usage_usec
+        _last_cpu_snapshot["ts"] = now
+
+        # Determine cpu quota in cores
+        cores = 1.0
+        if cpu_max:
+            parts = cpu_max.split()
+            if len(parts) == 2 and parts[0] != "max":
+                quota = int(parts[0])
+                period = int(parts[1])
+                if period > 0:
+                    cores = quota / period
+        if last_ts <= 0 or usage_usec < last_usage:
+            return {"percent": 0, "cores": cores}
+        elapsed = now - last_ts
+        if elapsed <= 0:
+            return {"percent": 0, "cores": cores}
+        delta_sec = (usage_usec - last_usage) / 1_000_000.0
+        pct = (delta_sec / (elapsed * cores)) * 100.0
+        return {"percent": round(max(0.0, min(pct, 100.0)), 1), "cores": cores}
+    except (ValueError, TypeError):
+        return None
 
 
 async def _pg_ping(db_ref):
@@ -271,25 +344,41 @@ async def system_metrics(current_user: dict = Depends(require_roles([UserRole.PL
         try:
             process = psutil.Process()
             mem = process.memory_info()
-            cpu_pct = psutil.cpu_percent(interval=None)
             process_info = {
                 "memory_rss_mb": round(mem.rss / 1024 / 1024, 2),
                 "memory_vms_mb": round(mem.vms / 1024 / 1024, 2),
-                "cpu_percent": cpu_pct,
+                "cpu_percent": 0,
                 "threads": process.num_threads(),
             }
         except Exception:
             process_info = {"cpu_percent": 0, "memory_rss_mb": 0, "memory_vms_mb": 0, "threads": 0}
-        try:
-            vm = psutil.virtual_memory()
-            system_memory = {
-                "total_mb": round(vm.total / 1024 / 1024, 1),
-                "available_mb": round(vm.available / 1024 / 1024, 1),
-                "used_mb": round(vm.used / 1024 / 1024, 1),
-                "percent": vm.percent,
-            }
-        except Exception:
-            system_memory = {"percent": 0, "total_mb": 0, "available_mb": 0, "used_mb": 0}
+
+        # Container-aware CPU (cgroup v2): falls back to host psutil only if cgroup unavailable
+        cgroup_cpu = _container_cpu()
+        if cgroup_cpu is not None:
+            process_info["cpu_percent"] = cgroup_cpu["percent"]
+            process_info["cpu_cores"] = cgroup_cpu["cores"]
+        else:
+            try:
+                process_info["cpu_percent"] = psutil.cpu_percent(interval=None)
+            except Exception:
+                process_info["cpu_percent"] = 0
+
+        # Container-aware memory (cgroup v2): falls back to host psutil only if cgroup unavailable
+        cgroup_mem = _container_memory()
+        if cgroup_mem is not None:
+            system_memory = cgroup_mem
+        else:
+            try:
+                vm = psutil.virtual_memory()
+                system_memory = {
+                    "total_mb": round(vm.total / 1024 / 1024, 1),
+                    "available_mb": round(vm.available / 1024 / 1024, 1),
+                    "used_mb": round(vm.used / 1024 / 1024, 1),
+                    "percent": vm.percent,
+                }
+            except Exception:
+                system_memory = {"percent": 0, "total_mb": 0, "available_mb": 0, "used_mb": 0}
         try:
             du = psutil.disk_usage("/")
             disk_info = {
