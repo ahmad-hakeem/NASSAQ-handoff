@@ -2,7 +2,7 @@
 NASSAQ Route Module: Authentication, login, role context, password, role switching
 Auto-consolidated during Phase 8 modularization.
 """
-from fastapi import APIRouter, HTTPException, Depends, status, Header, Query, Body, Request
+from fastapi import APIRouter, HTTPException, Depends, status, Header, Query, Body, Request, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import Response
 from starlette.responses import StreamingResponse
@@ -90,7 +90,7 @@ async def register(user_data: UserCreate):
     return TokenResponse(access_token=token, user=user_response)
 
 @router.post("/auth/login", response_model=TokenResponse)
-async def login(credentials: UserLogin):
+async def login(credentials: UserLogin, background_tasks: BackgroundTasks):
     user = await gd_find_one(db.session, "users", {"email": credentials.email})
     if not user:
         # Log failed login attempt
@@ -136,13 +136,15 @@ async def login(credentials: UserLogin):
     token = create_access_token(token_payload)
     refresh = create_refresh_token(token_payload, remember_me=credentials.remember_me)
     
-    # Log successful login
-    await audit_engine.log_auth_event(
+    # Fire-and-forget the success audit log so it doesn't block the response.
+    # Failure logs above remain synchronous to guarantee they're persisted.
+    background_tasks.add_task(
+        audit_engine.log_auth_event,
         action=AuditAction.LOGIN.value,
         user_id=user_id,
         tenant_id=user.get("tenant_id"),
         success=True,
-        email=credentials.email
+        email=credentials.email,
     )
     
     from engines.name_validation import is_generic_name
