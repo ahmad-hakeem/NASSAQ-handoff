@@ -410,7 +410,7 @@ export const CommunicationNotificationsPage = () => {
               </CardContent>
             </Card>
 
-            <Card className="card-nassaq cursor-pointer hover:shadow-lg transition-shadow" onClick={() => setActiveTab('inbox')}>
+            <Card className="card-nassaq cursor-pointer hover:shadow-lg transition-shadow" onClick={() => setActiveTab('notifications')}>
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
@@ -424,7 +424,7 @@ export const CommunicationNotificationsPage = () => {
               </CardContent>
             </Card>
 
-            <Card className="card-nassaq cursor-pointer hover:shadow-lg transition-shadow" onClick={() => setActiveTab('scheduled')}>
+            <Card className="card-nassaq cursor-pointer hover:shadow-lg transition-shadow" onClick={() => setActiveTab('communication')}>
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-yellow-500/10 flex items-center justify-center">
