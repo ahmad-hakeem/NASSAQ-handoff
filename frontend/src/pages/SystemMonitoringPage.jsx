@@ -164,7 +164,18 @@ export const SystemMonitoringPage = () => {
       }
       if (jobsRes.status === 'fulfilled') {
         const d = jobsRes.value.data;
-        setJobs(Array.isArray(d) ? d : []);
+        if (Array.isArray(d)) {
+          setJobs(d);
+        } else if (d && typeof d === 'object') {
+          setJobs(Array.isArray(d.recent) ? d.recent : []);
+          setMetrics(prev => ({
+            ...prev,
+            jobsRunning: d.running || 0,
+            jobsPending: d.pending || 0,
+            jobsCompleted: d.completed || 0,
+            jobsFailed: d.failed || 0,
+          }));
+        }
       }
       if (integrationsRes.status === 'fulfilled') {
         const raw = integrationsRes.value.data;
@@ -190,7 +201,8 @@ export const SystemMonitoringPage = () => {
           const netSentKbps = m.network?.sent_kbps || 0;
           const netRecvKbps = m.network?.recv_kbps || 0;
 
-          setMetrics({
+          setMetrics(prev => ({
+            ...prev,
             cpu: m.process?.cpu_percent || 0,
             memory: m.system_memory?.percent || 0,
             disk: m.disk?.percent || 0,
@@ -207,10 +219,6 @@ export const SystemMonitoringPage = () => {
             totalOperations: totalReqs,
             activeUsers: m.active_users_24h || 0,
             errors: totalErrs,
-            jobsRunning: 0,
-            jobsPending: 0,
-            jobsCompleted: 0,
-            jobsFailed: 0,
             aiOperations: 0,
             aiModelsActive: 0,
             poolSize: m.pool_stats?.pool_size || 0,
@@ -233,7 +241,7 @@ export const SystemMonitoringPage = () => {
             dbAuditLogs: m.database_counts?.audit_logs || 0,
             p95ResponseMs: m.response_metrics?.p95_response_ms || 0,
             p99ResponseMs: m.response_metrics?.p99_response_ms || 0,
-          });
+          }));
         }
       }
       if (healthRes.status === 'fulfilled') {

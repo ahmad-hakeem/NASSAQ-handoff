@@ -292,7 +292,110 @@ async def system_errors(current_user: dict = Depends(require_roles([UserRole.PLA
 
 @router.get("/jobs")
 async def system_jobs(current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))):
-    return []
+    """
+    Real background-task statistics derived from:
+    - Live asyncio event loop introspection (running/pending tasks)
+    - Audit log records of background-style operations in the last 24h (completed/failed)
+    """
+    import asyncio
+    from datetime import timedelta
+
+    # --- Live asyncio task introspection ---
+    running = 0
+    pending = 0
+    recent_running = []
+    try:
+        loop = asyncio.get_running_loop()
+        all_tasks = asyncio.all_tasks(loop=loop)
+        current_task = asyncio.current_task()
+        for task in all_tasks:
+            if task is current_task or task.done():
+                continue
+            coro = task.get_coro()
+            name = task.get_name() or (getattr(coro, "__qualname__", None) or getattr(coro, "__name__", "task"))
+            # Skip framework-internal infinite loops (uvicorn server, asgi handlers)
+            internal_markers = (
+                "Server.serve", "lifespan", "_keepalive", "RequestResponseCycle",
+                "wait_closed", "_proactor", "WebSocket",
+                "BaseHTTPMiddleware", "call_next", "starlette.middleware",
+                "uvicorn", "h11", "asgi",
+            )
+            if any(m in name for m in internal_markers):
+                continue
+            # Generic anonymous "Task-N" names — try to resolve to coroutine qualname
+            if name.startswith("Task-"):
+                resolved = getattr(coro, "__qualname__", None) or getattr(coro, "__name__", None)
+                if not resolved or any(m in resolved for m in internal_markers):
+                    continue
+                name = resolved
+            try:
+                stack = task.get_stack(limit=1)
+                state = "running" if stack else "pending"
+            except Exception:
+                state = "running"
+            if state == "running":
+                running += 1
+            else:
+                pending += 1
+            if len(recent_running) < 10:
+                recent_running.append({"name": name[:120], "state": state})
+    except RuntimeError:
+        pass
+
+    # --- Audit-log derived completed/failed in last 24h ---
+    completed = 0
+    failed = 0
+    recent_completed: list = []
+    try:
+        since = datetime.now(timezone.utc) - timedelta(hours=24)
+        bg_action_patterns = [
+            "bulk_recorded", "bulk_imported", "bulk_exported", "bulk_created",
+            "data.imported", "data.exported", "import", "export",
+            "notification.sent", "notification.created",
+            "communication.sent", "email.sent", "sms.sent",
+            "report.generated", "ai.report_generated",
+            "auth.login",
+        ]
+        s = db._get_session()
+        if s is not None:
+            from sqlalchemy import text as _t
+            like_clauses = " OR ".join([f"action ILIKE '%{p}%'" for p in bg_action_patterns])
+            q_completed = _t(f"""
+                SELECT action, COUNT(*) AS c
+                FROM audit_logs
+                WHERE timestamp >= :since
+                  AND ({like_clauses})
+                  AND COALESCE(status, 'success') != 'failed'
+                  AND COALESCE(severity, 'low') NOT IN ('high', 'critical')
+                GROUP BY action
+                ORDER BY c DESC
+                LIMIT 10
+            """)
+            res = await s.execute(q_completed, {"since": since})
+            for action, c in res.fetchall():
+                completed += int(c)
+                recent_completed.append({"action": action, "count": int(c), "state": "completed"})
+
+            q_failed = _t(f"""
+                SELECT COUNT(*) FROM audit_logs
+                WHERE timestamp >= :since
+                  AND ({like_clauses})
+                  AND (status = 'failed' OR severity IN ('high', 'critical'))
+            """)
+            res2 = await s.execute(q_failed, {"since": since})
+            failed = int(res2.scalar() or 0)
+    except (SQLAlchemyError, Exception) as e:
+        logger.warning(f"system_jobs audit-derived stats failed: {e}")
+
+    return {
+        "running": running,
+        "pending": pending,
+        "completed": completed,
+        "failed": failed,
+        "window_hours": 24,
+        "recent": recent_running + recent_completed,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 @router.get("/alerts")
