@@ -6,7 +6,8 @@ import { Badge } from '../components/ui/badge';
 import {
   Save, CheckCircle2, AlertTriangle,
   AlertCircle, Play, RefreshCw, X, GraduationCap,
-  Building2, Zap, School, Link2, Edit2
+  Building2, Zap, School, Link2, Edit2,
+  Clock, UserX, Shield
 } from 'lucide-react';
 import { AcademicStructureContent } from './AcademicStructurePage';
 import { useSchoolSettings } from '../hooks/useSchoolSettings';
@@ -15,8 +16,11 @@ import { SettingsModals } from '../components/school-settings/SettingsModals';
 
 const dynamicTabs = [
   { id: 'school-info', label: 'بيانات المدرسة', icon: Building2 },
+  { id: 'timings', label: 'التوقيت والحصص', icon: Clock },
   { id: 'classes', label: 'الفصول والشعب', icon: School },
   { id: 'teacher-assignments', label: 'إسناد المعلمين', icon: Link2 },
+  { id: 'unavailability', label: 'أوقات عدم التوفر', icon: UserX },
+  { id: 'constraints', label: 'قيود الجدول', icon: Shield },
 ];
 
 
