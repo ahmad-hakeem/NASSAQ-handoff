@@ -95,6 +95,23 @@ const notificationTypeConfig = {
   },
 };
 
+const ACCOUNT_TYPE_LABEL_AR = {
+  student: 'طالب', parent: 'ولي أمر', teacher: 'معلم', school: 'مدرسة',
+  principal: 'مدير مدرسة', supervisor: 'مشرف', staff: 'موظف',
+};
+const ACCOUNT_TYPE_LABEL_EN = {
+  student: 'Student', parent: 'Parent', teacher: 'Teacher', school: 'School',
+  principal: 'Principal', supervisor: 'Supervisor', staff: 'Staff',
+};
+const prettifyText = (text, isRTL) => {
+  if (!text || typeof text !== 'string') return text;
+  const map = isRTL ? ACCOUNT_TYPE_LABEL_AR : ACCOUNT_TYPE_LABEL_EN;
+  return text.replace(/\(([a-z_]+)\)/gi, (full, code) => {
+    const key = code.toLowerCase();
+    return map[key] ? `— ${map[key]}` : full;
+  });
+};
+
 const priorityConfig = {
   low: { label: { ar: 'منخفضة', en: 'Low' }, color: 'bg-gray-400' },
   medium: { label: { ar: 'متوسطة', en: 'Medium' }, color: 'bg-blue-400' },
@@ -558,10 +575,10 @@ export const CommunicationNotificationsPage = () => {
                                     <div className="flex items-start justify-between gap-2">
                                       <div>
                                         <h4 className={`font-medium ${!notification.read_status ? 'font-bold' : ''}`}>
-                                          {isRTL ? notification.title : (notification.title_en || notification.title)}
+                                          {prettifyText(isRTL ? notification.title : (notification.title_en || notification.title), isRTL)}
                                         </h4>
                                         <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-                                          {isRTL ? notification.message : (notification.message_en || notification.message)}
+                                          {prettifyText(isRTL ? notification.message : (notification.message_en || notification.message), isRTL)}
                                         </p>
                                       </div>
                                       
