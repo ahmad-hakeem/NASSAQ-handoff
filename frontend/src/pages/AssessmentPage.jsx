@@ -1145,29 +1145,65 @@ export const AssessmentPage = () => {
   const { isRTL, toggleTheme, toggleLanguage, isDark } = useTheme();
 
   const [activeTab, setActiveTab] = useState('schedule');
-  const [periods, setPeriods] = useState(DEFAULT_PERIODS);
+  const [periods, setPeriodsState] = useState([]);
   const [committees, setCommittees] = useState([]);
   const [apiClasses, setApiClasses] = useState([]);
   const [apiTeachers, setApiTeachers] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const { nassaqError, nassaqWarning } = useNassaqAlert();
+
+  // Track hydration so we don't auto-save the initial fetched/seeded value back to the server.
+  const hydratedRef = useRef(false);
+  const persistTimerRef = useRef(null);
+
+  // Public setter passed to ExamScheduleTab — supports value-or-updater forms like useState.
+  const setPeriods = useCallback((next) => {
+    setPeriodsState(prev => (typeof next === 'function' ? next(prev) : next));
+  }, []);
+
+  // Persist any change to periods after initial hydration; debounced to coalesce bursts of edits.
+  useEffect(() => {
+    if (!hydratedRef.current) return;
+    if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+    persistTimerRef.current = setTimeout(() => {
+      api.put('/exam-schedule', { periods }).catch(err => {
+        console.error('Failed to save exam periods:', err);
+        nassaqError(isRTL ? 'تعذر حفظ جدول الاختبارات' : 'Failed to save exam schedule');
+      });
+    }, 400);
+    return () => {
+      if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+    };
+  }, [periods, api, nassaqError, isRTL]);
+
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const [classesRes, teachersRes, committeesRes] = await Promise.all([
+        const [classesRes, teachersRes, committeesRes, scheduleRes] = await Promise.all([
           api.get('/classes').catch(() => ({ data: [] })),
           api.get('/teachers').catch(() => ({ data: [] })),
           api.get('/exam-committees').catch(() => ({ data: { committees: [] } })),
+          api.get('/exam-schedule').catch(() => ({ data: { periods: [] } })),
         ]);
         setApiClasses(Array.isArray(classesRes.data) ? classesRes.data : []);
         setApiTeachers(Array.isArray(teachersRes.data) ? teachersRes.data : []);
         const loadedCommittees = committeesRes.data?.committees || [];
         setCommittees(loadedCommittees);
+        const loadedPeriods = scheduleRes.data?.periods || [];
+        if (loadedPeriods.length === 0) {
+          // First visit: show defaults locally and persist them once so subsequent reloads are stable.
+          setPeriodsState(DEFAULT_PERIODS);
+          try { await api.put('/exam-schedule', { periods: DEFAULT_PERIODS }); } catch (_) {}
+        } else {
+          setPeriodsState(loadedPeriods);
+        }
       } catch (e) {
         console.error('Error loading data:', e);
       } finally {
+        // Mark hydrated AFTER the initial state is set so the persist effect doesn't echo it back.
+        hydratedRef.current = true;
         setLoading(false);
       }
     };

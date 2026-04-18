@@ -1396,6 +1396,7 @@ async def save_seating_card_settings(
     if not tenant_id:
         raise HTTPException(400, "لم يتم تحديد المدرسة")
     now = datetime.now(timezone.utc).isoformat()
+    existing = await gd_find_one(db.session, "seating_card_settings", {"school_id": tenant_id})
     doc = {
         "school_id": tenant_id,
         "fields": body.get("fields", []),
@@ -1403,6 +1404,60 @@ async def save_seating_card_settings(
         "cardHeight": body.get("cardHeight", 180),
         "updated_at": now,
     }
-    doc.setdefault("created_at", now)
-    await gd_update_one(db.session, "seating_card_settings", {"school_id": tenant_id}, doc)
+    if existing:
+        doc["id"] = existing.get("id")
+        doc["created_at"] = existing.get("created_at", now)
+        await gd_update_one(db.session, "seating_card_settings", {"id": doc["id"]}, doc)
+    else:
+        doc["id"] = str(uuid.uuid4())
+        doc["created_at"] = now
+        await gd_insert(db.session, "seating_card_settings", doc)
     return {"success": True, "settings": doc}
+
+
+# ============================================================
+# EXAM PERIODS (exam schedule with nested subjects)
+# ============================================================
+
+@router.get("/exam-schedule")
+async def get_exam_schedule(
+    current_user: dict = Depends(require_roles(COMMITTEE_ROLES))
+):
+    """Return the saved exam-schedule periods (with nested subjects) for this school."""
+    tenant_id = current_user.get("tenant_id")
+    if not tenant_id:
+        raise HTTPException(400, "لم يتم تحديد المدرسة")
+    doc = await gd_find_one(db.session, "exam_schedule", {"school_id": tenant_id})
+    if not doc:
+        return {"success": True, "periods": []}
+    return {"success": True, "periods": doc.get("periods") or []}
+
+
+@router.put("/exam-schedule")
+async def save_exam_schedule(
+    body: dict = Body(...),
+    current_user: dict = Depends(require_roles(COMMITTEE_ROLES))
+):
+    """Replace the entire exam-schedule periods list for this school (atomic upsert)."""
+    tenant_id = current_user.get("tenant_id")
+    if not tenant_id:
+        raise HTTPException(400, "لم يتم تحديد المدرسة")
+    periods = body.get("periods")
+    if periods is None or not isinstance(periods, list):
+        raise HTTPException(400, "periods array is required")
+    now = datetime.now(timezone.utc).isoformat()
+    existing = await gd_find_one(db.session, "exam_schedule", {"school_id": tenant_id})
+    doc = {
+        "school_id": tenant_id,
+        "periods": periods,
+        "updated_at": now,
+    }
+    if existing:
+        doc["id"] = existing.get("id")
+        doc["created_at"] = existing.get("created_at", now)
+        await gd_update_one(db.session, "exam_schedule", {"id": doc["id"]}, doc)
+    else:
+        doc["id"] = str(uuid.uuid4())
+        doc["created_at"] = now
+        await gd_insert(db.session, "exam_schedule", doc)
+    return {"success": True, "periods": periods}
