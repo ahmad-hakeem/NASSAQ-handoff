@@ -35,8 +35,6 @@ def register_routes(app, api_router: APIRouter):
     from routes.academics_year_term_routes import router as academics_year_term_router
     from routes.academics_structure_engine_routes import router as academics_structure_router
     from routes.academics_teacher_routes import router as academics_teacher_router
-    from routes.scheduling_core_routes import router as scheduling_core_router
-    from routes.scheduling_generation_routes import router as scheduling_gen_router
     from routes.scheduling_smart_engine_routes import router as scheduling_smart_router
     from routes.scheduling_smart_session_routes import router as scheduling_smart_sess_router
     from routes.schedule_candidates_routes import router as schedule_candidates_router
@@ -74,8 +72,6 @@ def register_routes(app, api_router: APIRouter):
 
     from routes.academic_structure_routes import router as academic_structure_router
     api_router.include_router(academic_structure_router)
-    api_router.include_router(scheduling_core_router)
-    api_router.include_router(scheduling_gen_router)
     api_router.include_router(scheduling_smart_router)
     api_router.include_router(scheduling_smart_sess_router)
     api_router.include_router(schedule_candidates_router)
@@ -104,27 +100,16 @@ def register_routes(app, api_router: APIRouter):
     set_readiness_db(db)
     api_router.include_router(timetable_readiness_router)
 
-    from routes.principal_timetable_routes import (
-        router as principal_timetable_router,
-        set_db as set_principal_tt_db,
-        set_engine as set_principal_tt_engine,
-    )
-    set_principal_tt_db(db)
-    set_principal_tt_engine(smart_scheduling_engine)
-    api_router.include_router(principal_timetable_router)
-
     # --- Factory-pattern routes (legacy) ---
     # These use a factory function and serve additional unique endpoints
     # that don't exist in the _mod sub-modules above.
     # Overlap analysis:
-    #   scheduling_routes: serves /api/scheduling/* (different base path from _mod's /api/schedules/*)
     #   attendance_routes: serves unique endpoints (mark-all-present, daily reports, teacher-attendance)
     #                      plus a few paths also in attendance_routes_mod (bulk, excuses) — _mod wins (registered first)
     #   assessment_routes: serves unique endpoints (statistics, report-cards/generate, publish)
     #                      plus a few paths also in assessment_routes_mod — _mod wins (registered first)
     #   student/teacher/class_management: serve /options, /validate, /drafts (unique to factory)
     # TODO: Migrate unique factory endpoints into _mod sub-modules, then remove factory registrations.
-    from routes.scheduling_routes import create_scheduling_router
     from routes.attendance_routes import create_attendance_router
     from routes.assessment_routes import create_assessment_router
     from routes.teacher_registration_routes import create_teacher_registration_router
@@ -132,9 +117,7 @@ def register_routes(app, api_router: APIRouter):
     from routes.teacher_management_routes import create_teacher_management_routes
     from routes.class_management_routes import create_class_management_routes
     from routes.notification_routes import create_notification_routes
-    from routes.schedule_management_routes import create_schedule_management_routes
 
-    scheduling_router = create_scheduling_router(db, get_current_user, require_roles, UserRole)
     attendance_router = create_attendance_router(db, get_current_user, require_roles, UserRole)
     assessment_router = create_assessment_router(db, get_current_user, require_roles, UserRole)
     teacher_registration_router = create_teacher_registration_router(db, get_current_user, require_roles, UserRole)
@@ -142,7 +125,6 @@ def register_routes(app, api_router: APIRouter):
     teacher_management_routes = create_teacher_management_routes(db, get_current_user)
     class_management_routes = create_class_management_routes(db, get_current_user)
     notification_routes = create_notification_routes(db, get_current_user)
-    schedule_management_routes = create_schedule_management_routes(db, get_current_user)
 
     from routes.teacher_attendance_routes import create_teacher_attendance_routes
     teacher_attendance_router = create_teacher_attendance_routes(db, get_current_user, require_roles, UserRole)
@@ -192,7 +174,6 @@ def register_routes(app, api_router: APIRouter):
     from routes.parent_portal_routes import setup_parent_portal_routes
     parent_portal_routes = setup_parent_portal_routes(db, get_current_user, require_roles, UserRole)
 
-    api_router.include_router(scheduling_router)
     api_router.include_router(attendance_router)
     api_router.include_router(assessment_router)
     api_router.include_router(audit_router)
@@ -201,7 +182,6 @@ def register_routes(app, api_router: APIRouter):
     api_router.include_router(teacher_management_routes)
     api_router.include_router(class_management_routes)
     api_router.include_router(notification_routes)
-    api_router.include_router(schedule_management_routes)
     api_router.include_router(teacher_attendance_router)
     api_router.include_router(communication_router)
     api_router.include_router(bulk_teacher_router)

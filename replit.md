@@ -3,6 +3,29 @@
 
 A full-stack school management platform with React frontend and FastAPI backend.
 
+## Scheduling System (Single Source of Truth — April 18, 2026)
+
+The codebase previously had **two parallel scheduling systems**. The OLD system was fully removed. Only the NEW Smart Scheduling system remains.
+
+**Active (NEW) system:**
+- Engine: `backend/engines/smart_scheduling_engine.py`
+- Routes: `backend/routes/scheduling_smart_engine_routes.py` (`/api/smart-scheduling/*`), `scheduling_smart_session_routes.py`, `schedule_candidates_routes.py`, `timetable_readiness_routes.py`
+- Storage: `timetables` and `timetable_sessions` keys in the `generic_documents` collection (NOT real ORM tables)
+- Frontend page: `frontend/src/pages/SchedulePageNew.jsx` — mounted at `/school/schedule` and `/admin/schedule`
+- Frontend components: `frontend/src/components/schedule/` (CandidatesSidePanel, TeacherScheduleGrid, WaitingSessionsPanel)
+- Back-compat: `/principal/timetable` redirects to `/school/schedule` in `appRoutes.js`
+
+**Removed (OLD) system — DO NOT recreate:**
+- Routes: `scheduling_core_routes.py`, `scheduling_generation_routes.py`, `scheduling_routes.py`, `schedule_management_routes.py`, `principal_timetable_routes.py`
+- Engines: `scheduling_engine.py`, `schedule_management_engine.py`
+- Service: `services/scheduling_service.py` (and its export from `services/__init__.py`)
+- Frontend: entire `frontend/src/components/timetable/` folder (15 files incl. `PrincipalTimetablePage.jsx`, `TimetableModals.jsx`, `HakimCharacter.jsx`)
+- Tables: `schedule_sessions` truncated (1260 stale rows); `schedules` table never existed
+- Tests removed: `test_foundation_phase.py`, `test_timetable_tenant_isolation.py`, `test_scheduling_api.py`; `test_count_real_conflicts` removed from `test_detect_conflicts_via_registry.py`
+
+**Kept but unrelated to scheduling:**
+- `backend/engines/session_engine.py` — teacher session/attendance tracking (28 references, NOT old scheduling)
+
 ## Development Standards & Quality Checklist
 
 Every task must follow these principles before delivery:

@@ -174,17 +174,3 @@ def test_no_inline_teacher_overload_loop():
     )
 
 
-@pytest.mark.asyncio
-async def test_count_real_conflicts_includes_new_types():
-    """_count_real_conflicts must count the 3 new ConflictType values as real."""
-    from backend.routes.principal_timetable_routes import _count_real_conflicts
-
-    conflicts = [
-        {"conflict_type": ConflictType.ROOM_OVERLAP.value},
-        {"conflict_type": ConflictType.SUBJECT_QUOTA_VIOLATION.value},
-        {"conflict_type": ConflictType.DAILY_PERIOD_LIMIT_EXCEEDED.value},
-        {"conflict_type": ConflictType.TEACHER_OVERLOAD.value},
-    ]
-
-    count = await _count_real_conflicts(conflicts)
-    assert count >= 4, f"Expected count >= 4, got {count}"

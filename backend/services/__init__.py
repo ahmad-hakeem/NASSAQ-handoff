@@ -33,7 +33,6 @@ from .audit_service import (
 )
 
 # Re-export scheduling service
-from .scheduling_service import *
 
 __all__ = [
     # Auth

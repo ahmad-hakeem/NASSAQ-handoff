@@ -10,7 +10,6 @@ from engines.identity_engine import IdentityEngine
 from engines.tenant_engine import TenantEngine
 from engines.behaviour_engine import BehaviourEngine
 from engines.academic_engine import AcademicStructureEngine
-from engines.scheduling_engine import SchedulingEngine
 from engines.attendance_engine import AttendanceEngine
 from engines.assessment_engine import AssessmentEngine
 from engines.notification_engine import NotificationEngine
@@ -36,7 +35,6 @@ __all__ = [
     "AcademicStructureEngine",
     
     # Operations
-    "SchedulingEngine",
     "AttendanceEngine",
     "AssessmentEngine",
     "BehaviourEngine",
