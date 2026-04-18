@@ -693,6 +693,90 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
                 "timestamp": {"$gte": cutoff_7d},
             }, order_by="timestamp", desc_order=True, limit=50)
 
+            action_labels = {
+                "auth.login_failed": ("محاولة دخول فاشلة", "Failed login attempt"),
+                "auth.password_changed": ("تغيير كلمة مرور", "Password changed"),
+                "account_locked": ("قفل حساب مستخدم", "Account locked"),
+                "account_unlocked": ("فتح حساب مستخدم", "Account unlocked"),
+                "user.deleted": ("حذف مستخدم", "User deleted"),
+                "user.suspended": ("تعليق مستخدم", "User suspended"),
+                "user.created": ("إضافة مستخدم جديد", "User created"),
+                "user.updated": ("تحديث بيانات مستخدم", "User updated"),
+                "security.updated": ("تحديث إعدادات الأمان", "Security settings updated"),
+                "security.created": ("إنشاء إعدادات أمنية", "Security settings created"),
+                "tenant.created": ("إنشاء مدرسة جديدة", "New school created"),
+                "tenant.updated": ("تحديث بيانات مدرسة", "School updated"),
+                "tenant.suspended": ("تعليق مدرسة", "School suspended"),
+                "tenant.activated": ("تفعيل مدرسة", "School activated"),
+                "tenant.deleted": ("حذف مدرسة", "School deleted"),
+                "school.created": ("إنشاء مدرسة جديدة", "New school created"),
+                "school.updated": ("تحديث بيانات مدرسة", "School updated"),
+                "school.suspended": ("تعليق مدرسة", "School suspended"),
+                "school.activated": ("تفعيل مدرسة", "School activated"),
+                "role.assigned": ("إسناد صلاحية", "Role assigned"),
+                "role.revoked": ("سحب صلاحية", "Role revoked"),
+                "permission.granted": ("منح صلاحية", "Permission granted"),
+                "permission.revoked": ("سحب صلاحية", "Permission revoked"),
+            }
+
+            # Pre-fetch all unique performer IDs to resolve UUID -> name in one shot
+            performer_ids = set()
+            for ev in high_severity_events:
+                pid = ev.get("performed_by") or ""
+                if pid and len(str(pid)) > 20:
+                    performer_ids.add(str(pid))
+            users_by_id = {}
+            if performer_ids:
+                try:
+                    user_rows = await gd_find(
+                        db.session, "users",
+                        {"id": {"$in": list(performer_ids)}},
+                        limit=len(performer_ids),
+                    )
+                    for u in user_rows:
+                        users_by_id[str(u.get("id"))] = (
+                            u.get("full_name") or u.get("name") or u.get("email") or ""
+                        )
+                except Exception:
+                    pass
+
+            def _resolve_actor(ev):
+                # Prefer human-readable fields first
+                name = (
+                    ev.get("actor_name")
+                    or ev.get("performed_by_name")
+                    or ev.get("actor_email")
+                )
+                if name:
+                    return name
+                # Pull from new_values/previous_values metadata if present
+                for blob_key in ("new_values", "previous_values"):
+                    blob = ev.get(blob_key) or {}
+                    if isinstance(blob, dict):
+                        v = blob.get("performed_by_email") or blob.get("performed_by_name")
+                        if v:
+                            return v
+                pid = ev.get("performed_by") or ""
+                if pid:
+                    resolved = users_by_id.get(str(pid))
+                    if resolved:
+                        return resolved
+                    # Hide raw UUIDs from end-users
+                    if len(str(pid)) > 20:
+                        return ""
+                    return str(pid)
+                return ""
+
+            def _resolve_target(ev):
+                for blob_key in ("new_values", "previous_values"):
+                    blob = ev.get(blob_key) or {}
+                    if isinstance(blob, dict):
+                        for k in ("school_name", "tenant_name", "name", "target_name", "user_email", "email"):
+                            v = blob.get(k)
+                            if v:
+                                return v
+                return ""
+
             for ev in high_severity_events:
                 action = ev.get("action", "unknown")
                 if action in routine_actions:
@@ -701,33 +785,40 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
                 alert_key = f"severity-{ev.get('id', alert_id)}"
                 if alert_key in dismissed_ids:
                     continue
-                action_labels = {
-                    "auth.login_failed": ("محاولة دخول فاشلة", "Failed login attempt"),
-                    "auth.password_changed": ("تغيير كلمة مرور", "Password changed"),
-                    "account_locked": ("قفل حساب", "Account locked"),
-                    "account_unlocked": ("فتح حساب", "Account unlocked"),
-                    "user.deleted": ("حذف مستخدم", "User deleted"),
-                    "user.suspended": ("تعليق مستخدم", "User suspended"),
-                    "security.updated": ("تحديث إعدادات الأمان", "Security settings updated"),
-                    "security.created": ("إنشاء إعدادات أمنية", "Security settings created"),
-                }
-                label_ar, label_en = action_labels.get(action, (f"حدث أمني: {action}", f"Security event: {action}"))
+                label_ar, label_en = action_labels.get(
+                    action,
+                    (f"حدث أمني: {action}", f"Security event: {action}"),
+                )
                 ip_addr = ev.get("ip_address", "")
-                actor = ev.get("actor_name") or ev.get("actor_email") or ev.get("performed_by") or ""
-                desc_ar = f"{label_ar}"
-                desc_en = f"{label_en}"
+                actor = _resolve_actor(ev)
+                target = _resolve_target(ev)
+
+                title_ar = label_ar
+                title_en = label_en
+                if target:
+                    title_ar = f"{label_ar} — {target}"
+                    title_en = f"{label_en} — {target}"
+
+                desc_parts_ar = [label_ar]
+                desc_parts_en = [label_en]
+                if target:
+                    desc_parts_ar.append(f"العنصر: {target}")
+                    desc_parts_en.append(f"Item: {target}")
                 if actor:
-                    desc_ar += f" — المستخدم: {actor}"
-                    desc_en += f" — User: {actor}"
+                    desc_parts_ar.append(f"بواسطة: {actor}")
+                    desc_parts_en.append(f"By: {actor}")
                 if ip_addr:
-                    desc_ar += f" (IP: {ip_addr})"
-                    desc_en += f" (IP: {ip_addr})"
+                    desc_parts_ar.append(f"IP: {ip_addr}")
+                    desc_parts_en.append(f"IP: {ip_addr}")
+                desc_ar = " — ".join(desc_parts_ar)
+                desc_en = " — ".join(desc_parts_en)
+
                 alerts.append({
                     "id": f"alert-sev-{alert_id}",
                     "type": "high",
                     "status": "active",
-                    "title_ar": label_ar,
-                    "title_en": label_en,
+                    "title_ar": title_ar,
+                    "title_en": title_en,
                     "description_ar": desc_ar,
                     "description_en": desc_en,
                     "timestamp": ev.get("timestamp", now.isoformat()),
@@ -735,6 +826,9 @@ def setup_security_routes(db, get_current_user, require_roles, UserRole):
                     "source_user": actor,
                     "source_ip": ip_addr,
                     "action": action,
+                    "action_label_ar": label_ar,
+                    "action_label_en": label_en,
+                    "target_name": target,
                 })
 
             alerts.sort(key=lambda a: a.get("timestamp", ""), reverse=True)

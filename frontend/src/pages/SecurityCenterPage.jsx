@@ -1400,17 +1400,17 @@ export default function SecurityCenterPage() {
                         <Activity className="h-4 w-4 mt-1 text-muted-foreground" />
                         <div>
                           <p className="text-xs text-muted-foreground font-medium">{t('action') || 'Action'}</p>
-                          <p className="text-sm font-mono">{selectedAlert.action}</p>
+                          <p className="text-sm">{(isRTL ? selectedAlert.action_label_ar : selectedAlert.action_label_en) || selectedAlert.action}</p>
                         </div>
                       </div>
                     )}
 
-                    {selectedAlert.alert_key && (
+                    {selectedAlert.target_name && (
                       <div className="flex items-start gap-3">
-                        <Key className="h-4 w-4 mt-1 text-muted-foreground" />
+                        <FileText className="h-4 w-4 mt-1 text-muted-foreground" />
                         <div>
-                          <p className="text-xs text-muted-foreground font-medium">{t('alertId') || 'Alert ID'}</p>
-                          <p className="text-sm font-mono text-muted-foreground">{selectedAlert.alert_key}</p>
+                          <p className="text-xs text-muted-foreground font-medium">{isRTL ? 'العنصر المتأثر' : 'Affected Item'}</p>
+                          <p className="text-sm font-medium">{selectedAlert.target_name}</p>
                         </div>
                       </div>
                     )}
