@@ -933,13 +933,13 @@ async def submit_feedback(
 
     update_fields = {
         "status": new_status,
-        "feedback_response": {
+        "feedback_response": json.dumps({
             "resolved": data.resolved,
             "comment": data.comment,
             "responded_by": get_user_id(current_user),
             "responded_by_name": current_user.get("full_name", ""),
             "responded_at": now,
-        },
+        }, ensure_ascii=False),
         "feedback_requested": False,
         "updated_at": now,
         "system.updated_at": now,
