@@ -37,18 +37,20 @@ export const AITimetableGenerationModal = ({
   open = false,
   readinessSummary = null,
   generationInputSummary = null,
+  scopeClassName = '',
   submitting = false,
   onConfirm,
   onClose
 }) => {
   const [usePublishedAsBaseline, setUsePublishedAsBaseline] = useState(false);
+  const isPerClass = !!scopeClassName;
 
   const canGenerate = readinessSummary?.status === ReadinessStatus.FULLY_READY || 
                       readinessSummary?.can_generate === true;
 
   const handleConfirm = () => {
     onConfirm && onConfirm({
-      generationMode: GenerationMode.FULL,
+      generationMode: isPerClass ? 'per_class' : GenerationMode.FULL,
       usePublishedAsBaseline
     });
   };
@@ -63,7 +65,11 @@ export const AITimetableGenerationModal = ({
             </div>
             <div>
               <span className="block text-lg">حكيم يساعدك في توليد الجدول</span>
-              <span className="block text-xs font-normal text-muted-foreground mt-1">سيقوم بقراءة البيانات الحالية وتوليد جدول مدرسي محسّن</span>
+              <span className="block text-xs font-normal text-muted-foreground mt-1">
+                {isPerClass
+                  ? `سيتم توليد جدول الفصل المحدد فقط دون التأثير على باقي الفصول`
+                  : `سيقوم بقراءة البيانات الحالية وتوليد جدول مدرسي محسّن`}
+              </span>
             </div>
           </DialogTitle>
           <style>{`@keyframes hakimRxFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }`}</style>

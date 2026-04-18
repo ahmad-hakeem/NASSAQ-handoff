@@ -750,6 +750,7 @@ class SmartSchedulingEngine:
         self,
         school_id: str,
         settings: Optional[Dict[str, Any]] = None,
+        class_ids: Optional[List[str]] = None,
     ) -> List[AcademicDemand]:
         """
         المرحلة 3: بناء مصفوفة الطلب الأكاديمي
@@ -779,6 +780,16 @@ class SmartSchedulingEngine:
                 max_slots = len(wd) * ppd_int
 
         classes = await gd_find(self.session, "classes", {"school_id": school_id, "is_active": {"$ne": False}}, limit=500)
+
+        # When the caller targets specific classes (per-class generation),
+        # restrict demand-building to those classes only.
+        if class_ids:
+            wanted = {str(cid) for cid in class_ids if cid}
+            if wanted:
+                classes = [
+                    c for c in classes
+                    if str(c.get("id") or c.get("class_id") or "") in wanted
+                ]
         
         all_assignments_cache = await gd_find(self.session, "teacher_assignments", {"school_id": school_id, "is_active": True}, limit=5000)
         all_teachers_cache = await gd_find(self.session, "teachers", {"school_id": school_id, "is_active": {"$ne": False}}, limit=500)
@@ -2247,23 +2258,38 @@ class SmartSchedulingEngine:
         academic_year_id: Optional[str] = None,
         term_id: Optional[str] = None,
         created_by: str = "system",
-        calling_user: Optional[dict] = None
+        calling_user: Optional[dict] = None,
+        class_ids: Optional[List[str]] = None,
     ) -> GenerationResult:
         """
         التوليد الرئيسي للجدول
         Main Timetable Generation Method
+
+        When `class_ids` is provided we run a *per-class* generation:
+          - Demand is restricted to those classes.
+          - If the school already has a latest draft timetable, we keep
+            the sessions of every other class intact and only replace
+            the targeted classes' sessions inside that draft. This lets
+            the principal build the school timetable one class at a
+            time without losing already-scheduled work.
+          - If no draft exists yet, a brand-new draft is created
+            containing only the targeted classes (caller can later
+            generate more classes into it).
         """
         self._assert_tenant(school_id, calling_user)
         run_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
-        
+        target_class_ids: List[str] = [str(c) for c in (class_ids or []) if c]
+        is_per_class = bool(target_class_ids)
+
         # Create run record
         run_doc = {
             "id": run_id,
             "school_id": school_id,
             "academic_year_id": academic_year_id,
             "term_id": term_id,
-            "run_type": "full_generation",
+            "run_type": "per_class_generation" if is_per_class else "full_generation",
+            "target_class_ids": target_class_ids,
             "status": TimetableRunStatus.PENDING.value,
             "started_at": now,
             "created_by": created_by,
@@ -2305,7 +2331,17 @@ class SmartSchedulingEngine:
             # Phase 3: Build demand
             await self._log_run(run_id, "info", "بناء مصفوفة الطلب الأكاديمي", {"phase": 3})
             await gd_update_one(self.session, "timetable_runs", {"id": run_id}, {"completion_percentage": 25})
-            demands = await self.build_academic_demand(school_id, settings=settings)
+            demands = await self.build_academic_demand(school_id, settings=settings, class_ids=target_class_ids or None)
+            if is_per_class and not demands:
+                await self._log_run(run_id, "error", "لم يتم العثور على الفصول المطلوبة", {"target_class_ids": target_class_ids})
+                await gd_update_one(self.session, "timetable_runs", {"id": run_id}, {"status": TimetableRunStatus.FAILED.value, "finished_at": datetime.now(timezone.utc).isoformat()})
+                return GenerationResult(
+                    success=False, run_id=run_id, status=TimetableRunStatus.FAILED.value,
+                    completion_percentage=25, total_sessions=0, scheduled_sessions=0,
+                    conflicts_count=0, unscheduled_count=0, optimization_score=0,
+                    message_ar="لم يتم العثور على الفصول المحددة لتوليد الجدول",
+                    message_en="Targeted classes not found for generation"
+                )
             
             # Phase 4: Build resources
             await self._log_run(run_id, "info", "بناء مصفوفة الموارد المتاحة", {"phase": 4})
@@ -2341,9 +2377,39 @@ class SmartSchedulingEngine:
             )
             
             # Phase 7: Detect conflicts
+            # In per-class mode we also pull in the *other* classes' sessions
+            # already present in the latest draft so cross-class teacher /
+            # room overlaps are still surfaced when growing the draft
+            # one class at a time.
             await self._log_run(run_id, "info", "اكتشاف التعارضات", {"phase": 7})
             await gd_update_one(self.session, "timetable_runs", {"id": run_id}, {"completion_percentage": 70})
-            conflicts = await self.detect_conflicts(sessions, resources, all_constraints, run_id)
+            sessions_for_conflicts = sessions
+            if is_per_class and target_class_ids:
+                _drafts = await gd_find(
+                    self.session, "timetables",
+                    {"school_id": school_id, "status": TimetableStatus.DRAFT.value},
+                    order_by="created_at", desc_order=True, limit=1,
+                )
+                if _drafts:
+                    _other = await gd_find(
+                        self.session, "timetable_sessions",
+                        {"timetable_id": _drafts[0].get("id"),
+                         "class_id": {"$nin": target_class_ids}},
+                        limit=5000,
+                    )
+                    if _other:
+                        try:
+                            other_objs = [TimetableSession(**row) for row in _other]
+                            sessions_for_conflicts = list(sessions) + other_objs
+                        except Exception:
+                            sessions_for_conflicts = sessions
+            conflicts = await self.detect_conflicts(sessions_for_conflicts, resources, all_constraints, run_id)
+            # Only persist conflicts that actually involve the freshly-generated sessions.
+            if is_per_class and sessions_for_conflicts is not sessions:
+                _new_ids = {s.id for s in sessions if getattr(s, "id", None)}
+                conflicts = [c for c in conflicts if not _new_ids or any(
+                    sid in _new_ids for sid in (getattr(c, "session_ids", None) or [])
+                ) or not getattr(c, "session_ids", None)]
             
             # Phase 8: Optimize
             await self._log_run(run_id, "info", "تحسين الجدول", {"phase": 8})
@@ -2363,24 +2429,67 @@ class SmartSchedulingEngine:
                 if term_doc:
                     semester_val = term_doc.get("semester", 1) or 1
             
-            timetable_doc = {
-                "id": timetable_id,
-                "school_id": school_id,
-                "academic_year": academic_year_id or "",
-                "semester": semester_val,
-                "name": auto_name,
-                "status": TimetableStatus.DRAFT.value,
-                "version": 1,
-                "total_sessions": len(optimized_sessions),
-                "created_at": now,
-                "updated_at": now,
-            }
-            await gd_insert(self.session, "timetables", timetable_doc)
-            
-            # Save sessions
-            if optimized_sessions:
-                session_docs = [s.model_dump() for s in optimized_sessions]
-                await gd_insert_many(self.session, "timetable_sessions", session_docs)
+            # Per-class generation reuses the latest draft when one exists,
+            # so the principal can build the school timetable class-by-class
+            # without losing previously-generated work.
+            existing_draft = None
+            if is_per_class:
+                drafts = await gd_find(
+                    self.session,
+                    "timetables",
+                    {"school_id": school_id, "status": TimetableStatus.DRAFT.value},
+                    order_by="created_at",
+                    desc_order=True,
+                    limit=1,
+                )
+                if drafts:
+                    existing_draft = drafts[0]
+
+            if existing_draft:
+                timetable_id = existing_draft.get("id") or timetable_id
+                # Re-point already-generated session objects at the existing draft.
+                for s in optimized_sessions:
+                    try:
+                        s.timetable_id = timetable_id
+                    except Exception:
+                        pass
+                # Drop only the targeted classes' sessions in this draft.
+                if target_class_ids:
+                    await gd_delete_many(self.session, "timetable_sessions", {
+                        "timetable_id": timetable_id,
+                        "class_id": {"$in": target_class_ids},
+                    })
+                    await gd_delete_many(self.session, "timetable_unscheduled_demands", {
+                        "timetable_id": timetable_id,
+                        "class_id": {"$in": target_class_ids},
+                    })
+                if optimized_sessions:
+                    session_docs = [s.model_dump() for s in optimized_sessions]
+                    await gd_insert_many(self.session, "timetable_sessions", session_docs)
+                # Refresh totals from the merged set.
+                merged_total = await gd_count(self.session, "timetable_sessions", {"timetable_id": timetable_id})
+                await gd_update_one(self.session, "timetables", {"id": timetable_id}, {
+                    "total_sessions": merged_total,
+                    "updated_at": now,
+                })
+            else:
+                timetable_doc = {
+                    "id": timetable_id,
+                    "school_id": school_id,
+                    "academic_year": academic_year_id or "",
+                    "semester": semester_val,
+                    "name": auto_name,
+                    "status": TimetableStatus.DRAFT.value,
+                    "version": 1,
+                    "total_sessions": len(optimized_sessions),
+                    "created_at": now,
+                    "updated_at": now,
+                }
+                await gd_insert(self.session, "timetables", timetable_doc)
+
+                if optimized_sessions:
+                    session_docs = [s.model_dump() for s in optimized_sessions]
+                    await gd_insert_many(self.session, "timetable_sessions", session_docs)
             
             # Save conflicts
             if conflicts:

@@ -493,10 +493,13 @@ const PrincipalTimetablePage = () => {
     try {
       setModalState(prev => ({ ...prev, generationModalOpen: false }));
 
+      const targetClassIds = options.targetClassIds
+        || (selectedClassId ? [selectedClassId] : null);
       const result = await api('/api/principal/timetable/generate', {
         method: 'POST',
         body: JSON.stringify({
-          generation_mode: options.generationMode || 'full',
+          generation_mode: targetClassIds ? 'per_class' : (options.generationMode || 'full'),
+          target_classes: targetClassIds,
           constraints: options.constraints || {}
         })
       });
@@ -1576,8 +1579,9 @@ const PrincipalTimetablePage = () => {
         onConfirm={handleGenerateTimetable}
         submitting={modalSubmitting}
         readinessSummary={readinessSummary}
+        scopeClassName={selectedClassId ? (classes.find(c => c.id === selectedClassId)?.name || classes.find(c => c.id === selectedClassId)?.name_ar || '') : ''}
         generationInputSummary={{
-          totalClasses: classes.length,
+          totalClasses: selectedClassId ? 1 : classes.length,
           totalTeachers: teachers.length,
           totalSubjects: subjects.length || summary?.subjects_count || 0,
           totalTeachingSlots: teachingSlots.length * workingDays.length

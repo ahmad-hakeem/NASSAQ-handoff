@@ -884,10 +884,14 @@ async def generate_timetable(
         # internally (see SmartSchedulingEngine.generate_timetable), so we only
         # forward identity here. Forwarding term_id from a different table can
         # cause semester-fallback issues across mixed data setups.
+        target_classes = body.target_classes or None
+        if target_classes:
+            target_classes = [str(c) for c in target_classes if c]
         result = await smart_engine.generate_timetable(
             school_id=school_id,
             created_by="principal",
-            calling_user=current_user
+            calling_user=current_user,
+            class_ids=target_classes,
         )
 
         if hasattr(result, 'timetable_id'):
