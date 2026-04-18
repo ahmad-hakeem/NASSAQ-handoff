@@ -146,6 +146,7 @@ async def login(credentials: UserLogin, background_tasks: BackgroundTasks):
             from db import async_session_factory
             from repositories import Repos
             from engines.audit_engine import AuditLogEngine
+            from engines.sql_utils import gd_update_one
             async with async_session_factory() as bg_session:
                 bg_repos = Repos(bg_session)
                 bg_engine = AuditLogEngine(bg_repos)
@@ -156,6 +157,14 @@ async def login(credentials: UserLogin, background_tasks: BackgroundTasks):
                     success=True,
                     email=email,
                 )
+                try:
+                    await gd_update_one(
+                        bg_session, "users",
+                        {"id": uid},
+                        {"$set": {"last_login": datetime.now(timezone.utc).isoformat()}},
+                    )
+                except Exception as _ue:
+                    logger.debug(f"Background last_login update failed: {_ue}")
                 await bg_session.commit()
         except Exception as _e:
             logger.debug(f"Background login audit failed: {_e}")
