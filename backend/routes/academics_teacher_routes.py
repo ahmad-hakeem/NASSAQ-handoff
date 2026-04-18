@@ -267,32 +267,36 @@ async def get_teacher_grades_options(current_user: dict = Depends(get_current_us
     query = {"school_id": school_id} if school_id else {}
     classes = await gd_find(db.session, "classes", query, limit=500)
     
-    import re
     grade_map = {}
-    GRADE_ORDER = {
-        'الأول': 1, 'الثاني': 2, 'الثالث': 3, 'الرابع': 4,
-        'الخامس': 5, 'السادس': 6, 'السابع': 7, 'الثامن': 8,
-        'التاسع': 9, 'العاشر': 10, 'الحادي عشر': 11, 'الثاني عشر': 12,
-    }
+    # Order matters: longer/multi-word names must be checked first so
+    # "الثاني عشر" doesn't get matched as "الثاني".
+    GRADE_ORDER = [
+        ('الثاني عشر', 12), ('الحادي عشر', 11),
+        ('العاشر', 10), ('التاسع', 9), ('الثامن', 8), ('السابع', 7),
+        ('السادس', 6), ('الخامس', 5), ('الرابع', 4), ('الثالث', 3),
+        ('الثاني', 2), ('الأول', 1),
+    ]
     for cls in classes:
         cls_name = cls.get("name") or cls.get("name_ar") or ""
-        match = re.match(r'(الصف\s+\S+)', cls_name)
-        if match:
-            grade_name = match.group(1)
-            if grade_name not in grade_map:
-                order_num = 99
-                for ar_name, num in GRADE_ORDER.items():
-                    if ar_name in grade_name:
-                        order_num = num
-                        break
-                grade_id = f"grade-{order_num}"
-                grade_map[grade_name] = {
-                    "id": grade_id,
-                    "name": grade_name,
-                    "name_ar": grade_name,
-                    "name_en": f"Grade {order_num}" if order_num != 99 else grade_name,
-                    "grade": order_num,
-                }
+        if "الصف" not in cls_name:
+            continue
+        order_num = 99
+        matched_label = None
+        for ar_name, num in GRADE_ORDER:
+            if ar_name in cls_name:
+                order_num = num
+                matched_label = ar_name
+                break
+        grade_name = f"الصف {matched_label}" if matched_label else cls_name
+        if grade_name not in grade_map:
+            grade_id = f"grade-{order_num}"
+            grade_map[grade_name] = {
+                "id": grade_id,
+                "name": grade_name,
+                "name_ar": grade_name,
+                "name_en": f"Grade {order_num}" if order_num != 99 else grade_name,
+                "grade": order_num,
+            }
     
     sorted_grades = sorted(grade_map.values(), key=lambda g: g["grade"])
     return {"grades": sorted_grades}
