@@ -115,19 +115,38 @@ async def get_audit_logs(
     total = await gd_count(db.session, "audit_logs", query)
     raw = await gd_find(db.session, "audit_logs", query, order_by="timestamp", desc_order=True, offset=effective_skip, limit=limit)
 
+    # Batch-resolve user names/emails for logs that don't have actor_name persisted
+    missing_user_ids = list({
+        l.get("performed_by") for l in raw
+        if l.get("performed_by") and not (l.get("actor_name") or l.get("performed_by_name"))
+    })
+    user_lookup: dict = {}
+    if missing_user_ids:
+        users = await gd_find(db.session, "users", {"id": {"$in": missing_user_ids}}, limit=len(missing_user_ids))
+        user_lookup = {
+            u.get("id"): {
+                "name":  u.get("full_name") or u.get("full_name_en") or u.get("email"),
+                "email": u.get("email"),
+                "role":  u.get("role"),
+            }
+            for u in users
+        }
+
     enriched = []
     for log in raw:
         action_key = log.get("action", "")
         di_raw = log.get("device_info") or {}
+        pb = log.get("performed_by")
+        looked_up = user_lookup.get(pb) if pb else None
         enriched.append({
             "id":           str(log.get("id", log.get("_id", ""))),
             "action":       action_key,
             "action_ar":    _ACTION_AR.get(action_key, action_key),
             "severity":     log.get("severity", "low"),
-            "performed_by": log.get("performed_by"),
-            "actor_name":   log.get("actor_name") or log.get("performed_by_name"),
-            "actor_role":   log.get("actor_role") or log.get("performed_by_role"),
-            "actor_email":  log.get("actor_email"),
+            "performed_by": pb,
+            "actor_name":   log.get("actor_name") or log.get("performed_by_name") or (looked_up.get("name") if looked_up else None),
+            "actor_role":   log.get("actor_role") or log.get("performed_by_role") or (looked_up.get("role") if looked_up else None),
+            "actor_email":  log.get("actor_email") or (looked_up.get("email") if looked_up else None),
             "entity_type":  log.get("entity_type") or log.get("target_type"),
             "entity_id":    log.get("entity_id") or log.get("target_id"),
             "target_name":  log.get("target_name"),
