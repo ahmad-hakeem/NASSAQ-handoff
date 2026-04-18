@@ -789,15 +789,18 @@ async def get_ai_insights_overview(
 ):
     """Get AI-powered insights overview for the school"""
     school_id = current_user.get("tenant_id")
-    
-    # Calculate overall performance score
-    total_students = await gd_count(db.session, "students", {"school_id": school_id}) if school_id else 0
-    total_teachers = await gd_count(db.session, "teachers", {"school_id": school_id}) if school_id else 0
-    
-    # Get attendance data
-    attendance_query = {"school_id": school_id} if school_id else {}
-    attendance_count = await gd_count(db.session, "attendance", {**attendance_query, "status": "present"})
-    total_attendance = await gd_count(db.session, "attendance", attendance_query)
+
+    # Platform admins (no tenant_id) get aggregate stats across ALL schools so
+    # the overview, attendance and counts stay consistent. School-scoped users
+    # only see their own school's data.
+    scope_query = {"school_id": school_id} if school_id else {}
+
+    total_students = await gd_count(db.session, "students", scope_query)
+    total_teachers = await gd_count(db.session, "teachers", scope_query)
+
+    # Get attendance data using the same scope as students/teachers
+    attendance_count = await gd_count(db.session, "attendance", {**scope_query, "status": "present"})
+    total_attendance = await gd_count(db.session, "attendance", scope_query)
 
     has_attendance_data = total_attendance > 0
     has_any_data = total_students > 0 or total_teachers > 0 or has_attendance_data
