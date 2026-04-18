@@ -4,10 +4,26 @@ APIs for system settings, maintenance mode, terms & conditions, etc.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime, timezone
 import uuid
+import jwt as _jwt
+from dependencies import JWT_SECRET, JWT_ALGORITHM as _JWT_ALGORITHM
+
+_session_security = HTTPBearer(auto_error=False)
+
+
+def _jti_from_creds(creds: Optional[HTTPAuthorizationCredentials]) -> Optional[str]:
+    if not creds:
+        return None
+    try:
+        payload = _jwt.decode(creds.credentials, JWT_SECRET, algorithms=[_JWT_ALGORITHM])
+        return payload.get("jti")
+    except Exception:
+        return None
+
 import os
 import base64
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
@@ -619,28 +635,112 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
         return {"success": True}
 
     # ============= ACTIVE SESSIONS =============
-    
-    @router.get("/sessions/active")
-    async def get_active_sessions(
-        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+
+    def _fmt_session(s: dict, current_jti: Optional[str]) -> dict:
+        device = s.get("device") or "Unknown"
+        browser = s.get("browser") or ""
+        os_name = s.get("os") or ""
+        location = s.get("location") or s.get("ip_address") or "—"
+        last_seen = s.get("last_seen_at") or s.get("created_at")
+        created = s.get("created_at")
+        is_current = bool(current_jti and s.get("jti") == current_jti)
+        return {
+            "id": str(s.get("id")),
+            "device": f"{device} • {browser}".strip(" •"),
+            "device_name": device,
+            "browser": browser,
+            "os": os_name,
+            "ip": s.get("ip_address") or "",
+            "ip_address": s.get("ip_address") or "",
+            "location": location,
+            "started_at": created.isoformat() if hasattr(created, "isoformat") else (created or ""),
+            "lastActive": last_seen.isoformat() if hasattr(last_seen, "isoformat") else (last_seen or ""),
+            "last_active": last_seen.isoformat() if hasattr(last_seen, "isoformat") else (last_seen or ""),
+            "current": is_current,
+            "is_current": is_current,
+        }
+
+    @router.get("/sessions")
+    async def list_my_sessions(
+        current_user: dict = Depends(get_current_user),
+        creds: Optional[HTTPAuthorizationCredentials] = Depends(_session_security),
     ):
-        """جلب الجلسات النشطة"""
+        """List the current user's active (non-revoked, non-expired) sessions."""
+        from datetime import datetime as _dt, timezone as _tz
         try:
-            sessions = await gd_find(db.session, "sessions", {}, order_by="created_at", desc_order=True, limit=100)
-            return [
-                {
-                    "id": str(s.get("id", s.get("_id"))),
-                    "user_id": s.get("user_id"),
-                    "user_name": s.get("user_name", "غير معروف"),
-                    "role": s.get("role", ""),
-                    "device": s.get("device", "غير معروف"),
-                    "ip_address": s.get("ip_address", ""),
-                    "started_at": s.get("created_at", ""),
-                }
-                for s in sessions
-            ]
+            now = _dt.now(_tz.utc)
+            rows = await gd_find(
+                db.session, "user_sessions",
+                {"user_id": current_user["id"], "revoked_at": None},
+                order_by="last_seen_at", desc_order=True, limit=200,
+            )
+            current_jti = _jti_from_creds(creds)
+            sessions = []
+            for s in rows:
+                exp = s.get("expires_at")
+                if exp and hasattr(exp, "tzinfo") and exp < now:
+                    continue
+                sessions.append(_fmt_session(s, current_jti))
+            return {"sessions": sessions, "count": len(sessions)}
         except Exception as e:
-            return []
+            import logging as _log
+            _log.getLogger("nassaq").error(f"list_my_sessions error: {e}", exc_info=True)
+            return {"sessions": [], "count": 0}
+
+    @router.delete("/sessions/{session_id}")
+    async def end_my_session(session_id: str, current_user: dict = Depends(get_current_user)):
+        """Revoke a single session belonging to the current user."""
+        from datetime import datetime as _dt, timezone as _tz
+        row = await gd_find_one(db.session, "user_sessions", {"id": session_id, "user_id": current_user["id"]})
+        if not row:
+            raise HTTPException(status_code=404, detail="الجلسة غير موجودة")
+        now = _dt.now(_tz.utc)
+        await gd_update_one(db.session, "user_sessions", {"id": session_id}, {"revoked_at": now})
+        jti = row.get("jti")
+        if jti:
+            try:
+                exp = row.get("expires_at") or now
+                await gd_insert(db.session, "revoked_tokens", {
+                    "jti": jti,
+                    "expires_at": exp.isoformat() if hasattr(exp, "isoformat") else str(exp),
+                    "revoked_at": now.isoformat(),
+                })
+            except Exception:
+                pass
+        return {"success": True, "message": "تم إنهاء الجلسة"}
+
+    @router.post("/sessions/end-all")
+    async def end_all_other_sessions(
+        current_user: dict = Depends(get_current_user),
+        creds: Optional[HTTPAuthorizationCredentials] = Depends(_session_security),
+    ):
+        """Revoke all of the current user's sessions except the current one."""
+        from datetime import datetime as _dt, timezone as _tz
+        now = _dt.now(_tz.utc)
+        current_jti = _jti_from_creds(creds)
+        rows = await gd_find(
+            db.session, "user_sessions",
+            {"user_id": current_user["id"], "revoked_at": None},
+            limit=500,
+        )
+        ended = 0
+        for s in rows:
+            if current_jti and s.get("jti") == current_jti:
+                continue
+            try:
+                await gd_update_one(db.session, "user_sessions", {"id": s.get("id")}, {"revoked_at": now})
+                jti = s.get("jti")
+                if jti:
+                    exp = s.get("expires_at") or now
+                    await gd_insert(db.session, "revoked_tokens", {
+                        "jti": jti,
+                        "expires_at": exp.isoformat() if hasattr(exp, "isoformat") else str(exp),
+                        "revoked_at": now.isoformat(),
+                    })
+                ended += 1
+            except Exception:
+                pass
+        return {"success": True, "ended": ended, "message": f"تم إنهاء {ended} جلسة أخرى"}
     
     # ============= TITLES (الألقاب) =============
     

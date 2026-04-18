@@ -954,47 +954,10 @@ async def update_user_profile_extended(
 
 
 
-# ============== USER SESSIONS MANAGEMENT ==============
-@router.get("/settings/sessions")
-async def get_user_sessions(
-    current_user: dict = Depends(get_current_user)
-):
-    """Get active sessions for the current user"""
-    sessions = await gd_find(db.session, "user_sessions", {"user_id": current_user["id"]}, order_by="last_active", desc_order=True, limit=20)
-    
-    return {"sessions": sessions}
-
-
-@router.post("/settings/sessions/end-all")
-async def end_all_sessions(
-    current_user: dict = Depends(get_current_user)
-):
-    """End all other sessions except current"""
-    # In a real implementation, you would invalidate all tokens except the current one
-    # For now, we'll just clear the sessions collection
-    await gd_delete_many(db.session, "user_sessions", {
-        "user_id": current_user["id"],
-        "is_current": {"$ne": True}
-    })
-    
-    return {"message": "تم إنهاء جميع الجلسات الأخرى"}
-
-
-@router.delete("/settings/sessions/{session_id}")
-async def end_session(
-    session_id: str,
-    current_user: dict = Depends(get_current_user)
-):
-    """End a specific session"""
-    result = await gd_delete_one(db.session, "user_sessions", {
-        "id": session_id,
-        "user_id": current_user["id"]
-    })
-    
-    if result == 0:
-        raise HTTPException(status_code=404, detail="الجلسة غير موجودة")
-    
-    return {"message": "تم إنهاء الجلسة"}
+# NOTE: User session management endpoints (/settings/sessions, /settings/sessions/end-all,
+# /settings/sessions/{id}) live in routes/settings_routes.py and are backed by the real
+# user_sessions table populated on login. The stubs that were here used a deleted
+# `is_current` boolean and didn't actually revoke tokens.
 
 
 

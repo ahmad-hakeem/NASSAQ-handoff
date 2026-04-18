@@ -1213,3 +1213,21 @@ class RevokedToken(Base):
     __table_args__ = (
         Index("ix_revoked_tokens_expires_at", "expires_at"),
     )
+
+
+class UserSession(Base):
+    __tablename__ = "user_sessions"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    user_id = Column(String, nullable=False, index=True)
+    jti = Column(String(64), nullable=False, unique=True, index=True)
+    device = Column(String(128), nullable=True)
+    browser = Column(String(64), nullable=True)
+    os = Column(String(64), nullable=True)
+    ip_address = Column(String(64), nullable=True)
+    user_agent = Column(Text, nullable=True)
+    location = Column(String(128), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    last_seen_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    revoked_at = Column(DateTime(timezone=True), nullable=True, index=True)

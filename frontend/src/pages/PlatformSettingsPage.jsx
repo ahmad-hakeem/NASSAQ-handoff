@@ -688,11 +688,30 @@ export const PlatformSettingsPage = () => {
     }
   };
   
+  // Load active sessions for current user
+  const loadActiveSessions = async () => {
+    try {
+      const res = await api.get('/settings/sessions');
+      setActiveSessions(res?.data?.sessions || []);
+    } catch (error) {
+      console.error('Error loading sessions:', error);
+      setActiveSessions([]);
+    }
+  };
+
+  useEffect(() => {
+    if (token && activeTab === 'security') {
+      loadActiveSessions();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, activeTab]);
+
   // End session
   const handleEndSession = async (sessionId) => {
     try {
       await api.delete(`/settings/sessions/${sessionId}`);
       toast.success(t('sessionEnded'));
+      await loadActiveSessions();
     } catch (error) {
       nassaqError(t('failedToEndSession'));
     }
@@ -703,6 +722,7 @@ export const PlatformSettingsPage = () => {
     try {
       await api.post('/settings/sessions/end-all', {});
       toast.success(t('allOtherSessionsEnded'));
+      await loadActiveSessions();
     } catch (error) {
       nassaqError(t('failedToEndSessions'));
     }

@@ -89,8 +89,70 @@ async def register(user_data: UserCreate):
     
     return TokenResponse(access_token=token, user=user_response)
 
+def _parse_user_agent(ua: str) -> dict:
+    """Best-effort parse of User-Agent → {device, browser, os}."""
+    if not ua:
+        return {"device": "Unknown", "browser": "Unknown", "os": "Unknown"}
+    s = ua.lower()
+    if "iphone" in s:
+        device, os_name = "iPhone", "iOS"
+    elif "ipad" in s:
+        device, os_name = "iPad", "iPadOS"
+    elif "android" in s:
+        device, os_name = "Android", "Android"
+    elif "windows" in s:
+        device, os_name = "Windows PC", "Windows"
+    elif "mac os" in s or "macintosh" in s:
+        device, os_name = "Mac", "macOS"
+    elif "linux" in s:
+        device, os_name = "Linux PC", "Linux"
+    else:
+        device, os_name = "Desktop", "Unknown"
+    if "edg/" in s or "edge/" in s:
+        browser = "Edge"
+    elif "chrome/" in s and "chromium" not in s:
+        browser = "Chrome"
+    elif "firefox/" in s:
+        browser = "Firefox"
+    elif "safari/" in s and "chrome" not in s:
+        browser = "Safari"
+    elif "opera" in s or "opr/" in s:
+        browser = "Opera"
+    else:
+        browser = "Browser"
+    return {"device": device, "browser": browser, "os": os_name}
+
+
+async def _record_session_from_token(session, token_str: str, user_id: str, ip_address, user_agent):
+    """Decode token, extract jti+exp, insert a user_sessions row. Best-effort."""
+    try:
+        payload = jwt.decode(token_str, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        jti = payload.get("jti")
+        exp = payload.get("exp")
+        if not jti:
+            return
+        from datetime import timezone as _tz
+        expires_at = datetime.fromtimestamp(exp, tz=_tz.utc) if exp else None
+        ua_info = _parse_user_agent(user_agent or "")
+        await gd_insert(session, "user_sessions", {
+            "id": str(uuid.uuid4()),
+            "user_id": user_id,
+            "jti": jti,
+            "device": ua_info["device"],
+            "browser": ua_info["browser"],
+            "os": ua_info["os"],
+            "ip_address": ip_address,
+            "user_agent": (user_agent or "")[:1000],
+            "expires_at": expires_at,
+            "created_at": datetime.now(_tz.utc),
+            "last_seen_at": datetime.now(_tz.utc),
+        })
+    except Exception as _e:
+        logger.debug(f"_record_session_from_token failed: {_e}")
+
+
 @router.post("/auth/login", response_model=TokenResponse)
-async def login(credentials: UserLogin, background_tasks: BackgroundTasks):
+async def login(credentials: UserLogin, request: Request, background_tasks: BackgroundTasks):
     user = await gd_find_one(db.session, "users", {"email": credentials.email})
     if not user:
         # Log failed login attempt
@@ -135,7 +197,12 @@ async def login(credentials: UserLogin, background_tasks: BackgroundTasks):
         token_payload["school_id"] = user["school_id"]
     token = create_access_token(token_payload)
     refresh = create_refresh_token(token_payload, remember_me=credentials.remember_me)
-    
+
+    # Track this login as an active session row (best-effort, non-blocking)
+    _ip = request.client.host if request and request.client else None
+    _ua = request.headers.get("user-agent") if request else None
+    await _record_session_from_token(db.session, token, user_id, _ip, _ua)
+
     # Fire-and-forget the success audit log so it doesn't block the response.
     # Use an independent session/engine instance because the request-scoped
     # session is committed/closed by the middleware before the background task
@@ -236,6 +303,9 @@ async def refresh_token(body: RefreshTokenRequest):
     is_remember_me = payload.get("rm", False)
     new_refresh = create_refresh_token(token_payload, remember_me=is_remember_me)
 
+    # Track refreshed access token as an active session
+    await _record_session_from_token(db.session, new_access, user_id, None, None)
+
     from engines.name_validation import is_generic_name
     user_response = UserResponse(
         id=user_id,
@@ -286,6 +356,10 @@ async def logout(
                 "expires_at": expires_at.isoformat(),
                 "revoked_at": datetime.now(_tz.utc).isoformat(),
             })
+            try:
+                await gd_update_one(db.session, "user_sessions", {"jti": jti}, {"revoked_at": datetime.now(_tz.utc)})
+            except Exception:
+                pass
     except Exception:
         pass
 
@@ -1042,24 +1116,9 @@ async def complete_profile(
     return {"message": "تم تحديث الملف الشخصي بنجاح"}
 
 
-@router.get("/auth/sessions")
-async def get_user_sessions(
-    current_user: dict = Depends(get_current_user)
-):
-    """Get active sessions for the current user"""
-    sessions = await gd_find(db.session, "user_sessions", {"user_id": current_user["id"], "is_active": True}, order_by="last_activity", desc_order=True, limit=10)
-
-    return {"sessions": sessions, "total": len(sessions)}
-
-
-@router.post("/auth/sessions/revoke-all")
-async def revoke_all_sessions(
-    current_user: dict = Depends(get_current_user)
-):
-    """Revoke all sessions except current"""
-    await gd_update_many(db.session, "user_sessions", {"user_id": current_user["id"]}, {"is_active": False, "revoked_at": datetime.now(timezone.utc).isoformat()})
-    return {"message": "تم إلغاء جميع الجلسات"}
-
+# NOTE: /auth/sessions and /auth/sessions/revoke-all stubs were removed.
+# The real session-management endpoints live under /settings/sessions in
+# routes/settings_routes.py and use the user_sessions table populated on login.
 
 @router.get("/auth/login-history")
 async def get_login_history(
