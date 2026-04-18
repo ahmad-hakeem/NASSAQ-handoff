@@ -76,7 +76,11 @@ async def get_reference_grades(current_user: dict = Depends(get_current_user)):
     if grades:
         return grades
 
-    school_id = current_user.get("school_id")
+    school_id = (
+        current_user.get("school_id")
+        or current_user.get("tenant_id")
+        or current_user.get("primary_tenant_id")
+    )
     if not school_id:
         return []
 
