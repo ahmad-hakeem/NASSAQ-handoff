@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -11,208 +12,190 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
-  DialogFooter,
 } from '../ui/dialog';
 import {
   Brain, Activity, Database, Upload, Bell, Play, RefreshCw, Eye,
-  CheckCircle2, XCircle, Clock, Zap, Sparkles, ChevronRight, History,
-  Gauge, Check, X, ExternalLink, FileCheck, AlertTriangle
+  CheckCircle2, XCircle, Sparkles, History,
+  Gauge, ExternalLink, AlertTriangle
 } from 'lucide-react';
 
 import { useTranslation } from '../../contexts/ThemeContext';
-// AI Status States
+
 const AI_STATUS = {
   ACTIVE: { label: 'نشط', label_en: 'Active', color: 'bg-green-500', textColor: 'text-green-500' },
   PARTIAL: { label: 'نشط جزئياً', label_en: 'Partially Active', color: 'bg-yellow-500', textColor: 'text-yellow-500' },
   STOPPED: { label: 'متوقف', label_en: 'Stopped', color: 'bg-red-500', textColor: 'text-red-500' },
 };
 
-// AI Operations Configuration - Only 4 operations as requested
+// Maps frontend operation IDs to backend operation_type values
 const AI_OPERATIONS = [
   {
     id: 'system_diagnosis',
+    backendType: 'diagnosis',
     title: 'تشخيص النظام',
     title_en: 'System Diagnosis',
     desc: 'فحص شامل للنظام',
     desc_en: 'Full system scan',
     icon: Gauge,
     color: 'bg-blue-500',
-    type: 'analysis',
   },
   {
     id: 'data_quality',
+    backendType: 'data_quality',
     title: 'فحص جودة البيانات',
     title_en: 'Data Quality Scan',
     desc: 'اكتشاف النقص والتكرار',
     desc_en: 'Find gaps & duplicates',
     icon: Database,
     color: 'bg-green-500',
-    type: 'analysis',
   },
   {
     id: 'import_analyzer',
+    backendType: 'import_analysis',
     title: 'تحليل ملفات الاستيراد',
     title_en: 'Import Analyzer',
     desc: 'نتائج الملفات المستوردة',
     desc_en: 'Import files results',
     icon: Upload,
     color: 'bg-purple-500',
-    type: 'analysis',
   },
   {
     id: 'alerts_review',
+    backendType: 'alerts_review',
     title: 'مراجعة التنبيهات',
     title_en: 'Alerts Review',
     desc: 'التنبيهات غير المقروءة',
     desc_en: 'Unread alerts',
     icon: Bell,
     color: 'bg-red-500',
-    type: 'alert',
-    badge: 7, // Unread count
   },
 ];
 
-// Sample suggested actions with navigation links
-const SUGGESTED_ACTIONS = [
-  { 
-    id: 1, 
-    title: 'توجد 3 مدارس لم يتم استكمال بيانات مديرها', 
-    priority: 'high', 
-    type: 'data',
-    link: '/admin/schools',
-    linkText: 'إدارة المدارس'
-  },
-  { 
-    id: 2, 
-    title: '12 معلماً بدون رتبة محددة', 
-    priority: 'medium', 
-    type: 'data',
-    link: '/admin/teachers',
-    linkText: 'إدارة المعلمين'
-  },
-  { 
-    id: 3, 
-    title: '4 ملفات استيراد تحتاج مراجعة', 
-    priority: 'high', 
-    type: 'import',
-    link: '/admin/users',
-    linkText: 'ملفات الاستيراد'
-  },
-  { 
-    id: 4, 
-    title: 'يُفضل تفعيل AI Scheduling لمدرستين', 
-    priority: 'low', 
-    type: 'suggestion',
-    link: '/admin/schools',
-    linkText: 'إدارة المدارس'
-  },
-];
+const OPERATION_LABELS = {
+  diagnosis: { ar: 'تشخيص النظام', en: 'System Diagnosis' },
+  data_quality: { ar: 'فحص جودة البيانات', en: 'Data Quality Scan' },
+  import_analysis: { ar: 'تحليل ملفات الاستيراد', en: 'Import Analyzer' },
+  alerts_review: { ar: 'مراجعة التنبيهات', en: 'Alerts Review' },
+};
 
-// Sample recent operations
-const RECENT_OPERATIONS = [
-  { id: 1, name: 'تشخيص النظام', type: 'diagnosis', time: '10:30', status: 'success', user: 'مدير النظام' },
-  { id: 2, name: 'فحص جودة البيانات', type: 'quality', time: '09:15', status: 'success', user: 'مدير النظام' },
-  { id: 3, name: 'تحليل ملف استيراد', type: 'import', time: '08:45', status: 'partial', user: 'مدير النظام' },
-];
+function fmtTime(iso, isRTL) {
+  if (!iso) return '';
+  try {
+    return new Date(iso).toLocaleTimeString(isRTL ? 'ar-SA' : 'en-US', { hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return '';
+  }
+}
 
-export default function QuickAIOperationsPanel({ api, isRTL = true }) {
+export default function QuickAIOperationsPanel({ api: apiProp, isRTL = true }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  
-  // States
-  const [aiStatus] = useState(AI_STATUS.ACTIVE);
-  const [operationsToday, setOperationsToday] = useState(47);
-  const [openAlerts] = useState(7);
-  const [pendingRecommendations] = useState(8);
-  const [lastUpdate, setLastUpdate] = useState(new Date().toLocaleTimeString('ar-SA'));
-  const [aiEnabledSchools] = useState(184);
-  const [totalSchools] = useState(200);
-  
+  const { api: apiCtx } = useAuth();
+  const api = apiProp || apiCtx;
+
+  // Live data states
+  const [stats, setStats] = useState(null);
+  const [notifStats, setNotifStats] = useState(null);
+  const [suggestedActions, setSuggestedActions] = useState([]);
+  const [recentOps, setRecentOps] = useState([]);
+  const [opsToday, setOpsToday] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [lastUpdate, setLastUpdate] = useState(new Date());
+
   // Dialog states
   const [activeDialog, setActiveDialog] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [operationResult, setOperationResult] = useState(null);
-  
-  // Run AI Operation
+
+  const loadAll = useCallback(async (silent = false) => {
+    if (!api) return;
+    if (!silent) setLoading(true);
+    try {
+      const [statsRes, notifRes, suggRes, histRes] = await Promise.allSettled([
+        api.get('/admin/command-center/stats'),
+        api.get('/admin/notifications/stats'),
+        api.get('/admin/ai-suggested-actions'),
+        api.get('/admin/ai-operations/history?limit=5'),
+      ]);
+      if (statsRes.status === 'fulfilled') setStats(statsRes.value.data || statsRes.value);
+      if (notifRes.status === 'fulfilled') setNotifStats(notifRes.value.data || notifRes.value);
+      if (suggRes.status === 'fulfilled') {
+        const data = suggRes.value.data || suggRes.value;
+        setSuggestedActions(data.actions || []);
+      }
+      if (histRes.status === 'fulfilled') {
+        const data = histRes.value.data || histRes.value;
+        setRecentOps(data.history || []);
+        setOpsToday(data.operations_today || 0);
+      }
+      setLastUpdate(new Date());
+    } catch (e) {
+      console.error('AI panel load failed', e);
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  }, [api]);
+
+  useEffect(() => {
+    loadAll();
+  }, [loadAll]);
+
+  // Derived live status values
+  const aiEnabledSchools = stats?.ai_enabled_schools ?? 0;
+  const totalSchools = stats?.registered_schools ?? 0;
+  const operationsToday = opsToday;
+  const openAlerts = notifStats?.unread_notifications ?? 0;
+  const pendingRecommendations = suggestedActions.length;
+  const aiStatus = totalSchools === 0
+    ? AI_STATUS.STOPPED
+    : (aiEnabledSchools < totalSchools ? AI_STATUS.PARTIAL : AI_STATUS.ACTIVE);
+
+  // Run a real AI operation
   const runOperation = async (operationId) => {
+    const op = AI_OPERATIONS.find(o => o.id === operationId);
+    if (!op || !api) return;
     setActiveDialog(operationId);
     setIsProcessing(true);
     setOperationResult(null);
-    
-    // Simulate AI operation
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // Generate results based on operation type
-    const results = generateOperationResults(operationId);
-    setOperationResult(results);
-    setIsProcessing(false);
-    setOperationsToday(prev => prev + 1);
-  };
-  
-  // Generate operation results - Empty states when no data
-  const generateOperationResults = (operationId) => {
-    switch (operationId) {
-      case 'system_diagnosis':
-        return {
-          title: t('systemDiagnosisResults'),
-          summary: t('analyzingData'),
-          items: [], // Empty - will be populated from API
-          recommendations: []
-        };
-      case 'data_quality':
-        return {
-          title: t('dataQualityResults'),
-          summary: t('checking'),
-          qualityScore: 0,
-          items: [], // Empty - will be populated from API
-        };
-      case 'import_analyzer':
-        return {
-          title: t('todaysImportFilesResults'),
-          summary: t('noImportsToday'),
-          importStats: {
-            total: 0,
-            success: 0,
-            failed: 0,
-            pending: 0
-          },
-          items: [], // Empty - will be populated from API
-        };
-      case 'alerts_review':
-        return {
-          title: t('unreadAlerts'),
-          summary: isRTL ? `لديك ${openAlerts} تنبيهات غير مقروءة` : `You have ${openAlerts} unread alerts`,
-          unreadCount: openAlerts,
-          alertsLink: '/admin/audit',
-          items: [], // Empty - will be populated from API
-        };
-      default:
-        return {
-          title: t('operationResults'),
-          summary: t('operationCompletedSuccessfully'),
-          items: [],
-        };
+    try {
+      const res = await api.post(`/admin/ai-operation/${op.backendType}`);
+      const data = res.data || res;
+      setOperationResult({
+        title: isRTL ? op.title : op.title_en,
+        summary: data.message || (isRTL ? 'تمت العملية بنجاح' : 'Operation completed'),
+        details: data.details || {},
+        backendType: op.backendType,
+      });
+      // Refresh stats and history after running
+      loadAll(true);
+    } catch (e) {
+      setOperationResult({
+        title: isRTL ? op.title : op.title_en,
+        summary: isRTL ? 'تعذر تنفيذ العملية' : 'Operation failed',
+        details: {},
+        error: true,
+      });
+      toast.error(isRTL ? 'تعذر تنفيذ العملية' : 'Operation failed');
+    } finally {
+      setIsProcessing(false);
     }
   };
-  
-  // Refresh AI Status
-  const refreshStatus = () => {
-    setLastUpdate(new Date().toLocaleTimeString('ar-SA'));
+
+  const refreshStatus = async () => {
+    await loadAll(false);
     toast.success(t('aiStatusUpdated'));
   };
-  
-  // Navigate to action link
+
   const handleActionClick = (action) => {
-    toast.info(isRTL ? `جاري الانتقال إلى ${action.linkText}...` : `Navigating to ${action.linkText}...`);
     navigate(action.link);
   };
-  
-  // Get operation by ID
+
   const getOperation = (id) => AI_OPERATIONS.find(op => op.id === id);
-  
+
+  const unreadBadge = openAlerts > 0 ? openAlerts : null;
+
   return (
     <section data-testid="ai-operations-panel" className="space-y-6">
-      {/* العنوان والوصف */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="font-cairo text-xl font-bold flex items-center gap-3">
@@ -222,18 +205,16 @@ export default function QuickAIOperationsPanel({ api, isRTL = true }) {
             {t('quickAiOperationsPanel')}
           </h2>
           <p className="text-sm text-muted-foreground mt-1">
-            {t('executeAnalyzeAndMonitorAiOperationsAcrossTheEntir')
-            }
+            {t('executeAnalyzeAndMonitorAiOperationsAcrossTheEntir')}
           </p>
         </div>
       </div>
-      
-      {/* شريط الحالة الذكي - AI Status Bar */}
+
+      {/* Status bar */}
       <Card className="card-nassaq bg-gradient-to-r from-brand-navy/5 to-brand-purple/5 border-brand-navy/20">
         <CardContent className="p-4">
           <div className="flex flex-wrap items-center justify-between gap-4">
-            {/* حالة المحرك */}
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 flex-wrap">
               <div className="flex items-center gap-2">
                 <div className={`w-3 h-3 rounded-full ${aiStatus.color} animate-pulse`} />
                 <span className="font-bold">{isRTL ? aiStatus.label : aiStatus.label_en}</span>
@@ -241,27 +222,26 @@ export default function QuickAIOperationsPanel({ api, isRTL = true }) {
               <div className="h-6 w-px bg-border" />
               <div className="flex items-center gap-1 text-sm">
                 <Activity className="h-4 w-4 text-brand-turquoise" />
-                <span>{operationsToday}</span>
+                <span data-testid="ops-today">{operationsToday}</span>
                 <span className="text-muted-foreground">{t('opsToday')}</span>
               </div>
               <div className="h-6 w-px bg-border" />
               <div className="flex items-center gap-1 text-sm">
                 <Bell className="h-4 w-4 text-orange-500" />
-                <span>{openAlerts}</span>
+                <span data-testid="unread-alerts">{openAlerts}</span>
                 <span className="text-muted-foreground">{t('unreadAlerts2')}</span>
               </div>
               <div className="h-6 w-px bg-border" />
               <div className="flex items-center gap-1 text-sm">
                 <Sparkles className="h-4 w-4 text-brand-purple" />
-                <span>{pendingRecommendations}</span>
+                <span data-testid="recommendations-count">{pendingRecommendations}</span>
                 <span className="text-muted-foreground">{t('recommendations')}</span>
               </div>
             </div>
-            
-            {/* أزرار التحكم */}
+
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={refreshStatus} className="rounded-lg">
-                <RefreshCw className="h-4 w-4 me-1" />
+              <Button variant="outline" size="sm" onClick={refreshStatus} disabled={loading} className="rounded-lg">
+                <RefreshCw className={`h-4 w-4 me-1 ${loading ? 'animate-spin' : ''}`} />
                 {t('refresh')}
               </Button>
               <Button variant="outline" size="sm" onClick={() => runOperation('system_diagnosis')} className="rounded-lg">
@@ -270,10 +250,9 @@ export default function QuickAIOperationsPanel({ api, isRTL = true }) {
               </Button>
             </div>
           </div>
-          
-          {/* معلومات إضافية */}
-          <div className="flex items-center gap-4 mt-3 pt-3 border-t text-xs text-muted-foreground">
-            <span>{t('lastUpdate')} {lastUpdate}</span>
+
+          <div className="flex items-center gap-4 mt-3 pt-3 border-t text-xs text-muted-foreground flex-wrap">
+            <span>{t('lastUpdate')} {lastUpdate.toLocaleTimeString(isRTL ? 'ar-SA' : 'en-US')}</span>
             <span>•</span>
             <span>{t('aienabledSchools')} {aiEnabledSchools}/{totalSchools}</span>
             <span>•</span>
@@ -284,148 +263,168 @@ export default function QuickAIOperationsPanel({ api, isRTL = true }) {
           </div>
         </CardContent>
       </Card>
-      
-      {/* بطاقات العمليات الذكية - 4 عمليات فقط - الكارت كله قابل للنقر */}
+
+      {/* 4 operation cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {AI_OPERATIONS.map((op) => (
-          <Card 
-            key={op.id}
-            className="card-nassaq hover:shadow-lg hover:border-brand-purple/30 transition-all cursor-pointer group relative overflow-hidden"
-            onClick={() => runOperation(op.id)}
-            data-testid={`ai-op-${op.id}`}
-          >
-            {/* Live indicator */}
-            <div className="absolute top-2 right-2 flex items-center gap-1">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-              </span>
-            </div>
-            
-            <CardContent className="p-4 flex flex-col items-center text-center gap-3">
-              <div className="relative">
-                <div className={`w-14 h-14 rounded-2xl ${op.color} flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform`}>
-                  <op.icon className="h-7 w-7 text-white" />
+        {AI_OPERATIONS.map((op) => {
+          const showBadge = op.id === 'alerts_review' && unreadBadge;
+          return (
+            <Card
+              key={op.id}
+              className="card-nassaq hover:shadow-lg hover:border-brand-purple/30 transition-all cursor-pointer group relative overflow-hidden"
+              onClick={() => runOperation(op.id)}
+              data-testid={`ai-op-${op.id}`}
+            >
+              <div className="absolute top-2 right-2 flex items-center gap-1">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                </span>
+              </div>
+
+              <CardContent className="p-4 flex flex-col items-center text-center gap-3">
+                <div className="relative">
+                  <div className={`w-14 h-14 rounded-2xl ${op.color} flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform`}>
+                    <op.icon className="h-7 w-7 text-white" />
+                  </div>
+                  {showBadge && (
+                    <Badge className="absolute -top-2 -end-2 bg-red-500 text-white text-xs px-2 animate-pulse">
+                      {showBadge}
+                    </Badge>
+                  )}
                 </div>
-                {/* Badge for unread alerts */}
-                {op.badge && (
-                  <Badge className="absolute -top-2 -end-2 bg-red-500 text-white text-xs px-2 animate-pulse">
-                    {op.badge}
-                  </Badge>
-                )}
-              </div>
-              <div>
-                <p className="font-cairo font-bold text-sm">{isRTL ? op.title : op.title_en}</p>
-                <p className="text-xs text-muted-foreground">{isRTL ? op.desc : op.desc_en}</p>
-              </div>
-              {/* Click hint instead of button */}
-              <div className="flex items-center gap-1 text-xs text-muted-foreground group-hover:text-brand-purple transition-colors">
-                <Play className="h-3 w-3" />
-                <span>{t('clickToRun')}</span>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+                <div>
+                  <p className="font-cairo font-bold text-sm">{isRTL ? op.title : op.title_en}</p>
+                  <p className="text-xs text-muted-foreground">{isRTL ? op.desc : op.desc_en}</p>
+                </div>
+                <div className="flex items-center gap-1 text-xs text-muted-foreground group-hover:text-brand-purple transition-colors">
+                  <Play className="h-3 w-3" />
+                  <span>{t('clickToRun')}</span>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
-      
-      {/* صف سفلي: المهام المقترحة + سجل العمليات */}
+
+      {/* Suggested actions + Recent operations */}
       <div className="grid md:grid-cols-2 gap-4">
-        {/* المهام الذكية المقترحة */}
         <Card className="card-nassaq">
           <CardHeader className="pb-2">
             <CardTitle className="font-cairo text-base flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-yellow-500" />
               {t('aiSuggestedActions')}
-              <Badge className="bg-yellow-500 text-white">{SUGGESTED_ACTIONS.length}</Badge>
+              <Badge className="bg-yellow-500 text-white">{suggestedActions.length}</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              {SUGGESTED_ACTIONS.map((action) => (
-                <div 
-                  key={action.id}
-                  className={`flex items-center gap-3 p-3 rounded-lg border transition-all hover:bg-muted/50 ${
-                    action.priority === 'high' ? 'border-red-200 bg-red-50/50' :
-                    action.priority === 'medium' ? 'border-yellow-200 bg-yellow-50/50' :
-                    'border-blue-200 bg-blue-50/50'
-                  }`}
-                >
-                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                    action.priority === 'high' ? 'bg-red-500' :
-                    action.priority === 'medium' ? 'bg-yellow-500' :
-                    'bg-blue-500'
-                  }`} />
-                  <span className="flex-1 text-sm">{action.title}</span>
-                  <Button 
-                    size="sm" 
-                    variant="outline" 
-                    className="h-7 px-3 text-xs gap-1"
-                    onClick={() => handleActionClick(action)}
+            {suggestedActions.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6">
+                {isRTL ? 'لا توجد إجراءات مقترحة حالياً' : 'No suggested actions right now'}
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {suggestedActions.map((action) => (
+                  <div
+                    key={action.id}
+                    className={`flex items-center gap-3 p-3 rounded-lg border transition-all hover:bg-muted/50 ${
+                      action.priority === 'high' ? 'border-red-200 bg-red-50/50' :
+                      action.priority === 'medium' ? 'border-yellow-200 bg-yellow-50/50' :
+                      'border-blue-200 bg-blue-50/50'
+                    }`}
                   >
-                    <ExternalLink className="h-3 w-3" />
-                    {action.linkText}
-                  </Button>
-                </div>
-              ))}
-            </div>
+                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                      action.priority === 'high' ? 'bg-red-500' :
+                      action.priority === 'medium' ? 'bg-yellow-500' :
+                      'bg-blue-500'
+                    }`} />
+                    <span className="flex-1 text-sm">{isRTL ? action.title : (action.title_en || action.title)}</span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-3 text-xs gap-1"
+                      onClick={() => handleActionClick(action)}
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                      {isRTL ? action.linkText : (action.linkText_en || action.linkText)}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
-        
-        {/* سجل العمليات الأخيرة */}
+
         <Card className="card-nassaq">
           <CardHeader className="pb-2">
-            <CardTitle className="font-cairo text-base flex items-center gap-2">
-              <History className="h-5 w-5 text-brand-turquoise" />
-              {t('recentOperations')}
+            <CardTitle className="font-cairo text-base flex items-center gap-2 justify-between">
+              <span className="flex items-center gap-2">
+                <History className="h-5 w-5 text-brand-turquoise" />
+                {t('recentOperations')}
+              </span>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2"
+                onClick={() => loadAll(true)}
+                title={t('refresh')}
+              >
+                <RefreshCw className="h-3 w-3" />
+              </Button>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              {RECENT_OPERATIONS.map((op) => (
-                <div 
-                  key={op.id}
-                  className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-all"
-                >
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                    op.status === 'success' ? 'bg-green-100 text-green-600' :
-                    op.status === 'partial' ? 'bg-yellow-100 text-yellow-600' :
-                    'bg-red-100 text-red-600'
-                  }`}>
-                    {op.status === 'success' ? <CheckCircle2 className="h-4 w-4" /> :
-                     op.status === 'partial' ? <AlertTriangle className="h-4 w-4" /> :
-                     <XCircle className="h-4 w-4" />}
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium">{op.name}</p>
-                    <p className="text-xs text-muted-foreground">{op.user} • {op.time}</p>
-                  </div>
-                  <div className="flex gap-1">
-                    <Button 
-                      size="sm" 
-                      variant="ghost" 
-                      className="h-7 px-2 cursor-pointer hover:bg-brand-turquoise/10"
-                      onClick={() => toast.success(isRTL ? `عرض تفاصيل عملية: ${op.name}` : `Viewing operation: ${op.name}`)}
+            {recentOps.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6">
+                {isRTL ? 'لا توجد عمليات حديثة' : 'No recent operations'}
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {recentOps.map((op) => {
+                  const label = OPERATION_LABELS[op.operation_type] || { ar: op.operation_type, en: op.operation_type };
+                  return (
+                    <div
+                      key={op.id}
+                      className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-all"
                     >
-                      <Eye className="h-3 w-3" />
-                    </Button>
-                    <Button 
-                      size="sm" 
-                      variant="ghost" 
-                      className="h-7 px-2 cursor-pointer hover:bg-brand-turquoise/10"
-                      onClick={() => toast.success(t('logRefreshed'))}
-                    >
-                      <RefreshCw className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
+                      <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-green-100 text-green-600">
+                        <CheckCircle2 className="h-4 w-4" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{isRTL ? label.ar : label.en}</p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {op.performed_by_name || (isRTL ? 'مستخدم' : 'User')} • {fmtTime(op.created_at, isRTL)}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 px-2 cursor-pointer hover:bg-brand-turquoise/10"
+                        onClick={() => {
+                          setActiveDialog(op.operation_type);
+                          setIsProcessing(false);
+                          setOperationResult({
+                            title: isRTL ? label.ar : label.en,
+                            summary: op.message,
+                            details: op.details || {},
+                            backendType: op.operation_type,
+                            historical: true,
+                          });
+                        }}
+                      >
+                        <Eye className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
-      
-      {/* Dialog للنتائج */}
-      <Dialog open={!!activeDialog} onOpenChange={() => { setActiveDialog(null); setOperationResult(null); }}>
+
+      {/* Result dialog */}
+      <Dialog open={!!activeDialog} onOpenChange={() => { setActiveDialog(null); setOperationResult(null); setIsProcessing(false); }}>
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto" data-testid="ai-result-dialog">
           <DialogHeader>
             <DialogTitle className="font-cairo flex items-center gap-2">
@@ -437,15 +436,15 @@ export default function QuickAIOperationsPanel({ api, isRTL = true }) {
                   {isRTL ? getOperation(activeDialog).title : getOperation(activeDialog).title_en}
                 </>
               )}
+              {activeDialog && !getOperation(activeDialog) && operationResult && (
+                <span>{operationResult.title}</span>
+              )}
             </DialogTitle>
             <DialogDescription>
-              {isProcessing 
-                ? (t('analyzing'))
-                : (t('operationResults'))
-              }
+              {isProcessing ? t('analyzing') : t('operationResults')}
             </DialogDescription>
           </DialogHeader>
-          
+
           {isProcessing ? (
             <div className="py-12 flex flex-col items-center gap-4">
               <div className="w-16 h-16 rounded-full bg-brand-purple/10 flex items-center justify-center">
@@ -455,190 +454,143 @@ export default function QuickAIOperationsPanel({ api, isRTL = true }) {
               <Progress value={66} className="w-48" />
             </div>
           ) : operationResult && (
-            <div className="space-y-4">
-              {/* الملخص */}
-              <div className="p-4 rounded-lg bg-muted/50">
-                <h4 className="font-bold mb-2">{operationResult.title}</h4>
-                <p className="text-sm text-muted-foreground">{operationResult.summary}</p>
-              </div>
-              
-              {/* شريط الجودة (إن وجد) */}
-              {operationResult.qualityScore && (
-                <div className="p-4 rounded-lg border">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium">{t('dataQualityScore')}</span>
-                    <span className={`font-bold ${operationResult.qualityScore >= 80 ? 'text-green-500' : operationResult.qualityScore >= 60 ? 'text-yellow-500' : 'text-red-500'}`}>
-                      {operationResult.qualityScore}%
-                    </span>
-                  </div>
-                  <Progress value={operationResult.qualityScore} className="h-2" />
-                </div>
-              )}
-              
-              {/* إحصائيات الاستيراد (إن وجدت) */}
-              {operationResult.importStats && (
-                <div className="grid grid-cols-4 gap-3">
-                  <div className="p-3 rounded-lg bg-muted/50 text-center">
-                    <p className="text-2xl font-bold">{operationResult.importStats.total}</p>
-                    <p className="text-xs text-muted-foreground">{t('totalFiles')}</p>
-                  </div>
-                  <div className="p-3 rounded-lg bg-green-50 text-center border border-green-200">
-                    <p className="text-2xl font-bold text-green-600">{operationResult.importStats.success}</p>
-                    <p className="text-xs text-green-600">{t('success')}</p>
-                  </div>
-                  <div className="p-3 rounded-lg bg-red-50 text-center border border-red-200">
-                    <p className="text-2xl font-bold text-red-600">{operationResult.importStats.failed}</p>
-                    <p className="text-xs text-red-600">{t('failed')}</p>
-                  </div>
-                  <div className="p-3 rounded-lg bg-yellow-50 text-center border border-yellow-200">
-                    <p className="text-2xl font-bold text-yellow-600">{operationResult.importStats.pending}</p>
-                    <p className="text-xs text-yellow-600">{t('pending')}</p>
-                  </div>
-                </div>
-              )}
-              
-              {/* رابط التنبيهات (إن وجد) */}
-              {operationResult.alertsLink && (
-                <div className="p-4 rounded-lg bg-red-50 border border-red-200">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <Bell className="h-6 w-6 text-red-500" />
-                      <div>
-                        <p className="font-bold text-red-700">{operationResult.unreadCount} {t('unreadAlerts3')}</p>
-                        <p className="text-sm text-red-600">{t('clickToViewAlertsPage')}</p>
-                      </div>
-                    </div>
-                    <Button 
-                      className="bg-red-500 hover:bg-red-600"
-                      onClick={() => {
-                        setActiveDialog(null);
-                        navigate(operationResult.alertsLink);
-                      }}
-                    >
-                      <ExternalLink className="h-4 w-4 me-1" />
-                      {t('viewAlerts')}
-                    </Button>
-                  </div>
-                </div>
-              )}
-              
-              {/* النتائج */}
-              {operationResult.items && operationResult.items.length > 0 && !operationResult.importStats && !operationResult.alertsLink && (
-                <div className="space-y-2">
-                  {operationResult.items.map((item, index) => (
-                    <div 
-                      key={index}
-                      className={`flex items-center justify-between p-3 rounded-lg ${
-                        item.type === 'critical' ? 'bg-red-50 border border-red-200' :
-                        item.type === 'warning' ? 'bg-yellow-50 border border-yellow-200' :
-                        item.type === 'success' ? 'bg-green-50 border border-green-200' :
-                        'bg-blue-50 border border-blue-200'
-                      }`}
-                    >
-                      <span className="text-sm">{item.label}</span>
-                      <Badge className={
-                        item.type === 'critical' ? 'bg-red-500' :
-                        item.type === 'warning' ? 'bg-yellow-500' :
-                        item.type === 'success' ? 'bg-green-500' :
-                        'bg-blue-500'
-                      }>
-                        {item.value}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-              )}
-              
-              {/* ملفات الاستيراد */}
-              {operationResult.importStats && operationResult.items && (
-                <div className="space-y-2">
-                  {operationResult.items.map((item, index) => (
-                    <div 
-                      key={index}
-                      className={`flex items-center justify-between p-3 rounded-lg ${
-                        item.type === 'critical' ? 'bg-red-50 border border-red-200' :
-                        item.type === 'warning' ? 'bg-yellow-50 border border-yellow-200' :
-                        'bg-green-50 border border-green-200'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <FileCheck className={`h-4 w-4 ${
-                          item.type === 'critical' ? 'text-red-500' :
-                          item.type === 'warning' ? 'text-yellow-500' :
-                          'text-green-500'
-                        }`} />
-                        <span className="text-sm">{item.label}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {item.records && <span className="text-xs text-muted-foreground">{item.records} {t('records')}</span>}
-                        {item.error && <span className="text-xs text-red-500">{item.error}</span>}
-                        <Badge className={
-                          item.type === 'critical' ? 'bg-red-500' :
-                          item.type === 'warning' ? 'bg-yellow-500' :
-                          'bg-green-500'
-                        }>
-                          {item.value}
-                        </Badge>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              
-              {/* عرض بعض التنبيهات */}
-              {operationResult.alertsLink && operationResult.items && (
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-muted-foreground">{t('recentAlerts')}</p>
-                  {operationResult.items.map((item, index) => (
-                    <div 
-                      key={index}
-                      className={`flex items-center justify-between p-3 rounded-lg ${
-                        item.type === 'critical' ? 'bg-red-50 border border-red-200' :
-                        item.type === 'warning' ? 'bg-yellow-50 border border-yellow-200' :
-                        'bg-blue-50 border border-blue-200'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Bell className={`h-4 w-4 ${
-                          item.type === 'critical' ? 'text-red-500' :
-                          item.type === 'warning' ? 'text-yellow-500' :
-                          'text-blue-500'
-                        }`} />
-                        <span className="text-sm">{item.label}</span>
-                      </div>
-                      <span className="text-xs text-muted-foreground">{item.time}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              
-              {/* التوصيات */}
-              {operationResult.recommendations && (
-                <div className="p-4 rounded-lg border border-brand-purple/20 bg-brand-purple/5">
-                  <h4 className="font-bold mb-2 flex items-center gap-2">
-                    <Sparkles className="h-4 w-4 text-brand-purple" />
-                    {t('recommendations2')}
-                  </h4>
-                  <ul className="space-y-1">
-                    {operationResult.recommendations.map((rec, index) => (
-                      <li key={index} className="text-sm text-muted-foreground flex items-center gap-2">
-                        <Check className="h-3 w-3 text-brand-purple" />
-                        {rec}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
+            <OperationResultView result={operationResult} isRTL={isRTL} navigate={navigate} onClose={() => setActiveDialog(null)} t={t} />
           )}
-          
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => { setActiveDialog(null); setOperationResult(null); }}>
-              {t('close')}
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     </section>
+  );
+}
+
+function OperationResultView({ result, isRTL, navigate, onClose, t }) {
+  const d = result.details || {};
+  const backendType = result.backendType;
+
+  return (
+    <div className="space-y-4">
+      <div className="p-4 rounded-lg bg-muted/50">
+        <h4 className="font-bold mb-2">{result.title}</h4>
+        <p className="text-sm text-muted-foreground">{result.summary}</p>
+      </div>
+
+      {backendType === 'diagnosis' && (
+        <div className="space-y-3">
+          {typeof d.health_score === 'number' && (
+            <div className="p-4 rounded-lg border">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium">{isRTL ? 'مؤشر صحة النظام' : 'System Health Score'}</span>
+                <span className={`font-bold ${d.health_score >= 80 ? 'text-green-500' : d.health_score >= 60 ? 'text-yellow-500' : 'text-red-500'}`}>
+                  {d.health_score}%
+                </span>
+              </div>
+              <Progress value={d.health_score} className="h-2" />
+            </div>
+          )}
+          <div className="grid grid-cols-3 gap-3">
+            <Stat label={isRTL ? 'إجمالي المدارس' : 'Total Schools'} value={d.total_schools ?? 0} />
+            <Stat label={isRTL ? 'مدارس نشطة' : 'Active Schools'} value={d.active_schools ?? 0} color="text-green-600" bg="bg-green-50" border="border-green-200" />
+            <Stat label={isRTL ? 'مشاكل' : 'Issues'} value={d.issues_found ?? 0} color="text-red-600" bg="bg-red-50" border="border-red-200" />
+          </div>
+        </div>
+      )}
+
+      {backendType === 'data_quality' && (
+        <div className="space-y-3">
+          {typeof d.quality_score === 'number' && (
+            <div className="p-4 rounded-lg border">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium">{t('dataQualityScore')}</span>
+                <span className={`font-bold ${d.quality_score >= 80 ? 'text-green-500' : d.quality_score >= 60 ? 'text-yellow-500' : 'text-red-500'}`}>
+                  {d.quality_score}%
+                </span>
+              </div>
+              <Progress value={d.quality_score} className="h-2" />
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <Stat label={isRTL ? 'طلاب ببيانات ناقصة' : 'Students with missing data'} value={d.students_missing_data ?? 0} color="text-yellow-600" bg="bg-yellow-50" border="border-yellow-200" />
+            <Stat label={isRTL ? 'معلمون ببيانات ناقصة' : 'Teachers with missing data'} value={d.teachers_missing_data ?? 0} color="text-yellow-600" bg="bg-yellow-50" border="border-yellow-200" />
+          </div>
+        </div>
+      )}
+
+      {backendType === 'import_analysis' && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-4 gap-3">
+            <Stat label={isRTL ? 'ملفات اليوم' : 'Files'} value={d.files_analyzed ?? 0} />
+            <Stat label={isRTL ? 'صفوف مستوردة' : 'Imported'} value={d.imported ?? 0} color="text-green-600" bg="bg-green-50" border="border-green-200" />
+            <Stat label={isRTL ? 'صفوف فشلت' : 'Failed'} value={d.failed ?? 0} color="text-red-600" bg="bg-red-50" border="border-red-200" />
+            <Stat label={isRTL ? 'تحتاج مراجعة' : 'Need Review'} value={d.files_with_failures ?? 0} color="text-yellow-600" bg="bg-yellow-50" border="border-yellow-200" />
+          </div>
+          {Array.isArray(d.recent) && d.recent.length > 0 && (
+            <div className="space-y-2">
+              {d.recent.map((r, i) => (
+                <div key={i} className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                  <div className="text-sm truncate">
+                    <p className="font-medium truncate">{r.filename || r.action}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {isRTL ? 'مستورد' : 'Imported'}: {r.imported ?? 0} • {isRTL ? 'فشل' : 'Failed'}: {r.failed ?? 0}
+                    </p>
+                  </div>
+                  <Badge className={r.failed > 0 ? 'bg-red-500' : 'bg-green-500'}>
+                    {r.failed > 0 ? (isRTL ? 'به أخطاء' : 'Errors') : (isRTL ? 'نجاح' : 'Success')}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          )}
+          {(!d.recent || d.recent.length === 0) && (d.files_analyzed ?? 0) === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              {t('noImportsToday')}
+            </p>
+          )}
+        </div>
+      )}
+
+      {backendType === 'alerts_review' && (
+        <div className="space-y-3">
+          <div className="p-4 rounded-lg bg-red-50 border border-red-200">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Bell className="h-6 w-6 text-red-500" />
+                <div>
+                  <p className="font-bold text-red-700">{d.pending_alerts ?? 0} {t('unreadAlerts3')}</p>
+                  <p className="text-sm text-red-600">{t('clickToViewAlertsPage')}</p>
+                </div>
+              </div>
+              <Button
+                className="bg-red-500 hover:bg-red-600"
+                onClick={() => { onClose(); navigate('/admin/audit'); }}
+              >
+                <ExternalLink className="h-4 w-4 me-1" />
+                {t('viewAlerts')}
+              </Button>
+            </div>
+          </div>
+          {Array.isArray(d.recent) && d.recent.length > 0 && (
+            <div className="space-y-2">
+              {d.recent.map((n) => (
+                <div key={n.id} className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
+                  <AlertTriangle className="h-4 w-4 text-orange-500" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{n.title || n.type}</p>
+                    <p className="text-xs text-muted-foreground">{fmtTime(n.created_at, isRTL)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Stat({ label, value, color = '', bg = 'bg-muted/50', border = '' }) {
+  return (
+    <div className={`p-3 rounded-lg text-center ${bg} ${border ? `border ${border}` : ''}`}>
+      <p className={`text-2xl font-bold ${color}`}>{value}</p>
+      <p className={`text-xs ${color || 'text-muted-foreground'}`}>{label}</p>
+    </div>
   );
 }

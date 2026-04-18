@@ -1117,3 +1117,18 @@ Sub-pages (accessible from within classes/sessions, not top-level sidebar):
 - **School verification**: `SchoolApprovalHandler.verify_after_approve` used `principal.school_id` (non-existent attr) instead of `principal.tenant_id` — fixed
 - **Student wizard field mapping**: `student_creation_routes.py` used `student_id` (dropped by ORM) instead of `student_number`, `grade_id` instead of `grade`, `student_count` instead of `current_students` — all corrected to match Student/Class ORM columns
 - **QR code generation**: Updated to read `student_number` with fallback to `student_id`
+
+### Smart Quick AI Operations Panel — Real Wiring (April 18, 2026)
+- **Component**: `frontend/src/components/ai/QuickAIOperationsPanel.jsx`
+- Replaced all mock state values with live data from real backend endpoints:
+  - Status bar (operations today, AI-enabled schools, total schools): `/admin/command-center/stats` + `/admin/ai-operations/history`
+  - Unread alerts: `/admin/notifications/stats`
+  - Suggested actions: `/admin/ai-suggested-actions` (new endpoint)
+  - Recent operations: `/admin/ai-operations/history` (new endpoint)
+- 4 operation cards run real backend ops via `POST /admin/ai-operation/{type}` (diagnosis, data_quality, import_analysis, alerts_review)
+- Each operation result is rendered with type-specific stats (health score, quality score, import file breakdown, unread alert list)
+- New backend endpoints in `admin_dashboard_routes.py`:
+  - `GET /admin/ai-operations/history?limit=10` — last AI ops with performer name + `operations_today` count
+  - `GET /admin/ai-suggested-actions` — derives actions from real DB state (schools missing principal, teachers without rank, failed imports today, pending registrations, schools without AI)
+- Improved `import_analysis` op to count today's import audit logs (filenames, imported/failed rows)
+- Fix: replaced unsupported dotted-path JSONB filter on ORM `audit_logs` table with Python-side aggregation

@@ -423,12 +423,55 @@ def setup_admin_routes(db, get_current_user, require_roles, UserRole):
                     "teachers_missing_data": teachers_missing
                 }
             elif operation_type == "alerts_review":
-                pending_alerts = await gd_count(db.session, "notifications", {"type": "alert", "read_status": False})
+                pending_alerts = await gd_count(db.session, "notifications", {"read_status": False})
+                recent = await gd_find(
+                    db.session, "notifications", {"read_status": False},
+                    order_by="created_at", desc_order=True, limit=5
+                )
                 result["message"] = f"تم مراجعة {pending_alerts} تنبيه"
-                result["details"] = {"pending_alerts": pending_alerts, "reviewed": pending_alerts}
+                result["details"] = {
+                    "pending_alerts": pending_alerts,
+                    "reviewed": pending_alerts,
+                    "recent": [
+                        {
+                            "id": n.get("id"),
+                            "title": n.get("title") or n.get("subject") or "",
+                            "type": n.get("type") or "alert",
+                            "created_at": n.get("created_at") or "",
+                        } for n in recent
+                    ],
+                }
             else:
-                result["message"] = "تم تحليل ملفات الاستيراد"
-                result["details"] = {"files_analyzed": 0, "ready_for_import": 0, "issues_found": 0}
+                today_iso = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+                today_imports = await gd_find(
+                    db.session, "audit_logs",
+                    {"action": {"$regex": "^bulk_import_"}, "timestamp": {"$gte": today_iso}},
+                    order_by="timestamp", desc_order=True, limit=100
+                )
+                total_files = len(today_imports)
+                total_rows = sum(int((l.get("details") or {}).get("total_rows") or 0) for l in today_imports)
+                imported = sum(int((l.get("details") or {}).get("imported") or 0) for l in today_imports)
+                failed_rows = sum(int((l.get("details") or {}).get("failed") or 0) for l in today_imports)
+                files_with_failures = sum(1 for l in today_imports if int((l.get("details") or {}).get("failed") or 0) > 0)
+                result["message"] = f"تم تحليل {total_files} ملف استيراد اليوم"
+                result["details"] = {
+                    "files_analyzed": total_files,
+                    "total_rows": total_rows,
+                    "imported": imported,
+                    "failed": failed_rows,
+                    "files_with_failures": files_with_failures,
+                    "ready_for_import": max(0, total_files - files_with_failures),
+                    "issues_found": files_with_failures,
+                    "recent": [
+                        {
+                            "action": l.get("action"),
+                            "filename": (l.get("details") or {}).get("filename"),
+                            "imported": (l.get("details") or {}).get("imported"),
+                            "failed": (l.get("details") or {}).get("failed"),
+                            "timestamp": l.get("timestamp"),
+                        } for l in today_imports[:5]
+                    ],
+                }
 
             await gd_insert(db.session, "ai_operations", {
                 "id": str(uuid.uuid4()),
@@ -441,6 +484,134 @@ def setup_admin_routes(db, get_current_user, require_roles, UserRole):
         except Exception as e:
             logger.error(f"AI operation error: {e}")
             raise HTTPException(status_code=500, detail="حدث خطأ أثناء تنفيذ العملية")
+
+    @router.get("/ai-operations/history")
+    async def get_ai_operations_history(
+        limit: int = 10,
+        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.PLATFORM_OPERATIONS_MANAGER]))
+    ):
+        try:
+            today_iso = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+            ops_today = await gd_count(db.session, "ai_operations", {"created_at": {"$gte": today_iso}})
+            ops = await gd_find(
+                db.session, "ai_operations", {},
+                order_by="created_at", desc_order=True, limit=limit
+            )
+            user_ids = list({o.get("performed_by") for o in ops if o.get("performed_by")})
+            users_map: Dict[str, str] = {}
+            if user_ids:
+                users = await gd_find(db.session, "users", {"id": {"$in": user_ids}}, limit=len(user_ids))
+                users_map = {u.get("id"): (u.get("full_name") or u.get("email") or "") for u in users}
+            history = []
+            for o in ops:
+                res = o.get("result") or {}
+                history.append({
+                    "id": o.get("id"),
+                    "operation_type": o.get("operation_type"),
+                    "message": res.get("message", ""),
+                    "details": res.get("details", {}),
+                    "performed_by": o.get("performed_by"),
+                    "performed_by_name": users_map.get(o.get("performed_by"), ""),
+                    "created_at": o.get("created_at"),
+                })
+            return {"history": history, "total": len(history), "operations_today": ops_today}
+        except Exception as e:
+            logger.error(f"Error getting AI operations history: {e}")
+            return {"history": [], "total": 0, "operations_today": 0}
+
+    @router.get("/ai-suggested-actions")
+    async def get_ai_suggested_actions(
+        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.PLATFORM_OPERATIONS_MANAGER]))
+    ):
+        try:
+            actions: List[Dict[str, Any]] = []
+
+            schools_no_admin = await gd_count(db.session, "schools", {
+                "$or": [{"principal_id": None}, {"principal_id": ""}]
+            })
+            if schools_no_admin > 0:
+                actions.append({
+                    "id": "schools_no_admin",
+                    "title": f"توجد {schools_no_admin} مدرسة لم يتم استكمال بيانات مديرها",
+                    "title_en": f"{schools_no_admin} schools missing principal data",
+                    "priority": "high",
+                    "type": "data",
+                    "link": "/admin/schools",
+                    "linkText": "إدارة المدارس",
+                    "linkText_en": "Schools",
+                })
+
+            teachers_no_rank = await gd_count(db.session, "teachers", {
+                "$or": [{"rank": None}, {"rank": ""}]
+            })
+            if teachers_no_rank > 0:
+                actions.append({
+                    "id": "teachers_no_rank",
+                    "title": f"{teachers_no_rank} معلماً بدون رتبة محددة",
+                    "title_en": f"{teachers_no_rank} teachers without rank",
+                    "priority": "medium",
+                    "type": "data",
+                    "link": "/admin/teachers",
+                    "linkText": "إدارة المعلمين",
+                    "linkText_en": "Teachers",
+                })
+
+            today_iso = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+            recent_imports = await gd_find(
+                db.session, "audit_logs",
+                {"action": {"$regex": "^bulk_import_"}, "timestamp": {"$gte": today_iso}},
+                order_by="timestamp", desc_order=True, limit=200
+            )
+            failed_imports_today = sum(
+                1 for l in recent_imports if int((l.get("details") or {}).get("failed") or 0) > 0
+            )
+            if failed_imports_today > 0:
+                actions.append({
+                    "id": "failed_imports",
+                    "title": f"{failed_imports_today} ملفات استيراد تحتاج مراجعة",
+                    "title_en": f"{failed_imports_today} import files need review",
+                    "priority": "high",
+                    "type": "import",
+                    "link": "/admin/users",
+                    "linkText": "ملفات الاستيراد",
+                    "linkText_en": "Imports",
+                })
+
+            pending_requests = await gd_count(db.session, "registration_requests", {"status": "pending"})
+            if pending_requests > 0:
+                actions.append({
+                    "id": "pending_requests",
+                    "title": f"{pending_requests} طلب تسجيل معلق",
+                    "title_en": f"{pending_requests} pending registration requests",
+                    "priority": "medium",
+                    "type": "review",
+                    "link": "/admin/schools",
+                    "linkText": "إدارة المدارس",
+                    "linkText_en": "Schools",
+                })
+
+            schools_no_ai = await gd_count(db.session, "schools", {
+                "ai_enabled": {"$ne": True},
+                "ai_features_enabled": {"$ne": True},
+                "hakim_enabled": {"$ne": True},
+                "status": "active"
+            })
+            if schools_no_ai > 0:
+                actions.append({
+                    "id": "ai_not_enabled",
+                    "title": f"يُفضل تفعيل AI Scheduling لـ{schools_no_ai} مدرسة",
+                    "title_en": f"Recommended to enable AI Scheduling for {schools_no_ai} schools",
+                    "priority": "low",
+                    "type": "suggestion",
+                    "link": "/admin/schools",
+                    "linkText": "إدارة المدارس",
+                    "linkText_en": "Schools",
+                })
+
+            return {"actions": actions, "total": len(actions)}
+        except Exception as e:
+            logger.error(f"Error getting AI suggested actions: {e}")
+            return {"actions": [], "total": 0}
 
     return router
 
