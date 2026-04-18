@@ -89,7 +89,15 @@ export const AuthProvider = ({ children }) => {
     if (storedToken) {
       config.headers.Authorization = `Bearer ${storedToken}`;
     }
-    
+
+    // Let axios set the proper multipart boundary itself for FormData uploads
+    if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+      if (config.headers) {
+        delete config.headers['Content-Type'];
+        delete config.headers['content-type'];
+      }
+    }
+
     const savedContext = sessionStorage.getItem('nassaq_school_context');
     if (savedContext) {
       let ctx = null;
