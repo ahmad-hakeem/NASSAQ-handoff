@@ -2051,7 +2051,7 @@ async def get_teacher_class_assignments(
     request: Request,
     current_user: dict = Depends(get_current_user),
     page: int = Query(1, ge=1),
-    page_size: int = Query(200, ge=1, le=1000),
+    page_size: int = Query(200, ge=1, le=50000),
     teacher_id: str = Query(None),
     class_id: str = Query(None),
 ):
@@ -2170,7 +2170,7 @@ async def create_teacher_class_assignment(
             "teacher_id": new_assignment["teacher_id"],
             "class_id": new_assignment["class_id"],
             "school_id": new_assignment["school_id"],
-            "academic_year_id": new_assignment["academic_year_id"],
+            "academic_year_id": academic_year_id,
             "teacher_name": teacher.get("full_name") if teacher else None,
             "class_name": f"{class_doc.get('name', '')} - {class_doc.get('section', '')}" if class_doc else None,
             "created_at": new_assignment["created_at"]
