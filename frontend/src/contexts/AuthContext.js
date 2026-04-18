@@ -182,6 +182,10 @@ export const AuthProvider = ({ children }) => {
       setLoading(false);
       return;
     }
+    if (user) {
+      setLoading(false);
+      return;
+    }
 
     const PUBLIC_PATHS = ['/', '/login', '/register', '/about', '/contact', '/pricing', '/forgot-password'];
     const isPublicPath = PUBLIC_PATHS.includes(window.location.pathname);
