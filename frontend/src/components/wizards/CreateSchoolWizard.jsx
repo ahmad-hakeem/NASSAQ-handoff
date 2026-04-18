@@ -250,18 +250,18 @@ export default function CreateSchoolWizard({ open, onOpenChange, onSuccess, api,
         city: schoolData.city || '',
         region: schoolData.region || '',
         address: schoolData.address || '',
-        email: schoolData.email || '',
         language: settingsData.defaultLanguage,
         calendar_system: settingsData.calendarSystem,
         school_type: settingsData.schoolType,
         stage: settingsData.educationalStage,
         educational_pathway: settingsData.educationalStage === 'secondary_pathways' ? settingsData.educationalPathway : '',
         principal_name: schoolData.principal_name || principalData.fullName || '',
-        principal_email: principalData.email || '',
         principal_phone: principalData.primaryPhone || '',
         principal_mobile: schoolData.principal_mobile || '',
         status: 'setup',
       };
+      if (schoolData.email && schoolData.email.trim()) schoolPayload.email = schoolData.email.trim();
+      if (principalData.email && principalData.email.trim()) schoolPayload.principal_email = principalData.email.trim();
       
       const response = await api.post('/schools/draft', schoolPayload);
       
@@ -311,7 +311,6 @@ export default function CreateSchoolWizard({ open, onOpenChange, onSuccess, api,
         city: schoolData.city,
         region: schoolData.region,
         address: schoolData.address,
-        email: schoolData.email,
         language: settingsData.defaultLanguage,
         calendar_system: settingsData.calendarSystem,
         school_type: settingsData.schoolType,
@@ -322,6 +321,7 @@ export default function CreateSchoolWizard({ open, onOpenChange, onSuccess, api,
         principal_phone: principalData.primaryPhone,
         principal_mobile: schoolData.principal_mobile,
       };
+      if (schoolData.email && schoolData.email.trim()) schoolPayload.email = schoolData.email.trim();
       
       // API call to create school
       const response = await api.post('/schools', schoolPayload);
