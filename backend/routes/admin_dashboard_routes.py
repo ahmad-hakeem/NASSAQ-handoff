@@ -242,16 +242,16 @@ def setup_admin_routes(db, get_current_user, require_roles, UserRole):
 
             sessions_today_map: Dict[str, int] = {}
             if school_ids:
-                from pg_models import GenericDocument
-                from sqlalchemy import select as _select, func as _func
-                stmt = (
-                    _select(GenericDocument.data["school_id"].astext.label("sid"), _func.count())
-                    .where(GenericDocument._collection == "class_sessions")
-                    .where(GenericDocument.data["date"].astext == today)
-                    .where(GenericDocument.data["school_id"].astext.in_(school_ids))
-                    .group_by(GenericDocument.data["school_id"].astext)
-                )
-                for sid, cnt in (await session.execute(stmt)).all():
+                stmt = _sa_text("""
+                    SELECT data->>'school_id' AS sid, COUNT(*) AS cnt
+                    FROM generic_documents
+                    WHERE collection = 'class_sessions'
+                      AND data->>'date' = :today
+                      AND data->>'school_id' = ANY(:sids)
+                    GROUP BY data->>'school_id'
+                """)
+                rs = await session.execute(stmt, {"today": today, "sids": school_ids})
+                for sid, cnt in rs.all():
                     sessions_today_map[sid] = cnt
 
             result = []

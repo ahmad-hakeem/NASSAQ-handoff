@@ -39,9 +39,15 @@ async def get_school_overview_report(
 ):
     """Get school overview report with statistics"""
     import asyncio
-    school_id = current_user.get("tenant_id")
+    school_id = current_user.get("tenant_id") or current_user.get("primary_tenant_id") or current_user.get("school_id")
     if not school_id:
-        raise HTTPException(status_code=400, detail="المستخدم غير مرتبط بمدرسة")
+        return {
+            "total_students": 0, "total_teachers": 0, "total_classes": 0,
+            "attendance_rate": 0, "avg_grade": 0,
+            "attendance": {"present": 0, "absent": 0, "late": 0, "total": 0},
+            "period": period,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+        }
     
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     
@@ -191,9 +197,14 @@ async def get_school_behavior_report(
     current_user: dict = Depends(get_current_user)
 ):
     """Get behavior report with statistics"""
-    school_id = current_user.get("tenant_id")
+    school_id = current_user.get("tenant_id") or current_user.get("primary_tenant_id") or current_user.get("school_id")
     if not school_id:
-        raise HTTPException(status_code=400, detail="المستخدم غير مرتبط بمدرسة")
+        return {
+            "stats": {"positive": 0, "negative": 0, "warning": 0, "appreciation": 0, "total": 0},
+            "recent_notes": [],
+            "period": period,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+        }
     
     behavior_records = await gd_find(db.session, "behavior", {"school_id": school_id}, order_by="created_at", desc_order=True, limit=1000)
     
