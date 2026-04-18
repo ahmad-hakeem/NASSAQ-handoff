@@ -97,11 +97,19 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
         # Count templates
         total_templates = await gd_count(db.session, "message_templates", query)
         
+        # Received = notifications delivered to the current user
+        user_id = current_user.get("id")
+        total_received = await gd_count(db.session, "notifications", {"user_id": user_id}) if user_id else 0
+
         return {
             "sent": total_sent,
             "scheduled": total_scheduled,
             "drafts": total_drafts,
-            "templates": total_templates
+            "templates": total_templates,
+            "sent_messages": total_sent,
+            "scheduled_messages": total_scheduled,
+            "draft_messages": total_drafts,
+            "received_messages": total_received,
         }
     
     @router.post("")
