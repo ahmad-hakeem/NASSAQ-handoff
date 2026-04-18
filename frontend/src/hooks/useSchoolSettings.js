@@ -430,12 +430,19 @@ export function useSchoolSettings() {
   const removeAssignment = async (assignmentId) => {
     nassaqConfirm('هل أنت متأكد من إلغاء هذا الإسناد؟', async () => {
       const removed = assignments.find(a => a.id === assignmentId);
-      setAssignments(prev => prev.filter(a => a.id !== assignmentId));
+      if (!removed) return;
+      const siblings = assignments.filter(
+        a => a.teacher_id === removed.teacher_id && a.subject_id === removed.subject_id
+      );
+      const siblingIds = new Set(siblings.map(a => a.id));
+      setAssignments(prev => prev.filter(a => !siblingIds.has(a.id)));
       try {
-        await api.delete(`/teacher-assignments/${assignmentId}`);
+        await Promise.all(
+          siblings.map(a => api.delete(`/teacher-assignments/${a.id}`).catch(() => null))
+        );
         toast.success('تم إلغاء الإسناد');
       } catch (error) {
-        if (removed) setAssignments(prev => [...prev, removed]);
+        setAssignments(prev => [...prev, ...siblings]);
         nassaqError('حدث خطأ في إلغاء الإسناد');
       }
     });
