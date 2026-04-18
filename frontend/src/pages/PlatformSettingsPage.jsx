@@ -574,9 +574,13 @@ export const PlatformSettingsPage = () => {
     if (!base64 || typeof base64 !== 'string' || !base64.startsWith('data:image/')) return;
     setLoading(true);
     try {
-      const res = await fetch(base64);
-      const blob = await res.blob();
-      const file = new File([blob], 'avatar.jpg', { type: blob.type || 'image/jpeg' });
+      const [meta, payload] = base64.split(',');
+      const mime = meta.match(/data:(.*?);base64/)?.[1] || 'image/jpeg';
+      const binary = atob(payload);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const blob = new Blob([bytes], { type: mime });
+      const file = new File([blob], 'avatar.jpg', { type: mime });
       const formData = new FormData();
       formData.append('file', file);
       const response = await api.post('/settings/account/upload-picture', formData);
