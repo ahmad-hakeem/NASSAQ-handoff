@@ -1749,6 +1749,29 @@ async def update_breaks(
     return {"message": "تم تحديث فترات الاستراحة", "breaks": breaks_data, "time_slots_regenerated": regen_result}
 
 
+@router.get("/time-slots")
+async def list_time_slots(
+    school_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+    x_school_context: str = Header(default=None, alias="X-School-Context")
+):
+    """List time slots for a school. Used by SchedulePageNew and other schedule UIs.
+    Accepts ?school_id=... and falls back to the user's school context."""
+    resolved_school_id = school_id or await get_school_id_from_context(current_user, x_school_context)
+    if not resolved_school_id:
+        raise HTTPException(status_code=400, detail="School context required")
+
+    user_school = current_user.get("school_id")
+    if (current_user.get("role") != UserRole.PLATFORM_ADMIN.value
+            and user_school and user_school != resolved_school_id):
+        raise HTTPException(status_code=403, detail="Cross-school access denied")
+
+    slots = await gd_find(db.session, "time_slots", {"school_id": resolved_school_id}, limit=500)
+    slots.sort(key=lambda s: (s.get("period_number") if s.get("period_number") is not None
+                              else (s.get("slot_number") if s.get("slot_number") is not None else 99)))
+    return slots
+
+
 @router.post("/school/settings/regenerate-time-slots")
 async def regenerate_time_slots_endpoint(
     current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN])),
