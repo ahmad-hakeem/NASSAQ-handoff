@@ -1407,7 +1407,7 @@ class SmartSchedulingEngine:
         # ---------------------------------------------------------------------
 
         # Schedule each demand
-        for demand in sorted_demands:
+        for demand_index, demand in enumerate(sorted_demands):
             class_id = demand["class_id"]
             subject_id = demand["subject_id"]
             weekly_periods = demand["weekly_periods"]
@@ -1433,12 +1433,19 @@ class SmartSchedulingEngine:
                 continue
             periods_per_working_day = max(1, weekly_periods // len(working_days))
             remaining = weekly_periods
-            
-            for day in working_days:
+
+            # Rotate day order per demand to avoid Sun/Mon bias for short
+            # subjects: each successive demand starts on a different day, so the
+            # weekly load spreads evenly across all working days.
+            offset = demand_index % len(working_days)
+            rotated_days = working_days[offset:] + working_days[:offset]
+
+            for rot_idx, day in enumerate(rotated_days):
                 if remaining <= 0:
                     break
-                
-                periods_today = min(periods_per_working_day + (1 if remaining > periods_per_working_day * (len(working_days) - working_days.index(day)) else 0), remaining)
+
+                days_left = len(rotated_days) - rot_idx
+                periods_today = min(periods_per_working_day + (1 if remaining > periods_per_working_day * days_left else 0), remaining)
                 
                 for _ in range(periods_today):
                     if remaining <= 0:
@@ -1581,8 +1588,15 @@ class SmartSchedulingEngine:
             all_classes.add(demand["class_id"])
             class_grade_map[demand["class_id"]] = demand.get("grade_id", "")
 
-        for class_id in all_classes:
-            for day in working_days:
+        for class_index, class_id in enumerate(sorted(all_classes)):
+            # Rotate day order per class so the gap-filler doesn't repeatedly
+            # pile remaining sessions onto Sunday/Monday for every class.
+            if working_days:
+                gf_offset = class_index % len(working_days)
+                gf_days = working_days[gf_offset:] + working_days[:gf_offset]
+            else:
+                gf_days = working_days
+            for day in gf_days:
                 for period in teaching_period_numbers:
                     # HARD CONSTRAINT: class_id + day + period must be unique
                     if class_id in grid[day][period]:
@@ -2768,7 +2782,7 @@ class SmartSchedulingEngine:
         if day_of_week:
             query["day_of_week"] = day_of_week
         
-        return await gd_find(self.session, "timetable_sessions", query, order_by="day_of_week", desc_order=False, limit=500)
+        return await gd_find(self.session, "timetable_sessions", query, order_by="day_of_week", desc_order=False, limit=50000)
     
     async def get_timetable_conflicts(self, timetable_id: str) -> List[Dict[str, Any]]:
         """Get conflicts for a timetable"""
