@@ -808,32 +808,70 @@ async def get_ai_insights_overview(
     attendance_rate = round((attendance_count / total_attendance) * 100, 1) if has_attendance_data else 0
     student_teacher_ratio = round(total_students / total_teachers, 1) if total_teachers > 0 else 0
 
-    # Only compute a performance score when there's real data to base it on.
-    # Otherwise return 0 so the UI doesn't show fabricated metrics for empty schools.
+    # Real engagement rate: % of students with at least one assessment grade in the last 30 days.
+    now_utc = datetime.now(timezone.utc)
+    month_ago_iso = (now_utc - timedelta(days=30)).isoformat()
+    engagement_rate = 0.0
+    if total_students > 0:
+        active_grades = await gd_find(
+            db.session, "grades",
+            {**scope_query, "created_at": {"$gte": month_ago_iso}},
+            limit=10000,
+        )
+        active_student_ids = {g.get("student_id") for g in active_grades if g.get("student_id")}
+        engagement_rate = round(len(active_student_ids) / total_students * 100, 1)
+
+    def _score_from(att_rate: float, st_ratio: float, eng_rate: float) -> int:
+        base = 70
+        att_bonus = min(15, (att_rate - 80) / 2) if att_rate > 80 else 0
+        ratio_bonus = max(0, 15 - abs(st_ratio - 15)) if st_ratio > 0 else 0
+        eng_bonus = min(10, eng_rate / 10) if eng_rate > 0 else 0
+        return int(min(100, base + att_bonus + ratio_bonus + eng_bonus))
+
     if has_any_data:
-        base_score = 70
-        attendance_bonus = min(15, (attendance_rate - 80) / 2) if attendance_rate > 80 else 0
-        ratio_bonus = max(0, 15 - abs(student_teacher_ratio - 15)) if total_teachers > 0 else 0
-        overall_score = int(min(100, base_score + attendance_bonus + ratio_bonus))
-        trend = "up"
-        trend_value = round(3.2 + (overall_score - 85) / 10, 1)
+        overall_score = _score_from(attendance_rate, student_teacher_ratio, engagement_rate)
+
+        # Real month-over-month trend: recompute the same score using last month's data.
+        prev_month_start = (now_utc - timedelta(days=60)).strftime("%Y-%m-%d")
+        prev_month_end = (now_utc - timedelta(days=30)).strftime("%Y-%m-%d")
+        prev_total = await gd_count(db.session, "attendance", {**scope_query, "date": {"$gte": prev_month_start, "$lt": prev_month_end}})
+        prev_present = await gd_count(db.session, "attendance", {**scope_query, "date": {"$gte": prev_month_start, "$lt": prev_month_end}, "status": "present"})
+        prev_att_rate = round((prev_present / prev_total) * 100, 1) if prev_total > 0 else attendance_rate
+
+        prev_eng_rate = 0.0
+        if total_students > 0:
+            prev_grades = await gd_find(
+                db.session, "grades",
+                {**scope_query, "created_at": {"$gte": (now_utc - timedelta(days=60)).isoformat(), "$lt": month_ago_iso}},
+                limit=10000,
+            )
+            prev_active_ids = {g.get("student_id") for g in prev_grades if g.get("student_id")}
+            prev_eng_rate = round(len(prev_active_ids) / total_students * 100, 1)
+
+        prev_score = _score_from(prev_att_rate, student_teacher_ratio, prev_eng_rate) if (prev_total > 0 or prev_eng_rate > 0) else overall_score
+        delta = overall_score - prev_score
+        trend = "up" if delta > 0 else ("down" if delta < 0 else "flat")
+        trend_value = round(abs(delta), 1)
     else:
         overall_score = 0
         trend = "flat"
         trend_value = 0
+        prev_score = 0
 
     return {
         "overall_score": overall_score,
         "trend": trend,
-        "trend_value": abs(trend_value),
+        "trend_value": trend_value,
         "has_data": has_any_data,
-        "last_updated": datetime.now(timezone.utc).isoformat(),
+        "last_updated": now_utc.isoformat(),
         "metrics": {
             "attendance_rate": attendance_rate,
+            "engagement_rate": engagement_rate,
             "student_teacher_ratio": student_teacher_ratio,
             "total_students": total_students,
             "total_teachers": total_teachers,
             "has_attendance_data": has_attendance_data,
+            "previous_month_score": prev_score if has_any_data else 0,
         }
     }
 
