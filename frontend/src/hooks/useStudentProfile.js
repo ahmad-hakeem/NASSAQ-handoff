@@ -11,6 +11,7 @@ export function useStudentProfile() {
   const location = useLocation();
   const { user, api } = useAuth();
   const { isRTL, isDark, toggleTheme, toggleLanguage } = useTheme();
+  const { t } = useTranslation();
   const { nassaqConfirm, nassaqError, nassaqWarning } = useNassaqAlert();
 
   const classId = location.state?.classId;
