@@ -15,37 +15,39 @@ import { Loader2, ZoomIn, ZoomOut, Upload, X, Check, ImagePlus } from 'lucide-re
 import { useTranslation } from '../../contexts/ThemeContext';
 async function getCroppedImg(imageSrc, pixelCrop) {
   const image = new Image();
-  image.crossOrigin = 'anonymous';
   await new Promise((resolve, reject) => {
     image.onload = resolve;
-    image.onerror = reject;
+    image.onerror = () => reject(new Error('Image failed to load'));
     image.src = imageSrc;
   });
 
+  // Downscale to a reasonable avatar size (max 512px) to keep encoding fast & small
+  const MAX_DIM = 512;
+  const sw = pixelCrop.width;
+  const sh = pixelCrop.height;
+  const scale = Math.min(1, MAX_DIM / Math.max(sw, sh));
+  const dw = Math.max(1, Math.round(sw * scale));
+  const dh = Math.max(1, Math.round(sh * scale));
+
   const canvas = document.createElement('canvas');
-  canvas.width = pixelCrop.width;
-  canvas.height = pixelCrop.height;
+  canvas.width = dw;
+  canvas.height = dh;
   const ctx = canvas.getContext('2d');
+  ctx.drawImage(image, pixelCrop.x, pixelCrop.y, sw, sh, 0, 0, dw, dh);
 
-  ctx.drawImage(
-    image,
-    pixelCrop.x,
-    pixelCrop.y,
-    pixelCrop.width,
-    pixelCrop.height,
-    0,
-    0,
-    pixelCrop.width,
-    pixelCrop.height
-  );
-
-  return new Promise((resolve) => {
-    canvas.toBlob(
-      (blob) => resolve(blob),
-      'image/jpeg',
-      0.9
-    );
+  const blob = await new Promise((resolve) => {
+    canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.85);
   });
+  if (blob) return blob;
+
+  // Fallback: synthesize a Blob from a data URL when canvas.toBlob is unavailable
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+  const byteString = atob(dataUrl.split(',')[1]);
+  const mime = dataUrl.split(',')[0].split(':')[1].split(';')[0];
+  const buf = new ArrayBuffer(byteString.length);
+  const arr = new Uint8Array(buf);
+  for (let i = 0; i < byteString.length; i++) arr[i] = byteString.charCodeAt(i);
+  return new Blob([buf], { type: mime });
 }
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
@@ -111,28 +113,36 @@ export function ImageCropModal({ open, onOpenChange, onSave, isRTL = true }) {
     try {
       const croppedBlob = await getCroppedImg(imageSrc, croppedAreaPixels);
 
-      const compressedBlob = await imageCompression(
-        new File([croppedBlob], 'avatar.jpg', { type: 'image/jpeg' }),
-        {
-          maxSizeMB: 0.5,
-          maxWidthOrHeight: 512,
-          useWebWorker: true,
-          fileType: 'image/jpeg',
+      let finalBlob = croppedBlob;
+      if (croppedBlob.size > 500 * 1024) {
+        try {
+          finalBlob = await imageCompression(
+            new File([croppedBlob], 'avatar.jpg', { type: 'image/jpeg' }),
+            {
+              maxSizeMB: 0.5,
+              maxWidthOrHeight: 512,
+              useWebWorker: false,
+              fileType: 'image/jpeg',
+            }
+          );
+        } catch (compressErr) {
+          console.warn('Image compression skipped:', compressErr);
         }
-      );
+      }
 
       const base64 = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(compressedBlob);
+        reader.onerror = () => reject(new Error('Failed to read compressed image'));
+        reader.readAsDataURL(finalBlob);
       });
 
       await onSave(base64);
       resetState();
       onOpenChange(false);
     } catch (err) {
-      setError(t('failedToProcessImagePleaseTryAgain'));
+      console.error('Image crop/upload error:', err);
+      setError(err?.message || t('failedToProcessImagePleaseTryAgain'));
     } finally {
       setSaving(false);
     }
