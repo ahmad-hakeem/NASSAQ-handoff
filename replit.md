@@ -167,6 +167,18 @@ Every task must follow these principles before delivery:
 - **Compile**: 0 new warnings introduced (1 pre-existing `react-hooks/exhaustive-deps` in `TimeSlotsPage`/`SubjectsPage` predates this audit).
 - **Report**: `docs/PRINCIPAL_AUDIT_APRIL_2026.md`
 
+### School Settings Persistence Bug Fix (April 18, 2026)
+- **Symptom**: Saving timing settings (dayStart, periodDuration, breakDuration) appeared to succeed (toast shown, regen ran) but the values reverted to defaults on reload — only `periodsPerDay` survived. Hidden settings tabs (timings/unavailability/constraints) and POST `/api/teacher-assignments` 405 were also fixed in the same audit.
+- **Root cause**: `SchoolSettings` ORM model in `pg_models.py` exposes legacy column names — `start_time`, `end_time`, `period_duration`, `break_duration`, `periods_per_day`, `working_days`, `custom_settings` (JSONB) — but every writer (PUT `/school/settings`, school create routes, approval handler) was passing new-style keys (`school_day_start`, `period_duration_minutes`, `break_duration_minutes`, `school_day_end`). `apply_updates()` in `engines/sql_utils.py` silently drops unknown keys when the ORM has no `data` column. Only `periods_per_day` happened to match an actual column name, which is why it was the single field that persisted.
+- **Fix** (5 files):
+  1. `routes/school_settings_mod.py` — PUT `/school/settings` now writes to actual ORM columns (`start_time`, `end_time`, `period_duration`, `break_duration`, `periods_per_day`) AND mirrors new-style names into `custom_settings` JSONB (read-modify-write merge to preserve unrelated keys). GET handler reads with priority `custom_settings` → nested `settings.*` → ORM columns.
+  2. Added shared helper `normalize_school_settings_doc(raw)` (in same module) that maps new-style keys to ORM columns and bundles extras into `custom_settings`.
+  3. `routes/school_routes_mod.py` (2 sites) and `engines/approval_handlers.py` — wrap school-creation default settings dicts with `normalize_school_settings_doc(...)` so new schools no longer silently lose 5 of 6 timing fields.
+  4. `engines/smart_scheduling_engine.py` `load_school_settings()` — same fallback chain so the scheduler reads the freshly-saved values.
+  5. `routes/timetable_readiness_routes.py` `_run_readiness_checks_impl()` — read `custom_settings.periods_per_day` / `period_duration_minutes` / `school_day_start` first.
+- **Verified**: `PUT {dayStart:08:30, periodsPerDay:6, periodDuration:50, breakDuration:25, academicYear:1447, attendancePattern:summer}` → GET returns the same values; raw doc shows `start_time=08:30, period_duration=50, break_duration=25, periods_per_day=6` AND `custom_settings={school_day_start:08:30, period_duration_minutes:50, ...}`. Reset back to defaults also verified.
+- **Sibling fixes shipped same day**: `SchoolSettingsPagePro.jsx` `dynamicTabs` array gained 3 missing entries (`timings`, `unavailability`, `constraints`) so all 6 `DynamicSettingsContent` tabs render. Added GET/POST/DELETE `/api/teacher-assignments` endpoints (writing to `teacher_assignments` collection shared with smart_scheduling) — tested create + idempotent-duplicate + delete.
+
 ### Teacher Platform Bug Audit (April 16, 2026)
 - **Sidebar layout bug**: `TeacherSessionsManagePage.jsx` used `<Sidebar />` as sibling with `<main>` instead of wrapper pattern — fixed to match all other teacher pages
 - **confirm() violation**: `TeacherResourcesPage.jsx` used native `confirm()` for delete — replaced with `nassaqConfirm()` from `useNassaqAlert()`

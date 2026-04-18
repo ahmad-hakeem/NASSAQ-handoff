@@ -636,16 +636,24 @@ class SmartSchedulingEngine:
             working_days = working_days_raw
         else:
             working_days = ["sunday", "monday", "tuesday", "wednesday", "thursday"]
-        
+
+        cs = settings.get("custom_settings") or {}
+
+        def _pick(*candidates, default=None):
+            for c in candidates:
+                if c is not None and c != "":
+                    return c
+            return default
+
         return {
             "working_days": working_days,
             "periods_per_day": periods_per_day,
             "teaching_period_numbers": sorted(teaching_period_numbers),
-            "period_duration_minutes": settings.get("period_duration_minutes", 45),
-            "break_duration_minutes": settings.get("break_duration_minutes", 20),
-            "prayer_duration_minutes": settings.get("prayer_duration_minutes", 20),
-            "school_day_start": settings.get("school_day_start", "07:00"),
-            "school_day_end": settings.get("school_day_end", "13:15"),
+            "period_duration_minutes": _pick(cs.get("period_duration_minutes"), settings.get("period_duration_minutes"), settings.get("period_duration"), default=45),
+            "break_duration_minutes": _pick(cs.get("break_duration_minutes"), settings.get("break_duration_minutes"), settings.get("break_duration"), default=20),
+            "prayer_duration_minutes": _pick(cs.get("prayer_duration_minutes"), settings.get("prayer_duration_minutes"), default=20),
+            "school_day_start": _pick(cs.get("school_day_start"), settings.get("school_day_start"), settings.get("start_time"), default="07:00"),
+            "school_day_end": _pick(cs.get("school_day_end"), settings.get("school_day_end"), settings.get("end_time"), default="13:15"),
             "time_slots": time_slots
         }
     

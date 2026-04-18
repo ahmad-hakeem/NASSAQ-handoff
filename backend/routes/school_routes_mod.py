@@ -198,7 +198,8 @@ async def create_school(
     # Create default school settings from template
     default_settings = await gd_find_one(db.session, "default_settings", {"id": "default-school-settings"})
     if default_settings:
-        school_settings = {
+        from routes.school_settings_mod import normalize_school_settings_doc
+        school_settings = normalize_school_settings_doc({
             "id": f"settings-{school_id}",
             "school_id": school_id,
             "working_days": default_settings.get("working_days"),
@@ -216,7 +217,7 @@ async def create_school(
             "education_track": "track-general",
             "created_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat()
-        }
+        })
         await gd_insert(db.session, "school_settings", school_settings)
     
     return SchoolResponse(
@@ -308,7 +309,8 @@ async def create_school_draft(
     # Create default school settings from template
     default_settings = await gd_find_one(db.session, "default_settings", {"id": "default-school-settings"})
     if default_settings:
-        school_settings = {
+        from routes.school_settings_mod import normalize_school_settings_doc
+        school_settings = normalize_school_settings_doc({
             "id": f"settings-{school_id}",
             "school_id": school_id,
             "working_days": default_settings.get("working_days"),
@@ -326,7 +328,7 @@ async def create_school_draft(
             "education_track": "track-general",
             "created_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat()
-        }
+        })
         await gd_insert(db.session, "school_settings", school_settings)
     
     return SchoolResponse(

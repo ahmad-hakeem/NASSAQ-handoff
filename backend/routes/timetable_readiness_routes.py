@@ -150,11 +150,16 @@ async def _run_readiness_checks_impl(school_id: str):
     settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id}) or {}
 
     active_days = _parse_working_days_from_settings(settings)
-    periods_per_day = settings.get("periods_per_day") or settings.get("periodsPerDay") or 0
-    period_duration = settings.get("period_duration") or settings.get("periodDuration") or 0
-    day_start = (settings.get("school_day_start") or settings.get("day_start") or
-                 settings.get("dayStart") or settings.get("start_time") or "")
     custom = settings.get("custom_settings") or {}
+    if not isinstance(custom, dict):
+        custom = {}
+    periods_per_day = (custom.get("periods_per_day") or settings.get("periods_per_day")
+                       or settings.get("periodsPerDay") or 0)
+    period_duration = (custom.get("period_duration_minutes") or settings.get("period_duration_minutes")
+                       or settings.get("period_duration") or settings.get("periodDuration") or 0)
+    day_start = (custom.get("school_day_start") or settings.get("school_day_start")
+                 or settings.get("day_start") or settings.get("dayStart")
+                 or settings.get("start_time") or "")
     if isinstance(custom, dict):
         academic_year = (settings.get("academic_year") or settings.get("academicYear") or
                          custom.get("academic_year") or custom.get("academicYear") or "")

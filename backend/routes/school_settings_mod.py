@@ -37,8 +37,12 @@ async def regenerate_time_slots_from_settings(school_id: str):
         return {"regenerated": False, "reason": "no_settings"}
 
     timing = settings.get("timing", {})
-    day_start = (settings.get("school_day_start")
-                 or settings.get("settings", {}).get("school_day_start")
+    cs = settings.get("custom_settings") or {}
+    nested = settings.get("settings", {}) or {}
+    day_start = (cs.get("school_day_start")
+                 or settings.get("school_day_start")
+                 or nested.get("school_day_start")
+                 or settings.get("start_time")
                  or timing.get("start")
                  or "07:00")
     try:
@@ -48,10 +52,10 @@ async def regenerate_time_slots_from_settings(school_id: str):
     except (ValueError, AttributeError):
         day_start = "07:00"
 
-    periods = min(max(int(settings.get("periods_per_day") or settings.get("settings", {}).get("periods_per_day") or 7), 1), 12)
-    period_dur = min(max(int(settings.get("period_duration_minutes") or settings.get("settings", {}).get("period_duration_minutes") or 45), 20), 90)
-    break_dur = min(max(int(settings.get("break_duration_minutes") or settings.get("settings", {}).get("break_duration_minutes") or 15), 5), 60)
-    prayer_dur = min(max(int(settings.get("prayer_duration_minutes") or settings.get("settings", {}).get("prayer_duration_minutes") or 20), 5), 60)
+    periods = min(max(int(cs.get("periods_per_day") or settings.get("periods_per_day") or nested.get("periods_per_day") or 7), 1), 12)
+    period_dur = min(max(int(cs.get("period_duration_minutes") or settings.get("period_duration_minutes") or nested.get("period_duration_minutes") or settings.get("period_duration") or 45), 20), 90)
+    break_dur = min(max(int(cs.get("break_duration_minutes") or settings.get("break_duration_minutes") or nested.get("break_duration_minutes") or settings.get("break_duration") or 15), 5), 60)
+    prayer_dur = min(max(int(cs.get("prayer_duration_minutes") or settings.get("prayer_duration_minutes") or nested.get("prayer_duration_minutes") or 20), 5), 60)
 
     saved_breaks = settings.get("breaks") or []
     break_after_map = {}
@@ -145,6 +149,50 @@ async def regenerate_time_slots_from_settings(school_id: str):
         })
 
     return {"regenerated": True, "count": len(slots), "day_end": day_end}
+
+
+def normalize_school_settings_doc(raw: dict) -> dict:
+    """Translate a settings dict that may use new-style names (school_day_start,
+    period_duration_minutes, break_duration_minutes, school_day_end, plus extras
+    like prayer_duration_minutes, time_slots, working_days_ar/en, weekend_days_ar/en)
+    into a doc that matches the SchoolSettings ORM columns (start_time, end_time,
+    period_duration, break_duration, periods_per_day, working_days), with all
+    extra keys merged into the `custom_settings` JSONB column. Use this before
+    inserting/updating school_settings to avoid silent column-drop bugs."""
+    out = {}
+    cs = dict(raw.get("custom_settings") or {})
+
+    orm_map = {
+        "school_day_start": "start_time",
+        "school_day_end": "end_time",
+        "period_duration_minutes": "period_duration",
+        "break_duration_minutes": "break_duration",
+    }
+    passthrough_orm = {"id", "school_id", "working_days", "periods_per_day",
+                       "start_time", "end_time", "period_duration", "break_duration",
+                       "grading_system", "language", "calendar",
+                       "notification_preferences", "features", "custom_settings",
+                       "created_at", "updated_at", "education_track"}
+    extras_to_cs = {"prayer_duration_minutes", "time_slots",
+                    "working_days_ar", "working_days_en",
+                    "weekend_days_ar", "weekend_days_en",
+                    "academic_year", "current_semester", "attendance_pattern"}
+
+    for k, v in raw.items():
+        if k == "custom_settings":
+            continue
+        if k in orm_map:
+            out[orm_map[k]] = v
+            cs[k] = v
+        elif k in passthrough_orm:
+            out[k] = v
+        elif k in extras_to_cs:
+            cs[k] = v
+        else:
+            cs[k] = v
+
+    out["custom_settings"] = cs
+    return out
 
 
 def _arabic_ordinal(n):
@@ -653,28 +701,35 @@ async def get_school_settings(
     
     # Extract settings nested values
     nested_settings = settings.get("settings", {})
-    
+    cs = settings.get("custom_settings") or {}
+
+    def _pick(*candidates, default=None):
+        for c in candidates:
+            if c is not None and c != "":
+                return c
+        return default
+
     return {
         "school_info": school or {},
         "settings": settings,
-        # Frontend-compatible field names - try nested first, then direct
-        "academicYear": nested_settings.get("academic_year") or settings.get("academic_year", ""),
-        "currentSemester": nested_settings.get("current_semester") or settings.get("current_semester", ""),
-        "dayStart": nested_settings.get("school_day_start") or settings.get("school_day_start", "07:00"),
-        "dayEnd": nested_settings.get("school_day_end") or settings.get("school_day_end", "13:15"),
-        "periodsPerDay": nested_settings.get("periods_per_day") or settings.get("periods_per_day", 7),
-        "periodDuration": nested_settings.get("period_duration_minutes") or settings.get("period_duration_minutes", 45),
-        "breakDuration": nested_settings.get("break_duration_minutes") or settings.get("break_duration_minutes", 20),
+        # Frontend-compatible field names - prefer custom_settings, then nested, then ORM columns
+        "academicYear": _pick(cs.get("academic_year"), nested_settings.get("academic_year"), settings.get("academic_year"), default=""),
+        "currentSemester": _pick(cs.get("current_semester"), nested_settings.get("current_semester"), settings.get("current_semester"), default=""),
+        "dayStart": _pick(cs.get("school_day_start"), nested_settings.get("school_day_start"), settings.get("school_day_start"), settings.get("start_time"), default="07:00"),
+        "dayEnd": _pick(cs.get("school_day_end"), nested_settings.get("school_day_end"), settings.get("school_day_end"), settings.get("end_time"), default="13:15"),
+        "periodsPerDay": _pick(cs.get("periods_per_day"), nested_settings.get("periods_per_day"), settings.get("periods_per_day"), default=7),
+        "periodDuration": _pick(cs.get("period_duration_minutes"), nested_settings.get("period_duration_minutes"), settings.get("period_duration_minutes"), settings.get("period_duration"), default=45),
+        "breakDuration": _pick(cs.get("break_duration_minutes"), nested_settings.get("break_duration_minutes"), settings.get("break_duration_minutes"), settings.get("break_duration"), default=20),
         "workingDays": _resolve_working_days_ar(nested_settings, settings),
         "weekendDays": _resolve_weekend_days_ar(nested_settings, settings),
         "breaks": settings.get("breaks", []),
-        "attendancePattern": nested_settings.get("attendance_pattern") or settings.get("attendance_pattern", "winter"),
+        "attendancePattern": _pick(cs.get("attendance_pattern"), nested_settings.get("attendance_pattern"), settings.get("attendance_pattern"), default="winter"),
         # Original field names for backward compatibility
         "working_days": settings.get("working_days", {}),
-        "periods_per_day": settings.get("periods_per_day", 7),
-        "time_slots": settings.get("time_slots", []),
-        "school_day_start": settings.get("school_day_start", "07:00"),
-        "school_day_end": settings.get("school_day_end", "13:15"),
+        "periods_per_day": _pick(cs.get("periods_per_day"), settings.get("periods_per_day"), default=7),
+        "time_slots": _pick(cs.get("time_slots"), settings.get("time_slots"), default=[]),
+        "school_day_start": _pick(cs.get("school_day_start"), settings.get("school_day_start"), settings.get("start_time"), default="07:00"),
+        "school_day_end": _pick(cs.get("school_day_end"), settings.get("school_day_end"), settings.get("end_time"), default="13:15"),
         "academic_structure": {
             "stages": academic_stages,
             "grades": academic_grades,
@@ -892,33 +947,50 @@ async def update_school_settings_full(
         update_data["settings.working_days_dict"] = working_days_dict
         update_data["work_days"] = working_days_dict
 
-    # Map frontend field names to both locations (root and nested settings)
+    # Map frontend field names to: (orm_column_or_none, custom_settings_key_or_none)
+    # NOTE: SchoolSettings ORM columns are: start_time, end_time, period_duration,
+    # break_duration, periods_per_day, working_days. Anything else MUST go into the
+    # custom_settings JSONB column or it will be silently dropped by the ORM layer.
     field_mappings = {
-        "academicYear": ("settings.academic_year", "academic_year"),
-        "currentSemester": ("settings.current_semester", "current_semester"),
-        "dayStart": ("settings.school_day_start", "school_day_start"),
-        "dayEnd": ("settings.school_day_end", "school_day_end"),
-        "periodsPerDay": ("settings.periods_per_day", "periods_per_day"),
-        "periodDuration": ("settings.period_duration_minutes", "period_duration_minutes"),
-        "breakDuration": ("settings.break_duration_minutes", "break_duration_minutes"),
-        "workingDays": ("settings.working_days_ar", "working_days_ar"),
-        "weekendDays": ("settings.weekend_days", "weekend_days_ar"),
-        # Also support direct settings.* keys
-        "school_day_start": ("settings.school_day_start", "school_day_start"),
-        "school_day_end": ("settings.school_day_end", "school_day_end"),
-        "periods_per_day": ("settings.periods_per_day", "periods_per_day"),
-        "period_duration_minutes": ("settings.period_duration_minutes", "period_duration_minutes"),
-        "break_duration_minutes": ("settings.break_duration_minutes", "break_duration_minutes"),
-        "prayer_duration_minutes": ("settings.prayer_duration_minutes", "prayer_duration_minutes"),
-        "time_slots": ("settings.time_slots", "time_slots"),
-        "attendancePattern": ("settings.attendance_pattern", "attendance_pattern"),
-        "attendance_pattern": ("settings.attendance_pattern", "attendance_pattern"),
+        "academicYear":            (None, "academic_year"),
+        "currentSemester":         (None, "current_semester"),
+        "dayStart":                ("start_time", "school_day_start"),
+        "dayEnd":                  ("end_time", "school_day_end"),
+        "periodsPerDay":           ("periods_per_day", "periods_per_day"),
+        "periodDuration":          ("period_duration", "period_duration_minutes"),
+        "breakDuration":           ("break_duration", "break_duration_minutes"),
+        "weekendDays":             (None, "weekend_days_ar"),
+        # Also support direct snake_case keys
+        "school_day_start":        ("start_time", "school_day_start"),
+        "school_day_end":          ("end_time", "school_day_end"),
+        "periods_per_day":         ("periods_per_day", "periods_per_day"),
+        "period_duration_minutes": ("period_duration", "period_duration_minutes"),
+        "break_duration_minutes":  ("break_duration", "break_duration_minutes"),
+        "prayer_duration_minutes": (None, "prayer_duration_minutes"),
+        "attendancePattern":       (None, "attendance_pattern"),
+        "attendance_pattern":      (None, "attendance_pattern"),
     }
-    
-    for frontend_key, (nested_key, root_key) in field_mappings.items():
-        if frontend_key in settings_data:
-            update_data[nested_key] = settings_data[frontend_key]
-            update_data[root_key] = settings_data[frontend_key]
+
+    # Load existing settings so we can merge custom_settings (JSONB) properly
+    existing = await gd_find_one(db.session, "school_settings", {"school_id": school_id}) or {}
+    custom_settings = dict(existing.get("custom_settings") or {})
+
+    for frontend_key, (orm_col, cs_key) in field_mappings.items():
+        if frontend_key not in settings_data:
+            continue
+        value = settings_data[frontend_key]
+        if orm_col:
+            update_data[orm_col] = value
+        if cs_key:
+            custom_settings[cs_key] = value
+
+    # Special-case keys handled separately
+    if "workingDays" in settings_data and isinstance(settings_data["workingDays"], list):
+        custom_settings["working_days_ar"] = settings_data["workingDays"]
+    if "time_slots" in settings_data:
+        custom_settings["time_slots"] = settings_data["time_slots"]
+
+    update_data["custom_settings"] = custom_settings
     
     if "breaks" in settings_data and isinstance(settings_data["breaks"], list):
         breaks_data = []

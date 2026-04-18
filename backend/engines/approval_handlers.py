@@ -368,7 +368,8 @@ class SchoolApprovalHandler(ApprovalHandler):
 
         default_settings = await gd_find_one(session, "default_settings", {"id": "default-school-settings"})
         if default_settings:
-            settings_obj = dict_to_model(SchoolSettings, {
+            from routes.school_settings_mod import normalize_school_settings_doc
+            settings_obj = dict_to_model(SchoolSettings, normalize_school_settings_doc({
                 "id": f"settings-{school_id}",
                 "school_id": school_id,
                 "working_days": default_settings.get("working_days"),
@@ -386,7 +387,7 @@ class SchoolApprovalHandler(ApprovalHandler):
                 "education_track": "track-general",
                 "created_at": now,
                 "updated_at": now,
-            })
+            }))
             session.add(settings_obj)
             await session.flush()
 
