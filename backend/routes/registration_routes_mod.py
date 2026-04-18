@@ -203,17 +203,30 @@ async def create_registration_request(request_data: RegistrationRequest):
     try:
         admin_users = await gd_find(db.session, "users", {"role": {"$in": ["platform_admin", "platform_operations_manager"]}, "is_active": True}, limit=50)
 
+        account_type_labels_ar = {
+            "student": "طالب",
+            "parent": "ولي أمر",
+            "teacher": "معلم",
+            "school": "مدرسة",
+            "principal": "مدير مدرسة",
+            "supervisor": "مشرف",
+            "staff": "موظف",
+        }
+        account_type_label_ar = account_type_labels_ar.get(account_type, account_type)
+        title_ar = f"طلب تسجيل جديد — {account_type_label_ar}"
+        message_ar = f"تقدّم {full_name} بطلب تسجيل جديد بصفة {account_type_label_ar}"
+
         notif_docs = []
         for admin in admin_users:
             notif_docs.append({
                 "id": str(uuid.uuid4()),
                 "user_id": admin["id"],
                 "type": "registration_request",
-                "title": "طلب تسجيل جديد",
-                "message": f"طلب تسجيل جديد من {full_name} ({account_type})",
+                "title": title_ar,
+                "message": message_ar,
                 "is_read": False,
                 "action_url": "/admin/users?tab=requests",
-                "metadata": {"request_id": request_id, "account_type": account_type},
+                "metadata": {"request_id": request_id, "account_type": account_type, "account_type_label_ar": account_type_label_ar},
                 "created_at": now
             })
         if notif_docs:

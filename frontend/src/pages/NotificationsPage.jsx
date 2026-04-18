@@ -33,6 +33,35 @@ const notificationTypeConfig = {
   announcement: { icon: Megaphone, label: { ar: 'الإعلانات', en: 'Announcements' }, color: 'bg-orange-500', iconColor: 'text-orange-500' },
 };
 
+const ACCOUNT_TYPE_LABEL_AR = {
+  student: 'طالب',
+  parent: 'ولي أمر',
+  teacher: 'معلم',
+  school: 'مدرسة',
+  principal: 'مدير مدرسة',
+  supervisor: 'مشرف',
+  staff: 'موظف',
+};
+const ACCOUNT_TYPE_LABEL_EN = {
+  student: 'Student',
+  parent: 'Parent',
+  teacher: 'Teacher',
+  school: 'School',
+  principal: 'Principal',
+  supervisor: 'Supervisor',
+  staff: 'Staff',
+};
+
+// Prettify any legacy notification text that contains raw "(student)" / "(parent)" codes
+const prettifyText = (text, isRTL) => {
+  if (!text || typeof text !== 'string') return text;
+  const map = isRTL ? ACCOUNT_TYPE_LABEL_AR : ACCOUNT_TYPE_LABEL_EN;
+  return text.replace(/\(([a-z_]+)\)/gi, (full, code) => {
+    const key = code.toLowerCase();
+    return map[key] ? `— ${map[key]}` : full;
+  });
+};
+
 const priorityConfig = {
   low: { label: { ar: 'منخفضة', en: 'Low' }, color: 'bg-gray-400' },
   medium: { label: { ar: 'متوسطة', en: 'Medium' }, color: 'bg-blue-400' },
@@ -219,12 +248,12 @@ export const NotificationsPage = () => {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-0.5">
                   <h4 className={`font-medium text-sm truncate ${!notification.read_status ? 'font-bold' : ''}`}>
-                    {isRTL ? notification.title : (notification.title_en || notification.title)}
+                    {prettifyText(isRTL ? notification.title : (notification.title_en || notification.title), isRTL)}
                   </h4>
                   {!notification.read_status && <span className="w-2 h-2 rounded-full bg-brand-turquoise shrink-0" />}
                 </div>
                 <p className="text-xs text-muted-foreground line-clamp-2">
-                  {isRTL ? notification.message : (notification.message_en || notification.message)}
+                  {prettifyText(isRTL ? notification.message : (notification.message_en || notification.message), isRTL)}
                 </p>
               </div>
               <div className="flex flex-col items-end gap-1 shrink-0">
