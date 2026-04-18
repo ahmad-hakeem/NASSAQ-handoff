@@ -7,11 +7,15 @@ import { Button } from '../ui/button';
 import { Building2, Eye, UserPlus, School } from 'lucide-react';
 import { getRoleInfo } from './constants';
 
-export default function SchoolUsersTab({ schoolUsers }) {
+export default function SchoolUsersTab({ schoolUsers, onAddUser }) {
   const navigate = useNavigate();
 
   const handleViewUser = (user) => {
     navigate(`/admin/users/${user.id}`);
+  };
+
+  const handleAddUser = (school) => {
+    if (onAddUser) onAddUser(school);
   };
 
   return (
@@ -107,7 +111,11 @@ export default function SchoolUsersTab({ schoolUsers }) {
                       <Eye className="h-3 w-3 ms-1" />
                       تفاصيل
                     </Button>
-                    <Button variant="outline" size="sm" className="flex-1 text-xs">
+                    <Button
+                      variant="outline" size="sm" className="flex-1 text-xs"
+                      onClick={() => handleAddUser(school)}
+                      data-testid={`add-user-${school.id}`}
+                    >
                       <UserPlus className="h-3 w-3 ms-1" />
                       إضافة مستخدم
                     </Button>

@@ -42,6 +42,7 @@ class PlatformUserCreate(BaseModel):
     educational_department: Optional[str] = None
     school_name_ar: Optional[str] = None
     school_name_en: Optional[str] = None
+    tenant_id: Optional[str] = None
     permissions: List[str] = []
 
 class PlatformUserResponse(BaseModel):
@@ -101,6 +102,7 @@ async def create_platform_user(
         "educational_department": user_data.educational_department,
         "school_name_ar": user_data.school_name_ar,
         "school_name_en": user_data.school_name_en,
+        "tenant_id": user_data.tenant_id,
         "permissions": user_data.permissions,
         "is_active": True,
         "must_change_password": True,  # Force password change on first login

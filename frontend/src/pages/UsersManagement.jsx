@@ -83,6 +83,7 @@ export default function UsersManagement() {
 
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [showCreateWizard, setShowCreateWizard] = useState(false);
+  const [preselectedSchool, setPreselectedSchool] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalUsers, setTotalUsers] = useState(0);
   const USERS_PER_PAGE = 24;
@@ -567,7 +568,10 @@ export default function UsersManagement() {
             </TabsContent>
 
             <TabsContent value="school-users" className="space-y-4">
-              <SchoolUsersTab schoolUsers={schoolUsers} />
+              <SchoolUsersTab
+                schoolUsers={schoolUsers}
+                onAddUser={(school) => { setPreselectedSchool(school); setShowCreateWizard(true); }}
+              />
             </TabsContent>
 
             {Object.entries(APPROVAL_TYPE_CONFIG).map(([requestType, config]) => (
@@ -718,10 +722,11 @@ export default function UsersManagement() {
 
         <CreateUserWizard
           open={showCreateWizard}
-          onOpenChange={setShowCreateWizard}
-          onSuccess={() => { toast.success('تم إنشاء الحساب بنجاح!'); fetchUsers(); fetchManagementStats(); }}
+          onOpenChange={(o) => { setShowCreateWizard(o); if (!o) setPreselectedSchool(null); }}
+          onSuccess={() => { toast.success('تم إنشاء الحساب بنجاح!'); setPreselectedSchool(null); fetchUsers(); fetchManagementStats(); }}
           api={api}
           isRTL={isRTL}
+          preselectedSchool={preselectedSchool}
         />
 
         <EditUserSheet

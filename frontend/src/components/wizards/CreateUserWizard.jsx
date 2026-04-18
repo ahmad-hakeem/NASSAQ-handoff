@@ -484,7 +484,7 @@ const generateSecurePassword = () => {
 // مكون المعالج الرئيسي - Create User Wizard Component
 // =============================================================
 
-export default function CreateUserWizard({ open, onOpenChange, onSuccess, api, isRTL }) {
+export default function CreateUserWizard({ open, onOpenChange, onSuccess, api, isRTL, preselectedSchool }) {
   const { t } = useTranslation();
   const { nassaqError } = useNassaqAlert();
   const [step, setStep] = useState(1);
@@ -626,6 +626,7 @@ export default function CreateUserWizard({ open, onOpenChange, onSuccess, api, i
         educational_department: formData.educational_department || null,
         school_name_ar: formData.school_name_ar || null,
         school_name_en: formData.school_name_en || null,
+        tenant_id: preselectedSchool?.id || null,
         permissions: selectedPermissions,
       };
       
@@ -702,6 +703,15 @@ ${loginUrl}
           <DialogDescription>
             {t('followTheStepsToCreateANewAccount')}
           </DialogDescription>
+          {preselectedSchool && (
+            <div className="mt-3 px-3 py-2 rounded-lg bg-brand-turquoise/10 border border-brand-turquoise/30 flex items-center gap-2 text-sm">
+              <Building2 className="h-4 w-4 text-brand-turquoise" />
+              <span className="font-cairo">
+                {isRTL ? 'سيتم إنشاء الحساب لمدرسة: ' : 'Account will be created for school: '}
+                <strong>{isRTL ? (preselectedSchool.name_ar || preselectedSchool.name) : (preselectedSchool.name_en || preselectedSchool.name)}</strong>
+              </span>
+            </div>
+          )}
           
           {/* Progress Steps */}
           <div className="flex items-center gap-2 mt-4">
