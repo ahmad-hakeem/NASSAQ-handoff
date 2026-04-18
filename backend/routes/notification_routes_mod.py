@@ -276,11 +276,8 @@ async def get_my_notifications(
     current_user: dict = Depends(get_current_user)
 ):
     """Get notifications for current user"""
-    tenant_id = current_user.get("tenant_id")
     query = {"user_id": current_user['id']}
-    if tenant_id:
-        query["tenant_id"] = tenant_id
-    
+
     if notification_type:
         query['type'] = notification_type
     if read_status is not None:
