@@ -190,7 +190,7 @@ export default function QuickAIOperationsPanel({ api: apiProp, isRTL = true }) {
     navigate(action.link);
   };
 
-  const getOperation = (id) => AI_OPERATIONS.find(op => op.id === id);
+  const getOperation = (id) => AI_OPERATIONS.find(op => op.id === id || op.backendType === id);
 
   const unreadBadge = openAlerts > 0 ? openAlerts : null;
 
