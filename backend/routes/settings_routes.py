@@ -688,7 +688,11 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
             return {"sessions": [], "count": 0}
 
     @router.delete("/sessions/{session_id}")
-    async def end_my_session(session_id: str, current_user: dict = Depends(get_current_user)):
+    async def end_my_session(
+        session_id: str,
+        current_user: dict = Depends(get_current_user),
+        creds: Optional[HTTPAuthorizationCredentials] = Depends(_session_security),
+    ):
         """Revoke a single session belonging to the current user."""
         from datetime import datetime as _dt, timezone as _tz
         row = await gd_find_one(db.session, "user_sessions", {"id": session_id, "user_id": current_user["id"]})
@@ -707,7 +711,8 @@ def setup_settings_routes(db, get_current_user, require_roles, UserRole):
                 })
             except Exception:
                 pass
-        return {"success": True, "message": "تم إنهاء الجلسة"}
+        was_current = bool(jti and _jti_from_creds(creds) == jti)
+        return {"success": True, "was_current": was_current, "message": "تم إنهاء الجلسة"}
 
     @router.post("/sessions/end-all")
     async def end_all_other_sessions(

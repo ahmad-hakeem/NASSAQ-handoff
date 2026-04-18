@@ -80,6 +80,8 @@
   "activeSchools": "Active Schools",
   "activeSession": "Active session",
   "activeSessions": "Active Sessions",
+  "authSessionEnded": "Session ended",
+  "currentDeviceSessionEnded": "This device's session has been ended, you will be logged out",
   "activeSessions2": "Active Sessions",
   "activeToday": "active today",
   "activeToggles": "Active Toggles",

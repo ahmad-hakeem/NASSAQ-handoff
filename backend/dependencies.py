@@ -138,13 +138,20 @@ def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
     return jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
-def create_refresh_token(data: dict, remember_me: bool = False) -> str:
+def create_refresh_token(data: dict, remember_me: bool = False, linked_access_jti: Optional[str] = None) -> str:
     to_encode = data.copy()
     if remember_me:
         expire = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     else:
         expire = datetime.now(timezone.utc) + timedelta(hours=REFRESH_TOKEN_SHORT_HOURS)
-    to_encode.update({"exp": expire, "type": "refresh", "rm": remember_me})
+    to_encode.update({
+        "exp": expire,
+        "type": "refresh",
+        "rm": remember_me,
+        "jti": str(uuid.uuid4()),
+    })
+    if linked_access_jti:
+        to_encode["acc_jti"] = linked_access_jti
     return jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 

@@ -709,8 +709,13 @@ export const PlatformSettingsPage = () => {
   // End session
   const handleEndSession = async (sessionId) => {
     try {
-      await api.delete(`/settings/sessions/${sessionId}`);
-      toast.success(t('sessionEnded'));
+      const res = await api.delete(`/settings/sessions/${sessionId}`);
+      if (res?.data?.was_current) {
+        toast.success(t('currentDeviceSessionEnded'));
+        setTimeout(() => { if (logout) logout(); navigate('/login'); }, 600);
+        return;
+      }
+      toast.success(t('authSessionEnded'));
       await loadActiveSessions();
     } catch (error) {
       nassaqError(t('failedToEndSession'));

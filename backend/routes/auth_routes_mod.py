@@ -196,7 +196,11 @@ async def login(credentials: UserLogin, request: Request, background_tasks: Back
     if user.get("school_id"):
         token_payload["school_id"] = user["school_id"]
     token = create_access_token(token_payload)
-    refresh = create_refresh_token(token_payload, remember_me=credentials.remember_me)
+    try:
+        _acc_jti = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]).get("jti")
+    except Exception:
+        _acc_jti = None
+    refresh = create_refresh_token(token_payload, remember_me=credentials.remember_me, linked_access_jti=_acc_jti)
 
     # Track this login as an active session row (best-effort, non-blocking)
     _ip = request.client.host if request and request.client else None
@@ -269,7 +273,7 @@ class RefreshTokenRequest(BaseModel):
 
 
 @router.post("/auth/refresh", response_model=TokenResponse)
-async def refresh_token(body: RefreshTokenRequest):
+async def refresh_token(body: RefreshTokenRequest, request: Request):
     try:
         payload = jwt.decode(body.refresh_token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
     except jwt.ExpiredSignatureError:
@@ -298,13 +302,66 @@ async def refresh_token(body: RefreshTokenRequest):
     if user.get("school_id"):
         token_payload["school_id"] = user["school_id"]
 
+    # ATOMIC REFRESH-TOKEN ROTATION (TOCTOU-safe):
+    # Claim the old refresh jti by inserting it into revoked_tokens FIRST.
+    # The PRIMARY KEY constraint on revoked_tokens.jti means concurrent
+    # replays will get IntegrityError → exactly one rotation succeeds.
+    # If the insert fails for any reason (duplicate or DB error), we refuse
+    # to mint new tokens (no fail-open).
+    from datetime import datetime as _dt2, timezone as _tz2
+    from sqlalchemy import text as _sa_text
+    from sqlalchemy.exc import IntegrityError as _IE
+    now2 = _dt2.now(_tz2.utc)
+    old_refresh_jti = payload.get("jti")
+    if not old_refresh_jti:
+        # Strict claim-or-deny: legacy refresh tokens issued before jti was
+        # added cannot be safely rotated. Force re-login.
+        raise HTTPException(status_code=401, detail="Refresh token must be reissued, please log in again")
+    try:
+        old_exp = payload.get("exp")
+        old_exp_dt = (
+            _dt2.fromtimestamp(old_exp, tz=_tz2.utc) if old_exp else now2
+        )
+        await db.session.execute(
+            _sa_text(
+                "INSERT INTO revoked_tokens (jti, expires_at, revoked_at) "
+                "VALUES (:jti, :exp, :rev)"
+            ),
+            {"jti": old_refresh_jti, "exp": old_exp_dt, "rev": now2},
+        )
+        await db.session.flush()
+    except _IE:
+        # Duplicate → token was already rotated (concurrent or sequential replay)
+        raise HTTPException(status_code=401, detail="Refresh token has been revoked")
+    except HTTPException:
+        raise
+    except Exception as _claim_err:
+        logger.error(f"refresh: failed to claim old jti: {_claim_err}")
+        raise HTTPException(status_code=500, detail="Failed to rotate refresh token")
+
     new_access = create_access_token(token_payload)
+    try:
+        new_acc_jti = jwt.decode(new_access, JWT_SECRET, algorithms=[JWT_ALGORITHM]).get("jti")
+    except Exception:
+        new_acc_jti = None
 
     is_remember_me = payload.get("rm", False)
-    new_refresh = create_refresh_token(token_payload, remember_me=is_remember_me)
+    new_refresh = create_refresh_token(token_payload, remember_me=is_remember_me, linked_access_jti=new_acc_jti)
 
-    # Track refreshed access token as an active session
-    await _record_session_from_token(db.session, new_access, user_id, None, None)
+    # Best-effort: revoke the prior access-session row tied to this refresh
+    _r_ip = request.client.host if request and request.client else None
+    _r_ua = request.headers.get("user-agent") if request else None
+    try:
+        prev_acc_jti = payload.get("acc_jti")
+        if prev_acc_jti:
+            await gd_update_one(
+                db.session, "user_sessions",
+                {"jti": prev_acc_jti, "user_id": user_id, "revoked_at": None},
+                {"revoked_at": now2},
+            )
+    except Exception as _rev_err:
+        logger.debug(f"refresh: prior session row revoke failed: {_rev_err}")
+    await _record_session_from_token(db.session, new_access, user_id, _r_ip, _r_ua)
 
     from engines.name_validation import is_generic_name
     user_response = UserResponse(
