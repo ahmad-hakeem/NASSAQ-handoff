@@ -305,10 +305,11 @@ ${baseUrl}/webhooks
   const handleTestConnection = async (integration) => {
     setTestingConnection(integration.id);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      await api.post(`/integrations/${integration.id}/test`);
       toast.success(t('connectionSuccessful'));
     } catch (error) {
-      nassaqError(t('connectionFailed'));
+      const detail = error?.response?.data?.detail || t('connectionFailed');
+      nassaqError(detail);
     } finally {
       setTestingConnection(null);
     }
@@ -318,7 +319,7 @@ ${baseUrl}/webhooks
   const handleSync = async (integration) => {
     setSyncing(integration.id);
     try {
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await api.post(`/integrations/${integration.id}/sync`);
       toast.success(t('syncCompleted'));
       setIntegrations(prev => prev.map(i => 
         i.id === integration.id 
@@ -326,7 +327,8 @@ ${baseUrl}/webhooks
           : i
       ));
     } catch (error) {
-      nassaqError(t('syncFailed'));
+      const detail = error?.response?.data?.detail || t('syncFailed');
+      nassaqError(detail);
     } finally {
       setSyncing(null);
     }
@@ -334,41 +336,78 @@ ${baseUrl}/webhooks
   
   // Toggle integration
   const handleToggle = async (integration) => {
-    setIntegrations(prev => prev.map(i => 
-      i.id === integration.id 
-        ? { ...i, is_active: !i.is_active, status: !i.is_active ? 'active' : 'inactive' }
-        : i
-    ));
-    toast.success(integration.is_active 
-      ? (t('integrationDisabled'))
-      : (t('integrationEnabled'))
-    );
+    try {
+      const res = await api.post(`/integrations/${integration.id}/toggle`);
+      const newActive = res.data?.is_active;
+      setIntegrations(prev => prev.map(i =>
+        i.id === integration.id
+          ? { ...i, is_active: newActive, status: newActive ? 'active' : 'inactive' }
+          : i
+      ));
+      toast.success(newActive ? t('integrationEnabled') : t('integrationDisabled'));
+    } catch (error) {
+      nassaqError(error?.response?.data?.detail || t('actionFailed'));
+    }
   };
   
   // Generate new API key
-  const handleGenerateKey = () => {
-    const newKey = {
-      id: String(apiKeys.length + 1),
-      name: newKeyForm.name,
-      key: `nsk_${newKeyForm.permissions === 'read_only' ? 'ro' : newKeyForm.permissions === 'read_write' ? 'rw' : 'live'}_${'x'.repeat(24)}`,
-      secret: `nss_${'x'.repeat(32)}`,
-      permissions: newKeyForm.permissions,
-      created_at: new Date().toISOString(),
-      last_used: null,
-      is_active: true,
-    };
-    setApiKeys(prev => [...prev, newKey]);
-    setShowNewKeyDialog(false);
-    setNewKeyForm({ name: '', permissions: 'read_only' });
-    toast.success(t('keyGeneratedSuccessfully'));
+  const handleGenerateKey = async () => {
+    if (!newKeyForm.name?.trim()) {
+      nassaqError(t('nameRequired') || 'الاسم مطلوب');
+      return;
+    }
+    try {
+      const res = await api.post('/settings/api-keys', {
+        name: newKeyForm.name,
+        permissions: newKeyForm.permissions,
+      });
+      const created = res.data || {};
+      setApiKeys(prev => [created, ...prev]);
+      setShowNewKeyDialog(false);
+      setNewKeyForm({ name: '', permissions: 'read_only' });
+      toast.success(t('keyGeneratedSuccessfully'));
+    } catch (error) {
+      nassaqError(error?.response?.data?.detail || t('actionFailed'));
+    }
   };
   
   // Revoke API key
-  const handleRevokeKey = (keyId) => {
-    setApiKeys(prev => prev.map(k => 
-      k.id === keyId ? { ...k, is_active: false } : k
-    ));
-    toast.success(t('keyRevoked'));
+  const handleRevokeKey = async (keyId) => {
+    try {
+      await api.post(`/settings/api-keys/${keyId}/revoke`);
+      setApiKeys(prev => prev.map(k =>
+        k.id === keyId ? { ...k, is_active: false } : k
+      ));
+      toast.success(t('keyRevoked'));
+    } catch (error) {
+      nassaqError(error?.response?.data?.detail || t('actionFailed'));
+    }
+  };
+
+  // Add new integration
+  const handleAddIntegration = async () => {
+    if (!formData.name?.trim()) {
+      nassaqError(t('nameRequired') || 'الاسم مطلوب');
+      return;
+    }
+    try {
+      const res = await api.post('/integrations', {
+        name: formData.name,
+        name_en: formData.name_en || formData.name,
+        type: formData.type,
+        description: formData.description,
+        api_base_url: formData.api_base_url,
+        api_key: formData.api_key,
+        config: formData.secret_key ? { secret_key: formData.secret_key } : {},
+      });
+      const created = res.data || {};
+      setIntegrations(prev => [created, ...prev]);
+      setShowAddDialog(false);
+      setFormData({ name: '', name_en: '', type: 'other', description: '', api_base_url: '', api_key: '', secret_key: '' });
+      toast.success(t('integrationCreated') || t('saved') || 'تم الحفظ');
+    } catch (error) {
+      nassaqError(error?.response?.data?.detail || t('actionFailed'));
+    }
   };
   
   // Open details
@@ -1405,7 +1444,7 @@ ${baseUrl}/webhooks
               <Button variant="outline" onClick={() => setShowAddDialog(false)}>
                 {t('cancel')}
               </Button>
-              <Button className="bg-brand-navy">
+              <Button className="bg-brand-navy" onClick={handleAddIntegration}>
                 {t('save')}
               </Button>
             </DialogFooter>
