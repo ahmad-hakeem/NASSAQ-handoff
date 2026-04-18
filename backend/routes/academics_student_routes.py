@@ -790,12 +790,13 @@ async def create_student_with_wizard(
         parent_id = str(uuid.uuid4())
         parent_password = f"P{random.randint(100000, 999999)}"
         
+        parent_login_email = data.parent.get("email") or f"parent_{parent_id[:8]}@{school_code.lower()}.edu.sa"
         parent_doc = {
             "id": parent_id,
             "school_id": school_id,
             "full_name": data.parent.get("full_name"),
             "phone": data.parent.get("phone"),
-            "email": data.parent.get("email"),
+            "email": parent_login_email,
             "national_id": data.parent.get("national_id"),
             "relation": data.parent.get("relationship", "father"),
             "address": data.parent.get("address"),
@@ -807,7 +808,7 @@ async def create_student_with_wizard(
         # Create parent user account
         parent_user = {
             "id": str(uuid.uuid4()),
-            "email": data.parent.get("email") or f"parent_{parent_id[:8]}@{school_code.lower()}.edu.sa",
+            "email": parent_login_email,
             "password_hash": hash_password(parent_password),
             "full_name": data.parent.get("full_name"),
             "role": "parent",
