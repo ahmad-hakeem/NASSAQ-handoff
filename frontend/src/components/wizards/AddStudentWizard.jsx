@@ -325,7 +325,36 @@ export default function AddStudentWizard({
   const copyWelcomeMessage = () => {
     if (!createdStudent || !createdParent) return;
     const loginUrl = window.location.origin + '/login';
-    const message = `السلام عليكم ورحمة الله وبركاته\n\nولي الأمر الكريم / ${createdParent.full_name}\n\nيسعدنا إبلاغكم بأنه تم إتمام تسجيل الطالب ${createdStudent.full_name} بنجاح داخل المدرسة عبر منصة نَسَّق | NASSAQ.\n\nأولًا: بيانات الطالب\n━━━━━━━━━━━━━━━━━━━━\n📛 اسم الطالب: ${createdStudent.full_name}\n🆔 رقم الطالب: ${createdStudent.student_id}\n📧 البريد الإلكتروني: ${createdStudent.email}\n🔑 كلمة المرور المؤقتة: ${createdStudent.temp_password}\n\nثانيًا: بيانات ولي الأمر\n━━━━━━━━━━━━━━━━━━━━\n👤 اسم ولي الأمر: ${createdParent.full_name}\n📧 البريد الإلكتروني: ${createdParent.email}\n📱 رقم الهاتف: ${createdParent.phone}\n${createdParent.is_new ? `🔑 كلمة المرور المؤقتة: ${createdParent.temp_password}` : '(حساب ولي الأمر موجود مسبقًا)'}\n\n🔗 رابط الدخول للمنصة:\n${loginUrl}\n\n━━━━━━━━━━━━━━━━━━━━\nنرجو تغيير كلمة المرور عند أول تسجيل دخول.\n\nمع خالص التحية،\nإدارة المدرسة\nمنصة نَسَّق | NASSAQ`;
+    const isRealParentEmail = (email) => {
+      if (!email) return false;
+      const trimmed = String(email).trim();
+      if (!trimmed || trimmed.toLowerCase() === 'null') return false;
+      if (trimmed.endsWith('@nassaq.local')) return false;
+      return true;
+    };
+    const studentLines = [
+      `📛 اسم الطالب: ${createdStudent.full_name}`,
+      `🆔 رقم الطالب: ${createdStudent.student_id}`,
+    ];
+    if (isRealParentEmail(createdStudent.email)) {
+      studentLines.push(`📧 البريد الإلكتروني: ${createdStudent.email}`);
+    }
+    studentLines.push(`🔑 كلمة المرور المؤقتة: ${createdStudent.temp_password}`);
+
+    const parentLines = [`👤 اسم ولي الأمر: ${createdParent.full_name}`];
+    if (isRealParentEmail(createdParent.email)) {
+      parentLines.push(`📧 البريد الإلكتروني: ${createdParent.email}`);
+    }
+    if (createdParent.phone) {
+      parentLines.push(`📱 رقم الهاتف: ${createdParent.phone}`);
+    }
+    parentLines.push(
+      createdParent.is_new
+        ? `🔑 كلمة المرور المؤقتة: ${createdParent.temp_password}`
+        : '(حساب ولي الأمر موجود مسبقًا)'
+    );
+
+    const message = `السلام عليكم ورحمة الله وبركاته\n\nولي الأمر الكريم / ${createdParent.full_name}\n\nيسعدنا إبلاغكم بأنه تم إتمام تسجيل الطالب ${createdStudent.full_name} بنجاح داخل المدرسة عبر منصة نَسَّق | NASSAQ.\n\nأولًا: بيانات الطالب\n━━━━━━━━━━━━━━━━━━━━\n${studentLines.join('\n')}\n\nثانيًا: بيانات ولي الأمر\n━━━━━━━━━━━━━━━━━━━━\n${parentLines.join('\n')}\n\n🔗 رابط الدخول للمنصة:\n${loginUrl}\n\n━━━━━━━━━━━━━━━━━━━━\nنرجو تغيير كلمة المرور عند أول تسجيل دخول.\n\nمع خالص التحية،\nإدارة المدرسة\nمنصة نَسَّق | NASSAQ`;
     navigator.clipboard.writeText(message);
     setCopiedMessage(true);
     setTimeout(() => setCopiedMessage(false), 2000);
