@@ -710,13 +710,74 @@ class SmartSchedulingEngine:
     
     # ============== PHASE 3: BUILD ACADEMIC DEMAND MATRIX ==============
     
-    async def build_academic_demand(self, school_id: str) -> List[AcademicDemand]:
+    @staticmethod
+    def _auto_trim_subjects(
+        subjects_data: List[Dict[str, Any]],
+        max_slots: int,
+    ) -> Tuple[List[Dict[str, Any]], int, int]:
+        """Reduce weekly_periods proportionally so total <= max_slots.
+
+        Greedy fairness: at each step we drop one period from the
+        lowest-priority subject, breaking ties by largest current
+        weekly_periods. Each subject is floored at 1 period so no
+        subject is dropped entirely. If even with all subjects at 1
+        the total still exceeds capacity, we stop and return the
+        partially-trimmed list (caller may then emit a real error).
+
+        Returns: (subjects_data, new_total, periods_removed)
+        """
+        total = sum(int(s.get("weekly_periods", 0) or 0) for s in subjects_data)
+        if total <= max_slots or not subjects_data:
+            return subjects_data, total, 0
+
+        removed = 0
+        while total > max_slots:
+            candidates = [
+                (int(s.get("priority", 1) or 1), -int(s.get("weekly_periods", 0) or 0), idx, s)
+                for idx, s in enumerate(subjects_data)
+                if int(s.get("weekly_periods", 0) or 0) > 1
+            ]
+            if not candidates:
+                break
+            candidates.sort()
+            target = candidates[0][3]
+            target["weekly_periods"] = int(target.get("weekly_periods", 0) or 0) - 1
+            total -= 1
+            removed += 1
+        return subjects_data, total, removed
+
+    async def build_academic_demand(
+        self,
+        school_id: str,
+        settings: Optional[Dict[str, Any]] = None,
+    ) -> List[AcademicDemand]:
         """
         المرحلة 3: بناء مصفوفة الطلب الأكاديمي
         Phase 3: Build Academic Demand Matrix
+
+        When `settings` is supplied we auto-trim each class's weekly
+        periods so its total fits within `working_days × periods_per_day`.
+        This keeps the generator robust when curriculum data was authored
+        for a longer week than the school's actual schedule, instead of
+        failing with a "go to settings" error for a UI that doesn't yet
+        expose those values.
         """
         demands = []
-        
+
+        # Compute capacity per class (None disables auto-trim).
+        max_slots: Optional[int] = None
+        if settings:
+            wd = settings.get("working_days") or []
+            if isinstance(wd, dict):
+                wd = [d for d, active in wd.items() if active]
+            ppd = settings.get("periods_per_day") or 0
+            try:
+                ppd_int = int(ppd)
+            except (TypeError, ValueError):
+                ppd_int = 0
+            if wd and ppd_int > 0:
+                max_slots = len(wd) * ppd_int
+
         classes = await gd_find(self.session, "classes", {"school_id": school_id, "is_active": {"$ne": False}}, limit=500)
         
         all_assignments_cache = await gd_find(self.session, "teacher_assignments", {"school_id": school_id, "is_active": True}, limit=5000)
@@ -788,7 +849,17 @@ class SmartSchedulingEngine:
                     "suitable_teachers": suitable_teachers,
                     "priority": gs.get("priority", 1)
                 })
-            
+
+            # Auto-trim if curriculum demand exceeds the school's weekly slot capacity.
+            if max_slots and total_periods > max_slots:
+                original_total = total_periods
+                subjects_data, total_periods, removed = self._auto_trim_subjects(subjects_data, max_slots)
+                if removed > 0:
+                    logger.info(
+                        "Auto-trimmed class %r demand %d → %d periods to fit %d slots/week (-%d periods)",
+                        class_name, original_total, total_periods, max_slots, removed,
+                    )
+
             demands.append(AcademicDemand(
                 class_id=class_id,
                 class_name=class_name,
@@ -2234,7 +2305,7 @@ class SmartSchedulingEngine:
             # Phase 3: Build demand
             await self._log_run(run_id, "info", "بناء مصفوفة الطلب الأكاديمي", {"phase": 3})
             await gd_update_one(self.session, "timetable_runs", {"id": run_id}, {"completion_percentage": 25})
-            demands = await self.build_academic_demand(school_id)
+            demands = await self.build_academic_demand(school_id, settings=settings)
             
             # Phase 4: Build resources
             await self._log_run(run_id, "info", "بناء مصفوفة الموارد المتاحة", {"phase": 4})
@@ -2506,7 +2577,7 @@ class SmartSchedulingEngine:
         except Exception:
             settings = {}
         try:
-            demands = await self.build_academic_demand(school_id)
+            demands = await self.build_academic_demand(school_id, settings=settings)
         except Exception:
             demands = []
         try:
