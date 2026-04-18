@@ -827,9 +827,8 @@ async def create_student_with_wizard(
     
     # Update student with parent info
     if parent_doc:
-        parent_user_doc = await gd_find_one(db.session, "users", {"parent_id": parent_doc.get("id"), "role": "parent"})
         await gd_update_one(db.session, "students", {"id": student_id}, {
-                "parent_id": parent_user_doc.get("id") if parent_user_doc else parent_doc.get("id"),
+                "parent_id": parent_doc.get("id"),
                 "parent_name": parent_doc.get("full_name"),
                 "parent_phone": parent_doc.get("phone"),
             })
