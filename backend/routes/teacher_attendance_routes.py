@@ -81,7 +81,18 @@ def create_teacher_attendance_routes(db, get_current_user, require_roles, UserRo
             }
             
             if existing:
-                await gd_update_one(db.session, "teacher_attendance", {"_id": existing["_id"]}, attendance_doc)
+                existing_id = existing.get("id") or existing.get("_id")
+                if not existing_id:
+                    # Defensive: if we somehow can't identify the existing row,
+                    # fall back to the full natural key so we never update a random row.
+                    update_filter = {
+                        "teacher_id": record.teacher_id,
+                        "date": record.date,
+                        "school_id": school_id,
+                    }
+                else:
+                    update_filter = {"id": existing_id}
+                await gd_update_one(db.session, "teacher_attendance", update_filter, attendance_doc)
                 updated_count += 1
             else:
                 attendance_doc["id"] = str(uuid.uuid4())
