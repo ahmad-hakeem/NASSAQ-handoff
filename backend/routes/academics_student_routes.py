@@ -874,7 +874,8 @@ async def create_student_with_wizard(
 
 👨‍👩‍👧 بيانات ولي الأمر:
 الاسم: {parent_doc.get('full_name') if parent_doc else 'غير محدد'}
-البريد: {parent_doc.get('email') if parent_doc else 'غير محدد'}
+البريد: {(parent_user.get('email') if parent_password else (parent_doc.get('email') if parent_doc else None)) or 'غير محدد'}
+الهاتف: {parent_doc.get('phone') if parent_doc else 'غير محدد'}
 كلمة المرور: {parent_password if parent_password else 'موجودة مسبقاً'}
 
 🔗 رابط تسجيل الدخول: {os.environ.get('FRONTEND_URL', '')}
