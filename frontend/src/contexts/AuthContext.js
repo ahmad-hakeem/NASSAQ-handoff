@@ -156,10 +156,15 @@ export const AuthProvider = ({ children }) => {
       }
 
       if (status >= 500 || !error.response) {
-        const msg = !error.response
-          ? 'تعذر الاتصال بالخادم — تحقق من الاتصال بالإنترنت'
-          : `خطأ في الخادم (${status}) — يرجى المحاولة لاحقاً`;
-        toast.error(msg);
+        const PUBLIC_PATHS = ['/', '/login', '/register', '/about', '/contact', '/pricing', '/forgot-password'];
+        const isPublicPath = PUBLIC_PATHS.includes(window.location.pathname);
+        const isAuthMe = (config.url || '').includes('/auth/me');
+        if (!(isPublicPath && isAuthMe)) {
+          const msg = !error.response
+            ? 'تعذر الاتصال بالخادم — تحقق من الاتصال بالإنترنت'
+            : `خطأ في الخادم (${status}) — يرجى المحاولة لاحقاً`;
+          toast.error(msg, { id: 'server-conn-error' });
+        }
       }
 
       return Promise.reject(error);
