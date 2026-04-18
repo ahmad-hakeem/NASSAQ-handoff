@@ -38,6 +38,94 @@ from engines.infeasibility import InfeasibilityIssue, InfeasibilityReport
 logger = logging.getLogger(__name__)
 
 
+# ============== ARABIC GRADE NORMALIZATION ==============
+# Maps Arabic ordinal/stage labels to canonical numeric grade keys (Saudi system).
+# Ensures classes whose `grade_level` is Arabic text (e.g. "الأول الابتدائي")
+# match curriculum/assignment lookups keyed by numeric grade ("1"..."12").
+
+_AR_ORDINALS: Dict[str, int] = {
+    "الأول": 1, "الاول": 1,
+    "الثاني": 2, "الثانى": 2,
+    "الثالث": 3, "الرابع": 4, "الخامس": 5, "السادس": 6,
+    "السابع": 7, "الثامن": 8, "التاسع": 9, "العاشر": 10,
+    "الحادي عشر": 11, "الحادى عشر": 11,
+    "الثاني عشر": 12, "الثانى عشر": 12,
+}
+
+# Stage offsets for compound names like "الأول المتوسط" (= grade 7).
+_AR_STAGE_OFFSETS: Dict[str, int] = {
+    "الابتدائي": 0, "الابتدائى": 0,
+    "المتوسط": 6,
+    "الثانوي": 9, "الثانوى": 9,
+}
+
+
+def _normalize_arabic_grade(value: Any) -> Optional[str]:
+    """Try to map an Arabic grade label to a canonical numeric key (as str).
+
+    Examples:
+        "1" / 1                    -> "1"
+        "الأول"                    -> "1"
+        "الصف الثاني عشر"          -> "12"
+        "الأول الابتدائي"          -> "1"
+        "الثاني المتوسط"           -> "8"
+        "الثالث الثانوي"           -> "12"
+        "الصف الأول أ"             -> "1"
+    Returns None when nothing matches.
+    """
+    if value is None:
+        return None
+    # Already numeric (int or numeric string)
+    if isinstance(value, int):
+        return str(value)
+    s = str(value).strip()
+    if not s:
+        return None
+    if s.isdigit():
+        return s
+
+    # Match the longest stage offset first, then ordinal. Order ordinals
+    # longest-first to avoid "الثاني" greedily matching "الثاني عشر".
+    ordinals = sorted(_AR_ORDINALS.items(), key=lambda kv: -len(kv[0]))
+    stage_offset = 0
+    for stage_label, offset in _AR_STAGE_OFFSETS.items():
+        if stage_label in s:
+            stage_offset = offset
+            break
+    for label, num in ordinals:
+        if label in s:
+            grade = num + stage_offset
+            if 1 <= grade <= 12:
+                return str(grade)
+            return str(num)
+    return None
+
+
+def _resolve_class_grade_key(cls: Dict[str, Any]) -> str:
+    """Best-effort canonical grade key for a class row.
+
+    Resolution order:
+        1. Existing `grade_id` (assumed canonical when present).
+        2. Numeric `grade_level` / `level`.
+        3. Arabic `grade_level` / `level` parsed via _normalize_arabic_grade.
+        4. Arabic ordinal extracted from the class `name` / `name_ar`.
+        5. The literal value from grade_id/grade_level/level if any.
+        6. "unknown".
+    """
+    gid = cls.get("grade_id")
+    if gid:
+        return str(gid)
+    for raw_field in (cls.get("grade_level"), cls.get("level")):
+        norm = _normalize_arabic_grade(raw_field)
+        if norm:
+            return norm
+    for name_field in (cls.get("name"), cls.get("name_ar"), cls.get("name_en")):
+        norm = _normalize_arabic_grade(name_field)
+        if norm:
+            return norm
+    return str(cls.get("grade_level") or cls.get("level") or "unknown")
+
+
 # ============== ENUMS ==============
 
 class TimetableRunStatus(str, Enum):
@@ -643,9 +731,17 @@ class SmartSchedulingEngine:
         for cls in classes:
             class_id = cls.get("id") or cls.get("class_id")
             class_name = cls.get("name") or cls.get("name_ar", "")
-            grade_id = cls.get("grade_id") or cls.get("grade_level") or cls.get("level") or "unknown"
-            
+            grade_id = _resolve_class_grade_key(cls)
+
+            # Try the canonical key first; if no curriculum row matches, also try
+            # the original raw values so legacy data still resolves.
             grade_subjects = await gd_find(self.session, "grade_subjects", {"school_id": school_id, "grade_id": grade_id, "is_active": True}, limit=50)
+            if not grade_subjects:
+                for alt in (cls.get("grade_id"), cls.get("grade_level"), cls.get("level")):
+                    if alt and str(alt) != grade_id:
+                        grade_subjects = await gd_find(self.session, "grade_subjects", {"school_id": school_id, "grade_id": str(alt), "is_active": True}, limit=50)
+                        if grade_subjects:
+                            break
             
             if not grade_subjects:
                 assignments = [a for a in all_assignments_cache if a.get("class_id") == class_id or not a.get("class_id")]
@@ -2546,7 +2642,9 @@ async def _build_infeasibility_report_impl(engine: "SmartSchedulingEngine", scho
     total_demand = 0
     for cls in classes:
         cid = cls.get("id")
-        gid = cls.get("grade_id") or cls.get("grade_level") or cls.get("level")
+        gid = _resolve_class_grade_key(cls)
+        if gid == "unknown":
+            gid = cls.get("grade_id") or cls.get("grade_level") or cls.get("level")
         rows = gs_by_grade.get(gid, []) if gid else []
         cdemand = 0
         for gs in rows:
