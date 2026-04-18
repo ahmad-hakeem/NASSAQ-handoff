@@ -106,7 +106,7 @@ export default function SchoolUsersTab({ schoolUsers, onAddUser }) {
                   <div className="flex gap-2 mt-4 pt-3 border-t">
                     <Button
                       variant="outline" size="sm" className="flex-1 text-xs"
-                      onClick={() => navigate(`/admin/tenants/${school.id}`)}
+                      onClick={() => navigate(`/platform/schools/${school.id}`)}
                     >
                       <Eye className="h-3 w-3 ms-1" />
                       تفاصيل
