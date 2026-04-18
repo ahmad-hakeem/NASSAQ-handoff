@@ -365,28 +365,34 @@ async def smart_get_timetable_sessions(
         teacher_id=teacher_id,
         day_of_week=day_of_week
     )
-    
-    # Enrich with names
-    enriched_sessions = []
+
+    # Batch fetch related entities (massive perf win vs N+1 queries)
+    teacher_ids = list({s.get("teacher_id") for s in sessions if s.get("teacher_id")})
+    class_ids = list({s.get("class_id") for s in sessions if s.get("class_id")})
+    subject_ids = list({s.get("subject_id") for s in sessions if s.get("subject_id")})
+
+    teachers = await gd_find(db.session, "teachers", {"id": {"$in": teacher_ids}}, limit=len(teacher_ids) or 1) if teacher_ids else []
+    classes = await gd_find(db.session, "classes", {"id": {"$in": class_ids}}, limit=len(class_ids) or 1) if class_ids else []
+    subjects = await gd_find(db.session, "subjects", {"id": {"$in": subject_ids}}, limit=len(subject_ids) or 1) if subject_ids else []
+    found_subj_ids = {s.get("id") for s in subjects}
+    missing_subj_ids = [sid for sid in subject_ids if sid not in found_subj_ids]
+    if missing_subj_ids:
+        ref_subjects = await gd_find(db.session, "reference_subjects", {"id": {"$in": missing_subj_ids}}, limit=len(missing_subj_ids))
+        subjects = list(subjects) + list(ref_subjects)
+
+    teacher_map = {t.get("id"): (t.get("full_name") or t.get("full_name_ar") or "") for t in teachers}
+    class_map = {c.get("id"): (c.get("name") or c.get("name_ar") or "") for c in classes}
+    subject_map = {s.get("id"): (s.get("name_ar") or s.get("name") or "") for s in subjects}
+
     for session in sessions:
-        # Get teacher name
-        teacher = await gd_find_one(db.session, "teachers", {"id": session.get("teacher_id")})
-        # Get class name
-        cls = await gd_find_one(db.session, "classes", {"id": session.get("class_id")})
-        # Get subject name
-        subject = await gd_find_one(db.session, "subjects", {"id": session.get("subject_id")})
-        if not subject:
-            subject = await gd_find_one(db.session, "reference_subjects", {"id": session.get("subject_id")})
-        
-        session["teacher_name"] = (teacher.get("full_name") or teacher.get("full_name_ar")) if teacher else ""
-        session["class_name"] = (cls.get("name") or cls.get("name_ar")) if cls else ""
-        session["subject_name"] = subject.get("name_ar", "") if subject else ""
-        enriched_sessions.append(session)
-    
+        session["teacher_name"] = teacher_map.get(session.get("teacher_id"), "")
+        session["class_name"] = class_map.get(session.get("class_id"), "")
+        session["subject_name"] = subject_map.get(session.get("subject_id"), "")
+
     return {
         "timetable_id": timetable_id,
-        "total": len(enriched_sessions),
-        "sessions": enriched_sessions
+        "total": len(sessions),
+        "sessions": sessions
     }
 
 
