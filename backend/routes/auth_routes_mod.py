@@ -137,14 +137,31 @@ async def login(credentials: UserLogin, background_tasks: BackgroundTasks):
     refresh = create_refresh_token(token_payload, remember_me=credentials.remember_me)
     
     # Fire-and-forget the success audit log so it doesn't block the response.
+    # Use an independent session/engine instance because the request-scoped
+    # session is committed/closed by the middleware before the background task
+    # would otherwise run, which corrupts the pooled connection.
     # Failure logs above remain synchronous to guarantee they're persisted.
+    async def _log_login_async(uid, tid, email):
+        try:
+            from db import async_session_factory
+            from repositories import Repos
+            from engines.audit_engine import AuditLogEngine
+            async with async_session_factory() as bg_session:
+                bg_repos = Repos(bg_session)
+                bg_engine = AuditLogEngine(bg_repos)
+                await bg_engine.log_auth_event(
+                    action=AuditAction.LOGIN.value,
+                    user_id=uid,
+                    tenant_id=tid,
+                    success=True,
+                    email=email,
+                )
+                await bg_session.commit()
+        except Exception as _e:
+            logger.debug(f"Background login audit failed: {_e}")
+
     background_tasks.add_task(
-        audit_engine.log_auth_event,
-        action=AuditAction.LOGIN.value,
-        user_id=user_id,
-        tenant_id=user.get("tenant_id"),
-        success=True,
-        email=credentials.email,
+        _log_login_async, user_id, user.get("tenant_id"), credentials.email
     )
     
     from engines.name_validation import is_generic_name
