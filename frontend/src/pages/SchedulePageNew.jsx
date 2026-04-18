@@ -699,6 +699,9 @@ export default function SchedulePageNew() {
   const uniqueSubjects = [...new Set(gridSessions.map(s => s.subject_name).filter(Boolean))];
 
   const periodGaps = useMemo(() => {
+    // Gap analysis only applies to a class schedule (every period must be filled).
+    // For a teacher, empty cells are legitimate free periods, not gaps.
+    if (viewMode !== 'class') return {};
     if (!currentFilter || periodSlots.length === 0 || gridSessions.length === 0) return {};
     const gaps = {};
     periodSlots.forEach(slot => {
@@ -719,7 +722,7 @@ export default function SchedulePageNew() {
       }
     });
     return gaps;
-  }, [gridSessions, periodSlots, currentFilter]);
+  }, [gridSessions, periodSlots, currentFilter, viewMode]);
 
   const criticalGaps = useMemo(() => {
     return Object.entries(periodGaps)
@@ -1122,7 +1125,9 @@ export default function SchedulePageNew() {
                         <span className="text-[#1C3D74] font-bold">{currentFilterName}</span>
                       </CardTitle>
                       <p className="text-xs text-slate-500 mt-0.5">
-                        {gridSessions.length} حصة من {periodSlots.length * DAYS.length} حصة ممكنة
+                        {viewMode === 'class'
+                          ? `${gridSessions.length} حصة من ${periodSlots.length * DAYS.length} حصة ممكنة`
+                          : `${gridSessions.length} حصة في الأسبوع${uniqueSubjects.length > 0 ? ` • ${uniqueSubjects.length} ${uniqueSubjects.length === 1 ? 'مادة' : 'مواد'}` : ''}`}
                         {gridSessions.length === 0 && sessions.length > 0 && (
                           <span className="text-amber-600 mr-2">
                             (الحصص موجودة لكن لا تطابق هذا {viewMode === 'class' ? 'الفصل' : 'المعلم'})
