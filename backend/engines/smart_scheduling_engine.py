@@ -793,13 +793,68 @@ class SmartSchedulingEngine:
         
         all_assignments_cache = await gd_find(self.session, "teacher_assignments", {"school_id": school_id, "is_active": True}, limit=5000)
         all_teachers_cache = await gd_find(self.session, "teachers", {"school_id": school_id, "is_active": {"$ne": False}}, limit=500)
-        
+
+        # Load school-wide subjects + teacher_class_assignments so we can synthesize
+        # per-class subject demand when teacher_assignments is sparse (the common
+        # case — the principal UI populates teacher_class_assignments only).
+        all_subjects_cache = await gd_find(self.session, "subjects", {"school_id": school_id, "is_active": {"$ne": False}}, limit=500)
+        try:
+            all_tca_cache = await gd_find(self.session, "teacher_class_assignments", {"school_id": school_id, "is_active": True}, limit=5000)
+        except Exception:
+            all_tca_cache = []
+
+        # name_ar -> subject_id (and name_en as a courtesy)
+        subject_by_name: Dict[str, str] = {}
+        subject_meta: Dict[str, Dict[str, Any]] = {}
+        for sub in all_subjects_cache:
+            sid = sub.get("id") or sub.get("subject_id")
+            if not sid:
+                continue
+            subject_meta[sid] = sub
+            for key in ("name_ar", "name", "name_en"):
+                v = sub.get(key)
+                if v:
+                    subject_by_name.setdefault(str(v).strip(), sid)
+
+        # teacher_id -> subject_id resolved from teachers.subject (Arabic string)
+        teacher_subject_map: Dict[str, str] = {}
+        for t in all_teachers_cache:
+            tid = t.get("id") or t.get("teacher_id")
+            if not tid:
+                continue
+            for key in ("primary_subject_id",):
+                v = t.get(key)
+                if v and v in subject_meta:
+                    teacher_subject_map[tid] = v
+                    break
+            if tid in teacher_subject_map:
+                continue
+            for key in ("subject", "specialization"):
+                name = t.get(key)
+                if name:
+                    sid = subject_by_name.get(str(name).strip())
+                    if sid:
+                        teacher_subject_map[tid] = sid
+                        break
+
+        # class_id -> [(teacher_id, subject_id), ...]
+        class_tca_map: Dict[str, List[tuple]] = {}
+        for r in all_tca_cache:
+            cid = r.get("class_id")
+            tid = r.get("teacher_id")
+            if not cid or not tid:
+                continue
+            sid = teacher_subject_map.get(tid)
+            if not sid:
+                continue
+            class_tca_map.setdefault(cid, []).append((tid, sid))
+
         assignments_by_subject = {}
         for a in all_assignments_cache:
             sid = a.get("subject_id")
             if sid:
                 assignments_by_subject.setdefault(sid, []).append(a)
-        
+
         for cls in classes:
             class_id = cls.get("id") or cls.get("class_id")
             class_name = cls.get("name") or cls.get("name_ar", "")
@@ -814,20 +869,61 @@ class SmartSchedulingEngine:
                         grade_subjects = await gd_find(self.session, "grade_subjects", {"school_id": school_id, "grade_id": str(alt), "is_active": True}, limit=50)
                         if grade_subjects:
                             break
-            
+
             if not grade_subjects:
-                assignments = [a for a in all_assignments_cache if a.get("class_id") == class_id or not a.get("class_id")]
-                
+                # 1) Prefer assignments explicitly scoped to this class.
+                class_specific = [a for a in all_assignments_cache if a.get("class_id") == class_id]
                 seen_subjects = set()
-                for assignment in assignments:
+                for assignment in class_specific:
                     sub_id = assignment.get("subject_id")
                     if sub_id and sub_id not in seen_subjects:
                         seen_subjects.add(sub_id)
                         grade_subjects.append({
                             "subject_id": sub_id,
                             "weekly_periods": assignment.get("weekly_periods") or assignment.get("weekly_sessions", 4),
-                            "teacher_id": assignment.get("teacher_id")
+                            "teacher_id": assignment.get("teacher_id"),
                         })
+
+                # 2) Synthesize from teacher_class_assignments (class↔teacher links)
+                #    crossed with each teacher's subject. This is the path that
+                #    populates schedules when the principal UI assigned teachers
+                #    to classes but never populated subject-level rows.
+                tca_pairs = class_tca_map.get(class_id, [])
+                for tid, sub_id in tca_pairs:
+                    if sub_id in seen_subjects:
+                        continue
+                    seen_subjects.add(sub_id)
+                    sub_meta = subject_meta.get(sub_id, {})
+                    weekly = (
+                        sub_meta.get("default_periods_per_week")
+                        or sub_meta.get("weekly_periods")
+                        or 4
+                    )
+                    try:
+                        weekly = max(1, int(weekly))
+                    except (TypeError, ValueError):
+                        weekly = 4
+                    grade_subjects.append({
+                        "subject_id": sub_id,
+                        "weekly_periods": weekly,
+                        "teacher_id": tid,
+                    })
+
+                # 3) Last-resort: leak in school-wide (NULL class_id) assignments,
+                #    but ONLY if we still found nothing — otherwise these would
+                #    pollute every class with the same 1-2 subjects.
+                if not grade_subjects:
+                    for assignment in all_assignments_cache:
+                        if assignment.get("class_id"):
+                            continue
+                        sub_id = assignment.get("subject_id")
+                        if sub_id and sub_id not in seen_subjects:
+                            seen_subjects.add(sub_id)
+                            grade_subjects.append({
+                                "subject_id": sub_id,
+                                "weekly_periods": assignment.get("weekly_periods") or assignment.get("weekly_sessions", 4),
+                                "teacher_id": assignment.get("teacher_id"),
+                            })
             
             subjects_data = []
             total_periods = 0
@@ -838,20 +934,33 @@ class SmartSchedulingEngine:
                 total_periods += weekly_periods
                 
                 suitable_teachers = []
-                
+
                 subject_assigns = assignments_by_subject.get(subject_id, [])
                 teacher_assigns = [a for a in subject_assigns if a.get("class_id") == class_id or not a.get("class_id") or a.get("grade_id") == grade_id or class_id in (a.get("section_ids") or [])]
-                
+
                 for ta in teacher_assigns:
                     if ta.get("teacher_id") not in suitable_teachers:
                         suitable_teachers.append(ta.get("teacher_id"))
-                
+
+                # Prefer teachers explicitly tied to this class via
+                # teacher_class_assignments who teach this subject.
+                for tid, sub_id in class_tca_map.get(class_id, []):
+                    if sub_id == subject_id and tid not in suitable_teachers:
+                        suitable_teachers.append(tid)
+
+                # Final fallback: any teacher in the school whose subject
+                # resolves to this subject_id (covers schools that haven't
+                # populated teacher_class_assignments yet).
                 if not suitable_teachers:
-                    teachers_with_subject = [t for t in all_teachers_cache if t.get("primary_subject_id") == subject_id or subject_id in (t.get("subject_ids") or []) or t.get("specialization") == subject_id]
-                    
-                    for t in teachers_with_subject:
+                    for t in all_teachers_cache:
                         tid = t.get("id") or t.get("teacher_id")
-                        if tid and tid not in suitable_teachers:
+                        if not tid or tid in suitable_teachers:
+                            continue
+                        if (
+                            t.get("primary_subject_id") == subject_id
+                            or subject_id in (t.get("subject_ids") or [])
+                            or teacher_subject_map.get(tid) == subject_id
+                        ):
                             suitable_teachers.append(tid)
                 
                 subjects_data.append({
@@ -892,7 +1001,20 @@ class SmartSchedulingEngine:
         
         # Get all teachers
         teachers = await gd_find(self.session, "teachers", {"school_id": school_id, "is_active": {"$ne": False}}, limit=500)
-        
+
+        # Build subject-name → subject_id map so we can resolve the Arabic string
+        # stored on teachers.subject (the typical case for legacy data).
+        all_subjects_cache = await gd_find(self.session, "subjects", {"school_id": school_id, "is_active": {"$ne": False}}, limit=500)
+        subject_by_name: Dict[str, str] = {}
+        for sub in all_subjects_cache:
+            sid_x = sub.get("id") or sub.get("subject_id")
+            if not sid_x:
+                continue
+            for key in ("name_ar", "name", "name_en"):
+                v = sub.get(key)
+                if v:
+                    subject_by_name.setdefault(str(v).strip(), sid_x)
+
         working_days = settings.get("working_days", ["sunday", "monday", "tuesday", "wednesday", "thursday"])
         periods_per_day = settings.get("periods_per_day", 7)
         
@@ -920,7 +1042,18 @@ class SmartSchedulingEngine:
                 sid = asn.get("subject_id")
                 if sid and sid not in subject_ids:
                     subject_ids.append(sid)
-            
+
+            # Fallback: resolve teacher.subject (Arabic string) against the
+            # subjects table so synthesized demand can find a teacher.
+            if not subject_ids:
+                for key in ("subject", "specialization"):
+                    name = teacher.get(key)
+                    if name:
+                        sid = subject_by_name.get(str(name).strip())
+                        if sid:
+                            subject_ids.append(sid)
+                            break
+
             availability = {}
             teaching_period_numbers = settings.get("teaching_period_numbers", list(range(1, periods_per_day + 1)))
             teacher_working_days = teacher.get("working_days", [])
