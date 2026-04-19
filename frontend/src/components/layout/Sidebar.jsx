@@ -366,21 +366,9 @@ export const Sidebar = ({ children }) => {
         roles: ['teacher'],
       },
       {
-        icon: Calendar,
-        label: t('mySchedule'),
-        href: '/teacher/schedule',
-        roles: ['teacher'],
-      },
-      {
         icon: BookOpen,
         label: t('myClasses'),
         href: '/teacher/classes',
-        roles: ['teacher'],
-      },
-      {
-        icon: Users,
-        label: t('myStudents'),
-        href: '/teacher/students',
         roles: ['teacher'],
       },
       {
@@ -396,12 +384,12 @@ export const Sidebar = ({ children }) => {
         roles: ['teacher'],
         subItems: [
           {
-            label: t('communicationCenter'),
-            href: '/teacher/communication',
+            label: t('viewBulletin'),
+            href: '/teacher/communication?tab=bulletin',
           },
           {
-            label: t('notificationsCenter'),
-            href: '/notifications',
+            label: t('attendWorkshop'),
+            href: '/teacher/communication?tab=workshop',
           },
         ],
       },
@@ -440,7 +428,19 @@ export const Sidebar = ({ children }) => {
 
   const menuItems = getMenuItems();
 
-  const isActive = (href) => location.pathname === href;
+  const isActive = (href) => {
+    // Support deep links like "/teacher/communication?tab=bulletin"
+    const [hrefPath, hrefQuery] = href.split('?');
+    if (location.pathname !== hrefPath) return false;
+    if (!hrefQuery) return true;
+    // All query params in href must match current URL
+    const current = new URLSearchParams(location.search);
+    const target = new URLSearchParams(hrefQuery);
+    for (const [k, v] of target.entries()) {
+      if (current.get(k) !== v) return false;
+    }
+    return true;
+  };
 
   const SidebarContent = () => {
     return (

@@ -495,125 +495,147 @@ export default function TeacherMainDashboard() {
             </div>
           </div>
 
-          {/* Period Timeline */}
-          <Card className="border border-border/50 shadow-sm p-4">
-            <PeriodTimeline
-              upcomingLessons={stats.upcomingLessons}
-              totalPeriods={totalPeriods}
-              currentPeriod={currentPeriod}
-              isSchoolTime={isSchoolTime}
-              isRTL={isRTL}
-              t={t}
-            />
-          </Card>
-
-          {/* School Day Section: Current + Next Class */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {/* Current Class - Large Card */}
-            <div className="lg:col-span-2">
-              {currentLesson ? (
-                <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-brand-turquoise/8 via-brand-turquoise/4 to-transparent border-2 border-brand-turquoise/25 p-5 md:p-6 shadow-sm">
-                  <div className="absolute top-0 end-0 w-32 h-32 rounded-full bg-brand-turquoise/5 blur-2xl" />
-                  <div className="relative z-10">
-                    <div className="flex items-center justify-between mb-4">
-                      <Badge className="bg-brand-turquoise/15 text-brand-turquoise border-brand-turquoise/25 font-cairo text-xs px-3 py-1">
-                        <CircleDot className="h-3 w-3 me-1.5 animate-pulse" />
-                        {t('currentClassNow')}
-                      </Badge>
-                      <div className="flex items-center gap-1.5 text-muted-foreground text-sm font-tajawal">
-                        <Clock className="h-4 w-4" />
-                        <span className="font-mono font-bold">{currentLesson.time}</span>
-                        {currentLesson.end_time && (
-                          <>
-                            <span className="text-muted-foreground/50">—</span>
-                            <span className="font-mono">{currentLesson.end_time}</span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="min-w-0 flex-1">
-                        <h3 className="font-cairo font-bold text-2xl text-foreground mb-1">{currentLesson.subject}</h3>
-                        <div className="flex items-center gap-3 text-sm text-muted-foreground font-tajawal mb-1">
-                          <span className="flex items-center gap-1.5">
-                            <BookOpen className="h-3.5 w-3.5 flex-shrink-0" />
-                            {currentLesson.class}
-                          </span>
-                          <span className="text-border">•</span>
-                          <span>{t('periodNumber')} {currentLesson.period}</span>
-                        </div>
-                        {currentLesson.lesson_topic && (
-                          <p className="text-xs text-muted-foreground/70 font-tajawal mt-1">
-                            {t('lessonTopic')}: {currentLesson.lesson_topic}
-                          </p>
-                        )}
-                      </div>
-
-                      <Button
-                        size="lg"
-                        className="bg-brand-navy hover:bg-brand-navy/90 text-white rounded-xl px-8 py-3 font-cairo font-bold text-base shadow-lg shadow-brand-navy/20 hover:shadow-xl transition-shadow flex-shrink-0"
-                        onClick={() => handleStartClass(currentLesson)}
-                      >
-                        <Play className="h-5 w-5 me-2" />
-                        {t('startClass')}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="rounded-2xl border-2 border-dashed border-border/50 p-8 text-center">
-                  <Calendar className="h-12 w-12 mx-auto mb-3 text-muted-foreground/20" />
-                  <p className="text-muted-foreground font-tajawal text-lg font-medium">{t('noClassesScheduled')}</p>
-                  <p className="text-muted-foreground/60 font-tajawal text-sm mt-1">{t('enjoyYourDay')}</p>
-                </div>
+          {/* School Day Section: Section title + Current Card + Upcoming Card + Timeline */}
+          <section className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-cairo font-bold text-lg text-foreground flex items-center gap-2">
+                <CalendarDays className="h-5 w-5 text-brand-turquoise" />
+                {t('schoolDay')}
+              </h2>
+              {isSchoolTime && (
+                <span className="text-xs font-tajawal text-muted-foreground flex items-center gap-1.5">
+                  <CircleDot className="h-3.5 w-3.5 text-emerald-500" />
+                  {t('periodOf').replace('{0}', currentPeriod).replace('{1}', totalPeriods)}
+                </span>
               )}
             </div>
 
-            {/* Next Class - Smaller Card */}
-            <div>
-              {nextLesson ? (
-                <div className="rounded-2xl border border-border/50 bg-card p-5 shadow-sm hover:shadow-md transition-shadow h-full flex flex-col justify-between">
-                  <div>
-                    <Badge variant="outline" className="font-cairo text-xs mb-3 text-muted-foreground border-border">
-                      {t('nextUpcomingClass')}
+            {/* A) Current Session Card — primary, full width */}
+            {currentLesson ? (
+              <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-brand-turquoise/10 via-brand-turquoise/5 to-transparent border-2 border-brand-turquoise/30 p-5 md:p-6 shadow-md">
+                <div className="absolute top-0 end-0 w-40 h-40 rounded-full bg-brand-turquoise/10 blur-3xl pointer-events-none" />
+                <div className="relative z-10 flex flex-col md:flex-row md:items-center gap-5 md:gap-6">
+                  {/* Left: Time block (visual anchor on the start side in RTL = right) */}
+                  <div className="flex md:flex-col items-center md:items-start gap-3 md:gap-1 md:min-w-[140px] md:order-last md:ms-auto md:text-end">
+                    <Badge className="bg-brand-turquoise/15 text-brand-turquoise border-brand-turquoise/25 font-cairo text-[11px] px-2.5 py-0.5 self-start md:self-end">
+                      <CircleDot className="h-3 w-3 me-1 animate-pulse" />
+                      {t('currentClassNow')}
                     </Badge>
-                    <h4 className="font-cairo font-bold text-lg text-foreground mb-1">{nextLesson.subject}</h4>
-                    <div className="space-y-1.5 text-sm text-muted-foreground font-tajawal">
-                      <p className="flex items-center gap-1.5">
-                        <BookOpen className="h-3.5 w-3.5 flex-shrink-0" />
-                        {nextLesson.class}
-                      </p>
-                      <p className="flex items-center gap-1.5">
-                        <Clock className="h-3.5 w-3.5 flex-shrink-0" />
-                        {nextLesson.time}
-                        {nextLesson.end_time && ` — ${nextLesson.end_time}`}
-                      </p>
-                      <p className="flex items-center gap-1.5">
-                        <Target className="h-3.5 w-3.5 flex-shrink-0" />
-                        {t('periodNumber')} {nextLesson.period}
-                      </p>
+                    <div className="flex md:flex-col items-baseline md:items-end gap-2 md:gap-0">
+                      <span className="font-mono font-bold text-2xl md:text-3xl text-brand-turquoise tabular-nums leading-none">
+                        {currentLesson.time}
+                      </span>
+                      {currentLesson.end_time && (
+                        <span className="font-mono text-xs text-muted-foreground tabular-nums">
+                          — {currentLesson.end_time}
+                        </span>
+                      )}
                     </div>
                   </div>
+
+                  {/* Center: Title + meta */}
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-cairo font-bold text-2xl md:text-3xl text-foreground mb-1.5 truncate">
+                      {currentLesson.subject}
+                    </h3>
+                    <div className="flex items-center gap-3 text-sm text-muted-foreground font-tajawal flex-wrap">
+                      <span className="flex items-center gap-1.5">
+                        <BookOpen className="h-4 w-4 flex-shrink-0 text-brand-turquoise/70" />
+                        {currentLesson.class}
+                      </span>
+                      <span className="text-border">•</span>
+                      <span>{t('periodNumber')} {currentLesson.period}</span>
+                    </div>
+                    {currentLesson.lesson_topic && (
+                      <p className="text-sm text-foreground/70 font-tajawal mt-2 line-clamp-1">
+                        <span className="text-muted-foreground">{t('lessonTopic')}:</span>{' '}
+                        <span className="font-medium">{currentLesson.lesson_topic}</span>
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Center action: Start session */}
                   <Button
-                    variant="outline"
-                    className="w-full mt-4 rounded-xl font-cairo border-brand-turquoise/30 text-brand-turquoise hover:bg-brand-turquoise/10"
-                    onClick={() => handleStartClass(nextLesson)}
+                    size="lg"
+                    className="bg-brand-navy hover:bg-brand-navy/90 text-white rounded-xl px-6 md:px-8 py-6 font-cairo font-bold text-base shadow-lg shadow-brand-navy/20 hover:shadow-xl transition-shadow flex-shrink-0 self-stretch md:self-center"
+                    onClick={() => handleStartClass(currentLesson)}
                   >
-                    <Play className="h-4 w-4 me-2" />
+                    <Play className="h-5 w-5 me-2" />
                     {t('startClass')}
                   </Button>
                 </div>
-              ) : (
-                <div className="rounded-2xl border border-border/50 bg-card p-5 shadow-sm h-full flex flex-col items-center justify-center text-center">
-                  <CheckCircle2 className="h-10 w-10 text-emerald-400/40 mb-2" />
-                  <p className="text-sm text-muted-foreground font-tajawal">
-                    {t('noUpcomingClasses')}
-                  </p>
+              </div>
+            ) : (
+              <div className="rounded-2xl border-2 border-dashed border-border/50 p-8 text-center bg-card/40">
+                <Calendar className="h-12 w-12 mx-auto mb-3 text-muted-foreground/20" />
+                <p className="text-muted-foreground font-tajawal text-lg font-medium">{t('noClassesScheduled')}</p>
+                <p className="text-muted-foreground/60 font-tajawal text-sm mt-1">{t('enjoyYourDay')}</p>
+              </div>
+            )}
+
+            {/* B) Upcoming Session Card — secondary, directly below current */}
+            {nextLesson ? (
+              <div className="rounded-2xl border border-border/60 bg-card p-4 md:p-5 shadow-sm hover:shadow-md transition-shadow">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                  <Badge variant="outline" className="font-cairo text-[11px] text-muted-foreground border-border self-start sm:self-center px-2.5 py-0.5">
+                    {t('nextUpcomingClass')}
+                  </Badge>
+
+                  <div className="min-w-0 flex-1">
+                    <h4 className="font-cairo font-bold text-base md:text-lg text-foreground truncate">
+                      {nextLesson.subject}
+                    </h4>
+                    <div className="flex items-center gap-3 text-xs md:text-sm text-muted-foreground font-tajawal mt-0.5 flex-wrap">
+                      <span className="flex items-center gap-1.5">
+                        <BookOpen className="h-3.5 w-3.5 flex-shrink-0" />
+                        {nextLesson.class}
+                      </span>
+                      <span className="text-border">•</span>
+                      <span>{t('periodNumber')} {nextLesson.period}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 sm:gap-4">
+                    <div className="flex items-center gap-1.5 text-sm font-tajawal text-foreground/80">
+                      <Clock className="h-4 w-4 text-muted-foreground" />
+                      <span className="font-mono font-semibold tabular-nums">{nextLesson.time}</span>
+                      {nextLesson.end_time && (
+                        <span className="font-mono text-xs text-muted-foreground tabular-nums">— {nextLesson.end_time}</span>
+                      )}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="rounded-xl font-cairo border-brand-turquoise/30 text-brand-turquoise hover:bg-brand-turquoise/10"
+                      onClick={() => handleStartClass(nextLesson)}
+                    >
+                      <Play className="h-3.5 w-3.5 me-1.5" />
+                      {t('startClass')}
+                    </Button>
+                  </div>
                 </div>
-              )}
-            </div>
-          </div>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-border/50 bg-card/60 p-4 flex items-center justify-center gap-2">
+                <CheckCircle2 className="h-5 w-5 text-emerald-500/60" />
+                <p className="text-sm text-muted-foreground font-tajawal">
+                  {t('noUpcomingClasses')}
+                </p>
+              </div>
+            )}
+
+            {/* C) School Day Timeline — supporting visual progress */}
+            <Card className="border border-border/50 shadow-sm p-4">
+              <PeriodTimeline
+                upcomingLessons={stats.upcomingLessons}
+                totalPeriods={totalPeriods}
+                currentPeriod={currentPeriod}
+                isSchoolTime={isSchoolTime}
+                isRTL={isRTL}
+                t={t}
+              />
+            </Card>
+          </section>
 
           {/* Metric Cards */}
           <section>

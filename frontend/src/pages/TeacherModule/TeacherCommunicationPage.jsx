@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Sidebar } from '../../components/layout/Sidebar';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
@@ -49,6 +50,7 @@ const STAFF_ROLES = [
 export default function TeacherCommunicationPage() {
   const { t } = useTranslation();
   const { user, api, isRTL } = useAuth();
+  const location = useLocation();
   const [loading, setLoading] = useState(true);
   const [classes, setClasses] = useState([]);
   const [students, setStudents] = useState([]);
@@ -69,6 +71,19 @@ export default function TeacherCommunicationPage() {
 
   const [schoolNotifFilter, setSchoolNotifFilter] = useState('all');
   const [guidanceStudentIds, setGuidanceStudentIds] = useState([]);
+
+  // Sync `?tab=bulletin|workshop` from sidebar deep links into the right view + filter
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const tab = params.get('tab');
+    if (tab === 'bulletin') {
+      setActiveView('school-notifications');
+      setSchoolNotifFilter('circulars');
+    } else if (tab === 'workshop') {
+      setActiveView('school-notifications');
+      setSchoolNotifFilter('workshops');
+    }
+  }, [location.search]);
 
   const { nassaqError } = useNassaqAlert();
   const teacherId = user?.teacher_id || user?.id;
