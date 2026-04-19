@@ -18,7 +18,7 @@ import {
   Smile, Frown, Activity, Heart, Send, Trophy, Sparkles,
   StickyNote, Plus, Trash2, PenLine, UserCheck,
   Download, History, FileSpreadsheet,
-  Settings, UsersRound, User, Table2, GripVertical, Search
+  Settings, UsersRound, User, Table2, GripVertical, Search, Mic
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -95,9 +95,11 @@ export default function SessionTeachPage() {
   const [flashId, setFlashId] = useState(null);
   const [showHakim, setShowHakim] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState(null);
-  const [actionTab, setActionTab] = useState('question'); // question | participation | behaviour | skill | homework
+  const [actionTab, setActionTab] = useState('question'); // question | participation | behaviour | skill | homework | recitation
   const [behaviourCategory, setBehaviourCategory] = useState('positive');
   const [behaviourNote, setBehaviourNote] = useState('');
+  const [recitationAttempts, setRecitationAttempts] = useState(1);
+  const [recitationNote, setRecitationNote] = useState('');
   const [homeworkStatuses, setHomeworkStatuses] = useState({});
   const [skillTypes, setSkillTypes] = useState([]);
   const [skillNote, setSkillNote] = useState('');
@@ -655,6 +657,37 @@ export default function SessionTeachPage() {
     }
   };
 
+  const recordRecitation = async (mastered) => {
+    if (!selectedStudent) return;
+    try {
+      const label = mastered ? t('recitationMastered') : t('recitationNotMastered');
+      const noteSuffix = recitationNote ? ` - ${recitationNote}` : '';
+      await api.post(`/session/${sessionId}/note`, {
+        student_id: selectedStudent.id,
+        content: `${t('recitation')}: ${label} (${t('attempts')}: ${recitationAttempts})${noteSuffix}`,
+        type: 'recitation',
+      });
+      if (mastered) {
+        confetti({ particleCount: 40, spread: 60, origin: { y: 0.6 }, colors: ['#10b981', '#34d399', '#6ee7b7'] });
+      }
+      toast.success(`${t('recitation')}: ${label} — ${selectedStudent.full_name?.split(' ')[0]}`);
+      addLog('skill', `${selectedStudent.full_name?.split(' ')[0]} — ${t('recitation')} ${label} (${recitationAttempts})`, mastered ? 'text-emerald-700' : 'text-amber-700');
+      setRecitationNote('');
+      setRecitationAttempts(1);
+      setStudents(prev => prev.map(s =>
+        s.id === selectedStudent.id ? { ...s, interactionCount: (s.interactionCount || 0) + 1 } : s
+      ));
+      setSelectedStudent(prev => prev ? {
+        ...prev,
+        interactionCount: (prev.interactionCount || 0) + 1,
+        interaction_count: (prev.interaction_count || 0) + 1,
+      } : null);
+    } catch (e) {
+      console.error('Error recording recitation:', e);
+      nassaqError(t('errorRecordingSkill'));
+    }
+  };
+
   const [pendingOps, setPendingOps] = useState([]);
 
   const checkPendingOps = useCallback(() => {
@@ -1134,6 +1167,7 @@ export default function SessionTeachPage() {
                   { id: 'question', labelKey: 'question', icon: MessageCircle, forMode: 'quiz' },
                   { id: 'participation', labelKey: 'participationTab', icon: Hand, forMode: 'review' },
                   { id: 'homework', labelKey: 'modeHomework', icon: ClipboardCheck, forMode: 'homework' },
+                  { id: 'recitation', labelKey: 'recitationTab', icon: Mic },
                   { id: 'behaviour', labelKey: 'behaviour', icon: ThumbsUp },
                   { id: 'skill', labelKey: 'skill', icon: Star },
                 ].map(tab => {
@@ -1247,6 +1281,51 @@ export default function SessionTeachPage() {
                       })}
                     </div>
                     </>}
+                  </div>
+                )}
+
+                {actionTab === 'recitation' && (
+                  <div className="space-y-3">
+                    <div>
+                      <div className="text-white/60 text-[11px] mb-1.5 font-cairo">{t('attempts')}</div>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {[1, 2, 3].map(n => (
+                          <button
+                            key={n}
+                            onClick={() => setRecitationAttempts(n)}
+                            className={`py-1.5 rounded text-xs font-bold font-cairo transition-colors ${
+                              recitationAttempts === n
+                                ? 'bg-emerald-600 text-white'
+                                : 'bg-white/10 text-white/60 hover:bg-white/15'
+                            }`}
+                          >
+                            {n}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <ActionButton
+                        color="bg-emerald-600 hover:bg-emerald-500"
+                        icon={<CheckCircle2 className="h-5 w-5" />}
+                        label={t('recitationMastered')}
+                        sub="+3"
+                        onClick={() => recordRecitation(true)}
+                      />
+                      <ActionButton
+                        color="bg-red-600 hover:bg-red-500"
+                        icon={<XCircle className="h-5 w-5" />}
+                        label={t('recitationNotMastered')}
+                        sub="0"
+                        onClick={() => recordRecitation(false)}
+                      />
+                    </div>
+                    <input
+                      className="w-full bg-white/10 text-white text-xs rounded px-2 py-1.5 placeholder-white/30 outline-none font-cairo"
+                      placeholder={t('optionalNote')}
+                      value={recitationNote}
+                      onChange={e => setRecitationNote(e.target.value)}
+                    />
                   </div>
                 )}
 
