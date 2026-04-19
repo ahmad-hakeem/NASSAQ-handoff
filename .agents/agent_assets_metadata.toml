@@ -18,3 +18,9 @@ id = "JQNt_vxbrhGvCIR5RVE5M"
 uri = "file://docs/superpowers/specs/2026-04-17-student-platform-audit-and-fix-plan.md"
 type = "text"
 title = "خطة مراجعة وإصلاح منصة الطالب — NASSAQ"
+
+[[outputs]]
+id = "adZaqjDh4hNdCH9XxX3L9"
+uri = "file://docs/NASSAQ_Investor_System_Document.md"
+type = "text"
+title = "وثيقة نسّاق التنفيذية للمستثمرين"
