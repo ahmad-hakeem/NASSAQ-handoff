@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Sidebar } from '../../components/layout/Sidebar';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
@@ -139,6 +139,18 @@ export default function TeacherAchievementsPage() {
   };
 
   const hakimAbortRef = useRef({});
+  const cancelHakimRequests = useCallback(() => {
+    Object.values(hakimAbortRef.current || {}).forEach(c => {
+      try { c?.abort?.(); } catch {}
+    });
+    hakimAbortRef.current = {};
+    setHakimBusy({ title: null, description: null });
+  }, []);
+  // Abort any in-flight Hakim calls when the evidence dialog closes / unmounts
+  useEffect(() => {
+    if (!evidenceDialog.open) cancelHakimRequests();
+  }, [evidenceDialog.open, cancelHakimRequests]);
+  useEffect(() => () => cancelHakimRequests(), [cancelHakimRequests]);
   const handleHakimText = async (field, mode) => {
     const formField = field === 'title' ? 'title_ar' : 'description_ar';
     const text = (evidenceForm[formField] || '').trim();

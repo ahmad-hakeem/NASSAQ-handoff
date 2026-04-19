@@ -200,10 +200,14 @@ async def hakim_evidence_text(
     if field_in == "description" and payload.title:
         context["title"] = payload.title
 
-    from services.hakim_llm_service import hakim_generate
-    result = await hakim_generate(
-        mode=mode, field=field_key, text=text_in, context=context, language="ar",
-    )
+    try:
+        from services.hakim_llm_service import hakim_generate
+        result = await hakim_generate(
+            mode=mode, field=field_key, text=text_in, context=context, language="ar",
+        )
+    except Exception as e:
+        logger.warning(f"[Hakim] portfolio evidence text {mode}/{field_in} failed: {e}")
+        raise HTTPException(status_code=502, detail="HAKIM_FAILED")
 
     if result.get("success"):
         return {
