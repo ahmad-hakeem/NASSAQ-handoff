@@ -41,6 +41,81 @@ def _verify_teacher_access(teacher_id: str, current_user: dict):
         raise HTTPException(status_code=403, detail="ليس لديك صلاحية للوصول لبيانات هذا المعلم")
 
 
+async def _resolve_teacher_record(teacher_id: str):
+    """
+    Resolve the actual teachers-collection record from any of:
+      - teachers.id (direct hit)
+      - teachers.user_id (when caller passed the user id)
+      - users.id -> teachers (matched strictly by school_id + unique email)
+
+    Returns the teacher dict or None. This is needed because the frontend
+    falls back to ``user.id`` when ``users.teacher_id`` is not populated,
+    but admin-side links (teacher_class_assignments, teacher_assignments,
+    schedule_sessions, ...) are stored against teachers.id, so a direct
+    query by user.id returns nothing.
+
+    SECURITY: name-based matching is intentionally NOT used because two
+    teachers in the same school can share a full_name, which would let
+    one teacher's "My Classes" page surface another teacher's data.
+    Email is required for the user→teacher fallback, and the match must
+    be unique (exactly one candidate). When ambiguous, we refuse to
+    resolve and return None so the page shows "no classes" rather than
+    leaking the wrong data; an admin must then explicitly link the
+    user to the correct teachers row.
+    """
+    if not teacher_id:
+        return None
+
+    # 1) Direct match on teachers.id
+    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
+    if teacher:
+        return teacher
+
+    # 2) teachers row already linked via user_id
+    teacher = await gd_find_one(db.session, "teachers", {"user_id": teacher_id})
+    if teacher:
+        return teacher
+
+    # 3) Strict email-based fallback from users -> teachers
+    user = await gd_find_one(db.session, "users", {"id": teacher_id})
+    if not user or user.get("role") != "teacher":
+        return None
+
+    tenant_id = user.get("tenant_id") or user.get("school_id")
+    email = (user.get("email") or "").strip().lower()
+    if not tenant_id or not email:
+        return None
+
+    candidates = await gd_find(db.session, "teachers", {
+        "school_id": tenant_id,
+        "email": email,
+    }, limit=2)
+
+    if len(candidates) != 1:
+        if len(candidates) > 1:
+            logger.warning(
+                "_resolve_teacher_record: ambiguous match for user %s "
+                "in school %s (%d teachers share email)",
+                teacher_id, tenant_id, len(candidates),
+            )
+        return None
+
+    teacher = candidates[0]
+
+    # Safe to backfill: the match is unique within the school AND keyed
+    # on the verified login email of this very user.
+    try:
+        await gd_update_one(
+            db.session, "users",
+            {"id": teacher_id},
+            {"$set": {"teacher_id": teacher.get("id")}}
+        )
+    except Exception as _e:
+        logger.debug(f"_resolve_teacher_record: backfill users.teacher_id failed: {_e}")
+
+    return teacher
+
+
 @router.get("/teacher/dashboard/{teacher_id}")
 async def get_teacher_dashboard(
     teacher_id: str,
@@ -654,7 +729,9 @@ async def get_teacher_sessions_list(
     current_user: dict = Depends(get_current_user)
 ):
     _verify_teacher_access(teacher_id, current_user)
-    sessions_list = await gd_find(db.session, "teacher_sessions", {"teacher_id": teacher_id}, order_by="created_at", desc_order=True, limit=200)
+    teacher = await _resolve_teacher_record(teacher_id)
+    resolved_teacher_id = teacher.get("id") if teacher else teacher_id
+    sessions_list = await gd_find(db.session, "teacher_sessions", {"teacher_id": resolved_teacher_id}, order_by="created_at", desc_order=True, limit=200)
 
     for s in sessions_list:
         if not s.get("class_name") and s.get("class_id"):
@@ -678,18 +755,21 @@ async def get_teacher_classes(
     """
     _verify_teacher_access(teacher_id, current_user)
 
-    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
+    teacher = await _resolve_teacher_record(teacher_id)
     school_id = teacher.get("school_id") if teacher else None
+    # Use the actual teachers.id for queries — admin-side assignments are
+    # stored against teachers.id, not users.id.
+    resolved_teacher_id = teacher.get("id") if teacher else teacher_id
 
     assignments = await gd_find(db.session, "teacher_assignments", {
-        "teacher_id": teacher_id,
+        "teacher_id": resolved_teacher_id,
         "is_active": True
     }, limit=200)
 
     class_ids_from_assignments = set(a.get("class_id") for a in assignments if a.get("class_id"))
 
     tca_docs = await gd_find(db.session, "teacher_class_assignments", {
-        "teacher_id": teacher_id
+        "teacher_id": resolved_teacher_id
     }, limit=200)
     class_ids_from_tca = set(d.get("class_id") for d in tca_docs if d.get("class_id"))
 
@@ -703,7 +783,7 @@ async def get_teacher_classes(
     schedule_sessions = []
     time_slots_map = {}
     if schedule:
-        schedule_sessions = await gd_find(db.session, "schedule_sessions", {"schedule_id": schedule["id"], "teacher_id": teacher_id, "status": "scheduled"}, limit=500)
+        schedule_sessions = await gd_find(db.session, "schedule_sessions", {"schedule_id": schedule["id"], "teacher_id": resolved_teacher_id, "status": "scheduled"}, limit=500)
         ts_docs = await gd_find(db.session, "time_slots", {"school_id": school_id, "is_break": {"$ne": True}}, limit=50)
         for ts in ts_docs:
             ts_id = ts.get("id") or ts.get("slot_number")
@@ -812,12 +892,13 @@ async def get_teacher_schedule(
     جلب جدول المعلم
     """
     _verify_teacher_access(teacher_id, current_user)
-    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
+    teacher = await _resolve_teacher_record(teacher_id)
     if not teacher:
         return []
-    
+
     school_id = teacher.get("school_id")
-    
+    resolved_teacher_id = teacher.get("id") or teacher_id
+
     schedule_sessions_list = []
 
     schedule = await gd_find_one(db.session, "schedules", {
@@ -828,7 +909,7 @@ async def get_teacher_schedule(
     if schedule:
         schedule_sessions_list = await gd_find(db.session, "schedule_sessions", {
             "schedule_id": schedule.get("id"),
-            "teacher_id": teacher_id,
+            "teacher_id": resolved_teacher_id,
             "status": "scheduled"
         }, limit=100)
 
@@ -855,7 +936,7 @@ async def get_teacher_schedule(
     timetable = await gd_find_one(db.session, "timetables", {"school_id": school_id, "status": "published"},
         sort=[("updated_at", -1), ("created_at", -1)]) or await gd_find_one(db.session, "timetables", {"school_id": school_id},
         sort=[("created_at", -1)])
-    timetable_query = {"teacher_id": teacher_id, "school_id": school_id}
+    timetable_query = {"teacher_id": resolved_teacher_id, "school_id": school_id}
     if timetable:
         timetable_query["timetable_id"] = timetable.get("id")
     timetable_sessions = await gd_find(db.session, "timetable_sessions", timetable_query, order_by="day_of_week", desc_order=False, limit=200)
@@ -903,8 +984,10 @@ async def get_teacher_assessments(
     جلب تقييمات المعلم
     """
     _verify_teacher_access(teacher_id, current_user)
+    teacher = await _resolve_teacher_record(teacher_id)
+    resolved_teacher_id = teacher.get("id") if teacher else teacher_id
     assessments = await gd_find(db.session, "assessments", {
-        "teacher_id": teacher_id
+        "teacher_id": resolved_teacher_id
     }, order_by="created_at", desc_order=True, limit=100)
     
     # Enrich with class names
@@ -1974,16 +2057,18 @@ async def get_teacher_class_metrics(
     Get real class metrics for a teacher (attendance, participation, performance)
     """
     _verify_teacher_access(teacher_id, current_user)
-    assignments = await gd_find(db.session, "teacher_assignments", {"teacher_id": teacher_id, "is_active": True}, limit=200)
+    teacher = await _resolve_teacher_record(teacher_id)
+    resolved_teacher_id = teacher.get("id") if teacher else teacher_id
+    assignments = await gd_find(db.session, "teacher_assignments", {"teacher_id": resolved_teacher_id, "is_active": True}, limit=200)
     class_ids_from_ta = set(a.get("class_id") for a in assignments if a.get("class_id"))
 
-    tca_docs = await gd_find(db.session, "teacher_class_assignments", {"teacher_id": teacher_id}, limit=200)
+    tca_docs = await gd_find(db.session, "teacher_class_assignments", {"teacher_id": resolved_teacher_id}, limit=200)
     class_ids_from_tca = set(d.get("class_id") for d in tca_docs if d.get("class_id"))
 
     all_class_ids = list(class_ids_from_ta | class_ids_from_tca)
     metrics = {}
     for class_id in all_class_ids:
-        metrics[class_id] = await session_engine.get_class_metrics(teacher_id, class_id)
+        metrics[class_id] = await session_engine.get_class_metrics(resolved_teacher_id, class_id)
     return metrics
 
 
@@ -2248,8 +2333,10 @@ async def get_teacher_sessions_history(
     current_user: dict = Depends(get_current_user)
 ):
     _verify_teacher_access(teacher_id, current_user)
+    teacher = await _resolve_teacher_record(teacher_id)
+    resolved_teacher_id = teacher.get("id") if teacher else teacher_id
     result = await session_engine.get_teacher_sessions(
-        teacher_id=teacher_id,
+        teacher_id=resolved_teacher_id,
         page=page,
         limit=limit,
         status_filter=status
@@ -2271,11 +2358,12 @@ async def get_teacher_achievements(
     current_user: dict = Depends(get_current_user)
 ):
     _verify_teacher_access(teacher_id, current_user)
-    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
+    teacher = await _resolve_teacher_record(teacher_id)
     school_id = teacher.get("school_id") if teacher else current_user.get("tenant_id")
+    resolved_teacher_id = teacher.get("id") if teacher else teacher_id
 
-    assignments = await gd_find(db.session, "teacher_assignments", {"teacher_id": teacher_id, "is_active": True}, limit=200)
-    tca_docs = await gd_find(db.session, "teacher_class_assignments", {"teacher_id": teacher_id}, limit=200)
+    assignments = await gd_find(db.session, "teacher_assignments", {"teacher_id": resolved_teacher_id, "is_active": True}, limit=200)
+    tca_docs = await gd_find(db.session, "teacher_class_assignments", {"teacher_id": resolved_teacher_id}, limit=200)
     class_ids = list(set(a.get("class_id") for a in assignments if a.get("class_id")) | set(d.get("class_id") for d in tca_docs if d.get("class_id")))
 
     total_classes = len(class_ids)
@@ -2285,7 +2373,7 @@ async def get_teacher_achievements(
             count = await gd_count(db.session, "students", {"class_id": cid})
             total_students += count
 
-    sessions = await gd_find(db.session, "teacher_sessions", {"teacher_id": teacher_id}, limit=500)
+    sessions = await gd_find(db.session, "teacher_sessions", {"teacher_id": resolved_teacher_id}, limit=500)
     completed_sessions = [s for s in sessions if s.get("status") in ("completed", "ended")]
     total_sessions = len(completed_sessions)
 
