@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Sidebar } from '../../components/layout/Sidebar';
@@ -33,10 +33,11 @@ const TEMPLATES = [
   { id: 'absence', icon: AlertCircle, color: 'bg-red-500', titleKey: 'absenceAlert', bodyKey: 'absenceAlertBody' },
 ];
 
+// Recipient categories per spec: Parents / Administration / Staff.
+// Direct student selection is reachable via Administration → Student Guidance.
 const RECIPIENT_CATEGORIES = [
   { id: 'parents', icon: Users, color: 'bg-blue-500', i18nKey: 'parentsCategory' },
   { id: 'admin', icon: Building2, color: 'bg-brand-navy', i18nKey: 'adminCategory' },
-  { id: 'students', icon: GraduationCap, color: 'bg-green-500', i18nKey: 'studentsCategory' },
   { id: 'staff', icon: Shield, color: 'bg-brand-purple', i18nKey: 'schoolStaffCategory' },
 ];
 
@@ -310,7 +311,7 @@ export default function TeacherCommunicationPage() {
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <button
-          onClick={() => setActiveView('templates')}
+          onClick={() => setActiveView('communication-hub')}
           className="group text-start"
         >
           <Card className="h-full border-2 border-transparent hover:border-brand-turquoise/40 hover:shadow-md transition-shadow duration-200">
@@ -411,8 +412,45 @@ export default function TeacherCommunicationPage() {
     </div>
   );
 
-  const renderTemplates = () => (
-    <div className="space-y-4">
+  const renderStepIndicator = (currentStep) => {
+    const steps = [
+      { n: 1, label: t('chooseTemplate') },
+      { n: 2, label: t('selectRecipients') },
+      { n: 3, label: t('messagePreview') },
+    ];
+    return (
+      <div className="flex items-center gap-2 flex-wrap">
+        {steps.map((s, idx) => {
+          const isActive = s.n === currentStep;
+          const isDone = s.n < currentStep;
+          return (
+            <React.Fragment key={s.n}>
+              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border ${
+                isActive
+                  ? 'bg-brand-turquoise/10 border-brand-turquoise text-brand-navy dark:text-white'
+                  : isDone
+                  ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-300 text-emerald-700 dark:text-emerald-300'
+                  : 'bg-muted/40 border-border/50 text-muted-foreground'
+              }`}>
+                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold ${
+                  isActive ? 'bg-brand-turquoise text-white' : isDone ? 'bg-emerald-500 text-white' : 'bg-muted text-muted-foreground'
+                }`}>
+                  {isDone ? '✓' : s.n}
+                </span>
+                <span className="text-xs font-cairo font-medium">{s.label}</span>
+              </div>
+              {idx < steps.length - 1 && (
+                <span className="h-px w-4 bg-border/70" aria-hidden="true" />
+              )}
+            </React.Fragment>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderCommunicationHub = () => (
+    <div className="space-y-6">
       <button
         onClick={() => setActiveView('sections')}
         className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-brand-navy dark:hover:text-brand-turquoise transition-colors duration-150"
@@ -421,11 +459,70 @@ export default function TeacherCommunicationPage() {
         {t('backToSections')}
       </button>
 
+      <div className="flex items-start gap-4 flex-wrap">
+        <div className="w-14 h-14 rounded-2xl bg-brand-turquoise/10 flex items-center justify-center shrink-0">
+          <MessageSquare className="h-7 w-7 text-brand-turquoise" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-2xl font-bold font-cairo text-brand-navy dark:text-white mb-1">
+            {t('communicationCenterSection')}
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            {t('communicationCenterSectionDesc')}
+          </p>
+        </div>
+      </div>
+
+      <Card className="border-2 border-brand-turquoise/30 bg-gradient-to-br from-brand-turquoise/5 to-transparent">
+        <CardContent className="p-6 flex items-center justify-between flex-wrap gap-4">
+          <div className="flex-1 min-w-[220px]">
+            <h3 className="text-lg font-bold font-cairo text-brand-navy dark:text-white mb-1">
+              {t('sendNotificationBtn')}
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              {t('chooseTemplate')} → {t('selectRecipients')}
+            </p>
+          </div>
+          <Button
+            size="lg"
+            className="bg-brand-turquoise hover:bg-brand-turquoise/90 text-white font-cairo px-6"
+            onClick={() => {
+              setSelectedTemplate(null);
+              setSelectedCategory(null);
+              setSelectedRecipients([]);
+              setParentMode(null);
+              setSelectedClass('');
+              setMessageSubject('');
+              setMessageBody('');
+              setGuidanceStudentIds([]);
+              setActiveView('templates');
+            }}
+          >
+            <Send className="h-5 w-5 me-2" />
+            {t('sendNotificationBtn')}
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  const renderTemplates = () => (
+    <div className="space-y-4">
+      <button
+        onClick={() => setActiveView('communication-hub')}
+        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-brand-navy dark:hover:text-brand-turquoise transition-colors duration-150"
+      >
+        <BackIcon className="h-4 w-4" />
+        {t('backToSections')}
+      </button>
+
+      {renderStepIndicator(1)}
+
       <div>
         <h2 className="text-xl font-bold font-cairo text-brand-navy dark:text-white mb-1">
-          {t('communicationCenterSection')}
+          {t('chooseTemplate')}
         </h2>
-        <p className="text-sm text-muted-foreground mb-4">{t('chooseTemplate')}</p>
+        <p className="text-sm text-muted-foreground mb-4">{t('communicationCenterSectionDesc')}</p>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -447,23 +544,6 @@ export default function TeacherCommunicationPage() {
           );
         })}
       </div>
-
-      <Card className="mt-4">
-        <CardContent className="p-4">
-          <Button
-            className="w-full bg-brand-turquoise hover:bg-brand-turquoise/90 text-white"
-            onClick={() => {
-              setMessageSubject('');
-              setMessageBody('');
-              setSelectedTemplate(null);
-              setActiveView('recipients');
-            }}
-          >
-            <Send className="h-4 w-4 me-2" />
-            {t('sendNotificationBtn')}
-          </Button>
-        </CardContent>
-      </Card>
     </div>
   );
 
@@ -477,6 +557,8 @@ export default function TeacherCommunicationPage() {
         {t('backToTemplates')}
       </button>
 
+      {renderStepIndicator(2)}
+
       <div>
         <h2 className="text-xl font-bold font-cairo text-brand-navy dark:text-white mb-1">
           {t('selectRecipients')}
@@ -484,7 +566,7 @@ export default function TeacherCommunicationPage() {
         <p className="text-sm text-muted-foreground mb-4">{t('recipientCategories')}</p>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
         {RECIPIENT_CATEGORIES.map(cat => {
           const CIcon = cat.icon;
           return (
@@ -843,6 +925,8 @@ export default function TeacherCommunicationPage() {
         {t('backToCategories')}
       </button>
 
+      {renderStepIndicator(3)}
+
       <h2 className="text-xl font-bold font-cairo text-brand-navy dark:text-white">
         {t('messagePreview')}
       </h2>
@@ -1101,6 +1185,7 @@ export default function TeacherCommunicationPage() {
   const renderActiveView = () => {
     switch (activeView) {
       case 'sections': return renderSections();
+      case 'communication-hub': return renderCommunicationHub();
       case 'templates': return renderTemplates();
       case 'recipients': return renderRecipients();
       case 'parent-mode': return renderParentMode();
