@@ -551,6 +551,7 @@
   "classCreated": "Class created",
   "classCreated2": "Class Created!",
   "classDataLinkedToAdmin": "Class and student data is linked to admin and updates automatically",
+  "classDataAutoSyncNotice": "Classes and student rosters are managed by the school administration office and synced automatically. Any roster changes must be requested from the school administration.",
   "classDeletedSuccessfully": "Class deleted successfully",
   "classDetails": "Class Details",
   "classDistribution": "Class Distribution",

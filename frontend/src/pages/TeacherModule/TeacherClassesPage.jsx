@@ -1113,6 +1113,22 @@ export default function TeacherClassesPage() {
               )}
             </>
           )}
+
+          {!loading && (
+            <div className="mt-6 flex items-start gap-3 p-4 rounded-xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200/60 dark:border-blue-800/40">
+              <div className="w-9 h-9 rounded-lg bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center flex-shrink-0">
+                <Info className="h-4.5 w-4.5 text-blue-600 dark:text-blue-300" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold font-cairo text-blue-900 dark:text-blue-200 mb-0.5">
+                  {t('classDataLinkedToAdmin')}
+                </p>
+                <p className="text-xs text-blue-700/90 dark:text-blue-300/90 font-tajawal leading-relaxed">
+                  {t('classDataAutoSyncNotice')}
+                </p>
+              </div>
+            </div>
+          )}
           </>
         )}
         </div>

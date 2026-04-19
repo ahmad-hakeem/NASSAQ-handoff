@@ -551,6 +551,7 @@
   "classCreated": "تم إنشاء الفصل",
   "classCreated2": "تم إنشاء الفصل بنجاح!",
   "classDataLinkedToAdmin": "بيانات الفصل والطلاب مرتبطة بالإدارة وتُحدّث تلقائياً",
+  "classDataAutoSyncNotice": "بيانات الفصول والطلاب يديرها مكتب الإدارة المدرسية ويتم مزامنتها تلقائياً، فأي تعديل على القوائم يجب طلبه من إدارة المدرسة.",
   "classDeletedSuccessfully": "تم حذف الفصل بنجاح",
   "classDetails": "تفاصيل الفصل",
   "classDistribution": "توزيع الفصول",
