@@ -160,3 +160,107 @@ async def get_evidence_types(current_user: dict = Depends(get_current_user)):
     for section_key, type_keys in EVIDENCE_SECTIONS.items():
         result[section_key] = type_keys
     return {"sections": result, "all_types": ALL_EVIDENCE_TYPES}
+
+
+class HakimEvidenceTextRequest(BaseModel):
+    mode: str = Field(..., description="generate | improve")
+    field: str = Field(..., description="title | description")
+    text: Optional[str] = ""
+    evidence_type: Optional[str] = None
+    title: Optional[str] = None
+    subject: Optional[str] = None
+    grade: Optional[str] = None
+
+
+@router.post("/teacher/portfolio/hakim-evidence-text")
+async def hakim_evidence_text(
+    payload: HakimEvidenceTextRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    if current_user["role"] not in ("teacher", "platform_admin", "school_principal", "school_admin"):
+        raise HTTPException(status_code=403, detail="غير مصرح")
+
+    mode = (payload.mode or "").strip().lower()
+    field = (payload.field or "").strip().lower()
+    if mode not in ("generate", "improve"):
+        raise HTTPException(status_code=422, detail="invalid_mode")
+    if field not in ("title", "description"):
+        raise HTTPException(status_code=422, detail="invalid_field")
+
+    text_in = (payload.text or "").strip()
+    if mode == "improve" and len(text_in) < 5:
+        raise HTTPException(status_code=422, detail="TEXT_TOO_SHORT")
+
+    try:
+        from openai import OpenAI
+        import os
+        api_key = os.environ.get("AI_INTEGRATIONS_OPENAI_API_KEY", "")
+        base_url = os.environ.get("AI_INTEGRATIONS_OPENAI_BASE_URL", "")
+        if not api_key:
+            return {"success": False, "text": text_in, "reason": "AI_DISABLED"}
+
+        client = OpenAI(api_key=api_key, base_url=base_url if base_url else None)
+
+        evidence_label = (payload.evidence_type or "").replace("_", " ")
+        ctx_lines = []
+        if evidence_label:
+            ctx_lines.append(f"نوع الشاهد: {evidence_label}")
+        if payload.subject:
+            ctx_lines.append(f"المادة: {payload.subject}")
+        if payload.grade:
+            ctx_lines.append(f"الصف: {payload.grade}")
+        if field == "description" and payload.title:
+            ctx_lines.append(f"عنوان الشاهد: {payload.title}")
+        context_block = "\n".join(ctx_lines) if ctx_lines else "—"
+
+        if field == "title":
+            field_rule = (
+                "عنوان موجز ودقيق لشاهد ملف إنجاز معلم، بحد أقصى جملة واحدة قصيرة (٤-١٢ كلمة)، "
+                "بدون علامات اقتباس وبدون نقطة في النهاية."
+            )
+        else:
+            field_rule = (
+                "وصف مهني واضح لشاهد في ملف إنجاز معلم، من ٢ إلى ٤ جمل، يبيّن الهدف والمحتوى والأثر التعليمي، "
+                "بأسلوب رسمي مهني خالٍ من المبالغة."
+            )
+
+        if mode == "generate":
+            system_prompt = (
+                "أنت 'حكيم'، المساعد الذكي في منصة نسّاق التعليمية. مهمتك إنشاء نص عربي رسمي للمعلمين "
+                "يستخدم في ملف الإنجاز الوظيفي. اكتب بالعربية الفصحى فقط بدون أي لغة أخرى."
+            )
+            user_prompt = (
+                f"السياق:\n{context_block}\n\n"
+                f"المطلوب: {field_rule}\n\n"
+                "أعد النص النهائي فقط دون أي مقدمات أو شروحات."
+            )
+        else:
+            system_prompt = (
+                "أنت 'حكيم'، المساعد الذكي في منصة نسّاق التعليمية. مهمتك تحسين نصوص ملف إنجاز المعلم "
+                "لتصبح أوضح وأكثر مهنية مع الحفاظ على المعنى الأصلي وعدم اختراع معلومات جديدة. "
+                "اكتب بالعربية الفصحى فقط."
+            )
+            user_prompt = (
+                f"السياق:\n{context_block}\n\n"
+                f"النص الأصلي:\n{text_in}\n\n"
+                f"المطلوب: {field_rule}\n\n"
+                "أعد النص المُحسَّن فقط دون أي مقدمات أو شروحات."
+            )
+
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            max_tokens=400 if field == "description" else 80,
+            temperature=0.6 if mode == "improve" else 0.75,
+        )
+        out = (response.choices[0].message.content or "").strip()
+        out = out.strip('"').strip("'").strip()
+        if not out:
+            return {"success": False, "text": text_in, "reason": "EMPTY"}
+        return {"success": True, "text": out}
+    except Exception as e:
+        logger.warning(f"[Hakim] portfolio evidence text {mode}/{field} failed: {e}")
+        raise HTTPException(status_code=502, detail="HAKIM_FAILED")

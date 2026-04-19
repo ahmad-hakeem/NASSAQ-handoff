@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { Progress } from '../../components/ui/progress';
 import { Input } from '../../components/ui/input';
+import { Textarea } from '../../components/ui/textarea';
 import { Label } from '../../components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../../components/ui/dialog';
 import {
@@ -92,6 +93,7 @@ export default function TeacherAchievementsPage() {
   const [evidenceDialog, setEvidenceDialog] = useState({ open: false, mode: 'add', data: null });
   const [evidenceForm, setEvidenceForm] = useState({ evidence_type: '', title_ar: '', title_en: '', description_ar: '', description_en: '', date: '' });
   const [saving, setSaving] = useState(false);
+  const [hakimBusy, setHakimBusy] = useState({ title: null, description: null });
   const [fileFilter, setFileFilter] = useState('');
   const [fileTypeFilter, setFileTypeFilter] = useState('all');
 
@@ -134,6 +136,39 @@ export default function TeacherAchievementsPage() {
       date: evidence.date || '',
     });
     setEvidenceDialog({ open: true, mode: 'edit', data: evidence });
+  };
+
+  const handleHakimText = async (field, mode) => {
+    const formField = field === 'title' ? 'title_ar' : 'description_ar';
+    const text = (evidenceForm[formField] || '').trim();
+    if (mode === 'improve' && text.length < 5) {
+      toast.error(t('hakimNeedFiveChars'));
+      return;
+    }
+    setHakimBusy(prev => ({ ...prev, [field]: mode }));
+    try {
+      const res = await api.post('/teacher/portfolio/hakim-evidence-text', {
+        mode,
+        field,
+        text,
+        evidence_type: evidenceForm.evidence_type,
+        title: evidenceForm.title_ar,
+      });
+      const next = (res?.data?.text || '').trim();
+      if (res?.data?.success && next) {
+        setEvidenceForm(prev => ({ ...prev, [formField]: next }));
+        toast.success(mode === 'generate' ? t('hakimGeneratedSuccess') : t('hakimImprovedSuccess'));
+      } else {
+        toast.error(t('hakimUnavailable'));
+      }
+    } catch (err) {
+      console.error('Hakim evidence text error:', err);
+      const detail = err?.response?.data?.detail;
+      if (detail === 'TEXT_TOO_SHORT') toast.error(t('hakimNeedFiveChars'));
+      else toast.error(t('hakimUnavailable'));
+    } finally {
+      setHakimBusy(prev => ({ ...prev, [field]: null }));
+    }
   };
 
   const handleSaveEvidence = async () => {
@@ -519,20 +554,86 @@ export default function TeacherAchievementsPage() {
               </Select>
             </div>
             <div>
-              <Label className="text-xs font-medium mb-1.5 block">{t('portfolioTitleAr')}</Label>
-              <Input value={evidenceForm.title_ar} onChange={(e) => setEvidenceForm(prev => ({ ...prev, title_ar: e.target.value }))} className="h-9" />
+              <div className="flex items-center justify-between mb-1.5 gap-2 flex-wrap">
+                <Label className="text-xs font-medium">{t('portfolioTitleAr')}</Label>
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2 text-[11px] gap-1 border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-900/30"
+                    onClick={() => handleHakimText('title', 'generate')}
+                    disabled={!!hakimBusy.title}
+                  >
+                    {hakimBusy.title === 'generate'
+                      ? <Loader2 className="h-3 w-3 animate-spin" />
+                      : <Zap className="h-3 w-3" />}
+                    {t('hakimGenerate')}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2 text-[11px] gap-1 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/30"
+                    onClick={() => handleHakimText('title', 'improve')}
+                    disabled={!!hakimBusy.title || (evidenceForm.title_ar || '').trim().length < 5}
+                  >
+                    {hakimBusy.title === 'improve'
+                      ? <Loader2 className="h-3 w-3 animate-spin" />
+                      : <Target className="h-3 w-3" />}
+                    {t('hakimImprove')}
+                  </Button>
+                </div>
+              </div>
+              <Textarea
+                value={evidenceForm.title_ar}
+                onChange={(e) => setEvidenceForm(prev => ({ ...prev, title_ar: e.target.value }))}
+                rows={2}
+                placeholder={t('portfolioTitlePlaceholder')}
+                dir={isRTL ? 'rtl' : 'ltr'}
+                className="resize-none"
+              />
             </div>
             <div>
-              <Label className="text-xs font-medium mb-1.5 block">{t('portfolioTitleEn')}</Label>
-              <Input value={evidenceForm.title_en} onChange={(e) => setEvidenceForm(prev => ({ ...prev, title_en: e.target.value }))} className="h-9" />
-            </div>
-            <div>
-              <Label className="text-xs font-medium mb-1.5 block">{t('portfolioDescriptionAr')}</Label>
-              <Input value={evidenceForm.description_ar} onChange={(e) => setEvidenceForm(prev => ({ ...prev, description_ar: e.target.value }))} className="h-9" />
-            </div>
-            <div>
-              <Label className="text-xs font-medium mb-1.5 block">{t('portfolioDescriptionEn')}</Label>
-              <Input value={evidenceForm.description_en} onChange={(e) => setEvidenceForm(prev => ({ ...prev, description_en: e.target.value }))} className="h-9" />
+              <div className="flex items-center justify-between mb-1.5 gap-2 flex-wrap">
+                <Label className="text-xs font-medium">{t('portfolioDescriptionAr')}</Label>
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2 text-[11px] gap-1 border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-900/30"
+                    onClick={() => handleHakimText('description', 'generate')}
+                    disabled={!!hakimBusy.description}
+                  >
+                    {hakimBusy.description === 'generate'
+                      ? <Loader2 className="h-3 w-3 animate-spin" />
+                      : <Zap className="h-3 w-3" />}
+                    {t('hakimGenerate')}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2 text-[11px] gap-1 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/30"
+                    onClick={() => handleHakimText('description', 'improve')}
+                    disabled={!!hakimBusy.description || (evidenceForm.description_ar || '').trim().length < 5}
+                  >
+                    {hakimBusy.description === 'improve'
+                      ? <Loader2 className="h-3 w-3 animate-spin" />
+                      : <Target className="h-3 w-3" />}
+                    {t('hakimImprove')}
+                  </Button>
+                </div>
+              </div>
+              <Textarea
+                value={evidenceForm.description_ar}
+                onChange={(e) => setEvidenceForm(prev => ({ ...prev, description_ar: e.target.value }))}
+                rows={4}
+                placeholder={t('portfolioDescriptionPlaceholder')}
+                dir={isRTL ? 'rtl' : 'ltr'}
+                className="resize-none"
+              />
             </div>
             <div>
               <Label className="text-xs font-medium mb-1.5 block">{t('portfolioEvidenceDate')}</Label>
