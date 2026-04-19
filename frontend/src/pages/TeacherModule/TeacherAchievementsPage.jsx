@@ -138,6 +138,7 @@ export default function TeacherAchievementsPage() {
     setEvidenceDialog({ open: true, mode: 'edit', data: evidence });
   };
 
+  const hakimAbortRef = useRef({});
   const handleHakimText = async (field, mode) => {
     const formField = field === 'title' ? 'title_ar' : 'description_ar';
     const text = (evidenceForm[formField] || '').trim();
@@ -145,6 +146,10 @@ export default function TeacherAchievementsPage() {
       toast.error(t('hakimNeedFiveChars'));
       return;
     }
+    // Cancel any prior in-flight request for this field
+    try { hakimAbortRef.current[field]?.abort?.(); } catch {}
+    const controller = new AbortController();
+    hakimAbortRef.current[field] = controller;
     setHakimBusy(prev => ({ ...prev, [field]: mode }));
     try {
       const res = await api.post('/teacher/portfolio/hakim-evidence-text', {
@@ -153,20 +158,29 @@ export default function TeacherAchievementsPage() {
         text,
         evidence_type: evidenceForm.evidence_type,
         title: evidenceForm.title_ar,
-      });
+      }, { signal: controller.signal });
+      if (controller.signal.aborted) return;
       const next = (res?.data?.text || '').trim();
       if (res?.data?.success && next) {
         setEvidenceForm(prev => ({ ...prev, [formField]: next }));
         toast.success(mode === 'generate' ? t('hakimGeneratedSuccess') : t('hakimImprovedSuccess'));
       } else {
-        toast.error(t('hakimUnavailable'));
+        const reason = res?.data?.reason;
+        if (reason === 'AI_DISABLED') toast.error(t('hakimUnavailable'));
+        else if (reason === 'WRONG_LANGUAGE') toast.error(t('hakimUnavailable'));
+        else if (reason === 'UNCHANGED') toast.message(t('hakimImprovedSuccess'));
+        else toast.error(t('hakimUnavailable'));
       }
     } catch (err) {
+      if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED') return;
       console.error('Hakim evidence text error:', err);
       const detail = err?.response?.data?.detail;
       if (detail === 'TEXT_TOO_SHORT') toast.error(t('hakimNeedFiveChars'));
       else toast.error(t('hakimUnavailable'));
     } finally {
+      if (hakimAbortRef.current[field] === controller) {
+        hakimAbortRef.current[field] = null;
+      }
       setHakimBusy(prev => ({ ...prev, [field]: null }));
     }
   };
