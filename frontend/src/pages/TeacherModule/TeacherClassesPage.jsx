@@ -85,6 +85,28 @@ export default function TeacherClassesPage() {
   const { t } = useTranslation();
   const { nassaqError } = useNassaqAlert();
   const teacherId = user?.teacher_id || user?.id;
+  const isIndependentTeacher = user?.role === 'independent_teacher';
+
+  const friendlyTeacherWriteMessage = (fallbackKey = 'teacherActionNotAllowed') => (
+    isIndependentTeacher
+      ? t('independentTeacherCreateClassComingSoon')
+      : t(fallbackKey)
+  );
+
+  const isPermissionError = (err) => {
+    const status = err?.response?.status;
+    if (status === 401 || status === 403) return true;
+    const detail = err?.response?.data?.detail;
+    if (typeof detail === 'string') {
+      const d = detail.toLowerCase();
+      return d.includes('insufficient permission')
+        || d.includes('not allowed')
+        || d.includes('forbidden')
+        || d.includes('ليس لديك صلاحية')
+        || d.includes('غير مصرح');
+    }
+    return false;
+  };
 
   const handleTabChange = (tab) => {
     setSearchParams(tab === 'sessions' ? { tab: 'sessions' } : {});
@@ -201,7 +223,11 @@ export default function TeacherClassesPage() {
       setSettingsSubject('');
     } catch (err) {
       console.error('Error saving session settings:', err);
-      nassaqError(t('errorSavingSessionSettings'));
+      if (isPermissionError(err)) {
+        nassaqError(friendlyTeacherWriteMessage('teacherActionNotAllowed'));
+      } else {
+        nassaqError(t('errorSavingSessionSettings'));
+      }
     } finally {
       setSettingsSaving(false);
     }
@@ -238,8 +264,10 @@ export default function TeacherClassesPage() {
   }, [api]);
 
   const handleOpenAddClassDialog = () => {
-    fetchGradeOptions();
-    setShowAddClassDialog(true);
+    // Class creation is currently a school-admin (or future independent-teacher) capability.
+    // For school-affiliated teachers, classes are provisioned by the school, so we surface
+    // a friendly explanation instead of opening a dialog whose POST will be rejected.
+    toast.info(friendlyTeacherWriteMessage('teacherCreateClassNotAvailable'), { duration: 6000 });
   };
 
   const handleAddClass = async () => {
@@ -261,25 +289,31 @@ export default function TeacherClassesPage() {
       fetchClasses();
     } catch (err) {
       console.error('Error adding class:', err);
-      const detail = err.response?.data?.detail;
-      const msg = typeof detail === 'string' ? detail : t('errorAddingClass');
-      nassaqError(msg);
+      if (isPermissionError(err)) {
+        setShowAddClassDialog(false);
+        nassaqError(friendlyTeacherWriteMessage('teacherCreateClassNotAvailable'));
+      } else {
+        const detail = err.response?.data?.detail;
+        const msg = typeof detail === 'string' ? detail : t('errorAddingClass');
+        nassaqError(msg);
+      }
     } finally {
       setAddingClass(false);
     }
   };
 
+  const handleOpenImportDialog = () => {
+    // Import is also a school-admin / future independent-teacher capability.
+    toast.info(friendlyTeacherWriteMessage('teacherImportNotAvailable'), { duration: 6000 });
+  };
+
   const handleImportSelect = (type) => {
     setImportType(type);
     setShowImportDialog(false);
-    setTimeout(() => fileInputRef.current?.click(), 100);
+    toast.info(friendlyTeacherWriteMessage('teacherImportNotAvailable'), { duration: 6000 });
   };
 
   const handleFileSelected = (e) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      toast.success(t('importData') + ': ' + file.name);
-    }
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -913,7 +947,7 @@ export default function TeacherClassesPage() {
                     variant="outline"
                     size="sm"
                     className="h-9 gap-1.5"
-                    onClick={() => setShowImportDialog(true)}
+                    onClick={handleOpenImportDialog}
                   >
                     <Upload className="h-4 w-4" />
                     <span className="hidden sm:inline">{t('importData')}</span>
