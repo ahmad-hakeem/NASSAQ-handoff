@@ -239,7 +239,34 @@ export default function TeacherAchievementsPage() {
   });
   const [manualEvSaving, setManualEvSaving] = useState(false);
   const [manualEvUploading, setManualEvUploading] = useState(false);
+  const [manualEvAIBusy, setManualEvAIBusy] = useState(false);
   const fileInputRef = useRef(null);
+
+  const runManualEvHakim = async (mode) => {
+    if (manualEvAIBusy) return;
+    if (!manualEvForm.evidence_type) { toast.error('اختر التصنيف أولاً'); return; }
+    if (mode === 'improve' && !(manualEvForm.description_ar || '').trim()) {
+      toast.error('اكتب وصفاً أولاً ثم اضغط "تحسين بحكيم"');
+      return;
+    }
+    setManualEvAIBusy(true);
+    try {
+      const res = await api.post('/teacher/portfolio/generate-evidence-desc', {
+        mode,
+        text: manualEvForm.description_ar || '',
+        title: manualEvForm.title_ar || '',
+        evidence_type: manualEvForm.evidence_type || '',
+        section_key: manualEvForm.section_key || '',
+      });
+      if (res?.data?.success && res.data.text) {
+        setManualEvForm(p => ({ ...p, description_ar: res.data.text }));
+        toast.success(mode === 'improve' ? 'تم تحسين الوصف' : 'تم توليد الوصف');
+      }
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      toast.error(detail === 'AI_DISABLED' ? 'الذكاء الاصطناعي غير متاح' : 'تعذّر توليد الوصف');
+    } finally { setManualEvAIBusy(false); }
+  };
 
   useEffect(() => {
     if (!teacherId) return;
@@ -1005,7 +1032,31 @@ export default function TeacherAchievementsPage() {
             </div>
 
             <div>
-              <Label className="text-xs font-medium mb-1 block">الوصف</Label>
+              <div className="flex items-center justify-between mb-1">
+                <Label className="text-xs font-medium">الوصف</Label>
+                <div className="flex items-center gap-1">
+                  <Button
+                    type="button" size="sm" variant="outline"
+                    onClick={() => runManualEvHakim('generate')}
+                    disabled={manualEvAIBusy || !manualEvForm.evidence_type}
+                    className="h-7 px-2 text-[11px] gap-1 border-violet-300 text-violet-700 hover:bg-violet-50 dark:border-violet-700 dark:text-violet-300"
+                    title="توليد وصف بحكيم"
+                  >
+                    {manualEvAIBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                    إنشاء بحكيم
+                  </Button>
+                  <Button
+                    type="button" size="sm" variant="outline"
+                    onClick={() => runManualEvHakim('improve')}
+                    disabled={manualEvAIBusy || !(manualEvForm.description_ar || '').trim()}
+                    className="h-7 px-2 text-[11px] gap-1 border-fuchsia-300 text-fuchsia-700 hover:bg-fuchsia-50 dark:border-fuchsia-700 dark:text-fuchsia-300"
+                    title="تحسين الوصف بحكيم"
+                  >
+                    {manualEvAIBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
+                    تحسين بحكيم
+                  </Button>
+                </div>
+              </div>
               <Textarea
                 value={manualEvForm.description_ar}
                 onChange={(e) => setManualEvForm(p => ({ ...p, description_ar: e.target.value }))}
@@ -1198,6 +1249,30 @@ function AccordionCard({ icon: Icon, color, bg, title, subtitle, count, expanded
 }
 
 function EvidenceRow({ item, isRTL, onEdit, onDelete }) {
+  const handleView = () => {
+    const url = item.file_url;
+    if (!url) { toast.error('لا يوجد ملف مرفق لهذا الشاهد'); return; }
+    try {
+      const w = window.open();
+      if (!w) { toast.error('يرجى السماح بالنوافذ المنبثقة'); return; }
+      if (url.startsWith('data:')) {
+        w.document.write(
+          `<title>${(item.title_ar || item.title_en || 'preview').replace(/[<>]/g, '')}</title>` +
+          (url.startsWith('data:image/')
+            ? `<body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;height:100vh"><img src="${url}" style="max-width:100%;max-height:100%"/></body>`
+            : url.startsWith('data:video/')
+              ? `<body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;height:100vh"><video src="${url}" controls autoplay style="max-width:100%;max-height:100%"></video></body>`
+              : `<body style="margin:0"><iframe src="${url}" style="border:0;width:100vw;height:100vh"></iframe></body>`)
+        );
+        w.document.close();
+      } else {
+        w.location.href = url;
+      }
+    } catch (e) {
+      toast.error('فشل فتح الملف');
+    }
+  };
+
   return (
     <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-750 hover:bg-gray-100 dark:hover:bg-gray-700">
       <div className="w-9 h-9 rounded-full bg-white dark:bg-gray-800 flex items-center justify-center shrink-0 border border-gray-200 dark:border-gray-700">
@@ -1227,10 +1302,15 @@ function EvidenceRow({ item, isRTL, onEdit, onDelete }) {
         </div>
       </div>
       <div className="flex items-center gap-1 shrink-0">
-        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => onEdit?.(item)}>
-          <Eye className="w-3.5 h-3.5 text-gray-400" />
+        {item.file_url && (
+          <Button size="icon" variant="ghost" className="h-7 w-7" title="عرض الملف" onClick={handleView}>
+            <Eye className="w-3.5 h-3.5 text-violet-500" />
+          </Button>
+        )}
+        <Button size="icon" variant="ghost" className="h-7 w-7" title="تعديل" onClick={() => onEdit?.(item)}>
+          <Edit className="w-3.5 h-3.5 text-gray-400" />
         </Button>
-        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => onDelete?.(item)}>
+        <Button size="icon" variant="ghost" className="h-7 w-7" title="حذف" onClick={() => onDelete?.(item)}>
           <Trash2 className="w-3.5 h-3.5 text-red-400" />
         </Button>
       </div>

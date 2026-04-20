@@ -574,6 +574,37 @@ class AIGenerateRequest(BaseModel):
     text: Optional[str] = ""
 
 
+class EvidenceDescAIRequest(BaseModel):
+    mode: str = Field("generate", description="generate | improve")
+    text: Optional[str] = ""
+    title: Optional[str] = ""
+    evidence_type: Optional[str] = ""
+    section_key: Optional[str] = ""
+
+
+@router.post("/teacher/portfolio/generate-evidence-desc")
+async def generate_evidence_description(
+    payload: EvidenceDescAIRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    if current_user["role"] != "teacher":
+        raise HTTPException(status_code=403, detail="غير مصرح")
+    mode = (payload.mode or "generate").strip().lower()
+    if mode not in ("generate", "improve"):
+        raise HTTPException(status_code=422, detail="invalid_mode")
+    profile = await _load_teacher_profile(current_user["id"])
+    context = {
+        "teacher_name": profile.get("full_name"),
+        "subject": profile.get("specialization") or profile.get("subject"),
+        "evidence_title": (payload.title or "").strip(),
+        "evidence_type": (payload.evidence_type or "").strip(),
+        "section": (payload.section_key or "").strip(),
+    }
+    text_in = (payload.text or "").strip()
+    out = await _hakim_call("evidence_description", mode, text_in, context)
+    return {"success": True, "text": out}
+
+
 @router.post("/teacher/portfolio/generate-intro")
 async def generate_intro(payload: AIGenerateRequest, current_user: dict = Depends(get_current_user)):
     if current_user["role"] != "teacher":

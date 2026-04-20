@@ -156,6 +156,22 @@ FIELD_REGISTRY: Dict[str, Dict[str, Any]] = {
         ),
     },
     # --- Portfolio profile fields ----------------------------------------
+    "evidence_description": {
+        "max_tokens": 220,
+        "temp_generate": 0.7,
+        "temp_improve": 0.55,
+        "min_chars": 20,
+        "max_chars": 500,
+        "ar_only": True,
+        "rule_ar": (
+            "وصف موجز ومهني لشاهد أداء وظيفي للمعلم في ٢-٣ جمل، يوضح غرض الشاهد ومحتواه "
+            "وأثره التربوي، دون مبالغة أو شعارات."
+        ),
+        "rule_en": (
+            "A short professional 2-3 sentence description of a teacher's performance evidence, "
+            "covering its purpose, content and educational impact."
+        ),
+    },
     "portfolio_intro": {
         "max_tokens": 350,
         "temp_generate": 0.75,
