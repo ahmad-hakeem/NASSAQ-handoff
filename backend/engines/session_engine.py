@@ -1995,7 +1995,17 @@ class TeacherSessionEngine:
             raise HTTPException(status_code=404, detail="الطالب غير موجود")
 
         if student.get("class_id") != session.get("class_id"):
-            raise HTTPException(status_code=400, detail="الطالب لا ينتمي لهذا الفصل")
+            attendance = await gd_find_one(
+                self.session,
+                "session_attendance",
+                {"session_id": session_id, "student_id": student_id},
+            )
+            if not attendance:
+                logger.warning(
+                    "Skill record rejected: student %s (class=%s) not in session %s (class=%s) and no attendance row",
+                    student_id, student.get("class_id"), session_id, session.get("class_id"),
+                )
+                raise HTTPException(status_code=400, detail="الطالب لا ينتمي لهذا الفصل")
 
         skill_record = {
             "id": str(uuid.uuid4()),

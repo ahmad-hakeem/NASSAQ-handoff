@@ -676,8 +676,9 @@ export default function SessionTeachPage() {
         interaction_count: (prev.interaction_count || 0) + 1,
       } : null);
     } catch (e) {
-      console.error('Error recording skill:', e);
-      nassaqError(t('errorRecordingSkill'));
+      console.error('Error recording skill:', e?.response?.status, e?.response?.data, e);
+      const detail = e?.response?.data?.detail || e?.response?.data?.message || e?.message;
+      nassaqError(detail ? `${t('errorRecordingSkill')}: ${detail}` : t('errorRecordingSkill'));
     }
   };
 
