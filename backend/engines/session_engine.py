@@ -1986,9 +1986,43 @@ class TeacherSessionEngine:
         if not session:
             raise HTTPException(status_code=404, detail="الجلسة غير موجودة")
 
-        skill_type = await gd_find_one(self.session, "skills_types", {"id": skill_type_id})
+        skill_type = None
+        if skill_type_id:
+            skill_type = await gd_find_one(self.session, "skills_types", {"id": skill_type_id})
+            if not skill_type:
+                skill_type = await gd_find_one(self.session, "skills_types", {"name_ar": skill_type_id})
+            if not skill_type:
+                skill_type = await gd_find_one(self.session, "skills_types", {"name_en": skill_type_id})
+
         if not skill_type:
-            raise HTTPException(status_code=404, detail="نوع المهارة غير موجود")
+            existing = await gd_find(self.session, "skills_types", {}, limit=200)
+            pre_seed_count = len(existing) if existing else 0
+            if pre_seed_count == 0 and skill_type_id:
+                now_iso = datetime.now(timezone.utc).isoformat()
+                for s in DEFAULT_SKILLS_TYPES:
+                    doc = dict(s)
+                    doc["created_at"] = now_iso
+                    try:
+                        existing_one = await gd_find_one(self.session, "skills_types", {"id": doc["id"]})
+                        if not existing_one:
+                            await gd_insert(self.session, "skills_types", doc)
+                    except Exception as seed_err:
+                        logger.debug("Skipped seeding skill %s: %s", doc.get("id"), seed_err)
+                logger.warning("skills_types table was empty — seeded default skill types on demand")
+                for field in ("id", "name_ar", "name_en"):
+                    skill_type = await gd_find_one(self.session, "skills_types", {field: skill_type_id})
+                    if skill_type:
+                        break
+
+            if not skill_type:
+                existing_after = await gd_find(self.session, "skills_types", {}, limit=200)
+                logger.warning(
+                    "Skill record rejected: skill_type_id=%r not found (count=%d, sample_ids=%s)",
+                    skill_type_id,
+                    len(existing_after) if existing_after else 0,
+                    [x.get("id") for x in (existing_after or [])[:5]],
+                )
+                raise HTTPException(status_code=404, detail="نوع المهارة غير موجود")
 
         student = await gd_find_one(self.session, "students", {"id": student_id})
         if not student:
