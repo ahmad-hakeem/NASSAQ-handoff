@@ -1826,7 +1826,8 @@ function PortfolioV2Sections(props) {
                     {/* Type chips */}
                     <div className="flex flex-wrap gap-1.5 mb-3">
                       {sub.types.map(typeKey => {
-                        const has = sd.items?.some(it => it.evidence_type === typeKey);
+                        const count = (sd.items || []).filter(it => it.evidence_type === typeKey).length;
+                        const has = count > 0;
                         return (
                           <Badge
                             key={typeKey}
@@ -1835,6 +1836,11 @@ function PortfolioV2Sections(props) {
                           >
                             {has ? <CheckCircle2 className="w-3 h-3 ml-1" /> : <AlertCircle className="w-3 h-3 ml-1" />}
                             {labelForType(typeKey)}
+                            {count > 1 && (
+                              <span className="ml-1 px-1 rounded-full bg-green-200 dark:bg-green-800 text-green-800 dark:text-green-200 text-[9px] font-semibold">
+                                {count}
+                              </span>
+                            )}
                           </Badge>
                         );
                       })}
