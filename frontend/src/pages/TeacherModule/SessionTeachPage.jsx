@@ -809,7 +809,7 @@ export default function SessionTeachPage() {
   return (
     <SectionErrorBoundary name="SessionTeachView" isRTL={isRTL}>
     <div
-      className="h-screen flex flex-col overflow-hidden text-white"
+      className="h-[100dvh] min-h-[100dvh] flex flex-col overflow-hidden text-white"
       dir={isRTL ? 'rtl' : 'ltr'}
       style={{
         backgroundColor: '#0b1228',
@@ -821,10 +821,10 @@ export default function SessionTeachPage() {
       }}
     >
       {/* ── Header — Editorial Console Bar ── */}
-      <header className="border-b border-white/[0.07] bg-[#0a1024]/80 backdrop-blur-md px-4 py-2.5 flex-none shrink-0 relative">
+      <header className="border-b border-white/[0.07] bg-[#0a1024]/80 backdrop-blur-md px-3 sm:px-4 py-2.5 flex-none shrink-0 relative">
         <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-amber-500/30 to-transparent" aria-hidden="true" />
-        <div className="w-full flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
+        <div className="w-full flex items-center justify-between gap-2 sm:gap-3 flex-wrap">
+          <div className="flex items-center gap-3 min-w-0 flex-1 sm:flex-initial">
             {/* Gold accent rail + class info */}
             <div className="flex items-stretch gap-3 min-w-0">
               <div className="w-[3px] rounded-full bg-gradient-to-b from-amber-400 via-amber-500 to-amber-600 shadow-[0_0_8px_rgba(217,165,87,0.5)]" aria-hidden="true" />
@@ -871,7 +871,7 @@ export default function SessionTeachPage() {
             </span>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap justify-end">
             <button
               onClick={() => setShowSearch(v => !v)}
               aria-label={t('search')}
@@ -1112,7 +1112,7 @@ export default function SessionTeachPage() {
                         <span className="text-white/70 text-xs font-medium font-cairo">{group.name} ({groupStudents.length})</span>
                         <div className="flex-1 h-px bg-white/10" />
                       </div>
-                      <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2">
+                      <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 xl:grid-cols-8 gap-2">
                         {groupStudents.map((student) => (
                           <StudentCard
                             key={student.id}
@@ -1133,7 +1133,7 @@ export default function SessionTeachPage() {
                       <span className="text-white/50 text-xs font-medium font-cairo">{t('unassigned')} ({unassignedStudents.length})</span>
                       <div className="flex-1 h-px bg-white/10" />
                     </div>
-                    <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2">
+                    <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 xl:grid-cols-8 gap-2">
                       {unassignedStudents.map((student) => (
                         <StudentCard
                           key={student.id}
@@ -1178,7 +1178,7 @@ export default function SessionTeachPage() {
                         <span className={`${countColor} text-[10px] font-bold tabular-nums`}>({group.students.length})</span>
                         <div className="flex-1 h-px bg-white/10" />
                       </div>
-                      <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2">
+                      <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 xl:grid-cols-8 gap-2">
                         {group.students.map((student) => (
                           <StudentCard
                             key={student.id}
@@ -1194,7 +1194,7 @@ export default function SessionTeachPage() {
                 })}
               </div>
             ) : (
-              <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2">
+              <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 xl:grid-cols-8 gap-2">
                 {filteredStudents.map((student) => (
                   <StudentCard
                     key={student.id}
@@ -1210,9 +1210,9 @@ export default function SessionTeachPage() {
 
           {/* ── Action Panel ── */}
           {selectedStudent && (
-            <div className="flex-none shrink-0 flex flex-col bg-white/[0.02] rounded-xl border border-white/[0.08] overflow-hidden shadow-[0_8px_30px_-8px_rgba(0,0,0,0.5)] backdrop-blur-sm">
+            <div className="flex-none shrink-0 flex flex-col bg-white/[0.02] rounded-xl border border-white/[0.08] overflow-hidden shadow-[0_8px_30px_-8px_rgba(0,0,0,0.5)] backdrop-blur-sm max-h-[60vh] sm:max-h-[55vh]">
               {/* Selected student header — Editorial profile */}
-              <div className="px-5 py-4 border-b border-white/[0.07] bg-gradient-to-b from-white/[0.03] to-transparent relative overflow-hidden">
+              <div className="flex-none shrink-0 px-5 py-4 border-b border-white/[0.07] bg-gradient-to-b from-white/[0.03] to-transparent relative overflow-hidden">
                 <div className="absolute -top-8 -end-8 w-32 h-32 rounded-full bg-amber-500/[0.06] blur-2xl pointer-events-none" aria-hidden="true" />
                 <div className="flex items-center gap-3 relative">
                   <div className="relative">
@@ -1251,7 +1251,7 @@ export default function SessionTeachPage() {
               </div>
 
               {/* Tabs */}
-              <div className="flex border-b border-white/10">
+              <div className="flex-none shrink-0 flex border-b border-white/10 overflow-x-auto">
                 {[
                   { id: 'question', labelKey: 'question', icon: MessageCircle, forMode: 'quiz' },
                   { id: 'participation', labelKey: 'participationTab', icon: Hand, forMode: 'review' },
@@ -1280,7 +1280,7 @@ export default function SessionTeachPage() {
               </div>
 
               {/* Tab content */}
-              <div className="p-3 pb-4">
+              <div className="flex-1 min-h-0 overflow-y-auto p-3 pb-4">
                 {actionTab === 'question' && (
                   <div className="grid grid-cols-3 gap-2">
                     <ActionButton
