@@ -1051,7 +1051,7 @@ export default function SessionTeachPage() {
           </button>
 
           {/* Mode selector (mobile) */}
-          <div className="sm:hidden grid grid-cols-3 gap-2">
+          <div className="sm:hidden flex-none shrink-0 grid grid-cols-3 gap-2">
             {MODES.map(m => (
               <button key={m.id} onClick={() => handleSetMode(m)}
                 className={`rounded-lg py-2 text-xs font-medium flex flex-col items-center gap-1 transition-colors ${
@@ -1073,7 +1073,7 @@ export default function SessionTeachPage() {
             const railTo = { purple: 'to-fuchsia-500', blue: 'to-blue-500', amber: 'to-orange-500' }[accent];
             return (
               <div
-                className="relative flex items-center gap-3 ps-4 pe-3 py-2 rounded-md bg-white/[0.03] border border-white/5 overflow-hidden"
+                className="relative flex-none shrink-0 flex items-center gap-3 ps-4 pe-3 py-2 rounded-md bg-white/[0.03] border border-white/5 overflow-hidden"
                 style={{ boxShadow: `inset 0 0 0 1px ${ring}` }}
               >
                 <span className={`absolute inset-y-1 start-0 w-[3px] rounded-full bg-gradient-to-b ${railFrom} ${railTo}`} aria-hidden="true" />
@@ -1092,7 +1092,7 @@ export default function SessionTeachPage() {
           })()}
 
           {/* Student grid — individual or group mode */}
-          <div className={`overflow-y-auto min-h-0 ${selectedStudent ? 'flex-none shrink-0 max-h-[22vh]' : 'flex-1'}`}>
+          <div className="flex-1 min-h-0 overflow-y-auto">
             {!mode ? (
               <div className="h-full flex items-center justify-center text-white/40 text-sm">
                 {t('selectSessionModeToStart')}
@@ -1204,7 +1204,7 @@ export default function SessionTeachPage() {
 
           {/* ── Action Panel ── */}
           {selectedStudent && (
-            <div className="flex-1 min-h-0 flex flex-col bg-white/[0.02] rounded-xl border border-white/[0.08] overflow-hidden shadow-[0_8px_30px_-8px_rgba(0,0,0,0.5)] backdrop-blur-sm">
+            <div className="flex-none shrink-0 flex flex-col bg-white/[0.02] rounded-xl border border-white/[0.08] overflow-hidden shadow-[0_8px_30px_-8px_rgba(0,0,0,0.5)] backdrop-blur-sm">
               {/* Selected student header — Editorial profile */}
               <div className="px-5 py-4 border-b border-white/[0.07] bg-gradient-to-b from-white/[0.03] to-transparent relative overflow-hidden">
                 <div className="absolute -top-8 -end-8 w-32 h-32 rounded-full bg-amber-500/[0.06] blur-2xl pointer-events-none" aria-hidden="true" />
@@ -1274,7 +1274,7 @@ export default function SessionTeachPage() {
               </div>
 
               {/* Tab content */}
-              <div className="p-3 pb-4 flex-1 min-h-0 overflow-y-auto scrollbar-thin">
+              <div className="p-3 pb-4">
                 {actionTab === 'question' && (
                   <div className="grid grid-cols-3 gap-2">
                     <ActionButton
