@@ -1012,7 +1012,7 @@ export default function SessionTeachPage() {
           )}
 
           {/* Student grid — individual or group mode */}
-          <div className="flex-1 overflow-y-auto min-h-0">
+          <div className={`overflow-y-auto min-h-0 ${selectedStudent ? 'flex-none max-h-[35vh]' : 'flex-1'}`}>
             {!mode ? (
               <div className="h-full flex items-center justify-center text-white/40 text-sm">
                 {t('selectSessionModeToStart')}
@@ -1124,7 +1124,7 @@ export default function SessionTeachPage() {
 
           {/* ── Action Panel ── */}
           {selectedStudent && (
-            <div className="flex-shrink-0 max-h-[50vh] min-h-0 flex flex-col bg-slate-800 rounded-xl border border-white/10 overflow-hidden">
+            <div className="flex-1 min-h-0 flex flex-col bg-slate-800 rounded-xl border border-white/10 overflow-hidden">
               {/* Selected student header — enhanced per spec */}
               <div className="px-4 py-3 border-b border-white/10">
                 <div className="flex items-center gap-3">
