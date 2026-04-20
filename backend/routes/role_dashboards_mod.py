@@ -2139,7 +2139,7 @@ async def record_session_skill(
     Record a skill for a student during a session
     """
     await _verify_session_owner(session_id, current_user)
-    teacher_id = current_user.get("teacher_id") or current_user.get("id")
+    teacher_id = current_user["id"]
     result = await session_engine.record_skill(
         session_id=session_id,
         student_id=data.get("student_id"),
