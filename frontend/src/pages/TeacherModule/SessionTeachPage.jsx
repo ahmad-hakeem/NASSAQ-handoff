@@ -1191,7 +1191,7 @@ export default function SessionTeachPage() {
               </div>
 
               {/* Tab content */}
-              <div className="p-3 pb-4 flex-1 min-h-0 overflow-y-auto scrollbar-thin">
+              <div className="p-3 pb-28 flex-1 min-h-0 overflow-y-auto scrollbar-thin">
                 {actionTab === 'question' && (
                   <div className="grid grid-cols-3 gap-2">
                     <ActionButton
@@ -1403,6 +1403,9 @@ export default function SessionTeachPage() {
                     />
                   </div>
                 )}
+
+                {/* Spacer to ensure footer never overlaps the last actionable element */}
+                <div className="h-28 w-full flex-shrink-0" aria-hidden="true"></div>
               </div>
             </div>
           )}
