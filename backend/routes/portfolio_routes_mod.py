@@ -482,6 +482,7 @@ class IntroSave(BaseModel):
 async def save_intro(payload: IntroSave, current_user: dict = Depends(get_current_user)):
     if current_user["role"] != "teacher":
         raise HTTPException(status_code=403, detail="غير مصرح")
+    await _lock_teacher_meta(current_user["id"])
     meta = await _save_meta(current_user["id"], current_user.get("tenant_id"),
                             {"intro": (payload.text or "").strip()})
     return {"success": True, "intro": meta.get("intro", "")}
@@ -499,6 +500,7 @@ class VMVSave(BaseModel):
 async def save_vmv(payload: VMVSave, current_user: dict = Depends(get_current_user)):
     if current_user["role"] != "teacher":
         raise HTTPException(status_code=403, detail="غير مصرح")
+    await _lock_teacher_meta(current_user["id"])
     meta = await _save_meta(current_user["id"], current_user.get("tenant_id"), {
         "vision": (payload.vision or "").strip(),
         "mission": (payload.mission or "").strip(),
@@ -667,10 +669,20 @@ async def generate_vmv(payload: VMVGenerateRequest, current_user: dict = Depends
         "years_of_experience": profile.get("years_of_experience"),
     }
 
-    vision = await _hakim_call("portfolio_vision", mode, (payload.vision or "").strip(), context)
-    mission = await _hakim_call("portfolio_mission", mode, (payload.mission or "").strip(), context)
-    values = await _hakim_call("portfolio_values", mode, (payload.values or "").strip(), context)
+    async def _gen_or_keep(field: str, current_text: str) -> str:
+        """For 'generate' mode always (re)generate. For 'improve' mode, only call
+        Hakim when current_text has enough content; otherwise keep the existing value
+        so an empty sibling field doesn't fail the whole VMV request."""
+        text_in = (current_text or "").strip()
+        if mode == "improve" and len(text_in) < 5:
+            return text_in
+        return await _hakim_call(field, mode, text_in, context)
 
+    vision = await _gen_or_keep("portfolio_vision", payload.vision or "")
+    mission = await _gen_or_keep("portfolio_mission", payload.mission or "")
+    values = await _gen_or_keep("portfolio_values", payload.values or "")
+
+    await _lock_teacher_meta(current_user["id"])
     now = datetime.now(timezone.utc).isoformat()
     await _save_meta(current_user["id"], current_user.get("tenant_id"), {
         "vision": vision, "mission": mission, "values": values,

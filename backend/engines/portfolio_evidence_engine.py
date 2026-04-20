@@ -76,7 +76,7 @@ EVIDENCE_SUBSECTIONS_V2 = {
         "parent_communication_log", "parent_meeting_minutes",
         "school_activity_participation", "school_event_participation",
     ],
-    "professional_development_v2": [
+    "professional_development": [
         "training_attendance_report", "professional_growth_plan",
         "plc_participation", "peer_observation",
         "workshop_attendance", "workshop_delivery", "volunteer_activity_report",

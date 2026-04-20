@@ -188,7 +188,7 @@ const SUBSECTION_CONFIG_V2 = [
     types: ['parent_communication_log', 'parent_meeting_minutes', 'school_activity_participation', 'school_event_participation'],
   },
   {
-    key: 'professional_development_v2', title: 'شواهد التطوير المهني', icon: Briefcase,
+    key: 'professional_development', title: 'شواهد التطوير المهني', icon: Briefcase,
     color: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-50 dark:bg-indigo-900/30',
     types: ['training_attendance_report', 'professional_growth_plan', 'plc_participation', 'peer_observation', 'workshop_attendance', 'workshop_delivery', 'volunteer_activity_report'],
   },
