@@ -232,6 +232,39 @@ export default function TeacherAchievementsPage() {
   const [teacherClasses, setTeacherClasses] = useState([]);
   const [teacherSubjects, setTeacherSubjects] = useState([]);
   const [manualEvDialog, setManualEvDialog] = useState({ open: false });
+  const [viewEvDialog, setViewEvDialog] = useState({ open: false, item: null });
+  const openViewDialog = (item) => setViewEvDialog({ open: true, item });
+
+  const openEvidenceFile = (url) => {
+    if (!url) { toast.error('لا يوجد ملف مرفق لهذا الشاهد'); return; }
+    try {
+      if (url.startsWith('data:')) {
+        const m = url.match(/^data:([^;,]+)(;base64)?,(.*)$/);
+        if (!m) { toast.error('صيغة الملف غير صالحة'); return; }
+        const mime = m[1] || 'application/octet-stream';
+        const isB64 = !!m[2];
+        const payload = m[3] || '';
+        let bytes;
+        if (isB64) {
+          const bin = atob(payload);
+          bytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        } else {
+          bytes = new TextEncoder().encode(decodeURIComponent(payload));
+        }
+        const blob = new Blob([bytes], { type: mime });
+        const blobUrl = URL.createObjectURL(blob);
+        const w = window.open(blobUrl, '_blank');
+        if (!w) { toast.error('يرجى السماح بالنوافذ المنبثقة'); URL.revokeObjectURL(blobUrl); return; }
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+      } else {
+        const w = window.open(url, '_blank', 'noopener,noreferrer');
+        if (!w) toast.error('يرجى السماح بالنوافذ المنبثقة');
+      }
+    } catch (e) {
+      toast.error('فشل فتح الملف');
+    }
+  };
   const [manualEvForm, setManualEvForm] = useState({
     section_key: '', evidence_type: '', title_ar: '', description_ar: '',
     class_id: '', subject_id: '', file_kind: 'pdf',
@@ -1162,6 +1195,99 @@ export default function TeacherAchievementsPage() {
         </DialogContent>
       </Dialog>
 
+      {/* View evidence details dialog */}
+      <Dialog open={viewEvDialog.open} onOpenChange={(open) => { if (!open) setViewEvDialog({ open: false, item: null }); }}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="font-cairo text-right flex items-center gap-2">
+              <Eye className="w-4 h-4 text-violet-600" /> تفاصيل الشاهد
+            </DialogTitle>
+          </DialogHeader>
+          {viewEvDialog.item && (() => {
+            const it = viewEvDialog.item;
+            const sectionTitle = SUBSECTION_CONFIG_V2.find(s => (s.types || []).includes(it.evidence_type))?.title || '—';
+            const cls = teacherClasses.find(c => c.id === it.class_id);
+            const subj = teacherSubjects.find(s => s.id === it.subject_id);
+            const className = cls?.name_ar || cls?.name || it.class_id || '—';
+            const subjectName = subj?.name_ar || subj?.name || subj?.name_en || it.subject_id || '—';
+            return (
+              <div className="space-y-3 mt-2 text-right">
+                <div>
+                  <div className="text-[11px] text-gray-500 mb-0.5">العنوان</div>
+                  <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 font-cairo">
+                    {isRTL ? (it.title_ar || it.title_en) : (it.title_en || it.title_ar)}
+                  </div>
+                </div>
+                {(it.description_ar || it.description_en) && (
+                  <div>
+                    <div className="text-[11px] text-gray-500 mb-0.5">الوصف</div>
+                    <div className="text-sm text-gray-700 dark:text-gray-200 leading-relaxed whitespace-pre-wrap">
+                      {isRTL ? (it.description_ar || it.description_en) : (it.description_en || it.description_ar)}
+                    </div>
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <div className="text-[11px] text-gray-500 mb-0.5">القسم</div>
+                    <div className="text-sm">{sectionTitle}</div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-gray-500 mb-0.5">التصنيف الفرعي</div>
+                    <div className="text-sm">{labelForType(it.evidence_type)}</div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-gray-500 mb-0.5">المادة</div>
+                    <div className="text-sm">{subjectName}</div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-gray-500 mb-0.5">الصف</div>
+                    <div className="text-sm">{className}</div>
+                  </div>
+                  {it.date && (
+                    <div>
+                      <div className="text-[11px] text-gray-500 mb-0.5">التاريخ</div>
+                      <div className="text-sm flex items-center gap-1"><Calendar className="w-3 h-3" />{it.date}</div>
+                    </div>
+                  )}
+                  <div>
+                    <div className="text-[11px] text-gray-500 mb-0.5">المصدر</div>
+                    <div className="text-sm">
+                      {it.source === 'auto'
+                        ? <span className="inline-flex items-center gap-1 text-amber-600"><Zap className="w-3 h-3" /> تلقائي</span>
+                        : 'إضافة يدوية'}
+                    </div>
+                  </div>
+                </div>
+                <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+                  <div className="text-[11px] text-gray-500 mb-1">الملف المرفق</div>
+                  {it.file_url ? (
+                    <div className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <FileArchive className="w-4 h-4 text-violet-600 shrink-0" />
+                        <span className="text-sm truncate">{it.file_name || 'ملف مرفق'}</span>
+                      </div>
+                      <Button size="sm" onClick={() => openEvidenceFile(it.file_url)} className="gap-1.5 bg-violet-600 hover:bg-violet-700 text-white shrink-0">
+                        <Eye className="w-3.5 h-3.5" /> عرض الملف
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-gray-400 italic">لا يوجد ملف مرفق</div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setViewEvDialog({ open: false, item: null })}>إغلاق</Button>
+            {viewEvDialog.item && (
+              <Button onClick={() => { const it = viewEvDialog.item; setViewEvDialog({ open: false, item: null }); openEditDialog(it); }} className="gap-1.5">
+                <Edit3 className="w-3.5 h-3.5" /> تعديل
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* CV manual-add dialog */}
       <Dialog open={cvDialog.open} onOpenChange={(open) => { if (!open) setCvDialog({ open: false, kind: 'training_attended' }); }}>
         <DialogContent className="sm:max-w-md">
@@ -1248,39 +1374,7 @@ function AccordionCard({ icon: Icon, color, bg, title, subtitle, count, expanded
   );
 }
 
-function EvidenceRow({ item, isRTL, onEdit, onDelete }) {
-  const handleView = () => {
-    const url = item.file_url;
-    if (!url) { toast.error('لا يوجد ملف مرفق لهذا الشاهد'); return; }
-    try {
-      if (url.startsWith('data:')) {
-        const m = url.match(/^data:([^;,]+)(;base64)?,(.*)$/);
-        if (!m) { toast.error('صيغة الملف غير صالحة'); return; }
-        const mime = m[1] || 'application/octet-stream';
-        const isB64 = !!m[2];
-        const payload = m[3] || '';
-        let bytes;
-        if (isB64) {
-          const bin = atob(payload);
-          bytes = new Uint8Array(bin.length);
-          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-        } else {
-          bytes = new TextEncoder().encode(decodeURIComponent(payload));
-        }
-        const blob = new Blob([bytes], { type: mime });
-        const blobUrl = URL.createObjectURL(blob);
-        const w = window.open(blobUrl, '_blank');
-        if (!w) { toast.error('يرجى السماح بالنوافذ المنبثقة'); URL.revokeObjectURL(blobUrl); return; }
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
-      } else {
-        const w = window.open(url, '_blank', 'noopener,noreferrer');
-        if (!w) toast.error('يرجى السماح بالنوافذ المنبثقة');
-      }
-    } catch (e) {
-      toast.error('فشل فتح الملف');
-    }
-  };
-
+function EvidenceRow({ item, isRTL, onView, onEdit, onDelete }) {
   return (
     <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-750 hover:bg-gray-100 dark:hover:bg-gray-700">
       <div className="w-9 h-9 rounded-full bg-white dark:bg-gray-800 flex items-center justify-center shrink-0 border border-gray-200 dark:border-gray-700">
@@ -1310,11 +1404,9 @@ function EvidenceRow({ item, isRTL, onEdit, onDelete }) {
         </div>
       </div>
       <div className="flex items-center gap-1 shrink-0">
-        {item.file_url && (
-          <Button size="icon" variant="ghost" className="h-7 w-7" title="عرض الملف" onClick={handleView}>
-            <Eye className="w-3.5 h-3.5 text-violet-500" />
-          </Button>
-        )}
+        <Button size="icon" variant="ghost" className="h-7 w-7" title="عرض التفاصيل" onClick={() => onView?.(item)}>
+          <Eye className="w-3.5 h-3.5 text-violet-500" />
+        </Button>
         <Button size="icon" variant="ghost" className="h-7 w-7" title="تعديل" onClick={() => onEdit?.(item)}>
           <Edit3 className="w-3.5 h-3.5 text-gray-400" />
         </Button>
@@ -1595,6 +1687,7 @@ function PortfolioV2Sections(props) {
                             key={item.id}
                             item={item}
                             isRTL={isRTL}
+                            onView={openViewDialog}
                             onEdit={openEditDialog}
                             onDelete={handleDeleteEvidence}
                           />
