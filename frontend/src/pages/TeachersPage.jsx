@@ -203,9 +203,10 @@ export const TeachersPage = () => {
   };
 
   const filteredTeachers = teachers.filter(teacher => {
-    const matchesSearch = teacher.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         teacher.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         teacher.specialization.toLowerCase().includes(searchTerm.toLowerCase());
+    const q = (searchTerm || '').toLowerCase();
+    const matchesSearch = (teacher.full_name || '').toLowerCase().includes(q) ||
+                         (teacher.email || '').toLowerCase().includes(q) ||
+                         (teacher.specialization || '').toLowerCase().includes(q);
     const matchesSchool = selectedSchool === 'all' || teacher.school_id === selectedSchool;
     return matchesSearch && matchesSchool;
   }).sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '', 'ar'));

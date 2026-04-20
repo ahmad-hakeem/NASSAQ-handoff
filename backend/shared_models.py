@@ -383,14 +383,14 @@ class TeacherResponse(BaseModel):
     model_config = ConfigDict(extra="ignore", from_attributes=True)
     id: str
     full_name: str
-    email: str
+    email: Optional[str] = None
     phone: Optional[str] = None
     specialization: Optional[str] = None
     rank: Optional[str] = None
     subject: Optional[str] = None
     qualification: Optional[str] = None
     years_of_experience: Optional[int] = None
-    school_id: str
+    school_id: Optional[str] = None
     is_active: bool = True
     created_at: Optional[str] = None
     weekly_periods: Optional[int] = None
