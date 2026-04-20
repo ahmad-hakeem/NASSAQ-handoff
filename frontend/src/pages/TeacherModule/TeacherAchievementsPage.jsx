@@ -208,7 +208,34 @@ export default function TeacherAchievementsPage() {
   const [activeTab, setActiveTab] = useState('portfolio');
   const [expandedSections, setExpandedSections] = useState({});
   const [evidenceDialog, setEvidenceDialog] = useState({ open: false, mode: 'add', data: null });
-  const [evidenceForm, setEvidenceForm] = useState({ evidence_type: '', title_ar: '', title_en: '', description_ar: '', description_en: '', date: '' });
+  const [evidenceForm, setEvidenceForm] = useState({ evidence_type: '', title_ar: '', title_en: '', description_ar: '', description_en: '', date: '', class_id: '', subject_id: '', file_url: '', file_name: '', file_kind: 'pdf' });
+  const [editFileUploading, setEditFileUploading] = useState(false);
+  const editFileInputRef = useRef(null);
+  const editUploadTokenRef = useRef(0);
+
+  const handleEditEvidenceFile = async (file) => {
+    if (editFileInputRef.current) editFileInputRef.current.value = '';
+    if (!file) return;
+    const MAX = 10 * 1024 * 1024;
+    if (file.size > MAX) { toast.error('حجم الملف يتجاوز 10 ميغابايت'); return; }
+    const token = ++editUploadTokenRef.current;
+    setEditFileUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await api.post('/teacher/portfolio/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      if (token !== editUploadTokenRef.current) return;
+      if (res?.data?.success) {
+        setEvidenceForm(prev => ({ ...prev, file_url: res.data.file_url, file_name: res.data.file_name }));
+        toast.success('تم رفع الملف');
+      }
+    } catch (err) {
+      if (token !== editUploadTokenRef.current) return;
+      toast.error(err?.response?.data?.detail || 'فشل رفع الملف');
+    } finally {
+      if (token === editUploadTokenRef.current) setEditFileUploading(false);
+    }
+  };
   const [saving, setSaving] = useState(false);
   const [hakimBusy, setHakimBusy] = useState({ title: null, description: null });
   const [fileFilter, setFileFilter] = useState('');
@@ -552,14 +579,39 @@ export default function TeacherAchievementsPage() {
     setExpandedSections(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
+  const closeEvidenceDialog = useCallback(() => {
+    editUploadTokenRef.current++;
+    setEditFileUploading(false);
+    setEvidenceDialog({ open: false, mode: 'add', data: null });
+  }, []);
+
   const openAddDialog = (sectionKey) => {
     const cfg = SECTION_CONFIG.find(s => s.key === sectionKey);
     const defaultType = cfg?.types?.[0] || '';
-    setEvidenceForm({ evidence_type: defaultType, title_ar: '', title_en: '', description_ar: '', description_en: '', date: new Date().toISOString().split('T')[0] });
+    editUploadTokenRef.current++;
+    setEditFileUploading(false);
+    setEvidenceForm({
+      evidence_type: defaultType,
+      title_ar: '', title_en: '',
+      description_ar: '', description_en: '',
+      date: new Date().toISOString().split('T')[0],
+      class_id: '', subject_id: '',
+      file_url: '', file_name: '', file_kind: 'pdf',
+    });
     setEvidenceDialog({ open: true, mode: 'add', data: null });
   };
 
   const openEditDialog = (evidence) => {
+    const url = evidence.file_url || '';
+    const metaKind = evidence?.metadata?.file_kind;
+    const fileKind = (metaKind === 'pdf' || metaKind === 'image' || metaKind === 'video')
+      ? metaKind
+      : (url.startsWith('data:image/') ? 'image'
+        : url.startsWith('data:video/') ? 'video'
+        : 'pdf');
+    // Invalidate any in-flight edit-upload from a previous open
+    editUploadTokenRef.current++;
+    setEditFileUploading(false);
     setEvidenceForm({
       evidence_type: evidence.evidence_type || '',
       title_ar: evidence.title_ar || '',
@@ -567,6 +619,11 @@ export default function TeacherAchievementsPage() {
       description_ar: evidence.description_ar || '',
       description_en: evidence.description_en || '',
       date: evidence.date || '',
+      class_id: evidence.class_id || '',
+      subject_id: evidence.subject_id || '',
+      file_url: url,
+      file_name: evidence.file_name || '',
+      file_kind: fileKind,
     });
     setEvidenceDialog({ open: true, mode: 'edit', data: evidence });
   };
@@ -638,10 +695,24 @@ export default function TeacherAchievementsPage() {
         await api.post('/teacher/portfolio/evidence', evidenceForm);
         toast.success(t('portfolioSaveSuccess'));
       } else {
-        await api.put(`/teacher/portfolio/evidence/${evidenceDialog.data.id}`, evidenceForm);
+        const orig = evidenceDialog.data?.metadata || {};
+        const payload = {
+          evidence_type: evidenceForm.evidence_type,
+          title_ar: evidenceForm.title_ar,
+          title_en: evidenceForm.title_en,
+          description_ar: evidenceForm.description_ar,
+          description_en: evidenceForm.description_en,
+          date: evidenceForm.date,
+          class_id: evidenceForm.class_id || null,
+          subject_id: evidenceForm.subject_id || null,
+          file_url: evidenceForm.file_url || null,
+          file_name: evidenceForm.file_name || null,
+          metadata: { ...orig, file_kind: evidenceForm.file_kind },
+        };
+        await api.put(`/teacher/portfolio/evidence/${evidenceDialog.data.id}`, payload);
         toast.success(t('portfolioUpdateSuccess'));
       }
-      setEvidenceDialog({ open: false, mode: 'add', data: null });
+      closeEvidenceDialog();
       fetchPortfolio();
     } catch (err) {
       console.error('Save evidence error:', err);
@@ -894,7 +965,7 @@ export default function TeacherAchievementsPage() {
         )}
       </div>
 
-      <Dialog open={evidenceDialog.open} onOpenChange={(open) => { if (!open) setEvidenceDialog({ open: false, mode: 'add', data: null }); }}>
+      <Dialog open={evidenceDialog.open} onOpenChange={(open) => { if (!open) closeEvidenceDialog(); }}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="font-cairo">
@@ -997,16 +1068,109 @@ export default function TeacherAchievementsPage() {
                 className="resize-none"
               />
             </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-xs font-medium mb-1.5 block">المادة</Label>
+                <Select
+                  value={evidenceForm.subject_id || '__none__'}
+                  onValueChange={(v) => setEvidenceForm(prev => ({ ...prev, subject_id: v === '__none__' ? '' : v }))}
+                >
+                  <SelectTrigger className="h-9"><SelectValue placeholder="اختر المادة" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">— بدون —</SelectItem>
+                    {teacherSubjects.map(s => (
+                      <SelectItem key={s.id} value={s.id}>{s.name_ar || s.name || s.name_en || s.id}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs font-medium mb-1.5 block">الصف</Label>
+                <Select
+                  value={evidenceForm.class_id || '__none__'}
+                  onValueChange={(v) => setEvidenceForm(prev => ({ ...prev, class_id: v === '__none__' ? '' : v }))}
+                >
+                  <SelectTrigger className="h-9"><SelectValue placeholder="اختر الصف" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">— بدون —</SelectItem>
+                    {teacherClasses.map(c => (
+                      <SelectItem key={c.id} value={c.id}>{c.name_ar || c.name || c.id}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs font-medium mb-1.5 block">نوع الملف</Label>
+              <Select
+                value={evidenceForm.file_kind || 'pdf'}
+                onValueChange={(v) => { editUploadTokenRef.current++; setEditFileUploading(false); setEvidenceForm(prev => ({ ...prev, file_kind: v, file_url: '', file_name: '' })); }}
+              >
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pdf">ملف PDF</SelectItem>
+                  <SelectItem value="image">صورة</SelectItem>
+                  <SelectItem value="video">فيديو</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs font-medium mb-1.5 block">الملف المرفق</Label>
+              <input
+                ref={editFileInputRef}
+                type="file"
+                hidden
+                accept={
+                  evidenceForm.file_kind === 'pdf' ? 'application/pdf'
+                    : evidenceForm.file_kind === 'image' ? 'image/*'
+                    : 'video/*'
+                }
+                onChange={(e) => handleEditEvidenceFile(e.target.files?.[0])}
+              />
+              <button
+                type="button"
+                onClick={() => editFileInputRef.current?.click()}
+                disabled={editFileUploading}
+                className="w-full py-5 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-700 text-center hover:border-violet-400 dark:hover:border-violet-600 hover:bg-violet-50/40 dark:hover:bg-violet-900/10 transition-colors"
+              >
+                {editFileUploading ? (
+                  <div className="flex items-center justify-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                    <Loader2 className="w-4 h-4 animate-spin" /> جاري الرفع...
+                  </div>
+                ) : evidenceForm.file_url ? (
+                  <div className="text-sm">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 mx-auto mb-1" />
+                    <div className="text-emerald-700 dark:text-emerald-300 font-medium truncate px-2">{evidenceForm.file_name || 'ملف مرفق'}</div>
+                    <div className="text-[11px] text-gray-500 mt-1">انقر للاستبدال</div>
+                  </div>
+                ) : (
+                  <div>
+                    <FileArchive className="w-6 h-6 text-gray-400 mx-auto mb-1.5" />
+                    <div className="text-sm text-gray-600 dark:text-gray-400">اضغط لرفع ملف أو اسحبه هنا</div>
+                    <div className="text-[11px] text-gray-400 mt-0.5">PDF، صور، فيديو (حد أقصى 10 MB)</div>
+                  </div>
+                )}
+              </button>
+              {evidenceForm.file_url && (
+                <button
+                  type="button"
+                  onClick={() => { editUploadTokenRef.current++; setEditFileUploading(false); setEvidenceForm(prev => ({ ...prev, file_url: '', file_name: '' })); }}
+                  className="mt-2 text-[11px] text-red-600 hover:text-red-700 underline"
+                >
+                  إزالة الملف
+                </button>
+              )}
+            </div>
             <div>
               <Label className="text-xs font-medium mb-1.5 block">{t('portfolioEvidenceDate')}</Label>
               <Input type="date" value={evidenceForm.date} onChange={(e) => setEvidenceForm(prev => ({ ...prev, date: e.target.value }))} className="h-9" />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEvidenceDialog({ open: false, mode: 'add', data: null })}>
+            <Button variant="outline" onClick={closeEvidenceDialog}>
               {t('cancel')}
             </Button>
-            <Button onClick={handleSaveEvidence} disabled={saving || !evidenceForm.evidence_type || !evidenceForm.title_ar}>
+            <Button onClick={handleSaveEvidence} disabled={saving || editFileUploading || !evidenceForm.evidence_type || !evidenceForm.title_ar}>
               {saving && <Loader2 className={`w-4 h-4 animate-spin ${isRTL ? 'ml-2' : 'mr-2'}`} />}
               {t('save')}
             </Button>

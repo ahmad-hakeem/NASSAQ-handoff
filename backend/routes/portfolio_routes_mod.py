@@ -56,6 +56,8 @@ class EvidenceUpdate(BaseModel):
     evidence_type: Optional[str] = None
     file_url: Optional[str] = None
     file_name: Optional[str] = None
+    class_id: Optional[str] = None
+    subject_id: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
 
 
@@ -188,7 +190,21 @@ async def update_evidence(
 ):
     if current_user["role"] != "teacher":
         raise HTTPException(status_code=403, detail="غير مصرح")
-    updates = {k: v for k, v in data.model_dump().items() if v is not None}
+    if data.file_url:
+        MAX_DATA_URL = 14 * 1024 * 1024
+        if len(data.file_url) > MAX_DATA_URL:
+            raise HTTPException(status_code=400, detail="حجم المرفق يتجاوز الحد المسموح")
+        if not (data.file_url.startswith("data:application/pdf;base64,")
+                or data.file_url.startswith("data:image/")
+                or data.file_url.startswith("data:video/")
+                or data.file_url.startswith("https://")
+                or data.file_url.startswith("http://")):
+            raise HTTPException(status_code=400, detail="صيغة المرفق غير مدعومة")
+    # Honor explicit None for fields the client actually sent (PATCH semantics),
+    # so that teachers can clear file_url, class_id, subject_id, etc.
+    sent = data.model_fields_set
+    full = data.model_dump()
+    updates = {k: full[k] for k in sent}
     result = await _engine.update_evidence(evidence_id, current_user["id"], updates)
     if not result.get("success"):
         err = result.get("error", "not_found")
