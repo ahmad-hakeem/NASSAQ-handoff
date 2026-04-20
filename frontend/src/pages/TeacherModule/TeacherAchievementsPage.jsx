@@ -1253,20 +1253,28 @@ function EvidenceRow({ item, isRTL, onEdit, onDelete }) {
     const url = item.file_url;
     if (!url) { toast.error('لا يوجد ملف مرفق لهذا الشاهد'); return; }
     try {
-      const w = window.open();
-      if (!w) { toast.error('يرجى السماح بالنوافذ المنبثقة'); return; }
       if (url.startsWith('data:')) {
-        w.document.write(
-          `<title>${(item.title_ar || item.title_en || 'preview').replace(/[<>]/g, '')}</title>` +
-          (url.startsWith('data:image/')
-            ? `<body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;height:100vh"><img src="${url}" style="max-width:100%;max-height:100%"/></body>`
-            : url.startsWith('data:video/')
-              ? `<body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;height:100vh"><video src="${url}" controls autoplay style="max-width:100%;max-height:100%"></video></body>`
-              : `<body style="margin:0"><iframe src="${url}" style="border:0;width:100vw;height:100vh"></iframe></body>`)
-        );
-        w.document.close();
+        const m = url.match(/^data:([^;,]+)(;base64)?,(.*)$/);
+        if (!m) { toast.error('صيغة الملف غير صالحة'); return; }
+        const mime = m[1] || 'application/octet-stream';
+        const isB64 = !!m[2];
+        const payload = m[3] || '';
+        let bytes;
+        if (isB64) {
+          const bin = atob(payload);
+          bytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        } else {
+          bytes = new TextEncoder().encode(decodeURIComponent(payload));
+        }
+        const blob = new Blob([bytes], { type: mime });
+        const blobUrl = URL.createObjectURL(blob);
+        const w = window.open(blobUrl, '_blank');
+        if (!w) { toast.error('يرجى السماح بالنوافذ المنبثقة'); URL.revokeObjectURL(blobUrl); return; }
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
       } else {
-        w.location.href = url;
+        const w = window.open(url, '_blank', 'noopener,noreferrer');
+        if (!w) toast.error('يرجى السماح بالنوافذ المنبثقة');
       }
     } catch (e) {
       toast.error('فشل فتح الملف');
