@@ -1124,7 +1124,7 @@ export default function SessionTeachPage() {
 
           {/* ── Action Panel ── */}
           {selectedStudent && (
-            <div className="flex-none bg-slate-800 rounded-xl border border-white/10 overflow-hidden">
+            <div className="flex-none max-h-[55vh] flex flex-col bg-slate-800 rounded-xl border border-white/10 overflow-hidden">
               {/* Selected student header — enhanced per spec */}
               <div className="px-4 py-3 border-b border-white/10">
                 <div className="flex items-center gap-3">
@@ -1191,7 +1191,7 @@ export default function SessionTeachPage() {
               </div>
 
               {/* Tab content */}
-              <div className="p-3">
+              <div className="p-3 flex-1 min-h-0 overflow-y-auto scrollbar-thin">
                 {actionTab === 'question' && (
                   <div className="grid grid-cols-3 gap-2">
                     <ActionButton
@@ -1246,7 +1246,7 @@ export default function SessionTeachPage() {
                         {Object.values(homeworkStatuses).filter(s => s === 'done').length}/{students.filter(s => s.attendance_status === 'present').length} {t('submitted')}
                       </span>
                     </div>
-                    <div className="max-h-[260px] overflow-y-auto space-y-1.5 scrollbar-thin pr-1">
+                    <div className="space-y-1.5 pr-1">
                       {students.filter(s => s.attendance_status === 'present').map(student => {
                         const isDone = homeworkStatuses[student.id] !== 'not_done';
                         return (
