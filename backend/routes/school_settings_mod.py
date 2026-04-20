@@ -9,6 +9,9 @@ from starlette.responses import StreamingResponse
 from pydantic import BaseModel, Field, ConfigDict, EmailStr, model_validator, field_validator
 from typing import List, Optional, Any, Dict
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
+
+DEFAULT_SCHOOL_TZ = "Asia/Riyadh"
 
 import uuid, os, logging, json, random, re, io, base64
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
@@ -525,7 +528,14 @@ async def get_school_day_status(
 
     working_days = (settings or {}).get("working_days", nested.get("working_days", {}))
     day_names_map = {6: "sunday", 0: "monday", 1: "tuesday", 2: "wednesday", 3: "thursday", 4: "friday", 5: "saturday"}
-    now = datetime.now()
+    # Use the school's configured timezone (default Asia/Riyadh) so that
+    # "current period" reflects local school time, not the server's UTC clock.
+    tz_name = nested.get("timezone") or (settings or {}).get("timezone") or DEFAULT_SCHOOL_TZ
+    try:
+        school_tz = ZoneInfo(tz_name)
+    except Exception:
+        school_tz = ZoneInfo(DEFAULT_SCHOOL_TZ)
+    now = datetime.now(school_tz)
     today_key = day_names_map.get(now.weekday(), "")
     is_working_day = True
     if isinstance(working_days, dict) and working_days:
