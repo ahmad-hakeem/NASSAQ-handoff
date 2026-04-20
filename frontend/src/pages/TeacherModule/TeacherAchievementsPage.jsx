@@ -23,7 +23,11 @@ import {
   Loader2, RefreshCw, Plus, Trash2, Edit3, ChevronDown, ChevronUp,
   FolderOpen, BarChart3, GraduationCap, MessageSquare, Briefcase,
   Activity, Settings, CheckCircle2, AlertCircle, Calendar,
-  FileArchive, Eye, Search, X, Zap, Target
+  FileArchive, Eye, Search, X, Zap, Target, Sparkles, Save,
+  User as UserIcon, Mail, Phone, BookMarked, Heart, Compass,
+  ScrollText, Shield, Building2, ListChecks, Video, ImageIcon,
+  ClipboardList, FileCheck, PenSquare, Megaphone, HandHeart,
+  PlayCircle
 } from 'lucide-react';
 import { useTranslation } from '../../contexts/ThemeContext';
 
@@ -81,6 +85,118 @@ const TYPE_LABEL_KEYS = {
 
 const ALL_EVIDENCE_TYPES = Object.keys(TYPE_LABEL_KEYS);
 
+// =====================================================================
+// Portfolio v2 — static national content (Arabic only) + sub-section config
+// =====================================================================
+
+const POLICY_GOALS_AR = [
+  'ترسيخ العقيدة الإسلامية وبناء الشخصية الإسلامية',
+  'تنمية المهارات الأساسية للمتعلم',
+  'إعداد المواطن الصالح المنتمي لوطنه',
+  'تنمية التفكير النقدي والإبداعي',
+  'تعزيز القيم الوطنية والهوية السعودية',
+  'تحقيق التميز في التعليم وفق رؤية 2030',
+  'تنمية مهارات القرن الحادي والعشرين',
+  'تعزيز التعلم مدى الحياة',
+];
+
+const ETHICS_CHARTER_AR = [
+  'الأمانة في أداء الرسالة التعليمية',
+  'العدل والمساواة بين الطلاب',
+  'الاحترام المتبادل مع جميع الأطراف',
+  'المحافظة على أسرار المهنة',
+  'الالتزام بالتطوير المهني المستمر',
+  'التعاون مع الزملاء والمجتمع المدرسي',
+  'القدوة الحسنة في القول والعمل',
+  'التحلي بالصبر والحكمة',
+];
+
+// New (v2) evidence type labels — Arabic only since spec is Arabic-native
+const TYPE_LABEL_AR_V2 = {
+  // planning
+  curriculum_distribution_plan: 'خطة توزيع المنهج',
+  weekly_plan: 'الخطة الأسبوعية',
+  lesson_plan: 'خطة الدرس',
+  preparation_record: 'سجل التحضير',
+  unit_plan: 'خطة وحدة دراسية',
+  classroom_activity_plan: 'خطة النشاط الصفي',
+  struggling_student_plan: 'خطة دعم المتعثرين',
+  gifted_student_plan: 'خطة رعاية المتفوقين',
+  learning_loss_plan: 'خطة معالجة الفاقد التعليمي',
+  // execution
+  classroom_activity_photos: 'صور أنشطة صفية',
+  student_worksheets: 'أوراق عمل الطلاب',
+  applied_lesson_report: 'تقرير درس تطبيقي',
+  lesson_video_recording: 'تسجيل فيديو لدرس',
+  collaborative_lesson: 'أنشطة تعاونية',
+  teaching_strategies: 'استراتيجيات تدريس',
+  // assessment
+  exam_results: 'الاختبارات',
+  quiz_results: 'الاختبارات القصيرة',
+  assessment_worksheet: 'أوراق العمل التقويمية',
+  performance_task: 'المهام الأدائية',
+  student_portfolio_files: 'ملفات إنجاز الطلاب',
+  student_project: 'مشاريع الطلاب',
+  oral_assessment: 'التقويم الشفهي',
+  classroom_observation: 'الملاحظة الصفية',
+  // results
+  exam_results_analysis: 'تحليل نتائج الاختبارات',
+  class_results_analysis: 'تحليل نتائج الفصل',
+  student_progress_report: 'تقارير تقدم الطلاب',
+  grade_analysis_tables: 'جداول تحليل الدرجات',
+  before_after_comparison: 'مقارنة النتائج قبل وبعد',
+  results_improvement_plan: 'خطة تحسين النتائج',
+  // community
+  parent_communication_log: 'سجل التواصل مع أولياء الأمور',
+  parent_meeting_minutes: 'تقرير اجتماع مع أولياء الأمور',
+  school_activity_participation: 'مشاركة في نشاط مدرسي',
+  school_event_participation: 'مشاركة في الفعاليات المدرسية',
+  // professional development v2
+  training_attendance_report: 'تقرير حضور دورة',
+  professional_growth_plan: 'خطة تطوير مهني',
+  plc_participation: 'مجتمعات التعلم المهنية',
+  peer_observation: 'تبادل الزيارات',
+  workshop_attendance: 'حضور ورش عمل',
+  workshop_delivery: 'تقديم ورش',
+  volunteer_activity_report: 'تقرير نشاط تطوعي',
+};
+
+const SUBSECTION_CONFIG_V2 = [
+  {
+    key: 'planning', title: 'شواهد التخطيط', icon: ClipboardList,
+    color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-900/30',
+    types: ['curriculum_distribution_plan', 'weekly_plan', 'lesson_plan', 'preparation_record', 'unit_plan', 'classroom_activity_plan', 'struggling_student_plan', 'gifted_student_plan', 'learning_loss_plan'],
+  },
+  {
+    key: 'execution', title: 'شواهد التنفيذ', icon: PlayCircle,
+    color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-900/30',
+    types: ['classroom_activity_photos', 'student_worksheets', 'applied_lesson_report', 'lesson_video_recording', 'collaborative_lesson', 'teaching_strategies'],
+  },
+  {
+    key: 'assessment', title: 'شواهد التقويم', icon: FileCheck,
+    color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-50 dark:bg-purple-900/30',
+    types: ['exam_results', 'quiz_results', 'assessment_worksheet', 'performance_task', 'student_portfolio_files', 'student_project', 'oral_assessment', 'classroom_observation'],
+  },
+  {
+    key: 'results', title: 'شواهد النتائج', icon: BarChart3,
+    color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-900/30',
+    types: ['exam_results_analysis', 'class_results_analysis', 'student_progress_report', 'grade_analysis_tables', 'before_after_comparison', 'results_improvement_plan'],
+  },
+  {
+    key: 'community', title: 'شواهد التواصل والمجتمع', icon: Megaphone,
+    color: 'text-pink-600 dark:text-pink-400', bg: 'bg-pink-50 dark:bg-pink-900/30',
+    types: ['parent_communication_log', 'parent_meeting_minutes', 'school_activity_participation', 'school_event_participation'],
+  },
+  {
+    key: 'professional_development_v2', title: 'شواهد التطوير المهني', icon: Briefcase,
+    color: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-50 dark:bg-indigo-900/30',
+    types: ['training_attendance_report', 'professional_growth_plan', 'plc_participation', 'peer_observation', 'workshop_attendance', 'workshop_delivery', 'volunteer_activity_report'],
+  },
+];
+
+const labelForType = (typeKey) =>
+  TYPE_LABEL_AR_V2[typeKey] || typeKey.replace(/_/g, ' ');
+
 export default function TeacherAchievementsPage() {
   const { t } = useTranslation();
   const { api, isRTL } = useAuth();
@@ -97,21 +213,150 @@ export default function TeacherAchievementsPage() {
   const [fileFilter, setFileFilter] = useState('');
   const [fileTypeFilter, setFileTypeFilter] = useState('all');
 
+  // ----- Portfolio v2 state -----
+  const [sectionsData, setSectionsData] = useState(null);
+  const [introDraft, setIntroDraft] = useState('');
+  const [vmvDraft, setVmvDraft] = useState({ vision: '', mission: '', values: '' });
+  const [introBusy, setIntroBusy] = useState(false);
+  const [vmvBusy, setVmvBusy] = useState(false);
+  const [introAIBusy, setIntroAIBusy] = useState(false);
+  const [vmvAIBusy, setVmvAIBusy] = useState(false);
+  const [expandedV2, setExpandedV2] = useState({ intro: true });
+  const [expandedSubsec, setExpandedSubsec] = useState({});
+  const [cvDialog, setCvDialog] = useState({ open: false, kind: 'training_attended' });
+  const [cvForm, setCvForm] = useState({ title: '', organization: '', date: '', hours: '', description: '' });
+  const [cvSaving, setCvSaving] = useState(false);
+
   const fetchPortfolio = useCallback(async () => {
     setLoading(true);
     try {
-      const [portfolioRes, progressRes] = await Promise.all([
+      const [portfolioRes, progressRes, sectionsRes] = await Promise.allSettled([
         api.get('/teacher/portfolio'),
         api.get('/teacher/portfolio/progress'),
+        api.get('/teacher/portfolio/sections'),
       ]);
-      setPortfolio(portfolioRes.data);
-      setProgress(progressRes.data);
+      if (portfolioRes.status === 'fulfilled') setPortfolio(portfolioRes.value.data);
+      else console.error('portfolio fetch failed:', portfolioRes.reason);
+      if (progressRes.status === 'fulfilled') setProgress(progressRes.value.data);
+      else console.error('progress fetch failed:', progressRes.reason);
+      if (sectionsRes.status === 'fulfilled') {
+        const sd = sectionsRes.value.data;
+        setSectionsData(sd);
+        // Hydrate drafts so save buttons start with current values
+        setIntroDraft(sd?.intro?.text || '');
+        setVmvDraft({
+          vision: sd?.vmv?.vision || '',
+          mission: sd?.vmv?.mission || '',
+          values: sd?.vmv?.values || '',
+        });
+      } else {
+        console.error('sections fetch failed:', sectionsRes.reason);
+      }
     } catch (err) {
       console.error('Portfolio fetch error:', err);
     } finally {
       setLoading(false);
     }
   }, [api]);
+
+  // ----- Portfolio v2 handlers -----
+  const toggleV2 = (key) => setExpandedV2(p => ({ ...p, [key]: !p[key] }));
+  const toggleSubsec = (key) => setExpandedSubsec(p => ({ ...p, [key]: !p[key] }));
+
+  const handleSaveIntro = async () => {
+    setIntroBusy(true);
+    try {
+      await api.put('/teacher/portfolio/intro', { text: introDraft });
+      toast.success('تم حفظ المقدمة');
+      fetchPortfolio();
+    } catch (e) { toast.error('فشل الحفظ'); }
+    finally { setIntroBusy(false); }
+  };
+
+  const handleGenerateIntro = async () => {
+    setIntroAIBusy(true);
+    try {
+      const res = await api.post('/teacher/portfolio/generate-intro', { mode: 'generate' });
+      if (res?.data?.text) {
+        setIntroDraft(res.data.text);
+        toast.success('تم توليد المقدمة بحكيم');
+      }
+    } catch (e) {
+      const code = e?.response?.data?.detail;
+      toast.error(code === 'AI_DISABLED' ? 'الذكاء الاصطناعي غير مفعّل' : 'فشل التوليد');
+    } finally { setIntroAIBusy(false); }
+  };
+
+  const handleSaveVMV = async () => {
+    setVmvBusy(true);
+    try {
+      await api.put('/teacher/portfolio/vmv', vmvDraft);
+      toast.success('تم حفظ الرؤية والرسالة والقيم');
+      fetchPortfolio();
+    } catch (e) { toast.error('فشل الحفظ'); }
+    finally { setVmvBusy(false); }
+  };
+
+  const handleGenerateVMV = async () => {
+    setVmvAIBusy(true);
+    try {
+      const res = await api.post('/teacher/portfolio/generate-vmv', { mode: 'generate' });
+      if (res?.data) {
+        setVmvDraft({
+          vision: res.data.vision || '',
+          mission: res.data.mission || '',
+          values: res.data.values || '',
+        });
+        toast.success('تم توليد المحتوى بحكيم');
+      }
+    } catch (e) {
+      const code = e?.response?.data?.detail;
+      toast.error(code === 'AI_DISABLED' ? 'الذكاء الاصطناعي غير مفعّل' : 'فشل التوليد');
+    } finally { setVmvAIBusy(false); }
+  };
+
+  const openCVDialog = (kind) => {
+    setCvForm({ title: '', organization: '', date: '', hours: '', description: '' });
+    setCvDialog({ open: true, kind });
+  };
+
+  const handleAddCVItem = async () => {
+    if (!cvForm.title || cvForm.title.trim().length < 2) return;
+    setCvSaving(true);
+    try {
+      await api.post('/teacher/portfolio/cv-item', {
+        kind: cvDialog.kind,
+        title: cvForm.title.trim(),
+        organization: cvForm.organization.trim() || null,
+        date: cvForm.date || null,
+        hours: cvForm.hours ? Number(cvForm.hours) : null,
+        description: cvForm.description.trim() || null,
+      });
+      toast.success('تمت الإضافة');
+      setCvDialog({ open: false, kind: 'training_attended' });
+      fetchPortfolio();
+    } catch (e) { toast.error('فشل الحفظ'); }
+    finally { setCvSaving(false); }
+  };
+
+  const handleDeleteCVItem = (item) => {
+    if (item.source === 'auto') {
+      toast.message('هذا العنصر يأتي تلقائياً من شواهد التطوير المهني');
+      return;
+    }
+    showAlert({
+      title: 'حذف العنصر؟',
+      variant: 'danger',
+      confirmText: 'حذف',
+      onConfirm: async () => {
+        try {
+          await api.delete(`/teacher/portfolio/cv-item/${item.id}`);
+          toast.success('تم الحذف');
+          fetchPortfolio();
+        } catch { toast.error('فشل الحذف'); }
+      },
+    });
+  };
 
   useEffect(() => { fetchPortfolio(); }, [fetchPortfolio]);
 
@@ -349,129 +594,30 @@ export default function TeacherAchievementsPage() {
         </div>
 
         {activeTab === 'portfolio' && (
-          <div className="space-y-3">
-            {SECTION_CONFIG.map(section => {
-              const sectionData = portfolio?.sections?.[section.key];
-              const count = sectionData?.count || 0;
-              const items = sectionData?.items || [];
-              const isExpanded = expandedSections[section.key];
-              const SIcon = section.icon;
-              const sectionProgress = progress?.section_progress?.[section.key];
-              const coveredTypes = sectionProgress?.covered_types || 0;
-              const totalTypes = sectionProgress?.total_types || 0;
-
-              return (
-                <Card key={section.key} className="border-0 shadow-sm bg-white dark:bg-gray-800 overflow-hidden">
-                  <button
-                    onClick={() => toggleSection(section.key)}
-                    className="w-full px-4 py-3 md:px-5 md:py-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-750"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-lg ${section.bg} flex items-center justify-center`}>
-                        <SIcon className={`w-5 h-5 ${section.color}`} />
-                      </div>
-                      <div className={`${isRTL ? 'text-right' : 'text-left'}`}>
-                        <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 font-cairo">
-                          {t(SECTION_TITLE_KEYS[section.key])}
-                        </h3>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <span className="text-xs text-gray-500 dark:text-gray-400">
-                            {count} {t('portfolioEvidenceCount')}
-                          </span>
-                          <span className="text-xs text-gray-400 dark:text-gray-500">|</span>
-                          <span className="text-xs text-gray-500 dark:text-gray-400">
-                            {coveredTypes}/{totalTypes} {t('portfolioSectionCovered')}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {count > 0 && (
-                        <Badge variant="secondary" className="text-xs">
-                          {count}
-                        </Badge>
-                      )}
-                      {isExpanded ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
-                    </div>
-                  </button>
-
-                  {isExpanded && (
-                    <div className="px-4 pb-4 md:px-5 md:pb-5 border-t border-gray-100 dark:border-gray-700">
-                      <div className="flex items-center justify-between py-3">
-                        <div className="flex flex-wrap gap-1.5">
-                          {section.types.map(typeKey => {
-                            const isCovered = sectionProgress?.covered?.includes(typeKey);
-                            return (
-                              <Badge
-                                key={typeKey}
-                                variant={isCovered ? 'default' : 'outline'}
-                                className={`text-[10px] ${isCovered ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 border-green-200 dark:border-green-800' : 'text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-700'}`}
-                              >
-                                {isCovered && <CheckCircle2 className={`w-3 h-3 ${isRTL ? 'ml-1' : 'mr-1'}`} />}
-                                {!isCovered && <AlertCircle className={`w-3 h-3 ${isRTL ? 'ml-1' : 'mr-1'}`} />}
-                                {t(TYPE_LABEL_KEYS[typeKey] || typeKey)}
-                              </Badge>
-                            );
-                          })}
-                        </div>
-                        <Button size="sm" variant="outline" className="gap-1.5 text-xs shrink-0" onClick={() => openAddDialog(section.key)}>
-                          <Plus className="w-3.5 h-3.5" />
-                          {t('portfolioAddEvidence')}
-                        </Button>
-                      </div>
-
-                      {items.length === 0 ? (
-                        <div className="text-center py-8 text-gray-400 dark:text-gray-500">
-                          <FolderOpen className="w-10 h-10 mx-auto mb-2 opacity-50" />
-                          <p className="text-sm">{t('portfolioEmptySection')}</p>
-                        </div>
-                      ) : (
-                        <div className="space-y-2">
-                          {items.map(item => (
-                            <div
-                              key={item.id}
-                              className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-750 hover:bg-gray-100 dark:hover:bg-gray-700"
-                            >
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <span className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate font-tajawal">
-                                    {isRTL ? item.title_ar : (item.title_en || item.title_ar)}
-                                  </span>
-                                  <Badge variant="outline" className={`text-[10px] shrink-0 ${item.source === 'auto' ? 'border-amber-300 text-amber-600 dark:border-amber-700 dark:text-amber-400' : 'border-blue-300 text-blue-600 dark:border-blue-700 dark:text-blue-400'}`}>
-                                    {item.source === 'auto' ? t('portfolioAuto') : t('portfolioManual')}
-                                  </Badge>
-                                </div>
-                                {(item.description_ar || item.description_en) && (
-                                  <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-1">
-                                    {isRTL ? item.description_ar : (item.description_en || item.description_ar)}
-                                  </p>
-                                )}
-                                <div className="flex items-center gap-3 mt-1.5 text-[11px] text-gray-400 dark:text-gray-500">
-                                  <span className="flex items-center gap-1">
-                                    <Calendar className="w-3 h-3" />
-                                    {item.date}
-                                  </span>
-                                  <span>{t(TYPE_LABEL_KEYS[item.evidence_type] || item.evidence_type)}</span>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-1 shrink-0">
-                                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEditDialog(item)}>
-                                  <Edit3 className="w-3.5 h-3.5 text-gray-400" />
-                                </Button>
-                                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDeleteEvidence(item)}>
-                                  <Trash2 className="w-3.5 h-3.5 text-red-400" />
-                                </Button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </Card>
-              );
-            })}
-          </div>
+          <PortfolioV2Sections
+            sectionsData={sectionsData}
+            isRTL={isRTL}
+            expandedV2={expandedV2}
+            toggleV2={toggleV2}
+            expandedSubsec={expandedSubsec}
+            toggleSubsec={toggleSubsec}
+            introDraft={introDraft}
+            setIntroDraft={setIntroDraft}
+            introBusy={introBusy}
+            introAIBusy={introAIBusy}
+            handleSaveIntro={handleSaveIntro}
+            handleGenerateIntro={handleGenerateIntro}
+            vmvDraft={vmvDraft}
+            setVmvDraft={setVmvDraft}
+            vmvBusy={vmvBusy}
+            vmvAIBusy={vmvAIBusy}
+            handleSaveVMV={handleSaveVMV}
+            handleGenerateVMV={handleGenerateVMV}
+            openCVDialog={openCVDialog}
+            handleDeleteCVItem={handleDeleteCVItem}
+            openEditDialog={openEditDialog}
+            handleDeleteEvidence={handleDeleteEvidence}
+          />
         )}
 
         {activeTab === 'files' && (
@@ -677,6 +823,437 @@ export default function TeacherAchievementsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* CV manual-add dialog */}
+      <Dialog open={cvDialog.open} onOpenChange={(open) => { if (!open) setCvDialog({ open: false, kind: 'training_attended' }); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-cairo">
+              {cvDialog.kind === 'training_attended' && 'إضافة دورة تدريبية مستفاد منها'}
+              {cvDialog.kind === 'training_delivered' && 'إضافة دورة تدريبية منفذة'}
+              {cvDialog.kind === 'award' && 'إضافة جائزة'}
+              {cvDialog.kind === 'thank_letter' && 'إضافة خطاب شكر'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <Label className="text-xs font-medium mb-1.5 block">العنوان</Label>
+              <Input value={cvForm.title} onChange={(e) => setCvForm(p => ({ ...p, title: e.target.value }))} placeholder="مثال: ورشة استراتيجيات التعليم النشط" dir={isRTL ? 'rtl' : 'ltr'} className="h-9" />
+            </div>
+            <div>
+              <Label className="text-xs font-medium mb-1.5 block">الجهة المانحة / المنظِّمة</Label>
+              <Input value={cvForm.organization} onChange={(e) => setCvForm(p => ({ ...p, organization: e.target.value }))} placeholder="اختياري" dir={isRTL ? 'rtl' : 'ltr'} className="h-9" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs font-medium mb-1.5 block">التاريخ</Label>
+                <Input type="date" value={cvForm.date} onChange={(e) => setCvForm(p => ({ ...p, date: e.target.value }))} className="h-9" />
+              </div>
+              {(cvDialog.kind === 'training_attended' || cvDialog.kind === 'training_delivered') && (
+                <div>
+                  <Label className="text-xs font-medium mb-1.5 block">عدد الساعات</Label>
+                  <Input type="number" min="0" value={cvForm.hours} onChange={(e) => setCvForm(p => ({ ...p, hours: e.target.value }))} placeholder="اختياري" className="h-9" />
+                </div>
+              )}
+            </div>
+            <div>
+              <Label className="text-xs font-medium mb-1.5 block">وصف مختصر</Label>
+              <Textarea value={cvForm.description} onChange={(e) => setCvForm(p => ({ ...p, description: e.target.value }))} rows={3} placeholder="اختياري" dir={isRTL ? 'rtl' : 'ltr'} className="resize-none" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCvDialog({ open: false, kind: 'training_attended' })}>إلغاء</Button>
+            <Button onClick={handleAddCVItem} disabled={cvSaving || !cvForm.title || cvForm.title.trim().length < 2}>
+              {cvSaving && <Loader2 className={`w-4 h-4 animate-spin ${isRTL ? 'ml-2' : 'mr-2'}`} />}
+              حفظ
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Sidebar>
+  );
+}
+
+// =====================================================================
+// Portfolio v2 — UI sub-components
+// =====================================================================
+
+function AccordionCard({ icon: Icon, color, bg, title, subtitle, count, expanded, onToggle, children }) {
+  return (
+    <Card className="border-0 shadow-sm bg-white dark:bg-gray-800 overflow-hidden">
+      <button
+        onClick={onToggle}
+        className="w-full px-4 py-3 md:px-5 md:py-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-750"
+      >
+        <div className="flex items-center gap-3">
+          <div className={`w-10 h-10 rounded-lg ${bg} flex items-center justify-center`}>
+            <Icon className={`w-5 h-5 ${color}`} />
+          </div>
+          <div className="text-right">
+            <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 font-cairo">{title}</h3>
+            {subtitle && <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{subtitle}</p>}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {count != null && count > 0 && (
+            <Badge variant="secondary" className="text-xs">{count}</Badge>
+          )}
+          {expanded ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+        </div>
+      </button>
+      {expanded && (
+        <div className="px-4 pb-4 md:px-5 md:pb-5 border-t border-gray-100 dark:border-gray-700 pt-3">
+          {children}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function EvidenceRow({ item, isRTL, onEdit, onDelete }) {
+  return (
+    <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-750 hover:bg-gray-100 dark:hover:bg-gray-700">
+      <div className="w-9 h-9 rounded-full bg-white dark:bg-gray-800 flex items-center justify-center shrink-0 border border-gray-200 dark:border-gray-700">
+        <FileText className="w-4 h-4 text-gray-500" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1 flex-wrap">
+          <span className="text-sm font-medium text-gray-800 dark:text-gray-100 font-tajawal">
+            {isRTL ? (item.title_ar || item.title_en) : (item.title_en || item.title_ar)}
+          </span>
+          {item.source === 'auto' && (
+            <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-600 dark:border-amber-700 dark:text-amber-400 gap-1">
+              <Zap className="w-2.5 h-2.5" /> تقني
+            </Badge>
+          )}
+        </div>
+        {(item.description_ar || item.description_en) && (
+          <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-1">
+            {isRTL ? (item.description_ar || item.description_en) : (item.description_en || item.description_ar)}
+          </p>
+        )}
+        <div className="flex items-center gap-3 mt-1.5 text-[11px] text-gray-400 dark:text-gray-500">
+          {item.date && (
+            <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{item.date}</span>
+          )}
+          <span>{labelForType(item.evidence_type)}</span>
+        </div>
+      </div>
+      <div className="flex items-center gap-1 shrink-0">
+        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => onEdit?.(item)}>
+          <Eye className="w-3.5 h-3.5 text-gray-400" />
+        </Button>
+        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => onDelete?.(item)}>
+          <Trash2 className="w-3.5 h-3.5 text-red-400" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function CVItemRow({ item, isRTL, onDelete }) {
+  return (
+    <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-750">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+          <span className="text-sm font-medium text-gray-800 dark:text-gray-100 font-tajawal">{item.title}</span>
+          {item.source === 'auto' && (
+            <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-600 dark:border-amber-700 dark:text-amber-400 gap-1">
+              <Zap className="w-2.5 h-2.5" /> تلقائي
+            </Badge>
+          )}
+        </div>
+        <div className="flex items-center gap-3 text-[11px] text-gray-500 dark:text-gray-400 flex-wrap">
+          {item.organization && <span className="flex items-center gap-1"><Building2 className="w-3 h-3" />{item.organization}</span>}
+          {item.date && <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{item.date}</span>}
+          {item.hours != null && <span>{item.hours} ساعة</span>}
+        </div>
+        {item.description && (
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">{item.description}</p>
+        )}
+      </div>
+      {item.source !== 'auto' && (
+        <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" onClick={() => onDelete?.(item)}>
+          <Trash2 className="w-3.5 h-3.5 text-red-400" />
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function PortfolioV2Sections(props) {
+  const {
+    sectionsData, isRTL,
+    expandedV2, toggleV2, expandedSubsec, toggleSubsec,
+    introDraft, setIntroDraft, introBusy, introAIBusy, handleSaveIntro, handleGenerateIntro,
+    vmvDraft, setVmvDraft, vmvBusy, vmvAIBusy, handleSaveVMV, handleGenerateVMV,
+    openCVDialog, handleDeleteCVItem, openEditDialog, handleDeleteEvidence,
+  } = props;
+
+  const cv = sectionsData?.cv;
+  const profile = cv?.profile || {};
+  const subsecData = sectionsData?.evidence_subsections || {};
+
+  return (
+    <div className="space-y-3">
+
+      {/* Section 1: Intro */}
+      <AccordionCard
+        icon={Sparkles} color="text-violet-600 dark:text-violet-400" bg="bg-violet-50 dark:bg-violet-900/30"
+        title="المقدمة" subtitle="نبذة تعريفية عن المعلم — قابلة للتعديل"
+        expanded={!!expandedV2.intro} onToggle={() => toggleV2('intro')}
+      >
+        <Textarea
+          value={introDraft}
+          onChange={(e) => setIntroDraft(e.target.value)}
+          rows={5}
+          placeholder="اكتب مقدمة تعريفية عن نفسك أو استخدم زر التوليد بحكيم..."
+          dir="rtl"
+          className="resize-none mb-3"
+        />
+        <div className="flex flex-wrap gap-2 justify-end">
+          <Button size="sm" variant="outline" className="gap-1.5 border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300" onClick={handleGenerateIntro} disabled={introAIBusy}>
+            {introAIBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+            توليد بحكيم
+          </Button>
+          <Button size="sm" className="gap-1.5" onClick={handleSaveIntro} disabled={introBusy}>
+            {introBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+            حفظ
+          </Button>
+        </div>
+      </AccordionCard>
+
+      {/* Section 2: Vision / Mission / Values */}
+      <AccordionCard
+        icon={Compass} color="text-cyan-600 dark:text-cyan-400" bg="bg-cyan-50 dark:bg-cyan-900/30"
+        title="الرؤية والرسالة والقيم" subtitle="ثلاثة عناصر مولَّدة بحكيم وقابلة للتعديل"
+        expanded={!!expandedV2.vmv} onToggle={() => toggleV2('vmv')}
+      >
+        <div className="space-y-3">
+          <div>
+            <Label className="text-xs font-medium mb-1.5 block flex items-center gap-1.5"><Eye className="w-3.5 h-3.5 text-cyan-600" /> الرؤية</Label>
+            <Textarea value={vmvDraft.vision} onChange={(e) => setVmvDraft(p => ({ ...p, vision: e.target.value }))} rows={2} dir="rtl" className="resize-none" />
+          </div>
+          <div>
+            <Label className="text-xs font-medium mb-1.5 block flex items-center gap-1.5"><Target className="w-3.5 h-3.5 text-cyan-600" /> الرسالة</Label>
+            <Textarea value={vmvDraft.mission} onChange={(e) => setVmvDraft(p => ({ ...p, mission: e.target.value }))} rows={2} dir="rtl" className="resize-none" />
+          </div>
+          <div>
+            <Label className="text-xs font-medium mb-1.5 block flex items-center gap-1.5"><Heart className="w-3.5 h-3.5 text-cyan-600" /> القيم</Label>
+            <Textarea value={vmvDraft.values} onChange={(e) => setVmvDraft(p => ({ ...p, values: e.target.value }))} rows={2} dir="rtl" className="resize-none" />
+          </div>
+          <div className="flex flex-wrap gap-2 justify-end">
+            <Button size="sm" variant="outline" className="gap-1.5 border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300" onClick={handleGenerateVMV} disabled={vmvAIBusy}>
+              {vmvAIBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+              توليد بحكيم
+            </Button>
+            <Button size="sm" className="gap-1.5" onClick={handleSaveVMV} disabled={vmvBusy}>
+              {vmvBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+              حفظ
+            </Button>
+          </div>
+        </div>
+      </AccordionCard>
+
+      {/* Section 3: Education Policy Goals (static) */}
+      <AccordionCard
+        icon={ScrollText} color="text-emerald-600 dark:text-emerald-400" bg="bg-emerald-50 dark:bg-emerald-900/30"
+        title="أهداف سياسة التعليم" subtitle="ثمانية أهداف وطنية — محتوى ثابت"
+        expanded={!!expandedV2.policy} onToggle={() => toggleV2('policy')}
+      >
+        <ol className="space-y-2">
+          {POLICY_GOALS_AR.map((goal, idx) => (
+            <li key={idx} className="flex items-start gap-3 p-2.5 rounded-lg bg-emerald-50/50 dark:bg-emerald-900/10">
+              <span className="w-6 h-6 rounded-full bg-emerald-600 dark:bg-emerald-700 text-white text-xs flex items-center justify-center shrink-0 font-bold">{idx + 1}</span>
+              <span className="text-sm text-gray-800 dark:text-gray-200 font-tajawal pt-0.5">{goal}</span>
+            </li>
+          ))}
+        </ol>
+      </AccordionCard>
+
+      {/* Section 4: Code of Ethics (static) */}
+      <AccordionCard
+        icon={Shield} color="text-rose-600 dark:text-rose-400" bg="bg-rose-50 dark:bg-rose-900/30"
+        title="ميثاق أخلاقيات مهنة التعليم" subtitle="ثمانية بنود — محتوى ثابت"
+        expanded={!!expandedV2.ethics} onToggle={() => toggleV2('ethics')}
+      >
+        <ul className="space-y-2">
+          {ETHICS_CHARTER_AR.map((item, idx) => (
+            <li key={idx} className="flex items-start gap-3 p-2.5 rounded-lg bg-rose-50/50 dark:bg-rose-900/10">
+              <CheckCircle2 className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+              <span className="text-sm text-gray-800 dark:text-gray-200 font-tajawal">{item}</span>
+            </li>
+          ))}
+        </ul>
+      </AccordionCard>
+
+      {/* Section 5: CV */}
+      <AccordionCard
+        icon={UserIcon} color="text-blue-600 dark:text-blue-400" bg="bg-blue-50 dark:bg-blue-900/30"
+        title="السيرة الذاتية"
+        subtitle="البيانات الشخصية والدورات والجوائز"
+        expanded={!!expandedV2.cv} onToggle={() => toggleV2('cv')}
+      >
+        {/* Personal data grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">
+          {[
+            { icon: UserIcon, label: 'الاسم', value: profile.full_name },
+            { icon: BookMarked, label: 'التخصص', value: profile.specialization || profile.subject },
+            { icon: GraduationCap, label: 'المؤهل', value: profile.qualification },
+            { icon: Phone, label: 'رقم الجوال', value: profile.phone },
+            { icon: Mail, label: 'البريد الإلكتروني', value: profile.email },
+            { icon: Briefcase, label: 'سنوات الخبرة', value: profile.years_of_experience ? `${profile.years_of_experience} سنة` : null },
+          ].map((f, i) => (
+            <div key={i} className="p-3 rounded-lg bg-gray-50 dark:bg-gray-750">
+              <div className="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400 mb-1">
+                <f.icon className="w-3 h-3" />
+                {f.label}
+              </div>
+              <div className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{f.value || '—'}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Training attended */}
+        <CVCategorySection
+          title="الدورات التدريبية المستفاد منها"
+          icon={GraduationCap} color="text-blue-600 dark:text-blue-400"
+          items={cv?.training_attended || []}
+          isRTL={isRTL}
+          onAdd={() => openCVDialog('training_attended')}
+          onDelete={handleDeleteCVItem}
+        />
+        {/* Training delivered */}
+        <CVCategorySection
+          title="الدورات التدريبية المنفذة"
+          icon={PenSquare} color="text-emerald-600 dark:text-emerald-400"
+          items={cv?.training_delivered || []}
+          isRTL={isRTL}
+          onAdd={() => openCVDialog('training_delivered')}
+          onDelete={handleDeleteCVItem}
+        />
+        {/* Awards */}
+        <CVCategorySection
+          title="الجوائز"
+          icon={Award} color="text-amber-600 dark:text-amber-400"
+          items={cv?.award || []}
+          isRTL={isRTL}
+          onAdd={() => openCVDialog('award')}
+          onDelete={handleDeleteCVItem}
+        />
+        {/* Thank letters */}
+        <CVCategorySection
+          title="خطابات الشكر"
+          icon={HandHeart} color="text-pink-600 dark:text-pink-400"
+          items={cv?.thank_letter || []}
+          isRTL={isRTL}
+          onAdd={() => openCVDialog('thank_letter')}
+          onDelete={handleDeleteCVItem}
+        />
+      </AccordionCard>
+
+      {/* Section 6: Performance Evidence — 6 sub-accordions */}
+      <AccordionCard
+        icon={ListChecks} color="text-indigo-600 dark:text-indigo-400" bg="bg-indigo-50 dark:bg-indigo-900/30"
+        title="شواهد الأداء الوظيفي"
+        subtitle="ستة أقسام فرعية لشواهد العمل التربوي"
+        expanded={!!expandedV2.evidence} onToggle={() => toggleV2('evidence')}
+      >
+        <div className="space-y-2">
+          {SUBSECTION_CONFIG_V2.map(sub => {
+            const sd = subsecData[sub.key] || { count: 0, items: [] };
+            const isOpen = !!expandedSubsec[sub.key];
+            const SubIcon = sub.icon;
+            return (
+              <div key={sub.key} className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+                <button
+                  onClick={() => toggleSubsec(sub.key)}
+                  className="w-full px-3 py-2.5 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className={`w-8 h-8 rounded-lg ${sub.bg} flex items-center justify-center`}>
+                      <SubIcon className={`w-4 h-4 ${sub.color}`} />
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 font-cairo">{sub.title}</div>
+                      <div className="text-[11px] text-gray-500 dark:text-gray-400">{sd.count} شاهد</div>
+                    </div>
+                  </div>
+                  {isOpen ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+                </button>
+                {isOpen && (
+                  <div className="px-3 pb-3 border-t border-gray-100 dark:border-gray-700 pt-2">
+                    {/* Type chips */}
+                    <div className="flex flex-wrap gap-1.5 mb-3">
+                      {sub.types.map(typeKey => {
+                        const has = sd.items?.some(it => it.evidence_type === typeKey);
+                        return (
+                          <Badge
+                            key={typeKey}
+                            variant="outline"
+                            className={`text-[10px] ${has ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 border-green-200 dark:border-green-800' : 'text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-700'}`}
+                          >
+                            {has ? <CheckCircle2 className="w-3 h-3 ml-1" /> : <AlertCircle className="w-3 h-3 ml-1" />}
+                            {labelForType(typeKey)}
+                          </Badge>
+                        );
+                      })}
+                    </div>
+                    {/* Evidence rows */}
+                    {(!sd.items || sd.items.length === 0) ? (
+                      <div className="text-center py-6 text-gray-400 dark:text-gray-500">
+                        <FolderOpen className="w-8 h-8 mx-auto mb-1.5 opacity-50" />
+                        <p className="text-xs">لا توجد شواهد بعد</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {sd.items.map(item => (
+                          <EvidenceRow
+                            key={item.id}
+                            item={item}
+                            isRTL={isRTL}
+                            onEdit={openEditDialog}
+                            onDelete={handleDeleteEvidence}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </AccordionCard>
+
+    </div>
+  );
+}
+
+function CVCategorySection({ title, icon: Icon, color, items, isRTL, onAdd, onDelete }) {
+  return (
+    <div className="mb-4">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <Icon className={`w-4 h-4 ${color}`} />
+          <h4 className="text-sm font-semibold text-gray-800 dark:text-gray-100 font-cairo">{title}</h4>
+          <Badge variant="secondary" className="text-[10px]">{items.length}</Badge>
+        </div>
+        <Button size="sm" variant="outline" className="gap-1 text-xs h-7" onClick={onAdd}>
+          <Plus className="w-3 h-3" /> إضافة
+        </Button>
+      </div>
+      {items.length === 0 ? (
+        <div className="text-center py-4 text-gray-400 dark:text-gray-500 text-xs bg-gray-50 dark:bg-gray-750 rounded-lg">
+          لا يوجد محتوى
+        </div>
+      ) : (
+        <div className="space-y-1.5">
+          {items.map(it => (
+            <CVItemRow key={it.id} item={it} isRTL={isRTL} onDelete={onDelete} />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

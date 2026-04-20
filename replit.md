@@ -1174,3 +1174,11 @@ Sub-pages (accessible from within classes/sessions, not top-level sidebar):
   - `GET /admin/ai-suggested-actions` — derives actions from real DB state (schools missing principal, teachers without rank, failed imports today, pending registrations, schools without AI)
 - Improved `import_analysis` op to count today's import audit logs (filenames, imported/failed rows)
 - Fix: replaced unsupported dotted-path JSONB filter on ORM `audit_logs` table with Python-side aggregation
+
+### Teacher Portfolio v2 (April 20, 2026)
+- **Scope**: Expanded teacher Portfolio (ملف الإنجاز) tab below the existing completion bar with 6 accordion sections per spec.
+- **Sections**: (1) Intro AI-generated/editable, (2) Vision/Mission/Values AI-generated/editable, (3) Education Policy Goals — 8 static items hardcoded in `POLICY_GOALS_AR`, (4) Code of Ethics — 8 static items in `ETHICS_CHARTER_AR`, (5) CV — personal data + auto-derived training (from evidence) + manual additions (training_attended/training_delivered/award/thank_letter), (6) Performance Evidence — 6 sub-accordions (planning/execution/assessment/results/community/professional_development) with 30+ types.
+- **Backend**: New endpoints in `portfolio_routes_mod.py` — `GET /portfolio/sections`, `PUT /intro`, `PUT /vmv`, `POST/DELETE /cv-item`, `POST /generate-intro`, `POST /generate-vmv`. Editable meta stored via `gd_upsert` in `teacher_portfolio_meta` collection (merge semantics — partial updates safe). Existing `portfolio_intro/vision/mission/values` Hakim FIELD_REGISTRY entries are reused for AI generation.
+- **Evidence taxonomy**: `EVIDENCE_SUBSECTIONS_V2` (6 sub-sections) added alongside legacy `EVIDENCE_SECTIONS` (kept for backward compatibility with old `/teacher/portfolio` endpoint and Files tab); 24 new evidence types appended to `ALL_EVIDENCE_TYPES`.
+- **Auto-CV derivation**: `training_certificate`, `workshop_attendance`, `training_attendance_report` → training_attended; `workshop_delivery` → training_delivered.
+- **Frontend**: `TeacherAchievementsPage.jsx` — `<PortfolioV2Sections>` renders all 6 accordion cards with `AccordionCard`/`EvidenceRow`/`CVItemRow`/`CVCategorySection` sub-components and the manual-CV-add dialog. Static Arabic content per spec (Arabic-native, not translated).

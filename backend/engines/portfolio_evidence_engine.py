@@ -47,14 +47,78 @@ EVIDENCE_SECTIONS = {
     ],
 }
 
+# v2 layout — six sub-sections shown under "شواهد الأداء الوظيفي" in the new portfolio UI.
+# Each entry maps a UI sub-section key to the list of evidence_type keys that belong there.
+# Many types reuse existing keys (so previously-captured evidence is still visible);
+# new types are added below to ALL_EVIDENCE_TYPES so they can be captured/saved manually.
+EVIDENCE_SUBSECTIONS_V2 = {
+    "planning": [
+        "curriculum_distribution_plan", "weekly_plan", "lesson_plan",
+        "preparation_record", "unit_plan", "classroom_activity_plan",
+        "struggling_student_plan", "gifted_student_plan", "learning_loss_plan",
+    ],
+    "execution": [
+        "classroom_activity_photos", "student_worksheets",
+        "applied_lesson_report", "lesson_video_recording",
+        "collaborative_lesson", "teaching_strategies",
+    ],
+    "assessment": [
+        "exam_results", "quiz_results", "assessment_worksheet",
+        "performance_task", "student_portfolio_files", "student_project",
+        "oral_assessment", "classroom_observation",
+    ],
+    "results": [
+        "exam_results_analysis", "class_results_analysis",
+        "student_progress_report", "grade_analysis_tables",
+        "before_after_comparison", "results_improvement_plan",
+    ],
+    "community": [
+        "parent_communication_log", "parent_meeting_minutes",
+        "school_activity_participation", "school_event_participation",
+    ],
+    "professional_development_v2": [
+        "training_attendance_report", "professional_growth_plan",
+        "plc_participation", "peer_observation",
+        "workshop_attendance", "workshop_delivery", "volunteer_activity_report",
+    ],
+}
+
+# Newly introduced types that did not exist in the legacy 9-section layout.
+# Adding them here registers them as valid evidence_type values.
+_NEW_EVIDENCE_TYPES = [
+    "curriculum_distribution_plan", "preparation_record",
+    "classroom_activity_plan", "gifted_student_plan", "learning_loss_plan",
+    "classroom_activity_photos", "student_worksheets",
+    "lesson_video_recording", "teaching_strategies",
+    "assessment_worksheet", "student_portfolio_files", "student_project",
+    "oral_assessment", "classroom_observation",
+    "class_results_analysis", "student_progress_report",
+    "before_after_comparison", "results_improvement_plan",
+    "school_activity_participation", "school_event_participation",
+    "training_attendance_report", "plc_participation",
+    "workshop_delivery", "volunteer_activity_report",
+]
+
+# Build the full set of valid evidence types (legacy + new)
+_seen = set()
 ALL_EVIDENCE_TYPES = []
 for types in EVIDENCE_SECTIONS.values():
-    ALL_EVIDENCE_TYPES.extend(types)
+    for t in types:
+        if t not in _seen:
+            _seen.add(t)
+            ALL_EVIDENCE_TYPES.append(t)
+for t in _NEW_EVIDENCE_TYPES:
+    if t not in _seen:
+        _seen.add(t)
+        ALL_EVIDENCE_TYPES.append(t)
 
 SECTION_FOR_TYPE: Dict[str, str] = {}
 for section, types in EVIDENCE_SECTIONS.items():
     for t in types:
-        SECTION_FOR_TYPE[t] = section
+        SECTION_FOR_TYPE.setdefault(t, section)
+# Fallback section for new types that aren't in the legacy mapping
+for t in _NEW_EVIDENCE_TYPES:
+    SECTION_FOR_TYPE.setdefault(t, "administrative")
 
 
 class PortfolioEvidenceEngine:
