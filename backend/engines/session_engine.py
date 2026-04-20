@@ -530,10 +530,13 @@ class TeacherSessionEngine:
             await gd_insert_many(self.session, "session_attendance", attendance_drafts)
         
         try:
-            import asyncio
             from engines.portfolio_evidence_engine import PortfolioEvidenceEngine
             _pe = PortfolioEvidenceEngine(self)
-            asyncio.create_task(_pe.capture_evidence(
+            # Awaited inline (not detached as a task) so it shares the
+            # request's DB session safely. SQLAlchemy AsyncSession is not
+            # concurrency-safe; a background task using the same session
+            # corrupts the transaction and breaks the final commit.
+            await _pe.capture_evidence(
                 teacher_id=teacher_id, school_id=school_id or "",
                 evidence_type="lesson_plan",
                 title_ar=f"خطة درس: {subject_name} - {class_name}",
@@ -544,7 +547,7 @@ class TeacherSessionEngine:
                 source_entity_id=session_id,
                 class_id=class_id, subject_id=subject_id,
                 event_date=today,
-            ))
+            )
         except Exception as _pe_err:
             logger.debug("Portfolio evidence (lesson_plan) failed: %s", _pe_err)
 
@@ -1440,12 +1443,12 @@ class TeacherSessionEngine:
         )
 
         try:
-            import asyncio
             from engines.portfolio_evidence_engine import PortfolioEvidenceEngine
             _pe = PortfolioEvidenceEngine(self)
             _session_date = session.get("date", "")
+            # Awaited inline; see note in start_session.
             if len(interactions) >= 5:
-                asyncio.create_task(_pe.capture_evidence(
+                await _pe.capture_evidence(
                     teacher_id=teacher_id, school_id=school_id,
                     evidence_type="applied_lesson_report",
                     title_ar=f"تقرير درس مطبق: {_session_date}",
@@ -1458,9 +1461,9 @@ class TeacherSessionEngine:
                     metadata={"interactions": len(interactions), "attendance_rate": attendance_rate,
                               "duration": round(duration)},
                     event_date=_session_date,
-                ))
+                )
             if total > 0:
-                asyncio.create_task(_pe.capture_evidence(
+                await _pe.capture_evidence(
                     teacher_id=teacher_id, school_id=school_id,
                     evidence_type="attendance_record",
                     title_ar=f"سجل حضور الحصة: {_session_date}",
@@ -1472,7 +1475,7 @@ class TeacherSessionEngine:
                     class_id=class_id, subject_id=subject_id,
                     metadata={"present": present, "absent": absent, "late": late, "total": total},
                     event_date=_session_date,
-                ))
+                )
         except Exception as _pe_err:
             logger.debug("Portfolio evidence (end_session) failed: %s", _pe_err)
 

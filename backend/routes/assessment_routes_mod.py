@@ -474,7 +474,9 @@ async def create_bulk_grades(
         elif "performance" in a_type or "task" in a_type:
             ev_type = "performance_task"
         a_title = assessment.get("title", "تقييم")
-        asyncio.create_task(_pe.capture_evidence(
+        # Awaited inline so it shares the request's DB session safely
+        # (background tasks on the same AsyncSession break the commit).
+        await _pe.capture_evidence(
             teacher_id=current_user["id"],
             school_id=tenant_id or "",
             evidence_type=ev_type,
@@ -487,7 +489,7 @@ async def create_bulk_grades(
             class_id=assessment.get("class_id"),
             subject_id=assessment.get("subject_id"),
             metadata={"created": result["created"], "updated": result["updated"]},
-        ))
+        )
     except Exception as _pe_err:
         logging.getLogger(__name__).debug("Portfolio evidence (bulk_grades) failed: %s", _pe_err)
 

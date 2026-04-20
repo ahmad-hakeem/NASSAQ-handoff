@@ -186,10 +186,10 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
         
         if status == "sent" and message.audience == "parents":
             try:
-                import asyncio
                 from engines.portfolio_evidence_engine import PortfolioEvidenceEngine
                 _pe = PortfolioEvidenceEngine(db)
-                asyncio.create_task(_pe.capture_evidence(
+                # Awaited inline so it shares the request's DB session safely.
+                await _pe.capture_evidence(
                     teacher_id=current_user["id"],
                     school_id=school_id or "",
                     evidence_type="parent_communication_log",
@@ -200,7 +200,7 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
                     source="auto", source_entity_type="message",
                     source_entity_id=message_id,
                     metadata={"recipient_count": recipient_count, "audience": "parents"},
-                ))
+                )
             except Exception as _pe_err:
                 import logging
                 logging.getLogger(__name__).debug("Portfolio evidence (parent_comm) failed: %s", _pe_err)

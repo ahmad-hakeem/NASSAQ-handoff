@@ -165,10 +165,10 @@ async def record_bulk_participation(
         created += 1
 
     try:
-        import asyncio
         from engines.portfolio_evidence_engine import PortfolioEvidenceEngine
         _pe = PortfolioEvidenceEngine(db)
-        asyncio.create_task(_pe.capture_evidence(
+        # Awaited inline so it shares the request's DB session safely.
+        await _pe.capture_evidence(
             teacher_id=current_user["id"],
             school_id=school_id or "",
             evidence_type="participation_tracking",
@@ -182,7 +182,7 @@ async def record_bulk_participation(
             subject_id=data.subject_id,
             metadata={"created": created, "errors_count": len(errors)},
             event_date=today,
-        ))
+        )
     except Exception as _pe_err:
         logging.getLogger(__name__).debug("Portfolio evidence (participation) failed: %s", _pe_err)
 

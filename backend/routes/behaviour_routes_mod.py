@@ -267,10 +267,10 @@ async def create_behaviour_record(
     })
     
     try:
-        import asyncio
         from engines.portfolio_evidence_engine import PortfolioEvidenceEngine
         _pe = PortfolioEvidenceEngine(db)
-        asyncio.create_task(_pe.capture_evidence(
+        # Awaited inline so it shares the request's DB session safely.
+        await _pe.capture_evidence(
             teacher_id=current_user["id"],
             school_id=school_id or "",
             evidence_type="behaviour_tracking",
@@ -282,7 +282,7 @@ async def create_behaviour_record(
             source_entity_id=record_id,
             class_id=record_doc.get("class_id"),
             metadata={"category": record_doc["category"], "severity": record_doc["severity"]},
-        ))
+        )
     except Exception as _pe_err:
         logging.getLogger(__name__).debug("Portfolio evidence (behaviour) failed: %s", _pe_err)
 
