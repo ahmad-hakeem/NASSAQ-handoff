@@ -821,10 +821,12 @@ class TeacherSessionEngine:
             "id": str(uuid.uuid4()),
             "session_id": session_id,
             "student_id": student_id,
+            "type": InteractionType.QUESTION.value,
             "interaction_type": InteractionType.QUESTION.value,
             "answer_result": result.value,
             "recorded_by": teacher_id,
-            "recorded_at": now.isoformat()
+            "recorded_at": now.isoformat(),
+            "timestamp": now.isoformat()
         }
         
         await gd_insert(self.session, "session_interactions", interaction)
@@ -879,10 +881,12 @@ class TeacherSessionEngine:
             "id": str(uuid.uuid4()),
             "session_id": session_id,
             "student_id": student_id,
+            "type": InteractionType.PARTICIPATION.value,
             "interaction_type": InteractionType.PARTICIPATION.value,
             "participation_type": participation_type.value,
             "recorded_by": teacher_id,
-            "recorded_at": now.isoformat()
+            "recorded_at": now.isoformat(),
+            "timestamp": now.isoformat()
         }
         
         await gd_insert(self.session, "session_interactions", interaction)
@@ -937,12 +941,14 @@ class TeacherSessionEngine:
             "id": str(uuid.uuid4()),
             "session_id": session_id,
             "student_id": student_id,
+            "type": InteractionType.BEHAVIOUR.value,
             "interaction_type": InteractionType.BEHAVIOUR.value,
             "behaviour_category": category.value,
             "behaviour_type": behaviour_type,
             "behaviour_details": details,  # Only visible to admin
             "recorded_by": teacher_id,
             "recorded_at": now.isoformat(),
+            "timestamp": now.isoformat(),
             "editable_until": (now + timedelta(hours=1)).isoformat()
         }
         
@@ -2009,12 +2015,14 @@ class TeacherSessionEngine:
             "id": str(uuid.uuid4()),
             "session_id": session_id,
             "student_id": student_id,
+            "type": InteractionType.BEHAVIOUR.value,
             "interaction_type": InteractionType.BEHAVIOUR.value,
             "behaviour_category": BehaviourCategory.SKILL.value,
             "behaviour_type": skill_type_id,
             "behaviour_details": notes,
             "recorded_by": teacher_id,
             "recorded_at": now.isoformat(),
+            "timestamp": now.isoformat(),
             "editable_until": (now + timedelta(hours=1)).isoformat()
         }
         await gd_insert(self.session, "session_interactions", interaction)
