@@ -48,8 +48,11 @@ INDEXES = [
     # Hot path for active class sessions count: collection + date + status
     ("idx_gd_collection_date_status", "generic_documents",
      "(collection, ((data->>'date')), ((data->>'status')))"),
-    ("idx_events_type_created_at", "events",
-     "(((data->>'type')), created_at)"),
+    # Split from a composite (type, created_at) index because some deploy
+    # validators mis-infer text_ops for the timestamp column in expression
+    # indexes that mix a JSON text expression with a timestamptz column.
+    ("idx_events_type", "events", "(((data->>'type')))"),
+    ("idx_events_created_at", "events", "(created_at)"),
     ("idx_events_status_created_at", "events", "(status, created_at)"),
 ]
 
