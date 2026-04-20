@@ -1765,7 +1765,7 @@ async def update_student_attendance(
         session_id=session_id,
         student_id=student_id,
         status=status,
-        teacher_id=current_user.get("teacher_id") or current_user["id"]
+        teacher_id=current_user["id"]
     )
     return result
 
@@ -1782,7 +1782,7 @@ async def approve_session_attendance(
     await _verify_session_owner(session_id, current_user)
     result = await session_engine.approve_attendance(
         session_id=session_id,
-        teacher_id=current_user.get("teacher_id") or current_user["id"]
+        teacher_id=current_user["id"]
     )
     return result
 
@@ -1834,7 +1834,7 @@ async def record_student_answer(
         session_id=session_id,
         student_id=data.get("student_id"),
         result=AnswerResult(data.get("result", "correct")),
-        teacher_id=current_user.get("teacher_id") or current_user["id"]
+        teacher_id=current_user["id"]
     )
     return result
 
@@ -1865,7 +1865,7 @@ async def record_student_participation(
         session_id=session_id,
         student_id=data.get("student_id"),
         participation_type=ParticipationType(data.get("type", "active")),
-        teacher_id=current_user.get("teacher_id") or current_user["id"]
+        teacher_id=current_user["id"]
     )
     return result
 
@@ -1888,7 +1888,7 @@ async def record_student_behaviour(
         category=BehaviourCategory(data.get("category", "positive")),
         behaviour_type=data.get("behaviour_type"),
         details=data.get("details"),
-        teacher_id=current_user.get("teacher_id") or current_user["id"]
+        teacher_id=current_user["id"]
     )
     return result
 
@@ -1980,7 +1980,7 @@ async def get_session_review_preview(
     await _verify_session_owner(session_id, current_user)
     result = await session_engine.get_review_preview(
         session_id=session_id,
-        teacher_id=current_user.get("teacher_id") or current_user["id"]
+        teacher_id=current_user["id"]
     )
     return result
 
@@ -2004,7 +2004,7 @@ async def end_class_session(
         logger.debug(f"No JSON body provided for end_session (optional): {e}")
     result = await session_engine.end_session(
         session_id=session_id,
-        teacher_id=current_user.get("teacher_id") or current_user["id"],
+        teacher_id=current_user["id"],
         closing_note=closing_note
     )
     return result
