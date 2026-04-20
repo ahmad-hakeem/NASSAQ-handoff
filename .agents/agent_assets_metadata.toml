@@ -24,3 +24,9 @@ id = "adZaqjDh4hNdCH9XxX3L9"
 uri = "file://docs/NASSAQ_Investor_System_Document.md"
 type = "text"
 title = "وثيقة نسّاق التنفيذية للمستثمرين"
+
+[[outputs]]
+id = "C7hkn0x4cYMTMgNGUQ2zO"
+uri = "file://outputs/NASSAQ_Investor_System_Document.docx"
+type = "word_document"
+title = "NASSAQ Investor System Document (DOCX)"
