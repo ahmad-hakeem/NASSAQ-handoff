@@ -1308,7 +1308,7 @@ function EvidenceRow({ item, isRTL, onEdit, onDelete }) {
           </Button>
         )}
         <Button size="icon" variant="ghost" className="h-7 w-7" title="تعديل" onClick={() => onEdit?.(item)}>
-          <Edit className="w-3.5 h-3.5 text-gray-400" />
+          <Edit3 className="w-3.5 h-3.5 text-gray-400" />
         </Button>
         <Button size="icon" variant="ghost" className="h-7 w-7" title="حذف" onClick={() => onDelete?.(item)}>
           <Trash2 className="w-3.5 h-3.5 text-red-400" />
