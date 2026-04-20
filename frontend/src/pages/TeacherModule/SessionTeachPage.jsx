@@ -169,6 +169,7 @@ export default function SessionTeachPage() {
     loadSkillTypes();
     loadActivityLog();
     return () => { isMounted = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
   const loadSessionInfo = async (studentList) => {
@@ -277,6 +278,7 @@ export default function SessionTeachPage() {
     loadFollowupRecord();
     const interval = setInterval(loadLiveMetrics, 30000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, loadNotes, loadLiveMetrics]);
 
   const autoSaveRef = useRef(null);
