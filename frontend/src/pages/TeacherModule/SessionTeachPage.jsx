@@ -1246,7 +1246,7 @@ export default function SessionTeachPage() {
                         {Object.values(homeworkStatuses).filter(s => s === 'done').length}/{students.filter(s => s.attendance_status === 'present').length} {t('submitted')}
                       </span>
                     </div>
-                    <div className="max-h-[60vh] overflow-y-auto space-y-1.5 scrollbar-thin pr-1">
+                    <div className="max-h-[260px] overflow-y-auto space-y-1.5 scrollbar-thin pr-1">
                       {students.filter(s => s.attendance_status === 'present').map(student => {
                         const isDone = homeworkStatuses[student.id] !== 'not_done';
                         return (
