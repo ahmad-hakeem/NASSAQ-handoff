@@ -2152,16 +2152,18 @@ export default function SessionTeachPage() {
               <p className="text-[11px] text-muted-foreground">{t('skillItemsHint')}</p>
               <div className="flex flex-wrap gap-1.5">
                 {[
-                  ...(skillTypes.length > 0 ? skillTypes.map(s => s.name || s.label || s) : []),
+                  ...skillTypes.map(s => (typeof s === 'string' ? s : (s?.name_ar || s?.name_en || s?.name || s?.label || ''))),
                   ...customSkills
                 ].map((skill, i) => {
-                  const isCustom = i >= (skillTypes.length > 0 ? skillTypes.length : 0);
+                  const isCustom = i >= skillTypes.length;
+                  const label = typeof skill === 'string' ? skill : String(skill ?? '');
+                  if (!label) return null;
                   return (
                     <span key={i} className="inline-flex items-center gap-1 bg-purple-50 dark:bg-purple-900/20 px-2 py-1 rounded-lg text-[11px] text-purple-700 dark:text-purple-300">
                       <Star className="h-2.5 w-2.5" />
-                      {skill}
+                      {label}
                       {isCustom && (
-                        <button onClick={() => setCustomSkills(prev => prev.filter((_, j) => j !== i - (skillTypes.length > 0 ? skillTypes.length : 0)))} className="text-red-400 hover:text-red-500">
+                        <button onClick={() => setCustomSkills(prev => prev.filter((_, j) => j !== i - skillTypes.length))} className="text-red-400 hover:text-red-500">
                           <XCircle className="h-2.5 w-2.5" />
                         </button>
                       )}
