@@ -63,11 +63,25 @@ def _table_exists(bind, table: str) -> bool:
     ).scalar())
 
 
+# Indexes that earlier revisions of this migration created but that we no
+# longer want. Drop them so dev/prod schemas converge and deploy validators
+# don't try to re-create the bad definition.
+LEGACY_INDEXES_TO_DROP = [
+    "idx_events_type_created_at",
+]
+
+
 def upgrade() -> None:
     # CREATE INDEX CONCURRENTLY cannot run inside a transaction, so each
     # statement is wrapped in its own autocommit block. This avoids
     # blocking writes on busy production tables during the migration.
     bind = op.get_bind()
+    for name in LEGACY_INDEXES_TO_DROP:
+        with op.get_context().autocommit_block():
+            try:
+                op.execute(f"DROP INDEX CONCURRENTLY IF EXISTS {name}")
+            except Exception as e:  # noqa: BLE001
+                log.warning("legacy drop %s skipped: %s", name, e)
     for name, table, cols in INDEXES:
         if not _table_exists(bind, table):
             log.info("skip index %s: table %s missing", name, table)
