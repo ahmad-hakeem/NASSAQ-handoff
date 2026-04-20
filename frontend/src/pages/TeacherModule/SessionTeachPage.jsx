@@ -1012,7 +1012,7 @@ export default function SessionTeachPage() {
           )}
 
           {/* Student grid — individual or group mode */}
-          <div className={`overflow-y-auto min-h-0 ${selectedStudent ? 'flex-none max-h-[35vh]' : 'flex-1'}`}>
+          <div className={`overflow-y-auto min-h-0 ${selectedStudent ? 'flex-none max-h-[22vh]' : 'flex-1'}`}>
             {!mode ? (
               <div className="h-full flex items-center justify-center text-white/40 text-sm">
                 {t('selectSessionModeToStart')}
