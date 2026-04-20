@@ -911,10 +911,10 @@ export default function SessionTeachPage() {
       )}
 
       {/* ── Main layout: left = console, right = log ── */}
-      <div className="flex-1 flex overflow-hidden max-w-5xl w-full mx-auto">
+      <div className="flex-1 flex overflow-hidden max-w-5xl w-full mx-auto min-h-0">
 
         {/* ── Console (left 2/3) ── */}
-        <div className="flex-1 flex flex-col overflow-hidden p-3 gap-3">
+        <div className="flex-1 flex flex-col overflow-hidden p-3 gap-3 min-h-0">
 
           {/* Search bar */}
           {showSearch && (
@@ -1012,7 +1012,7 @@ export default function SessionTeachPage() {
           )}
 
           {/* Student grid — individual or group mode */}
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto min-h-0">
             {!mode ? (
               <div className="h-full flex items-center justify-center text-white/40 text-sm">
                 {t('selectSessionModeToStart')}
