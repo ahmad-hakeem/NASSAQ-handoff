@@ -2078,17 +2078,20 @@ export default function SessionTeachPage() {
                   <span className="text-[10px] font-bold text-green-600 dark:text-green-400 flex items-center gap-1">
                     <ThumbsUp className="h-3 w-3" /> {t('positiveBehaviour')}
                   </span>
-                  {[...(sessionInfo?.positive_behaviours || []), ...customPositiveBehaviours].map((b, i) => (
+                  {(() => {
+                    const baseList = Array.isArray(sessionInfo?.positive_behaviours) ? sessionInfo.positive_behaviours : [];
+                    return [...baseList, ...customPositiveBehaviours].map((b, i) => (
                     <div key={i} className="text-[10px] text-slate-600 dark:text-slate-400 flex items-center gap-1">
                       <CheckCircle2 className="h-2.5 w-2.5 text-green-500 flex-none" />
-                      <span className="flex-1">{b}</span>
-                      {i >= (sessionInfo?.positive_behaviours?.length || 0) && (
-                        <button onClick={() => setCustomPositiveBehaviours(prev => prev.filter((_, j) => j !== i - (sessionInfo?.positive_behaviours?.length || 0)))} className="text-red-400 hover:text-red-500">
+                      <span className="flex-1">{typeof b === 'string' ? b : (b?.name_ar || b?.name || '')}</span>
+                      {i >= baseList.length && (
+                        <button onClick={() => setCustomPositiveBehaviours(prev => prev.filter((_, j) => j !== i - baseList.length))} className="text-red-400 hover:text-red-500">
                           <XCircle className="h-2.5 w-2.5" />
                         </button>
                       )}
                     </div>
-                  ))}
+                  ));
+                  })()}
                   <div className="flex items-center gap-1 mt-1">
                     <input
                       className="flex-1 text-[10px] bg-white dark:bg-slate-700 rounded border px-1.5 py-0.5 outline-none focus:border-green-500"
@@ -2107,17 +2110,20 @@ export default function SessionTeachPage() {
                   <span className="text-[10px] font-bold text-red-600 dark:text-red-400 flex items-center gap-1">
                     <ThumbsDown className="h-3 w-3" /> {t('negativeBehaviour')}
                   </span>
-                  {[...(sessionInfo?.negative_behaviours || []), ...customNegativeBehaviours].map((b, i) => (
+                  {(() => {
+                    const baseList = Array.isArray(sessionInfo?.negative_behaviours) ? sessionInfo.negative_behaviours : [];
+                    return [...baseList, ...customNegativeBehaviours].map((b, i) => (
                     <div key={i} className="text-[10px] text-slate-600 dark:text-slate-400 flex items-center gap-1">
                       <XCircle className="h-2.5 w-2.5 text-red-500 flex-none" />
-                      <span className="flex-1">{b}</span>
-                      {i >= (sessionInfo?.negative_behaviours?.length || 0) && (
-                        <button onClick={() => setCustomNegativeBehaviours(prev => prev.filter((_, j) => j !== i - (sessionInfo?.negative_behaviours?.length || 0)))} className="text-red-400 hover:text-red-500">
+                      <span className="flex-1">{typeof b === 'string' ? b : (b?.name_ar || b?.name || '')}</span>
+                      {i >= baseList.length && (
+                        <button onClick={() => setCustomNegativeBehaviours(prev => prev.filter((_, j) => j !== i - baseList.length))} className="text-red-400 hover:text-red-500">
                           <Trash2 className="h-2.5 w-2.5" />
                         </button>
                       )}
                     </div>
-                  ))}
+                  ));
+                  })()}
                   <div className="flex items-center gap-1 mt-1">
                     <input
                       className="flex-1 text-[10px] bg-white dark:bg-slate-700 rounded border px-1.5 py-0.5 outline-none focus:border-red-500"
