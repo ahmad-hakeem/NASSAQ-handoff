@@ -9,6 +9,8 @@ from typing import Optional, List
 from datetime import datetime, timezone
 import uuid
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_inc, _gd_addtoset
+from sqlalchemy.exc import IntegrityError
+import re as _re
 
 import qrcode
 import io
@@ -77,6 +79,38 @@ def generate_student_id(school_code: str, city_code: str, year: str, sequence: i
     Format: NSS-SCH-CIT-YY-XXXX
     """
     return f"NSS-{school_code[:3].upper()}-{city_code[:3].upper()}-{year[-2:]}-{sequence:04d}"
+
+
+async def _next_student_sequence(session, school_id: str, prefix: str) -> int:
+    """
+    Compute next student_number sequence based on the MAX existing sequence
+    for the school under the given prefix (NSS-SCH-CIT-YY-). This avoids
+    collisions when prior students were deleted (count-based approach was
+    buggy and tripped the uq_students_number_school unique constraint).
+
+    NOTE: We don't use gd_find's $regex filter — its sanitizer re-escapes
+    the pattern, breaking anchors. We fetch all students for the school and
+    filter the suffix in Python (school student counts are bounded).
+    """
+    rows = await gd_find(
+        session,
+        "students",
+        {"school_id": school_id},
+        limit=100000,
+    )
+    max_seq = 0
+    suffix_re = _re.compile(rf"^{_re.escape(prefix)}(\d+)$")
+    for r in rows:
+        sn = (r or {}).get("student_number") or ""
+        m = suffix_re.match(sn)
+        if m:
+            try:
+                v = int(m.group(1))
+                if v > max_seq:
+                    max_seq = v
+            except (TypeError, ValueError):
+                continue
+    return max_seq + 1
 
 
 def generate_qr_code(student_data: dict) -> str:
@@ -275,11 +309,15 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
         is_new_parent = parent_result["is_new"]
         siblings = parent_result["linked_students"]
         
-        # Generate student ID
+        # Generate student ID — use MAX existing sequence (not count) so prior
+        # deletions don't cause uq_students_number_school collisions.
         year = datetime.now().strftime("%Y")
-        student_count = await gd_count(db.session, "students", {"school_id": school_id}) + 1
-        student_id_code = generate_student_id(school_code, city_code, year, student_count)
-        
+        sc3 = (school_code or "SCH")[:3].upper()
+        cc3 = (city_code or "CIT")[:3].upper()
+        prefix = f"NSS-{sc3}-{cc3}-{year[-2:]}-"
+        next_seq = await _next_student_sequence(db.session, school_id, prefix)
+        student_id_code = generate_student_id(school_code, city_code, year, next_seq)
+
         # Create student
         student_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
@@ -303,7 +341,7 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
             "created_by": current_user.get("id")
         }
         await gd_insert(db.session, "users", user_doc)
-        
+
         student_doc = {
             "id": student_id,
             "user_id": user_id,
@@ -325,12 +363,32 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
             "created_at": now,
             "created_by": current_user.get("id"),
         }
-        
+
         # Generate QR Code
         qr_code = generate_qr_code(student_doc)
         student_doc["qr_code"] = qr_code
-        
-        await gd_insert(db.session, "students", student_doc)
+
+        # Retry on race-time student_number collision. Use a SAVEPOINT
+        # (begin_nested) so rolling back a failed student insert does NOT
+        # wipe the user/parent rows already written in this request's
+        # transaction. Only student_number conflicts are retried.
+        _attempts = 0
+        while True:
+            try:
+                async with db.session.begin_nested():
+                    await gd_insert(db.session, "students", student_doc)
+                break
+            except IntegrityError as ie:
+                _attempts += 1
+                msg = str(getattr(ie, "orig", ie)).lower()
+                if _attempts < 5 and ("student_number" in msg or "uq_students_number_school" in msg):
+                    next_seq = await _next_student_sequence(db.session, school_id, prefix) + _attempts
+                    student_id_code = generate_student_id(school_code, city_code, year, next_seq)
+                    student_doc["student_number"] = student_id_code
+                    student_doc["qr_code"] = generate_qr_code(student_doc)
+                    qr_code = student_doc["qr_code"]
+                    continue
+                raise
         
         # Link student to parent
         await _gd_addtoset(db.session, "parents", {"id": parent.get("id")}, {"student_ids": student_id})
@@ -554,12 +612,17 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
                     else:
                         results["linked_to_existing_parents"] += 1
                 
-                # Generate student ID
+                # Generate student ID — use MAX existing sequence (not count)
+                # to avoid uq_students_number_school collisions when prior
+                # students were deleted.
                 school = await gd_find_one(db.session, "schools", {"id": school_id})
                 school_code = school.get("code", "SCH") if school else "SCH"
                 city_code = school.get("city_code", "CIT") if school else "CIT"
                 year = datetime.now().strftime("%Y")
-                student_count = await gd_count(db.session, "students", {"school_id": school_id}) + results["new_students"] + 1
+                _bsc3 = (school_code or "SCH")[:3].upper()
+                _bcc3 = (city_code or "CIT")[:3].upper()
+                _bprefix = f"NSS-{_bsc3}-{_bcc3}-{year[-2:]}-"
+                student_count = await _next_student_sequence(db.session, school_id, _bprefix)
                 student_id_code = generate_student_id(school_code, city_code, year, student_count)
                 
                 # Create student
@@ -581,35 +644,56 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
                     "created_at": now,
                     "created_by": current_user.get("id")
                 }
-                await gd_insert(db.session, "users", user_doc)
-                
-                student_doc = {
-                    "id": student_id,
-                    "user_id": user_id,
-                    "student_number": student_id_code,
-                    "full_name": student_data.get("full_name"),
-                    "email": student_email,
-                    "national_id": student_data.get("national_id"),
-                    "gender": student_data.get("gender", "male"),
-                    "date_of_birth": student_data.get("date_of_birth"),
-                    "grade": student_data.get("grade_id") or student_data.get("grade") or student_data.get("education_level"),
-                    "class_id": student_data.get("class_id"),
-                    "parent_id": parent_result["parent"].get("id"),
-                    "parent_user_id": parent_result["parent"].get("user_id"),
-                    "parent_name": parent_result["parent"].get("full_name"),
-                    "parent_phone": parent_result["parent"].get("phone"),
-                    "parent_email": parent_result["parent"].get("email"),
-                    "school_id": school_id,
-                    "is_active": True,
-                    "created_at": now,
-                    "created_by": current_user.get("id")
-                }
-                
-                # Generate QR
-                qr_code = generate_qr_code(student_doc)
-                student_doc["qr_code"] = qr_code
-                
-                await gd_insert(db.session, "students", student_doc)
+                # Wrap user insert in a savepoint so a later student-insert
+                # failure within this row can roll back BOTH the user and the
+                # student without poisoning prior successful rows in the batch.
+                async with db.session.begin_nested() as _row_sp:
+                    await gd_insert(db.session, "users", user_doc)
+
+                    student_doc = {
+                        "id": student_id,
+                        "user_id": user_id,
+                        "student_number": student_id_code,
+                        "full_name": student_data.get("full_name"),
+                        "email": student_email,
+                        "national_id": student_data.get("national_id"),
+                        "gender": student_data.get("gender", "male"),
+                        "date_of_birth": student_data.get("date_of_birth"),
+                        "grade": student_data.get("grade_id") or student_data.get("grade") or student_data.get("education_level"),
+                        "class_id": student_data.get("class_id"),
+                        "parent_id": parent_result["parent"].get("id"),
+                        "parent_user_id": parent_result["parent"].get("user_id"),
+                        "parent_name": parent_result["parent"].get("full_name"),
+                        "parent_phone": parent_result["parent"].get("phone"),
+                        "parent_email": parent_result["parent"].get("email"),
+                        "school_id": school_id,
+                        "is_active": True,
+                        "created_at": now,
+                        "created_by": current_user.get("id")
+                    }
+
+                    # Generate QR
+                    qr_code = generate_qr_code(student_doc)
+                    student_doc["qr_code"] = qr_code
+
+                    # Bounded retry on student_number collision (concurrent inserter)
+                    _b_attempts = 0
+                    while True:
+                        try:
+                            async with db.session.begin_nested():
+                                await gd_insert(db.session, "students", student_doc)
+                            break
+                        except IntegrityError as ie:
+                            _b_attempts += 1
+                            msg = str(getattr(ie, "orig", ie)).lower()
+                            if _b_attempts < 5 and ("student_number" in msg or "uq_students_number_school" in msg):
+                                next_seq = await _next_student_sequence(db.session, school_id, _bprefix) + _b_attempts
+                                student_id_code = generate_student_id(school_code, city_code, year, next_seq)
+                                student_doc["student_number"] = student_id_code
+                                student_doc["qr_code"] = generate_qr_code(student_doc)
+                                qr_code = student_doc["qr_code"]
+                                continue
+                            raise
                 
                 # Link to parent
                 await _gd_addtoset(db.session, "parents", {"id": parent_result["parent"].get("id")}, {"student_ids": student_id})
