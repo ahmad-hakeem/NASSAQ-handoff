@@ -786,6 +786,7 @@ export default function TeacherAchievementsPage() {
             sectionsData={sectionsData}
             isRTL={isRTL}
             openManualEvDialog={openManualEvDialog}
+            openViewDialog={openViewDialog}
             expandedV2={expandedV2}
             toggleV2={toggleV2}
             expandedSubsec={expandedSubsec}
