@@ -787,7 +787,7 @@ export default function SessionTeachPage() {
     <div className="h-screen bg-slate-900 flex flex-col overflow-hidden" dir={isRTL ? 'rtl' : 'ltr'}>
       {/* ── Header ── */}
       <header className="bg-brand-navy border-b border-white/10 px-4 py-3 flex-none shrink-0">
-        <div className="max-w-5xl mx-auto flex items-center justify-between gap-3">
+        <div className="w-full flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <div className="hidden sm:flex items-center gap-1.5 bg-white/10 rounded-lg px-3 py-1.5">
               <Clock className="h-4 w-4 text-brand-turquoise" />
@@ -911,7 +911,7 @@ export default function SessionTeachPage() {
       )}
 
       {/* ── Main layout: left = console, right = log ── */}
-      <div className="flex-1 min-h-0 flex overflow-hidden max-w-5xl w-full mx-auto">
+      <div className="flex-1 min-h-0 flex overflow-hidden w-full">
 
         {/* ── Console (left 2/3) ── */}
         <div className="flex-1 flex flex-col overflow-hidden p-3 gap-3 min-h-0">
@@ -1409,7 +1409,7 @@ export default function SessionTeachPage() {
         </div>
 
         {/* ── Right Panel (Activity Log + Notes, desktop only) ── */}
-        <div className="hidden lg:flex flex-col w-72 border-r border-white/10 bg-slate-800/50 overflow-hidden">
+        <div className="hidden lg:flex flex-col w-72 shrink-0 border-s border-white/10 bg-slate-800/50 overflow-hidden">
           <div className="flex border-b border-white/10">
             {[
               { id: 'log', labelKey: 'activityLog', icon: Activity },
