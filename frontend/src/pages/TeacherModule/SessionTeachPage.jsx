@@ -786,7 +786,7 @@ export default function SessionTeachPage() {
     <SectionErrorBoundary name="SessionTeachView" isRTL={isRTL}>
     <div className="h-screen bg-slate-900 flex flex-col overflow-hidden" dir={isRTL ? 'rtl' : 'ltr'}>
       {/* ── Header ── */}
-      <header className="bg-brand-navy border-b border-white/10 px-4 py-3 flex-none">
+      <header className="bg-brand-navy border-b border-white/10 px-4 py-3 flex-none shrink-0">
         <div className="max-w-5xl mx-auto flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <div className="hidden sm:flex items-center gap-1.5 bg-white/10 rounded-lg px-3 py-1.5">
@@ -911,7 +911,7 @@ export default function SessionTeachPage() {
       )}
 
       {/* ── Main layout: left = console, right = log ── */}
-      <div className="flex-1 flex overflow-hidden max-w-5xl w-full mx-auto min-h-0">
+      <div className="flex-1 min-h-0 flex overflow-hidden max-w-5xl w-full mx-auto">
 
         {/* ── Console (left 2/3) ── */}
         <div className="flex-1 flex flex-col overflow-hidden p-3 gap-3 min-h-0">
@@ -1012,7 +1012,7 @@ export default function SessionTeachPage() {
           )}
 
           {/* Student grid — individual or group mode */}
-          <div className={`overflow-y-auto min-h-0 ${selectedStudent ? 'flex-none max-h-[22vh]' : 'flex-1'}`}>
+          <div className={`overflow-y-auto min-h-0 ${selectedStudent ? 'flex-none shrink-0 max-h-[22vh]' : 'flex-1'}`}>
             {!mode ? (
               <div className="h-full flex items-center justify-center text-white/40 text-sm">
                 {t('selectSessionModeToStart')}
@@ -1191,7 +1191,7 @@ export default function SessionTeachPage() {
               </div>
 
               {/* Tab content */}
-              <div className="p-3 flex-1 min-h-0 overflow-y-auto scrollbar-thin">
+              <div className="p-3 pb-4 flex-1 min-h-0 overflow-y-auto scrollbar-thin">
                 {actionTab === 'question' && (
                   <div className="grid grid-cols-3 gap-2">
                     <ActionButton
@@ -1638,7 +1638,7 @@ export default function SessionTeachPage() {
       </div>
 
       {/* Follow-up record bottom bar */}
-      <div className="flex-none bg-slate-800 border-t border-white/10 px-4 py-2 flex items-center justify-between">
+      <div className="flex-none shrink-0 bg-slate-800 border-t border-white/10 px-4 py-2 flex items-center justify-between relative z-10">
         <div className="flex items-center gap-3">
           <button
             onClick={() => setShowFollowupRecord(true)}
