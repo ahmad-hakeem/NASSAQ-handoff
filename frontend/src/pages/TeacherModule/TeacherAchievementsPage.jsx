@@ -27,7 +27,7 @@ import {
   User as UserIcon, Mail, Phone, BookMarked, Heart, Compass,
   ScrollText, Shield, Building2, ListChecks, Video, ImageIcon,
   ClipboardList, FileCheck, PenSquare, Megaphone, HandHeart,
-  PlayCircle
+  PlayCircle, Wand2
 } from 'lucide-react';
 import { useTranslation } from '../../contexts/ThemeContext';
 
@@ -273,17 +273,27 @@ export default function TeacherAchievementsPage() {
     finally { setIntroBusy(false); }
   };
 
-  const handleGenerateIntro = async () => {
+  const handleGenerateIntro = async (mode = 'generate') => {
+    if (mode === 'improve' && !(introDraft || '').trim()) {
+      toast.error('اكتب المقدمة أولاً ليقوم حكيم بتحسينها');
+      return;
+    }
     setIntroAIBusy(true);
     try {
-      const res = await api.post('/teacher/portfolio/generate-intro', { mode: 'generate' });
+      const res = await api.post('/teacher/portfolio/generate-intro', {
+        mode,
+        text: mode === 'improve' ? introDraft : '',
+      });
       if (res?.data?.text) {
         setIntroDraft(res.data.text);
-        toast.success('تم توليد المقدمة بحكيم');
+        toast.success(mode === 'improve' ? 'تم تحسين المقدمة بحكيم' : 'تم توليد المقدمة بحكيم');
       }
     } catch (e) {
       const code = e?.response?.data?.detail;
-      toast.error(code === 'AI_DISABLED' ? 'الذكاء الاصطناعي غير مفعّل' : 'فشل التوليد');
+      const msg = code === 'AI_DISABLED' ? 'الذكاء الاصطناعي غير مفعّل'
+        : code === 'TEXT_TOO_SHORT' ? 'النص قصير جداً للتحسين'
+        : (mode === 'improve' ? 'فشل التحسين' : 'فشل التوليد');
+      toast.error(msg);
     } finally { setIntroAIBusy(false); }
   };
 
@@ -297,21 +307,36 @@ export default function TeacherAchievementsPage() {
     finally { setVmvBusy(false); }
   };
 
-  const handleGenerateVMV = async () => {
+  const handleGenerateVMV = async (mode = 'generate') => {
+    if (mode === 'improve') {
+      const hasAny = (vmvDraft.vision || '').trim() || (vmvDraft.mission || '').trim() || (vmvDraft.values || '').trim();
+      if (!hasAny) {
+        toast.error('اكتب الرؤية أو الرسالة أو القيم أولاً ليقوم حكيم بتحسينها');
+        return;
+      }
+    }
     setVmvAIBusy(true);
     try {
-      const res = await api.post('/teacher/portfolio/generate-vmv', { mode: 'generate' });
+      const res = await api.post('/teacher/portfolio/generate-vmv', {
+        mode,
+        vision: mode === 'improve' ? vmvDraft.vision : '',
+        mission: mode === 'improve' ? vmvDraft.mission : '',
+        values: mode === 'improve' ? vmvDraft.values : '',
+      });
       if (res?.data) {
         setVmvDraft({
           vision: res.data.vision || '',
           mission: res.data.mission || '',
           values: res.data.values || '',
         });
-        toast.success('تم توليد المحتوى بحكيم');
+        toast.success(mode === 'improve' ? 'تم تحسين المحتوى بحكيم' : 'تم توليد المحتوى بحكيم');
       }
     } catch (e) {
       const code = e?.response?.data?.detail;
-      toast.error(code === 'AI_DISABLED' ? 'الذكاء الاصطناعي غير مفعّل' : 'فشل التوليد');
+      const msg = code === 'AI_DISABLED' ? 'الذكاء الاصطناعي غير مفعّل'
+        : code === 'TEXT_TOO_SHORT' ? 'النص قصير جداً للتحسين'
+        : (mode === 'improve' ? 'فشل التحسين' : 'فشل التوليد');
+      toast.error(msg);
     } finally { setVmvAIBusy(false); }
   };
 
@@ -1012,9 +1037,13 @@ function PortfolioV2Sections(props) {
           className="resize-none mb-3"
         />
         <div className="flex flex-wrap gap-2 justify-end">
-          <Button size="sm" variant="outline" className="gap-1.5 border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300" onClick={handleGenerateIntro} disabled={introAIBusy}>
+          <Button size="sm" variant="outline" className="gap-1.5 border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300" onClick={() => handleGenerateIntro('generate')} disabled={introAIBusy}>
             {introAIBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
             توليد بحكيم
+          </Button>
+          <Button size="sm" variant="outline" className="gap-1.5 border-fuchsia-200 dark:border-fuchsia-800 text-fuchsia-700 dark:text-fuchsia-300" onClick={() => handleGenerateIntro('improve')} disabled={introAIBusy || !(introDraft || '').trim()}>
+            {introAIBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+            تحسين بحكيم
           </Button>
           <Button size="sm" className="gap-1.5" onClick={handleSaveIntro} disabled={introBusy}>
             {introBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
@@ -1043,9 +1072,13 @@ function PortfolioV2Sections(props) {
             <Textarea value={vmvDraft.values} onChange={(e) => setVmvDraft(p => ({ ...p, values: e.target.value }))} rows={2} dir="rtl" className="resize-none" />
           </div>
           <div className="flex flex-wrap gap-2 justify-end">
-            <Button size="sm" variant="outline" className="gap-1.5 border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300" onClick={handleGenerateVMV} disabled={vmvAIBusy}>
+            <Button size="sm" variant="outline" className="gap-1.5 border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300" onClick={() => handleGenerateVMV('generate')} disabled={vmvAIBusy}>
               {vmvAIBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
               توليد بحكيم
+            </Button>
+            <Button size="sm" variant="outline" className="gap-1.5 border-fuchsia-200 dark:border-fuchsia-800 text-fuchsia-700 dark:text-fuchsia-300" onClick={() => handleGenerateVMV('improve')} disabled={vmvAIBusy || !((vmvDraft.vision || '').trim() || (vmvDraft.mission || '').trim() || (vmvDraft.values || '').trim())}>
+              {vmvAIBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+              تحسين بحكيم
             </Button>
             <Button size="sm" className="gap-1.5" onClick={handleSaveVMV} disabled={vmvBusy}>
               {vmvBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
