@@ -84,7 +84,7 @@ export default function TeacherSettingsPage() {
   const [cropModalOpen, setCropModalOpen] = useState(false);
 
   const teacherId = user?.teacher_id || user?.id;
-  const schoolName = user?.school_name || user?.tenant_id || '';
+  const schoolName = user?.school_name || user?.tenant_name || '';
 
   const fetchProfile = useCallback(async () => {
     setLoading(true);

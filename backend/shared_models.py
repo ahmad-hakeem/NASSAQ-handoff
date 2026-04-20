@@ -119,6 +119,7 @@ class UserResponse(BaseModel):
     title: Optional[str] = None
     role: UserRole
     tenant_id: Optional[str] = None
+    tenant_name: Optional[str] = None
     phone: Optional[str] = None
     avatar_url: Optional[str] = None
     is_active: bool

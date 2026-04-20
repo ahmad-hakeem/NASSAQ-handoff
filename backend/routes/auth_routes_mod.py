@@ -435,6 +435,14 @@ async def logout(
 @router.get("/auth/me", response_model=UserResponse)
 async def get_me(current_user: dict = Depends(get_current_user)):
     from engines.name_validation import is_generic_name
+    # Resolve the school's display name so the UI can show it without
+    # needing a second round-trip (and without falling back to the UUID).
+    tenant_name = None
+    tenant_id = current_user.get("tenant_id")
+    if tenant_id:
+        school = await gd_find_one(db.session, "schools", {"id": tenant_id})
+        if school:
+            tenant_name = school.get("name_ar") or school.get("name") or school.get("name_en")
     return UserResponse(
         id=current_user["id"],
         email=current_user["email"],
@@ -442,7 +450,8 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         full_name_en=current_user.get("full_name_en"),
         title=current_user.get("title"),
         role=UserRole(current_user["role"]),
-        tenant_id=current_user.get("tenant_id"),
+        tenant_id=tenant_id,
+        tenant_name=tenant_name,
         phone=current_user.get("phone"),
         avatar_url=current_user.get("avatar_url"),
         is_active=current_user.get("is_active") if current_user.get("is_active") is not None else True,
