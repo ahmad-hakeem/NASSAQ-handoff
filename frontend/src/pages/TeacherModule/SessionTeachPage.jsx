@@ -806,52 +806,77 @@ export default function SessionTeachPage() {
 
   return (
     <SectionErrorBoundary name="SessionTeachView" isRTL={isRTL}>
-    <div className="h-screen bg-slate-900 flex flex-col overflow-hidden" dir={isRTL ? 'rtl' : 'ltr'}>
-      {/* ── Header ── */}
-      <header className="bg-brand-navy border-b border-white/10 px-4 py-3 flex-none shrink-0">
+    <div
+      className="h-screen flex flex-col overflow-hidden text-white"
+      dir={isRTL ? 'rtl' : 'ltr'}
+      style={{
+        backgroundColor: '#0b1228',
+        backgroundImage: `
+          radial-gradient(ellipse 80% 60% at ${isRTL ? '85%' : '15%'} -10%, rgba(217, 165, 87, 0.10), transparent 60%),
+          radial-gradient(ellipse 70% 50% at ${isRTL ? '15%' : '85%'} 110%, rgba(45, 212, 191, 0.08), transparent 60%),
+          linear-gradient(180deg, #0b1228 0%, #0a1024 100%)
+        `,
+      }}
+    >
+      {/* ── Header — Editorial Console Bar ── */}
+      <header className="border-b border-white/[0.07] bg-[#0a1024]/80 backdrop-blur-md px-4 py-2.5 flex-none shrink-0 relative">
+        <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-amber-500/30 to-transparent" aria-hidden="true" />
         <div className="w-full flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="hidden sm:flex items-center gap-1.5 bg-white/10 rounded-lg px-3 py-1.5">
-              <Clock className="h-4 w-4 text-brand-turquoise" />
-              <span className="font-mono text-white text-sm font-bold">{timer}</span>
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h1 className="font-cairo font-bold text-white text-sm sm:text-base truncate">
-                  {sessionInfo?.subject_name || sessionInfo?.subjectName}
-                </h1>
-                {mode && (
-                  <span className="hidden sm:inline-flex items-center gap-1 bg-green-500/20 text-green-400 text-[10px] px-2 py-0.5 rounded-full border border-green-500/30 animate-pulse">
-                    <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
-                    {t('teachingNow')}
-                  </span>
-                )}
+            {/* Gold accent rail + class info */}
+            <div className="flex items-stretch gap-3 min-w-0">
+              <div className="w-[3px] rounded-full bg-gradient-to-b from-amber-400 via-amber-500 to-amber-600 shadow-[0_0_8px_rgba(217,165,87,0.5)]" aria-hidden="true" />
+              <div className="min-w-0 py-0.5">
+                <div className="flex items-center gap-2">
+                  <h1 className="font-cairo font-extrabold text-white text-base tracking-tight truncate leading-none">
+                    {sessionInfo?.subject_name || sessionInfo?.subjectName}
+                  </h1>
+                  {mode && (
+                    <span className="hidden sm:inline-flex items-center gap-1.5 text-emerald-300 text-[10px] uppercase tracking-[0.18em] font-semibold">
+                      <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
+                        <span className="absolute inset-0 rounded-full bg-emerald-400 animate-ping opacity-60" />
+                        <span className="relative rounded-full h-1.5 w-1.5 bg-emerald-400" />
+                      </span>
+                      {t('teachingNow')}
+                    </span>
+                  )}
+                </div>
+                <p className="text-white/45 text-[11px] tracking-wide truncate mt-0.5">{sessionInfo?.class_name || sessionInfo?.className}</p>
               </div>
-              <p className="text-white/60 text-xs truncate">{sessionInfo?.class_name || sessionInfo?.className}</p>
+            </div>
+            {/* Gold time chip */}
+            <div className="hidden sm:flex items-center gap-1.5 ms-1 ps-3 border-s border-white/10">
+              <Clock className="h-3.5 w-3.5 text-amber-400/80" aria-hidden="true" />
+              <span className="font-mono text-white text-sm font-bold tabular-nums tracking-wider">{timer}</span>
             </div>
           </div>
 
-          {/* Live stats bar */}
-          <div className="hidden md:flex items-center gap-4 text-xs text-white/70">
-            <span className="flex items-center gap-1">
-              <Users className="h-3.5 w-3.5" /> {presentStudents.length} {t('present')}
+          {/* Live stats bar — editorial micro-labels */}
+          <div className="hidden md:flex items-center gap-5 text-white/70">
+            <span className="flex flex-col items-center leading-none">
+              <span className="text-white text-sm font-bold tabular-nums">{presentStudents.length}</span>
+              <span className="text-[9px] uppercase tracking-[0.16em] text-white/55 mt-0.5">{t('present')}</span>
             </span>
-            <span className="flex items-center gap-1">
-              <Activity className="h-3.5 w-3.5" /> {stats.questions} {t('question')}
+            <span className="w-px h-6 bg-white/10" aria-hidden="true" />
+            <span className="flex flex-col items-center leading-none">
+              <span className="text-white text-sm font-bold tabular-nums">{stats.questions}</span>
+              <span className="text-[9px] uppercase tracking-[0.16em] text-white/55 mt-0.5">{t('question')}</span>
             </span>
-            <span className={`flex items-center gap-1 ${accuracy >= 60 ? 'text-green-400' : 'text-red-400'}`}>
-              <BarChart2 className="h-3.5 w-3.5" /> {accuracy}% {t('correct')}
+            <span className="w-px h-6 bg-white/10" aria-hidden="true" />
+            <span className="flex flex-col items-center leading-none">
+              <span className={`text-sm font-bold tabular-nums ${accuracy >= 60 ? 'text-emerald-300' : 'text-rose-300'}`}>{accuracy}%</span>
+              <span className="text-[9px] uppercase tracking-[0.16em] text-white/55 mt-0.5">{t('correct')}</span>
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <button
               onClick={() => setShowSearch(v => !v)}
               aria-label={t('search')}
-              className="p-1.5 rounded-lg bg-white/10 text-white/60 hover:bg-white/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-turquoise"
+              className="p-2 rounded-md text-white/55 hover:text-white hover:bg-white/[0.06] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
               title={t('search')}
             >
-              <Search className="h-3.5 w-3.5" />
+              <Search className="h-4 w-4" />
             </button>
 
             {/* Toggle right panel (desktop only) */}
@@ -859,19 +884,22 @@ export default function SessionTeachPage() {
               onClick={() => setPanelOpen(v => !v)}
               aria-label={panelOpen ? t('hideActivityPanel') : t('showActivityPanel')}
               aria-pressed={panelOpen}
-              className="hidden lg:inline-flex p-1.5 rounded-lg bg-white/10 text-white/60 hover:bg-white/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-turquoise"
+              className="hidden lg:inline-flex p-2 rounded-md text-white/55 hover:text-white hover:bg-white/[0.06] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
               title={panelOpen ? t('hideActivityPanel') : t('showActivityPanel')}
             >
               {panelOpen
-                ? <PanelRightClose className="h-3.5 w-3.5" />
-                : <PanelRightOpen className="h-3.5 w-3.5" />}
+                ? <PanelRightClose className="h-4 w-4" />
+                : <PanelRightOpen className="h-4 w-4" />}
             </button>
 
-            <div className="hidden sm:flex items-center bg-white/10 rounded-lg p-0.5">
+            <span className="hidden sm:block w-px h-5 bg-white/10 mx-1" aria-hidden="true" />
+
+            <div className="hidden sm:flex items-center bg-white/[0.04] border border-white/10 rounded-md p-0.5">
               <button
                 onClick={() => setEvalMode('individual')}
-                className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition-colors ${
-                  evalMode === 'individual' ? 'bg-brand-turquoise text-white' : 'text-white/50 hover:text-white/80'
+                aria-pressed={evalMode === 'individual'}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-[10px] uppercase tracking-[0.14em] font-semibold transition-colors ${
+                  evalMode === 'individual' ? 'bg-white/10 text-amber-300' : 'text-white/45 hover:text-white/75'
                 }`}
               >
                 <User className="h-3 w-3" />
@@ -879,8 +907,9 @@ export default function SessionTeachPage() {
               </button>
               <button
                 onClick={() => setEvalMode('group')}
-                className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition-colors ${
-                  evalMode === 'group' ? 'bg-brand-turquoise text-white' : 'text-white/50 hover:text-white/80'
+                aria-pressed={evalMode === 'group'}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-[10px] uppercase tracking-[0.14em] font-semibold transition-colors ${
+                  evalMode === 'group' ? 'bg-white/10 text-amber-300' : 'text-white/45 hover:text-white/75'
                 }`}
               >
                 <UsersRound className="h-3 w-3" />
@@ -892,39 +921,46 @@ export default function SessionTeachPage() {
               <button
                 onClick={() => setShowGroupModal(true)}
                 aria-label={t('manageGroups')}
-                className="p-1.5 rounded-lg bg-purple-600/30 text-purple-300 hover:bg-purple-600/50 transition-colors border border-purple-500/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
+                className="p-2 rounded-md text-purple-300 hover:bg-purple-500/15 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/70"
                 title={t('manageGroups')}
               >
-                <Settings className="h-3.5 w-3.5" />
+                <Settings className="h-4 w-4" />
               </button>
             )}
 
-            <div className="flex gap-1">
-              {MODES.map(m => (
-                <button
-                  key={m.id}
-                  onClick={() => handleSetMode(m)}
-                  className={`hidden sm:flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
-                    mode?.id === m.id ? `${m.color} text-white` : 'bg-white/10 text-white/60 hover:bg-white/20'
-                  }`}
-                >
-                  <m.icon className="h-3 w-3" />
-                  {m.labelKey ? t(m.labelKey) : m.label}
-                </button>
-              ))}
+            <span className="hidden sm:block w-px h-5 bg-white/10 mx-1" aria-hidden="true" />
+
+            <div className="hidden sm:flex items-center gap-1">
+              {MODES.map(m => {
+                const active = mode?.id === m.id;
+                return (
+                  <button
+                    key={m.id}
+                    onClick={() => handleSetMode(m)}
+                    aria-pressed={active}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-bold tracking-wide transition-all ${
+                      active
+                        ? `${m.color} text-white shadow-[0_0_0_1px_rgba(255,255,255,0.1)_inset]`
+                        : 'text-white/55 hover:text-white hover:bg-white/[0.06]'
+                    }`}
+                  >
+                    <m.icon className="h-3.5 w-3.5" />
+                    {m.labelKey ? t(m.labelKey) : m.label}
+                  </button>
+                );
+              })}
             </div>
             <button
               onClick={() => setShowSettingsModal(true)}
               aria-label={t('evaluationSettings')}
-              className="ms-1 p-1.5 rounded-lg bg-white/10 text-white/60 hover:bg-white/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-turquoise"
+              className="ms-1 p-2 rounded-md text-white/55 hover:text-white hover:bg-white/[0.06] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
               title={t('evaluationSettings')}
             >
-              <Settings className="h-3.5 w-3.5" />
+              <Settings className="h-4 w-4" />
             </button>
             <Button
               size="sm"
-              variant="destructive"
-              className="text-xs h-8"
+              className="text-[11px] h-8 px-3 font-bold tracking-wide ms-1 bg-gradient-to-b from-rose-500 to-rose-600 hover:from-rose-400 hover:to-rose-500 text-white border border-rose-400/30 shadow-[0_4px_12px_-2px_rgba(244,63,94,0.4)] focus-visible:ring-rose-300"
               onClick={() => setShowEndDialog(true)}
               disabled={reviewLoading}
             >
@@ -990,24 +1026,28 @@ export default function SessionTeachPage() {
             </div>
           )}
 
-          {/* Random student button */}
+          {/* Random student button — Editorial Studio CTA */}
           <button
             onClick={selectRandom}
             disabled={loading}
             aria-label={t('randomStudentPick')}
-            className={`flex-none w-full h-12 rounded-xl font-cairo font-bold text-white text-sm flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-colors disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-turquoise focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 ${
+            className={`group relative flex-none w-full h-14 rounded-xl font-cairo font-extrabold text-white text-sm flex items-center justify-center gap-3 active:scale-[0.99] transition-all disabled:opacity-60 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b1228] overflow-hidden border ${
               selectedStudent
-                ? 'bg-amber-600 hover:bg-amber-500'
-                : 'bg-brand-turquoise hover:bg-brand-turquoise/90'
+                ? 'bg-gradient-to-r from-amber-500 via-amber-400 to-orange-500 hover:from-amber-400 hover:via-amber-300 hover:to-orange-400 border-amber-300/40 shadow-[0_8px_24px_-6px_rgba(245,158,11,0.55),inset_0_1px_0_rgba(255,255,255,0.25)]'
+                : 'bg-gradient-to-r from-amber-500 via-amber-400 to-orange-500 hover:from-amber-400 hover:via-amber-300 hover:to-orange-400 border-amber-300/40 shadow-[0_8px_24px_-6px_rgba(245,158,11,0.55),inset_0_1px_0_rgba(255,255,255,0.25)]'
             }`}
           >
-            {loading ? (
-              <><Loader2 className="h-5 w-5 animate-spin" /> {t('hakimChoosing')}</>
-            ) : selectedStudent ? (
-              <><Shuffle className="h-5 w-5" /> {t('anotherRandomPick')}</>
-            ) : (
-              <><Shuffle className="h-5 w-5" /> {t('randomStudentPick')}</>
-            )}
+            <span className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.18),transparent_70%)] opacity-0 group-hover:opacity-100 transition-opacity" aria-hidden="true" />
+            <span className="relative flex items-center gap-3">
+              {loading ? (
+                <><Loader2 className="h-5 w-5 animate-spin" /> <span className="tracking-wide">{t('hakimChoosing')}</span></>
+              ) : (
+                <>
+                  <Shuffle className="h-5 w-5 drop-shadow-sm" />
+                  <span className="tracking-wide drop-shadow-sm">{selectedStudent ? t('anotherRandomPick') : t('randomStudentPick')}</span>
+                </>
+              )}
+            </span>
           </button>
 
           {/* Mode selector (mobile) */}
@@ -1023,32 +1063,33 @@ export default function SessionTeachPage() {
             ))}
           </div>
 
-          {mode && (
-            <div className={`flex items-center gap-2 px-3 py-2 rounded-lg mx-2 mb-2 border ${
-              mode.id === 'review' ? 'bg-purple-900/30 border-purple-500/30' :
-              mode.id === 'homework' ? 'bg-blue-900/30 border-blue-500/30' :
-              'bg-amber-900/30 border-amber-500/30'
-            }`}>
-              <mode.icon className={`h-4 w-4 ${
-                mode.id === 'review' ? 'text-purple-400' :
-                mode.id === 'homework' ? 'text-blue-400' : 'text-amber-400'
-              }`} />
-              <div className="flex-1">
-                <span className={`text-xs font-bold ${
-                  mode.id === 'review' ? 'text-purple-300' :
-                  mode.id === 'homework' ? 'text-blue-300' : 'text-amber-300'
-                }`}>
-                  {mode.id === 'review' ? t('reviewModeDesc') :
-                   mode.id === 'homework' ? t('homeworkModeDesc') :
-                   t('quizModeDesc')}
-                </span>
+          {mode && (() => {
+            const accent = mode.id === 'review' ? 'purple' : mode.id === 'homework' ? 'blue' : 'amber';
+            const ring = { purple: 'rgba(168,85,247,0.18)', blue: 'rgba(59,130,246,0.18)', amber: 'rgba(245,158,11,0.18)' }[accent];
+            const text = { purple: 'text-purple-200', blue: 'text-sky-200', amber: 'text-amber-200' }[accent];
+            const dot = { purple: 'bg-purple-400', blue: 'bg-sky-400', amber: 'bg-amber-400' }[accent];
+            const label = { purple: 'text-purple-300/80', blue: 'text-sky-300/80', amber: 'text-amber-300/80' }[accent];
+            const railFrom = { purple: 'from-purple-400', blue: 'from-sky-400', amber: 'from-amber-400' }[accent];
+            const railTo = { purple: 'to-fuchsia-500', blue: 'to-blue-500', amber: 'to-orange-500' }[accent];
+            return (
+              <div
+                className="relative flex items-center gap-3 ps-4 pe-3 py-2 rounded-md bg-white/[0.03] border border-white/5 overflow-hidden"
+                style={{ boxShadow: `inset 0 0 0 1px ${ring}` }}
+              >
+                <span className={`absolute inset-y-1 start-0 w-[3px] rounded-full bg-gradient-to-b ${railFrom} ${railTo}`} aria-hidden="true" />
+                <mode.icon className={`h-4 w-4 ${text}`} aria-hidden="true" />
+                <div className="flex-1 flex items-baseline gap-2 min-w-0">
+                  <span className={`text-[9px] uppercase tracking-[0.2em] font-bold ${label}`}>{t('mode')}</span>
+                  <span className={`text-xs font-semibold truncate ${text}`}>
+                    {mode.id === 'review' ? t('reviewModeDesc') :
+                     mode.id === 'homework' ? t('homeworkModeDesc') :
+                     t('quizModeDesc')}
+                  </span>
+                </div>
+                <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${dot}`} aria-hidden="true" />
               </div>
-              <span className={`w-2 h-2 rounded-full animate-pulse ${
-                mode.id === 'review' ? 'bg-purple-400' :
-                mode.id === 'homework' ? 'bg-blue-400' : 'bg-amber-400'
-              }`} />
-            </div>
-          )}
+            );
+          })()}
 
           {/* Student grid — individual or group mode */}
           <div className={`overflow-y-auto min-h-0 ${selectedStudent ? 'flex-none shrink-0 max-h-[22vh]' : 'flex-1'}`}>
@@ -1163,40 +1204,43 @@ export default function SessionTeachPage() {
 
           {/* ── Action Panel ── */}
           {selectedStudent && (
-            <div className="flex-1 min-h-0 flex flex-col bg-slate-800 rounded-xl border border-white/10 overflow-hidden">
-              {/* Selected student header — enhanced per spec */}
-              <div className="px-4 py-3 border-b border-white/10">
-                <div className="flex items-center gap-3">
-                  <Avatar className="h-12 w-12 ring-2 ring-brand-turquoise ring-offset-2 ring-offset-slate-800">
-                    <AvatarImage src={selectedStudent.avatar_url} />
-                    <AvatarFallback className={`${selectedStudent.gender === 'female' ? 'bg-gradient-to-br from-pink-500 to-rose-600' : 'bg-gradient-to-br from-sky-500 to-blue-600'} text-white text-sm font-bold`}>
-                      {selectedStudent.full_name?.charAt(0)}
-                    </AvatarFallback>
-                  </Avatar>
+            <div className="flex-1 min-h-0 flex flex-col bg-white/[0.02] rounded-xl border border-white/[0.08] overflow-hidden shadow-[0_8px_30px_-8px_rgba(0,0,0,0.5)] backdrop-blur-sm">
+              {/* Selected student header — Editorial profile */}
+              <div className="px-5 py-4 border-b border-white/[0.07] bg-gradient-to-b from-white/[0.03] to-transparent relative overflow-hidden">
+                <div className="absolute -top-8 -end-8 w-32 h-32 rounded-full bg-amber-500/[0.06] blur-2xl pointer-events-none" aria-hidden="true" />
+                <div className="flex items-center gap-3 relative">
+                  <div className="relative">
+                    <Avatar className="h-14 w-14 ring-2 ring-amber-400/60 ring-offset-2 ring-offset-[#0a1024] shadow-[0_0_20px_rgba(245,158,11,0.25)]">
+                      <AvatarImage src={selectedStudent.avatar_url} />
+                      <AvatarFallback className={`${selectedStudent.gender === 'female' ? 'bg-gradient-to-br from-pink-500 to-rose-600' : 'bg-gradient-to-br from-sky-500 to-blue-600'} text-white text-base font-bold`}>
+                        {selectedStudent.full_name?.charAt(0)}
+                      </AvatarFallback>
+                    </Avatar>
+                  </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-white font-cairo font-bold text-sm truncate">{selectedStudent.full_name}</p>
-                    <p className="text-white/40 text-[10px]">{selectedStudent.student_code || sessionInfo?.class_name || sessionInfo?.className}</p>
+                    <p className="text-[9px] uppercase tracking-[0.22em] text-amber-300/90 font-bold mb-1">{t('selectedStudentLabel')}</p>
+                    <p className="text-white font-cairo font-extrabold text-base truncate leading-tight">{selectedStudent.full_name}</p>
+                    <p className="text-white/55 text-[11px] tracking-wide mt-0.5">{selectedStudent.student_code || sessionInfo?.class_name || sessionInfo?.className}</p>
                   </div>
                   <button
                     onClick={() => { setSelectedStudent(null); setFlashId(null); }}
-                    className="text-white/40 hover:text-white/80 p-1"
+                    aria-label={t('close') || 'Close'}
+                    className="text-white/40 hover:text-white/90 p-1.5 rounded-md hover:bg-white/5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
                   >
                     <XCircle className="h-5 w-5" />
                   </button>
                 </div>
-                <div className="flex items-center gap-3 mt-2">
-                  <div className="flex-1 bg-white/5 rounded-lg px-2 py-1.5 text-center">
-                    <div className="text-blue-400 text-base font-bold leading-tight">{selectedStudent.participation_count || selectedStudent.interactionCount || 0}</div>
-                    <div className="text-white/40 text-[10px]">{t('participations')}</div>
-                  </div>
-                  <div className="flex-1 bg-white/5 rounded-lg px-2 py-1.5 text-center">
-                    <div className="text-green-400 text-base font-bold leading-tight">{selectedStudent.correct_answers || selectedStudent.correctAnswers || 0}</div>
-                    <div className="text-white/40 text-[10px]">{t('correct')}</div>
-                  </div>
-                  <div className="flex-1 bg-white/5 rounded-lg px-2 py-1.5 text-center">
-                    <div className="text-purple-400 text-base font-bold leading-tight">{selectedStudent.interaction_count || selectedStudent.interactionCount || 0}</div>
-                    <div className="text-white/40 text-[10px]">{t('interaction')}</div>
-                  </div>
+                <div className="grid grid-cols-3 gap-2 mt-3 relative">
+                  {[
+                    { value: selectedStudent.participation_count || selectedStudent.interactionCount || 0, labelKey: 'participations', accent: 'text-sky-300' },
+                    { value: selectedStudent.correct_answers || selectedStudent.correctAnswers || 0, labelKey: 'correct', accent: 'text-emerald-300' },
+                    { value: selectedStudent.interaction_count || selectedStudent.interactionCount || 0, labelKey: 'interaction', accent: 'text-purple-300' },
+                  ].map((kpi, i) => (
+                    <div key={i} className="bg-white/[0.025] border border-white/[0.06] rounded-lg px-2 py-2 text-center">
+                      <div className={`${kpi.accent} text-xl font-extrabold leading-none tabular-nums`}>{kpi.value}</div>
+                      <div className="text-white/55 text-[9px] uppercase tracking-[0.14em] mt-1.5 font-semibold">{t(kpi.labelKey)}</div>
+                    </div>
+                  ))}
                 </div>
               </div>
 
@@ -1452,28 +1496,33 @@ export default function SessionTeachPage() {
         {/* ── Right Panel (Activity Log + Notes, desktop only, collapsible) ── */}
         {panelOpen && (
         <div
-          className="hidden lg:flex flex-col w-72 shrink-0 border-s border-white/10 bg-slate-800/50 overflow-hidden"
+          className="hidden lg:flex flex-col w-72 shrink-0 border-s border-white/[0.07] bg-[#0a1024]/50 backdrop-blur-sm overflow-hidden"
         >
-          <div className="flex border-b border-white/10">
+          <div className="flex border-b border-white/[0.07] bg-white/[0.02]">
             {[
               { id: 'log', labelKey: 'activityLog', icon: Activity },
               { id: 'notes', labelKey: 'notes', icon: StickyNote },
               { id: 'metrics', labelKey: 'metrics', icon: BarChart2 },
-            ].map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setRightPanel(tab.id)}
-                className={`flex-1 flex items-center justify-center gap-1 py-2.5 text-xs font-medium transition-colors ${
-                  rightPanel === tab.id ? 'text-brand-turquoise border-b-2 border-brand-turquoise' : 'text-white/50 hover:text-white/80'
-                }`}
-              >
-                <tab.icon className="h-3.5 w-3.5" />
-                {t(tab.labelKey)}
-                {tab.id === 'notes' && notes.length > 0 && (
-                  <span className="bg-amber-500 text-white text-[9px] rounded-full w-4 h-4 flex items-center justify-center">{notes.length}</span>
-                )}
-              </button>
-            ))}
+            ].map(tab => {
+              const active = rightPanel === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setRightPanel(tab.id)}
+                  aria-pressed={active}
+                  className={`relative flex-1 flex items-center justify-center gap-1.5 py-3 text-[10px] uppercase tracking-[0.14em] font-bold transition-colors focus-visible:outline-none focus-visible:bg-white/5 ${
+                    active ? 'text-amber-300' : 'text-white/40 hover:text-white/70'
+                  }`}
+                >
+                  <tab.icon className="h-3.5 w-3.5" />
+                  {t(tab.labelKey)}
+                  {tab.id === 'notes' && notes.length > 0 && (
+                    <span className="bg-amber-500 text-white text-[9px] rounded-full w-4 h-4 flex items-center justify-center font-bold tabular-nums">{notes.length}</span>
+                  )}
+                  {active && <span className="absolute inset-x-3 -bottom-px h-[2px] bg-gradient-to-r from-transparent via-amber-400 to-transparent" aria-hidden="true" />}
+                </button>
+              );
+            })}
           </div>
 
           {rightPanel === 'log' && (
@@ -1500,22 +1549,22 @@ export default function SessionTeachPage() {
                   ))
                 )}
               </div>
-              <div className="border-t border-white/10 p-3 grid grid-cols-2 gap-2">
-                <div className="bg-white/5 rounded-lg px-2 py-1.5">
-                  <div className="text-white text-base font-bold leading-tight">{stats.questions}</div>
-                  <div className="text-white/40 text-[10px]">{t('questions')}</div>
+              <div className="border-t border-white/[0.07] p-3 grid grid-cols-2 gap-2 bg-white/[0.015]">
+                <div className="bg-white/[0.025] border border-white/[0.05] rounded-lg px-2.5 py-2">
+                  <div className="text-white text-lg font-extrabold leading-none tabular-nums">{stats.questions}</div>
+                  <div className="text-white/55 text-[9px] uppercase tracking-[0.14em] mt-1.5 font-semibold">{t('questions')}</div>
                 </div>
-                <div className="bg-white/5 rounded-lg px-2 py-1.5">
-                  <div className="text-green-400 text-base font-bold leading-tight">{stats.correct}</div>
-                  <div className="text-white/40 text-[10px]">{t('correct')}</div>
+                <div className="bg-white/[0.025] border border-white/[0.05] rounded-lg px-2.5 py-2">
+                  <div className="text-emerald-300 text-lg font-extrabold leading-none tabular-nums">{stats.correct}</div>
+                  <div className="text-white/55 text-[9px] uppercase tracking-[0.14em] mt-1.5 font-semibold">{t('correct')}</div>
                 </div>
-                <div className="bg-white/5 rounded-lg px-2 py-1.5">
-                  <div className={`text-base font-bold leading-tight ${accuracy >= 60 ? 'text-green-400' : 'text-red-400'}`}>{accuracy}%</div>
-                  <div className="text-white/40 text-[10px]">{t('accuracy')}</div>
+                <div className="bg-white/[0.025] border border-white/[0.05] rounded-lg px-2.5 py-2">
+                  <div className={`text-lg font-extrabold leading-none tabular-nums ${accuracy >= 60 ? 'text-emerald-300' : 'text-rose-300'}`}>{accuracy}%</div>
+                  <div className="text-white/55 text-[9px] uppercase tracking-[0.14em] mt-1.5 font-semibold">{t('accuracy')}</div>
                 </div>
-                <div className="bg-white/5 rounded-lg px-2 py-1.5">
-                  <div className="text-blue-400 text-base font-bold leading-tight">{stats.participation}</div>
-                  <div className="text-white/40 text-[10px]">{t('interaction')}</div>
+                <div className="bg-white/[0.025] border border-white/[0.05] rounded-lg px-2.5 py-2">
+                  <div className="text-sky-300 text-lg font-extrabold leading-none tabular-nums">{stats.participation}</div>
+                  <div className="text-white/55 text-[9px] uppercase tracking-[0.14em] mt-1.5 font-semibold">{t('interaction')}</div>
                 </div>
               </div>
             </>
@@ -1699,25 +1748,29 @@ export default function SessionTeachPage() {
         )}
       </div>
 
-      {/* Follow-up record bottom bar */}
-      <div className="flex-none shrink-0 bg-slate-800 border-t border-white/10 px-4 py-2 flex items-center justify-between relative z-10">
+      {/* Follow-up record bottom bar — Editorial footer */}
+      <div className="flex-none shrink-0 bg-[#0a1024]/80 backdrop-blur-md border-t border-white/[0.07] px-4 py-2 flex items-center justify-between relative z-10">
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-500/20 to-transparent" aria-hidden="true" />
         <div className="flex items-center gap-3">
           <button
             onClick={() => setShowFollowupRecord(true)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-brand-turquoise/20 text-brand-turquoise text-xs font-medium hover:bg-brand-turquoise/30 transition-colors border border-brand-turquoise/30"
+            className="group flex items-center gap-2 px-3.5 py-1.5 rounded-md bg-amber-500/10 text-amber-300 text-[11px] uppercase tracking-[0.14em] font-bold hover:bg-amber-500/15 hover:text-amber-200 transition-colors border border-amber-500/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
           >
             <Table2 className="h-3.5 w-3.5" />
             {t('followupRecord')}
           </button>
           {evalMode === 'group' && groups.length > 0 && (
-            <span className="text-white/40 text-[10px]">
-              {groups.length} {t('groups')} | {unassignedStudents.length} {t('unassigned')}
+            <span className="text-white/55 text-[10px] uppercase tracking-[0.14em] font-semibold">
+              <span className="tabular-nums text-white/60">{groups.length}</span> {t('groups')} <span className="text-white/15 mx-1">·</span> <span className="tabular-nums text-white/60">{unassignedStudents.length}</span> {t('unassigned')}
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2 text-white/60 text-[11px]">
-          <span className="flex items-center gap-1.5" role="status" aria-live="polite">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" aria-hidden="true" />
+        <div className="flex items-center gap-2 text-[10px]">
+          <span className="flex items-center gap-1.5 uppercase tracking-[0.16em] font-semibold text-emerald-300/80" role="status" aria-live="polite">
+            <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
+              <span className="absolute inset-0 rounded-full bg-emerald-400 animate-ping opacity-60" />
+              <span className="relative rounded-full h-1.5 w-1.5 bg-emerald-400" />
+            </span>
             {t('autoSaveActive')}
           </span>
         </div>

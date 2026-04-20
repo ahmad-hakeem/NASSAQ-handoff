@@ -2794,6 +2794,8 @@
   "selectDegree2": "اختر المؤهل",
   "selectDepartment": "اختر الإدارة التعليمية",
   "selected": "محددة",
+  "mode": "النمط",
+  "selectedStudentLabel": "الطالب المحدد",
   "selected2": "محدد",
   "selectedRecipients": "المستلمون المحددون",
   "selectedRole": "الدور المختار",

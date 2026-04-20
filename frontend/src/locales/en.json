@@ -2794,6 +2794,8 @@
   "selectDegree2": "Select degree",
   "selectDepartment": "Select department",
   "selected": "selected",
+  "mode": "Mode",
+  "selectedStudentLabel": "Selected Student",
   "selected2": "Selected",
   "selectedRecipients": "Selected Recipients",
   "selectedRole": "Selected Role",
