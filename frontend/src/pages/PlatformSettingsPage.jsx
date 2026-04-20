@@ -138,6 +138,9 @@ export const PlatformSettingsPage = () => {
   const [activeSessions, setActiveSessions] = useState([]);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [initialSnapshots, setInitialSnapshots] = useState({});
+  const [systemInfo, setSystemInfo] = useState(null);
+  const [systemInfoLoading, setSystemInfoLoading] = useState(false);
+  const [systemInfoError, setSystemInfoError] = useState(false);
   
   // Account settings - using user data only
   const [accountData, setAccountData] = useState({
@@ -706,6 +709,28 @@ export const PlatformSettingsPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, activeTab]);
 
+  const loadSystemInfo = async () => {
+    setSystemInfoLoading(true);
+    setSystemInfoError(false);
+    try {
+      const res = await api.get('/system/status');
+      setSystemInfo(res?.data || null);
+    } catch (error) {
+      console.error('Error loading system info:', error);
+      setSystemInfo(null);
+      setSystemInfoError(true);
+    } finally {
+      setSystemInfoLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (token && activeTab === 'general' && !systemInfo && !systemInfoLoading) {
+      loadSystemInfo();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, activeTab]);
+
   // End session
   const handleEndSession = async (sessionId) => {
     try {
@@ -1228,27 +1253,69 @@ export const PlatformSettingsPage = () => {
                           <Server className="h-5 w-5" />
                           {t('systemInfo')}
                         </h4>
+                        {systemInfoError && (
+                          <div className="mb-3 text-sm text-red-600">
+                            {t('errorLoadingData') || 'تعذر تحميل معلومات النظام'}
+                          </div>
+                        )}
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                           <div className="bg-muted/30 rounded-xl p-4">
                             <p className="text-sm text-muted-foreground">{t('version')}</p>
-                            <p className="font-mono font-bold">2.1.0</p>
+                            <p className="font-mono font-bold">
+                              {systemInfoLoading ? '…' : (systemInfo?.version || '—')}
+                            </p>
                           </div>
                           <div className="bg-muted/30 rounded-xl p-4">
                             <p className="text-sm text-muted-foreground">{t('environment')}</p>
-                            <p className="font-mono font-bold">Production</p>
+                            <p className="font-mono font-bold capitalize">
+                              {systemInfoLoading ? '…' : (systemInfo?.environment || '—')}
+                            </p>
                           </div>
                           <div className="bg-muted/30 rounded-xl p-4">
                             <p className="text-sm text-muted-foreground">{t('serverStatus')}</p>
                             <div className="flex items-center gap-2">
-                              <CheckCircle2 className="h-4 w-4 text-green-500" />
-                              <span className="font-bold text-green-600">{t('online')}</span>
+                              {systemInfoLoading ? (
+                                <span className="font-bold text-muted-foreground">…</span>
+                              ) : systemInfo?.status === 'operational' ? (
+                                <>
+                                  <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                  <span className="font-bold text-green-600">{t('online')}</span>
+                                </>
+                              ) : (
+                                <>
+                                  <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                                  <span className="font-bold text-yellow-600">
+                                    {systemInfo?.status || (t('offline') || 'غير متصل')}
+                                  </span>
+                                </>
+                              )}
                             </div>
+                            {systemInfo?.uptime && (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {t('uptime') || 'مدة التشغيل'}: {systemInfo.uptime}
+                              </p>
+                            )}
                           </div>
                           <div className="bg-muted/30 rounded-xl p-4">
                             <p className="text-sm text-muted-foreground">{t('databaseStatus')}</p>
                             <div className="flex items-center gap-2">
-                              <CheckCircle2 className="h-4 w-4 text-green-500" />
-                              <span className="font-bold text-green-600">MongoDB</span>
+                              {systemInfoLoading ? (
+                                <span className="font-bold text-muted-foreground">…</span>
+                              ) : systemInfo?.database?.connected ? (
+                                <>
+                                  <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                  <span className="font-bold text-green-600">
+                                    {systemInfo?.database?.engine || 'PostgreSQL'}
+                                  </span>
+                                </>
+                              ) : (
+                                <>
+                                  <AlertTriangle className="h-4 w-4 text-red-500" />
+                                  <span className="font-bold text-red-600">
+                                    {t('disconnected') || 'غير متصل'}
+                                  </span>
+                                </>
+                              )}
                             </div>
                           </div>
                         </div>

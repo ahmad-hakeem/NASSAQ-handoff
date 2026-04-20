@@ -221,8 +221,10 @@ async def system_status(current_user: dict = Depends(require_roles([UserRole.PLA
         "database": {
             "connected": db_ok,
             "name": "nassaq_postgres",
+            "engine": "PostgreSQL",
             "collections_count": table_count,
         },
+        "version": os.environ.get("APP_VERSION", "3.0.0"),
         "stats": {
             "total_users": total_users,
             "total_schools": total_schools,
