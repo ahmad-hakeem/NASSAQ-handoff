@@ -566,11 +566,30 @@ export default function TeacherMainDashboard() {
                 </div>
               </div>
             ) : (
-              <div className="rounded-2xl border-2 border-dashed border-border/50 p-8 text-center bg-card/40">
-                <Calendar className="h-12 w-12 mx-auto mb-3 text-muted-foreground/20" />
-                <p className="text-muted-foreground font-tajawal text-lg font-medium">{t('noClassesScheduled')}</p>
-                <p className="text-muted-foreground/60 font-tajawal text-sm mt-1">{t('enjoyYourDay')}</p>
-              </div>
+              (() => {
+                const hasAnyToday = stats.upcomingLessons.length > 0;
+                const hasFutureToday = hasAnyToday && stats.upcomingLessons.some(
+                  l => l.period > (isSchoolTime ? currentPeriod : 0)
+                );
+                let title, hint;
+                if (!hasAnyToday) {
+                  title = t('noClassesScheduled');
+                  hint = t('enjoyYourDay');
+                } else if (hasFutureToday) {
+                  title = t('noClassRightNow');
+                  hint = t('noClassRightNowHint');
+                } else {
+                  title = t('allClassesDoneToday');
+                  hint = t('allClassesDoneTodayHint');
+                }
+                return (
+                  <div className="rounded-2xl border-2 border-dashed border-border/50 p-8 text-center bg-card/40">
+                    <Calendar className="h-12 w-12 mx-auto mb-3 text-muted-foreground/20" />
+                    <p className="text-muted-foreground font-tajawal text-lg font-medium">{title}</p>
+                    <p className="text-muted-foreground/60 font-tajawal text-sm mt-1">{hint}</p>
+                  </div>
+                );
+              })()
             )}
 
             {/* B) Upcoming Session Card — secondary, directly below current */}
