@@ -1167,11 +1167,15 @@ export default function SessionTeachPage() {
                   { key: 'female', students: searchQuery ? filteredStudents.filter(s => s.gender === 'female') : femaleStudents },
                 ].filter(g => g.students.length > 0).map(group => {
                   const gc = GENDER_COLORS[group.key];
+                  const dotColor = group.key === 'male' ? 'bg-sky-400' : 'bg-pink-400';
+                  const textColor = group.key === 'male' ? 'text-sky-200/90' : 'text-pink-200/90';
+                  const countColor = group.key === 'male' ? 'text-sky-300' : 'text-pink-300';
                   return (
                     <div key={group.key}>
                       <div className="flex items-center gap-2 mb-2">
-                        <span className="text-sm">{gc.icon}</span>
-                        <span className="text-white/50 text-xs font-medium">{gc.labelKey ? t(gc.labelKey) : gc.label} ({group.students.length})</span>
+                        <span className={`w-2 h-2 rounded-full ${dotColor} shadow-[0_0_8px_currentColor]`} aria-hidden="true" />
+                        <span className={`${textColor} text-[10px] uppercase tracking-[0.18em] font-bold`}>{gc.labelKey ? t(gc.labelKey) : gc.label}</span>
+                        <span className={`${countColor} text-[10px] font-bold tabular-nums`}>({group.students.length})</span>
                         <div className="flex-1 h-px bg-white/10" />
                       </div>
                       <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2">
