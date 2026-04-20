@@ -18,7 +18,8 @@ import {
   Smile, Frown, Activity, Heart, Send, Trophy, Sparkles,
   StickyNote, Plus, Trash2, PenLine, UserCheck,
   Download, History, FileSpreadsheet,
-  Settings, UsersRound, User, Table2, GripVertical, Search, Mic
+  Settings, UsersRound, User, Table2, GripVertical, Search, Mic,
+  PanelRightClose, PanelRightOpen
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -111,12 +112,32 @@ export default function SessionTeachPage() {
   const [summary, setSummary] = useState(null);
   const [activityLog, setActivityLog] = useState([]);
   const [stats, setStats] = useState({ questions: 0, correct: 0, participation: 0 });
-  const [rightPanel, setRightPanel] = useState('log');
+  const [rightPanel, setRightPanel] = useState(() => {
+    if (typeof window === 'undefined') return 'log';
+    try { return localStorage.getItem('sessionTeach.rightPanel') || 'log'; }
+    catch { return 'log'; }
+  });
+  const [panelOpen, setPanelOpen] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    try {
+      const stored = localStorage.getItem('sessionTeach.panelOpen');
+      if (stored !== null) return stored === '1';
+    } catch { /* ignore */ }
+    return typeof window !== 'undefined' && window.innerWidth >= 1280;
+  });
   const [notes, setNotes] = useState([]);
   const [newNote, setNewNote] = useState('');
   const [noteType, setNoteType] = useState('session');
   const [liveMetrics, setLiveMetrics] = useState(null);
-  const [evalMode, setEvalMode] = useState('individual');
+  const [evalMode, setEvalMode] = useState(() => {
+    if (typeof window === 'undefined') return 'individual';
+    try { return localStorage.getItem('sessionTeach.evalMode') || 'individual'; }
+    catch { return 'individual'; }
+  });
+
+  useEffect(() => { try { localStorage.setItem('sessionTeach.rightPanel', rightPanel); } catch {} }, [rightPanel]);
+  useEffect(() => { try { localStorage.setItem('sessionTeach.panelOpen', panelOpen ? '1' : '0'); } catch {} }, [panelOpen]);
+  useEffect(() => { try { localStorage.setItem('sessionTeach.evalMode', evalMode); } catch {} }, [evalMode]);
   const [groups, setGroups] = useState([]);
   const [showGroupModal, setShowGroupModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -516,7 +537,7 @@ export default function SessionTeachPage() {
     } catch (err) {
       clearInterval(flashRef.current);
       setFlashId(null);
-      nassaqError(err.response?.data?.detail || 'خطأ في اختيار الطالب');
+      nassaqError(err.response?.data?.detail || t('errorPickingStudent'));
     } finally {
       setLoading(false);
       setTimeout(() => setShowHakim(false), 1500);
@@ -531,7 +552,7 @@ export default function SessionTeachPage() {
   };
 
   const addLog = (emoji, text, color = 'text-gray-700') => {
-    setActivityLog(prev => [{ id: Date.now(), emoji, text, color, time: new Date().toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' }) }, ...prev].slice(0, 30));
+    setActivityLog(prev => [{ id: Date.now(), emoji, text, color, time: new Date().toLocaleTimeString(isRTL ? 'ar' : 'en', { hour: '2-digit', minute: '2-digit' }) }, ...prev].slice(0, 30));
   };
 
   const recordAnswer = async (result) => {
@@ -613,8 +634,9 @@ export default function SessionTeachPage() {
         details: behaviourNote || null,
       });
       const change = res.data?.score_change || 0;
-      toast.success(`${t('behaviour')}: ${bType.label || t(bType.labelKey)} — ${selectedStudent.full_name?.split(' ')[0]}`);
-      addLog('behaviour', `${selectedStudent.full_name?.split(' ')[0]} — ${bType.label || t(bType.labelKey)} (${change > 0 ? '+' : ''}${change})`, behaviourCategory === 'negative' ? 'text-red-600' : 'text-purple-700');
+      const bLabel = bType.labelKey ? t(bType.labelKey) : bType.label;
+      toast.success(`${t('behaviour')}: ${bLabel} — ${selectedStudent.full_name?.split(' ')[0]}`);
+      addLog('behaviour', `${selectedStudent.full_name?.split(' ')[0]} — ${bLabel} (${change > 0 ? '+' : ''}${change})`, behaviourCategory === 'negative' ? 'text-red-600' : 'text-purple-700');
       setBehaviourNote('');
     } catch (e) {
       console.error('Error recording behaviour:', e);
@@ -694,13 +716,13 @@ export default function SessionTeachPage() {
     const ops = [];
     const hasAttendance = sessionInfo?.attendance_approved || sessionInfo?.attendanceApproved;
     if (!hasAttendance) {
-      ops.push({ id: 'attendance', label: 'لم يتم اعتماد الحضور', severity: 'error' });
+      ops.push({ id: 'attendance', label: t('attendanceNotApproved'), severity: 'error' });
     }
     if (stats.questions === 0 && stats.participation === 0) {
-      ops.push({ id: 'no_interaction', label: 'لا توجد تفاعلات مسجلة', severity: 'warning' });
+      ops.push({ id: 'no_interaction', label: t('noInteractionsRecorded'), severity: 'warning' });
     }
     return ops;
-  }, [sessionInfo, stats]);
+  }, [sessionInfo, stats, t]);
 
   const startEndReview = async () => {
     const ops = checkPendingOps();
@@ -711,7 +733,7 @@ export default function SessionTeachPage() {
       setReviewData(res.data);
       setShowEndDialog(false);
     } catch (err) {
-      nassaqError(err.response?.data?.detail || 'خطأ في تحميل ملخص الحصة');
+      nassaqError(err.response?.data?.detail || t('errorLoadingSessionSummary'));
     } finally {
       setReviewLoading(false);
     }
@@ -825,10 +847,24 @@ export default function SessionTeachPage() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowSearch(v => !v)}
-              className="p-1.5 rounded-lg bg-white/10 text-white/60 hover:bg-white/20 transition-colors"
+              aria-label={t('search')}
+              className="p-1.5 rounded-lg bg-white/10 text-white/60 hover:bg-white/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-turquoise"
               title={t('search')}
             >
               <Search className="h-3.5 w-3.5" />
+            </button>
+
+            {/* Toggle right panel (desktop only) */}
+            <button
+              onClick={() => setPanelOpen(v => !v)}
+              aria-label={panelOpen ? t('hideActivityPanel') : t('showActivityPanel')}
+              aria-pressed={panelOpen}
+              className="hidden lg:inline-flex p-1.5 rounded-lg bg-white/10 text-white/60 hover:bg-white/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-turquoise"
+              title={panelOpen ? t('hideActivityPanel') : t('showActivityPanel')}
+            >
+              {panelOpen
+                ? <PanelRightClose className="h-3.5 w-3.5" />
+                : <PanelRightOpen className="h-3.5 w-3.5" />}
             </button>
 
             <div className="hidden sm:flex items-center bg-white/10 rounded-lg p-0.5">
@@ -855,7 +891,8 @@ export default function SessionTeachPage() {
             {evalMode === 'group' && (
               <button
                 onClick={() => setShowGroupModal(true)}
-                className="p-1.5 rounded-lg bg-purple-600/30 text-purple-300 hover:bg-purple-600/50 transition-colors border border-purple-500/30"
+                aria-label={t('manageGroups')}
+                className="p-1.5 rounded-lg bg-purple-600/30 text-purple-300 hover:bg-purple-600/50 transition-colors border border-purple-500/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
                 title={t('manageGroups')}
               >
                 <Settings className="h-3.5 w-3.5" />
@@ -872,13 +909,14 @@ export default function SessionTeachPage() {
                   }`}
                 >
                   <m.icon className="h-3 w-3" />
-                  {m.label}
+                  {m.labelKey ? t(m.labelKey) : m.label}
                 </button>
               ))}
             </div>
             <button
               onClick={() => setShowSettingsModal(true)}
-              className="p-1.5 rounded-lg bg-white/10 text-white/60 hover:bg-white/20 transition-colors"
+              aria-label={t('evaluationSettings')}
+              className="ms-1 p-1.5 rounded-lg bg-white/10 text-white/60 hover:bg-white/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-turquoise"
               title={t('evaluationSettings')}
             >
               <Settings className="h-3.5 w-3.5" />
@@ -945,8 +983,8 @@ export default function SessionTeachPage() {
                 <Sparkles className="h-5 w-5 text-white" />
               </div>
               <div className="flex-1">
-                <p className="text-brand-turquoise text-xs font-bold font-cairo">حكيم يختار...</p>
-                <p className="text-white/50 text-[10px]">جارٍ البحث عن الطالب الأنسب للمشاركة</p>
+                <p className="text-brand-turquoise text-xs font-bold font-cairo">{t('hakimChoosing')}</p>
+                <p className="text-white/50 text-[10px]">{t('findingBestStudent')}</p>
               </div>
               <Loader2 className="h-4 w-4 animate-spin text-brand-turquoise" />
             </div>
@@ -956,16 +994,17 @@ export default function SessionTeachPage() {
           <button
             onClick={selectRandom}
             disabled={loading}
-            className={`flex-none w-full h-14 rounded-xl font-cairo font-bold text-white text-base flex items-center justify-center gap-2 shadow-lg hover:opacity-90 active:scale-95 transition-colors disabled:opacity-60 ${
+            aria-label={t('randomStudentPick')}
+            className={`flex-none w-full h-12 rounded-xl font-cairo font-bold text-white text-sm flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-colors disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-turquoise focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 ${
               selectedStudent
-                ? 'bg-gradient-to-r from-amber-500 to-orange-600'
-                : 'bg-gradient-to-r from-brand-turquoise to-brand-navy'
+                ? 'bg-amber-600 hover:bg-amber-500'
+                : 'bg-brand-turquoise hover:bg-brand-turquoise/90'
             }`}
           >
             {loading ? (
-              <><Loader2 className="h-5 w-5 animate-spin" /> حكيم يختار...</>
+              <><Loader2 className="h-5 w-5 animate-spin" /> {t('hakimChoosing')}</>
             ) : selectedStudent ? (
-              <><Shuffle className="h-5 w-5" /> اختيار عشوائي آخر</>
+              <><Shuffle className="h-5 w-5" /> {t('anotherRandomPick')}</>
             ) : (
               <><Shuffle className="h-5 w-5" /> {t('randomStudentPick')}</>
             )}
@@ -979,7 +1018,7 @@ export default function SessionTeachPage() {
                   mode?.id === m.id ? `${m.color} text-white ring-2 ring-white/30` : 'bg-white/10 text-white/60'
                 }`}>
                 <m.icon className="h-4 w-4" />
-                {m.label}
+                {m.labelKey ? t(m.labelKey) : m.label}
               </button>
             ))}
           </div>
@@ -1089,7 +1128,7 @@ export default function SessionTeachPage() {
                     <div key={group.key}>
                       <div className="flex items-center gap-2 mb-2">
                         <span className="text-sm">{gc.icon}</span>
-                        <span className="text-white/50 text-xs font-medium">{gc.label} ({group.students.length})</span>
+                        <span className="text-white/50 text-xs font-medium">{gc.labelKey ? t(gc.labelKey) : gc.label} ({group.students.length})</span>
                         <div className="flex-1 h-px bg-white/10" />
                       </div>
                       <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2">
@@ -1146,17 +1185,17 @@ export default function SessionTeachPage() {
                   </button>
                 </div>
                 <div className="flex items-center gap-3 mt-2">
-                  <div className="flex-1 bg-white/5 rounded-lg px-2 py-1 text-center">
-                    <div className="text-blue-400 text-xs font-bold">{selectedStudent.participation_count || selectedStudent.interactionCount || 0}</div>
-                    <div className="text-white/30 text-[9px]">{t('participations')}</div>
+                  <div className="flex-1 bg-white/5 rounded-lg px-2 py-1.5 text-center">
+                    <div className="text-blue-400 text-base font-bold leading-tight">{selectedStudent.participation_count || selectedStudent.interactionCount || 0}</div>
+                    <div className="text-white/40 text-[10px]">{t('participations')}</div>
                   </div>
-                  <div className="flex-1 bg-white/5 rounded-lg px-2 py-1 text-center">
-                    <div className="text-green-400 text-xs font-bold">{selectedStudent.correct_answers || selectedStudent.correctAnswers || 0}</div>
-                    <div className="text-white/30 text-[9px]">{t('correct')}</div>
+                  <div className="flex-1 bg-white/5 rounded-lg px-2 py-1.5 text-center">
+                    <div className="text-green-400 text-base font-bold leading-tight">{selectedStudent.correct_answers || selectedStudent.correctAnswers || 0}</div>
+                    <div className="text-white/40 text-[10px]">{t('correct')}</div>
                   </div>
-                  <div className="flex-1 bg-white/5 rounded-lg px-2 py-1 text-center">
-                    <div className="text-purple-400 text-xs font-bold">{selectedStudent.interaction_count || selectedStudent.interactionCount || 0}</div>
-                    <div className="text-white/30 text-[9px]">{t('interaction')}</div>
+                  <div className="flex-1 bg-white/5 rounded-lg px-2 py-1.5 text-center">
+                    <div className="text-purple-400 text-base font-bold leading-tight">{selectedStudent.interaction_count || selectedStudent.interactionCount || 0}</div>
+                    <div className="text-white/40 text-[10px]">{t('interaction')}</div>
                   </div>
                 </div>
               </div>
@@ -1197,21 +1236,21 @@ export default function SessionTeachPage() {
                     <ActionButton
                       color="bg-green-600 hover:bg-green-500"
                       icon={<CheckCircle2 className="h-5 w-5" />}
-                      label="صحيح"
+                      label={t('correct')}
                       sub="+5"
                       onClick={() => recordAnswer('correct')}
                     />
                     <ActionButton
                       color="bg-red-600 hover:bg-red-500"
                       icon={<XCircle className="h-5 w-5" />}
-                      label="خطأ"
+                      label={t('wrong')}
                       sub="0"
                       onClick={() => recordAnswer('wrong')}
                     />
                     <ActionButton
                       color="bg-slate-600 hover:bg-slate-500"
                       icon={<Minus className="h-5 w-5" />}
-                      label="لم يجب"
+                      label={t('noAnswer')}
                       sub="-1"
                       onClick={() => recordAnswer('no_answer')}
                     />
@@ -1225,7 +1264,7 @@ export default function SessionTeachPage() {
                         key={p.id}
                         color={`${p.color} hover:opacity-80`}
                         icon={<p.icon className="h-4 w-4" />}
-                        label={p.label}
+                        label={p.labelKey ? t(p.labelKey) : p.label}
                         sub={p.score}
                         onClick={() => recordParticipation(p)}
                       />
@@ -1246,7 +1285,7 @@ export default function SessionTeachPage() {
                         {Object.values(homeworkStatuses).filter(s => s === 'done').length}/{students.filter(s => s.attendance_status === 'present').length} {t('submitted')}
                       </span>
                     </div>
-                    <div className="space-y-1.5 pr-1">
+                    <div className="space-y-1.5 pe-1">
                       {students.filter(s => s.attendance_status === 'present').map(student => {
                         const isDone = homeworkStatuses[student.id] !== 'not_done';
                         return (
@@ -1267,14 +1306,14 @@ export default function SessionTeachPage() {
                             <span className={`flex-1 text-start text-sm font-cairo truncate ${
                               isDone ? 'text-white' : 'text-white/50 line-through'
                             }`}>
-                              {student.full_name || 'طالب'}
+                              {student.full_name || t('student')}
                             </span>
                             <span className={`text-xs font-bold font-cairo px-2 py-0.5 rounded-full ${
                               isDone
                                 ? 'bg-green-500/20 text-green-400'
                                 : 'bg-red-500/20 text-red-400'
                             }`}>
-                              {isDone ? 'حل' : 'ما حل'}
+                              {isDone ? t('homeworkDone') : t('homeworkNotDone')}
                             </span>
                           </button>
                         );
@@ -1361,14 +1400,15 @@ export default function SessionTeachPage() {
                           onClick={() => recordBehaviour(b)}
                           className="bg-white/10 hover:bg-white/20 text-white rounded-lg py-2 px-1 text-xs text-center transition-colors"
                         >
-                          <div className="font-medium truncate">{b.label}</div>
+                          <div className="font-medium truncate">{b.labelKey ? t(b.labelKey) : b.label}</div>
                           <div className={`text-[10px] mt-0.5 ${b.points.startsWith('-') ? 'text-red-400' : 'text-green-400'}`}>{b.points}</div>
                         </button>
                       ))}
                     </div>
                     <input
                       className="w-full bg-white/10 text-white text-xs rounded px-2 py-1.5 placeholder-white/30 outline-none"
-                      placeholder="ملاحظة اختيارية..."
+                      placeholder={t('optionalNote')}
+                      aria-label={t('optionalNote')}
                       value={behaviourNote}
                       onChange={e => setBehaviourNote(e.target.value)}
                     />
@@ -1397,7 +1437,8 @@ export default function SessionTeachPage() {
                     )}
                     <input
                       className="w-full bg-white/10 text-white text-xs rounded px-2 py-1.5 placeholder-white/30 outline-none"
-                      placeholder="ملاحظة اختيارية..."
+                      placeholder={t('optionalNote')}
+                      aria-label={t('optionalNote')}
                       value={skillNote}
                       onChange={e => setSkillNote(e.target.value)}
                     />
@@ -1408,8 +1449,11 @@ export default function SessionTeachPage() {
           )}
         </div>
 
-        {/* ── Right Panel (Activity Log + Notes, desktop only) ── */}
-        <div className="hidden lg:flex flex-col w-72 shrink-0 border-s border-white/10 bg-slate-800/50 overflow-hidden">
+        {/* ── Right Panel (Activity Log + Notes, desktop only, collapsible) ── */}
+        {panelOpen && (
+        <div
+          className="hidden lg:flex flex-col w-72 shrink-0 border-s border-white/10 bg-slate-800/50 overflow-hidden"
+        >
           <div className="flex border-b border-white/10">
             {[
               { id: 'log', labelKey: 'activityLog', icon: Activity },
@@ -1436,7 +1480,11 @@ export default function SessionTeachPage() {
             <>
               <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
                 {activityLog.length === 0 ? (
-                  <p className="text-white/30 text-xs text-center mt-4">لا يوجد نشاط بعد</p>
+                  <div className="h-full flex flex-col items-center justify-center text-center px-4 gap-2">
+                    <Activity className="h-8 w-8 text-white/15" aria-hidden="true" />
+                    <p className="text-white/40 text-xs font-medium">{t('noActivityYet')}</p>
+                    <p className="text-white/25 text-[10px] leading-relaxed">{t('noActivityHint')}</p>
+                  </div>
                 ) : (
                   activityLog.map(log => (
                     <div key={log.id} className="bg-white/5 rounded-lg px-2.5 py-2">
@@ -1452,19 +1500,22 @@ export default function SessionTeachPage() {
                   ))
                 )}
               </div>
-              <div className="border-t border-white/10 p-3 space-y-2">
-                <div className="flex justify-between text-xs text-white/50">
-                  <span>{t('questions')}</span><span className="text-white font-bold">{stats.questions}</span>
+              <div className="border-t border-white/10 p-3 grid grid-cols-2 gap-2">
+                <div className="bg-white/5 rounded-lg px-2 py-1.5">
+                  <div className="text-white text-base font-bold leading-tight">{stats.questions}</div>
+                  <div className="text-white/40 text-[10px]">{t('questions')}</div>
                 </div>
-                <div className="flex justify-between text-xs text-white/50">
-                  <span>{t('correct')}</span><span className="text-green-400 font-bold">{stats.correct}</span>
+                <div className="bg-white/5 rounded-lg px-2 py-1.5">
+                  <div className="text-green-400 text-base font-bold leading-tight">{stats.correct}</div>
+                  <div className="text-white/40 text-[10px]">{t('correct')}</div>
                 </div>
-                <div className="flex justify-between text-xs text-white/50">
-                  <span>{t('accuracy')}</span>
-                  <span className={`font-bold ${accuracy >= 60 ? 'text-green-400' : 'text-red-400'}`}>{accuracy}%</span>
+                <div className="bg-white/5 rounded-lg px-2 py-1.5">
+                  <div className={`text-base font-bold leading-tight ${accuracy >= 60 ? 'text-green-400' : 'text-red-400'}`}>{accuracy}%</div>
+                  <div className="text-white/40 text-[10px]">{t('accuracy')}</div>
                 </div>
-                <div className="flex justify-between text-xs text-white/50">
-                  <span>{t('interaction')}</span><span className="text-blue-400 font-bold">{stats.participation}</span>
+                <div className="bg-white/5 rounded-lg px-2 py-1.5">
+                  <div className="text-blue-400 text-base font-bold leading-tight">{stats.participation}</div>
+                  <div className="text-white/40 text-[10px]">{t('interaction')}</div>
                 </div>
               </div>
             </>
@@ -1474,7 +1525,11 @@ export default function SessionTeachPage() {
             <>
               <div className="flex-1 overflow-y-auto p-2 space-y-2">
                 {notes.length === 0 ? (
-                  <p className="text-white/30 text-xs text-center mt-4">لا توجد ملاحظات</p>
+                  <div className="h-full flex flex-col items-center justify-center text-center px-4 gap-2">
+                    <StickyNote className="h-8 w-8 text-white/15" aria-hidden="true" />
+                    <p className="text-white/40 text-xs font-medium">{t('noNotesYet')}</p>
+                    <p className="text-white/25 text-[10px] leading-relaxed">{t('noNotesHint')}</p>
+                  </div>
                 ) : (
                   notes.map(note => (
                     <div key={note.id} className="bg-amber-900/20 border border-amber-500/20 rounded-lg px-3 py-2">
@@ -1486,13 +1541,17 @@ export default function SessionTeachPage() {
                       </div>
                       <div className="flex items-center gap-2 mt-1.5">
                         <Badge className="bg-amber-500/20 text-amber-300 text-[9px] px-1.5 py-0">
-                          {note.note_type === 'student' ? 'طالب' : note.note_type === 'behavioural' ? 'سلوكية' : note.note_type === 'educational' ? 'تعليمية' : note.note_type === 'followup' ? 'متابعة' : 'عامة'}
+                          {note.note_type === 'student' ? t('studentNoteShort')
+                            : note.note_type === 'behavioural' ? t('behaviouralNoteShort')
+                            : note.note_type === 'educational' ? t('educationalNoteShort')
+                            : note.note_type === 'followup' ? t('followupNoteShort')
+                            : t('general')}
                         </Badge>
                         {note.student_name && (
                           <span className="text-white/40 text-[10px]">{note.student_name}</span>
                         )}
-                        <span className="text-white/30 text-[10px] mr-auto">
-                          {new Date(note.created_at).toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' })}
+                        <span className="text-white/30 text-[10px] ms-auto">
+                          {new Date(note.created_at).toLocaleTimeString(isRTL ? 'ar' : 'en', { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
                     </div>
@@ -1526,8 +1585,9 @@ export default function SessionTeachPage() {
                 )}
                 <div className="flex gap-1.5">
                   <input
-                    className="flex-1 bg-white/10 text-white text-xs rounded px-2 py-1.5 placeholder-white/30 outline-none"
-                    placeholder="اكتب ملاحظة..."
+                    className="flex-1 bg-white/10 text-white text-xs rounded px-2 py-1.5 placeholder-white/30 outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+                    placeholder={t('writeNoteShort')}
+                    aria-label={t('writeNoteShort')}
                     value={newNote}
                     onChange={e => setNewNote(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && addNote()}
@@ -1535,7 +1595,8 @@ export default function SessionTeachPage() {
                   <button
                     onClick={addNote}
                     disabled={!newNote.trim()}
-                    className="bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white rounded px-2 py-1.5 transition-colors"
+                    aria-label={t('add')}
+                    className="bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white rounded px-2 py-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
                   >
                     <Plus className="h-3.5 w-3.5" />
                   </button>
@@ -1549,15 +1610,15 @@ export default function SessionTeachPage() {
               {liveMetrics ? (
                 <>
                   <div className="bg-white/5 rounded-lg p-3 space-y-2">
-                    <h4 className="text-white/60 text-[10px] font-medium uppercase tracking-wider">الحضور</h4>
+                    <h4 className="text-white/60 text-[10px] font-medium uppercase tracking-wider">{t('attendanceShort')}</h4>
                     <div className="grid grid-cols-2 gap-2">
                       <div className="text-center">
                         <div className="text-green-400 text-lg font-bold">{liveMetrics.attendance?.present || 0}</div>
-                        <div className="text-white/40 text-[10px]">حاضر</div>
+                        <div className="text-white/40 text-[10px]">{t('present')}</div>
                       </div>
                       <div className="text-center">
                         <div className="text-red-400 text-lg font-bold">{liveMetrics.attendance?.absent || 0}</div>
-                        <div className="text-white/40 text-[10px]">غائب</div>
+                        <div className="text-white/40 text-[10px]">{t('absent')}</div>
                       </div>
                     </div>
                     <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">
@@ -1597,7 +1658,7 @@ export default function SessionTeachPage() {
                       </div>
                       <div>
                         <div className="text-amber-400 text-lg font-bold">{liveMetrics.interaction?.not_interacted || 0}</div>
-                        <div className="text-white/40 text-[10px]">لم يتفاعل</div>
+                        <div className="text-white/40 text-[10px]">{t('notInteracted')}</div>
                       </div>
                     </div>
                     <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">
@@ -1606,19 +1667,19 @@ export default function SessionTeachPage() {
                   </div>
 
                   <div className="bg-white/5 rounded-lg p-3 space-y-2">
-                    <h4 className="text-white/60 text-[10px] font-medium uppercase tracking-wider">السلوك والمهارات</h4>
+                    <h4 className="text-white/60 text-[10px] font-medium uppercase tracking-wider">{t('behaviourAndSkillsHeading')}</h4>
                     <div className="grid grid-cols-3 gap-2 text-center">
                       <div>
                         <div className="text-green-400 text-base font-bold">{liveMetrics.behaviour?.positive || 0}</div>
-                        <div className="text-white/40 text-[10px]">إيجابي</div>
+                        <div className="text-white/40 text-[10px]">{t('positive')}</div>
                       </div>
                       <div>
                         <div className="text-red-400 text-base font-bold">{liveMetrics.behaviour?.negative || 0}</div>
-                        <div className="text-white/40 text-[10px]">سلبي</div>
+                        <div className="text-white/40 text-[10px]">{t('negative')}</div>
                       </div>
                       <div>
                         <div className="text-purple-400 text-base font-bold">{liveMetrics.skills_recorded || 0}</div>
-                        <div className="text-white/40 text-[10px]">مهارات</div>
+                        <div className="text-white/40 text-[10px]">{t('skillsShort')}</div>
                       </div>
                     </div>
                   </div>
@@ -1635,6 +1696,7 @@ export default function SessionTeachPage() {
             </div>
           )}
         </div>
+        )}
       </div>
 
       {/* Follow-up record bottom bar */}
@@ -1653,9 +1715,9 @@ export default function SessionTeachPage() {
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2 text-white/30 text-[10px]">
-          <span className="flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+        <div className="flex items-center gap-2 text-white/60 text-[11px]">
+          <span className="flex items-center gap-1.5" role="status" aria-live="polite">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" aria-hidden="true" />
             {t('autoSaveActive')}
           </span>
         </div>
@@ -2397,7 +2459,7 @@ function StudentCard({ student, isFlashing, isSelected, onClick }) {
           <span className="text-lg">{initials}</span>
         )}
         {count > 0 && (
-          <span className={`absolute -top-1 -right-1 w-5 h-5 rounded-full text-[9px] font-bold flex items-center justify-center text-white shadow-sm ${
+          <span className={`absolute -top-1 -end-1 w-5 h-5 rounded-full text-[9px] font-bold flex items-center justify-center text-white shadow-sm ${
             correct > 0 ? 'bg-green-500' : 'bg-amber-500'
           }`}>
             {count}
@@ -2509,7 +2571,7 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
       const res = await api.get(`/session/${summary.session_record_id}/export-report`);
       const data = res.data;
       const rows = [
-        ['اسم الطالب', 'الحضور', 'إجابات صحيحة', 'إجابات خاطئة', 'مشاركات', 'سلوك إيجابي', 'سلوك سلبي'],
+        [t('studentName'), t('attendance'), t('correctAnswers'), t('wrongAnswers'), t('participations'), t('positiveBehaviour'), t('negativeBehaviour')],
         ...(data.students || []).map(s => [
           s.student_name, s.attendance_status, s.correct_answers, s.wrong_answers,
           s.participations, s.positive_behaviors, s.negative_behaviors
