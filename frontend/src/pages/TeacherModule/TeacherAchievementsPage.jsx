@@ -1451,7 +1451,7 @@ function CVItemRow({ item, isRTL, onDelete }) {
 
 function PortfolioV2Sections(props) {
   const {
-    sectionsData, isRTL, openManualEvDialog,
+    sectionsData, isRTL, openManualEvDialog, openViewDialog,
     expandedV2, toggleV2, expandedSubsec, toggleSubsec,
     introDraft, setIntroDraft, introBusy, introAIBusy, handleSaveIntro, handleGenerateIntro,
     vmvDraft, setVmvDraft, vmvBusy, vmvAIBusy, handleSaveVMV, handleGenerateVMV,
