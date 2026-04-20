@@ -966,13 +966,13 @@ export default function TeacherAchievementsPage() {
       </div>
 
       <Dialog open={evidenceDialog.open} onOpenChange={(open) => { if (!open) closeEvidenceDialog(); }}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] flex flex-col p-0 gap-0">
+          <DialogHeader className="px-6 pt-6 pb-2 shrink-0">
             <DialogTitle className="font-cairo">
               {evidenceDialog.mode === 'add' ? t('portfolioAddEvidence') : t('portfolioEditEvidence')}
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <div className="space-y-4 py-2 px-6 overflow-y-auto flex-1 min-h-0">
             <div>
               <Label className="text-xs font-medium mb-1.5 block">{t('portfolioEvidenceType')}</Label>
               <Select value={evidenceForm.evidence_type} onValueChange={(v) => setEvidenceForm(prev => ({ ...prev, evidence_type: v }))}>
