@@ -947,10 +947,13 @@ export default function TeacherAchievementsPage() {
                             <Calendar className="w-3 h-3" /> {item.date}
                           </span>
                           <div className="flex gap-1">
-                            <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => openEditDialog(item)}>
+                            <Button size="icon" variant="ghost" className="h-6 w-6" title="عرض التفاصيل" onClick={() => openViewDialog(item)}>
+                              <Eye className="w-3 h-3 text-gray-500" />
+                            </Button>
+                            <Button size="icon" variant="ghost" className="h-6 w-6" title="تعديل" onClick={() => openEditDialog(item)}>
                               <Edit3 className="w-3 h-3 text-gray-400" />
                             </Button>
-                            <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => handleDeleteEvidence(item)}>
+                            <Button size="icon" variant="ghost" className="h-6 w-6" title="حذف" onClick={() => handleDeleteEvidence(item)}>
                               <Trash2 className="w-3 h-3 text-red-400" />
                             </Button>
                           </div>
