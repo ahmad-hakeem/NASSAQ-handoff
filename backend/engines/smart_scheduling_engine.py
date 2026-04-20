@@ -2890,18 +2890,39 @@ class SmartSchedulingEngine:
         }
 
     async def publish_timetable(self, timetable_id: str, published_by: str) -> bool:
-        """Publish a timetable"""
+        """Publish a timetable (archives any previously published timetable for the same school)"""
         # Check for critical conflicts
         conflicts = await gd_count(self.session, "timetable_conflicts", {
             "timetable_id": timetable_id,
             "severity": ConflictSeverity.CRITICAL.value,
             "is_resolved": False
         })
-        
+
         if conflicts > 0:
             return False
-        
+
         now = datetime.now(timezone.utc).isoformat()
+
+        # Archive any other currently published timetable(s) for the same school
+        target = await gd_find_one(self.session, "timetables", {"id": timetable_id})
+        if target:
+            school_id = target.get("school_id")
+            if school_id:
+                others = await gd_find(self.session, "timetables", {
+                    "school_id": school_id,
+                    "status": TimetableStatus.PUBLISHED.value,
+                })
+                for other in others:
+                    if other.get("id") == timetable_id:
+                        continue
+                    await gd_update_one(self.session, "timetables", {"id": other["id"]}, {
+                        "status": TimetableStatus.ARCHIVED.value,
+                        "is_published": False,
+                        "archived_at": now,
+                        "archived_by": published_by,
+                        "updated_at": now,
+                    })
+
         result = await gd_update_one(self.session, "timetables", {"id": timetable_id}, {
             "status": TimetableStatus.PUBLISHED.value,
             "is_published": True,
@@ -2909,7 +2930,7 @@ class SmartSchedulingEngine:
             "published_by": published_by,
             "updated_at": now
         })
-        
+
         return result > 0
     
     async def archive_timetable(self, timetable_id: str, archived_by: str) -> bool:
