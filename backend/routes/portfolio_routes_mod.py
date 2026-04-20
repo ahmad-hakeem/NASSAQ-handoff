@@ -1,7 +1,7 @@
 """
 NASSAQ Route Module: Teacher Portfolio & Evidence endpoints
 """
-from fastapi import APIRouter, HTTPException, Depends, Query, Body
+from fastapi import APIRouter, HTTPException, Depends, Query, Body, UploadFile, File
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
@@ -98,6 +98,49 @@ async def list_evidence(
     return result
 
 
+@router.post("/teacher/portfolio/upload")
+async def upload_evidence_file(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Upload an evidence attachment (PDF / image / video). Returns a data URL the client
+    can store on the evidence record's file_url field. Stays consistent with the existing
+    parent /upload-attachment pattern (base64 data URL, no external storage required)."""
+    if current_user["role"] != "teacher":
+        raise HTTPException(status_code=403, detail="غير مصرح")
+
+    import base64
+    MAX_SIZE = 10 * 1024 * 1024  # 10 MB
+    ALLOWED_TYPES = {
+        "application/pdf",
+        "image/jpeg", "image/png", "image/gif", "image/webp",
+        "video/mp4", "video/webm", "video/quicktime",
+    }
+    if file.content_type not in ALLOWED_TYPES:
+        raise HTTPException(status_code=400, detail="صيغة الملف غير مدعومة")
+
+    chunks: list[bytes] = []
+    total = 0
+    CHUNK = 64 * 1024
+    while True:
+        chunk = await file.read(CHUNK)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > MAX_SIZE:
+            raise HTTPException(status_code=400, detail="حجم الملف يتجاوز 10 ميغابايت")
+        chunks.append(chunk)
+    content = b"".join(chunks)
+    encoded = base64.b64encode(content).decode("utf-8")
+    return {
+        "success": True,
+        "file_url": f"data:{file.content_type};base64,{encoded}",
+        "file_name": file.filename,
+        "content_type": file.content_type,
+        "size": len(content),
+    }
+
+
 @router.post("/teacher/portfolio/evidence")
 async def add_evidence(
     data: ManualEvidenceCreate,
@@ -105,6 +148,16 @@ async def add_evidence(
 ):
     if current_user["role"] != "teacher":
         raise HTTPException(status_code=403, detail="غير مصرح")
+    if data.file_url:
+        MAX_DATA_URL = 14 * 1024 * 1024  # base64 of 10 MB ≈ 13.3 MB
+        if len(data.file_url) > MAX_DATA_URL:
+            raise HTTPException(status_code=400, detail="حجم المرفق يتجاوز الحد المسموح")
+        if not (data.file_url.startswith("data:application/pdf;base64,")
+                or data.file_url.startswith("data:image/")
+                or data.file_url.startswith("data:video/")
+                or data.file_url.startswith("https://")
+                or data.file_url.startswith("http://")):
+            raise HTTPException(status_code=400, detail="صيغة المرفق غير مدعومة")
     teacher_id = current_user["id"]
     school_id = current_user.get("tenant_id", "")
     result = await _engine.add_manual_evidence(

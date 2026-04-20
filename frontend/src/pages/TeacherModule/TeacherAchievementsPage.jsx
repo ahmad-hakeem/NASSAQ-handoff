@@ -199,7 +199,8 @@ const labelForType = (typeKey) =>
 
 export default function TeacherAchievementsPage() {
   const { t } = useTranslation();
-  const { api, isRTL } = useAuth();
+  const { api, isRTL, user } = useAuth();
+  const teacherId = user?.id;
   const { showAlert } = useNassaqAlert();
   const [loading, setLoading] = useState(true);
   const [portfolio, setPortfolio] = useState(null);
@@ -226,6 +227,108 @@ export default function TeacherAchievementsPage() {
   const [cvDialog, setCvDialog] = useState({ open: false, kind: 'training_attended' });
   const [cvForm, setCvForm] = useState({ title: '', organization: '', date: '', hours: '', description: '' });
   const [cvSaving, setCvSaving] = useState(false);
+
+  // Manual evidence dialog (V2 sub-sections)
+  const [teacherClasses, setTeacherClasses] = useState([]);
+  const [teacherSubjects, setTeacherSubjects] = useState([]);
+  const [manualEvDialog, setManualEvDialog] = useState({ open: false });
+  const [manualEvForm, setManualEvForm] = useState({
+    section_key: '', evidence_type: '', title_ar: '', description_ar: '',
+    class_id: '', subject_id: '', file_kind: 'pdf',
+    file_url: '', file_name: '',
+  });
+  const [manualEvSaving, setManualEvSaving] = useState(false);
+  const [manualEvUploading, setManualEvUploading] = useState(false);
+  const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    if (!teacherId) return;
+    let cancelled = false;
+    (async () => {
+      const [classesRes, subjectsRes] = await Promise.allSettled([
+        api.get(`/teacher/classes/${teacherId}`),
+        api.get('/subjects'),
+      ]);
+      if (cancelled) return;
+      if (classesRes.status === 'fulfilled') {
+        const data = classesRes.value?.data;
+        setTeacherClasses(Array.isArray(data) ? data : (data?.classes || []));
+      }
+      if (subjectsRes.status === 'fulfilled') {
+        const data = subjectsRes.value?.data;
+        setTeacherSubjects(Array.isArray(data) ? data : (data?.subjects || []));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [api, teacherId]);
+
+  const openManualEvDialog = (sectionKey) => {
+    const sub = SUBSECTION_CONFIG_V2.find(s => s.key === sectionKey);
+    const defaultType = sub?.types?.[0] || '';
+    setManualEvForm({
+      section_key: sectionKey || (SUBSECTION_CONFIG_V2[0]?.key || ''),
+      evidence_type: defaultType,
+      title_ar: '', description_ar: '',
+      class_id: '', subject_id: '', file_kind: 'pdf',
+      file_url: '', file_name: '',
+    });
+    setManualEvDialog({ open: true });
+  };
+
+  const manualEvUploadTokenRef = useRef(0);
+  const handleManualEvFile = async (file) => {
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (!file) return;
+    const MAX = 10 * 1024 * 1024;
+    if (file.size > MAX) { toast.error('حجم الملف يتجاوز 10 ميغابايت'); return; }
+    const token = ++manualEvUploadTokenRef.current;
+    setManualEvUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await api.post('/teacher/portfolio/upload', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      if (token !== manualEvUploadTokenRef.current) return;
+      if (res?.data?.success) {
+        setManualEvForm(p => ({ ...p, file_url: res.data.file_url, file_name: res.data.file_name }));
+        toast.success('تم رفع الملف');
+      }
+    } catch (err) {
+      if (token !== manualEvUploadTokenRef.current) return;
+      toast.error(err?.response?.data?.detail || 'فشل رفع الملف');
+    } finally {
+      if (token === manualEvUploadTokenRef.current) setManualEvUploading(false);
+    }
+  };
+
+  const handleSaveManualEvidence = async () => {
+    if (!manualEvForm.evidence_type || !(manualEvForm.title_ar || '').trim()) {
+      toast.error('عنوان الشاهد ونوعه مطلوبان');
+      return;
+    }
+    setManualEvSaving(true);
+    try {
+      await api.post('/teacher/portfolio/evidence', {
+        evidence_type: manualEvForm.evidence_type,
+        title_ar: manualEvForm.title_ar.trim(),
+        description_ar: (manualEvForm.description_ar || '').trim() || null,
+        date: new Date().toISOString().split('T')[0],
+        class_id: manualEvForm.class_id || null,
+        subject_id: manualEvForm.subject_id || null,
+        file_url: manualEvForm.file_url || null,
+        file_name: manualEvForm.file_name || null,
+        metadata: { file_kind: manualEvForm.file_kind, source: 'manual_v2' },
+      });
+      toast.success('تمت إضافة الشاهد');
+      setManualEvDialog({ open: false });
+      // Make sure the relevant sub-section stays open
+      setExpandedSubsec(p => ({ ...p, [manualEvForm.section_key]: true }));
+      fetchPortfolio();
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'فشل إضافة الشاهد');
+    } finally { setManualEvSaving(false); }
+  };
 
   const fetchPortfolio = useCallback(async () => {
     setLoading(true);
@@ -622,6 +725,7 @@ export default function TeacherAchievementsPage() {
           <PortfolioV2Sections
             sectionsData={sectionsData}
             isRTL={isRTL}
+            openManualEvDialog={openManualEvDialog}
             expandedV2={expandedV2}
             toggleV2={toggleV2}
             expandedSubsec={expandedSubsec}
@@ -849,6 +953,164 @@ export default function TeacherAchievementsPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Manual evidence dialog (V2) */}
+      <Dialog open={manualEvDialog.open} onOpenChange={(open) => { if (!open) setManualEvDialog({ open: false }); }}>
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="font-cairo text-right">إضافة شاهد يدوي</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 mt-2" dir="rtl">
+            <div>
+              <Label className="text-xs font-medium mb-1 block">القسم</Label>
+              <Select
+                value={manualEvForm.section_key}
+                onValueChange={(v) => {
+                  const sub = SUBSECTION_CONFIG_V2.find(s => s.key === v);
+                  setManualEvForm(p => ({ ...p, section_key: v, evidence_type: sub?.types?.[0] || '' }));
+                }}
+              >
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {SUBSECTION_CONFIG_V2.map(s => (
+                    <SelectItem key={s.key} value={s.key}>{s.title}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label className="text-xs font-medium mb-1 block">التصنيف الفرعي</Label>
+              <Select
+                value={manualEvForm.evidence_type}
+                onValueChange={(v) => setManualEvForm(p => ({ ...p, evidence_type: v }))}
+              >
+                <SelectTrigger className="h-9"><SelectValue placeholder="اختر التصنيف" /></SelectTrigger>
+                <SelectContent>
+                  {(SUBSECTION_CONFIG_V2.find(s => s.key === manualEvForm.section_key)?.types || []).map(tk => (
+                    <SelectItem key={tk} value={tk}>{labelForType(tk)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label className="text-xs font-medium mb-1 block">عنوان الشاهد</Label>
+              <Input
+                value={manualEvForm.title_ar}
+                onChange={(e) => setManualEvForm(p => ({ ...p, title_ar: e.target.value }))}
+                placeholder="مثال: ورقة عمل الوحدة الثالثة"
+                className="h-9"
+                dir="rtl"
+              />
+            </div>
+
+            <div>
+              <Label className="text-xs font-medium mb-1 block">الوصف</Label>
+              <Textarea
+                value={manualEvForm.description_ar}
+                onChange={(e) => setManualEvForm(p => ({ ...p, description_ar: e.target.value }))}
+                placeholder="وصف مختصر للشاهد"
+                rows={3}
+                className="resize-none"
+                dir="rtl"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-xs font-medium mb-1 block">المادة</Label>
+                <Select
+                  value={manualEvForm.subject_id}
+                  onValueChange={(v) => setManualEvForm(p => ({ ...p, subject_id: v }))}
+                >
+                  <SelectTrigger className="h-9"><SelectValue placeholder="اختر المادة" /></SelectTrigger>
+                  <SelectContent>
+                    {teacherSubjects.map(s => (
+                      <SelectItem key={s.id} value={s.id}>{s.name_ar || s.name || s.name_en || s.id}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs font-medium mb-1 block">الصف</Label>
+                <Select
+                  value={manualEvForm.class_id}
+                  onValueChange={(v) => setManualEvForm(p => ({ ...p, class_id: v }))}
+                >
+                  <SelectTrigger className="h-9"><SelectValue placeholder="اختر الصف" /></SelectTrigger>
+                  <SelectContent>
+                    {teacherClasses.map(c => (
+                      <SelectItem key={c.id} value={c.id}>{c.name_ar || c.name || c.id}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-xs font-medium mb-1 block">نوع الدليل</Label>
+              <Select
+                value={manualEvForm.file_kind}
+                onValueChange={(v) => setManualEvForm(p => ({ ...p, file_kind: v, file_url: '', file_name: '' }))}
+              >
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pdf">ملف PDF</SelectItem>
+                  <SelectItem value="image">صورة</SelectItem>
+                  <SelectItem value="video">فيديو</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                hidden
+                accept={
+                  manualEvForm.file_kind === 'pdf' ? 'application/pdf'
+                    : manualEvForm.file_kind === 'image' ? 'image/*'
+                    : 'video/*'
+                }
+                onChange={(e) => handleManualEvFile(e.target.files?.[0])}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={manualEvUploading}
+                className="w-full py-6 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-700 text-center hover:border-violet-400 dark:hover:border-violet-600 hover:bg-violet-50/40 dark:hover:bg-violet-900/10 transition-colors"
+              >
+                {manualEvUploading ? (
+                  <div className="flex items-center justify-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                    <Loader2 className="w-4 h-4 animate-spin" /> جاري الرفع...
+                  </div>
+                ) : manualEvForm.file_url ? (
+                  <div className="text-sm">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 mx-auto mb-1" />
+                    <div className="text-emerald-700 dark:text-emerald-300 font-medium truncate px-2">{manualEvForm.file_name}</div>
+                    <div className="text-[11px] text-gray-500 mt-1">انقر للاستبدال</div>
+                  </div>
+                ) : (
+                  <div>
+                    <FileArchive className="w-6 h-6 text-gray-400 mx-auto mb-1.5" />
+                    <div className="text-sm text-gray-600 dark:text-gray-400">اضغط لرفع ملف أو اسحبه هنا</div>
+                    <div className="text-[11px] text-gray-400 mt-0.5">PDF، صور، فيديو (حد أقصى 10 MB)</div>
+                  </div>
+                )}
+              </button>
+            </div>
+          </div>
+
+          <DialogFooter className="mt-3">
+            <Button variant="outline" onClick={() => setManualEvDialog({ open: false })}>إلغاء</Button>
+            <Button onClick={handleSaveManualEvidence} disabled={manualEvSaving || !manualEvForm.evidence_type || !(manualEvForm.title_ar || '').trim()} className="gap-1.5">
+              {manualEvSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+              إضافة الشاهد
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* CV manual-add dialog */}
       <Dialog open={cvDialog.open} onOpenChange={(open) => { if (!open) setCvDialog({ open: false, kind: 'training_attended' }); }}>
         <DialogContent className="sm:max-w-md">
@@ -1008,7 +1270,7 @@ function CVItemRow({ item, isRTL, onDelete }) {
 
 function PortfolioV2Sections(props) {
   const {
-    sectionsData, isRTL,
+    sectionsData, isRTL, openManualEvDialog,
     expandedV2, toggleV2, expandedSubsec, toggleSubsec,
     introDraft, setIntroDraft, introBusy, introAIBusy, handleSaveIntro, handleGenerateIntro,
     vmvDraft, setVmvDraft, vmvBusy, vmvAIBusy, handleSaveVMV, handleGenerateVMV,
@@ -1251,6 +1513,14 @@ function PortfolioV2Sections(props) {
                         ))}
                       </div>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => openManualEvDialog && openManualEvDialog(sub.key)}
+                      className="mt-3 w-full py-2.5 rounded-lg border border-dashed border-violet-300 dark:border-violet-700 text-sm font-medium text-violet-700 dark:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-900/20 flex items-center justify-center gap-2 transition-colors"
+                    >
+                      <Plus className="w-4 h-4" />
+                      إضافة شاهد يدوي
+                    </button>
                   </div>
                 )}
               </div>
