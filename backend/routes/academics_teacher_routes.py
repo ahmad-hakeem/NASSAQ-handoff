@@ -42,19 +42,41 @@ async def get_school_id_from_context(current_user: dict, x_school_context: str =
 # Teacher Wizard Options
 @router.get("/teachers/options/subjects")
 async def get_teacher_subjects_options(current_user: dict = Depends(get_current_user)):
-    """Get available subjects from reference database - unique subjects only"""
-    
-    # Get subjects from reference_subjects collection first, then fallback to subjects
-    subjects = await gd_find(db.session, "reference_subjects", {"is_active": True}, limit=300)
-    
-    if not subjects:
-        subjects = await gd_find(db.session, "subjects", {"is_active": True}, limit=300)
-    
-    # Remove duplicates by name_ar (keep first occurrence)
+    """Get available subjects for the current school's teacher wizard.
+
+    Sources, in order of preference:
+      1. School-scoped + global subjects from `subjects` table
+      2. Reference subjects from `reference_subjects`
+      3. A built-in fallback list of standard Saudi subjects so the UI is
+         never empty (the previous behaviour returned [] and broke the
+         add-teacher wizard for any tenant whose tables hadn't been seeded).
+    """
+    tenant_id = current_user.get("tenant_id")
+
+    collected: list = []
+    if tenant_id:
+        # School-scoped + global subjects from the main subjects table
+        collected = await gd_find(
+            db.session,
+            "subjects",
+            {
+                "$or": [
+                    {"school_id": tenant_id},
+                    {"is_global": True},
+                ],
+                "is_active": True,
+            },
+            limit=300,
+        )
+
+    if not collected:
+        collected = await gd_find(db.session, "reference_subjects", {"is_active": True}, limit=300)
+
+    # Deduplicate by Arabic name and normalise the shape
     seen_names = set()
     unique_subjects = []
-    for s in subjects:
-        name = s.get("name_ar", s.get("name", ""))
+    for s in collected:
+        name = s.get("name_ar") or s.get("name") or ""
         if name and name not in seen_names:
             seen_names.add(name)
             unique_subjects.append({
@@ -63,9 +85,29 @@ async def get_teacher_subjects_options(current_user: dict = Depends(get_current_
                 "name_ar": name,
                 "name_en": s.get("name_en", ""),
                 "code": s.get("code", ""),
-                "color": s.get("color", "#3B82F6")
+                "color": s.get("color", "#3B82F6"),
             })
-    
+
+    if not unique_subjects:
+        # Built-in safety net so the wizard is never blank
+        FALLBACK = [
+            ("math", "الرياضيات", "Mathematics"),
+            ("arabic", "اللغة العربية", "Arabic Language"),
+            ("english", "اللغة الإنجليزية", "English Language"),
+            ("science", "العلوم", "Science"),
+            ("social", "الدراسات الاجتماعية", "Social Studies"),
+            ("islamic", "التربية الإسلامية", "Islamic Studies"),
+            ("quran", "القرآن الكريم", "Quran"),
+            ("pe", "التربية البدنية", "Physical Education"),
+            ("art", "التربية الفنية", "Art"),
+            ("computer", "الحاسب الآلي", "Computer Science"),
+        ]
+        unique_subjects = [
+            {"id": code, "name": ar, "name_ar": ar, "name_en": en,
+             "code": code, "color": "#3B82F6"}
+            for code, ar, en in FALLBACK
+        ]
+
     return {"subjects": unique_subjects}
 
 
@@ -299,6 +341,30 @@ async def get_teacher_grades_options(current_user: dict = Depends(get_current_us
             }
     
     sorted_grades = sorted(grade_map.values(), key=lambda g: g["grade"])
+
+    if not sorted_grades:
+        # Built-in safety net so the teacher wizard's grade picker is never
+        # empty (covers freshly-created schools that haven't seeded grades
+        # or classes yet).
+        FALLBACK_GRADES = [
+            (1, "الصف الأول الابتدائي", "Grade 1"),
+            (2, "الصف الثاني الابتدائي", "Grade 2"),
+            (3, "الصف الثالث الابتدائي", "Grade 3"),
+            (4, "الصف الرابع الابتدائي", "Grade 4"),
+            (5, "الصف الخامس الابتدائي", "Grade 5"),
+            (6, "الصف السادس الابتدائي", "Grade 6"),
+            (7, "الصف الأول المتوسط", "Grade 7"),
+            (8, "الصف الثاني المتوسط", "Grade 8"),
+            (9, "الصف الثالث المتوسط", "Grade 9"),
+            (10, "الصف الأول الثانوي", "Grade 10"),
+            (11, "الصف الثاني الثانوي", "Grade 11"),
+            (12, "الصف الثالث الثانوي", "Grade 12"),
+        ]
+        sorted_grades = [
+            {"id": f"grade-{n}", "name": ar, "name_ar": ar, "name_en": en, "grade": n}
+            for n, ar, en in FALLBACK_GRADES
+        ]
+
     return {"grades": sorted_grades}
 
 @router.get("/teachers/options/academic-degrees")
