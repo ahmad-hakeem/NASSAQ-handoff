@@ -30,3 +30,9 @@ id = "C7hkn0x4cYMTMgNGUQ2zO"
 uri = "file://outputs/NASSAQ_Investor_System_Document.docx"
 type = "word_document"
 title = "NASSAQ Investor System Document (DOCX)"
+
+[[outputs]]
+id = "_eM41ydOoe1A_PSGNmmxT"
+uri = "file://exports/users_list.csv"
+type = "table"
+title = "Users list (786 accounts)"
