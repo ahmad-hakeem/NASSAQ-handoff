@@ -197,6 +197,30 @@ const SUBSECTION_CONFIG_V2 = [
 const labelForType = (typeKey) =>
   TYPE_LABEL_AR_V2[typeKey] || typeKey.replace(/_/g, ' ');
 
+const FILE_KIND_OPTIONS = [
+  { value: 'pdf',   label: 'ملف PDF' },
+  { value: 'image', label: 'صورة' },
+  { value: 'video', label: 'فيديو' },
+  { value: 'docx',  label: 'مستند Word (DOCX)' },
+  { value: 'pptx',  label: 'عرض PowerPoint (PPTX)' },
+  { value: 'xlsx',  label: 'جدول Excel (XLSX)' },
+  { value: 'txt',   label: 'ملف نصي (TXT)' },
+  { value: 'md',    label: 'ملف Markdown (MD)' },
+];
+
+const FILE_KIND_ACCEPT = {
+  pdf: 'application/pdf,.pdf',
+  image: 'image/*',
+  video: 'video/*',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,.docx,.doc',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint,.pptx,.ppt',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,.xlsx,.xls',
+  txt: 'text/plain,.txt',
+  md: 'text/markdown,text/x-markdown,.md,.markdown',
+};
+
+const acceptForKind = (k) => FILE_KIND_ACCEPT[k] || '*/*';
+
 export default function TeacherAchievementsPage() {
   const { t } = useTranslation();
   const { api, isRTL, user } = useAuth();
@@ -625,11 +649,18 @@ export default function TeacherAchievementsPage() {
   const openEditDialog = (evidence) => {
     const url = evidence.file_url || '';
     const metaKind = evidence?.metadata?.file_kind;
-    const fileKind = (metaKind === 'pdf' || metaKind === 'image' || metaKind === 'video')
-      ? metaKind
-      : (url.startsWith('data:image/') ? 'image'
-        : url.startsWith('data:video/') ? 'video'
-        : 'pdf');
+    const validKinds = FILE_KIND_OPTIONS.map(o => o.value);
+    let fileKind = validKinds.includes(metaKind) ? metaKind : null;
+    if (!fileKind) {
+      if (url.startsWith('data:image/')) fileKind = 'image';
+      else if (url.startsWith('data:video/')) fileKind = 'video';
+      else if (url.includes('wordprocessingml')) fileKind = 'docx';
+      else if (url.includes('presentationml')) fileKind = 'pptx';
+      else if (url.includes('spreadsheetml')) fileKind = 'xlsx';
+      else if (url.startsWith('data:text/markdown')) fileKind = 'md';
+      else if (url.startsWith('data:text/plain')) fileKind = 'txt';
+      else fileKind = 'pdf';
+    }
     // Invalidate any in-flight edit-upload from a previous open
     editUploadTokenRef.current++;
     setEditFileUploading(false);
@@ -1195,9 +1226,9 @@ export default function TeacherAchievementsPage() {
               >
                 <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="pdf">ملف PDF</SelectItem>
-                  <SelectItem value="image">صورة</SelectItem>
-                  <SelectItem value="video">فيديو</SelectItem>
+                  {FILE_KIND_OPTIONS.map(o => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -1207,11 +1238,7 @@ export default function TeacherAchievementsPage() {
                 ref={editFileInputRef}
                 type="file"
                 hidden
-                accept={
-                  evidenceForm.file_kind === 'pdf' ? 'application/pdf'
-                    : evidenceForm.file_kind === 'image' ? 'image/*'
-                    : 'video/*'
-                }
+                accept={acceptForKind(evidenceForm.file_kind)}
                 onChange={(e) => handleEditEvidenceFile(e.target.files?.[0])}
               />
               <button
@@ -1416,9 +1443,9 @@ export default function TeacherAchievementsPage() {
               >
                 <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="pdf">ملف PDF</SelectItem>
-                  <SelectItem value="image">صورة</SelectItem>
-                  <SelectItem value="video">فيديو</SelectItem>
+                  {FILE_KIND_OPTIONS.map(o => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -1428,11 +1455,7 @@ export default function TeacherAchievementsPage() {
                 ref={fileInputRef}
                 type="file"
                 hidden
-                accept={
-                  manualEvForm.file_kind === 'pdf' ? 'application/pdf'
-                    : manualEvForm.file_kind === 'image' ? 'image/*'
-                    : 'video/*'
-                }
+                accept={acceptForKind(manualEvForm.file_kind)}
                 onChange={(e) => handleManualEvFile(e.target.files?.[0])}
               />
               <button

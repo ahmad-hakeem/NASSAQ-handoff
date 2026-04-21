@@ -120,9 +120,43 @@ async def upload_evidence_file(
         "application/pdf",
         "image/jpeg", "image/png", "image/gif", "image/webp",
         "video/mp4", "video/webm", "video/quicktime",
+        # Office documents
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.ms-powerpoint",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/vnd.ms-excel",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        # Plain text / markdown
+        "text/plain", "text/markdown", "text/x-markdown",
+        # Some browsers send octet-stream for office files; accept and normalize via extension
+        "application/octet-stream",
     }
-    if file.content_type not in ALLOWED_TYPES:
+    EXT_TO_TYPE = {
+        ".pdf": "application/pdf",
+        ".doc": "application/msword",
+        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".ppt": "application/vnd.ms-powerpoint",
+        ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        ".xls": "application/vnd.ms-excel",
+        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".txt": "text/plain",
+        ".md": "text/markdown",
+        ".markdown": "text/markdown",
+    }
+    fname = (file.filename or "").lower()
+    ext = ""
+    if "." in fname:
+        ext = fname[fname.rfind("."):]
+    inferred = EXT_TO_TYPE.get(ext)
+    ctype = file.content_type or ""
+    # If browser sent generic octet-stream but extension is recognized, use the inferred type.
+    if ctype in ("", "application/octet-stream") and inferred:
+        ctype = inferred
+    if ctype not in ALLOWED_TYPES and inferred not in ALLOWED_TYPES:
         raise HTTPException(status_code=400, detail="صيغة الملف غير مدعومة")
+    # Prefer the inferred type when it matches a known extension (more reliable)
+    final_ctype = inferred or ctype
 
     chunks: list[bytes] = []
     total = 0
@@ -139,9 +173,9 @@ async def upload_evidence_file(
     encoded = base64.b64encode(content).decode("utf-8")
     return {
         "success": True,
-        "file_url": f"data:{file.content_type};base64,{encoded}",
+        "file_url": f"data:{final_ctype};base64,{encoded}",
         "file_name": file.filename,
-        "content_type": file.content_type,
+        "content_type": final_ctype,
         "size": len(content),
     }
 
