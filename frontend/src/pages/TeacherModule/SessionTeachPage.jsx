@@ -194,6 +194,15 @@ export default function SessionTeachPage() {
   const [skillEnabled, setSkillEnabled] = useState(false);
   const [showAddOtherItems, setShowAddOtherItems] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
+  // If the active action tab gets disabled by settings, switch to a safe default
+  useEffect(() => {
+    const disabled =
+      (actionTab === 'participation' && !participationEnabled) ||
+      (actionTab === 'homework' && !homeworkEnabled) ||
+      (actionTab === 'recitation' && !recitationEnabled) ||
+      (actionTab === 'skill' && !skillEnabled);
+    if (disabled) setActionTab('question');
+  }, [actionTab, participationEnabled, homeworkEnabled, recitationEnabled, skillEnabled]);
   const flashRef = useRef(null);
   useEffect(() => { return () => { if (flashRef.current) clearInterval(flashRef.current); }; }, []);
   const timer = useSessionTimer(startTime);
@@ -1380,12 +1389,12 @@ export default function SessionTeachPage() {
               <div className="flex-none shrink-0 flex border-b border-border overflow-x-auto">
                 {[
                   { id: 'question', labelKey: 'question', icon: MessageCircle, forMode: 'quiz' },
-                  { id: 'participation', labelKey: 'participationTab', icon: Hand, forMode: 'review' },
-                  { id: 'homework', labelKey: 'modeHomework', icon: ClipboardCheck, forMode: 'homework' },
-                  { id: 'recitation', labelKey: 'recitationTab', icon: Mic },
+                  { id: 'participation', labelKey: 'participationTab', icon: Hand, forMode: 'review', enabled: participationEnabled },
+                  { id: 'homework', labelKey: 'modeHomework', icon: ClipboardCheck, forMode: 'homework', enabled: homeworkEnabled },
+                  { id: 'recitation', labelKey: 'recitationTab', icon: Mic, enabled: recitationEnabled },
                   { id: 'behaviour', labelKey: 'behaviour', icon: ThumbsUp },
-                  { id: 'skill', labelKey: 'skill', icon: Star },
-                ].map(tab => {
+                  { id: 'skill', labelKey: 'skill', icon: Star, enabled: skillEnabled },
+                ].filter(t => t.enabled !== false).map(tab => {
                   const isRecommended = tab.forMode && mode?.id === tab.forMode;
                   return (
                   <button
