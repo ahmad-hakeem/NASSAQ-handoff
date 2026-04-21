@@ -287,6 +287,36 @@ export default function TeacherAchievementsPage() {
   const [manualEvDialog, setManualEvDialog] = useState({ open: false });
   const [viewEvDialog, setViewEvDialog] = useState({ open: false, item: null });
   const openViewDialog = (item) => setViewEvDialog({ open: true, item });
+  const [extraClassNames, setExtraClassNames] = useState({});
+  const [extraSubjectNames, setExtraSubjectNames] = useState({});
+
+  useEffect(() => {
+    const it = viewEvDialog.item;
+    if (!it) return;
+    const cid = it.class_id;
+    if (cid && !teacherClasses.find(c => c.id === cid) && !(cid in extraClassNames)) {
+      setExtraClassNames(prev => ({ ...prev, [cid]: '' }));
+      api.get(`/classes/${cid}`)
+        .then(r => {
+          const d = r.data || {};
+          const name = d.name_ar || d.name || d.name_en || '';
+          setExtraClassNames(prev => ({ ...prev, [cid]: name }));
+        })
+        .catch(() => {});
+    }
+    const sid = it.subject_id;
+    if (sid && !teacherSubjects.find(s => s.id === sid) && !(sid in extraSubjectNames)) {
+      setExtraSubjectNames(prev => ({ ...prev, [sid]: '' }));
+      api.get(`/subjects/${sid}`)
+        .then(r => {
+          const d = r.data || {};
+          const name = d.name_ar || d.name || d.name_en || '';
+          setExtraSubjectNames(prev => ({ ...prev, [sid]: name }));
+        })
+        .catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewEvDialog.item]);
 
   const openEvidenceFile = (url) => {
     if (!url) { toast.error('لا يوجد ملف مرفق لهذا الشاهد'); return; }
@@ -1568,8 +1598,12 @@ export default function TeacherAchievementsPage() {
             const sectionTitle = SUBSECTION_CONFIG_V2.find(s => (s.types || []).includes(it.evidence_type))?.title || '—';
             const cls = teacherClasses.find(c => c.id === it.class_id);
             const subj = teacherSubjects.find(s => s.id === it.subject_id);
-            const className = cls?.name_ar || cls?.name || it.class_id || '—';
-            const subjectName = subj?.name_ar || subj?.name || subj?.name_en || it.subject_id || '—';
+            const className = cls?.name_ar || cls?.name
+              || extraClassNames[it.class_id]
+              || (it.class_id ? '—' : '—');
+            const subjectName = subj?.name_ar || subj?.name || subj?.name_en
+              || extraSubjectNames[it.subject_id]
+              || (it.subject_id ? '—' : '—');
             return (
               <div className="space-y-3 mt-2 text-right">
                 <div>
