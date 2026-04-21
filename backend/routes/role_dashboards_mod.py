@@ -2248,17 +2248,20 @@ async def get_followup_record(
         return {
             "session_id": session_id,
             "columns": [
-                {"id": "participation", "name": "مشاركة", "maxGrade": 10, "type": "grade"},
-                {"id": "homework", "name": "واجب", "maxGrade": 10, "type": "grade"},
-                {"id": "performance_task", "name": "مهمة أدائية", "maxGrade": 10, "type": "grade"},
-                {"id": "test", "name": "اختبار", "maxGrade": 10, "type": "grade"},
+                {"id": "participation", "name": "المشاركة", "maxGrade": 10, "type": "grade", "group": "coursework"},
+                {"id": "homework", "name": "الواجبات", "maxGrade": 10, "type": "grade", "group": "coursework"},
+                {"id": "performance_task", "name": "المهام الأدائية", "maxGrade": 20, "type": "grade", "group": "coursework"},
+                {"id": "short_test", "name": "الاختبار القصير", "maxGrade": 20, "type": "grade", "group": "exams"},
+                {"id": "final_test", "name": "اختبار نهاية الفترة", "maxGrade": 40, "type": "grade", "group": "exams"},
             ],
             "data": {},
+            "absences": {},
         }
     return {
         "session_id": session_id,
         "columns": record.get("columns", []),
         "data": record.get("data", {}),
+        "absences": record.get("absences", {}),
     }
 
 
@@ -2280,6 +2283,7 @@ async def save_followup_record(
         "session_id": session_id,
         "columns": payload.get("columns", []),
         "data": payload.get("data", {}),
+        "absences": payload.get("absences", {}),
         "updated_at": datetime.utcnow().isoformat(),
     }
     if existing:

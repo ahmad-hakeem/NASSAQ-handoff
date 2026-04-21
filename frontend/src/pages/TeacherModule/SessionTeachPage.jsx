@@ -147,6 +147,13 @@ export default function SessionTeachPage() {
   const [customSkills, setCustomSkills] = useState([]);
   const [followupData, setFollowupData] = useState({});
   const [followupColumns, setFollowupColumns] = useState([]);
+  const [followupAbsences, setFollowupAbsences] = useState({});
+  const [followupTab, setFollowupTab] = useState('students');
+  const [showAddColumnModal, setShowAddColumnModal] = useState(false);
+  const [showColumnSettings, setShowColumnSettings] = useState(false);
+  const [newColumnDraft, setNewColumnDraft] = useState({ name: '', group: 'coursework', maxGrade: 10 });
+  const [absencePickerStudent, setAbsencePickerStudent] = useState(null);
+  const [absencePickerDate, setAbsencePickerDate] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const flashRef = useRef(null);
@@ -287,19 +294,19 @@ export default function SessionTeachPage() {
     const saveState = () => {
       try {
         sessionStorage.setItem(`session_state_${sessionId}`, JSON.stringify({
-          evalMode, groups, stats, mode: mode?.id, actionTab, followupData, followupColumns,
+          evalMode, groups, stats, mode: mode?.id, actionTab, followupData, followupColumns, followupAbsences,
           customPositiveBehaviours, customNegativeBehaviours, customSkills
         }));
-        if (followupColumns.length > 0 || Object.keys(followupData).length > 0) {
+        if (followupColumns.length > 0 || Object.keys(followupData).length > 0 || Object.keys(followupAbsences).length > 0) {
           api.post(`/session/${sessionId}/followup-record`, {
-            columns: followupColumns, data: followupData
+            columns: followupColumns, data: followupData, absences: followupAbsences
           }).catch(() => {});
         }
       } catch (e) { /* ignore */ }
     };
     autoSaveRef.current = setInterval(saveState, 10000);
     return () => { if (autoSaveRef.current) clearInterval(autoSaveRef.current); };
-  }, [sessionId, evalMode, groups, stats, mode, actionTab, followupData, followupColumns, api, customPositiveBehaviours, customNegativeBehaviours, customSkills]);
+  }, [sessionId, evalMode, groups, stats, mode, actionTab, followupData, followupColumns, followupAbsences, api, customPositiveBehaviours, customNegativeBehaviours, customSkills]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -310,7 +317,8 @@ export default function SessionTeachPage() {
         if (state.evalMode) setEvalMode(state.evalMode);
         if (state.groups?.length) setGroups(state.groups);
         if (state.followupData && Object.keys(state.followupData).length > 0) setFollowupData(state.followupData);
-        if (state.followupColumns?.length) setFollowupColumns(state.followupColumns);
+        if (state.followupColumns?.length) setFollowupColumns(state.followupColumns.map(migrateColumn));
+        if (state.followupAbsences && Object.keys(state.followupAbsences).length > 0) setFollowupAbsences(state.followupAbsences);
         if (state.customPositiveBehaviours?.length) setCustomPositiveBehaviours(state.customPositiveBehaviours);
         if (state.customNegativeBehaviours?.length) setCustomNegativeBehaviours(state.customNegativeBehaviours);
         if (state.customSkills?.length) setCustomSkills(state.customSkills);
@@ -362,18 +370,28 @@ export default function SessionTeachPage() {
   };
 
   const defaultColumns = [
-    { id: 'participation', name: t('participation'), maxGrade: 10, type: 'grade' },
-    { id: 'homework', name: t('homework'), maxGrade: 10, type: 'grade' },
-    { id: 'performance_task', name: t('performanceTask'), maxGrade: 10, type: 'grade' },
-    { id: 'test', name: t('test'), maxGrade: 10, type: 'grade' },
+    { id: 'participation', name: 'المشاركة', maxGrade: 10, type: 'grade', group: 'coursework' },
+    { id: 'homework', name: 'الواجبات', maxGrade: 10, type: 'grade', group: 'coursework' },
+    { id: 'performance_task', name: 'المهام الأدائية', maxGrade: 20, type: 'grade', group: 'coursework' },
+    { id: 'short_test', name: 'الاختبار القصير', maxGrade: 20, type: 'grade', group: 'exams' },
+    { id: 'final_test', name: 'اختبار نهاية الفترة', maxGrade: 40, type: 'grade', group: 'exams' },
   ];
+
+  const migrateColumn = (col) => {
+    if (col.group) return col;
+    const idLower = String(col.id || '').toLowerCase();
+    const nameStr = String(col.name || '');
+    const isExam = /test|exam|quiz/.test(idLower) || /اختبار|امتحان/.test(nameStr);
+    return { ...col, group: isExam ? 'exams' : 'coursework', hidden: !!col.hidden };
+  };
 
   const loadFollowupRecord = useCallback(async () => {
     if (!sessionId) return;
     try {
       const res = await api.get(`/session/${sessionId}/followup-record`);
       setFollowupData(res.data?.data || {});
-      if (res.data?.columns?.length) setFollowupColumns(res.data.columns);
+      setFollowupAbsences(res.data?.absences || {});
+      if (res.data?.columns?.length) setFollowupColumns(res.data.columns.map(migrateColumn));
       else if (followupColumns.length === 0) setFollowupColumns(defaultColumns);
     } catch (e) {
       if (followupColumns.length === 0) setFollowupColumns(defaultColumns);
@@ -2201,105 +2219,540 @@ export default function SessionTeachPage() {
       </Dialog>
 
       {/* Follow-up Record (كشف المتابعة) Dialog */}
-      <Dialog open={showFollowupRecord} onOpenChange={setShowFollowupRecord}>
-        <DialogContent className="max-w-4xl max-h-[85vh] overflow-hidden flex flex-col" dir={isRTL ? 'rtl' : 'ltr'}>
-          <DialogHeader>
+      <FollowupRecordDialog
+        open={showFollowupRecord}
+        onOpenChange={setShowFollowupRecord}
+        isRTL={isRTL}
+        students={students}
+        followupColumns={followupColumns}
+        setFollowupColumns={setFollowupColumns}
+        followupData={followupData}
+        setFollowupData={setFollowupData}
+        followupAbsences={followupAbsences}
+        setFollowupAbsences={setFollowupAbsences}
+        followupTab={followupTab}
+        setFollowupTab={setFollowupTab}
+        showAddColumnModal={showAddColumnModal}
+        setShowAddColumnModal={setShowAddColumnModal}
+        showColumnSettings={showColumnSettings}
+        setShowColumnSettings={setShowColumnSettings}
+        newColumnDraft={newColumnDraft}
+        setNewColumnDraft={setNewColumnDraft}
+        absencePickerStudent={absencePickerStudent}
+        setAbsencePickerStudent={setAbsencePickerStudent}
+        absencePickerDate={absencePickerDate}
+        setAbsencePickerDate={setAbsencePickerDate}
+      />
+    </div>
+    </SectionErrorBoundary>
+  );
+}
+
+function FollowupRecordDialog({
+  open, onOpenChange, isRTL, students,
+  followupColumns, setFollowupColumns,
+  followupData, setFollowupData,
+  followupAbsences, setFollowupAbsences,
+  followupTab, setFollowupTab,
+  showAddColumnModal, setShowAddColumnModal,
+  showColumnSettings, setShowColumnSettings,
+  newColumnDraft, setNewColumnDraft,
+  absencePickerStudent, setAbsencePickerStudent,
+  absencePickerDate, setAbsencePickerDate,
+}) {
+  const { t } = useTranslation();
+  const allStudents = students || [];
+
+  const visibleColumns = followupColumns.filter(c => !c.hidden);
+  const courseworkCols = visibleColumns.filter(c => c.group === 'coursework');
+  const examCols = visibleColumns.filter(c => c.group === 'exams');
+
+  const sumFor = (studentData, cols) =>
+    cols.reduce((sum, col) => sum + (Number(studentData[col.id]) || 0), 0);
+  const maxSum = (cols) => cols.reduce((sum, col) => sum + (Number(col.maxGrade) || 0), 0);
+
+  const courseworkMax = maxSum(courseworkCols);
+  const examMax = maxSum(examCols);
+  const grandMax = courseworkMax + examMax;
+
+  const handleAddColumn = () => {
+    const name = newColumnDraft.name?.trim();
+    if (!name) return;
+    const id = `col_${Date.now()}`;
+    const col = {
+      id,
+      name,
+      group: newColumnDraft.group,
+      maxGrade: Math.max(1, Number(newColumnDraft.maxGrade) || 10),
+      type: 'grade',
+      hidden: false,
+    };
+    setFollowupColumns(prev => [...prev, col]);
+    setNewColumnDraft({ name: '', group: 'coursework', maxGrade: 10 });
+    setShowAddColumnModal(false);
+  };
+
+  const handleDeleteColumn = (id) => {
+    setFollowupColumns(prev => prev.filter(c => c.id !== id));
+  };
+  const handleToggleHidden = (id) => {
+    setFollowupColumns(prev => prev.map(c => c.id === id ? { ...c, hidden: !c.hidden } : c));
+  };
+  const handleEditMaxGrade = (id, value) => {
+    const v = Math.max(1, Number(value) || 1);
+    setFollowupColumns(prev => prev.map(c => c.id === id ? { ...c, maxGrade: v } : c));
+  };
+  const handleEditColumnName = (id, value) => {
+    setFollowupColumns(prev => prev.map(c => c.id === id ? { ...c, name: value } : c));
+  };
+
+  const formatAbsence = (dateStr) => {
+    try {
+      const d = new Date(dateStr);
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      return `${day}/${month}`;
+    } catch { return dateStr; }
+  };
+
+  const addAbsence = (studentId, date) => {
+    if (!date) return;
+    setFollowupAbsences(prev => {
+      const list = prev[studentId] || [];
+      if (list.includes(date)) return prev;
+      const next = [...list, date].sort();
+      return { ...prev, [studentId]: next };
+    });
+  };
+  const removeAbsence = (studentId, date) => {
+    setFollowupAbsences(prev => {
+      const list = (prev[studentId] || []).filter(d => d !== date);
+      const next = { ...prev };
+      if (list.length === 0) delete next[studentId];
+      else next[studentId] = list;
+      return next;
+    });
+  };
+
+  const renderGroupedHeader = () => (
+    <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800">
+      <tr>
+        <th rowSpan={2} className="border px-2 py-2 text-center font-cairo font-bold text-xs sticky end-0 bg-slate-100 dark:bg-slate-800 w-12">#</th>
+        <th rowSpan={2} className="border px-3 py-2 text-start font-cairo font-bold text-xs sticky end-12 bg-slate-100 dark:bg-slate-800 min-w-[160px]">{t('studentName') || 'الاسم'}</th>
+        {courseworkCols.length > 0 && (
+          <th colSpan={courseworkCols.length + 1} className="border px-3 py-2 text-center font-cairo font-bold text-xs bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+            أعمال سنة
+          </th>
+        )}
+        {examCols.length > 0 && (
+          <th colSpan={examCols.length + 1} className="border px-3 py-2 text-center font-cairo font-bold text-xs bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">
+            اختبارات
+          </th>
+        )}
+        <th rowSpan={2} className="border px-3 py-2 text-center font-cairo font-bold text-xs bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 min-w-[80px]">
+          <div>الكلي</div>
+          <div className="text-[10px] font-normal opacity-70">/{grandMax}</div>
+        </th>
+      </tr>
+      <tr>
+        {courseworkCols.map(col => (
+          <th key={col.id} className="border px-2 py-2 text-center font-cairo font-bold text-[11px] min-w-[90px]">
+            <div className="truncate">{col.name}</div>
+            <div className="text-[10px] text-muted-foreground font-normal">/{col.maxGrade}</div>
+          </th>
+        ))}
+        {courseworkCols.length > 0 && (
+          <th className="border px-2 py-2 text-center font-cairo font-bold text-[11px] bg-blue-50/60 dark:bg-blue-900/20 min-w-[80px]">
+            <div>المجموع</div>
+            <div className="text-[10px] text-muted-foreground font-normal">/{courseworkMax}</div>
+          </th>
+        )}
+        {examCols.map(col => (
+          <th key={col.id} className="border px-2 py-2 text-center font-cairo font-bold text-[11px] min-w-[90px]">
+            <div className="truncate">{col.name}</div>
+            <div className="text-[10px] text-muted-foreground font-normal">/{col.maxGrade}</div>
+          </th>
+        ))}
+        {examCols.length > 0 && (
+          <th className="border px-2 py-2 text-center font-cairo font-bold text-[11px] bg-amber-50/60 dark:bg-amber-900/20 min-w-[80px]">
+            <div>المجموع</div>
+            <div className="text-[10px] text-muted-foreground font-normal">/{examMax}</div>
+          </th>
+        )}
+      </tr>
+    </thead>
+  );
+
+  const renderGradeCell = (student, col) => {
+    const studentData = followupData[student.id] || {};
+    const value = studentData[col.id] ?? '';
+    return (
+      <td key={col.id} className="border px-1 py-1.5">
+        <input
+          type="number"
+          inputMode="numeric"
+          value={value}
+          onChange={e => {
+            const raw = e.target.value;
+            if (raw === '') {
+              setFollowupData(prev => ({
+                ...prev,
+                [student.id]: { ...(prev[student.id] || {}), [col.id]: '' }
+              }));
+              return;
+            }
+            const v = Math.max(0, Math.min(parseInt(raw) || 0, col.maxGrade));
+            setFollowupData(prev => ({
+              ...prev,
+              [student.id]: { ...(prev[student.id] || {}), [col.id]: v }
+            }));
+          }}
+          className="w-12 h-8 mx-auto block text-center text-xs font-medium bg-white dark:bg-slate-700 outline-none border border-slate-200 dark:border-slate-600 rounded-full focus:border-brand-turquoise focus:ring-2 focus:ring-brand-turquoise/30 transition"
+          min={0}
+          max={col.maxGrade}
+          placeholder="0"
+        />
+      </td>
+    );
+  };
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-6xl w-[95vw] max-h-[90vh] overflow-hidden flex flex-col p-0" dir={isRTL ? 'rtl' : 'ltr'}>
+          <DialogHeader className="px-5 pt-5 pb-3 border-b">
             <DialogTitle className="font-cairo flex items-center gap-2">
               <FileSpreadsheet className="h-5 w-5 text-brand-turquoise" />
-              {t('followupRecord')}
+              {t('followupRecord') || 'كشف المتابعة'}
             </DialogTitle>
           </DialogHeader>
-          <div className="flex-1 overflow-auto">
-            <table className="w-full text-sm border-collapse">
-              <thead className="sticky top-0 bg-slate-100 dark:bg-slate-800">
-                <tr>
-                  <th className="border px-3 py-2 text-start font-cairo font-bold text-xs">#</th>
-                  <th className="border px-3 py-2 text-start font-cairo font-bold text-xs">{t('studentName')}</th>
-                  {followupColumns.map(col => (
-                    <th key={col.id} className="border px-3 py-2 text-center font-cairo font-bold text-xs">
-                      <div>{col.name}</div>
-                      <div className="text-[10px] text-muted-foreground font-normal">/{col.maxGrade}</div>
-                    </th>
-                  ))}
-                  <th className="border px-3 py-2 text-center font-cairo font-bold text-xs">{t('total')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {presentStudents.map((student, si) => {
-                  const studentData = followupData[student.id] || {};
-                  const numericCols = followupColumns.filter(c => c.type !== 'text');
-                  const total = numericCols.reduce((sum, col) => sum + (Number(studentData[col.id]) || 0), 0);
-                  const maxTotal = numericCols.reduce((sum, col) => sum + col.maxGrade, 0);
-                  return (
-                    <tr key={student.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                      <td className="border px-3 py-1.5 text-xs text-muted-foreground">{si + 1}</td>
-                      <td className="border px-3 py-1.5 text-xs font-medium">{student.full_name}</td>
-                      {followupColumns.map(col => (
-                        <td key={col.id} className="border px-1 py-1">
-                          {col.type === 'check' ? (
-                            <div className="flex items-center justify-center">
-                              <input
-                                type="checkbox"
-                                checked={!!studentData[col.id]}
-                                onChange={e => {
-                                  setFollowupData(prev => ({
-                                    ...prev,
-                                    [student.id]: { ...(prev[student.id] || {}), [col.id]: e.target.checked ? 1 : 0 }
-                                  }));
-                                }}
-                                className="w-4 h-4 rounded border-slate-300 text-brand-turquoise focus:ring-brand-turquoise"
-                              />
-                            </div>
-                          ) : col.type === 'text' ? (
-                            <input
-                              type="text"
-                              value={studentData[col.id] || ''}
-                              onChange={e => {
-                                setFollowupData(prev => ({
-                                  ...prev,
-                                  [student.id]: { ...(prev[student.id] || {}), [col.id]: e.target.value }
-                                }));
-                              }}
-                              className="w-full text-center text-xs bg-transparent outline-none border rounded p-1 focus:border-brand-turquoise"
-                            />
-                          ) : (
-                            <input
-                              type="number"
-                              value={studentData[col.id] || ''}
-                              onChange={e => {
-                                const val = Math.min(parseInt(e.target.value) || 0, col.maxGrade);
-                                setFollowupData(prev => ({
-                                  ...prev,
-                                  [student.id]: { ...(prev[student.id] || {}), [col.id]: val }
-                                }));
-                              }}
-                              className="w-full text-center text-xs bg-transparent outline-none border rounded p-1 focus:border-brand-turquoise"
-                              min={0}
-                              max={col.maxGrade}
-                            />
-                          )}
-                        </td>
-                      ))}
-                      <td className="border px-3 py-1.5 text-center text-xs font-bold">
-                        <span className={total >= maxTotal * 0.6 ? 'text-green-600' : total >= maxTotal * 0.3 ? 'text-amber-600' : 'text-red-600'}>
-                          {total}
-                        </span>
-                        <span className="text-muted-foreground">/{maxTotal}</span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+
+          {/* Tabs */}
+          <div className="flex items-center gap-2 px-5 pt-3 border-b">
+            <button
+              onClick={() => setFollowupTab('students')}
+              className={`px-4 py-2 text-sm font-cairo font-semibold rounded-t-lg transition ${
+                followupTab === 'students'
+                  ? 'bg-brand-turquoise/10 text-brand-turquoise border-b-2 border-brand-turquoise'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <span className="inline-flex items-center gap-2">
+                <Table2 className="h-4 w-4" />
+                سجل الطلاب
+              </span>
+            </button>
+            <button
+              onClick={() => setFollowupTab('absences')}
+              className={`px-4 py-2 text-sm font-cairo font-semibold rounded-t-lg transition ${
+                followupTab === 'absences'
+                  ? 'bg-brand-turquoise/10 text-brand-turquoise border-b-2 border-brand-turquoise'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <span className="inline-flex items-center gap-2">
+                <UserCheck className="h-4 w-4" />
+                سجل الغياب
+              </span>
+            </button>
           </div>
-          <div className="flex-none pt-3 border-t flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">{presentStudents.length} {t('students')}</span>
-            <Button size="sm" onClick={() => setShowFollowupRecord(false)}>{t('close')}</Button>
+
+          {/* Toolbar (students tab only) */}
+          {followupTab === 'students' && (
+            <div className="flex items-center justify-between gap-2 px-5 py-2.5 bg-slate-50 dark:bg-slate-800/40 border-b">
+              <div className="text-xs text-muted-foreground font-cairo">
+                {allStudents.length} طالب
+              </div>
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="outline" onClick={() => setShowColumnSettings(true)} className="font-cairo">
+                  <Settings className="h-4 w-4 me-1.5" />
+                  إعدادات الأعمدة
+                </Button>
+                <Button size="sm" onClick={() => setShowAddColumnModal(true)} className="font-cairo bg-brand-turquoise hover:bg-brand-turquoise/90">
+                  <Plus className="h-4 w-4 me-1.5" />
+                  إضافة عمود
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Body */}
+          <div className="flex-1 overflow-auto">
+            {followupTab === 'students' ? (
+              <div className="overflow-auto">
+                <table className="text-sm border-collapse w-max min-w-full">
+                  {renderGroupedHeader()}
+                  <tbody>
+                    {allStudents.map((student, si) => {
+                      const studentData = followupData[student.id] || {};
+                      const cwSum = sumFor(studentData, courseworkCols);
+                      const exSum = sumFor(studentData, examCols);
+                      const total = cwSum + exSum;
+                      const ratio = grandMax > 0 ? total / grandMax : 0;
+                      const totalColor = ratio >= 0.6 ? 'text-emerald-600' : ratio >= 0.3 ? 'text-amber-600' : 'text-red-500';
+                      return (
+                        <tr key={student.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                          <td className="border px-2 py-1.5 text-center text-[11px] text-muted-foreground sticky end-0 bg-white dark:bg-slate-900">{si + 1}</td>
+                          <td className="border px-3 py-1.5 text-xs font-medium sticky end-12 bg-white dark:bg-slate-900">{student.full_name}</td>
+                          {courseworkCols.map(col => renderGradeCell(student, col))}
+                          {courseworkCols.length > 0 && (
+                            <td className="border px-2 py-1.5 text-center text-xs font-bold bg-blue-50/40 dark:bg-blue-900/10">
+                              {cwSum}
+                            </td>
+                          )}
+                          {examCols.map(col => renderGradeCell(student, col))}
+                          {examCols.length > 0 && (
+                            <td className="border px-2 py-1.5 text-center text-xs font-bold bg-amber-50/40 dark:bg-amber-900/10">
+                              {exSum}
+                            </td>
+                          )}
+                          <td className={`border px-2 py-1.5 text-center text-sm font-bold bg-emerald-50/40 dark:bg-emerald-900/10 ${totalColor}`}>
+                            {total}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {allStudents.length === 0 && (
+                      <tr><td colSpan={visibleColumns.length + 4} className="text-center text-sm text-muted-foreground py-8">لا يوجد طلاب</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="overflow-auto">
+                <table className="w-full text-sm border-collapse">
+                  <thead className="sticky top-0 bg-slate-100 dark:bg-slate-800 z-10">
+                    <tr>
+                      <th className="border px-2 py-2 text-center font-cairo font-bold text-xs w-12">#</th>
+                      <th className="border px-3 py-2 text-start font-cairo font-bold text-xs min-w-[160px]">اسم الطالب</th>
+                      <th className="border px-3 py-2 text-start font-cairo font-bold text-xs">سجل الغياب</th>
+                      <th className="border px-3 py-2 text-center font-cairo font-bold text-xs w-32">إجراء</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allStudents.map((student, si) => {
+                      const dates = followupAbsences[student.id] || [];
+                      return (
+                        <tr key={student.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                          <td className="border px-2 py-2 text-center text-[11px] text-muted-foreground">{si + 1}</td>
+                          <td className="border px-3 py-2 text-xs font-medium">{student.full_name}</td>
+                          <td className="border px-3 py-2">
+                            {dates.length === 0 ? (
+                              <span className="text-xs text-muted-foreground italic">لم يسجل عليه غياب</span>
+                            ) : (
+                              <div className="flex flex-wrap gap-1.5">
+                                {dates.map(d => (
+                                  <span
+                                    key={d}
+                                    className="group relative inline-flex items-center justify-center min-w-[52px] h-12 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800/60 text-[11px] font-bold font-cairo px-2"
+                                    title={d}
+                                  >
+                                    {formatAbsence(d)}
+                                    <button
+                                      onClick={() => removeAbsence(student.id, d)}
+                                      className="absolute -top-1 -end-1 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
+                                      aria-label="حذف"
+                                    >
+                                      ×
+                                    </button>
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </td>
+                          <td className="border px-3 py-2 text-center">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="font-cairo text-xs"
+                              onClick={() => {
+                                setAbsencePickerStudent(student);
+                                setAbsencePickerDate(new Date().toISOString().slice(0, 10));
+                              }}
+                            >
+                              <Plus className="h-3 w-3 me-1" />
+                              تسجيل غياب
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {allStudents.length === 0 && (
+                      <tr><td colSpan={4} className="text-center text-sm text-muted-foreground py-8">لا يوجد طلاب</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="flex-none px-5 py-3 border-t flex items-center justify-between bg-slate-50 dark:bg-slate-800/40">
+            <span className="text-xs text-muted-foreground font-cairo">
+              {followupTab === 'students'
+                ? `${visibleColumns.length} عمود ظاهر`
+                : `${Object.values(followupAbsences).reduce((s, arr) => s + arr.length, 0)} غياب مسجّل`}
+            </span>
+            <Button size="sm" onClick={() => onOpenChange(false)}>{t('close') || 'إغلاق'}</Button>
           </div>
         </DialogContent>
       </Dialog>
-    </div>
-    </SectionErrorBoundary>
+
+      {/* Add Column Modal */}
+      <Dialog open={showAddColumnModal} onOpenChange={setShowAddColumnModal}>
+        <DialogContent className="max-w-md" dir={isRTL ? 'rtl' : 'ltr'}>
+          <DialogHeader>
+            <DialogTitle className="font-cairo flex items-center gap-2">
+              <Plus className="h-5 w-5 text-brand-turquoise" />
+              إضافة عمود جديد
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <label className="block text-xs font-cairo font-semibold mb-1">اسم العمود</label>
+              <input
+                type="text"
+                value={newColumnDraft.name}
+                onChange={e => setNewColumnDraft(d => ({ ...d, name: e.target.value }))}
+                placeholder="مثال: نشاط صفي"
+                className="w-full text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 outline-none focus:border-brand-turquoise"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-cairo font-semibold mb-1">نوع العمود</label>
+              <select
+                value={newColumnDraft.group}
+                onChange={e => setNewColumnDraft(d => ({ ...d, group: e.target.value }))}
+                className="w-full text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 outline-none focus:border-brand-turquoise"
+              >
+                <option value="coursework">أعمال سنة</option>
+                <option value="exams">اختبارات</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-cairo font-semibold mb-1">الدرجة القصوى</label>
+              <input
+                type="number"
+                min={1}
+                value={newColumnDraft.maxGrade}
+                onChange={e => setNewColumnDraft(d => ({ ...d, maxGrade: e.target.value }))}
+                className="w-full text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 outline-none focus:border-brand-turquoise"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2 border-t">
+            <Button variant="outline" size="sm" onClick={() => setShowAddColumnModal(false)}>إلغاء</Button>
+            <Button size="sm" onClick={handleAddColumn} className="bg-brand-turquoise hover:bg-brand-turquoise/90">حفظ</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Column Settings Panel */}
+      <Dialog open={showColumnSettings} onOpenChange={setShowColumnSettings}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-hidden flex flex-col" dir={isRTL ? 'rtl' : 'ltr'}>
+          <DialogHeader>
+            <DialogTitle className="font-cairo flex items-center gap-2">
+              <Settings className="h-5 w-5 text-brand-turquoise" />
+              إعدادات الأعمدة
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto space-y-2 py-2">
+            {followupColumns.length === 0 && (
+              <div className="text-center text-sm text-muted-foreground py-6">لا توجد أعمدة</div>
+            )}
+            {followupColumns.map(col => (
+              <div key={col.id} className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/40">
+                <button
+                  onClick={() => handleToggleHidden(col.id)}
+                  className={`w-9 h-9 rounded-lg flex items-center justify-center transition ${
+                    col.hidden
+                      ? 'bg-slate-100 dark:bg-slate-700 text-slate-400'
+                      : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600'
+                  }`}
+                  title={col.hidden ? 'إظهار' : 'إخفاء'}
+                >
+                  {col.hidden ? <PanelRightClose className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+                </button>
+                <input
+                  type="text"
+                  value={col.name}
+                  onChange={e => handleEditColumnName(col.id, e.target.value)}
+                  className="flex-1 text-xs font-medium bg-transparent border border-slate-200 dark:border-slate-700 rounded px-2 py-1.5 outline-none focus:border-brand-turquoise"
+                />
+                <span className={`text-[10px] px-2 py-1 rounded font-cairo font-semibold ${
+                  col.group === 'exams'
+                    ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                    : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                }`}>
+                  {col.group === 'exams' ? 'اختبارات' : 'أعمال سنة'}
+                </span>
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-muted-foreground">/</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={col.maxGrade}
+                    onChange={e => handleEditMaxGrade(col.id, e.target.value)}
+                    className="w-14 text-xs text-center bg-transparent border border-slate-200 dark:border-slate-700 rounded px-1 py-1.5 outline-none focus:border-brand-turquoise"
+                  />
+                </div>
+                <button
+                  onClick={() => handleDeleteColumn(col.id)}
+                  className="w-9 h-9 rounded-lg flex items-center justify-center bg-red-50 dark:bg-red-900/20 text-red-500 hover:bg-red-100"
+                  title="حذف"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="flex justify-end pt-2 border-t">
+            <Button size="sm" onClick={() => setShowColumnSettings(false)}>تم</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Absence Date Picker */}
+      <Dialog open={!!absencePickerStudent} onOpenChange={(o) => { if (!o) setAbsencePickerStudent(null); }}>
+        <DialogContent className="max-w-sm" dir={isRTL ? 'rtl' : 'ltr'}>
+          <DialogHeader>
+            <DialogTitle className="font-cairo flex items-center gap-2">
+              <UserCheck className="h-5 w-5 text-brand-turquoise" />
+              تسجيل غياب
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-2 space-y-3">
+            <div className="text-sm font-cairo">
+              <span className="text-muted-foreground">الطالب:</span>{' '}
+              <span className="font-bold">{absencePickerStudent?.full_name}</span>
+            </div>
+            <div>
+              <label className="block text-xs font-cairo font-semibold mb-1">تاريخ الغياب</label>
+              <input
+                type="date"
+                value={absencePickerDate}
+                onChange={e => setAbsencePickerDate(e.target.value)}
+                className="w-full text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 outline-none focus:border-brand-turquoise"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2 border-t">
+            <Button variant="outline" size="sm" onClick={() => setAbsencePickerStudent(null)}>إلغاء</Button>
+            <Button
+              size="sm"
+              className="bg-brand-turquoise hover:bg-brand-turquoise/90"
+              onClick={() => {
+                if (absencePickerStudent && absencePickerDate) {
+                  addAbsence(absencePickerStudent.id, absencePickerDate);
+                }
+                setAbsencePickerStudent(null);
+              }}
+            >
+              حفظ
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
