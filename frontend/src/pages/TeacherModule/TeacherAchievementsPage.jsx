@@ -808,9 +808,12 @@ export default function TeacherAchievementsPage() {
 
   const handleDeleteEvidence = (evidence) => {
     showAlert({
+      type: 'confirm',
       title: t('portfolioDeleteConfirm'),
-      variant: 'danger',
+      message: (evidence?.title_ar || evidence?.title_en || '') + '\nلا يمكن التراجع عن هذا الإجراء.',
       confirmText: t('delete'),
+      cancelText: 'إلغاء',
+      showCancel: true,
       onConfirm: async () => {
         try {
           await api.delete(`/teacher/portfolio/evidence/${evidence.id}`);
