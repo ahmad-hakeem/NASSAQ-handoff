@@ -508,10 +508,101 @@ def _ar(text: str) -> str:
         return str(text)
 
 
+_SUBSECTION_TITLES_AR = {
+    "planning": "شواهد التخطيط",
+    "execution": "شواهد التنفيذ",
+    "assessment": "شواهد التقويم",
+    "results": "شواهد النتائج",
+    "community": "شواهد التواصل والمجتمع",
+    "professional_development": "شواهد التطوير المهني",
+}
+
+_SUBSECTION_COLORS = {
+    "planning": "#2563EB",
+    "execution": "#10B981",
+    "assessment": "#9333EA",
+    "results": "#D97706",
+    "community": "#DB2777",
+    "professional_development": "#4F46E5",
+}
+
+_TYPE_LABEL_AR = {
+    "curriculum_distribution_plan": "خطة توزيع المنهج",
+    "weekly_plan": "الخطة الأسبوعية",
+    "lesson_plan": "خطة الدرس",
+    "preparation_record": "سجل التحضير",
+    "unit_plan": "خطة وحدة دراسية",
+    "classroom_activity_plan": "خطة النشاط الصفي",
+    "struggling_student_plan": "خطة دعم المتعثرين",
+    "gifted_student_plan": "خطة رعاية المتفوقين",
+    "learning_loss_plan": "خطة معالجة الفاقد التعليمي",
+    "classroom_activity_photos": "صور أنشطة صفية",
+    "student_worksheets": "أوراق عمل الطلاب",
+    "applied_lesson_report": "تقرير درس تطبيقي",
+    "lesson_video_recording": "تسجيل فيديو لدرس",
+    "collaborative_lesson": "أنشطة تعاونية",
+    "teaching_strategies": "استراتيجيات تدريس",
+    "exam_results": "الاختبارات",
+    "quiz_results": "الاختبارات القصيرة",
+    "assessment_worksheet": "أوراق العمل التقويمية",
+    "performance_task": "المهام الأدائية",
+    "student_portfolio_files": "ملفات إنجاز الطلاب",
+    "student_project": "مشاريع الطلاب",
+    "oral_assessment": "التقويم الشفهي",
+    "classroom_observation": "الملاحظة الصفية",
+    "exam_results_analysis": "تحليل نتائج الاختبارات",
+    "class_results_analysis": "تحليل نتائج الفصل",
+    "student_progress_report": "تقارير تقدم الطلاب",
+    "grade_analysis_tables": "جداول تحليل الدرجات",
+    "before_after_comparison": "مقارنة النتائج قبل وبعد",
+    "results_improvement_plan": "خطة تحسين النتائج",
+    "parent_communication_log": "سجل التواصل مع أولياء الأمور",
+    "parent_meeting_minutes": "تقرير اجتماع مع أولياء الأمور",
+    "school_activity_participation": "مشاركة في نشاط مدرسي",
+    "school_event_participation": "مشاركة في الفعاليات المدرسية",
+    "training_attendance_report": "تقرير حضور دورة",
+    "professional_growth_plan": "خطة تطوير مهني",
+    "plc_participation": "مجتمعات التعلم المهنية",
+    "peer_observation": "تبادل الزيارات",
+    "workshop_attendance": "حضور ورش عمل",
+    "workshop_delivery": "تقديم ورش",
+    "volunteer_activity_report": "تقرير نشاط تطوعي",
+    "training_certificate": "شهادة تدريبية",
+    "attendance_record": "سجل حضور",
+}
+
+
+def _type_label(key: str) -> str:
+    return _TYPE_LABEL_AR.get(key, (key or "").replace("_", " "))
+
+
+async def _lookup_class_subject_names(class_ids, subject_ids):
+    """Best-effort lookup of class names and subject names by id."""
+    cls_map: Dict[str, str] = {}
+    sub_map: Dict[str, str] = {}
+    try:
+        if class_ids:
+            from pg_models import Class
+            res = await db.session.execute(select(Class).where(Class.id.in_(list(class_ids))))
+            for c in res.scalars().all():
+                cls_map[str(c.id)] = getattr(c, "name", "") or getattr(c, "title", "") or ""
+    except Exception:
+        pass
+    try:
+        if subject_ids:
+            from pg_models import Subject
+            res = await db.session.execute(select(Subject).where(Subject.id.in_(list(subject_ids))))
+            for s in res.scalars().all():
+                sub_map[str(s.id)] = getattr(s, "name", "") or getattr(s, "title", "") or ""
+    except Exception:
+        pass
+    return cls_map, sub_map
+
+
 @router.get("/teacher/portfolio/export")
 async def export_portfolio_pdf(current_user: dict = Depends(get_current_user)):
     """Export the teacher's full portfolio (intro, vision/mission/values, CV,
-    and all evidences added during the year) as a downloadable PDF file."""
+    and every evidence with full details) as a downloadable PDF file."""
     if current_user["role"] not in ("teacher", "platform_admin", "school_principal", "school_admin"):
         raise HTTPException(status_code=403, detail="غير مصرح")
 
@@ -529,81 +620,216 @@ async def export_portfolio_pdf(current_user: dict = Depends(get_current_user)):
     evidence_list = await gd_find(db.session, "portfolio_evidence", query,
                                    order_by="created_at", desc_order=True, limit=5000)
 
+    class_ids = {e.get("class_id") for e in evidence_list if e.get("class_id")}
+    subject_ids = {e.get("subject_id") for e in evidence_list if e.get("subject_id")}
+    cls_map, sub_map = await _lookup_class_subject_names(class_ids, subject_ids)
+
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.enums import TA_RIGHT, TA_CENTER
+    from reportlab.lib.enums import TA_RIGHT, TA_CENTER, TA_LEFT
     from reportlab.lib import colors
+    from reportlab.lib.units import mm
     from reportlab.platypus import (
-        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak,
+        KeepTogether, HRFlowable,
     )
 
     font = _ensure_arabic_font()
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, rightMargin=36, leftMargin=36,
-                            topMargin=44, bottomMargin=36)
+
+    BRAND_NAVY = colors.HexColor("#0E3A5F")
+    BRAND_TURQ = colors.HexColor("#1FB1A8")
+    BRAND_LIGHT = colors.HexColor("#F0F9FA")
+    GREY_BG = colors.HexColor("#F7F7F8")
+    GREY_BORDER = colors.HexColor("#E5E7EB")
+    TEXT_MUTED = colors.HexColor("#6B7280")
+
+    def _on_page(canvas, doc):
+        canvas.saveState()
+        # Header strip
+        canvas.setFillColor(BRAND_NAVY)
+        canvas.rect(0, A4[1] - 18, A4[0], 18, stroke=0, fill=1)
+        canvas.setFillColor(colors.white)
+        canvas.setFont(font, 9)
+        teacher_label = _ar(f"ملف الإنجاز المهني — {profile.get('full_name') or current_user.get('full_name') or ''}")
+        canvas.drawRightString(A4[0] - 24, A4[1] - 13, teacher_label)
+        canvas.drawString(24, A4[1] - 13, "NASSAQ")
+        # Footer page number
+        canvas.setFillColor(TEXT_MUTED)
+        canvas.setFont(font, 8)
+        canvas.drawCentredString(A4[0] / 2, 14, _ar(f"صفحة {doc.page}"))
+        canvas.restoreState()
+
+    doc = SimpleDocTemplate(buf, pagesize=A4, rightMargin=32, leftMargin=32,
+                            topMargin=44, bottomMargin=28)
     styles = getSampleStyleSheet()
     h1 = ParagraphStyle("H1", parent=styles["Heading1"], fontName=font,
-                        alignment=TA_CENTER, fontSize=20, textColor=colors.HexColor("#0E3A5F"))
+                        alignment=TA_CENTER, fontSize=22, textColor=BRAND_NAVY, spaceAfter=4)
     h2 = ParagraphStyle("H2", parent=styles["Heading2"], fontName=font,
-                        alignment=TA_RIGHT, fontSize=14, textColor=colors.HexColor("#0E3A5F"),
-                        spaceBefore=12, spaceAfter=6)
+                        alignment=TA_RIGHT, fontSize=15, textColor=BRAND_NAVY,
+                        spaceBefore=14, spaceAfter=6)
+    h3 = ParagraphStyle("H3", parent=styles["Heading3"], fontName=font,
+                        alignment=TA_RIGHT, fontSize=12, textColor=BRAND_NAVY,
+                        spaceBefore=6, spaceAfter=4)
     body = ParagraphStyle("Body", parent=styles["Normal"], fontName=font,
-                          alignment=TA_RIGHT, fontSize=11, leading=18)
+                          alignment=TA_RIGHT, fontSize=11, leading=18, textColor=colors.HexColor("#1F2937"))
+    body_l = ParagraphStyle("BodyL", parent=body, alignment=TA_LEFT)
     small = ParagraphStyle("Small", parent=styles["Normal"], fontName=font,
-                           alignment=TA_RIGHT, fontSize=9, textColor=colors.grey, leading=14)
+                           alignment=TA_RIGHT, fontSize=9, textColor=TEXT_MUTED, leading=14)
+    label_style = ParagraphStyle("Label", parent=body, fontSize=9, textColor=TEXT_MUTED, leading=12)
+    value_style = ParagraphStyle("Value", parent=body, fontSize=10, leading=14)
+    chip_auto = ParagraphStyle("ChipAuto", parent=body, fontSize=9, textColor=colors.white, alignment=TA_CENTER)
+    chip_manual = ParagraphStyle("ChipManual", parent=body, fontSize=9, textColor=colors.white, alignment=TA_CENTER)
+
+    def _fmt_date(v):
+        if not v:
+            return ""
+        if isinstance(v, datetime):
+            return v.strftime("%Y-%m-%d")
+        s = str(v)
+        return s.split("T")[0][:10]
+
+    def _kv_table(rows):
+        """rows: list of (label_ar, value_ar). Returns a 2-col table."""
+        data = [[Paragraph(_ar(v or "—"), value_style), Paragraph(_ar(k), label_style)] for k, v in rows]
+        tbl = Table(data, colWidths=[None, 110])
+        tbl.setStyle(TableStyle([
+            ("BACKGROUND", (1, 0), (1, -1), GREY_BG),
+            ("BOX", (0, 0), (-1, -1), 0.4, GREY_BORDER),
+            ("INNERGRID", (0, 0), (-1, -1), 0.3, GREY_BORDER),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("FONTNAME", (0, 0), (-1, -1), font),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        return tbl
 
     story: List[Any] = []
-    teacher_name = profile.get("full_name") or profile.get("name") or current_user.get("full_name") or ""
+    teacher_name = profile.get("full_name") or current_user.get("full_name") or ""
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
+    # ================= COVER =================
+    story.append(Spacer(1, 30))
     story.append(Paragraph(_ar("ملف الإنجاز المهني"), h1))
-    if teacher_name:
-        story.append(Paragraph(_ar(teacher_name), ParagraphStyle("name", parent=h1, fontSize=14, spaceAfter=4)))
-    story.append(Paragraph(_ar(f"تاريخ التصدير: {today}"), small))
-    story.append(Spacer(1, 8))
+    story.append(Paragraph(_ar("Professional Portfolio"),
+        ParagraphStyle("sub", parent=h1, fontSize=12, textColor=BRAND_TURQ, spaceAfter=18)))
 
-    # Summary
+    if teacher_name:
+        story.append(Paragraph(_ar(teacher_name),
+            ParagraphStyle("name", parent=h1, fontSize=18, textColor=BRAND_NAVY, spaceAfter=6)))
+
+    profile_rows = [
+        ("الاسم الكامل", profile.get("full_name")),
+        ("البريد الإلكتروني", profile.get("email")),
+        ("رقم الهاتف", profile.get("phone")),
+        ("التخصص", profile.get("specialization") or profile.get("subject")),
+        ("المرتبة الوظيفية", profile.get("rank")),
+        ("المؤهل العلمي", profile.get("qualification")),
+        ("سنوات الخبرة", str(profile.get("years_of_experience") or "")),
+    ]
+    profile_rows = [(k, v) for k, v in profile_rows if v]
+    if profile_rows:
+        story.append(Spacer(1, 8))
+        story.append(_kv_table(profile_rows))
+
+    story.append(Spacer(1, 12))
+    story.append(Paragraph(_ar(f"تاريخ التصدير: {today}"), small))
+    story.append(PageBreak())
+
+    # ================= OVERVIEW =================
+    story.append(Paragraph(_ar("نظرة عامة"), h2))
     overall = progress.get("overall_percent", portfolio.get("coverage_percent", 0))
     total_ev = portfolio.get("total_evidence", len(evidence_list))
-    auto_c = portfolio.get("auto_count", 0)
-    manual_c = portfolio.get("manual_count", 0)
+    auto_c = portfolio.get("auto_count", sum(1 for e in evidence_list if (e.get("source") or "auto") == "auto"))
+    manual_c = portfolio.get("manual_count", sum(1 for e in evidence_list if e.get("source") == "manual"))
+
     summary_data = [[
-        Paragraph(_ar(f"التقدم العام: {overall}%"), body),
-        Paragraph(_ar(f"إجمالي الشواهد: {total_ev}"), body),
-        Paragraph(_ar(f"تلقائي: {auto_c}"), body),
-        Paragraph(_ar(f"يدوي: {manual_c}"), body),
+        Paragraph(_ar(f"{overall}%"), ParagraphStyle("bignum", parent=body, fontSize=18, alignment=TA_CENTER, textColor=BRAND_TURQ)),
+        Paragraph(_ar(f"{total_ev}"), ParagraphStyle("bignum2", parent=body, fontSize=18, alignment=TA_CENTER, textColor=BRAND_NAVY)),
+        Paragraph(_ar(f"{auto_c}"), ParagraphStyle("bignum3", parent=body, fontSize=18, alignment=TA_CENTER, textColor=colors.HexColor("#D97706"))),
+        Paragraph(_ar(f"{manual_c}"), ParagraphStyle("bignum4", parent=body, fontSize=18, alignment=TA_CENTER, textColor=colors.HexColor("#2563EB"))),
+    ], [
+        Paragraph(_ar("التقدم العام"), ParagraphStyle("lab", parent=small, alignment=TA_CENTER)),
+        Paragraph(_ar("إجمالي الشواهد"), ParagraphStyle("lab", parent=small, alignment=TA_CENTER)),
+        Paragraph(_ar("شواهد تلقائية"), ParagraphStyle("lab", parent=small, alignment=TA_CENTER)),
+        Paragraph(_ar("شواهد يدوية"), ParagraphStyle("lab", parent=small, alignment=TA_CENTER)),
     ]]
-    summary_tbl = Table(summary_data, colWidths=[130, 130, 100, 100])
+    summary_tbl = Table(summary_data, colWidths=[125, 125, 125, 125])
     summary_tbl.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F0F9FA")),
-        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#1FB1A8")),
-        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#1FB1A8")),
+        ("BACKGROUND", (0, 0), (-1, -1), BRAND_LIGHT),
+        ("BOX", (0, 0), (-1, -1), 0.6, BRAND_TURQ),
+        ("INNERGRID", (0, 0), (-1, -1), 0.3, BRAND_TURQ),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ("FONTNAME", (0, 0), (-1, -1), font),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
     ]))
     story.append(summary_tbl)
-    story.append(Spacer(1, 14))
+    story.append(Spacer(1, 10))
 
-    # Intro
+    # Per-section breakdown table
+    breakdown_rows = [[
+        Paragraph(_ar("النسبة"), ParagraphStyle("th", parent=body, alignment=TA_CENTER, fontSize=10, textColor=colors.white)),
+        Paragraph(_ar("عدد الشواهد"), ParagraphStyle("th", parent=body, alignment=TA_CENTER, fontSize=10, textColor=colors.white)),
+        Paragraph(_ar("القسم"), ParagraphStyle("th", parent=body, alignment=TA_RIGHT, fontSize=10, textColor=colors.white)),
+    ]]
+    sub_counts = {}
+    for sub_key, type_keys in EVIDENCE_SUBSECTIONS_V2.items():
+        items = [e for e in evidence_list if e.get("evidence_type") in type_keys]
+        sub_counts[sub_key] = (len(items), len(type_keys))
+    for sub_key in EVIDENCE_SUBSECTIONS_V2.keys():
+        count, total_types = sub_counts.get(sub_key, (0, 0))
+        covered_types = len({e.get("evidence_type") for e in evidence_list if e.get("evidence_type") in EVIDENCE_SUBSECTIONS_V2.get(sub_key, [])})
+        pct = round((covered_types / total_types) * 100) if total_types else 0
+        breakdown_rows.append([
+            Paragraph(_ar(f"{pct}%"), ParagraphStyle("td", parent=body, alignment=TA_CENTER, fontSize=10)),
+            Paragraph(_ar(str(count)), ParagraphStyle("td", parent=body, alignment=TA_CENTER, fontSize=10)),
+            Paragraph(_ar(_SUBSECTION_TITLES_AR.get(sub_key, sub_key)), ParagraphStyle("td", parent=body, alignment=TA_RIGHT, fontSize=10)),
+        ])
+    breakdown_tbl = Table(breakdown_rows, colWidths=[80, 90, None])
+    breakdown_tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), BRAND_NAVY),
+        ("BOX", (0, 0), (-1, -1), 0.4, GREY_BORDER),
+        ("INNERGRID", (0, 0), (-1, -1), 0.3, GREY_BORDER),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("FONTNAME", (0, 0), (-1, -1), font),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, GREY_BG]),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    story.append(Paragraph(_ar("توزيع الشواهد حسب الأقسام"), h3))
+    story.append(breakdown_tbl)
+
+    # ================= INTRO =================
     intro_text = (meta.get("intro") or "").strip()
     if intro_text:
-        story.append(Paragraph(_ar("المقدمة التعريفية"), h2))
+        story.append(PageBreak())
+        story.append(Paragraph(_ar("١. المقدمة التعريفية"), h2))
+        story.append(HRFlowable(width="100%", thickness=1, color=BRAND_TURQ, spaceAfter=8))
         story.append(Paragraph(_ar(intro_text), body))
 
-    # Vision / Mission / Values
+    # ================= VMV =================
     vision = (meta.get("vision") or "").strip()
     mission = (meta.get("mission") or "").strip()
     values = (meta.get("values") or "").strip()
     if vision or mission or values:
-        story.append(Paragraph(_ar("الرؤية والرسالة والقيم"), h2))
+        story.append(PageBreak())
+        story.append(Paragraph(_ar("٢. الرؤية والرسالة والقيم"), h2))
+        story.append(HRFlowable(width="100%", thickness=1, color=BRAND_TURQ, spaceAfter=8))
         if vision:
-            story.append(Paragraph(_ar(f"الرؤية: {vision}"), body))
+            story.append(Paragraph(_ar("الرؤية"), h3))
+            story.append(Paragraph(_ar(vision), body))
         if mission:
-            story.append(Paragraph(_ar(f"الرسالة: {mission}"), body))
+            story.append(Paragraph(_ar("الرسالة"), h3))
+            story.append(Paragraph(_ar(mission), body))
         if values:
-            story.append(Paragraph(_ar(f"القيم: {values}"), body))
+            story.append(Paragraph(_ar("القيم"), h3))
+            story.append(Paragraph(_ar(values), body))
 
-    # CV items
+    # ================= CV =================
     auto_cv = _auto_cv_from_evidence(evidence_list)
     cv_buckets = [
         ("training_attended", "الدورات التدريبية الحاصل عليها"),
@@ -619,84 +845,172 @@ async def export_portfolio_pdf(current_user: dict = Depends(get_current_user)):
 
     has_cv = any(auto_cv.get(k) or manual_by_kind.get(k) for k, _ in cv_buckets)
     if has_cv:
-        story.append(Paragraph(_ar("السيرة الذاتية"), h2))
+        story.append(PageBreak())
+        story.append(Paragraph(_ar("٣. السيرة الذاتية"), h2))
+        story.append(HRFlowable(width="100%", thickness=1, color=BRAND_TURQ, spaceAfter=8))
         for key, label in cv_buckets:
             items = list(auto_cv.get(key, [])) + list(manual_by_kind.get(key, []))
             if not items:
                 continue
-            story.append(Paragraph(_ar(label), ParagraphStyle("cvh", parent=body,
-                fontSize=12, textColor=colors.HexColor("#0E3A5F"), spaceBefore=6, spaceAfter=2)))
+            story.append(Paragraph(_ar(label), h3))
+            cv_rows = [[
+                Paragraph(_ar("التاريخ"), ParagraphStyle("th", parent=body, alignment=TA_CENTER, fontSize=9, textColor=colors.white)),
+                Paragraph(_ar("الجهة / الساعات"), ParagraphStyle("th", parent=body, alignment=TA_CENTER, fontSize=9, textColor=colors.white)),
+                Paragraph(_ar("العنوان"), ParagraphStyle("th", parent=body, alignment=TA_RIGHT, fontSize=9, textColor=colors.white)),
+            ]]
             for it in items:
                 title = it.get("title") or it.get("title_ar") or it.get("name") or ""
-                date = it.get("date") or it.get("created_at") or ""
-                if isinstance(date, datetime):
-                    date = date.strftime("%Y-%m-%d")
-                line = f"• {title}" + (f"  ({date})" if date else "")
-                story.append(Paragraph(_ar(line), body))
+                org = it.get("organization") or ""
+                hours = it.get("hours")
+                org_part = org
+                if hours:
+                    org_part = (org + " — " if org else "") + f"{hours} ساعة"
+                date = _fmt_date(it.get("date") or it.get("created_at"))
+                cv_rows.append([
+                    Paragraph(_ar(date or "—"), ParagraphStyle("td", parent=body, alignment=TA_CENTER, fontSize=10)),
+                    Paragraph(_ar(org_part or "—"), ParagraphStyle("td", parent=body, alignment=TA_CENTER, fontSize=10)),
+                    Paragraph(_ar(title or "—"), ParagraphStyle("td", parent=body, alignment=TA_RIGHT, fontSize=10)),
+                ])
+            cv_tbl = Table(cv_rows, colWidths=[80, 140, None])
+            cv_tbl.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), BRAND_NAVY),
+                ("BOX", (0, 0), (-1, -1), 0.4, GREY_BORDER),
+                ("INNERGRID", (0, 0), (-1, -1), 0.3, GREY_BORDER),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, GREY_BG]),
+                ("FONTNAME", (0, 0), (-1, -1), font),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ]))
+            story.append(cv_tbl)
+            story.append(Spacer(1, 6))
 
-    # Evidences grouped by section
+    # ================= EVIDENCES =================
     if evidence_list:
         story.append(PageBreak())
-        story.append(Paragraph(_ar("شواهد الإنجاز"), h1))
-        story.append(Spacer(1, 8))
+        story.append(Paragraph(_ar("٤. شواهد الإنجاز"), h2))
+        story.append(HRFlowable(width="100%", thickness=1, color=BRAND_TURQ, spaceAfter=8))
+        story.append(Paragraph(_ar(f"إجمالي الشواهد المُسجَّلة خلال العام: {len(evidence_list)}"), small))
+        story.append(Spacer(1, 6))
 
-        # Group by V2 subsection
-        subsec_titles = {
-            "intro": "المقدمة التعريفية",
-            "vmv": "الرؤية والرسالة والقيم",
-            "cv": "السيرة الذاتية",
-            "lesson_planning": "التخطيط للدروس",
-            "teaching_strategies": "استراتيجيات التدريس",
-            "assessment": "التقويم",
-            "classroom_management": "إدارة الصف",
-            "student_engagement": "تفاعل الطلاب",
-            "professional_development": "التطوير المهني",
-            "parent_communication": "التواصل مع أولياء الأمور",
-            "extracurricular": "الأنشطة اللاصفية",
-            "innovation": "الابتكار والتطوير",
-            "achievements": "الإنجازات والجوائز",
-            "reflections": "التأملات المهنية",
-        }
-
-        grouped: Dict[str, List[Dict[str, Any]]] = {}
         for sub_key, type_keys in EVIDENCE_SUBSECTIONS_V2.items():
             items = [e for e in evidence_list if e.get("evidence_type") in type_keys]
-            if items:
-                grouped[sub_key] = items
+            if not items:
+                continue
+            color_hex = _SUBSECTION_COLORS.get(sub_key, "#0E3A5F")
+            section_color = colors.HexColor(color_hex)
+            sub_title = _SUBSECTION_TITLES_AR.get(sub_key, sub_key)
 
-        for sub_key, items in grouped.items():
-            label = subsec_titles.get(sub_key, sub_key)
-            story.append(Paragraph(_ar(f"{label}  ({len(items)})"), h2))
-            for ev in items:
-                title = ev.get("title_ar") or ev.get("title_en") or ev.get("title") or _ar("بدون عنوان")
-                desc = ev.get("description_ar") or ev.get("description_en") or ev.get("description") or ""
-                date = ev.get("date") or ev.get("created_at") or ""
-                if isinstance(date, datetime):
-                    date = date.strftime("%Y-%m-%d")
+            # Section header banner
+            header_tbl = Table([[
+                Paragraph(_ar(f"{len(items)}"),
+                          ParagraphStyle("cnt", parent=body, alignment=TA_CENTER,
+                                         fontSize=14, textColor=colors.white)),
+                Paragraph(_ar(sub_title),
+                          ParagraphStyle("hdr", parent=body, alignment=TA_RIGHT,
+                                         fontSize=14, textColor=colors.white)),
+            ]], colWidths=[55, None])
+            header_tbl.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, -1), section_color),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("FONTNAME", (0, 0), (-1, -1), font),
+                ("TOPPADDING", (0, 0), (-1, -1), 8),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+            ]))
+            story.append(header_tbl)
+            story.append(Spacer(1, 6))
+
+            for idx, ev in enumerate(items, start=1):
+                title = ev.get("title_ar") or ev.get("title_en") or ev.get("title") or "بدون عنوان"
+                desc_ar = ev.get("description_ar") or ""
+                desc_en = ev.get("description_en") or ""
+                date = _fmt_date(ev.get("date") or ev.get("created_at"))
                 source = ev.get("source") or ("auto" if ev.get("auto_generated") else "manual")
                 src_label = "تلقائي" if source == "auto" else "يدوي"
                 ev_type = ev.get("evidence_type", "")
+                type_label = _type_label(ev_type)
                 file_name = ev.get("file_name") or ""
+                file_url = ev.get("file_url") or ""
+                file_kind = ev.get("file_kind") or ""
+                cls_name = cls_map.get(str(ev.get("class_id") or ""), "")
+                sub_name = sub_map.get(str(ev.get("subject_id") or ""), "")
+                metadata = ev.get("metadata") or {}
 
-                story.append(Paragraph(_ar(f"• {title}"), ParagraphStyle("evt",
-                    parent=body, fontSize=11, textColor=colors.HexColor("#0E3A5F"), spaceBefore=4)))
-                meta_line_parts = []
+                # Card header (number + title + source chip)
+                src_color = colors.HexColor("#10B981" if source == "auto" else "#2563EB")
+                card_header = Table([[
+                    Paragraph(_ar(src_label),
+                              ParagraphStyle("chip", parent=body, alignment=TA_CENTER,
+                                             fontSize=9, textColor=colors.white)),
+                    Paragraph(_ar(f"{idx}. {title}"),
+                              ParagraphStyle("evt", parent=body, fontSize=12,
+                                             textColor=BRAND_NAVY, alignment=TA_RIGHT)),
+                ]], colWidths=[55, None])
+                card_header.setStyle(TableStyle([
+                    ("BACKGROUND", (0, 0), (0, 0), src_color),
+                    ("BACKGROUND", (1, 0), (1, 0), GREY_BG),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("BOX", (0, 0), (-1, -1), 0.4, GREY_BORDER),
+                    ("FONTNAME", (0, 0), (-1, -1), font),
+                    ("TOPPADDING", (0, 0), (-1, -1), 6),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ]))
+
+                # KV details
+                rows = []
+                if type_label:
+                    rows.append(("نوع الشاهد", type_label))
                 if date:
-                    meta_line_parts.append(f"التاريخ: {date}")
-                if ev_type:
-                    meta_line_parts.append(f"النوع: {ev_type}")
-                meta_line_parts.append(f"المصدر: {src_label}")
-                if file_name:
-                    meta_line_parts.append(f"الملف: {file_name}")
-                story.append(Paragraph(_ar("  •  ".join(meta_line_parts)), small))
-                if desc:
-                    story.append(Paragraph(_ar(desc), body))
-            story.append(Spacer(1, 6))
+                    rows.append(("التاريخ", date))
+                rows.append(("المصدر", src_label))
+                if cls_name:
+                    rows.append(("الفصل", cls_name))
+                if sub_name:
+                    rows.append(("المادة", sub_name))
+                if file_name or file_url:
+                    rows.append(("الملف المرفق", file_name or file_url))
+                if file_kind:
+                    rows.append(("نوع الملف", file_kind))
+                if file_url:
+                    rows.append(("الرابط", file_url))
+                # Surface common metadata fields
+                if isinstance(metadata, dict):
+                    for mk, mlabel in [
+                        ("organization", "الجهة"),
+                        ("hours", "عدد الساعات"),
+                        ("location", "المكان"),
+                        ("participants", "عدد المشاركين"),
+                        ("score", "الدرجة"),
+                        ("grade", "الصف"),
+                        ("notes", "ملاحظات"),
+                    ]:
+                        v = metadata.get(mk)
+                        if v not in (None, "", []):
+                            rows.append((mlabel, str(v)))
 
-    if not story or len(story) <= 4:
+                card_body = _kv_table(rows)
+
+                pieces = [card_header, card_body]
+                if desc_ar:
+                    pieces.append(Spacer(1, 4))
+                    pieces.append(Paragraph(_ar("الوصف"), label_style))
+                    pieces.append(Paragraph(_ar(desc_ar), body))
+                if desc_en and desc_en.strip() and desc_en.strip() != desc_ar.strip():
+                    pieces.append(Paragraph(_ar("Description (EN):"), label_style))
+                    pieces.append(Paragraph(desc_en, body_l))
+                pieces.append(Spacer(1, 10))
+
+                story.append(KeepTogether(pieces))
+            story.append(Spacer(1, 4))
+
+    if not evidence_list and not intro_text and not (vision or mission or values) and not has_cv:
         story.append(Paragraph(_ar("لا توجد شواهد أو محتوى مضاف بعد."), body))
 
-    doc.build(story)
+    doc.build(story, onFirstPage=_on_page, onLaterPages=_on_page)
     buf.seek(0)
     from urllib.parse import quote as _urlquote
     pretty_name = (teacher_name or "teacher").strip().replace(" ", "_")
