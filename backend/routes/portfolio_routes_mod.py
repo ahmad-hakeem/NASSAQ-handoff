@@ -971,12 +971,22 @@ async def export_portfolio_pdf(current_user: dict = Depends(get_current_user)):
                     rows.append(("الفصل", cls_name))
                 if sub_name:
                     rows.append(("المادة", sub_name))
-                if file_name or file_url:
-                    rows.append(("الملف المرفق", file_name or file_url))
+                def _safe_url(u: str) -> str:
+                    if not u:
+                        return ""
+                    if u.startswith("data:"):
+                        return "(ملف مضمَّن داخل النظام)"
+                    if len(u) > 120:
+                        return u[:117] + "..."
+                    return u
+                safe_url = _safe_url(file_url)
+                disp_name = (file_name or "")[:120]
+                if disp_name or safe_url:
+                    rows.append(("الملف المرفق", disp_name or safe_url))
                 if file_kind:
                     rows.append(("نوع الملف", file_kind))
-                if file_url:
-                    rows.append(("الرابط", file_url))
+                if safe_url and safe_url != disp_name:
+                    rows.append(("الرابط", safe_url))
                 # Surface common metadata fields
                 if isinstance(metadata, dict):
                     for mk, mlabel in [
