@@ -539,6 +539,12 @@ export default function TeacherMainDashboard() {
                     <h3 className="font-cairo font-bold text-2xl md:text-3xl text-foreground mb-1.5 truncate">
                       {currentLesson.subject}
                     </h3>
+                    {currentLesson.lesson_topic && (
+                      <p className="text-sm text-foreground/70 font-tajawal mb-2 line-clamp-1">
+                        <span className="text-muted-foreground">{t('lessonTopic')}:</span>{' '}
+                        <span className="font-medium">{currentLesson.lesson_topic}</span>
+                      </p>
+                    )}
                     <div className="flex items-center gap-3 text-sm text-muted-foreground font-tajawal flex-wrap">
                       <span className="flex items-center gap-1.5">
                         <BookOpen className="h-4 w-4 flex-shrink-0 text-brand-turquoise/70" />
@@ -547,12 +553,6 @@ export default function TeacherMainDashboard() {
                       <span className="text-border">•</span>
                       <span>{t('periodNumber')} {currentLesson.period}</span>
                     </div>
-                    {currentLesson.lesson_topic && (
-                      <p className="text-sm text-foreground/70 font-tajawal mt-2 line-clamp-1">
-                        <span className="text-muted-foreground">{t('lessonTopic')}:</span>{' '}
-                        <span className="font-medium">{currentLesson.lesson_topic}</span>
-                      </p>
-                    )}
                   </div>
 
                   {/* Center action: Start session */}
