@@ -2397,6 +2397,8 @@ async def save_session_settings(
                 "name": str(c.get("name") or "")[:100],
                 "type": c.get("type") if c.get("type") in ("grade", "check", "text") else "grade",
                 "maxGrade": int(c.get("maxGrade") or 0),
+                "group": c.get("group") if c.get("group") in ("coursework", "exams") else "coursework",
+                "hidden": bool(c.get("hidden", False)),
             })
     record_data = {
         "class_id": c_id,

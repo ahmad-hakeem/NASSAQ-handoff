@@ -280,7 +280,7 @@ export default function SessionTeachPage() {
       setSkillEnabled(!!s.skill_enabled);
       // Hydrate followup columns from saved settings if any (single source of truth)
       if (Array.isArray(s.extra_columns) && s.extra_columns.length > 0) {
-        setFollowupColumns(s.extra_columns);
+        setFollowupColumns(s.extra_columns.map(migrateColumn));
         setShowAddOtherItems(true);
       }
     } catch (e) {
@@ -2331,7 +2331,8 @@ export default function SessionTeachPage() {
                           id: `col_${Date.now()}`,
                           name: t('newColumn'),
                           maxGrade: 10,
-                          type: 'grade'
+                          type: 'grade',
+                          group: 'coursework'
                         }])}
                         className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-dashed border-border dark:border-border text-muted-foreground text-xs hover:text-brand-turquoise hover:border-brand-turquoise transition-colors"
                       >
