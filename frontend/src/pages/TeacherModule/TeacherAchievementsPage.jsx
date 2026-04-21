@@ -832,8 +832,13 @@ export default function TeacherAchievementsPage() {
     return items.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
   }, [portfolio]);
 
+  const filesOnlyEvidence = useMemo(
+    () => allEvidence.filter(e => !!e.file_url),
+    [allEvidence]
+  );
+
   const filteredFileEvidence = useMemo(() => {
-    let items = allEvidence;
+    let items = filesOnlyEvidence;
     if (fileTypeFilter && fileTypeFilter !== 'all') {
       items = items.filter(e => e.evidence_type === fileTypeFilter);
     }
@@ -842,11 +847,19 @@ export default function TeacherAchievementsPage() {
       items = items.filter(e =>
         (e.title_ar || '').toLowerCase().includes(q) ||
         (e.title_en || '').toLowerCase().includes(q) ||
-        (e.description_ar || '').toLowerCase().includes(q)
+        (e.description_ar || '').toLowerCase().includes(q) ||
+        (e.file_name || '').toLowerCase().includes(q)
       );
     }
     return items;
-  }, [allEvidence, fileTypeFilter, fileFilter]);
+  }, [filesOnlyEvidence, fileTypeFilter, fileFilter]);
+
+  const sectionStats = useMemo(() => {
+    return SUBSECTION_CONFIG_V2.map(sec => ({
+      ...sec,
+      count: allEvidence.filter(e => (sec.types || []).includes(e.evidence_type)).length,
+    }));
+  }, [allEvidence]);
 
   if (loading) {
     return (
@@ -1029,7 +1042,15 @@ export default function TeacherAchievementsPage() {
         )}
 
         {activeTab === 'files' && (
-          <div className="space-y-4">
+          <div className="space-y-6">
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100 font-cairo flex items-center gap-2">
+                  <FileArchive className="w-4 h-4 text-violet-600" />
+                  الملفات المرفقة بالشواهد
+                  <span className="text-[11px] font-normal text-gray-500">({filesOnlyEvidence.length})</span>
+                </h3>
+              </div>
             <div className="flex flex-col sm:flex-row gap-3">
               <div className="relative flex-1">
                 <Search className={`absolute top-2.5 ${isRTL ? 'right-3' : 'left-3'} w-4 h-4 text-gray-400`} />
@@ -1111,6 +1132,32 @@ export default function TeacherAchievementsPage() {
                 })}
               </div>
             )}
+            </div>
+
+            <div>
+              <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100 font-cairo flex items-center gap-2 mb-3">
+                <BarChart3 className="w-4 h-4 text-violet-600" />
+                إحصائيات الشواهد حسب القسم
+              </h3>
+              <div className="grid gap-3 grid-cols-2 md:grid-cols-3">
+                {sectionStats.map(sec => {
+                  const Icon = sec.icon;
+                  return (
+                    <Card key={sec.key} className="border-0 shadow-sm bg-white dark:bg-gray-800 hover:shadow-md transition-shadow">
+                      <CardContent className="p-4 flex items-center gap-3">
+                        <div className={`w-11 h-11 rounded-xl ${sec.bg} flex items-center justify-center shrink-0`}>
+                          <Icon className={`w-5 h-5 ${sec.color}`} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[12px] text-gray-600 dark:text-gray-300 font-cairo truncate">{sec.title}</p>
+                          <p className={`text-xl font-bold font-cairo ${sec.color}`}>{sec.count}</p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         )}
       </div>
