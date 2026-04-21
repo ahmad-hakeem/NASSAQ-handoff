@@ -303,29 +303,49 @@ export default function TeacherAchievementsPage() {
   const [manualEvAIBusy, setManualEvAIBusy] = useState(false);
   const fileInputRef = useRef(null);
 
-  const runManualEvHakim = async (mode) => {
+  const runManualEvHakim = async (mode, target = 'description') => {
     if (manualEvAIBusy) return;
     if (!manualEvForm.evidence_type) { toast.error('اختر التصنيف أولاً'); return; }
-    if (mode === 'improve' && !(manualEvForm.description_ar || '').trim()) {
-      toast.error('اكتب وصفاً أولاً ثم اضغط "تحسين بحكيم"');
+    const isTitle = target === 'title';
+    const currentText = isTitle ? (manualEvForm.title_ar || '') : (manualEvForm.description_ar || '');
+    if (mode === 'improve' && !currentText.trim()) {
+      toast.error(isTitle
+        ? 'اكتب عنواناً أولاً ثم اضغط "تحسين بحكيم"'
+        : 'اكتب وصفاً أولاً ثم اضغط "تحسين بحكيم"');
       return;
     }
     setManualEvAIBusy(true);
     try {
-      const res = await api.post('/teacher/portfolio/generate-evidence-desc', {
+      const res = await api.post('/teacher/portfolio/hakim-evidence-text', {
         mode,
-        text: manualEvForm.description_ar || '',
-        title: manualEvForm.title_ar || '',
+        field: isTitle ? 'title' : 'description',
+        text: currentText,
+        title: isTitle ? '' : (manualEvForm.title_ar || ''),
         evidence_type: manualEvForm.evidence_type || '',
-        section_key: manualEvForm.section_key || '',
+        subject: (teacherSubjects.find(s => s.id === manualEvForm.subject_id)?.name_ar) || null,
+        grade: (teacherClasses.find(c => c.id === manualEvForm.class_id)?.name_ar) || null,
       });
       if (res?.data?.success && res.data.text) {
-        setManualEvForm(p => ({ ...p, description_ar: res.data.text }));
-        toast.success(mode === 'improve' ? 'تم تحسين الوصف' : 'تم توليد الوصف');
+        setManualEvForm(p => isTitle
+          ? { ...p, title_ar: res.data.text }
+          : { ...p, description_ar: res.data.text });
+        toast.success(
+          isTitle
+            ? (mode === 'improve' ? 'تم تحسين العنوان' : 'تم توليد العنوان')
+            : (mode === 'improve' ? 'تم تحسين الوصف' : 'تم توليد الوصف')
+        );
+      } else if (res?.data && res.data.success === false) {
+        const reason = res.data.reason;
+        toast.error(reason === 'AI_DISABLED' ? 'الذكاء الاصطناعي غير متاح' : 'تعذّر توليد النص');
       }
     } catch (err) {
       const detail = err?.response?.data?.detail;
-      toast.error(detail === 'AI_DISABLED' ? 'الذكاء الاصطناعي غير متاح' : 'تعذّر توليد الوصف');
+      const map = {
+        AI_DISABLED: 'الذكاء الاصطناعي غير متاح',
+        TEXT_TOO_SHORT: 'النص قصير جداً للتحسين',
+        HAKIM_FAILED: 'تعذّر توليد النص',
+      };
+      toast.error(map[detail] || 'تعذّر توليد النص');
     } finally { setManualEvAIBusy(false); }
   };
 
@@ -1286,12 +1306,37 @@ export default function TeacherAchievementsPage() {
             </div>
 
             <div>
-              <Label className="text-xs font-medium mb-1 block">عنوان الشاهد</Label>
-              <Input
+              <div className="flex items-center justify-between mb-1">
+                <Label className="text-xs font-medium">عنوان الشاهد</Label>
+                <div className="flex items-center gap-1">
+                  <Button
+                    type="button" size="sm" variant="outline"
+                    onClick={() => runManualEvHakim('generate', 'title')}
+                    disabled={manualEvAIBusy || !manualEvForm.evidence_type}
+                    className="h-7 px-2 text-[11px] gap-1 border-violet-300 text-violet-700 hover:bg-violet-50 dark:border-violet-700 dark:text-violet-300"
+                    title="إنشاء عنوان بحكيم"
+                  >
+                    {manualEvAIBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                    إنشاء بحكيم
+                  </Button>
+                  <Button
+                    type="button" size="sm" variant="outline"
+                    onClick={() => runManualEvHakim('improve', 'title')}
+                    disabled={manualEvAIBusy || !(manualEvForm.title_ar || '').trim()}
+                    className="h-7 px-2 text-[11px] gap-1 border-fuchsia-300 text-fuchsia-700 hover:bg-fuchsia-50 dark:border-fuchsia-700 dark:text-fuchsia-300"
+                    title="تحسين العنوان بحكيم"
+                  >
+                    {manualEvAIBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
+                    تحسين بحكيم
+                  </Button>
+                </div>
+              </div>
+              <Textarea
                 value={manualEvForm.title_ar}
                 onChange={(e) => setManualEvForm(p => ({ ...p, title_ar: e.target.value }))}
                 placeholder="مثال: ورقة عمل الوحدة الثالثة"
-                className="h-9"
+                rows={2}
+                className="resize-none"
                 dir="rtl"
               />
             </div>
