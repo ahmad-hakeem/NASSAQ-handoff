@@ -23,7 +23,7 @@ import {
   Loader2, RefreshCw, Plus, Trash2, Edit3, ChevronDown, ChevronUp,
   FolderOpen, BarChart3, GraduationCap, MessageSquare, Briefcase,
   Activity, Settings, CheckCircle2, AlertCircle, Calendar,
-  FileArchive, Eye, Search, X, Zap, Target, Sparkles, Save,
+  FileArchive, Eye, Search, X, Zap, Target, Sparkles, Save, Download,
   User as UserIcon, Mail, Phone, BookMarked, Heart, Compass,
   ScrollText, Shield, Building2, ListChecks, Video, ImageIcon,
   ClipboardList, FileCheck, PenSquare, Megaphone, HandHeart,
@@ -778,23 +778,57 @@ export default function TeacherAchievementsPage() {
   const totalEvidence = portfolio?.total_evidence || 0;
   const autoCount = portfolio?.auto_count || 0;
   const manualCount = portfolio?.manual_count || 0;
+  const sectionsTotal = Array.isArray(progress?.sections)
+    ? progress.sections.length
+    : (sectionsData ? Object.keys(sectionsData).length : 0);
+  const sectionsCompleted = Array.isArray(progress?.sections)
+    ? progress.sections.filter(s => (s.percent ?? s.coverage ?? 0) >= 100).length
+    : 0;
+  const handleDownloadPdf = () => { try { window.print(); } catch (_) {} };
+  const handleAddContent = () => openManualEvDialog(SUBSECTION_CONFIG_V2[0]?.key || '');
 
   return (
     <Sidebar>
       <div className={`p-4 md:p-6 space-y-6 max-w-6xl mx-auto ${isRTL ? 'text-right' : 'text-left'}`}>
         <div className="flex items-center justify-between flex-wrap gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-brand-navy dark:text-white font-cairo">
-              {t('portfolioTitle')}
-            </h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 font-tajawal">
-              {t('portfolioPatternAutoEvidence')}
-            </p>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-md">
+              <Award className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-brand-navy dark:text-white font-cairo">
+                {t('portfolioTitle')}
+              </h1>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 font-tajawal">
+                {t('portfolioPatternAutoEvidence')}
+              </p>
+            </div>
           </div>
-          <Button variant="outline" size="sm" onClick={fetchPortfolio} className="gap-2">
-            <RefreshCw className="w-4 h-4" />
-            {t('refresh')}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-9 w-9 rounded-full"
+              onClick={handleDownloadPdf}
+              title={t('downloadPdf')}
+              aria-label={t('downloadPdf')}
+            >
+              <Download className="w-4 h-4" />
+            </Button>
+            <Button
+              size="icon"
+              className="h-9 w-9 rounded-full bg-brand-turquoise hover:bg-brand-turquoise/90 text-white"
+              onClick={handleAddContent}
+              title={t('addContent')}
+              aria-label={t('addContent')}
+            >
+              <Plus className="w-4 h-4" />
+            </Button>
+            <Button variant="outline" size="sm" onClick={fetchPortfolio} className="gap-2">
+              <RefreshCw className="w-4 h-4" />
+              {t('refresh')}
+            </Button>
+          </div>
         </div>
 
         <Card className="border-0 shadow-sm bg-white dark:bg-gray-800">
@@ -814,6 +848,10 @@ export default function TeacherAchievementsPage() {
                 </div>
                 <Progress value={coveragePercent} className="h-3 mb-3" />
                 <div className="flex flex-wrap gap-4 text-xs text-gray-500 dark:text-gray-400">
+                  <span className="flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                    {sectionsCompleted}/{sectionsTotal} {t('portfolioSectionsCompleted')}
+                  </span>
                   <span className="flex items-center gap-1.5">
                     <FileText className="w-3.5 h-3.5" />
                     {totalEvidence} {t('portfolioEvidenceCount')}
