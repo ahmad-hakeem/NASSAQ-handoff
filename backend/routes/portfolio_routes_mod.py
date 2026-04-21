@@ -698,12 +698,16 @@ async def export_portfolio_pdf(current_user: dict = Depends(get_current_user)):
 
     doc.build(story)
     buf.seek(0)
-    safe_name = (teacher_name or "teacher").replace(" ", "_")
-    filename = f"portfolio_{safe_name}_{today}.pdf"
+    from urllib.parse import quote as _urlquote
+    pretty_name = (teacher_name or "teacher").strip().replace(" ", "_")
+    pretty_filename = f"portfolio_{pretty_name}_{today}.pdf"
+    ascii_filename = f"portfolio_{today}.pdf"
+    encoded = _urlquote(pretty_filename)
+    cd = f"attachment; filename=\"{ascii_filename}\"; filename*=UTF-8''{encoded}"
     return StreamingResponse(
         buf,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": cd},
     )
 
 
