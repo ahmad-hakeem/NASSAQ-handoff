@@ -2328,6 +2328,97 @@ async def add_followup_column(
     return {"success": True, "column": column}
 
 
+@router.get("/session/{session_id}/settings")
+async def get_session_settings(
+    session_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    await _verify_session_owner(session_id, current_user)
+    session = await gd_find_one(db.session, "class_sessions", {"id": session_id})
+    if session:
+        lookup = {"class_id": session.get("class_id"), "subject_id": session.get("subject_id")}
+    else:
+        lookup = {"session_id": session_id}
+    record = await gd_find_one(db.session, "session_settings", lookup)
+    default = {
+        "subject_id": session.get("subject_id") if session else None,
+        "participation_enabled": True,
+        "homework_enabled": True,
+        "homework_view_mode": "not_submitted",
+        "recitation_enabled": False,
+        "recitation_max_attempts": 1,
+        "skill_enabled": False,
+        "extra_columns": [],
+    }
+    if not record:
+        return {"session_id": session_id, **default}
+    return {
+        "session_id": session_id,
+        "subject_id": record.get("subject_id") or default["subject_id"],
+        "participation_enabled": record.get("participation_enabled", True),
+        "homework_enabled": record.get("homework_enabled", True),
+        "homework_view_mode": record.get("homework_view_mode", "not_submitted"),
+        "recitation_enabled": record.get("recitation_enabled", False),
+        "recitation_max_attempts": record.get("recitation_max_attempts", 1),
+        "skill_enabled": record.get("skill_enabled", False),
+        "extra_columns": record.get("extra_columns", []),
+    }
+
+
+@router.post("/session/{session_id}/settings")
+async def save_session_settings(
+    session_id: str,
+    payload: dict = Body(...),
+    current_user: dict = Depends(get_current_user)
+):
+    await _verify_session_owner(session_id, current_user)
+    session = await gd_find_one(db.session, "class_sessions", {"id": session_id})
+    c_id = session.get("class_id") if session else None
+    s_id = payload.get("subject_id") or (session.get("subject_id") if session else None)
+    lookup = {"class_id": c_id, "subject_id": s_id} if c_id and s_id else {"session_id": session_id}
+    existing = await gd_find_one(db.session, "session_settings", lookup)
+    # Validate enum / numeric ranges
+    hv_mode = payload.get("homework_view_mode", "not_submitted")
+    if hv_mode not in ("not_submitted", "submitted"):
+        hv_mode = "not_submitted"
+    try:
+        attempts = int(payload.get("recitation_max_attempts", 1) or 1)
+    except (TypeError, ValueError):
+        attempts = 1
+    attempts = max(1, min(3, attempts))
+    raw_cols = payload.get("extra_columns", []) or []
+    extra_columns = []
+    if isinstance(raw_cols, list):
+        for c in raw_cols:
+            if not isinstance(c, dict):
+                continue
+            extra_columns.append({
+                "id": str(c.get("id") or f"col_{int(datetime.utcnow().timestamp() * 1000)}"),
+                "name": str(c.get("name") or "")[:100],
+                "type": c.get("type") if c.get("type") in ("grade", "check", "text") else "grade",
+                "maxGrade": int(c.get("maxGrade") or 0),
+            })
+    record_data = {
+        "class_id": c_id,
+        "subject_id": s_id,
+        "session_id": session_id,
+        "participation_enabled": bool(payload.get("participation_enabled", True)),
+        "homework_enabled": bool(payload.get("homework_enabled", True)),
+        "homework_view_mode": hv_mode,
+        "recitation_enabled": bool(payload.get("recitation_enabled", False)),
+        "recitation_max_attempts": attempts,
+        "skill_enabled": bool(payload.get("skill_enabled", False)),
+        "extra_columns": extra_columns,
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+    if existing:
+        await gd_update_one(db.session, "session_settings", lookup, {"$set": record_data})
+    else:
+        record_data["created_at"] = datetime.utcnow().isoformat()
+        await gd_insert(db.session, "session_settings", record_data)
+    return {"success": True, "session_id": session_id, **record_data}
+
+
 @router.get("/teacher/{teacher_id}/sessions-history")
 async def get_teacher_sessions_history(
     teacher_id: str,

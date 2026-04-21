@@ -65,6 +65,33 @@ const LOG_ICONS = {
   participation: Hand,
 };
 
+function SettingsToggleRow({ icon, label, enabled, onToggle, t }) {
+  return (
+    <div className="flex items-center justify-between gap-2 bg-muted/30 dark:bg-card/50 rounded-lg px-3 py-2">
+      <span className="flex items-center gap-2 text-sm font-medium">
+        <span className={enabled ? 'text-brand-turquoise' : 'text-muted-foreground'}>{icon}</span>
+        {label}
+      </span>
+      <button
+        type="button"
+        onClick={onToggle}
+        role="switch"
+        aria-checked={enabled}
+        className={`relative inline-flex items-center h-6 w-11 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-turquoise/60 ${
+          enabled ? 'bg-brand-turquoise' : 'bg-muted-foreground/30'
+        }`}
+        title={enabled ? (t ? t('enabled') : 'On') : (t ? t('disabled') : 'Off')}
+      >
+        <span
+          className={`inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform ${
+            enabled ? 'translate-x-5 rtl:-translate-x-5' : 'translate-x-0.5 rtl:-translate-x-0.5'
+          }`}
+        />
+      </button>
+    </div>
+  );
+}
+
 function useSessionTimer(startTimeStr) {
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
@@ -156,6 +183,17 @@ export default function SessionTeachPage() {
   const [absencePickerDate, setAbsencePickerDate] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
+  // ===== Session settings (إعدادات الحصة) =====
+  const [subjectsList, setSubjectsList] = useState([]);
+  const [settingsSubjectId, setSettingsSubjectId] = useState('');
+  const [participationEnabled, setParticipationEnabled] = useState(true);
+  const [homeworkEnabled, setHomeworkEnabled] = useState(true);
+  const [homeworkViewMode, setHomeworkViewMode] = useState('not_submitted');
+  const [recitationEnabled, setRecitationEnabled] = useState(false);
+  const [recitationMaxAttempts, setRecitationMaxAttempts] = useState(1);
+  const [skillEnabled, setSkillEnabled] = useState(false);
+  const [showAddOtherItems, setShowAddOtherItems] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
   const flashRef = useRef(null);
   useEffect(() => { return () => { if (flashRef.current) clearInterval(flashRef.current); }; }, []);
   const timer = useSessionTimer(startTime);
@@ -215,6 +253,71 @@ export default function SessionTeachPage() {
       setSkillTypes(res.data || []);
     } catch (e) {
       console.error('Error loading skill types:', e);
+    }
+  };
+
+  const loadSubjectsList = useCallback(async () => {
+    try {
+      const res = await api.get('/subjects');
+      const data = res.data;
+      setSubjectsList(Array.isArray(data) ? data : (data?.subjects || []));
+    } catch (e) {
+      console.error('Error loading subjects:', e);
+    }
+  }, [api]);
+
+  const loadSessionSettings = useCallback(async () => {
+    if (!sessionId) return;
+    try {
+      const res = await api.get(`/session/${sessionId}/settings`);
+      const s = res.data || {};
+      if (s.subject_id) setSettingsSubjectId(String(s.subject_id));
+      setParticipationEnabled(s.participation_enabled !== false);
+      setHomeworkEnabled(s.homework_enabled !== false);
+      setHomeworkViewMode(s.homework_view_mode || 'not_submitted');
+      setRecitationEnabled(!!s.recitation_enabled);
+      setRecitationMaxAttempts(Number(s.recitation_max_attempts) || 1);
+      setSkillEnabled(!!s.skill_enabled);
+      // Hydrate followup columns from saved settings if any (single source of truth)
+      if (Array.isArray(s.extra_columns) && s.extra_columns.length > 0) {
+        setFollowupColumns(s.extra_columns);
+        setShowAddOtherItems(true);
+      }
+    } catch (e) {
+      console.error('Error loading session settings:', e);
+    }
+  }, [api, sessionId]);
+
+  const saveSessionSettings = async () => {
+    if (!settingsSubjectId) {
+      toast.error(t('selectSubjectFirst'));
+      return;
+    }
+    setSavingSettings(true);
+    try {
+      await api.post(`/session/${sessionId}/settings`, {
+        subject_id: settingsSubjectId,
+        participation_enabled: participationEnabled,
+        homework_enabled: homeworkEnabled,
+        homework_view_mode: homeworkViewMode,
+        recitation_enabled: recitationEnabled,
+        recitation_max_attempts: recitationMaxAttempts,
+        skill_enabled: skillEnabled,
+        extra_columns: followupColumns,
+      });
+      // Persist followup columns alongside grade data
+      if (followupColumns.length > 0 || Object.keys(followupData).length > 0) {
+        await api.post(`/session/${sessionId}/followup-record`, {
+          columns: followupColumns, data: followupData
+        }).catch(() => {});
+      }
+      toast.success(t('saved') || t('saveSettings'));
+      setShowSettingsModal(false);
+    } catch (e) {
+      console.error('Error saving session settings:', e);
+      toast.error(t('errorOccurred') || 'Error');
+    } finally {
+      setSavingSettings(false);
     }
   };
 
@@ -972,8 +1075,12 @@ export default function SessionTeachPage() {
               })}
             </div>
             <button
-              onClick={() => setShowSettingsModal(true)}
-              aria-label={t('evaluationSettings')}
+              onClick={() => {
+                setShowSettingsModal(true);
+                loadSubjectsList();
+                loadSessionSettings();
+              }}
+              aria-label={t('sessionSettings')}
               className="ms-1 p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
               title={t('evaluationSettings')}
             >
@@ -1977,242 +2084,279 @@ export default function SessionTeachPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Evaluation Settings Modal */}
+      {/* Session Settings Modal (إعدادات الحصة) */}
       <Dialog open={showSettingsModal} onOpenChange={(open) => {
         setShowSettingsModal(open);
+        // Preserve existing autosave: persist followup record on close
         if (!open && sessionId && (followupColumns.length > 0 || Object.keys(followupData).length > 0)) {
           api.post(`/session/${sessionId}/followup-record`, {
             columns: followupColumns, data: followupData
           }).catch(() => {});
         }
       }}>
-        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto" dir={isRTL ? 'rtl' : 'ltr'}>
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto backdrop-blur-sm" dir={isRTL ? 'rtl' : 'ltr'}>
           <DialogHeader>
             <DialogTitle className="font-cairo flex items-center gap-2">
               <Settings className="h-5 w-5 text-brand-turquoise" />
-              {t('evaluationSettings')}
+              {t('sessionSettings')}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-5">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">{t('evaluationMode')}</label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => setEvalMode('individual')}
-                  className={`flex items-center justify-center gap-2 p-3 rounded-xl border-2 text-sm font-medium transition-colors ${
-                    evalMode === 'individual' ? 'border-brand-turquoise bg-brand-turquoise/10 text-brand-turquoise' : 'border-border dark:border-border'
-                  }`}
-                >
-                  <User className="h-4 w-4" />
-                  {t('individual')}
-                </button>
-                <button
-                  onClick={() => setEvalMode('group')}
-                  className={`flex items-center justify-center gap-2 p-3 rounded-xl border-2 text-sm font-medium transition-colors ${
-                    evalMode === 'group' ? 'border-brand-turquoise bg-brand-turquoise/10 text-brand-turquoise' : 'border-border dark:border-border'
-                  }`}
-                >
-                  <UsersRound className="h-4 w-4" />
-                  {t('groups')}
-                </button>
-              </div>
-            </div>
-
-            <div className="border-t border-border dark:border-border" />
-
+            {/* 1) Subject selection (required first) */}
             <div className="space-y-2">
               <label className="text-sm font-medium flex items-center gap-2">
-                <FileSpreadsheet className="h-4 w-4 text-brand-turquoise" />
-                {t('followupColumns')}
+                <BookOpen className="h-4 w-4 text-brand-turquoise" />
+                {t('selectSubject')} <span className="text-red-500">*</span>
               </label>
-              {followupColumns.map((col, ci) => (
-                <div key={col.id} className="flex items-center gap-2 bg-muted/40 dark:bg-card rounded-lg p-2">
-                  <GripVertical className="h-3.5 w-3.5 text-muted-foreground flex-none" />
-                  <input
-                    value={col.name}
-                    onChange={e => {
-                      const updated = [...followupColumns];
-                      updated[ci] = { ...updated[ci], name: e.target.value };
-                      setFollowupColumns(updated);
-                    }}
-                    className="flex-1 bg-transparent text-sm outline-none"
+              <select
+                value={settingsSubjectId}
+                onChange={e => setSettingsSubjectId(e.target.value)}
+                className="w-full bg-card dark:bg-muted border border-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand-turquoise"
+              >
+                <option value="">{t('selectSubject')}</option>
+                {subjectsList.map(s => {
+                  const id = String(s.id ?? s.subject_id ?? s._id ?? '');
+                  const label = isRTL
+                    ? (s.name_ar || s.name || s.name_en || id)
+                    : (s.name_en || s.name || s.name_ar || id);
+                  return <option key={id} value={id}>{label}</option>;
+                })}
+              </select>
+              {!settingsSubjectId && (
+                <p className="text-[11px] text-muted-foreground">{t('selectSubjectFirst')}</p>
+              )}
+            </div>
+
+            {settingsSubjectId && (
+              <>
+                {/* 2) Participation toggle */}
+                <SettingsToggleRow
+                  icon={<Hand className="h-4 w-4" />}
+                  label={t('participation')}
+                  enabled={participationEnabled}
+                  onToggle={() => setParticipationEnabled(v => !v)}
+                  t={t}
+                />
+
+                {/* 3) Homework toggle + view-mode options */}
+                <div className="space-y-2">
+                  <SettingsToggleRow
+                    icon={<ClipboardCheck className="h-4 w-4" />}
+                    label={t('homework')}
+                    enabled={homeworkEnabled}
+                    onToggle={() => setHomeworkEnabled(v => !v)}
+                    t={t}
                   />
-                  <select
-                    value={col.type || 'grade'}
-                    onChange={e => {
-                      const updated = [...followupColumns];
-                      updated[ci] = { ...updated[ci], type: e.target.value };
-                      setFollowupColumns(updated);
-                    }}
-                    className="text-[10px] bg-card dark:bg-muted rounded border px-1 py-0.5"
-                  >
-                    <option value="grade">{t('gradeType')}</option>
-                    <option value="check">{t('checkType')}</option>
-                    <option value="text">{t('textType')}</option>
-                  </select>
-                  <input
-                    type="number"
-                    value={col.maxGrade}
-                    onChange={e => {
-                      const updated = [...followupColumns];
-                      updated[ci] = { ...updated[ci], maxGrade: parseInt(e.target.value) || 0 };
-                      setFollowupColumns(updated);
-                    }}
-                    className="w-14 text-center text-xs bg-card dark:bg-muted rounded border px-1 py-0.5"
-                    min={0}
-                    max={100}
-                  />
-                  <span className="text-[10px] text-muted-foreground">{t('maxGrade')}</span>
-                  {followupColumns.length > 1 && (
-                    <button onClick={() => setFollowupColumns(followupColumns.filter((_, i) => i !== ci))} className="text-red-400 hover:text-red-500">
-                      <Trash2 className="h-3 w-3" />
-                    </button>
+                  {homeworkEnabled && (
+                    <div className="ms-2 grid grid-cols-1 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setHomeworkViewMode('not_submitted')}
+                        className={`flex items-center justify-between gap-2 px-3 py-2 rounded-lg border-2 text-xs font-medium transition-colors ${
+                          homeworkViewMode === 'not_submitted'
+                            ? 'border-brand-turquoise bg-brand-turquoise/10 text-brand-turquoise'
+                            : 'border-border text-muted-foreground'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2"><XCircle className="h-3.5 w-3.5" /> {t('clickStudentNotSubmitted')}</span>
+                        {homeworkViewMode === 'not_submitted' && <CheckCircle2 className="h-3.5 w-3.5" />}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setHomeworkViewMode('submitted')}
+                        className={`flex items-center justify-between gap-2 px-3 py-2 rounded-lg border-2 text-xs font-medium transition-colors ${
+                          homeworkViewMode === 'submitted'
+                            ? 'border-brand-turquoise bg-brand-turquoise/10 text-brand-turquoise'
+                            : 'border-border text-muted-foreground'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5" /> {t('clickStudentSubmitted')}</span>
+                        {homeworkViewMode === 'submitted' && <CheckCircle2 className="h-3.5 w-3.5" />}
+                      </button>
+                    </div>
                   )}
                 </div>
-              ))}
-              <button
-                onClick={() => setFollowupColumns([...followupColumns, {
-                  id: `col_${Date.now()}`,
-                  name: t('newColumn'),
-                  maxGrade: 10,
-                  type: 'grade'
-                }])}
-                className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-dashed border-border dark:border-border text-muted-foreground text-xs hover:text-brand-turquoise hover:border-brand-turquoise transition-colors"
+
+                {/* 4) Recitation toggle + max attempts */}
+                <div className="space-y-2">
+                  <SettingsToggleRow
+                    icon={<Mic className="h-4 w-4" />}
+                    label={t('recitation')}
+                    enabled={recitationEnabled}
+                    onToggle={() => setRecitationEnabled(v => !v)}
+                    t={t}
+                  />
+                  {recitationEnabled && (
+                    <div className="ms-2 flex items-center gap-2">
+                      <label className="text-xs text-muted-foreground flex-1">{t('maxAttemptsLabel')}</label>
+                      <select
+                        value={recitationMaxAttempts}
+                        onChange={e => setRecitationMaxAttempts(parseInt(e.target.value) || 1)}
+                        className="bg-card dark:bg-muted border border-border rounded-md px-2 py-1 text-xs outline-none focus:border-brand-turquoise"
+                      >
+                        <option value={1}>{t('oneAttempt')}</option>
+                        <option value={2}>{t('twoAttempts')}</option>
+                        <option value={3}>{t('threeAttempts')}</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+
+                {/* 5) Skill toggle + add new skill */}
+                <div className="space-y-2">
+                  <SettingsToggleRow
+                    icon={<Star className="h-4 w-4" />}
+                    label={t('skillItems')}
+                    enabled={skillEnabled}
+                    onToggle={() => setSkillEnabled(v => !v)}
+                    t={t}
+                  />
+                  {skillEnabled && (
+                    <div className="ms-2 space-y-2">
+                      <p className="text-[11px] text-muted-foreground">{t('currentSkills')}</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[
+                          ...skillTypes.map(s => (typeof s === 'string' ? s : (s?.name_ar || s?.name_en || s?.name || s?.label || ''))),
+                          ...customSkills
+                        ].map((skill, i) => {
+                          const isCustom = i >= skillTypes.length;
+                          const label = typeof skill === 'string' ? skill : String(skill ?? '');
+                          if (!label) return null;
+                          return (
+                            <span key={i} className="inline-flex items-center gap-1 bg-purple-50 dark:bg-purple-900/20 px-2 py-1 rounded-lg text-[11px] text-purple-700 dark:text-purple-300">
+                              <Star className="h-2.5 w-2.5" />
+                              {label}
+                              {isCustom && (
+                                <button onClick={() => setCustomSkills(prev => prev.filter((_, j) => j !== i - skillTypes.length))} className="text-red-400 hover:text-red-500">
+                                  <XCircle className="h-2.5 w-2.5" />
+                                </button>
+                              )}
+                            </span>
+                          );
+                        })}
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          className="flex-1 text-[11px] bg-card dark:bg-muted rounded-lg border px-2 py-1 outline-none focus:border-purple-500"
+                          placeholder={t('addNewSkill')}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter' && e.target.value.trim()) {
+                              setCustomSkills(prev => [...prev, e.target.value.trim()]);
+                              e.target.value = '';
+                            }
+                          }}
+                        />
+                        <button
+                          onClick={e => {
+                            const input = e.currentTarget.previousElementSibling;
+                            if (input?.value?.trim()) {
+                              setCustomSkills(prev => [...prev, input.value.trim()]);
+                              input.value = '';
+                            }
+                          }}
+                          className="p-1 rounded-lg bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 hover:bg-purple-200 dark:hover:bg-purple-900/50 transition-colors"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="border-t border-border dark:border-border" />
+
+                {/* 6) Add other items to current pattern */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="text-sm font-medium flex items-center gap-2">
+                      <FileSpreadsheet className="h-4 w-4 text-brand-turquoise" />
+                      {t('addOtherItemsQuestion')}
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddOtherItems(v => !v)}
+                      className={`px-3 py-1 rounded-md text-[11px] font-bold transition-colors ${
+                        showAddOtherItems ? 'bg-brand-turquoise text-white' : 'bg-muted text-muted-foreground'
+                      }`}
+                    >
+                      {showAddOtherItems ? t('yes') || 'نعم' : t('no') || 'لا'}
+                    </button>
+                  </div>
+                  {showAddOtherItems && (
+                    <div className="space-y-2">
+                      {followupColumns.map((col, ci) => (
+                        <div key={col.id} className="flex items-center gap-2 bg-muted/40 dark:bg-card rounded-lg p-2">
+                          <GripVertical className="h-3.5 w-3.5 text-muted-foreground flex-none" />
+                          <input
+                            value={col.name}
+                            onChange={e => {
+                              const updated = [...followupColumns];
+                              updated[ci] = { ...updated[ci], name: e.target.value };
+                              setFollowupColumns(updated);
+                            }}
+                            className="flex-1 bg-transparent text-sm outline-none"
+                          />
+                          <select
+                            value={col.type || 'grade'}
+                            onChange={e => {
+                              const updated = [...followupColumns];
+                              updated[ci] = { ...updated[ci], type: e.target.value };
+                              setFollowupColumns(updated);
+                            }}
+                            className="text-[10px] bg-card dark:bg-muted rounded border px-1 py-0.5"
+                          >
+                            <option value="grade">{t('gradeType')}</option>
+                            <option value="check">{t('checkType')}</option>
+                            <option value="text">{t('textType')}</option>
+                          </select>
+                          <input
+                            type="number"
+                            value={col.maxGrade}
+                            onChange={e => {
+                              const updated = [...followupColumns];
+                              updated[ci] = { ...updated[ci], maxGrade: parseInt(e.target.value) || 0 };
+                              setFollowupColumns(updated);
+                            }}
+                            className="w-14 text-center text-xs bg-card dark:bg-muted rounded border px-1 py-0.5"
+                            min={0}
+                            max={100}
+                          />
+                          <button onClick={() => setFollowupColumns(followupColumns.filter((_, i) => i !== ci))} className="text-red-400 hover:text-red-500">
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        onClick={() => setFollowupColumns([...followupColumns, {
+                          id: `col_${Date.now()}`,
+                          name: t('newColumn'),
+                          maxGrade: 10,
+                          type: 'grade'
+                        }])}
+                        className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-dashed border-border dark:border-border text-muted-foreground text-xs hover:text-brand-turquoise hover:border-brand-turquoise transition-colors"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        {t('addColumn')}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* 7) Save pattern button */}
+            <div className="pt-2 sticky bottom-0 bg-background">
+              <Button
+                onClick={saveSessionSettings}
+                disabled={!settingsSubjectId || savingSettings}
+                className="w-full bg-brand-turquoise hover:bg-brand-turquoise/90 text-white"
               >
-                <Plus className="h-3.5 w-3.5" />
-                {t('addColumn')}
-              </button>
-            </div>
-
-            <div className="border-t border-border dark:border-border" />
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium flex items-center gap-2">
-                <Heart className="h-4 w-4 text-pink-500" />
-                {t('behaviourItems')}
-              </label>
-              <p className="text-[11px] text-muted-foreground">{t('behaviourItemsHint')}</p>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-2 space-y-1">
-                  <span className="text-[10px] font-bold text-green-600 dark:text-green-400 flex items-center gap-1">
-                    <ThumbsUp className="h-3 w-3" /> {t('positiveBehaviour')}
-                  </span>
-                  {(() => {
-                    const baseList = Array.isArray(sessionInfo?.positive_behaviours) ? sessionInfo.positive_behaviours : [];
-                    return [...baseList, ...customPositiveBehaviours].map((b, i) => (
-                    <div key={i} className="text-[10px] text-muted-foreground dark:text-muted-foreground flex items-center gap-1">
-                      <CheckCircle2 className="h-2.5 w-2.5 text-green-500 flex-none" />
-                      <span className="flex-1">{typeof b === 'string' ? b : (b?.name_ar || b?.name || '')}</span>
-                      {i >= baseList.length && (
-                        <button onClick={() => setCustomPositiveBehaviours(prev => prev.filter((_, j) => j !== i - baseList.length))} className="text-red-400 hover:text-red-500">
-                          <XCircle className="h-2.5 w-2.5" />
-                        </button>
-                      )}
-                    </div>
-                  ));
-                  })()}
-                  <div className="flex items-center gap-1 mt-1">
-                    <input
-                      className="flex-1 text-[10px] bg-card dark:bg-muted rounded border px-1.5 py-0.5 outline-none focus:border-green-500"
-                      placeholder={t('addItem')}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter' && e.target.value.trim()) {
-                          setCustomPositiveBehaviours(prev => [...prev, e.target.value.trim()]);
-                          e.target.value = '';
-                        }
-                      }}
-                    />
-                    <Plus className="h-3 w-3 text-green-500" />
-                  </div>
-                </div>
-                <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-2 space-y-1">
-                  <span className="text-[10px] font-bold text-red-600 dark:text-red-400 flex items-center gap-1">
-                    <ThumbsDown className="h-3 w-3" /> {t('negativeBehaviour')}
-                  </span>
-                  {(() => {
-                    const baseList = Array.isArray(sessionInfo?.negative_behaviours) ? sessionInfo.negative_behaviours : [];
-                    return [...baseList, ...customNegativeBehaviours].map((b, i) => (
-                    <div key={i} className="text-[10px] text-muted-foreground dark:text-muted-foreground flex items-center gap-1">
-                      <XCircle className="h-2.5 w-2.5 text-red-500 flex-none" />
-                      <span className="flex-1">{typeof b === 'string' ? b : (b?.name_ar || b?.name || '')}</span>
-                      {i >= baseList.length && (
-                        <button onClick={() => setCustomNegativeBehaviours(prev => prev.filter((_, j) => j !== i - baseList.length))} className="text-red-400 hover:text-red-500">
-                          <Trash2 className="h-2.5 w-2.5" />
-                        </button>
-                      )}
-                    </div>
-                  ));
-                  })()}
-                  <div className="flex items-center gap-1 mt-1">
-                    <input
-                      className="flex-1 text-[10px] bg-card dark:bg-muted rounded border px-1.5 py-0.5 outline-none focus:border-red-500"
-                      placeholder={t('addItem')}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter' && e.target.value.trim()) {
-                          setCustomNegativeBehaviours(prev => [...prev, e.target.value.trim()]);
-                          e.target.value = '';
-                        }
-                      }}
-                    />
-                    <Plus className="h-3 w-3 text-red-500" />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="border-t border-border dark:border-border" />
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium flex items-center gap-2">
-                <Star className="h-4 w-4 text-purple-500" />
-                {t('skillItems')}
-              </label>
-              <p className="text-[11px] text-muted-foreground">{t('skillItemsHint')}</p>
-              <div className="flex flex-wrap gap-1.5">
-                {[
-                  ...skillTypes.map(s => (typeof s === 'string' ? s : (s?.name_ar || s?.name_en || s?.name || s?.label || ''))),
-                  ...customSkills
-                ].map((skill, i) => {
-                  const isCustom = i >= skillTypes.length;
-                  const label = typeof skill === 'string' ? skill : String(skill ?? '');
-                  if (!label) return null;
-                  return (
-                    <span key={i} className="inline-flex items-center gap-1 bg-purple-50 dark:bg-purple-900/20 px-2 py-1 rounded-lg text-[11px] text-purple-700 dark:text-purple-300">
-                      <Star className="h-2.5 w-2.5" />
-                      {label}
-                      {isCustom && (
-                        <button onClick={() => setCustomSkills(prev => prev.filter((_, j) => j !== i - skillTypes.length))} className="text-red-400 hover:text-red-500">
-                          <XCircle className="h-2.5 w-2.5" />
-                        </button>
-                      )}
-                    </span>
-                  );
-                })}
-              </div>
-              <div className="flex items-center gap-1.5">
-                <input
-                  className="flex-1 text-[11px] bg-card dark:bg-muted rounded-lg border px-2 py-1 outline-none focus:border-purple-500"
-                  placeholder={t('addItem')}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' && e.target.value.trim()) {
-                      setCustomSkills(prev => [...prev, e.target.value.trim()]);
-                      e.target.value = '';
-                    }
-                  }}
-                />
-                <button
-                  onClick={e => {
-                    const input = e.currentTarget.previousElementSibling;
-                    if (input?.value?.trim()) {
-                      setCustomSkills(prev => [...prev, input.value.trim()]);
-                      input.value = '';
-                    }
-                  }}
-                  className="p-1 rounded-lg bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 hover:bg-purple-200 dark:hover:bg-purple-900/50 transition-colors"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                </button>
-              </div>
+                {savingSettings ? (
+                  <span className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> {t('saving')}</span>
+                ) : (
+                  <span className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4" /> {t('savePattern')}</span>
+                )}
+              </Button>
             </div>
           </div>
         </DialogContent>
