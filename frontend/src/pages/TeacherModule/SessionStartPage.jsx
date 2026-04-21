@@ -15,8 +15,8 @@ import {
 const STATUS_CONFIG = {
   present: {
     label: 'حاضر', labelEn: 'Present', short: 'ح',
-    dark: { ring: 'ring-emerald-400', bg: 'bg-emerald-500', text: 'text-emerald-400', card: 'border-slate-700 bg-slate-800/60', glow: '' },
-    light: { ring: 'ring-emerald-500', bg: 'bg-emerald-500', text: 'text-emerald-700', card: 'border-gray-200 bg-white', glow: '' },
+    dark: { ring: 'ring-emerald-400', bg: 'bg-emerald-500', text: 'text-emerald-400', card: 'border-border bg-card/60', glow: '' },
+    light: { ring: 'ring-emerald-500', bg: 'bg-emerald-500', text: 'text-emerald-700', card: 'border-gray-200 bg-card', glow: '' },
   },
   absent: {
     label: 'غائب', labelEn: 'Absent', short: 'غ',
@@ -241,19 +241,19 @@ export default function SessionStartPage() {
 
   const theme = isDark ? 'dark' : 'light';
   const themeStyles = {
-    bg: isDark ? 'bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950' : 'bg-gradient-to-b from-gray-50 via-white to-gray-100',
-    headerBg: isDark ? 'bg-slate-900/95 backdrop-blur-xl border-white/10' : 'bg-white/95 backdrop-blur-xl border-gray-200',
-    text: isDark ? 'text-white' : 'text-gray-900',
-    textSub: isDark ? 'text-white/60' : 'text-gray-500',
-    textMuted: isDark ? 'text-white/40' : 'text-gray-400',
-    cardBg: isDark ? 'bg-slate-800/80 border-white/10' : 'bg-white border-gray-200 shadow-sm',
-    sectionBg: isDark ? 'bg-slate-800/50 border-white/5' : 'bg-gray-50 border-gray-200',
-    statBg: isDark ? 'bg-slate-800/60 border-white/5' : 'bg-white border-gray-200 shadow-sm',
-    progressBg: isDark ? 'bg-slate-700' : 'bg-gray-200',
-    btnBg: isDark ? 'bg-white/5 border-white/10 hover:bg-white/10' : 'bg-gray-100 border-gray-200 hover:bg-gray-200',
-    btnText: isDark ? 'text-white/60' : 'text-gray-600',
-    ringOffset: isDark ? 'ring-offset-slate-900' : 'ring-offset-white',
-    divider: isDark ? 'bg-white/10' : 'bg-gray-200',
+    bg: isDark ? 'bg-gradient-to-b from-background via-background to-background' : 'bg-gradient-to-b from-gray-50 via-white to-gray-100',
+    headerBg: isDark ? 'bg-background/95 backdrop-blur-xl border-border' : 'bg-foreground/95 backdrop-blur-xl border-gray-200',
+    text: isDark ? 'text-foreground' : 'text-gray-900',
+    textSub: isDark ? 'text-muted-foreground' : 'text-muted-foreground',
+    textMuted: isDark ? 'text-muted-foreground' : 'text-muted-foreground',
+    cardBg: isDark ? 'bg-card/80 border-border' : 'bg-card border-gray-200 shadow-sm',
+    sectionBg: isDark ? 'bg-card/50 border-border' : 'bg-gray-50 border-gray-200',
+    statBg: isDark ? 'bg-card/60 border-border' : 'bg-card border-gray-200 shadow-sm',
+    progressBg: isDark ? 'bg-muted' : 'bg-gray-200',
+    btnBg: isDark ? 'bg-foreground/5 border-border hover:bg-foreground/10' : 'bg-gray-100 border-gray-200 hover:bg-gray-200',
+    btnText: isDark ? 'text-muted-foreground' : 'text-gray-600',
+    ringOffset: isDark ? 'ring-offset-background' : 'ring-offset-white',
+    divider: isDark ? 'bg-foreground/10' : 'bg-gray-200',
   };
 
   if (step === 'starting' || (loading && !students.length)) {
@@ -264,7 +264,7 @@ export default function SessionStartPage() {
             <div className="absolute inset-0 rounded-full bg-brand-turquoise/20 animate-ping" />
             <div className="absolute inset-2 rounded-full bg-brand-turquoise/10 animate-pulse" />
             <div className="relative w-28 h-28 rounded-full bg-gradient-to-br from-brand-turquoise to-cyan-600 flex items-center justify-center shadow-2xl shadow-brand-turquoise/40">
-              <Play className="h-12 w-12 text-white drop-shadow-lg" />
+              <Play className="h-12 w-12 text-foreground drop-shadow-lg" />
             </div>
           </div>
           <h2 className={`font-cairo text-3xl font-bold ${themeStyles.text} mb-3`}>{t('startingSession')}</h2>
@@ -281,7 +281,7 @@ export default function SessionStartPage() {
 
   if (step === 'done') {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center overflow-hidden" dir={isRTL ? 'rtl' : 'ltr'}>
+      <div className="min-h-screen bg-background flex items-center justify-center overflow-hidden" dir={isRTL ? 'rtl' : 'ltr'}>
         <div className="absolute inset-0">
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full bg-brand-turquoise/5 animate-pulse" />
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] rounded-full bg-brand-turquoise/10 animate-pulse" style={{ animationDelay: '300ms' }} />
@@ -292,31 +292,31 @@ export default function SessionStartPage() {
           <div className="relative mx-auto w-36 h-36">
             <div className="absolute inset-0 rounded-full bg-gradient-to-br from-brand-turquoise/30 to-cyan-500/20 animate-spin-slow" style={{ animationDuration: '3s' }} />
             <div className="absolute inset-2 rounded-full bg-gradient-to-br from-brand-turquoise to-cyan-500 flex items-center justify-center shadow-2xl shadow-brand-turquoise/50">
-              <BookOpen className="h-16 w-16 text-white drop-shadow-lg" />
+              <BookOpen className="h-16 w-16 text-foreground drop-shadow-lg" />
             </div>
           </div>
 
           <div className="space-y-4">
-            <h1 className="font-cairo text-5xl font-black text-white tracking-tight">
+            <h1 className="font-cairo text-5xl font-black text-foreground tracking-tight">
               {t('startTeachingNow')}
             </h1>
             <p className="text-brand-turquoise/80 text-xl font-tajawal">{t('preparingInteractionInterface')}</p>
           </div>
 
-          <div className="flex items-center justify-center gap-4 text-white/50 text-sm font-tajawal">
-            <span className="flex items-center gap-2 bg-white/5 px-4 py-2 rounded-full border border-white/10">
+          <div className="flex items-center justify-center gap-4 text-muted-foreground text-sm font-tajawal">
+            <span className="flex items-center gap-2 bg-foreground/5 px-4 py-2 rounded-full border border-border">
               <Users className="h-4 w-4 text-emerald-400" /> {stats.present} حاضر
             </span>
-            <span className="flex items-center gap-2 bg-white/5 px-4 py-2 rounded-full border border-white/10">
+            <span className="flex items-center gap-2 bg-foreground/5 px-4 py-2 rounded-full border border-border">
               <GraduationCap className="h-4 w-4 text-brand-turquoise" /> {sessionInfo?.subjectName}
             </span>
-            <span className="flex items-center gap-2 bg-white/5 px-4 py-2 rounded-full border border-white/10">
+            <span className="flex items-center gap-2 bg-foreground/5 px-4 py-2 rounded-full border border-border">
               {sessionInfo?.className}
             </span>
           </div>
 
           <div className="w-72 mx-auto">
-            <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+            <div className="h-2 bg-foreground/10 rounded-full overflow-hidden">
               <div
                 className="h-full bg-gradient-to-r from-brand-turquoise to-cyan-400 rounded-full transition-[width] duration-100"
                 style={{ width: `${transitionProgress * 100}%` }}
@@ -343,7 +343,7 @@ export default function SessionStartPage() {
     <div className={`min-h-screen ${themeStyles.bg} flex flex-col transition-colors duration-300`} dir={isRTL ? 'rtl' : 'ltr'}>
       <header className={`${themeStyles.headerBg} border-b px-4 py-3 sticky top-0 z-20 transition-colors duration-300`}>
         <div className="max-w-5xl mx-auto flex items-center justify-between gap-3">
-          <button onClick={() => navigate('/teacher')} className={`${themeStyles.textSub} ${isDark ? 'hover:text-white' : 'hover:text-gray-900'} p-2 rounded-xl ${themeStyles.btnBg} transition-colors border`}>
+          <button onClick={() => navigate('/teacher')} className={`${themeStyles.textSub} ${isDark ? 'hover:text-foreground' : 'hover:text-gray-900'} p-2 rounded-xl ${themeStyles.btnBg} transition-colors border`}>
             <ArrowRight className="h-5 w-5" />
           </button>
 
@@ -389,7 +389,7 @@ export default function SessionStartPage() {
             <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-turquoise to-cyan-600 flex items-center justify-center shadow-lg shadow-brand-turquoise/20">
-                  <Users className="h-5 w-5 text-white" />
+                  <Users className="h-5 w-5 text-foreground" />
                 </div>
                 <div>
                   <span className={`font-cairo font-bold ${themeStyles.text} text-sm block`}>{t('attendanceRecords')}</span>
@@ -411,7 +411,7 @@ export default function SessionStartPage() {
               ].map(s => (
                 <div key={s.key} className={`${themeStyles.statBg} rounded-xl p-3 text-center border transition-colors duration-300 hover:scale-[1.02]`}>
                   <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${s.gradient} flex items-center justify-center mx-auto mb-2 shadow-sm`}>
-                    <s.icon className="h-4 w-4 text-white" />
+                    <s.icon className="h-4 w-4 text-foreground" />
                   </div>
                   <div className={`text-2xl font-bold ${s.numColor} font-mono`}>{stats[s.key]}</div>
                   <div className={`${themeStyles.textMuted} text-[10px] mt-1 font-cairo font-medium`}>{s.label}</div>
@@ -495,7 +495,7 @@ export default function SessionStartPage() {
 
           {students.length === 0 && (
             <div className={`text-center py-20 ${themeStyles.textMuted}`}>
-              <div className="w-24 h-24 rounded-2xl bg-gray-500/10 flex items-center justify-center mx-auto mb-5">
+              <div className="w-24 h-24 rounded-2xl bg-muted/40 flex items-center justify-center mx-auto mb-5">
                 <AlertCircle className="h-12 w-12 opacity-30" />
               </div>
               <p className="font-cairo text-xl font-bold mb-2">{t('noStudentsInClass')}</p>
@@ -507,12 +507,12 @@ export default function SessionStartPage() {
         </div>
       </div>
 
-      <div className={`sticky bottom-0 p-4 ${isDark ? 'bg-gradient-to-t from-slate-900 via-slate-900/95 to-transparent' : 'bg-gradient-to-t from-white via-white/95 to-transparent'}`}>
+      <div className={`sticky bottom-0 p-4 ${isDark ? 'bg-gradient-to-t from-background via-background/95 to-transparent' : 'bg-gradient-to-t from-white via-white/95 to-transparent'}`}>
         <div className="max-w-5xl mx-auto">
           <button
             onClick={approveAttendance}
             disabled={saving || students.length === 0}
-            className="w-full h-14 rounded-2xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-cairo font-bold text-lg flex items-center justify-center gap-3 transition-colors shadow-xl shadow-emerald-500/30 active:scale-[0.98]"
+            className="w-full h-14 rounded-2xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-foreground font-cairo font-bold text-lg flex items-center justify-center gap-3 transition-colors shadow-xl shadow-emerald-500/30 active:scale-[0.98]"
           >
             {saving ? (
               <Loader2 className="h-6 w-6 animate-spin" />
@@ -549,7 +549,7 @@ function GenderSection({ students, gender, label, theme, themeStyles, t, isDark,
         <Badge className={badgeClass}>
           {students.length}
         </Badge>
-        <div className={`flex-1 h-px ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+        <div className={`flex-1 h-px ${isDark ? 'bg-foreground/10' : 'bg-gray-200'}`} />
       </div>
       <div className="p-4 space-y-3">
         {students.map((student, idx) => (
@@ -591,11 +591,11 @@ function StudentCard({ student, index, onUpdate, theme, themeStyles, t, isDark }
             }}
           />
         </div>
-        <div className={`absolute -bottom-0.5 -end-0.5 w-5 h-5 rounded-full ${style.bg} flex items-center justify-center border-2 ${isDark ? 'border-slate-900' : 'border-white'} shadow-sm`}>
+        <div className={`absolute -bottom-0.5 -end-0.5 w-5 h-5 rounded-full ${style.bg} flex items-center justify-center border-2 ${isDark ? 'border-background' : 'border-border'} shadow-sm`}>
           {isAbsent ? (
-            <UserX className="h-2.5 w-2.5 text-white" />
+            <UserX className="h-2.5 w-2.5 text-foreground" />
           ) : (
-            <UserCheck className="h-2.5 w-2.5 text-white" />
+            <UserCheck className="h-2.5 w-2.5 text-foreground" />
           )}
         </div>
       </div>
@@ -633,7 +633,7 @@ function StudentCard({ student, index, onUpdate, theme, themeStyles, t, isDark }
         </div>
       </div>
 
-      <Badge className={`${style.bg} text-white text-xs font-cairo shadow-sm`}>{isAbsent ? t('absent') : t('present')}</Badge>
+      <Badge className={`${style.bg} text-foreground text-xs font-cairo shadow-sm`}>{isAbsent ? t('absent') : t('present')}</Badge>
     </button>
   );
 }

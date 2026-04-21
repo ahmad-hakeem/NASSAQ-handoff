@@ -350,7 +350,7 @@ export default function SessionTeachPage() {
     if (levels.medium.length > 0) newGroups.push({ id: 'g-medium', name: t('intermediateLevel'), color: 'bg-blue-600', students: levels.medium.map(s => s.id) });
     if (levels.low.length > 0) newGroups.push({ id: 'g-low', name: t('beginnerLevel'), color: 'bg-amber-600', students: levels.low.map(s => s.id) });
     if (levels.unassigned.length > 0 && newGroups.length === 0) {
-      newGroups.push({ id: 'g-all', name: t('group') + ' 1', color: 'bg-slate-600', students: levels.unassigned.map(s => s.id) });
+      newGroups.push({ id: 'g-all', name: t('group') + ' 1', color: 'bg-muted', students: levels.unassigned.map(s => s.id) });
     }
     setGroups(newGroups);
     toast.success(t('groupsCreatedAutomatically'));
@@ -571,7 +571,7 @@ export default function SessionTeachPage() {
     setActionTab(getTabForMode(mode?.id));
   };
 
-  const addLog = (emoji, text, color = 'text-gray-700') => {
+  const addLog = (emoji, text, color = 'text-foreground') => {
     setActivityLog(prev => [{ id: Date.now(), emoji, text, color, time: new Date().toLocaleTimeString(isRTL ? 'ar' : 'en', { hour: '2-digit', minute: '2-digit' }) }, ...prev].slice(0, 30));
   };
 
@@ -828,19 +828,19 @@ export default function SessionTeachPage() {
   return (
     <SectionErrorBoundary name="SessionTeachView" isRTL={isRTL}>
     <div
-      className="h-[100dvh] min-h-[100dvh] flex flex-col overflow-hidden text-white"
+      className="h-[100dvh] min-h-[100dvh] flex flex-col overflow-hidden text-foreground"
       dir={isRTL ? 'rtl' : 'ltr'}
       style={{
-        backgroundColor: '#0b1228',
+        backgroundColor: 'hsl(var(--background))',
         backgroundImage: `
           radial-gradient(ellipse 80% 60% at ${isRTL ? '85%' : '15%'} -10%, rgba(217, 165, 87, 0.10), transparent 60%),
           radial-gradient(ellipse 70% 50% at ${isRTL ? '15%' : '85%'} 110%, rgba(45, 212, 191, 0.08), transparent 60%),
-          linear-gradient(180deg, #0b1228 0%, #0a1024 100%)
+          linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--background)) 100%)
         `,
       }}
     >
       {/* ── Header — Editorial Console Bar ── */}
-      <header className="border-b border-white/[0.07] bg-[#0a1024]/80 backdrop-blur-md px-3 sm:px-4 py-2.5 flex-none shrink-0 relative">
+      <header className="border-b border-border bg-background/80 backdrop-blur-md px-3 sm:px-4 py-2.5 flex-none shrink-0 relative">
         <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-amber-500/30 to-transparent" aria-hidden="true" />
         <div className="w-full flex items-center justify-between gap-2 sm:gap-3 flex-wrap">
           <div className="flex items-center gap-3 min-w-0 flex-1 sm:flex-initial">
@@ -849,7 +849,7 @@ export default function SessionTeachPage() {
               <div className="w-[3px] rounded-full bg-gradient-to-b from-amber-400 via-amber-500 to-amber-600 shadow-[0_0_8px_rgba(217,165,87,0.5)]" aria-hidden="true" />
               <div className="min-w-0 py-0.5">
                 <div className="flex items-center gap-2">
-                  <h1 className="font-cairo font-extrabold text-white text-base tracking-tight truncate leading-none">
+                  <h1 className="font-cairo font-extrabold text-foreground text-base tracking-tight truncate leading-none">
                     {sessionInfo?.subject_name || sessionInfo?.subjectName}
                   </h1>
                   {mode && (
@@ -862,31 +862,31 @@ export default function SessionTeachPage() {
                     </span>
                   )}
                 </div>
-                <p className="text-white/45 text-[11px] tracking-wide truncate mt-0.5">{sessionInfo?.class_name || sessionInfo?.className}</p>
+                <p className="text-muted-foreground text-[11px] tracking-wide truncate mt-0.5">{sessionInfo?.class_name || sessionInfo?.className}</p>
               </div>
             </div>
             {/* Gold time chip */}
-            <div className="hidden sm:flex items-center gap-1.5 ms-1 ps-3 border-s border-white/10">
+            <div className="hidden sm:flex items-center gap-1.5 ms-1 ps-3 border-s border-border">
               <Clock className="h-3.5 w-3.5 text-amber-400/80" aria-hidden="true" />
-              <span className="font-mono text-white text-sm font-bold tabular-nums tracking-wider">{timer}</span>
+              <span className="font-mono text-foreground text-sm font-bold tabular-nums tracking-wider">{timer}</span>
             </div>
           </div>
 
           {/* Live stats bar — editorial micro-labels */}
-          <div className="hidden md:flex items-center gap-5 text-white/70">
+          <div className="hidden md:flex items-center gap-5 text-muted-foreground">
             <span className="flex flex-col items-center leading-none">
-              <span className="text-white text-sm font-bold tabular-nums">{presentStudents.length}</span>
-              <span className="text-[9px] uppercase tracking-[0.16em] text-white/55 mt-0.5">{t('present')}</span>
+              <span className="text-foreground text-sm font-bold tabular-nums">{presentStudents.length}</span>
+              <span className="text-[9px] uppercase tracking-[0.16em] text-muted-foreground mt-0.5">{t('present')}</span>
             </span>
-            <span className="w-px h-6 bg-white/10" aria-hidden="true" />
+            <span className="w-px h-6 bg-foreground/10" aria-hidden="true" />
             <span className="flex flex-col items-center leading-none">
-              <span className="text-white text-sm font-bold tabular-nums">{stats.questions}</span>
-              <span className="text-[9px] uppercase tracking-[0.16em] text-white/55 mt-0.5">{t('question')}</span>
+              <span className="text-foreground text-sm font-bold tabular-nums">{stats.questions}</span>
+              <span className="text-[9px] uppercase tracking-[0.16em] text-muted-foreground mt-0.5">{t('question')}</span>
             </span>
-            <span className="w-px h-6 bg-white/10" aria-hidden="true" />
+            <span className="w-px h-6 bg-foreground/10" aria-hidden="true" />
             <span className="flex flex-col items-center leading-none">
               <span className={`text-sm font-bold tabular-nums ${accuracy >= 60 ? 'text-emerald-300' : 'text-rose-300'}`}>{accuracy}%</span>
-              <span className="text-[9px] uppercase tracking-[0.16em] text-white/55 mt-0.5">{t('correct')}</span>
+              <span className="text-[9px] uppercase tracking-[0.16em] text-muted-foreground mt-0.5">{t('correct')}</span>
             </span>
           </div>
 
@@ -894,7 +894,7 @@ export default function SessionTeachPage() {
             <button
               onClick={() => setShowSearch(v => !v)}
               aria-label={t('search')}
-              className="p-2 rounded-md text-white/55 hover:text-white hover:bg-white/[0.06] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
+              className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
               title={t('search')}
             >
               <Search className="h-4 w-4" />
@@ -905,7 +905,7 @@ export default function SessionTeachPage() {
               onClick={() => setPanelOpen(v => !v)}
               aria-label={panelOpen ? t('hideActivityPanel') : t('showActivityPanel')}
               aria-pressed={panelOpen}
-              className="hidden lg:inline-flex p-2 rounded-md text-white/55 hover:text-white hover:bg-white/[0.06] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
+              className="hidden lg:inline-flex p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
               title={panelOpen ? t('hideActivityPanel') : t('showActivityPanel')}
             >
               {panelOpen
@@ -913,14 +913,14 @@ export default function SessionTeachPage() {
                 : <PanelRightOpen className="h-4 w-4" />}
             </button>
 
-            <span className="hidden sm:block w-px h-5 bg-white/10 mx-1" aria-hidden="true" />
+            <span className="hidden sm:block w-px h-5 bg-foreground/10 mx-1" aria-hidden="true" />
 
-            <div className="hidden sm:flex items-center bg-white/[0.04] border border-white/10 rounded-md p-0.5">
+            <div className="hidden sm:flex items-center bg-foreground/[0.04] border border-border rounded-md p-0.5">
               <button
                 onClick={() => setEvalMode('individual')}
                 aria-pressed={evalMode === 'individual'}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-[10px] uppercase tracking-[0.14em] font-semibold transition-colors ${
-                  evalMode === 'individual' ? 'bg-white/10 text-amber-300' : 'text-white/45 hover:text-white/75'
+                  evalMode === 'individual' ? 'bg-foreground/10 text-amber-300' : 'text-muted-foreground hover:text-foreground/80'
                 }`}
               >
                 <User className="h-3 w-3" />
@@ -930,7 +930,7 @@ export default function SessionTeachPage() {
                 onClick={() => setEvalMode('group')}
                 aria-pressed={evalMode === 'group'}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-[10px] uppercase tracking-[0.14em] font-semibold transition-colors ${
-                  evalMode === 'group' ? 'bg-white/10 text-amber-300' : 'text-white/45 hover:text-white/75'
+                  evalMode === 'group' ? 'bg-foreground/10 text-amber-300' : 'text-muted-foreground hover:text-foreground/80'
                 }`}
               >
                 <UsersRound className="h-3 w-3" />
@@ -949,7 +949,7 @@ export default function SessionTeachPage() {
               </button>
             )}
 
-            <span className="hidden sm:block w-px h-5 bg-white/10 mx-1" aria-hidden="true" />
+            <span className="hidden sm:block w-px h-5 bg-foreground/10 mx-1" aria-hidden="true" />
 
             <div className="hidden sm:flex items-center gap-1">
               {MODES.map(m => {
@@ -961,8 +961,8 @@ export default function SessionTeachPage() {
                     aria-pressed={active}
                     className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-bold tracking-wide transition-all ${
                       active
-                        ? `${m.color} text-white shadow-[0_0_0_1px_rgba(255,255,255,0.1)_inset]`
-                        : 'text-white/55 hover:text-white hover:bg-white/[0.06]'
+                        ? `${m.color} text-foreground shadow-[0_0_0_1px_rgba(255,255,255,0.1)_inset]`
+                        : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]'
                     }`}
                   >
                     <m.icon className="h-3.5 w-3.5" />
@@ -974,14 +974,14 @@ export default function SessionTeachPage() {
             <button
               onClick={() => setShowSettingsModal(true)}
               aria-label={t('evaluationSettings')}
-              className="ms-1 p-2 rounded-md text-white/55 hover:text-white hover:bg-white/[0.06] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
+              className="ms-1 p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
               title={t('evaluationSettings')}
             >
               <Settings className="h-4 w-4" />
             </button>
             <Button
               size="sm"
-              className="text-[11px] h-8 px-3 font-bold tracking-wide ms-1 bg-gradient-to-b from-rose-500 to-rose-600 hover:from-rose-400 hover:to-rose-500 text-white border border-rose-400/30 shadow-[0_4px_12px_-2px_rgba(244,63,94,0.4)] focus-visible:ring-rose-300"
+              className="text-[11px] h-8 px-3 font-bold tracking-wide ms-1 bg-gradient-to-b from-rose-500 to-rose-600 hover:from-rose-400 hover:to-rose-500 text-foreground border border-rose-400/30 shadow-[0_4px_12px_-2px_rgba(244,63,94,0.4)] focus-visible:ring-rose-300"
               onClick={() => setShowEndDialog(true)}
               disabled={reviewLoading}
             >
@@ -993,7 +993,7 @@ export default function SessionTeachPage() {
 
       {timeWarning && (
         <div className={`flex-none px-4 py-2 text-center text-sm font-cairo font-bold flex items-center justify-center gap-2 ${
-          timeWarning === 'ended' ? 'bg-red-600/90 text-white animate-pulse' : 'bg-amber-500/90 text-white'
+          timeWarning === 'ended' ? 'bg-red-600/90 text-foreground animate-pulse' : 'bg-amber-500/90 text-foreground'
         }`}>
           <Clock className="h-4 w-4" />
           {timeWarning === 'ended'
@@ -1015,17 +1015,17 @@ export default function SessionTeachPage() {
           {showSearch && (
             <div className="flex-none">
               <div className="relative">
-                <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
+                <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   placeholder={t('searchStudentByName')}
-                  className="w-full bg-white/10 text-white text-sm rounded-xl ps-10 pe-4 py-2.5 placeholder-white/30 outline-none border border-white/10 focus:border-brand-turquoise/50 transition-colors"
+                  className="w-full bg-foreground/10 text-foreground text-sm rounded-xl ps-10 pe-4 py-2.5 placeholder-muted-foreground outline-none border border-border focus:border-brand-turquoise/50 transition-colors"
                   autoFocus
                 />
                 {searchQuery && (
-                  <button onClick={() => setSearchQuery('')} className="absolute end-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white">
+                  <button onClick={() => setSearchQuery('')} className="absolute end-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                     <XCircle className="h-4 w-4" />
                   </button>
                 )}
@@ -1037,11 +1037,11 @@ export default function SessionTeachPage() {
           {showHakim && (
             <div className="flex-none bg-gradient-to-r from-brand-turquoise/10 to-brand-navy/10 border border-brand-turquoise/30 rounded-xl px-4 py-2 flex items-center gap-3 animate-fade-in">
               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-brand-turquoise to-cyan-400 flex items-center justify-center shadow-lg shadow-brand-turquoise/40 animate-bounce">
-                <Sparkles className="h-5 w-5 text-white" />
+                <Sparkles className="h-5 w-5 text-foreground" />
               </div>
               <div className="flex-1">
                 <p className="text-brand-turquoise text-xs font-bold font-cairo">{t('hakimChoosing')}</p>
-                <p className="text-white/50 text-[10px]">{t('findingBestStudent')}</p>
+                <p className="text-muted-foreground text-[10px]">{t('findingBestStudent')}</p>
               </div>
               <Loader2 className="h-4 w-4 animate-spin text-brand-turquoise" />
             </div>
@@ -1052,7 +1052,7 @@ export default function SessionTeachPage() {
             onClick={selectRandom}
             disabled={loading}
             aria-label={t('randomStudentPick')}
-            className={`group relative flex-none w-full h-14 rounded-xl font-cairo font-extrabold text-white text-sm flex items-center justify-center gap-3 active:scale-[0.99] transition-all disabled:opacity-60 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b1228] overflow-hidden border ${
+            className={`group relative flex-none w-full h-14 rounded-xl font-cairo font-extrabold text-foreground text-sm flex items-center justify-center gap-3 active:scale-[0.99] transition-all disabled:opacity-60 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 focus-visible:ring-offset-2 focus-visible:ring-offset-background overflow-hidden border ${
               selectedStudent
                 ? 'bg-gradient-to-r from-amber-500 via-amber-400 to-orange-500 hover:from-amber-400 hover:via-amber-300 hover:to-orange-400 border-amber-300/40 shadow-[0_8px_24px_-6px_rgba(245,158,11,0.55),inset_0_1px_0_rgba(255,255,255,0.25)]'
                 : 'bg-gradient-to-r from-amber-500 via-amber-400 to-orange-500 hover:from-amber-400 hover:via-amber-300 hover:to-orange-400 border-amber-300/40 shadow-[0_8px_24px_-6px_rgba(245,158,11,0.55),inset_0_1px_0_rgba(255,255,255,0.25)]'
@@ -1076,7 +1076,7 @@ export default function SessionTeachPage() {
             {MODES.map(m => (
               <button key={m.id} onClick={() => handleSetMode(m)}
                 className={`rounded-lg py-2 text-xs font-medium flex flex-col items-center gap-1 transition-colors ${
-                  mode?.id === m.id ? `${m.color} text-white ring-2 ring-white/30` : 'bg-white/10 text-white/60'
+                  mode?.id === m.id ? `${m.color} text-foreground ring-2 ring-foreground/30` : 'bg-foreground/10 text-muted-foreground'
                 }`}>
                 <m.icon className="h-4 w-4" />
                 {m.labelKey ? t(m.labelKey) : m.label}
@@ -1094,7 +1094,7 @@ export default function SessionTeachPage() {
             const railTo = { purple: 'to-fuchsia-500', blue: 'to-blue-500', amber: 'to-orange-500' }[accent];
             return (
               <div
-                className="relative flex-none shrink-0 flex items-center gap-3 ps-4 pe-3 py-2 rounded-md bg-white/[0.03] border border-white/5 overflow-hidden"
+                className="relative flex-none shrink-0 flex items-center gap-3 ps-4 pe-3 py-2 rounded-md bg-foreground/[0.03] border border-border overflow-hidden"
                 style={{ boxShadow: `inset 0 0 0 1px ${ring}` }}
               >
                 <span className={`absolute inset-y-1 start-0 w-[3px] rounded-full bg-gradient-to-b ${railFrom} ${railTo}`} aria-hidden="true" />
@@ -1115,7 +1115,7 @@ export default function SessionTeachPage() {
           {/* Student grid — individual or group mode */}
           <div className="flex-1 min-h-0 overflow-y-auto">
             {!mode ? (
-              <div className="h-full flex items-center justify-center text-white/40 text-sm">
+              <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
                 {t('selectSessionModeToStart')}
               </div>
             ) : evalMode === 'group' ? (
@@ -1128,8 +1128,8 @@ export default function SessionTeachPage() {
                     <div key={group.id}>
                       <div className="flex items-center gap-2 mb-2">
                         <span className={`w-3 h-3 rounded-full ${group.color}`} />
-                        <span className="text-white/70 text-xs font-medium font-cairo">{group.name} ({groupStudents.length})</span>
-                        <div className="flex-1 h-px bg-white/10" />
+                        <span className="text-muted-foreground text-xs font-medium font-cairo">{group.name} ({groupStudents.length})</span>
+                        <div className="flex-1 h-px bg-foreground/10" />
                       </div>
                       <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 xl:grid-cols-8 gap-2">
                         {groupStudents.map((student) => (
@@ -1148,9 +1148,9 @@ export default function SessionTeachPage() {
                 {unassignedStudents.length > 0 && (
                   <div>
                     <div className="flex items-center gap-2 mb-2">
-                      <span className="w-3 h-3 rounded-full bg-slate-500" />
-                      <span className="text-white/50 text-xs font-medium font-cairo">{t('unassigned')} ({unassignedStudents.length})</span>
-                      <div className="flex-1 h-px bg-white/10" />
+                      <span className="w-3 h-3 rounded-full bg-brand-purple/40" />
+                      <span className="text-muted-foreground text-xs font-medium font-cairo">{t('unassigned')} ({unassignedStudents.length})</span>
+                      <div className="flex-1 h-px bg-foreground/10" />
                     </div>
                     <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 xl:grid-cols-8 gap-2">
                       {unassignedStudents.map((student) => (
@@ -1167,8 +1167,8 @@ export default function SessionTeachPage() {
                 )}
               </div>
               ) : (
-                <div className="h-full flex flex-col items-center justify-center text-white/40 text-sm gap-3 py-8">
-                  <UsersRound className="h-10 w-10 text-white/20" />
+                <div className="h-full flex flex-col items-center justify-center text-muted-foreground text-sm gap-3 py-8">
+                  <UsersRound className="h-10 w-10 text-muted-foreground/50" />
                   <p className="font-cairo">{t('noGroupsCreated')}</p>
                   <button
                     onClick={() => setShowGroupModal(true)}
@@ -1195,7 +1195,7 @@ export default function SessionTeachPage() {
                         <span className={`w-2 h-2 rounded-full ${dotColor} shadow-[0_0_8px_currentColor]`} aria-hidden="true" />
                         <span className={`${textColor} text-[10px] uppercase tracking-[0.18em] font-bold`}>{gc.labelKey ? t(gc.labelKey) : gc.label}</span>
                         <span className={`${countColor} text-[10px] font-bold tabular-nums`}>({group.students.length})</span>
-                        <div className="flex-1 h-px bg-white/10" />
+                        <div className="flex-1 h-px bg-foreground/10" />
                       </div>
                       <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 xl:grid-cols-8 gap-2">
                         {group.students.map((student) => (
@@ -1229,28 +1229,28 @@ export default function SessionTeachPage() {
 
           {/* ── Action Panel ── */}
           {selectedStudent && (
-            <div className="flex-none shrink-0 flex flex-col bg-white/[0.02] rounded-xl border border-white/[0.08] overflow-hidden shadow-[0_8px_30px_-8px_rgba(0,0,0,0.5)] backdrop-blur-sm max-h-[60vh] sm:max-h-[55vh]">
+            <div className="flex-none shrink-0 flex flex-col bg-foreground/[0.02] rounded-xl border border-border overflow-hidden shadow-[0_8px_30px_-8px_rgba(0,0,0,0.5)] backdrop-blur-sm max-h-[60vh] sm:max-h-[55vh]">
               {/* Selected student header — Editorial profile */}
-              <div className="flex-none shrink-0 px-5 py-4 border-b border-white/[0.07] bg-gradient-to-b from-white/[0.03] to-transparent relative overflow-hidden">
+              <div className="flex-none shrink-0 px-5 py-4 border-b border-border bg-gradient-to-b from-foreground/[0.03] to-transparent relative overflow-hidden">
                 <div className="absolute -top-8 -end-8 w-32 h-32 rounded-full bg-amber-500/[0.06] blur-2xl pointer-events-none" aria-hidden="true" />
                 <div className="flex items-center gap-3 relative">
                   <div className="relative">
-                    <Avatar className="h-14 w-14 ring-2 ring-amber-400/60 ring-offset-2 ring-offset-[#0a1024] shadow-[0_0_20px_rgba(245,158,11,0.25)]">
+                    <Avatar className="h-14 w-14 ring-2 ring-amber-400/60 ring-offset-2 ring-offset-background shadow-[0_0_20px_rgba(245,158,11,0.25)]">
                       <AvatarImage src={selectedStudent.avatar_url} />
-                      <AvatarFallback className={`${selectedStudent.gender === 'female' ? 'bg-gradient-to-br from-pink-500 to-rose-600' : 'bg-gradient-to-br from-sky-500 to-blue-600'} text-white text-base font-bold`}>
+                      <AvatarFallback className={`${selectedStudent.gender === 'female' ? 'bg-gradient-to-br from-pink-500 to-rose-600' : 'bg-gradient-to-br from-sky-500 to-blue-600'} text-foreground text-base font-bold`}>
                         {selectedStudent.full_name?.charAt(0)}
                       </AvatarFallback>
                     </Avatar>
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-[9px] uppercase tracking-[0.22em] text-amber-300/90 font-bold mb-1">{t('selectedStudentLabel')}</p>
-                    <p className="text-white font-cairo font-extrabold text-base truncate leading-tight">{selectedStudent.full_name}</p>
-                    <p className="text-white/55 text-[11px] tracking-wide mt-0.5">{selectedStudent.student_code || sessionInfo?.class_name || sessionInfo?.className}</p>
+                    <p className="text-foreground font-cairo font-extrabold text-base truncate leading-tight">{selectedStudent.full_name}</p>
+                    <p className="text-muted-foreground text-[11px] tracking-wide mt-0.5">{selectedStudent.student_code || sessionInfo?.class_name || sessionInfo?.className}</p>
                   </div>
                   <button
                     onClick={() => { setSelectedStudent(null); setFlashId(null); }}
                     aria-label={t('close') || 'Close'}
-                    className="text-white/40 hover:text-white/90 p-1.5 rounded-md hover:bg-white/5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
+                    className="text-muted-foreground hover:text-foreground p-1.5 rounded-md hover:bg-foreground/5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
                   >
                     <XCircle className="h-5 w-5" />
                   </button>
@@ -1261,16 +1261,16 @@ export default function SessionTeachPage() {
                     { value: selectedStudent.correct_answers || selectedStudent.correctAnswers || 0, labelKey: 'correct', accent: 'text-emerald-300' },
                     { value: selectedStudent.interaction_count || selectedStudent.interactionCount || 0, labelKey: 'interaction', accent: 'text-purple-300' },
                   ].map((kpi, i) => (
-                    <div key={i} className="bg-white/[0.025] border border-white/[0.06] rounded-lg px-2 py-2 text-center">
+                    <div key={i} className="bg-foreground/[0.025] border border-border rounded-lg px-2 py-2 text-center">
                       <div className={`${kpi.accent} text-xl font-extrabold leading-none tabular-nums`}>{kpi.value}</div>
-                      <div className="text-white/55 text-[9px] uppercase tracking-[0.14em] mt-1.5 font-semibold">{t(kpi.labelKey)}</div>
+                      <div className="text-muted-foreground text-[9px] uppercase tracking-[0.14em] mt-1.5 font-semibold">{t(kpi.labelKey)}</div>
                     </div>
                   ))}
                 </div>
               </div>
 
               {/* Tabs */}
-              <div className="flex-none shrink-0 flex border-b border-white/10 overflow-x-auto">
+              <div className="flex-none shrink-0 flex border-b border-border overflow-x-auto">
                 {[
                   { id: 'question', labelKey: 'question', icon: MessageCircle, forMode: 'quiz' },
                   { id: 'participation', labelKey: 'participationTab', icon: Hand, forMode: 'review' },
@@ -1285,7 +1285,7 @@ export default function SessionTeachPage() {
                     key={tab.id}
                     onClick={() => setActionTab(tab.id)}
                     className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-colors relative ${
-                      actionTab === tab.id ? 'text-brand-turquoise border-b-2 border-brand-turquoise' : 'text-white/50 hover:text-white/80'
+                      actionTab === tab.id ? 'text-brand-turquoise border-b-2 border-brand-turquoise' : 'text-muted-foreground hover:text-foreground/90'
                     }`}
                   >
                     <tab.icon className="h-3.5 w-3.5" />
@@ -1317,7 +1317,7 @@ export default function SessionTeachPage() {
                       onClick={() => recordAnswer('wrong')}
                     />
                     <ActionButton
-                      color="bg-slate-600 hover:bg-slate-500"
+                      color="bg-muted hover:bg-brand-purple/40"
                       icon={<Minus className="h-5 w-5" />}
                       label={t('noAnswer')}
                       sub="-1"
@@ -1349,7 +1349,7 @@ export default function SessionTeachPage() {
                       </div>
                     ) : <>
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-white/60 text-xs font-cairo">{t('homeworkMarkNotSubmitted')}</span>
+                      <span className="text-muted-foreground text-xs font-cairo">{t('homeworkMarkNotSubmitted')}</span>
                       <span className="text-blue-400 text-xs font-bold font-cairo">
                         {Object.values(homeworkStatuses).filter(s => s === 'done').length}/{students.filter(s => s.attendance_status === 'present').length} {t('submitted')}
                       </span>
@@ -1364,16 +1364,16 @@ export default function SessionTeachPage() {
                             className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors active:scale-[0.97] ${
                               isDone
                                 ? 'bg-green-600/20 border border-green-500/30'
-                                : 'bg-white/5 border border-white/10 hover:border-white/20'
+                                : 'bg-foreground/5 border border-border hover:border-border'
                             }`}
                           >
                             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
-                              isDone ? 'bg-green-600 text-white' : 'bg-white/10 text-white/40'
+                              isDone ? 'bg-green-600 text-foreground' : 'bg-foreground/10 text-muted-foreground'
                             }`}>
                               {isDone ? <CheckCircle2 className="h-4 w-4 text-green-400" /> : <XCircle className="h-4 w-4 text-red-400" />}
                             </div>
                             <span className={`flex-1 text-start text-sm font-cairo truncate ${
-                              isDone ? 'text-white' : 'text-white/50 line-through'
+                              isDone ? 'text-foreground' : 'text-muted-foreground line-through'
                             }`}>
                               {student.full_name || t('student')}
                             </span>
@@ -1395,7 +1395,7 @@ export default function SessionTeachPage() {
                 {actionTab === 'recitation' && (
                   <div className="space-y-3">
                     <div>
-                      <div className="text-white/60 text-[11px] mb-1.5 font-cairo">{t('attempts')}</div>
+                      <div className="text-muted-foreground text-[11px] mb-1.5 font-cairo">{t('attempts')}</div>
                       <div className="grid grid-cols-3 gap-1.5">
                         {[1, 2, 3].map(n => (
                           <button
@@ -1403,8 +1403,8 @@ export default function SessionTeachPage() {
                             onClick={() => setRecitationAttempts(n)}
                             className={`py-1.5 rounded text-xs font-bold font-cairo transition-colors ${
                               recitationAttempts === n
-                                ? 'bg-emerald-600 text-white'
-                                : 'bg-white/10 text-white/60 hover:bg-white/15'
+                                ? 'bg-emerald-600 text-foreground'
+                                : 'bg-foreground/10 text-muted-foreground hover:bg-foreground/15'
                             }`}
                           >
                             {n}
@@ -1429,7 +1429,7 @@ export default function SessionTeachPage() {
                       />
                     </div>
                     <input
-                      className="w-full bg-white/10 text-white text-xs rounded px-2 py-1.5 placeholder-white/30 outline-none font-cairo"
+                      className="w-full bg-foreground/10 text-foreground text-xs rounded px-2 py-1.5 placeholder-muted-foreground outline-none font-cairo"
                       placeholder={t('optionalNote')}
                       value={recitationNote}
                       onChange={e => setRecitationNote(e.target.value)}
@@ -1447,8 +1447,8 @@ export default function SessionTeachPage() {
                         <button
                           key={cat.id}
                           onClick={() => setBehaviourCategory(cat.id)}
-                          className={`flex-1 py-1.5 rounded text-xs font-medium text-white transition-colors ${
-                            behaviourCategory === cat.id ? cat.color : 'bg-white/10 text-white/60'
+                          className={`flex-1 py-1.5 rounded text-xs font-medium text-foreground transition-colors ${
+                            behaviourCategory === cat.id ? cat.color : 'bg-foreground/10 text-muted-foreground'
                           }`}
                         >
                           <span className="flex items-center justify-center gap-1"><cat.icon className="h-3 w-3" />{t(cat.labelKey)}</span>
@@ -1467,7 +1467,7 @@ export default function SessionTeachPage() {
                         <button
                           key={b.id}
                           onClick={() => recordBehaviour(b)}
-                          className="bg-white/10 hover:bg-white/20 text-white rounded-lg py-2 px-1 text-xs text-center transition-colors"
+                          className="bg-foreground/10 hover:bg-foreground/20 text-foreground rounded-lg py-2 px-1 text-xs text-center transition-colors"
                         >
                           <div className="font-medium truncate">{b.labelKey ? t(b.labelKey) : b.label}</div>
                           <div className={`text-[10px] mt-0.5 ${b.points.startsWith('-') ? 'text-red-400' : 'text-green-400'}`}>{b.points}</div>
@@ -1475,7 +1475,7 @@ export default function SessionTeachPage() {
                       ))}
                     </div>
                     <input
-                      className="w-full bg-white/10 text-white text-xs rounded px-2 py-1.5 placeholder-white/30 outline-none"
+                      className="w-full bg-foreground/10 text-foreground text-xs rounded px-2 py-1.5 placeholder-muted-foreground outline-none"
                       placeholder={t('optionalNote')}
                       aria-label={t('optionalNote')}
                       value={behaviourNote}
@@ -1494,7 +1494,7 @@ export default function SessionTeachPage() {
                         <button
                           key={skill.id}
                           onClick={() => recordSkill(skill)}
-                          className="bg-purple-900/40 hover:bg-purple-800/60 text-white rounded-lg py-2 px-1 text-xs text-center transition-colors border border-purple-500/20"
+                          className="bg-purple-900/40 hover:bg-purple-800/60 text-foreground rounded-lg py-2 px-1 text-xs text-center transition-colors border border-purple-500/20"
                         >
                           <div className="font-medium truncate">{skill.name_ar || skill.name}</div>
                           <div className="text-[10px] mt-0.5 text-purple-300">+3</div>
@@ -1502,10 +1502,10 @@ export default function SessionTeachPage() {
                       ))}
                     </div>
                     {skillTypes.length === 0 && customSkills.length === 0 && (
-                      <p className="text-white/40 text-xs text-center py-2">{t('noSkillsRegistered')}</p>
+                      <p className="text-muted-foreground text-xs text-center py-2">{t('noSkillsRegistered')}</p>
                     )}
                     <input
-                      className="w-full bg-white/10 text-white text-xs rounded px-2 py-1.5 placeholder-white/30 outline-none"
+                      className="w-full bg-foreground/10 text-foreground text-xs rounded px-2 py-1.5 placeholder-muted-foreground outline-none"
                       placeholder={t('optionalNote')}
                       aria-label={t('optionalNote')}
                       value={skillNote}
@@ -1521,9 +1521,9 @@ export default function SessionTeachPage() {
         {/* ── Right Panel (Activity Log + Notes, desktop only, collapsible) ── */}
         {panelOpen && (
         <div
-          className="hidden lg:flex flex-col w-72 shrink-0 border-s border-white/[0.07] bg-[#0a1024]/50 backdrop-blur-sm overflow-hidden"
+          className="hidden lg:flex flex-col w-72 shrink-0 border-s border-border bg-background/50 backdrop-blur-sm overflow-hidden"
         >
-          <div className="flex border-b border-white/[0.07] bg-white/[0.02]">
+          <div className="flex border-b border-border bg-foreground/[0.02]">
             {[
               { id: 'log', labelKey: 'activityLog', icon: Activity },
               { id: 'notes', labelKey: 'notes', icon: StickyNote },
@@ -1535,14 +1535,14 @@ export default function SessionTeachPage() {
                   key={tab.id}
                   onClick={() => setRightPanel(tab.id)}
                   aria-pressed={active}
-                  className={`relative flex-1 flex items-center justify-center gap-1.5 py-3 text-[10px] uppercase tracking-[0.14em] font-bold transition-colors focus-visible:outline-none focus-visible:bg-white/5 ${
-                    active ? 'text-amber-300' : 'text-white/40 hover:text-white/70'
+                  className={`relative flex-1 flex items-center justify-center gap-1.5 py-3 text-[10px] uppercase tracking-[0.14em] font-bold transition-colors focus-visible:outline-none focus-visible:bg-foreground/5 ${
+                    active ? 'text-amber-300' : 'text-muted-foreground hover:text-muted-foreground'
                   }`}
                 >
                   <tab.icon className="h-3.5 w-3.5" />
                   {t(tab.labelKey)}
                   {tab.id === 'notes' && notes.length > 0 && (
-                    <span className="bg-amber-500 text-white text-[9px] rounded-full w-4 h-4 flex items-center justify-center font-bold tabular-nums">{notes.length}</span>
+                    <span className="bg-amber-500 text-foreground text-[9px] rounded-full w-4 h-4 flex items-center justify-center font-bold tabular-nums">{notes.length}</span>
                   )}
                   {active && <span className="absolute inset-x-3 -bottom-px h-[2px] bg-gradient-to-r from-transparent via-amber-400 to-transparent" aria-hidden="true" />}
                 </button>
@@ -1555,13 +1555,13 @@ export default function SessionTeachPage() {
               <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
                 {activityLog.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-center px-4 gap-2">
-                    <Activity className="h-8 w-8 text-white/15" aria-hidden="true" />
-                    <p className="text-white/40 text-xs font-medium">{t('noActivityYet')}</p>
-                    <p className="text-white/25 text-[10px] leading-relaxed">{t('noActivityHint')}</p>
+                    <Activity className="h-8 w-8 text-muted-foreground/40" aria-hidden="true" />
+                    <p className="text-muted-foreground text-xs font-medium">{t('noActivityYet')}</p>
+                    <p className="text-muted-foreground/60 text-[10px] leading-relaxed">{t('noActivityHint')}</p>
                   </div>
                 ) : (
                   activityLog.map(log => (
-                    <div key={log.id} className="bg-white/5 rounded-lg px-2.5 py-2">
+                    <div key={log.id} className="bg-foreground/5 rounded-lg px-2.5 py-2">
                       <p className={`text-xs font-medium ${log.color} flex items-center gap-1`}>
                         {(() => {
                           const IconComp = LOG_ICONS[log.emoji];
@@ -1569,27 +1569,27 @@ export default function SessionTeachPage() {
                         })()}
                         <span>{log.text}</span>
                       </p>
-                      <p className="text-white/30 text-[10px] mt-0.5">{log.time}</p>
+                      <p className="text-muted-foreground/70 text-[10px] mt-0.5">{log.time}</p>
                     </div>
                   ))
                 )}
               </div>
-              <div className="border-t border-white/[0.07] p-3 grid grid-cols-2 gap-2 bg-white/[0.015]">
-                <div className="bg-white/[0.025] border border-white/[0.05] rounded-lg px-2.5 py-2">
-                  <div className="text-white text-lg font-extrabold leading-none tabular-nums">{stats.questions}</div>
-                  <div className="text-white/55 text-[9px] uppercase tracking-[0.14em] mt-1.5 font-semibold">{t('questions')}</div>
+              <div className="border-t border-border p-3 grid grid-cols-2 gap-2 bg-foreground/[0.015]">
+                <div className="bg-foreground/[0.025] border border-border rounded-lg px-2.5 py-2">
+                  <div className="text-foreground text-lg font-extrabold leading-none tabular-nums">{stats.questions}</div>
+                  <div className="text-muted-foreground text-[9px] uppercase tracking-[0.14em] mt-1.5 font-semibold">{t('questions')}</div>
                 </div>
-                <div className="bg-white/[0.025] border border-white/[0.05] rounded-lg px-2.5 py-2">
+                <div className="bg-foreground/[0.025] border border-border rounded-lg px-2.5 py-2">
                   <div className="text-emerald-300 text-lg font-extrabold leading-none tabular-nums">{stats.correct}</div>
-                  <div className="text-white/55 text-[9px] uppercase tracking-[0.14em] mt-1.5 font-semibold">{t('correct')}</div>
+                  <div className="text-muted-foreground text-[9px] uppercase tracking-[0.14em] mt-1.5 font-semibold">{t('correct')}</div>
                 </div>
-                <div className="bg-white/[0.025] border border-white/[0.05] rounded-lg px-2.5 py-2">
+                <div className="bg-foreground/[0.025] border border-border rounded-lg px-2.5 py-2">
                   <div className={`text-lg font-extrabold leading-none tabular-nums ${accuracy >= 60 ? 'text-emerald-300' : 'text-rose-300'}`}>{accuracy}%</div>
-                  <div className="text-white/55 text-[9px] uppercase tracking-[0.14em] mt-1.5 font-semibold">{t('accuracy')}</div>
+                  <div className="text-muted-foreground text-[9px] uppercase tracking-[0.14em] mt-1.5 font-semibold">{t('accuracy')}</div>
                 </div>
-                <div className="bg-white/[0.025] border border-white/[0.05] rounded-lg px-2.5 py-2">
+                <div className="bg-foreground/[0.025] border border-border rounded-lg px-2.5 py-2">
                   <div className="text-sky-300 text-lg font-extrabold leading-none tabular-nums">{stats.participation}</div>
-                  <div className="text-white/55 text-[9px] uppercase tracking-[0.14em] mt-1.5 font-semibold">{t('interaction')}</div>
+                  <div className="text-muted-foreground text-[9px] uppercase tracking-[0.14em] mt-1.5 font-semibold">{t('interaction')}</div>
                 </div>
               </div>
             </>
@@ -1600,16 +1600,16 @@ export default function SessionTeachPage() {
               <div className="flex-1 overflow-y-auto p-2 space-y-2">
                 {notes.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-center px-4 gap-2">
-                    <StickyNote className="h-8 w-8 text-white/15" aria-hidden="true" />
-                    <p className="text-white/40 text-xs font-medium">{t('noNotesYet')}</p>
-                    <p className="text-white/25 text-[10px] leading-relaxed">{t('noNotesHint')}</p>
+                    <StickyNote className="h-8 w-8 text-muted-foreground/40" aria-hidden="true" />
+                    <p className="text-muted-foreground text-xs font-medium">{t('noNotesYet')}</p>
+                    <p className="text-muted-foreground/60 text-[10px] leading-relaxed">{t('noNotesHint')}</p>
                   </div>
                 ) : (
                   notes.map(note => (
                     <div key={note.id} className="bg-amber-900/20 border border-amber-500/20 rounded-lg px-3 py-2">
                       <div className="flex items-start justify-between gap-2">
-                        <p className="text-white/90 text-xs leading-relaxed flex-1">{note.text}</p>
-                        <button onClick={() => deleteNote(note.id)} className="text-white/30 hover:text-red-400 flex-shrink-0">
+                        <p className="text-foreground text-xs leading-relaxed flex-1">{note.text}</p>
+                        <button onClick={() => deleteNote(note.id)} className="text-muted-foreground/70 hover:text-red-400 flex-shrink-0">
                           <Trash2 className="h-3 w-3" />
                         </button>
                       </div>
@@ -1622,9 +1622,9 @@ export default function SessionTeachPage() {
                             : t('general')}
                         </Badge>
                         {note.student_name && (
-                          <span className="text-white/40 text-[10px]">{note.student_name}</span>
+                          <span className="text-muted-foreground text-[10px]">{note.student_name}</span>
                         )}
-                        <span className="text-white/30 text-[10px] ms-auto">
+                        <span className="text-muted-foreground/70 text-[10px] ms-auto">
                           {new Date(note.created_at).toLocaleTimeString(isRTL ? 'ar' : 'en', { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
@@ -1632,7 +1632,7 @@ export default function SessionTeachPage() {
                   ))
                 )}
               </div>
-              <div className="border-t border-white/10 p-2 space-y-2">
+              <div className="border-t border-border p-2 space-y-2">
                 <div className="flex gap-1">
                   {[
                     { id: 'session', labelKey: 'general' },
@@ -1644,7 +1644,7 @@ export default function SessionTeachPage() {
                       key={nt.id}
                       onClick={() => setNoteType(nt.id)}
                       className={`flex-1 py-1 rounded text-[10px] font-medium transition-colors ${
-                        noteType === nt.id ? 'bg-amber-600 text-white' : 'bg-white/10 text-white/50'
+                        noteType === nt.id ? 'bg-amber-600 text-foreground' : 'bg-foreground/10 text-muted-foreground'
                       }`}
                     >
                       {t(nt.labelKey)}
@@ -1652,14 +1652,14 @@ export default function SessionTeachPage() {
                   ))}
                 </div>
                 {selectedStudent && noteType === 'student' && (
-                  <div className="bg-white/5 rounded px-2 py-1 text-[10px] text-brand-turquoise flex items-center gap-1">
+                  <div className="bg-foreground/5 rounded px-2 py-1 text-[10px] text-brand-turquoise flex items-center gap-1">
                     <UserCheck className="h-3 w-3" />
                     {selectedStudent.full_name}
                   </div>
                 )}
                 <div className="flex gap-1.5">
                   <input
-                    className="flex-1 bg-white/10 text-white text-xs rounded px-2 py-1.5 placeholder-white/30 outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+                    className="flex-1 bg-foreground/10 text-foreground text-xs rounded px-2 py-1.5 placeholder-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
                     placeholder={t('writeNoteShort')}
                     aria-label={t('writeNoteShort')}
                     value={newNote}
@@ -1670,7 +1670,7 @@ export default function SessionTeachPage() {
                     onClick={addNote}
                     disabled={!newNote.trim()}
                     aria-label={t('add')}
-                    className="bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white rounded px-2 py-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+                    className="bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-foreground rounded px-2 py-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
                   >
                     <Plus className="h-3.5 w-3.5" />
                   </button>
@@ -1683,88 +1683,88 @@ export default function SessionTeachPage() {
             <div className="flex-1 overflow-y-auto p-3 space-y-3">
               {liveMetrics ? (
                 <>
-                  <div className="bg-white/5 rounded-lg p-3 space-y-2">
-                    <h4 className="text-white/60 text-[10px] font-medium uppercase tracking-wider">{t('attendanceShort')}</h4>
+                  <div className="bg-foreground/5 rounded-lg p-3 space-y-2">
+                    <h4 className="text-muted-foreground text-[10px] font-medium uppercase tracking-wider">{t('attendanceShort')}</h4>
                     <div className="grid grid-cols-2 gap-2">
                       <div className="text-center">
                         <div className="text-green-400 text-lg font-bold">{liveMetrics.attendance?.present || 0}</div>
-                        <div className="text-white/40 text-[10px]">{t('present')}</div>
+                        <div className="text-muted-foreground text-[10px]">{t('present')}</div>
                       </div>
                       <div className="text-center">
                         <div className="text-red-400 text-lg font-bold">{liveMetrics.attendance?.absent || 0}</div>
-                        <div className="text-white/40 text-[10px]">{t('absent')}</div>
+                        <div className="text-muted-foreground text-[10px]">{t('absent')}</div>
                       </div>
                     </div>
-                    <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                    <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                       <div className="h-full bg-green-500 transition-colors" style={{ width: `${liveMetrics.attendance?.rate || 0}%` }} />
                     </div>
-                    <div className="text-center text-white/50 text-[10px]">{liveMetrics.attendance?.rate || 0}% {t('present')}</div>
+                    <div className="text-center text-muted-foreground text-[10px]">{liveMetrics.attendance?.rate || 0}% {t('present')}</div>
                   </div>
 
-                  <div className="bg-white/5 rounded-lg p-3 space-y-2">
-                    <h4 className="text-white/60 text-[10px] font-medium uppercase tracking-wider">{t('interaction')}</h4>
+                  <div className="bg-foreground/5 rounded-lg p-3 space-y-2">
+                    <h4 className="text-muted-foreground text-[10px] font-medium uppercase tracking-wider">{t('interaction')}</h4>
                     <div className="grid grid-cols-3 gap-2 text-center">
                       <div>
                         <div className="text-blue-400 text-lg font-bold">{liveMetrics.interaction?.total_questions || 0}</div>
-                        <div className="text-white/40 text-[10px]">{t('questions')}</div>
+                        <div className="text-muted-foreground text-[10px]">{t('questions')}</div>
                       </div>
                       <div>
                         <div className="text-green-400 text-lg font-bold">{liveMetrics.interaction?.correct_answers || 0}</div>
-                        <div className="text-white/40 text-[10px]">{t('correct')}</div>
+                        <div className="text-muted-foreground text-[10px]">{t('correct')}</div>
                       </div>
                       <div>
                         <div className="text-red-400 text-lg font-bold">{liveMetrics.interaction?.wrong_answers || 0}</div>
-                        <div className="text-white/40 text-[10px]">{t('error')}</div>
+                        <div className="text-muted-foreground text-[10px]">{t('error')}</div>
                       </div>
                     </div>
-                    <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                    <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                       <div className="h-full bg-blue-500 transition-colors" style={{ width: `${liveMetrics.interaction?.accuracy_rate || 0}%` }} />
                     </div>
-                    <div className="text-center text-white/50 text-[10px]">{liveMetrics.interaction?.accuracy_rate || 0}% {t('accuracy')}</div>
+                    <div className="text-center text-muted-foreground text-[10px]">{liveMetrics.interaction?.accuracy_rate || 0}% {t('accuracy')}</div>
                   </div>
 
-                  <div className="bg-white/5 rounded-lg p-3 space-y-2">
-                    <h4 className="text-white/60 text-[10px] font-medium uppercase tracking-wider">{t('participationLabel')}</h4>
+                  <div className="bg-foreground/5 rounded-lg p-3 space-y-2">
+                    <h4 className="text-muted-foreground text-[10px] font-medium uppercase tracking-wider">{t('participationLabel')}</h4>
                     <div className="grid grid-cols-2 gap-2 text-center">
                       <div>
                         <div className="text-purple-400 text-lg font-bold">{liveMetrics.interaction?.unique_participants || 0}</div>
-                        <div className="text-white/40 text-[10px]">{t('participant')}</div>
+                        <div className="text-muted-foreground text-[10px]">{t('participant')}</div>
                       </div>
                       <div>
                         <div className="text-amber-400 text-lg font-bold">{liveMetrics.interaction?.not_interacted || 0}</div>
-                        <div className="text-white/40 text-[10px]">{t('notInteracted')}</div>
+                        <div className="text-muted-foreground text-[10px]">{t('notInteracted')}</div>
                       </div>
                     </div>
-                    <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                    <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                       <div className="h-full bg-purple-500 transition-colors" style={{ width: `${liveMetrics.interaction?.participation_rate || 0}%` }} />
                     </div>
                   </div>
 
-                  <div className="bg-white/5 rounded-lg p-3 space-y-2">
-                    <h4 className="text-white/60 text-[10px] font-medium uppercase tracking-wider">{t('behaviourAndSkillsHeading')}</h4>
+                  <div className="bg-foreground/5 rounded-lg p-3 space-y-2">
+                    <h4 className="text-muted-foreground text-[10px] font-medium uppercase tracking-wider">{t('behaviourAndSkillsHeading')}</h4>
                     <div className="grid grid-cols-3 gap-2 text-center">
                       <div>
                         <div className="text-green-400 text-base font-bold">{liveMetrics.behaviour?.positive || 0}</div>
-                        <div className="text-white/40 text-[10px]">{t('positive')}</div>
+                        <div className="text-muted-foreground text-[10px]">{t('positive')}</div>
                       </div>
                       <div>
                         <div className="text-red-400 text-base font-bold">{liveMetrics.behaviour?.negative || 0}</div>
-                        <div className="text-white/40 text-[10px]">{t('negative')}</div>
+                        <div className="text-muted-foreground text-[10px]">{t('negative')}</div>
                       </div>
                       <div>
                         <div className="text-purple-400 text-base font-bold">{liveMetrics.skills_recorded || 0}</div>
-                        <div className="text-white/40 text-[10px]">{t('skillsShort')}</div>
+                        <div className="text-muted-foreground text-[10px]">{t('skillsShort')}</div>
                       </div>
                     </div>
                   </div>
 
-                  <div className="text-center text-white/30 text-[10px] mt-2">
+                  <div className="text-center text-muted-foreground/70 text-[10px] mt-2">
                     <Clock className="h-3 w-3 inline-block" /> {liveMetrics.duration_minutes || 0} {t('minutes')} | <StickyNote className="h-3 w-3 inline-block" /> {liveMetrics.notes_count || 0} {t('notes')}
                   </div>
                 </>
               ) : (
                 <div className="flex items-center justify-center h-full">
-                  <Loader2 className="h-5 w-5 animate-spin text-white/30" />
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground/70" />
                 </div>
               )}
             </div>
@@ -1774,7 +1774,7 @@ export default function SessionTeachPage() {
       </div>
 
       {/* Follow-up record bottom bar — Editorial footer */}
-      <div className="flex-none shrink-0 bg-[#0a1024]/80 backdrop-blur-md border-t border-white/[0.07] px-4 py-2 flex items-center justify-between relative z-10">
+      <div className="flex-none shrink-0 bg-background/80 backdrop-blur-md border-t border-border px-4 py-2 flex items-center justify-between relative z-10">
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-500/20 to-transparent" aria-hidden="true" />
         <div className="flex items-center gap-3">
           <button
@@ -1785,8 +1785,8 @@ export default function SessionTeachPage() {
             {t('followupRecord')}
           </button>
           {evalMode === 'group' && groups.length > 0 && (
-            <span className="text-white/55 text-[10px] uppercase tracking-[0.14em] font-semibold">
-              <span className="tabular-nums text-white/60">{groups.length}</span> {t('groups')} <span className="text-white/15 mx-1">·</span> <span className="tabular-nums text-white/60">{unassignedStudents.length}</span> {t('unassigned')}
+            <span className="text-muted-foreground text-[10px] uppercase tracking-[0.14em] font-semibold">
+              <span className="tabular-nums text-muted-foreground">{groups.length}</span> {t('groups')} <span className="text-muted-foreground/40 mx-1">·</span> <span className="tabular-nums text-muted-foreground">{unassignedStudents.length}</span> {t('unassigned')}
             </span>
           )}
         </div>
@@ -1859,7 +1859,7 @@ export default function SessionTeachPage() {
             {groups.map((group, gi) => (
               <div
                 key={group.id}
-                className={`bg-slate-100 dark:bg-slate-800 rounded-xl p-3 space-y-2 ${dragStudent ? 'border-2 border-dashed border-transparent hover:border-brand-turquoise' : ''}`}
+                className={`bg-muted dark:bg-card rounded-xl p-3 space-y-2 ${dragStudent ? 'border-2 border-dashed border-transparent hover:border-brand-turquoise' : ''}`}
                 onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('border-brand-turquoise'); }}
                 onDragLeave={e => e.currentTarget.classList.remove('border-brand-turquoise')}
                 onDrop={e => { e.preventDefault(); e.currentTarget.classList.remove('border-brand-turquoise'); handleDropOnGroup(gi); }}
@@ -1895,7 +1895,7 @@ export default function SessionTeachPage() {
                         draggable
                         onDragStart={() => handleDragStart(sid)}
                         onDragEnd={() => setDragStudent(null)}
-                        className="inline-flex items-center gap-1 bg-white dark:bg-slate-700 px-2 py-1 rounded-lg text-[11px] cursor-grab active:cursor-grabbing"
+                        className="inline-flex items-center gap-1 bg-card dark:bg-muted px-2 py-1 rounded-lg text-[11px] cursor-grab active:cursor-grabbing"
                       >
                         <GripVertical className="h-3 w-3 text-muted-foreground flex-none" />
                         {st.full_name?.split(' ').slice(0, 2).join(' ')}
@@ -1914,7 +1914,7 @@ export default function SessionTeachPage() {
                   })}
                 </div>
                 <select
-                  className="w-full text-xs p-1.5 rounded-lg border bg-white dark:bg-slate-700 dark:border-slate-600"
+                  className="w-full text-xs p-1.5 rounded-lg border bg-card dark:bg-muted dark:border-border"
                   value=""
                   onChange={e => {
                     if (!e.target.value) return;
@@ -1941,7 +1941,7 @@ export default function SessionTeachPage() {
               const unassigned = presentStudents.filter(s => !assignedIds.has(s.id));
               if (unassigned.length === 0 || groups.length === 0) return null;
               return (
-                <div className="bg-slate-200/50 dark:bg-slate-700/30 rounded-xl p-3 space-y-2 border border-dashed border-slate-400/30">
+                <div className="bg-muted/40 dark:bg-muted/30 rounded-xl p-3 space-y-2 border border-dashed border-border">
                   <div className="text-xs font-medium text-muted-foreground">{t('unassignedStudents')} ({unassigned.length})</div>
                   <div className="flex flex-wrap gap-1.5">
                     {unassigned.map(s => (
@@ -1950,7 +1950,7 @@ export default function SessionTeachPage() {
                         draggable
                         onDragStart={() => handleDragStart(s.id)}
                         onDragEnd={() => setDragStudent(null)}
-                        className="inline-flex items-center gap-1 bg-white dark:bg-slate-600 px-2 py-1 rounded-lg text-[11px] cursor-grab active:cursor-grabbing"
+                        className="inline-flex items-center gap-1 bg-card dark:bg-muted px-2 py-1 rounded-lg text-[11px] cursor-grab active:cursor-grabbing"
                       >
                         <GripVertical className="h-3 w-3 text-muted-foreground flex-none" />
                         {s.full_name?.split(' ').slice(0, 2).join(' ')}
@@ -1968,7 +1968,7 @@ export default function SessionTeachPage() {
                 color: ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-orange-500', 'bg-pink-500', 'bg-cyan-500'][groups.length % 6],
                 students: []
               }])}
-              className="w-full flex items-center justify-center gap-2 py-2 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 text-muted-foreground text-sm hover:border-brand-turquoise hover:text-brand-turquoise transition-colors"
+              className="w-full flex items-center justify-center gap-2 py-2 rounded-xl border-2 border-dashed border-border dark:border-border text-muted-foreground text-sm hover:border-brand-turquoise hover:text-brand-turquoise transition-colors"
             >
               <Plus className="h-4 w-4" />
               {t('addNewGroup')}
@@ -2000,7 +2000,7 @@ export default function SessionTeachPage() {
                 <button
                   onClick={() => setEvalMode('individual')}
                   className={`flex items-center justify-center gap-2 p-3 rounded-xl border-2 text-sm font-medium transition-colors ${
-                    evalMode === 'individual' ? 'border-brand-turquoise bg-brand-turquoise/10 text-brand-turquoise' : 'border-slate-200 dark:border-slate-700'
+                    evalMode === 'individual' ? 'border-brand-turquoise bg-brand-turquoise/10 text-brand-turquoise' : 'border-border dark:border-border'
                   }`}
                 >
                   <User className="h-4 w-4" />
@@ -2009,7 +2009,7 @@ export default function SessionTeachPage() {
                 <button
                   onClick={() => setEvalMode('group')}
                   className={`flex items-center justify-center gap-2 p-3 rounded-xl border-2 text-sm font-medium transition-colors ${
-                    evalMode === 'group' ? 'border-brand-turquoise bg-brand-turquoise/10 text-brand-turquoise' : 'border-slate-200 dark:border-slate-700'
+                    evalMode === 'group' ? 'border-brand-turquoise bg-brand-turquoise/10 text-brand-turquoise' : 'border-border dark:border-border'
                   }`}
                 >
                   <UsersRound className="h-4 w-4" />
@@ -2018,7 +2018,7 @@ export default function SessionTeachPage() {
               </div>
             </div>
 
-            <div className="border-t border-slate-200 dark:border-slate-700" />
+            <div className="border-t border-border dark:border-border" />
 
             <div className="space-y-2">
               <label className="text-sm font-medium flex items-center gap-2">
@@ -2026,7 +2026,7 @@ export default function SessionTeachPage() {
                 {t('followupColumns')}
               </label>
               {followupColumns.map((col, ci) => (
-                <div key={col.id} className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 rounded-lg p-2">
+                <div key={col.id} className="flex items-center gap-2 bg-muted/40 dark:bg-card rounded-lg p-2">
                   <GripVertical className="h-3.5 w-3.5 text-muted-foreground flex-none" />
                   <input
                     value={col.name}
@@ -2044,7 +2044,7 @@ export default function SessionTeachPage() {
                       updated[ci] = { ...updated[ci], type: e.target.value };
                       setFollowupColumns(updated);
                     }}
-                    className="text-[10px] bg-white dark:bg-slate-700 rounded border px-1 py-0.5"
+                    className="text-[10px] bg-card dark:bg-muted rounded border px-1 py-0.5"
                   >
                     <option value="grade">{t('gradeType')}</option>
                     <option value="check">{t('checkType')}</option>
@@ -2058,7 +2058,7 @@ export default function SessionTeachPage() {
                       updated[ci] = { ...updated[ci], maxGrade: parseInt(e.target.value) || 0 };
                       setFollowupColumns(updated);
                     }}
-                    className="w-14 text-center text-xs bg-white dark:bg-slate-700 rounded border px-1 py-0.5"
+                    className="w-14 text-center text-xs bg-card dark:bg-muted rounded border px-1 py-0.5"
                     min={0}
                     max={100}
                   />
@@ -2077,14 +2077,14 @@ export default function SessionTeachPage() {
                   maxGrade: 10,
                   type: 'grade'
                 }])}
-                className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-600 text-muted-foreground text-xs hover:text-brand-turquoise hover:border-brand-turquoise transition-colors"
+                className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-dashed border-border dark:border-border text-muted-foreground text-xs hover:text-brand-turquoise hover:border-brand-turquoise transition-colors"
               >
                 <Plus className="h-3.5 w-3.5" />
                 {t('addColumn')}
               </button>
             </div>
 
-            <div className="border-t border-slate-200 dark:border-slate-700" />
+            <div className="border-t border-border dark:border-border" />
 
             <div className="space-y-2">
               <label className="text-sm font-medium flex items-center gap-2">
@@ -2100,7 +2100,7 @@ export default function SessionTeachPage() {
                   {(() => {
                     const baseList = Array.isArray(sessionInfo?.positive_behaviours) ? sessionInfo.positive_behaviours : [];
                     return [...baseList, ...customPositiveBehaviours].map((b, i) => (
-                    <div key={i} className="text-[10px] text-slate-600 dark:text-slate-400 flex items-center gap-1">
+                    <div key={i} className="text-[10px] text-muted-foreground dark:text-muted-foreground flex items-center gap-1">
                       <CheckCircle2 className="h-2.5 w-2.5 text-green-500 flex-none" />
                       <span className="flex-1">{typeof b === 'string' ? b : (b?.name_ar || b?.name || '')}</span>
                       {i >= baseList.length && (
@@ -2113,7 +2113,7 @@ export default function SessionTeachPage() {
                   })()}
                   <div className="flex items-center gap-1 mt-1">
                     <input
-                      className="flex-1 text-[10px] bg-white dark:bg-slate-700 rounded border px-1.5 py-0.5 outline-none focus:border-green-500"
+                      className="flex-1 text-[10px] bg-card dark:bg-muted rounded border px-1.5 py-0.5 outline-none focus:border-green-500"
                       placeholder={t('addItem')}
                       onKeyDown={e => {
                         if (e.key === 'Enter' && e.target.value.trim()) {
@@ -2132,7 +2132,7 @@ export default function SessionTeachPage() {
                   {(() => {
                     const baseList = Array.isArray(sessionInfo?.negative_behaviours) ? sessionInfo.negative_behaviours : [];
                     return [...baseList, ...customNegativeBehaviours].map((b, i) => (
-                    <div key={i} className="text-[10px] text-slate-600 dark:text-slate-400 flex items-center gap-1">
+                    <div key={i} className="text-[10px] text-muted-foreground dark:text-muted-foreground flex items-center gap-1">
                       <XCircle className="h-2.5 w-2.5 text-red-500 flex-none" />
                       <span className="flex-1">{typeof b === 'string' ? b : (b?.name_ar || b?.name || '')}</span>
                       {i >= baseList.length && (
@@ -2145,7 +2145,7 @@ export default function SessionTeachPage() {
                   })()}
                   <div className="flex items-center gap-1 mt-1">
                     <input
-                      className="flex-1 text-[10px] bg-white dark:bg-slate-700 rounded border px-1.5 py-0.5 outline-none focus:border-red-500"
+                      className="flex-1 text-[10px] bg-card dark:bg-muted rounded border px-1.5 py-0.5 outline-none focus:border-red-500"
                       placeholder={t('addItem')}
                       onKeyDown={e => {
                         if (e.key === 'Enter' && e.target.value.trim()) {
@@ -2160,7 +2160,7 @@ export default function SessionTeachPage() {
               </div>
             </div>
 
-            <div className="border-t border-slate-200 dark:border-slate-700" />
+            <div className="border-t border-border dark:border-border" />
 
             <div className="space-y-2">
               <label className="text-sm font-medium flex items-center gap-2">
@@ -2191,7 +2191,7 @@ export default function SessionTeachPage() {
               </div>
               <div className="flex items-center gap-1.5">
                 <input
-                  className="flex-1 text-[11px] bg-white dark:bg-slate-700 rounded-lg border px-2 py-1 outline-none focus:border-purple-500"
+                  className="flex-1 text-[11px] bg-card dark:bg-muted rounded-lg border px-2 py-1 outline-none focus:border-purple-500"
                   placeholder={t('addItem')}
                   onKeyDown={e => {
                     if (e.key === 'Enter' && e.target.value.trim()) {
@@ -2335,10 +2335,10 @@ function FollowupRecordDialog({
   };
 
   const renderGroupedHeader = () => (
-    <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800">
+    <thead className="sticky top-0 z-10 bg-muted dark:bg-card">
       <tr>
-        <th rowSpan={2} className="border px-2 py-2 text-center font-cairo font-bold text-xs sticky end-0 bg-slate-100 dark:bg-slate-800 w-12">#</th>
-        <th rowSpan={2} className="border px-3 py-2 text-start font-cairo font-bold text-xs sticky end-12 bg-slate-100 dark:bg-slate-800 min-w-[160px]">{t('studentName') || 'الاسم'}</th>
+        <th rowSpan={2} className="border px-2 py-2 text-center font-cairo font-bold text-xs sticky end-0 bg-muted dark:bg-card w-12">#</th>
+        <th rowSpan={2} className="border px-3 py-2 text-start font-cairo font-bold text-xs sticky end-12 bg-muted dark:bg-card min-w-[160px]">{t('studentName') || 'الاسم'}</th>
         {courseworkCols.length > 0 && (
           <th colSpan={courseworkCols.length + 1} className="border px-3 py-2 text-center font-cairo font-bold text-xs bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
             أعمال سنة
@@ -2407,7 +2407,7 @@ function FollowupRecordDialog({
               [student.id]: { ...(prev[student.id] || {}), [col.id]: v }
             }));
           }}
-          className="w-12 h-8 mx-auto block text-center text-xs font-medium bg-white dark:bg-slate-700 outline-none border border-slate-200 dark:border-slate-600 rounded-full focus:border-brand-turquoise focus:ring-2 focus:ring-brand-turquoise/30 transition"
+          className="w-12 h-8 mx-auto block text-center text-xs font-medium bg-card dark:bg-muted outline-none border border-border dark:border-border rounded-full focus:border-brand-turquoise focus:ring-2 focus:ring-brand-turquoise/30 transition"
           min={0}
           max={col.maxGrade}
           placeholder="0"
@@ -2459,7 +2459,7 @@ function FollowupRecordDialog({
 
           {/* Toolbar (students tab only) */}
           {followupTab === 'students' && (
-            <div className="flex items-center justify-between gap-2 px-5 py-2.5 bg-slate-50 dark:bg-slate-800/40 border-b">
+            <div className="flex items-center justify-between gap-2 px-5 py-2.5 bg-muted/40 dark:bg-card/40 border-b">
               <div className="text-xs text-muted-foreground font-cairo">
                 {allStudents.length} طالب
               </div>
@@ -2491,9 +2491,9 @@ function FollowupRecordDialog({
                       const ratio = grandMax > 0 ? total / grandMax : 0;
                       const totalColor = ratio >= 0.6 ? 'text-emerald-600' : ratio >= 0.3 ? 'text-amber-600' : 'text-red-500';
                       return (
-                        <tr key={student.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                          <td className="border px-2 py-1.5 text-center text-[11px] text-muted-foreground sticky end-0 bg-white dark:bg-slate-900">{si + 1}</td>
-                          <td className="border px-3 py-1.5 text-xs font-medium sticky end-12 bg-white dark:bg-slate-900">{student.full_name}</td>
+                        <tr key={student.id} className="hover:bg-muted/40 dark:hover:bg-card/40">
+                          <td className="border px-2 py-1.5 text-center text-[11px] text-muted-foreground sticky end-0 bg-card dark:bg-background">{si + 1}</td>
+                          <td className="border px-3 py-1.5 text-xs font-medium sticky end-12 bg-card dark:bg-background">{student.full_name}</td>
                           {courseworkCols.map(col => renderGradeCell(student, col))}
                           {courseworkCols.length > 0 && (
                             <td className="border px-2 py-1.5 text-center text-xs font-bold bg-blue-50/40 dark:bg-blue-900/10">
@@ -2521,7 +2521,7 @@ function FollowupRecordDialog({
             ) : (
               <div className="overflow-auto">
                 <table className="w-full text-sm border-collapse">
-                  <thead className="sticky top-0 bg-slate-100 dark:bg-slate-800 z-10">
+                  <thead className="sticky top-0 bg-muted dark:bg-card z-10">
                     <tr>
                       <th className="border px-2 py-2 text-center font-cairo font-bold text-xs w-12">#</th>
                       <th className="border px-3 py-2 text-start font-cairo font-bold text-xs min-w-[160px]">اسم الطالب</th>
@@ -2533,7 +2533,7 @@ function FollowupRecordDialog({
                     {allStudents.map((student, si) => {
                       const dates = followupAbsences[student.id] || [];
                       return (
-                        <tr key={student.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                        <tr key={student.id} className="hover:bg-muted/40 dark:hover:bg-card/40">
                           <td className="border px-2 py-2 text-center text-[11px] text-muted-foreground">{si + 1}</td>
                           <td className="border px-3 py-2 text-xs font-medium">{student.full_name}</td>
                           <td className="border px-3 py-2">
@@ -2550,7 +2550,7 @@ function FollowupRecordDialog({
                                     {formatAbsence(d)}
                                     <button
                                       onClick={() => removeAbsence(student.id, d)}
-                                      className="absolute -top-1 -end-1 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
+                                      className="absolute -top-1 -end-1 w-4 h-4 rounded-full bg-red-500 text-foreground text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
                                       aria-label="حذف"
                                     >
                                       ×
@@ -2586,7 +2586,7 @@ function FollowupRecordDialog({
             )}
           </div>
 
-          <div className="flex-none px-5 py-3 border-t flex items-center justify-between bg-slate-50 dark:bg-slate-800/40">
+          <div className="flex-none px-5 py-3 border-t flex items-center justify-between bg-muted/40 dark:bg-card/40">
             <span className="text-xs text-muted-foreground font-cairo">
               {followupTab === 'students'
                 ? `${visibleColumns.length} عمود ظاهر`
@@ -2614,7 +2614,7 @@ function FollowupRecordDialog({
                 value={newColumnDraft.name}
                 onChange={e => setNewColumnDraft(d => ({ ...d, name: e.target.value }))}
                 placeholder="مثال: نشاط صفي"
-                className="w-full text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 outline-none focus:border-brand-turquoise"
+                className="w-full text-sm bg-card dark:bg-card border border-border dark:border-border rounded-lg px-3 py-2 outline-none focus:border-brand-turquoise"
               />
             </div>
             <div>
@@ -2622,7 +2622,7 @@ function FollowupRecordDialog({
               <select
                 value={newColumnDraft.group}
                 onChange={e => setNewColumnDraft(d => ({ ...d, group: e.target.value }))}
-                className="w-full text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 outline-none focus:border-brand-turquoise"
+                className="w-full text-sm bg-card dark:bg-card border border-border dark:border-border rounded-lg px-3 py-2 outline-none focus:border-brand-turquoise"
               >
                 <option value="coursework">أعمال سنة</option>
                 <option value="exams">اختبارات</option>
@@ -2635,7 +2635,7 @@ function FollowupRecordDialog({
                 min={1}
                 value={newColumnDraft.maxGrade}
                 onChange={e => setNewColumnDraft(d => ({ ...d, maxGrade: e.target.value }))}
-                className="w-full text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 outline-none focus:border-brand-turquoise"
+                className="w-full text-sm bg-card dark:bg-card border border-border dark:border-border rounded-lg px-3 py-2 outline-none focus:border-brand-turquoise"
               />
             </div>
           </div>
@@ -2660,12 +2660,12 @@ function FollowupRecordDialog({
               <div className="text-center text-sm text-muted-foreground py-6">لا توجد أعمدة</div>
             )}
             {followupColumns.map(col => (
-              <div key={col.id} className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/40">
+              <div key={col.id} className="flex items-center gap-2 p-2 rounded-lg border border-border dark:border-border bg-card dark:bg-card/40">
                 <button
                   onClick={() => handleToggleHidden(col.id)}
                   className={`w-9 h-9 rounded-lg flex items-center justify-center transition ${
                     col.hidden
-                      ? 'bg-slate-100 dark:bg-slate-700 text-slate-400'
+                      ? 'bg-muted dark:bg-muted text-muted-foreground'
                       : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600'
                   }`}
                   title={col.hidden ? 'إظهار' : 'إخفاء'}
@@ -2676,7 +2676,7 @@ function FollowupRecordDialog({
                   type="text"
                   value={col.name}
                   onChange={e => handleEditColumnName(col.id, e.target.value)}
-                  className="flex-1 text-xs font-medium bg-transparent border border-slate-200 dark:border-slate-700 rounded px-2 py-1.5 outline-none focus:border-brand-turquoise"
+                  className="flex-1 text-xs font-medium bg-transparent border border-border dark:border-border rounded px-2 py-1.5 outline-none focus:border-brand-turquoise"
                 />
                 <span className={`text-[10px] px-2 py-1 rounded font-cairo font-semibold ${
                   col.group === 'exams'
@@ -2692,7 +2692,7 @@ function FollowupRecordDialog({
                     min={1}
                     value={col.maxGrade}
                     onChange={e => handleEditMaxGrade(col.id, e.target.value)}
-                    className="w-14 text-xs text-center bg-transparent border border-slate-200 dark:border-slate-700 rounded px-1 py-1.5 outline-none focus:border-brand-turquoise"
+                    className="w-14 text-xs text-center bg-transparent border border-border dark:border-border rounded px-1 py-1.5 outline-none focus:border-brand-turquoise"
                   />
                 </div>
                 <button
@@ -2731,7 +2731,7 @@ function FollowupRecordDialog({
                 type="date"
                 value={absencePickerDate}
                 onChange={e => setAbsencePickerDate(e.target.value)}
-                className="w-full text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 outline-none focus:border-brand-turquoise"
+                className="w-full text-sm bg-card dark:bg-card border border-border dark:border-border rounded-lg px-3 py-2 outline-none focus:border-brand-turquoise"
               />
             </div>
           </div>
@@ -2760,13 +2760,13 @@ function SessionReviewPhase({ reviewData, sessionInfo, closingNote, setClosingNo
   const { t } = useTranslation();
   const r = reviewData;
   return (
-    <div className="min-h-screen bg-slate-900 p-4 flex items-center justify-center" dir={isRTL ? 'rtl' : 'ltr'}>
+    <div className="min-h-screen bg-background p-4 flex items-center justify-center" dir={isRTL ? 'rtl' : 'ltr'}>
       <div className="w-full max-w-lg space-y-4 pb-6 max-h-screen overflow-y-auto">
-        <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-5 border border-white/10 text-center">
+        <div className="bg-gradient-to-br from-card to-background rounded-2xl p-5 border border-border text-center">
           <ClipboardCheck className="h-12 w-12 mx-auto mb-2 text-amber-400" />
-          <h1 className="font-cairo text-xl font-bold text-white">{t('sessionSummaryReview')}</h1>
-          <p className="text-white/50 text-sm mt-1">{sessionInfo?.subject_name || sessionInfo?.subjectName} — {sessionInfo?.class_name || sessionInfo?.className}</p>
-          <div className="mt-3 text-2xl font-mono font-bold text-white">{r.duration_minutes || 0} <span className="text-sm text-white/50">{t('durationMinutes')}</span></div>
+          <h1 className="font-cairo text-xl font-bold text-foreground">{t('sessionSummaryReview')}</h1>
+          <p className="text-muted-foreground text-sm mt-1">{sessionInfo?.subject_name || sessionInfo?.subjectName} — {sessionInfo?.class_name || sessionInfo?.className}</p>
+          <div className="mt-3 text-2xl font-mono font-bold text-foreground">{r.duration_minutes || 0} <span className="text-sm text-muted-foreground">{t('durationMinutes')}</span></div>
         </div>
 
         {r.warnings?.length > 0 && (
@@ -2783,29 +2783,29 @@ function SessionReviewPhase({ reviewData, sessionInfo, closingNote, setClosingNo
           </div>
         )}
 
-        <div className="bg-slate-800 rounded-xl p-4">
-          <h3 className="text-white/70 text-sm mb-3 font-cairo font-bold flex items-center gap-2">
+        <div className="bg-card rounded-xl p-4">
+          <h3 className="text-muted-foreground text-sm mb-3 font-cairo font-bold flex items-center gap-2">
             <Users className="h-4 w-4 text-green-400" /> {t('attendanceData')}
           </h3>
           <div className="grid grid-cols-3 gap-2">
             {[
-              { label: t('registered'), value: r.attendance?.total, color: 'text-white' },
+              { label: t('registered'), value: r.attendance?.total, color: 'text-foreground' },
               { label: t('present'), value: r.attendance?.present, color: 'text-green-400' },
               { label: t('absent'), value: r.attendance?.absent, color: 'text-red-400' },
               { label: t('late'), value: r.attendance?.late, color: 'text-amber-400' },
               { label: t('excused'), value: r.attendance?.excused, color: 'text-blue-400' },
               { label: t('attendanceRate'), value: `${r.attendance?.rate || 0}%`, color: 'text-emerald-400' },
             ].map(item => (
-              <div key={item.label} className="bg-white/5 rounded-lg p-2 text-center">
+              <div key={item.label} className="bg-foreground/5 rounded-lg p-2 text-center">
                 <div className={`text-lg font-bold ${item.color}`}>{item.value ?? 0}</div>
-                <div className="text-white/40 text-[10px]">{item.label}</div>
+                <div className="text-muted-foreground text-[10px]">{item.label}</div>
               </div>
             ))}
           </div>
         </div>
 
-        <div className="bg-slate-800 rounded-xl p-4">
-          <h3 className="text-white/70 text-sm mb-3 font-cairo font-bold flex items-center gap-2">
+        <div className="bg-card rounded-xl p-4">
+          <h3 className="text-muted-foreground text-sm mb-3 font-cairo font-bold flex items-center gap-2">
             <Activity className="h-4 w-4 text-blue-400" /> {t('interactionData')}
           </h3>
           <div className="grid grid-cols-3 gap-2">
@@ -2819,76 +2819,76 @@ function SessionReviewPhase({ reviewData, sessionInfo, closingNote, setClosingNo
               { label: t('notesSent'), value: r.notes?.sent_to_parents ?? 0, color: 'text-emerald-400' },
               { label: t('participationRate'), value: `${r.interactions?.participation_rate || 0}%`, color: 'text-emerald-400' },
             ].map(item => (
-              <div key={item.label} className="bg-white/5 rounded-lg p-2 text-center">
+              <div key={item.label} className="bg-foreground/5 rounded-lg p-2 text-center">
                 <div className={`text-lg font-bold ${item.color}`}>{item.value ?? 0}</div>
-                <div className="text-white/40 text-[10px]">{item.label}</div>
+                <div className="text-muted-foreground text-[10px]">{item.label}</div>
               </div>
             ))}
           </div>
         </div>
 
         {(r.behaviours?.total > 0) && (
-          <div className="bg-slate-800 rounded-xl p-4">
-            <h3 className="text-white/70 text-sm mb-3 font-cairo font-bold flex items-center gap-2">
+          <div className="bg-card rounded-xl p-4">
+            <h3 className="text-muted-foreground text-sm mb-3 font-cairo font-bold flex items-center gap-2">
               <Heart className="h-4 w-4 text-pink-400" /> {t('behaviourData')}
             </h3>
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-green-900/30 rounded-lg p-3 text-center">
                 <ThumbsUp className="h-5 w-5 text-green-400 mx-auto mb-1" />
                 <div className="text-xl font-bold text-green-400">{r.behaviours?.positive || 0}</div>
-                <div className="text-white/50 text-[10px]">{t('positiveBehaviour')}</div>
+                <div className="text-muted-foreground text-[10px]">{t('positiveBehaviour')}</div>
               </div>
               <div className="bg-red-900/30 rounded-lg p-3 text-center">
                 <ThumbsDown className="h-5 w-5 text-red-400 mx-auto mb-1" />
                 <div className="text-xl font-bold text-red-400">{r.behaviours?.negative || 0}</div>
-                <div className="text-white/50 text-[10px]">{t('negativeBehaviour')}</div>
+                <div className="text-muted-foreground text-[10px]">{t('negativeBehaviour')}</div>
               </div>
             </div>
           </div>
         )}
 
         {(r.skills?.recorded > 0) && (
-          <div className="bg-slate-800 rounded-xl p-4">
-            <h3 className="text-white/70 text-sm mb-3 font-cairo font-bold flex items-center gap-2">
+          <div className="bg-card rounded-xl p-4">
+            <h3 className="text-muted-foreground text-sm mb-3 font-cairo font-bold flex items-center gap-2">
               <Star className="h-4 w-4 text-purple-400" /> {t('skillsData')}
             </h3>
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-purple-900/30 rounded-lg p-3 text-center">
                 <div className="text-xl font-bold text-purple-400">{r.skills?.recorded}</div>
-                <div className="text-white/50 text-[10px]">{t('recordedSkill')}</div>
+                <div className="text-muted-foreground text-[10px]">{t('recordedSkill')}</div>
               </div>
               <div className="bg-indigo-900/30 rounded-lg p-3 text-center">
                 <div className="text-xl font-bold text-indigo-400">{r.skills?.students_count}</div>
-                <div className="text-white/50 text-[10px]">{t('student')}</div>
+                <div className="text-muted-foreground text-[10px]">{t('student')}</div>
               </div>
             </div>
           </div>
         )}
 
-        <div className="bg-slate-800 rounded-xl p-4">
-          <h3 className="text-white/70 text-sm mb-3 font-cairo font-bold flex items-center gap-2">
+        <div className="bg-card rounded-xl p-4">
+          <h3 className="text-muted-foreground text-sm mb-3 font-cairo font-bold flex items-center gap-2">
             <StickyNote className="h-4 w-4 text-amber-400" /> {t('notesLabel')}
           </h3>
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-amber-900/30 rounded-lg p-3 text-center">
               <div className="text-xl font-bold text-amber-400">{r.notes?.total || 0}</div>
-              <div className="text-white/50 text-[10px]">{t('totalNotes')}</div>
+              <div className="text-muted-foreground text-[10px]">{t('totalNotes')}</div>
             </div>
             <div className="bg-orange-900/30 rounded-lg p-3 text-center">
               <div className="text-xl font-bold text-orange-400">{r.notes?.teacher_notes || 0}</div>
-              <div className="text-white/50 text-[10px]">{t('teacherNotes')}</div>
+              <div className="text-muted-foreground text-[10px]">{t('teacherNotes')}</div>
             </div>
           </div>
         </div>
 
         {r.needs_attention?.length > 0 && (
-          <div className="bg-slate-800 rounded-xl p-4">
-            <h3 className="text-white/70 text-sm mb-3 font-cairo font-bold flex items-center gap-2">
+          <div className="bg-card rounded-xl p-4">
+            <h3 className="text-muted-foreground text-sm mb-3 font-cairo font-bold flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 text-amber-400" /> {t('needsAttention')}
             </h3>
             {r.needs_attention.map((s, i) => (
-              <div key={i} className="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
-                <span className="text-white text-sm">{s.name}</span>
+              <div key={i} className="flex items-center justify-between py-1.5 border-b border-border last:border-0">
+                <span className="text-foreground text-sm">{s.name}</span>
                 <span className="text-amber-400 text-xs">{s.reason}</span>
               </div>
             ))}
@@ -2896,15 +2896,15 @@ function SessionReviewPhase({ reviewData, sessionInfo, closingNote, setClosingNo
         )}
 
         {r.top_participants?.length > 0 && (
-          <div className="bg-slate-800 rounded-xl p-4">
-            <h3 className="text-white/70 text-sm mb-3 font-cairo font-bold flex items-center gap-2">
+          <div className="bg-card rounded-xl p-4">
+            <h3 className="text-muted-foreground text-sm mb-3 font-cairo font-bold flex items-center gap-2">
               <Award className="h-4 w-4 text-amber-400" /> {t('topParticipants')}
             </h3>
             {r.top_participants.map((p, i) => (
               <div key={i} className="flex items-center justify-between py-1.5">
                 <div className="flex items-center gap-2">
                   <span className="text-amber-400 text-xs font-bold w-5">#{i + 1}</span>
-                  <span className="text-white text-sm">{p.name}</span>
+                  <span className="text-foreground text-sm">{p.name}</span>
                 </div>
                 <span className="text-green-400 text-xs">{p.correct_answers} ✓ | {p.participations} {t('participation')}</span>
               </div>
@@ -2912,15 +2912,15 @@ function SessionReviewPhase({ reviewData, sessionInfo, closingNote, setClosingNo
           </div>
         )}
 
-        <div className="bg-slate-800 rounded-xl p-4">
-          <h3 className="text-white/70 text-sm mb-3 font-cairo font-bold flex items-center gap-2">
+        <div className="bg-card rounded-xl p-4">
+          <h3 className="text-muted-foreground text-sm mb-3 font-cairo font-bold flex items-center gap-2">
             <PenLine className="h-4 w-4 text-cyan-400" /> {t('closingNoteLabel')}
           </h3>
           <Textarea
             value={closingNote}
             onChange={(e) => setClosingNote(e.target.value)}
             placeholder={t('closingNotePlaceholder')}
-            className="bg-slate-900 border-white/10 text-white placeholder:text-white/30 resize-none text-sm font-cairo"
+            className="bg-background border-border text-foreground placeholder:text-muted-foreground/70 resize-none text-sm font-cairo"
             rows={3}
           />
         </div>
@@ -2928,14 +2928,14 @@ function SessionReviewPhase({ reviewData, sessionInfo, closingNote, setClosingNo
         <div className="flex gap-3 pt-2">
           <button
             onClick={onBack}
-            className="flex-1 h-12 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-cairo font-bold text-sm transition-colors"
+            className="flex-1 h-12 rounded-xl bg-muted hover:bg-muted text-foreground font-cairo font-bold text-sm transition-colors"
           >
             {t('back')}
           </button>
           <button
             onClick={onConfirm}
             disabled={loading}
-            className="flex-1 h-12 rounded-xl bg-red-600 hover:bg-red-500 disabled:opacity-60 text-white font-cairo font-bold text-sm flex items-center justify-center gap-2 transition-colors"
+            className="flex-1 h-12 rounded-xl bg-red-600 hover:bg-red-500 disabled:opacity-60 text-foreground font-cairo font-bold text-sm flex items-center justify-center gap-2 transition-colors"
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
             {t('confirmAndEnd')}
@@ -2952,7 +2952,7 @@ function StudentCard({ student, isFlashing, isSelected, onClick }) {
   const count = student.interactionCount || 0;
   const correct = student.correctAnswers || 0;
   const isFemale = student.gender === 'female';
-  const avatarBg = isFlashing ? 'bg-white/20' : isFemale ? 'bg-gradient-to-br from-pink-500 to-rose-600' : 'bg-gradient-to-br from-sky-500 to-blue-600';
+  const avatarBg = isFlashing ? 'bg-foreground/20' : isFemale ? 'bg-gradient-to-br from-pink-500 to-rose-600' : 'bg-gradient-to-br from-sky-500 to-blue-600';
 
   const interactionLevel = count === 0 ? 'none' : count <= 2 ? 'low' : count <= 5 ? 'medium' : 'high';
   const interactionRing = {
@@ -2970,31 +2970,31 @@ function StudentCard({ student, isFlashing, isSelected, onClick }) {
           ? 'bg-brand-turquoise ring-4 ring-brand-turquoise/50 scale-110 z-10 shadow-xl shadow-brand-turquoise/30'
           : isSelected
           ? 'bg-brand-navy/80 ring-2 ring-brand-turquoise scale-105'
-          : 'bg-slate-700/60 hover:bg-slate-600/60 hover:scale-105'
+          : 'bg-muted/60 hover:bg-muted/60 hover:scale-105'
       }`}
     >
-      <div className={`relative w-12 h-12 rounded-full mx-auto mb-1.5 flex items-center justify-center text-white font-bold shadow-md ${avatarBg} ${interactionRing}`}>
+      <div className={`relative w-12 h-12 rounded-full mx-auto mb-1.5 flex items-center justify-center text-foreground font-bold shadow-md ${avatarBg} ${interactionRing}`}>
         {student.avatar_url ? (
           <img src={student.avatar_url} alt={initials} className="w-12 h-12 rounded-full object-cover" />
         ) : (
           <span className="text-lg">{initials}</span>
         )}
         {count > 0 && (
-          <span className={`absolute -top-1 -end-1 w-5 h-5 rounded-full text-[9px] font-bold flex items-center justify-center text-white shadow-sm ${
+          <span className={`absolute -top-1 -end-1 w-5 h-5 rounded-full text-[9px] font-bold flex items-center justify-center text-foreground shadow-sm ${
             correct > 0 ? 'bg-green-500' : 'bg-amber-500'
           }`}>
             {count}
           </span>
         )}
       </div>
-      <p className="text-white text-[10px] font-medium leading-tight truncate">
+      <p className="text-foreground text-[10px] font-medium leading-tight truncate">
         {student.full_name?.split(' ').slice(0, 2).join(' ')}
       </p>
       {count > 0 && (
         <div className="mt-0.5 flex items-center justify-center gap-1">
           <span className="text-green-400 text-[9px] font-bold">{correct}</span>
-          <span className="text-white/30 text-[9px]">/</span>
-          <span className="text-white/50 text-[9px]">{count}</span>
+          <span className="text-muted-foreground/70 text-[9px]">/</span>
+          <span className="text-muted-foreground text-[9px]">{count}</span>
         </div>
       )}
     </button>
@@ -3005,7 +3005,7 @@ function ActionButton({ color, icon, label, sub, onClick }) {
   return (
     <button
       onClick={onClick}
-      className={`${color} text-white rounded-lg py-3 px-2 flex flex-col items-center gap-1 transition-colors active:scale-95`}
+      className={`${color} text-foreground rounded-lg py-3 px-2 flex flex-col items-center gap-1 transition-colors active:scale-95`}
     >
       {icon}
       <span className="text-xs font-medium">{label}</span>
@@ -3126,15 +3126,15 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
   const hasSkills = (summary.skills_recorded || 0) > 0;
 
   return (
-    <div className="min-h-screen bg-slate-900 p-4 flex items-center justify-center" dir={isRTL ? 'rtl' : 'ltr'}>
+    <div className="min-h-screen bg-background p-4 flex items-center justify-center" dir={isRTL ? 'rtl' : 'ltr'}>
       <div className="w-full max-w-md space-y-4 pb-6">
-        <div className="bg-gradient-to-br from-brand-turquoise to-brand-navy rounded-2xl p-6 text-white text-center relative overflow-hidden">
+        <div className="bg-gradient-to-br from-brand-turquoise to-brand-navy rounded-2xl p-6 text-foreground text-center relative overflow-hidden">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.08),transparent_60%)]" />
           <div className="relative z-10">
             <Trophy className="h-14 w-14 mx-auto mb-3 text-amber-300" />
             <h1 className="font-cairo text-2xl font-bold">{t('sessionEnded')}</h1>
-            <p className="text-white/70 mt-1">{sessionInfo?.subject_name || sessionInfo?.subjectName} — {sessionInfo?.class_name || sessionInfo?.className}</p>
-            <div className="mt-4 text-3xl font-mono font-bold">{summary.duration_minutes || 0} <span className="text-lg text-white/60">{t('durationMinutes')}</span></div>
+            <p className="text-muted-foreground mt-1">{sessionInfo?.subject_name || sessionInfo?.subjectName} — {sessionInfo?.class_name || sessionInfo?.className}</p>
+            <div className="mt-4 text-3xl font-mono font-bold">{summary.duration_minutes || 0} <span className="text-lg text-muted-foreground">{t('durationMinutes')}</span></div>
           </div>
         </div>
 
@@ -3150,14 +3150,14 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
             <div key={item.label} className={`${item.bg} rounded-xl p-4 text-center`}>
               <div className="text-lg mb-1">{item.icon}</div>
               <div className={`text-2xl font-bold ${item.color}`}>{item.value ?? 0}</div>
-              <div className="text-white/60 text-xs mt-1">{item.label}</div>
+              <div className="text-muted-foreground text-xs mt-1">{item.label}</div>
             </div>
           ))}
         </div>
 
         {(hasBehaviours || hasSkills) && (
-          <div className="bg-slate-800 rounded-xl p-4">
-            <h3 className="text-white/70 text-sm mb-3 flex items-center gap-2">
+          <div className="bg-card rounded-xl p-4">
+            <h3 className="text-muted-foreground text-sm mb-3 flex items-center gap-2">
               <Heart className="h-4 w-4 text-pink-400" /> {t('behaviourData')}
             </h3>
             <div className={`grid ${hasSkills ? 'grid-cols-3' : 'grid-cols-2'} gap-3`}>
@@ -3166,12 +3166,12 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
                   <div className="bg-green-900/30 rounded-lg p-3 text-center">
                     <ThumbsUp className="h-5 w-5 text-green-400 mx-auto mb-1" />
                     <div className="text-xl font-bold text-green-400">{summary.positive_behaviours || 0}</div>
-                    <div className="text-white/50 text-[10px]">{t('positiveBehaviour')}</div>
+                    <div className="text-muted-foreground text-[10px]">{t('positiveBehaviour')}</div>
                   </div>
                   <div className="bg-red-900/30 rounded-lg p-3 text-center">
                     <ThumbsDown className="h-5 w-5 text-red-400 mx-auto mb-1" />
                     <div className="text-xl font-bold text-red-400">{summary.negative_behaviours || 0}</div>
-                    <div className="text-white/50 text-[10px]">{t('negativeBehaviour')}</div>
+                    <div className="text-muted-foreground text-[10px]">{t('negativeBehaviour')}</div>
                   </div>
                 </>
               )}
@@ -3179,7 +3179,7 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
                 <div className="bg-purple-900/30 rounded-lg p-3 text-center">
                   <Star className="h-5 w-5 text-purple-400 mx-auto mb-1" />
                   <div className="text-xl font-bold text-purple-400">{summary.skills_recorded}</div>
-                  <div className="text-white/50 text-[10px]">{t('recordedSkill')}</div>
+                  <div className="text-muted-foreground text-[10px]">{t('recordedSkill')}</div>
                 </div>
               )}
             </div>
@@ -3187,12 +3187,12 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
         )}
 
         {summary.participation_rate !== undefined && (
-          <div className="bg-slate-800 rounded-xl p-4">
-            <div className="flex justify-between text-sm text-white/70 mb-2">
+          <div className="bg-card rounded-xl p-4">
+            <div className="flex justify-between text-sm text-muted-foreground mb-2">
               <span>{t('participationRate')}</span>
-              <span className="text-white font-bold">{Math.round(summary.participation_rate)}%</span>
+              <span className="text-foreground font-bold">{Math.round(summary.participation_rate)}%</span>
             </div>
-            <div className="h-2.5 bg-slate-700 rounded-full overflow-hidden">
+            <div className="h-2.5 bg-muted rounded-full overflow-hidden">
               <div
                 className="h-full bg-gradient-to-r from-brand-turquoise to-brand-navy transition-colors"
                 style={{ width: `${summary.participation_rate}%` }}
@@ -3202,13 +3202,13 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
         )}
 
         {summary.needs_attention?.length > 0 && (
-          <div className="bg-slate-800 rounded-xl p-4">
-            <h3 className="text-white/70 text-sm mb-3 flex items-center gap-2">
+          <div className="bg-card rounded-xl p-4">
+            <h3 className="text-muted-foreground text-sm mb-3 flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 text-amber-400" /> {t('needsAttention')}
             </h3>
             {summary.needs_attention.map((s, i) => (
-              <div key={i} className="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
-                <span className="text-white text-sm">{s.name}</span>
+              <div key={i} className="flex items-center justify-between py-1.5 border-b border-border last:border-0">
+                <span className="text-foreground text-sm">{s.name}</span>
                 <span className="text-amber-400 text-xs">{s.reason}</span>
               </div>
             ))}
@@ -3216,15 +3216,15 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
         )}
 
         {summary.top_participants?.length > 0 && (
-          <div className="bg-slate-800 rounded-xl p-4">
-            <h3 className="text-white/70 text-sm mb-3 flex items-center gap-2">
+          <div className="bg-card rounded-xl p-4">
+            <h3 className="text-muted-foreground text-sm mb-3 flex items-center gap-2">
               <Award className="h-4 w-4 text-amber-400" /> {t('topParticipants')}
             </h3>
             {summary.top_participants.map((p, i) => (
               <div key={i} className="flex items-center justify-between py-1.5">
                 <div className="flex items-center gap-2">
                   <span className="text-amber-400 text-xs font-bold w-5">#{i + 1}</span>
-                  <span className="text-white text-sm">{p.name}</span>
+                  <span className="text-foreground text-sm">{p.name}</span>
                 </div>
                 <Badge className="bg-amber-900/50 text-amber-300 text-xs">{p.correct_answers} ✓</Badge>
               </div>
@@ -3236,7 +3236,7 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
           <button
             onClick={sendParentNotifications}
             disabled={sendingNotif}
-            className="w-full h-11 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white text-sm font-cairo font-bold flex items-center justify-center gap-2 transition-colors"
+            className="w-full h-11 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-foreground text-sm font-cairo font-bold flex items-center justify-center gap-2 transition-colors"
           >
             {sendingNotif ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -3256,14 +3256,14 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
           <button
             onClick={exportReport}
             disabled={exporting}
-            className="h-11 rounded-xl bg-slate-700 hover:bg-slate-600 disabled:opacity-60 text-white font-cairo font-bold text-sm flex items-center justify-center gap-2 transition-colors"
+            className="h-11 rounded-xl bg-muted hover:bg-muted disabled:opacity-60 text-foreground font-cairo font-bold text-sm flex items-center justify-center gap-2 transition-colors"
           >
             {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
             {t('exportReport')}
           </button>
           <button
             onClick={() => navigate('/teacher/classes?tab=sessions')}
-            className="h-11 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-cairo font-bold text-sm flex items-center justify-center gap-2 transition-colors"
+            className="h-11 rounded-xl bg-muted hover:bg-muted text-foreground font-cairo font-bold text-sm flex items-center justify-center gap-2 transition-colors"
           >
             <History className="h-4 w-4" />
             {t('sessionLog')}
@@ -3272,7 +3272,7 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
 
         <button
           onClick={onHome}
-          className="w-full h-12 rounded-xl bg-brand-turquoise text-white font-cairo font-bold text-base hover:opacity-90 transition-colors shadow-lg shadow-brand-turquoise/20"
+          className="w-full h-12 rounded-xl bg-brand-turquoise text-foreground font-cairo font-bold text-base hover:opacity-90 transition-colors shadow-lg shadow-brand-turquoise/20"
         >
           {t('backToHome')}
         </button>
