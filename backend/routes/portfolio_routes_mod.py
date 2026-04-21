@@ -2,10 +2,13 @@
 NASSAQ Route Module: Teacher Portfolio & Evidence endpoints
 """
 from fastapi import APIRouter, HTTPException, Depends, Query, Body, UploadFile, File
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 import logging
+import io
+import os
 
 from dependencies import db, get_current_user, require_roles, UserRole
 from engines.portfolio_evidence_engine import (
@@ -470,6 +473,238 @@ async def get_portfolio_sections(current_user: dict = Depends(get_current_user))
         "evidence_subsections": subsections,
         "updated_at": meta.get("updated_at"),
     }
+
+
+# ---- PDF Export ----
+
+_FONT_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "fonts", "Amiri-Regular.ttf")
+_FONT_REGISTERED = False
+
+
+def _ensure_arabic_font():
+    global _FONT_REGISTERED
+    if _FONT_REGISTERED:
+        return "Amiri"
+    try:
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+        if os.path.exists(_FONT_PATH):
+            pdfmetrics.registerFont(TTFont("Amiri", _FONT_PATH))
+            _FONT_REGISTERED = True
+            return "Amiri"
+    except Exception as e:
+        logger.warning(f"Failed to register Arabic font: {e}")
+    return "Helvetica"
+
+
+def _ar(text: str) -> str:
+    if not text:
+        return ""
+    try:
+        import arabic_reshaper
+        from bidi.algorithm import get_display
+        return get_display(arabic_reshaper.reshape(str(text)))
+    except Exception:
+        return str(text)
+
+
+@router.get("/teacher/portfolio/export")
+async def export_portfolio_pdf(current_user: dict = Depends(get_current_user)):
+    """Export the teacher's full portfolio (intro, vision/mission/values, CV,
+    and all evidences added during the year) as a downloadable PDF file."""
+    if current_user["role"] not in ("teacher", "platform_admin", "school_principal", "school_admin"):
+        raise HTTPException(status_code=403, detail="غير مصرح")
+
+    teacher_id = current_user["id"]
+    school_id = current_user.get("tenant_id")
+
+    meta = await _load_meta(teacher_id)
+    profile = await _load_teacher_profile(teacher_id)
+    portfolio = await _engine.get_teacher_portfolio(teacher_id, school_id)
+    progress = await _engine.get_portfolio_progress(teacher_id, school_id)
+
+    query: Dict[str, Any] = {"teacher_id": teacher_id}
+    if school_id:
+        query["school_id"] = school_id
+    evidence_list = await gd_find(db.session, "portfolio_evidence", query,
+                                   order_by="created_at", desc_order=True, limit=5000)
+
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_RIGHT, TA_CENTER
+    from reportlab.lib import colors
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+    )
+
+    font = _ensure_arabic_font()
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, rightMargin=36, leftMargin=36,
+                            topMargin=44, bottomMargin=36)
+    styles = getSampleStyleSheet()
+    h1 = ParagraphStyle("H1", parent=styles["Heading1"], fontName=font,
+                        alignment=TA_CENTER, fontSize=20, textColor=colors.HexColor("#0E3A5F"))
+    h2 = ParagraphStyle("H2", parent=styles["Heading2"], fontName=font,
+                        alignment=TA_RIGHT, fontSize=14, textColor=colors.HexColor("#0E3A5F"),
+                        spaceBefore=12, spaceAfter=6)
+    body = ParagraphStyle("Body", parent=styles["Normal"], fontName=font,
+                          alignment=TA_RIGHT, fontSize=11, leading=18)
+    small = ParagraphStyle("Small", parent=styles["Normal"], fontName=font,
+                           alignment=TA_RIGHT, fontSize=9, textColor=colors.grey, leading=14)
+
+    story: List[Any] = []
+    teacher_name = profile.get("full_name") or profile.get("name") or current_user.get("full_name") or ""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    story.append(Paragraph(_ar("ملف الإنجاز المهني"), h1))
+    if teacher_name:
+        story.append(Paragraph(_ar(teacher_name), ParagraphStyle("name", parent=h1, fontSize=14, spaceAfter=4)))
+    story.append(Paragraph(_ar(f"تاريخ التصدير: {today}"), small))
+    story.append(Spacer(1, 8))
+
+    # Summary
+    overall = progress.get("overall_percent", portfolio.get("coverage_percent", 0))
+    total_ev = portfolio.get("total_evidence", len(evidence_list))
+    auto_c = portfolio.get("auto_count", 0)
+    manual_c = portfolio.get("manual_count", 0)
+    summary_data = [[
+        Paragraph(_ar(f"التقدم العام: {overall}%"), body),
+        Paragraph(_ar(f"إجمالي الشواهد: {total_ev}"), body),
+        Paragraph(_ar(f"تلقائي: {auto_c}"), body),
+        Paragraph(_ar(f"يدوي: {manual_c}"), body),
+    ]]
+    summary_tbl = Table(summary_data, colWidths=[130, 130, 100, 100])
+    summary_tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F0F9FA")),
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#1FB1A8")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#1FB1A8")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("FONTNAME", (0, 0), (-1, -1), font),
+    ]))
+    story.append(summary_tbl)
+    story.append(Spacer(1, 14))
+
+    # Intro
+    intro_text = (meta.get("intro") or "").strip()
+    if intro_text:
+        story.append(Paragraph(_ar("المقدمة التعريفية"), h2))
+        story.append(Paragraph(_ar(intro_text), body))
+
+    # Vision / Mission / Values
+    vision = (meta.get("vision") or "").strip()
+    mission = (meta.get("mission") or "").strip()
+    values = (meta.get("values") or "").strip()
+    if vision or mission or values:
+        story.append(Paragraph(_ar("الرؤية والرسالة والقيم"), h2))
+        if vision:
+            story.append(Paragraph(_ar(f"الرؤية: {vision}"), body))
+        if mission:
+            story.append(Paragraph(_ar(f"الرسالة: {mission}"), body))
+        if values:
+            story.append(Paragraph(_ar(f"القيم: {values}"), body))
+
+    # CV items
+    auto_cv = _auto_cv_from_evidence(evidence_list)
+    cv_buckets = [
+        ("training_attended", "الدورات التدريبية الحاصل عليها"),
+        ("training_delivered", "الدورات التدريبية المُقدَّمة"),
+        ("award", "الجوائز والشهادات"),
+        ("thank_letter", "خطابات الشكر"),
+    ]
+    manual_by_kind: Dict[str, List[Dict[str, Any]]] = {k: [] for k, _ in cv_buckets}
+    for it in meta.get("cv_items", []):
+        kind = it.get("kind")
+        if kind in manual_by_kind:
+            manual_by_kind[kind].append(it)
+
+    has_cv = any(auto_cv.get(k) or manual_by_kind.get(k) for k, _ in cv_buckets)
+    if has_cv:
+        story.append(Paragraph(_ar("السيرة الذاتية"), h2))
+        for key, label in cv_buckets:
+            items = list(auto_cv.get(key, [])) + list(manual_by_kind.get(key, []))
+            if not items:
+                continue
+            story.append(Paragraph(_ar(label), ParagraphStyle("cvh", parent=body,
+                fontSize=12, textColor=colors.HexColor("#0E3A5F"), spaceBefore=6, spaceAfter=2)))
+            for it in items:
+                title = it.get("title") or it.get("title_ar") or it.get("name") or ""
+                date = it.get("date") or it.get("created_at") or ""
+                if isinstance(date, datetime):
+                    date = date.strftime("%Y-%m-%d")
+                line = f"• {title}" + (f"  ({date})" if date else "")
+                story.append(Paragraph(_ar(line), body))
+
+    # Evidences grouped by section
+    if evidence_list:
+        story.append(PageBreak())
+        story.append(Paragraph(_ar("شواهد الإنجاز"), h1))
+        story.append(Spacer(1, 8))
+
+        # Group by V2 subsection
+        subsec_titles = {
+            "intro": "المقدمة التعريفية",
+            "vmv": "الرؤية والرسالة والقيم",
+            "cv": "السيرة الذاتية",
+            "lesson_planning": "التخطيط للدروس",
+            "teaching_strategies": "استراتيجيات التدريس",
+            "assessment": "التقويم",
+            "classroom_management": "إدارة الصف",
+            "student_engagement": "تفاعل الطلاب",
+            "professional_development": "التطوير المهني",
+            "parent_communication": "التواصل مع أولياء الأمور",
+            "extracurricular": "الأنشطة اللاصفية",
+            "innovation": "الابتكار والتطوير",
+            "achievements": "الإنجازات والجوائز",
+            "reflections": "التأملات المهنية",
+        }
+
+        grouped: Dict[str, List[Dict[str, Any]]] = {}
+        for sub_key, type_keys in EVIDENCE_SUBSECTIONS_V2.items():
+            items = [e for e in evidence_list if e.get("evidence_type") in type_keys]
+            if items:
+                grouped[sub_key] = items
+
+        for sub_key, items in grouped.items():
+            label = subsec_titles.get(sub_key, sub_key)
+            story.append(Paragraph(_ar(f"{label}  ({len(items)})"), h2))
+            for ev in items:
+                title = ev.get("title_ar") or ev.get("title_en") or ev.get("title") or _ar("بدون عنوان")
+                desc = ev.get("description_ar") or ev.get("description_en") or ev.get("description") or ""
+                date = ev.get("date") or ev.get("created_at") or ""
+                if isinstance(date, datetime):
+                    date = date.strftime("%Y-%m-%d")
+                source = ev.get("source") or ("auto" if ev.get("auto_generated") else "manual")
+                src_label = "تلقائي" if source == "auto" else "يدوي"
+                ev_type = ev.get("evidence_type", "")
+                file_name = ev.get("file_name") or ""
+
+                story.append(Paragraph(_ar(f"• {title}"), ParagraphStyle("evt",
+                    parent=body, fontSize=11, textColor=colors.HexColor("#0E3A5F"), spaceBefore=4)))
+                meta_line_parts = []
+                if date:
+                    meta_line_parts.append(f"التاريخ: {date}")
+                if ev_type:
+                    meta_line_parts.append(f"النوع: {ev_type}")
+                meta_line_parts.append(f"المصدر: {src_label}")
+                if file_name:
+                    meta_line_parts.append(f"الملف: {file_name}")
+                story.append(Paragraph(_ar("  •  ".join(meta_line_parts)), small))
+                if desc:
+                    story.append(Paragraph(_ar(desc), body))
+            story.append(Spacer(1, 6))
+
+    if not story or len(story) <= 4:
+        story.append(Paragraph(_ar("لا توجد شواهد أو محتوى مضاف بعد."), body))
+
+    doc.build(story)
+    buf.seek(0)
+    safe_name = (teacher_name or "teacher").replace(" ", "_")
+    filename = f"portfolio_{safe_name}_{today}.pdf"
+    return StreamingResponse(
+        buf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # ---- Intro ----

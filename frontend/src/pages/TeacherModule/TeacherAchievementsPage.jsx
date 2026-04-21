@@ -203,6 +203,7 @@ export default function TeacherAchievementsPage() {
   const teacherId = user?.id;
   const { showAlert } = useNassaqAlert();
   const [loading, setLoading] = useState(true);
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [portfolio, setPortfolio] = useState(null);
   const [progress, setProgress] = useState(null);
   const [activeTab, setActiveTab] = useState('portfolio');
@@ -784,7 +785,31 @@ export default function TeacherAchievementsPage() {
   const sectionsCompleted = Array.isArray(progress?.sections)
     ? progress.sections.filter(s => (s.percent ?? s.coverage ?? 0) >= 100).length
     : 0;
-  const handleDownloadPdf = () => { try { window.print(); } catch (_) {} };
+  const handleDownloadPdf = async () => {
+    if (exportingPdf) return;
+    setExportingPdf(true);
+    try {
+      const res = await api.get('/teacher/portfolio/export', { responseType: 'blob' });
+      const blob = new Blob([res.data], { type: 'application/pdf' });
+      let filename = 'portfolio.pdf';
+      const cd = res.headers?.['content-disposition'] || res.headers?.['Content-Disposition'];
+      if (cd) {
+        const m = /filename="?([^";]+)"?/i.exec(cd);
+        if (m && m[1]) filename = m[1];
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast.success(t('downloadPdf'));
+    } catch (e) {
+      console.error('export portfolio pdf failed', e);
+      toast.error(t('downloadFailed') || 'فشل التحميل');
+    } finally {
+      setExportingPdf(false);
+    }
+  };
   const handleAddContent = () => openManualEvDialog(SUBSECTION_CONFIG_V2[0]?.key || '');
 
   return (
@@ -810,10 +835,11 @@ export default function TeacherAchievementsPage() {
               size="icon"
               className="h-9 w-9 rounded-full"
               onClick={handleDownloadPdf}
+              disabled={exportingPdf}
               title={t('downloadPdf')}
               aria-label={t('downloadPdf')}
             >
-              <Download className="w-4 h-4" />
+              {exportingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
             </Button>
             <Button
               size="icon"
