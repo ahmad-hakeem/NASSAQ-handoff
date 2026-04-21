@@ -222,9 +222,10 @@ export default function TeacherMainDashboard() {
     try {
       const res = await api.get(`/teacher/achievements/${teacherId}`).catch(() => null);
       if (res?.data) {
-        const earned = res.data.earned_badges || 0;
-        const total = res.data.total_badges || 1;
-        setPortfolioProgress(Math.round((earned / total) * 100));
+        const earned = Number(res.data.total_earned) || 0;
+        const total = Number(res.data.total_badges) || 0;
+        const pct = total > 0 ? Math.round((earned / total) * 100) : 0;
+        setPortfolioProgress(Number.isFinite(pct) ? pct : 0);
       }
     } catch (e) { /* silent */ }
   }, [api, teacherId]);
