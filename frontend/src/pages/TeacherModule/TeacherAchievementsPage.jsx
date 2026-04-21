@@ -16,6 +16,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../../components/ui/select';
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
+  DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
+} from '../../components/ui/dropdown-menu';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import {
@@ -884,13 +888,19 @@ export default function TeacherAchievementsPage() {
   const sectionsCompleted = Array.isArray(progress?.sections)
     ? progress.sections.filter(s => (s.percent ?? s.coverage ?? 0) >= 100).length
     : 0;
-  const handleDownloadPdf = async () => {
+  const EXPORT_FORMATS = [
+    { value: 'pdf', label: 'PDF', mime: 'application/pdf', ext: 'pdf' },
+    { value: 'docx', label: 'Word (DOCX)', mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', ext: 'docx' },
+    { value: 'html', label: 'صفحة ويب (HTML)', mime: 'text/html', ext: 'html' },
+  ];
+  const handleDownloadPortfolio = async (fmt = 'pdf') => {
     if (exportingPdf) return;
     setExportingPdf(true);
     try {
-      const res = await api.get('/teacher/portfolio/export', { responseType: 'blob' });
-      const blob = new Blob([res.data], { type: 'application/pdf' });
-      let filename = 'portfolio.pdf';
+      const cfg = EXPORT_FORMATS.find(f => f.value === fmt) || EXPORT_FORMATS[0];
+      const res = await api.get(`/teacher/portfolio/export?format=${cfg.value}`, { responseType: 'blob' });
+      const blob = new Blob([res.data], { type: cfg.mime });
+      let filename = `portfolio.${cfg.ext}`;
       const cd = res.headers?.['content-disposition'] || res.headers?.['Content-Disposition'];
       if (cd) {
         const m = /filename="?([^";]+)"?/i.exec(cd);
@@ -901,9 +911,9 @@ export default function TeacherAchievementsPage() {
       a.href = url; a.download = filename;
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      toast.success(t('downloadPdf'));
+      toast.success(`تم تحميل الملف بصيغة ${cfg.label}`);
     } catch (e) {
-      console.error('export portfolio pdf failed', e);
+      console.error('export portfolio failed', e);
       toast.error(t('downloadFailed') || 'فشل التحميل');
     } finally {
       setExportingPdf(false);
@@ -929,17 +939,35 @@ export default function TeacherAchievementsPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-9 w-9 rounded-full"
-              onClick={handleDownloadPdf}
-              disabled={exportingPdf}
-              title={t('downloadPdf')}
-              aria-label={t('downloadPdf')}
-            >
-              {exportingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-9 w-9 rounded-full"
+                  disabled={exportingPdf}
+                  title="تحميل ملف الإنجاز"
+                  aria-label="تحميل ملف الإنجاز"
+                >
+                  {exportingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-[200px]" dir={isRTL ? 'rtl' : 'ltr'}>
+                <DropdownMenuLabel className="text-xs text-gray-500 font-cairo">اختر صيغة التحميل</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {EXPORT_FORMATS.map(f => (
+                  <DropdownMenuItem
+                    key={f.value}
+                    onClick={() => handleDownloadPortfolio(f.value)}
+                    disabled={exportingPdf}
+                    className="gap-2 cursor-pointer font-cairo"
+                  >
+                    <Download className="w-3.5 h-3.5 text-violet-600" />
+                    <span>{f.label}</span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button
               size="icon"
               className="h-9 w-9 rounded-full bg-brand-turquoise hover:bg-brand-turquoise/90 text-white"

@@ -2,7 +2,7 @@
 NASSAQ Route Module: Teacher Portfolio & Evidence endpoints
 """
 from fastapi import APIRouter, HTTPException, Depends, Query, Body, UploadFile, File
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
@@ -633,10 +633,337 @@ async def _lookup_class_subject_names(class_ids, subject_ids):
     return cls_map, sub_map
 
 
+def _safe_filename_part(name: str) -> str:
+    s = (name or "teacher").strip().replace(" ", "_")
+    return "".join(ch for ch in s if ch.isalnum() or ch in ("_", "-")) or "teacher"
+
+
+def _attachment_headers(filename_pretty: str, filename_ascii: str) -> Dict[str, str]:
+    from urllib.parse import quote as _urlquote
+    encoded = _urlquote(filename_pretty)
+    return {"Content-Disposition": f'attachment; filename="{filename_ascii}"; filename*=UTF-8\'\'{encoded}'}
+
+
+def _export_portfolio_html(profile, meta, evidence_list, cls_map, sub_map, current_user):
+    """Render the portfolio as a printable, RTL HTML document."""
+    teacher_name = profile.get("full_name") or current_user.get("full_name") or ""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    intro_text = (meta.get("intro") or "").strip()
+    vision = (meta.get("vision") or "").strip()
+    mission = (meta.get("mission") or "").strip()
+    values = (meta.get("values") or "").strip()
+    cv_items = list(meta.get("cv_items") or [])
+
+    def esc(s):
+        if s is None:
+            return ""
+        return (str(s)
+                .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                .replace('"', "&quot;"))
+
+    profile_rows = []
+    for label, val in [
+        ("الاسم", teacher_name),
+        ("البريد الإلكتروني", profile.get("email")),
+        ("الجوال", profile.get("phone")),
+        ("التخصص", profile.get("specialization")),
+        ("المادة", profile.get("subject")),
+        ("الرتبة", profile.get("rank")),
+        ("المؤهل", profile.get("qualification")),
+        ("سنوات الخبرة", profile.get("years_of_experience")),
+    ]:
+        if val:
+            profile_rows.append(f"<tr><th>{esc(label)}</th><td>{esc(val)}</td></tr>")
+
+    sections_html = []
+    for sub_key, type_keys in EVIDENCE_SUBSECTIONS_V2.items():
+        items = [e for e in evidence_list if e.get("evidence_type") in type_keys]
+        title = _SUBSECTION_TITLES_AR.get(sub_key, sub_key)
+        color = _SUBSECTION_COLORS.get(sub_key, "#0E3A5F")
+        sections_html.append(f'<h2 style="color:{color};border-bottom:3px solid {color};padding-bottom:6px;margin-top:32px;">{esc(title)} <span class="count">({len(items)})</span></h2>')
+        if not items:
+            sections_html.append('<p class="muted">لا توجد شواهد في هذا القسم.</p>')
+            continue
+        for ev in items:
+            ev_title = ev.get("title_ar") or ev.get("title_en") or ""
+            ev_desc = ev.get("description_ar") or ev.get("description_en") or ""
+            type_label = _type_label(ev.get("evidence_type"))
+            cls_name = cls_map.get(ev.get("class_id"), "") if ev.get("class_id") else ""
+            sub_name = sub_map.get(ev.get("subject_id"), "") if ev.get("subject_id") else ""
+            date = ev.get("date") or (ev.get("created_at") or "")[:10]
+            source = "تلقائي" if ev.get("source") == "auto" else "إضافة يدوية"
+            file_url = ev.get("file_url") or ""
+            file_name = ev.get("file_name") or ""
+            attach = ""
+            if file_url:
+                if file_url.startswith("http://") or file_url.startswith("https://"):
+                    attach = f'<div class="attach">المرفق: <a href="{esc(file_url)}" target="_blank" rel="noopener">{esc(file_name or file_url)}</a></div>'
+                else:
+                    attach = f'<div class="attach">المرفق: {esc(file_name or "ملف مرفق")}</div>'
+            meta_bits = []
+            if type_label: meta_bits.append(f'<span class="chip">{esc(type_label)}</span>')
+            if sub_name: meta_bits.append(f'<span class="chip">المادة: {esc(sub_name)}</span>')
+            if cls_name: meta_bits.append(f'<span class="chip">الصف: {esc(cls_name)}</span>')
+            if date: meta_bits.append(f'<span class="chip">التاريخ: {esc(date)}</span>')
+            meta_bits.append(f'<span class="chip src">{esc(source)}</span>')
+            sections_html.append(
+                f'<div class="card">'
+                f'<h3>{esc(ev_title)}</h3>'
+                f'<div class="meta">{"".join(meta_bits)}</div>'
+                + (f'<p class="desc">{esc(ev_desc)}</p>' if ev_desc else "")
+                + attach
+                + '</div>'
+            )
+
+    cv_html = ""
+    if cv_items:
+        rows = []
+        for it in cv_items:
+            rows.append(
+                f'<li><strong>{esc(it.get("title") or "")}</strong>'
+                + (f' — {esc(it.get("organization"))}' if it.get("organization") else "")
+                + (f' <em>({esc(it.get("date"))})</em>' if it.get("date") else "")
+                + (f'<br><span class="muted">{esc(it.get("description"))}</span>' if it.get("description") else "")
+                + '</li>'
+            )
+        cv_html = '<h2>السيرة الذاتية</h2><ul class="cv">' + "".join(rows) + '</ul>'
+
+    html = f"""<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>ملف الإنجاز المهني — {esc(teacher_name)}</title>
+<style>
+  body {{ font-family: 'Segoe UI', Tahoma, 'Cairo', sans-serif; max-width: 900px; margin: 24px auto; padding: 0 24px; color: #1f2937; line-height: 1.7; background: #fff; }}
+  h1 {{ color: #0E3A5F; margin-bottom: 4px; }}
+  h2 {{ font-size: 18px; margin-top: 28px; }}
+  h3 {{ margin: 0 0 8px; color: #0E3A5F; font-size: 15px; }}
+  .subtitle {{ color: #6B7280; margin-top: 0; font-size: 13px; }}
+  .card {{ border: 1px solid #E5E7EB; border-radius: 10px; padding: 14px 16px; margin: 10px 0; background: #FAFAFB; page-break-inside: avoid; }}
+  .meta {{ display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }}
+  .chip {{ font-size: 11px; background: #fff; border: 1px solid #E5E7EB; color: #374151; padding: 2px 8px; border-radius: 999px; }}
+  .chip.src {{ background: #FEF3C7; border-color: #FDE68A; color: #92400E; }}
+  .desc {{ margin: 6px 0 0; color: #374151; font-size: 13px; white-space: pre-wrap; }}
+  .attach {{ margin-top: 8px; font-size: 12px; color: #4B5563; }}
+  .attach a {{ color: #1FB1A8; text-decoration: none; }}
+  .count {{ color: #6B7280; font-size: 13px; font-weight: normal; }}
+  table.profile {{ border-collapse: collapse; margin: 12px 0; width: 100%; }}
+  table.profile th {{ text-align: right; background: #F0F9FA; color: #0E3A5F; padding: 8px 12px; width: 30%; font-weight: 600; border: 1px solid #E5E7EB; }}
+  table.profile td {{ padding: 8px 12px; border: 1px solid #E5E7EB; }}
+  ul.cv {{ padding-right: 18px; }}
+  ul.cv li {{ margin-bottom: 8px; }}
+  .muted {{ color: #6B7280; font-size: 12px; }}
+  .header-bar {{ background: #0E3A5F; color: #fff; padding: 14px 18px; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; }}
+  .header-bar .right {{ font-size: 13px; opacity: 0.85; }}
+  @media print {{ body {{ margin: 0; }} .card {{ break-inside: avoid; }} }}
+</style>
+</head>
+<body>
+  <div class="header-bar">
+    <div><strong>NASSAQ</strong> — ملف الإنجاز المهني</div>
+    <div class="right">{esc(today)}</div>
+  </div>
+  <h1>{esc(teacher_name)}</h1>
+  <p class="subtitle">{esc(profile.get("specialization") or profile.get("subject") or "")}</p>
+
+  {('<h2>البيانات الشخصية</h2><table class="profile">' + "".join(profile_rows) + '</table>') if profile_rows else ''}
+
+  {('<h2>المقدمة</h2><p class="desc">' + esc(intro_text) + '</p>') if intro_text else ''}
+
+  {('<h2>الرؤية</h2><p class="desc">' + esc(vision) + '</p>') if vision else ''}
+  {('<h2>الرسالة</h2><p class="desc">' + esc(mission) + '</p>') if mission else ''}
+  {('<h2>القيم</h2><p class="desc">' + esc(values) + '</p>') if values else ''}
+
+  {cv_html}
+
+  <h2>الشواهد</h2>
+  {"".join(sections_html)}
+</body>
+</html>"""
+
+    pretty = f"portfolio_{_safe_filename_part(teacher_name)}_{today}.html"
+    ascii_n = f"portfolio_{today}.html"
+    return Response(
+        content=html.encode("utf-8"),
+        media_type="text/html; charset=utf-8",
+        headers=_attachment_headers(pretty, ascii_n),
+    )
+
+
+def _export_portfolio_docx(profile, meta, evidence_list, cls_map, sub_map, current_user):
+    """Render the portfolio as a DOCX (Word) document with RTL support."""
+    from docx import Document
+    from docx.shared import Pt, RGBColor, Cm
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+
+    teacher_name = profile.get("full_name") or current_user.get("full_name") or ""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    doc = Document()
+    # Set default RTL & font
+    style = doc.styles["Normal"]
+    style.font.name = "Arial"
+    style.font.size = Pt(11)
+    rpr = style.element.get_or_add_rPr()
+    rfonts = rpr.find(qn("w:rFonts"))
+    if rfonts is None:
+        rfonts = OxmlElement("w:rFonts")
+        rpr.append(rfonts)
+    rfonts.set(qn("w:cs"), "Arial")
+
+    def _set_rtl(paragraph):
+        pPr = paragraph._p.get_or_add_pPr()
+        bidi = OxmlElement("w:bidi")
+        bidi.set(qn("w:val"), "1")
+        pPr.append(bidi)
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+
+    def add_p(text, *, bold=False, size=11, color=None, align_right=True, after=4):
+        p = doc.add_paragraph()
+        if align_right:
+            _set_rtl(p)
+        run = p.add_run(text or "")
+        run.bold = bold
+        run.font.size = Pt(size)
+        if color:
+            run.font.color.rgb = RGBColor.from_string(color.lstrip("#"))
+        p.paragraph_format.space_after = Pt(after)
+        return p
+
+    def add_heading(text, level=1, color="0E3A5F"):
+        size = {1: 18, 2: 14, 3: 12}.get(level, 12)
+        return add_p(text, bold=True, size=size, color=color, after=6)
+
+    # Cover
+    add_heading("ملف الإنجاز المهني", level=1, color="0E3A5F")
+    add_p(teacher_name, bold=True, size=16, after=2)
+    sub = profile.get("specialization") or profile.get("subject") or ""
+    if sub:
+        add_p(sub, color="6B7280", size=11)
+    add_p(f"تاريخ الإصدار: {today}", color="6B7280", size=10, after=12)
+
+    # Profile table
+    profile_rows = [(label, val) for label, val in [
+        ("الاسم", teacher_name),
+        ("البريد الإلكتروني", profile.get("email")),
+        ("الجوال", profile.get("phone")),
+        ("التخصص", profile.get("specialization")),
+        ("المادة", profile.get("subject")),
+        ("الرتبة", profile.get("rank")),
+        ("المؤهل", profile.get("qualification")),
+        ("سنوات الخبرة", profile.get("years_of_experience")),
+    ] if val]
+    if profile_rows:
+        add_heading("البيانات الشخصية", level=2)
+        tbl = doc.add_table(rows=len(profile_rows), cols=2)
+        tbl.style = "Light Grid Accent 1"
+        for i, (label, val) in enumerate(profile_rows):
+            c0 = tbl.rows[i].cells[0]
+            c1 = tbl.rows[i].cells[1]
+            c0.text = ""
+            c1.text = ""
+            for cell, txt, bold in ((c0, str(label), True), (c1, str(val), False)):
+                p = cell.paragraphs[0]
+                _set_rtl(p)
+                r = p.add_run(txt)
+                r.bold = bold
+                r.font.size = Pt(11)
+
+    # Intro
+    intro_text = (meta.get("intro") or "").strip()
+    if intro_text:
+        add_heading("المقدمة", level=2)
+        add_p(intro_text)
+
+    # Vision / Mission / Values
+    for label, key in (("الرؤية", "vision"), ("الرسالة", "mission"), ("القيم", "values")):
+        v = (meta.get(key) or "").strip()
+        if v:
+            add_heading(label, level=2)
+            add_p(v)
+
+    # CV
+    cv_items = list(meta.get("cv_items") or [])
+    if cv_items:
+        add_heading("السيرة الذاتية", level=2)
+        for it in cv_items:
+            line = it.get("title") or ""
+            if it.get("organization"):
+                line += f" — {it.get('organization')}"
+            if it.get("date"):
+                line += f"  ({it.get('date')})"
+            add_p(line, bold=True, after=2)
+            if it.get("description"):
+                add_p(it["description"], color="6B7280", size=10, after=6)
+
+    # Evidences per section
+    add_heading("الشواهد", level=2)
+    for sub_key, type_keys in EVIDENCE_SUBSECTIONS_V2.items():
+        items = [e for e in evidence_list if e.get("evidence_type") in type_keys]
+        title = _SUBSECTION_TITLES_AR.get(sub_key, sub_key)
+        color = _SUBSECTION_COLORS.get(sub_key, "#0E3A5F").lstrip("#")
+        add_heading(f"{title}  ({len(items)})", level=3, color=color)
+        if not items:
+            add_p("لا توجد شواهد في هذا القسم.", color="9CA3AF", size=10, after=8)
+            continue
+        for ev in items:
+            ev_title = ev.get("title_ar") or ev.get("title_en") or ""
+            add_p(ev_title, bold=True, size=12, after=2)
+            chips = []
+            chips.append(_type_label(ev.get("evidence_type")))
+            sub_name = sub_map.get(ev.get("subject_id"), "") if ev.get("subject_id") else ""
+            cls_name = cls_map.get(ev.get("class_id"), "") if ev.get("class_id") else ""
+            if sub_name:
+                chips.append(f"المادة: {sub_name}")
+            if cls_name:
+                chips.append(f"الصف: {cls_name}")
+            d = ev.get("date") or (ev.get("created_at") or "")[:10]
+            if d:
+                chips.append(f"التاريخ: {d}")
+            chips.append("تلقائي" if ev.get("source") == "auto" else "إضافة يدوية")
+            add_p(" • ".join(chips), color="6B7280", size=10, after=2)
+            ev_desc = ev.get("description_ar") or ev.get("description_en") or ""
+            if ev_desc:
+                add_p(ev_desc, size=11, after=2)
+            file_url = ev.get("file_url") or ""
+            if file_url:
+                file_name = ev.get("file_name") or "ملف مرفق"
+                if file_url.startswith("http://") or file_url.startswith("https://"):
+                    add_p(f"المرفق: {file_name} — {file_url}", color="1FB1A8", size=10, after=8)
+                else:
+                    add_p(f"المرفق: {file_name}", color="1FB1A8", size=10, after=8)
+            else:
+                add_p("", after=4)
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    pretty = f"portfolio_{_safe_filename_part(teacher_name)}_{today}.docx"
+    ascii_n = f"portfolio_{today}.docx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers=_attachment_headers(pretty, ascii_n),
+    )
+
+
 @router.get("/teacher/portfolio/export")
-async def export_portfolio_pdf(current_user: dict = Depends(get_current_user)):
+async def export_portfolio_pdf(
+    format: str = "pdf",
+    current_user: dict = Depends(get_current_user),
+):
     """Export the teacher's full portfolio (intro, vision/mission/values, CV,
-    and every evidence with full details) as a downloadable PDF file."""
+    and every evidence with full details) as a downloadable file.
+
+    Supported formats (via ?format=): pdf (default), docx, html.
+    """
+    fmt = (format or "pdf").lower().strip()
+    if fmt not in ("pdf", "docx", "html"):
+        raise HTTPException(status_code=400, detail="format must be one of: pdf, docx, html")
+
     if current_user["role"] not in ("teacher", "platform_admin", "school_principal", "school_admin"):
         raise HTTPException(status_code=403, detail="غير مصرح")
 
@@ -657,6 +984,11 @@ async def export_portfolio_pdf(current_user: dict = Depends(get_current_user)):
     class_ids = {e.get("class_id") for e in evidence_list if e.get("class_id")}
     subject_ids = {e.get("subject_id") for e in evidence_list if e.get("subject_id")}
     cls_map, sub_map = await _lookup_class_subject_names(class_ids, subject_ids)
+
+    if fmt == "docx":
+        return _export_portfolio_docx(profile, meta, evidence_list, cls_map, sub_map, current_user)
+    if fmt == "html":
+        return _export_portfolio_html(profile, meta, evidence_list, cls_map, sub_map, current_user)
 
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
