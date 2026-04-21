@@ -123,6 +123,11 @@ export default function SessionTeachPage() {
   const [flashId, setFlashId] = useState(null);
   const [showHakim, setShowHakim] = useState(false);
   const [showRandomPopup, setShowRandomPopup] = useState(false);
+  const [showQuickNote, setShowQuickNote] = useState(false);
+  const [quickNoteText, setQuickNoteText] = useState('');
+  const [quickNoteIds, setQuickNoteIds] = useState(() => new Set());
+  const [quickNoteFilter, setQuickNoteFilter] = useState('');
+  const [quickNoteSending, setQuickNoteSending] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [actionTab, setActionTab] = useState('question'); // question | participation | behaviour | skill | homework | recitation
   const [behaviourCategory, setBehaviourCategory] = useState('positive');
@@ -1012,6 +1017,20 @@ export default function SessionTeachPage() {
               title={t('search')}
             >
               <Search className="h-4 w-4" />
+            </button>
+
+            <button
+              onClick={() => {
+                setQuickNoteText('');
+                setQuickNoteIds(new Set());
+                setQuickNoteFilter('');
+                setShowQuickNote(true);
+              }}
+              aria-label={t('sendQuickNote') || 'إرسال ملاحظة'}
+              className="p-2 rounded-md text-amber-300 hover:text-amber-200 hover:bg-amber-500/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
+              title={t('sendQuickNote') || 'إرسال ملاحظة'}
+            >
+              <StickyNote className="h-4 w-4" />
             </button>
 
             {/* Toggle right panel (desktop only) */}
@@ -2399,6 +2418,149 @@ export default function SessionTeachPage() {
         absencePickerDate={absencePickerDate}
         setAbsencePickerDate={setAbsencePickerDate}
       />
+
+      <Dialog open={showQuickNote} onOpenChange={setShowQuickNote}>
+        <DialogContent className="max-w-lg" dir={isRTL ? 'rtl' : 'ltr'}>
+          <DialogHeader>
+            <DialogTitle className="font-cairo flex items-center gap-2">
+              <StickyNote className="h-5 w-5 text-amber-500" />
+              {t('sendQuickNote') || 'إرسال ملاحظة'}
+            </DialogTitle>
+          </DialogHeader>
+          {(() => {
+            const presentList = students.filter(s => s.attendance_status === 'present');
+            const filtered = quickNoteFilter
+              ? presentList.filter(s => (s.full_name || '').toLowerCase().includes(quickNoteFilter.toLowerCase()))
+              : presentList;
+            const allSelected = presentList.length > 0 && presentList.every(s => quickNoteIds.has(s.id));
+            const toggleAll = () => {
+              if (allSelected) setQuickNoteIds(new Set());
+              else setQuickNoteIds(new Set(presentList.map(s => s.id)));
+            };
+            const toggleOne = (sid) => {
+              setQuickNoteIds(prev => {
+                const next = new Set(prev);
+                if (next.has(sid)) next.delete(sid); else next.add(sid);
+                return next;
+              });
+            };
+            const sendQuickNote = async () => {
+              const text = quickNoteText.trim();
+              const ids = Array.from(quickNoteIds);
+              if (!text) { nassaqError(t('writeNoteShort') || 'اكتب نص الملاحظة'); return; }
+              if (ids.length === 0) { nassaqError(t('selectAtLeastOneStudent') || 'حدد طالباً واحداً على الأقل'); return; }
+              setQuickNoteSending(true);
+              try {
+                const res = await api.post(`/session/${sessionId}/note/parents`, { text, student_ids: ids });
+                const sent = res.data?.notifications_sent ?? 0;
+                toast.success(`${t('noteSentToParents') || 'تم إرسال الملاحظة لأولياء الأمور'} (${sent})`);
+                addLog('note', `${t('note')}: ${text.slice(0, 30)} → ${ids.length} ${t('students')}`, 'text-amber-600');
+                setShowQuickNote(false);
+                setQuickNoteText('');
+                setQuickNoteIds(new Set());
+                loadNotes();
+              } catch (e) {
+                console.error('Quick note error:', e);
+                nassaqError(e.response?.data?.detail || t('errorAddingNote') || 'تعذر إرسال الملاحظة');
+              } finally {
+                setQuickNoteSending(false);
+              }
+            };
+            return (
+              <div className="space-y-3 pt-1">
+                <Textarea
+                  value={quickNoteText}
+                  onChange={(e) => setQuickNoteText(e.target.value)}
+                  placeholder={t('writeNoteShort') || 'اكتب نص الملاحظة...'}
+                  className="min-h-[88px] font-tajawal text-sm resize-none"
+                  dir={isRTL ? 'rtl' : 'ltr'}
+                />
+
+                <div className="flex items-center justify-between gap-2 pt-1">
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <Search className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                    <input
+                      value={quickNoteFilter}
+                      onChange={(e) => setQuickNoteFilter(e.target.value)}
+                      placeholder={t('searchStudent') || t('search') || 'بحث'}
+                      className="flex-1 bg-transparent outline-none text-sm border-b border-border focus:border-amber-400 transition-colors py-1"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={toggleAll}
+                    className="text-xs font-cairo font-bold text-amber-500 hover:text-amber-600 transition-colors px-2 py-1 rounded-md hover:bg-amber-500/10 flex-shrink-0"
+                  >
+                    {allSelected ? (t('deselectAll') || 'إلغاء التحديد') : (t('selectAll') || 'تحديد الكل')}
+                  </button>
+                </div>
+
+                <div className="border border-border rounded-xl divide-y divide-border max-h-64 overflow-y-auto">
+                  {filtered.length === 0 ? (
+                    <div className="p-6 text-center text-sm text-muted-foreground font-tajawal">
+                      {t('noPresentStudents') || 'لا يوجد طلاب حاضرون'}
+                    </div>
+                  ) : (
+                    filtered.map((s) => {
+                      const checked = quickNoteIds.has(s.id);
+                      return (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => toggleOne(s.id)}
+                          className={`w-full flex items-center gap-3 px-3 py-2 text-start transition-colors ${
+                            checked ? 'bg-amber-500/10' : 'hover:bg-muted/40'
+                          }`}
+                        >
+                          <span className={`w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 transition-colors ${
+                            checked ? 'bg-amber-500 border-amber-500' : 'border-border bg-background'
+                          }`}>
+                            {checked && <CheckCircle2 className="h-3.5 w-3.5 text-white" />}
+                          </span>
+                          <span className="font-cairo text-sm text-foreground flex-1 truncate">{s.full_name}</span>
+                          {s.student_code && (
+                            <span className="text-[10px] font-mono text-muted-foreground flex-shrink-0">{s.student_code}</span>
+                          )}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-xs font-cairo text-muted-foreground">
+                    {t('selected') || 'المحددون'}: <span className="text-amber-500 font-bold font-mono">{quickNoteIds.size}</span> / {presentList.length}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground font-tajawal flex items-center gap-1">
+                    <Send className="h-3 w-3" />
+                    {t('sendsToParentsOnly') || 'يُرسل لأولياء الأمور فقط'}
+                  </span>
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowQuickNote(false)}
+                    disabled={quickNoteSending}
+                    className="flex-1 h-11 rounded-xl bg-muted hover:bg-muted/70 text-foreground text-sm font-cairo transition-colors disabled:opacity-50"
+                  >
+                    {t('close') || 'إغلاق'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={sendQuickNote}
+                    disabled={quickNoteSending || !quickNoteText.trim() || quickNoteIds.size === 0}
+                    className="flex-1 h-11 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-cairo font-bold flex items-center justify-center gap-2 transition-colors shadow-md"
+                  >
+                    {quickNoteSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    {t('send') || 'إرسال'} ({quickNoteIds.size})
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showRandomPopup && !!selectedStudent} onOpenChange={setShowRandomPopup}>
         <DialogContent className="max-w-md text-center" dir={isRTL ? 'rtl' : 'ltr'}>

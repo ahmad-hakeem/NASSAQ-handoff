@@ -2190,6 +2190,128 @@ async def get_session_notes(
     return {"session_id": session_id, "notes": notes}
 
 
+@router.post("/session/{session_id}/note/parents")
+async def broadcast_session_note_to_parents(
+    session_id: str,
+    data: dict = Body(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """Save a quick note and dispatch a notification to the parents of selected students."""
+    await _verify_session_owner(session_id, current_user)
+    teacher_id = current_user.get("teacher_id") or current_user["id"]
+    tenant_id = current_user.get("tenant_id") or current_user.get("school_id")
+
+    text = (data.get("text") or "").strip()
+    student_ids = data.get("student_ids") or []
+    if not text:
+        raise HTTPException(status_code=400, detail="نص الملاحظة مطلوب")
+    if not isinstance(student_ids, list) or len(student_ids) == 0:
+        raise HTTPException(status_code=400, detail="حدد طالباً واحداً على الأقل")
+    if not tenant_id:
+        raise HTTPException(status_code=403, detail="سياق المدرسة مفقود")
+
+    # Authorization: student_ids must belong to this session's roster
+    roster = await gd_find(db.session, "session_attendance", {"session_id": session_id}, limit=500)
+    roster_ids = {r.get("student_id") for r in roster if r.get("student_id")}
+    requested_ids = {str(sid) for sid in student_ids if sid}
+    valid_ids = [sid for sid in requested_ids if sid in roster_ids]
+    skipped_ids = sorted(requested_ids - roster_ids)
+    if not valid_ids:
+        raise HTTPException(status_code=403, detail="الطلاب المحددون ليسوا ضمن هذه الحصة")
+
+    # 1) save the note record (only with the validated subset)
+    note_result = await session_engine.add_note(
+        session_id=session_id,
+        teacher_id=teacher_id,
+        text=text,
+        note_type="parent",
+        student_id=None,
+        student_ids=valid_ids,
+    )
+
+    # 2) fetch session + class info for context
+    session_row = await gd_find_one(db.session, "class_sessions", {"id": session_id})
+    class_id = session_row.get("class_id") if session_row else None
+    subject_id = session_row.get("subject_id") if session_row else None
+    subject_name = ""
+    class_name = ""
+    if subject_id:
+        subj = await gd_find_one(db.session, "subjects", {"id": subject_id})
+        subject_name = (subj or {}).get("name") or (subj or {}).get("name_ar") or ""
+    if class_id:
+        cls = await gd_find_one(db.session, "classes", {"id": class_id})
+        class_name = (cls or {}).get("name") or (cls or {}).get("name_ar") or ""
+
+    # 3) build student-name map (validated subset only, tenant-scoped)
+    students_map: Dict[str, str] = {}
+    for sid in valid_ids:
+        s = await gd_find_one(db.session, "students", {"id": sid, "tenant_id": tenant_id})
+        if s:
+            students_map[sid] = s.get("full_name") or s.get("name") or ""
+
+    # 4) for each student, locate parents and create one notification per parent
+    sent = 0
+    failed = 0
+    students_with_parents = 0
+    seen_pairs: set = set()
+    rel_filter = {"to_entity_type": "student", "status": "active", "tenant_id": tenant_id}
+
+    for sid in valid_ids:
+        try:
+            rels = await gd_find(db.session, "user_relationships", {**rel_filter, "to_entity_id": sid}, limit=10)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Relationship lookup failed for student %s: %s", sid, e)
+            continue
+        parent_ids = [r.get("from_entity_id") for r in rels if r.get("relationship_type") in ("parent_of", "guardian_of") and r.get("from_entity_id")]
+        if parent_ids:
+            students_with_parents += 1
+        for pid in parent_ids:
+            key = (pid, sid)
+            if key in seen_pairs:
+                continue
+            seen_pairs.add(key)
+            child_name = students_map.get(sid, "")
+            title = f"ملاحظة من المعلم — {child_name}".strip() if child_name else "ملاحظة من المعلم"
+            meta = {
+                "session_id": session_id,
+                "student_id": sid,
+                "student_name": child_name,
+                "subject_name": subject_name,
+                "class_name": class_name,
+                "note_id": note_result.get("note_id"),
+                "source": "session_quick_note",
+            }
+            notif = {
+                "id": str(uuid.uuid4()),
+                "user_id": pid,
+                "tenant_id": tenant_id,
+                "title": title,
+                "message": text,
+                "type": "communication",
+                "priority": "medium",
+                "is_read": False,
+                "data": meta,
+                "created_at": datetime.now(timezone.utc),
+            }
+            try:
+                await gd_insert(db.session, "notifications", notif)
+                sent += 1
+            except Exception as e:  # noqa: BLE001
+                failed += 1
+                logger.warning("Failed inserting parent notification (parent=%s student=%s): %s", pid, sid, e)
+
+    return {
+        "message": "تم إرسال الملاحظة لأولياء الأمور",
+        "note_id": note_result.get("note_id"),
+        "students_requested": len(requested_ids),
+        "students_targeted": len(valid_ids),
+        "students_skipped": skipped_ids,
+        "students_with_parents": students_with_parents,
+        "notifications_sent": sent,
+        "notifications_failed": failed,
+    }
+
+
 @router.delete("/session/{session_id}/note/{note_id}")
 async def delete_session_note(
     session_id: str,
