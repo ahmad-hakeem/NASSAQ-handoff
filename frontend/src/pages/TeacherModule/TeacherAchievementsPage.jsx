@@ -206,6 +206,7 @@ const FILE_KIND_OPTIONS = [
   { value: 'xlsx',  label: 'جدول Excel (XLSX)' },
   { value: 'txt',   label: 'ملف نصي (TXT)' },
   { value: 'md',    label: 'ملف Markdown (MD)' },
+  { value: 'link',  label: 'رابط (Google Drive / Dropbox / غيره)' },
 ];
 
 const FILE_KIND_ACCEPT = {
@@ -652,7 +653,8 @@ export default function TeacherAchievementsPage() {
     const validKinds = FILE_KIND_OPTIONS.map(o => o.value);
     let fileKind = validKinds.includes(metaKind) ? metaKind : null;
     if (!fileKind) {
-      if (url.startsWith('data:image/')) fileKind = 'image';
+      if (/^https?:\/\//i.test(url)) fileKind = 'link';
+      else if (url.startsWith('data:image/')) fileKind = 'image';
       else if (url.startsWith('data:video/')) fileKind = 'video';
       else if (url.includes('wordprocessingml')) fileKind = 'docx';
       else if (url.includes('presentationml')) fileKind = 'pptx';
@@ -1233,45 +1235,69 @@ export default function TeacherAchievementsPage() {
               </Select>
             </div>
             <div>
-              <Label className="text-xs font-medium mb-1.5 block">الملف المرفق</Label>
-              <input
-                ref={editFileInputRef}
-                type="file"
-                hidden
-                accept={acceptForKind(evidenceForm.file_kind)}
-                onChange={(e) => handleEditEvidenceFile(e.target.files?.[0])}
-              />
-              <button
-                type="button"
-                onClick={() => editFileInputRef.current?.click()}
-                disabled={editFileUploading}
-                className="w-full py-5 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-700 text-center hover:border-violet-400 dark:hover:border-violet-600 hover:bg-violet-50/40 dark:hover:bg-violet-900/10 transition-colors"
-              >
-                {editFileUploading ? (
-                  <div className="flex items-center justify-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                    <Loader2 className="w-4 h-4 animate-spin" /> جاري الرفع...
-                  </div>
-                ) : evidenceForm.file_url ? (
-                  <div className="text-sm">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-600 mx-auto mb-1" />
-                    <div className="text-emerald-700 dark:text-emerald-300 font-medium truncate px-2">{evidenceForm.file_name || 'ملف مرفق'}</div>
-                    <div className="text-[11px] text-gray-500 mt-1">انقر للاستبدال</div>
-                  </div>
-                ) : (
-                  <div>
-                    <FileArchive className="w-6 h-6 text-gray-400 mx-auto mb-1.5" />
-                    <div className="text-sm text-gray-600 dark:text-gray-400">اضغط لرفع ملف أو اسحبه هنا</div>
-                    <div className="text-[11px] text-gray-400 mt-0.5">PDF، صور، فيديو (حد أقصى 10 MB)</div>
-                  </div>
-                )}
-              </button>
+              <Label className="text-xs font-medium mb-1.5 block">{evidenceForm.file_kind === 'link' ? 'الرابط المرفق' : 'الملف المرفق'}</Label>
+              {evidenceForm.file_kind === 'link' ? (
+                <div className="space-y-2">
+                  <Input
+                    type="url"
+                    dir="ltr"
+                    placeholder="https://drive.google.com/..."
+                    value={evidenceForm.file_url || ''}
+                    onChange={(e) => setEvidenceForm(prev => ({ ...prev, file_url: e.target.value }))}
+                    className="h-9"
+                  />
+                  <Input
+                    type="text"
+                    dir="rtl"
+                    placeholder="عنوان الرابط (اختياري) — مثال: ملف الخطة على Drive"
+                    value={evidenceForm.file_name || ''}
+                    onChange={(e) => setEvidenceForm(prev => ({ ...prev, file_name: e.target.value }))}
+                    className="h-9"
+                  />
+                  <p className="text-[11px] text-gray-500">يدعم: Google Drive، OneDrive، Dropbox، YouTube، أو أي رابط آخر يبدأ بـ https://</p>
+                </div>
+              ) : (
+                <>
+                  <input
+                    ref={editFileInputRef}
+                    type="file"
+                    hidden
+                    accept={acceptForKind(evidenceForm.file_kind)}
+                    onChange={(e) => handleEditEvidenceFile(e.target.files?.[0])}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => editFileInputRef.current?.click()}
+                    disabled={editFileUploading}
+                    className="w-full py-5 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-700 text-center hover:border-violet-400 dark:hover:border-violet-600 hover:bg-violet-50/40 dark:hover:bg-violet-900/10 transition-colors"
+                  >
+                    {editFileUploading ? (
+                      <div className="flex items-center justify-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                        <Loader2 className="w-4 h-4 animate-spin" /> جاري الرفع...
+                      </div>
+                    ) : evidenceForm.file_url ? (
+                      <div className="text-sm">
+                        <CheckCircle2 className="w-5 h-5 text-emerald-600 mx-auto mb-1" />
+                        <div className="text-emerald-700 dark:text-emerald-300 font-medium truncate px-2">{evidenceForm.file_name || 'ملف مرفق'}</div>
+                        <div className="text-[11px] text-gray-500 mt-1">انقر للاستبدال</div>
+                      </div>
+                    ) : (
+                      <div>
+                        <FileArchive className="w-6 h-6 text-gray-400 mx-auto mb-1.5" />
+                        <div className="text-sm text-gray-600 dark:text-gray-400">اضغط لرفع ملف أو اسحبه هنا</div>
+                        <div className="text-[11px] text-gray-400 mt-0.5">PDF، صور، فيديو، Office (حد أقصى 10 MB)</div>
+                      </div>
+                    )}
+                  </button>
+                </>
+              )}
               {evidenceForm.file_url && (
                 <button
                   type="button"
                   onClick={() => { editUploadTokenRef.current++; setEditFileUploading(false); setEvidenceForm(prev => ({ ...prev, file_url: '', file_name: '' })); }}
                   className="mt-2 text-[11px] text-red-600 hover:text-red-700 underline"
                 >
-                  إزالة الملف
+                  {evidenceForm.file_kind === 'link' ? 'إزالة الرابط' : 'إزالة الملف'}
                 </button>
               )}
             </div>
@@ -1451,37 +1477,71 @@ export default function TeacherAchievementsPage() {
             </div>
 
             <div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                hidden
-                accept={acceptForKind(manualEvForm.file_kind)}
-                onChange={(e) => handleManualEvFile(e.target.files?.[0])}
-              />
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={manualEvUploading}
-                className="w-full py-6 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-700 text-center hover:border-violet-400 dark:hover:border-violet-600 hover:bg-violet-50/40 dark:hover:bg-violet-900/10 transition-colors"
-              >
-                {manualEvUploading ? (
-                  <div className="flex items-center justify-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                    <Loader2 className="w-4 h-4 animate-spin" /> جاري الرفع...
-                  </div>
-                ) : manualEvForm.file_url ? (
-                  <div className="text-sm">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-600 mx-auto mb-1" />
-                    <div className="text-emerald-700 dark:text-emerald-300 font-medium truncate px-2">{manualEvForm.file_name}</div>
-                    <div className="text-[11px] text-gray-500 mt-1">انقر للاستبدال</div>
-                  </div>
-                ) : (
-                  <div>
-                    <FileArchive className="w-6 h-6 text-gray-400 mx-auto mb-1.5" />
-                    <div className="text-sm text-gray-600 dark:text-gray-400">اضغط لرفع ملف أو اسحبه هنا</div>
-                    <div className="text-[11px] text-gray-400 mt-0.5">PDF، صور، فيديو (حد أقصى 10 MB)</div>
-                  </div>
-                )}
-              </button>
+              {manualEvForm.file_kind === 'link' ? (
+                <div className="space-y-2">
+                  <Label className="text-xs font-medium block">الرابط</Label>
+                  <Input
+                    type="url"
+                    dir="ltr"
+                    placeholder="https://drive.google.com/..."
+                    value={manualEvForm.file_url || ''}
+                    onChange={(e) => setManualEvForm(p => ({ ...p, file_url: e.target.value }))}
+                    className="h-9"
+                  />
+                  <Input
+                    type="text"
+                    dir="rtl"
+                    placeholder="عنوان الرابط (اختياري) — مثال: ملف الخطة على Drive"
+                    value={manualEvForm.file_name || ''}
+                    onChange={(e) => setManualEvForm(p => ({ ...p, file_name: e.target.value }))}
+                    className="h-9"
+                  />
+                  <p className="text-[11px] text-gray-500">يدعم: Google Drive، OneDrive، Dropbox، YouTube، أو أي رابط آخر يبدأ بـ https://</p>
+                  {manualEvForm.file_url && (
+                    <button
+                      type="button"
+                      onClick={() => setManualEvForm(p => ({ ...p, file_url: '', file_name: '' }))}
+                      className="text-[11px] text-red-600 hover:text-red-700 underline"
+                    >
+                      إزالة الرابط
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    hidden
+                    accept={acceptForKind(manualEvForm.file_kind)}
+                    onChange={(e) => handleManualEvFile(e.target.files?.[0])}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={manualEvUploading}
+                    className="w-full py-6 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-700 text-center hover:border-violet-400 dark:hover:border-violet-600 hover:bg-violet-50/40 dark:hover:bg-violet-900/10 transition-colors"
+                  >
+                    {manualEvUploading ? (
+                      <div className="flex items-center justify-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                        <Loader2 className="w-4 h-4 animate-spin" /> جاري الرفع...
+                      </div>
+                    ) : manualEvForm.file_url ? (
+                      <div className="text-sm">
+                        <CheckCircle2 className="w-5 h-5 text-emerald-600 mx-auto mb-1" />
+                        <div className="text-emerald-700 dark:text-emerald-300 font-medium truncate px-2">{manualEvForm.file_name}</div>
+                        <div className="text-[11px] text-gray-500 mt-1">انقر للاستبدال</div>
+                      </div>
+                    ) : (
+                      <div>
+                        <FileArchive className="w-6 h-6 text-gray-400 mx-auto mb-1.5" />
+                        <div className="text-sm text-gray-600 dark:text-gray-400">اضغط لرفع ملف أو اسحبه هنا</div>
+                        <div className="text-[11px] text-gray-400 mt-0.5">PDF، صور، فيديو، Office (حد أقصى 10 MB)</div>
+                      </div>
+                    )}
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
