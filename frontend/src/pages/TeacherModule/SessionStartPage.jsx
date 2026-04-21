@@ -520,6 +520,11 @@ export default function SessionStartPage() {
               <CheckCircle2 className="h-6 w-6" />
             )}
             {t('approveAttendanceAndStart')}
+            {stats.absent > 0 && (
+              <span className="inline-flex items-center justify-center min-w-[2.25rem] h-7 px-2 rounded-full bg-white/20 text-foreground text-sm font-mono font-bold">
+                {stats.absent} {t('absent')}
+              </span>
+            )}
           </button>
         </div>
       </div>

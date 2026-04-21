@@ -122,6 +122,7 @@ export default function SessionTeachPage() {
   const [loading, setLoading] = useState(false);
   const [flashId, setFlashId] = useState(null);
   const [showHakim, setShowHakim] = useState(false);
+  const [showRandomPopup, setShowRandomPopup] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [actionTab, setActionTab] = useState('question'); // question | participation | behaviour | skill | homework | recitation
   const [behaviourCategory, setBehaviourCategory] = useState('positive');
@@ -666,6 +667,7 @@ export default function SessionTeachPage() {
       });
       confetti({ particleCount: 30, spread: 50, origin: { y: 0.6 }, colors: ['#0ea5e9', '#14b8a6'] });
       setActionTab(getTabForMode(mode?.id));
+      setShowRandomPopup(true);
     } catch (err) {
       clearInterval(flashRef.current);
       setFlashId(null);
@@ -2397,6 +2399,67 @@ export default function SessionTeachPage() {
         absencePickerDate={absencePickerDate}
         setAbsencePickerDate={setAbsencePickerDate}
       />
+
+      <Dialog open={showRandomPopup && !!selectedStudent} onOpenChange={setShowRandomPopup}>
+        <DialogContent className="max-w-md text-center" dir={isRTL ? 'rtl' : 'ltr'}>
+          <DialogHeader>
+            <DialogTitle className="text-center font-cairo">{t('randomStudentPick')}</DialogTitle>
+          </DialogHeader>
+          {selectedStudent && (
+            <div className="space-y-5 pt-2">
+              <div className="flex flex-col items-center gap-2">
+                <div className="w-20 h-20 rounded-full overflow-hidden ring-4 ring-amber-400/40 shadow-lg">
+                  <img
+                    src={selectedStudent.avatar_url || `https://api.dicebear.com/9.x/adventurer/svg?seed=${selectedStudent.id}`}
+                    alt={selectedStudent.full_name}
+                    className="w-full h-full object-cover"
+                    onError={(e) => { e.target.src = `https://api.dicebear.com/9.x/adventurer/svg?seed=${selectedStudent.id}`; }}
+                  />
+                </div>
+                <h3 className="text-xl font-bold font-cairo text-foreground">{selectedStudent.full_name}</h3>
+                <p className="text-sm text-muted-foreground font-tajawal">{t('randomlyChosenEvaluateNow') || 'تم اختياره عشوائياً – قيّمه الآن'}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={async () => { await recordAnswer('correct'); setShowRandomPopup(false); }}
+                  className="h-14 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-cairo font-bold text-sm flex items-center justify-center gap-2 active:scale-[0.97] transition-colors shadow-md"
+                >
+                  <CheckCircle2 className="h-5 w-5" /> {t('correctAnswer')}
+                </button>
+                <button
+                  onClick={async () => { await recordAnswer('wrong'); setShowRandomPopup(false); }}
+                  className="h-14 rounded-xl bg-red-500 hover:bg-red-600 text-white font-cairo font-bold text-sm flex items-center justify-center gap-2 active:scale-[0.97] transition-colors shadow-md"
+                >
+                  <XCircle className="h-5 w-5" /> {t('wrongAnswer')}
+                </button>
+                <button
+                  onClick={async () => {
+                    if (homeworkStatuses[selectedStudent.id] !== 'not_done') {
+                      await toggleHomework(selectedStudent.id);
+                    }
+                    setShowRandomPopup(false);
+                  }}
+                  className="h-14 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-cairo font-bold text-sm flex items-center justify-center gap-2 active:scale-[0.97] transition-colors shadow-md"
+                >
+                  <BookOpen className="h-5 w-5" /> {t('didNotSubmitHomework') || 'لم يسلم الواجب'}
+                </button>
+                <button
+                  onClick={() => { setActionTab('recitation'); setShowRandomPopup(false); }}
+                  className="h-14 rounded-xl bg-purple-500 hover:bg-purple-600 text-white font-cairo font-bold text-sm flex items-center justify-center gap-2 active:scale-[0.97] transition-colors shadow-md"
+                >
+                  <Mic className="h-5 w-5" /> {t('recitation')}
+                </button>
+              </div>
+              <button
+                onClick={() => setShowRandomPopup(false)}
+                className="w-full h-10 rounded-xl bg-muted hover:bg-muted/80 text-foreground text-sm font-cairo transition-colors"
+              >
+                {t('close')}
+              </button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
     </SectionErrorBoundary>
   );
