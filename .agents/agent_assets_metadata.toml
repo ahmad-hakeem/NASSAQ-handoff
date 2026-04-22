@@ -36,3 +36,9 @@ id = "_eM41ydOoe1A_PSGNmmxT"
 uri = "file://exports/users_list.csv"
 type = "table"
 title = "Users list (786 accounts)"
+
+[[outputs]]
+id = "u7fupcBDOfPouttDg74db"
+uri = "file://reports/تقرير_حساب_المعلم_بعد_التحديث.docx"
+type = "word_document"
+title = "تقرير حساب المعلم بعد التحديث"
