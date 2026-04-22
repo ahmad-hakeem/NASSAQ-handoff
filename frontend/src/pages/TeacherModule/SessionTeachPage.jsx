@@ -3263,15 +3263,15 @@ function SessionReviewPhase({ reviewData, sessionInfo, closingNote, setClosingNo
 
         <div className="bg-card rounded-xl p-4">
           <h3 className="text-muted-foreground text-sm mb-3 font-cairo font-bold flex items-center gap-2">
-            <StickyNote className="h-4 w-4 text-amber-400" /> {t('notesLabel')}
+            <StickyNote className="h-4 w-4 text-amber-500 dark:text-amber-400" /> {t('notesLabel')}
           </h3>
           <div className="grid grid-cols-2 gap-3">
-            <div className="bg-amber-900/30 rounded-lg p-3 text-center">
-              <div className="text-xl font-bold text-amber-400">{r.notes?.total || 0}</div>
+            <div className="bg-amber-500/10 dark:bg-amber-900/30 border border-amber-500/20 dark:border-transparent rounded-lg p-3 text-center">
+              <div className="text-xl font-bold text-amber-600 dark:text-amber-400">{r.notes?.total || 0}</div>
               <div className="text-muted-foreground text-[10px]">{t('totalNotes')}</div>
             </div>
-            <div className="bg-orange-900/30 rounded-lg p-3 text-center">
-              <div className="text-xl font-bold text-orange-400">{r.notes?.teacher_notes || 0}</div>
+            <div className="bg-amber-500/10 dark:bg-amber-900/30 border border-amber-500/20 dark:border-transparent rounded-lg p-3 text-center">
+              <div className="text-xl font-bold text-amber-600 dark:text-amber-400">{r.notes?.teacher_notes || 0}</div>
               <div className="text-muted-foreground text-[10px]">{t('teacherNotes')}</div>
             </div>
           </div>
@@ -3280,12 +3280,12 @@ function SessionReviewPhase({ reviewData, sessionInfo, closingNote, setClosingNo
         {r.needs_attention?.length > 0 && (
           <div className="bg-card rounded-xl p-4">
             <h3 className="text-muted-foreground text-sm mb-3 font-cairo font-bold flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-amber-400" /> {t('needsAttention')}
+              <AlertTriangle className="h-4 w-4 text-amber-500 dark:text-amber-400" /> {t('needsAttention')}
             </h3>
             {r.needs_attention.map((s, i) => (
               <div key={i} className="flex items-center justify-between py-1.5 border-b border-border last:border-0">
-                <span className="text-foreground text-sm">{s.name}</span>
-                <span className="text-amber-400 text-xs">{s.reason}</span>
+                <span className="text-foreground text-sm font-cairo">{s.name}</span>
+                <span className="text-[11px] font-tajawal px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-500/20 dark:border-transparent">{s.reason}</span>
               </div>
             ))}
           </div>
