@@ -412,6 +412,14 @@ async def get_schools(
 
 @router.get("/schools/{school_id}", response_model=SchoolResponse)
 async def get_school(school_id: str, current_user: dict = Depends(get_current_user)):
+    # Authorization: platform/ministry roles can fetch any school;
+    # everyone else may only read their own tenant's school (prevents IDOR).
+    privileged_roles = {UserRole.PLATFORM_ADMIN.value, UserRole.MINISTRY_REP.value}
+    user_role = current_user.get("role")
+    user_tenant = current_user.get("tenant_id")
+    if user_role not in privileged_roles and school_id != user_tenant:
+        raise HTTPException(status_code=403, detail="غير مصرح بالوصول إلى بيانات هذه المدرسة")
+
     school = await gd_find_one(db.session, "schools", {"id": school_id})
     if not school:
         raise HTTPException(status_code=404, detail="المدرسة غير موجودة")

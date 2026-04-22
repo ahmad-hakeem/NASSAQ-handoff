@@ -104,13 +104,21 @@ export const ClassesPage = () => {
       setClasses(classesRes.data);
       setTeachers(teachersRes.data);
       
-      // Only fetch schools list for platform admins
+      // Platform admins get the full schools list; school-level users get only their own school
       if (!isSchoolLevel) {
         try {
           const schoolsRes = await api.get('/schools');
           setSchools(schoolsRes.data);
         } catch (e) {
           console.error('Error fetching schools list:', e);
+          setSchools([]);
+        }
+      } else if (userSchoolId) {
+        try {
+          const schoolRes = await api.get(`/schools/${userSchoolId}`);
+          setSchools([schoolRes.data]);
+        } catch (e) {
+          console.error('Error fetching own school:', e);
           setSchools([]);
         }
       }
@@ -292,8 +300,12 @@ export const ClassesPage = () => {
                     <Select 
                       value={newClass.school_id} 
                       onValueChange={(value) => setNewClass({ ...newClass, school_id: value, homeroom_teacher_id: '' })}
+                      disabled={isSchoolLevel}
                     >
-                      <SelectTrigger className="rounded-xl" data-testid="class-school-select">
+                      <SelectTrigger
+                        className="rounded-xl disabled:opacity-100 disabled:cursor-default"
+                        data-testid="class-school-select"
+                      >
                         <SelectValue placeholder={t('selectSchool')} />
                       </SelectTrigger>
                       <SelectContent>
