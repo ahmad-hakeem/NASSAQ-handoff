@@ -349,6 +349,8 @@
   "attempts": "attempts",
   "attemptsForNonMastery": "Attempts for non-mastery cases",
   "recitation": "Recitation",
+  "randomlyChosenEvaluateNow": "Randomly chosen — evaluate now",
+  "didNotSubmitHomework": "Did not submit homework",
   "recitationTab": "Recitation",
   "recitationMastered": "Mastered",
   "recitationNotMastered": "Not Mastered",

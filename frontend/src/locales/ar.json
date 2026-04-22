@@ -349,6 +349,8 @@
   "attempts": "محاولات",
   "attemptsForNonMastery": "عدد المحاولات لحالات عدم الإتقان",
   "recitation": "تسميع",
+  "randomlyChosenEvaluateNow": "تم اختياره عشوائياً – قيّمه الآن",
+  "didNotSubmitHomework": "لم يسلم الواجب",
   "recitationTab": "تسميع",
   "recitationMastered": "أتقن",
   "recitationNotMastered": "لم يتقن",
