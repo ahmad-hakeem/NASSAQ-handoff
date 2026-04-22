@@ -2464,12 +2464,34 @@ export default function SessionTeachPage() {
               try {
                 const res = await api.post(`/session/${sessionId}/note/parents`, { text, student_ids: ids });
                 const sent = res.data?.notifications_sent ?? 0;
-                toast.success(`${t('noteSentToParents') || 'تم إرسال الملاحظة لأولياء الأمور'} (${sent})`);
-                addLog('note', `${t('note')}: ${text.slice(0, 30)} → ${ids.length} ${t('students')}`, 'text-amber-600');
-                setShowQuickNote(false);
-                setQuickNoteText('');
-                setQuickNoteIds(new Set());
-                loadNotes();
+                const studentsWithParents = res.data?.students_with_parents ?? 0;
+                const studentsTargeted = res.data?.students_targeted ?? ids.length;
+                const failed = res.data?.notifications_failed ?? 0;
+
+                if (sent > 0) {
+                  toast.success(
+                    `${t('noteSentToParents') || 'تم إرسال الملاحظة لأولياء الأمور'} — ${sent} ${t('parents') || 'ولي أمر'} / ${studentsWithParents} ${t('students') || 'طالب'}`
+                  );
+                  addLog('note', `${t('note')}: ${text.slice(0, 30)} → ${sent} ${t('parents') || 'ولي أمر'}`, 'text-amber-600');
+                  setShowQuickNote(false);
+                  setQuickNoteText('');
+                  setQuickNoteIds(new Set());
+                  loadNotes();
+                } else if (studentsWithParents === 0) {
+                  // No parents linked — warn teacher with actionable message, keep modal open
+                  toast.warning(
+                    t('noParentsLinkedWarn') ||
+                    `لا يوجد ولي أمر مرتبط بأي من الطلاب المحددين (${studentsTargeted}). تواصل مع إدارة المدرسة لربط أولياء الأمور.`,
+                    { duration: 6000 }
+                  );
+                  addLog('note', `${t('note')} — ${t('noParentsLinkedShort') || 'لا يوجد ولي أمر مرتبط'}`, 'text-amber-600');
+                } else if (failed > 0) {
+                  toast.error(
+                    `${t('errorAddingNote') || 'تعذر إرسال الملاحظة'} — ${failed} ${t('failed') || 'فشل'}`
+                  );
+                } else {
+                  toast.warning(t('nothingToSend') || 'لم يتم إرسال أي إشعار');
+                }
               } catch (e) {
                 console.error('Quick note error:', e);
                 nassaqError(e.response?.data?.detail || t('errorAddingNote') || 'تعذر إرسال الملاحظة');
