@@ -228,6 +228,7 @@ export default function SessionTeachPage() {
     });
     loadSkillTypes();
     loadActivityLog();
+    loadSessionSettings();
     return () => { isMounted = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
