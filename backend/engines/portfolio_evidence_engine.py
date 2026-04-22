@@ -226,14 +226,25 @@ class PortfolioEvidenceEngine:
         evidence_list = await gd_find(self.db.session, "portfolio_evidence", query,
                                        order_by="created_at", desc_order=True, limit=5000)
 
-        sections: Dict[str, Any] = {}
-        for section_key, type_keys in EVIDENCE_SECTIONS.items():
-            section_items = [e for e in evidence_list if e.get("evidence_type") in type_keys]
-            sections[section_key] = {
-                "count": len(section_items),
-                "items": section_items[:20],
-                "types_covered": list({e["evidence_type"] for e in section_items}),
-            }
+        # Bucket every evidence into a section using the complete type→section map.
+        # SECTION_FOR_TYPE includes both legacy types and the V2 new types (which fall back
+        # to "administrative"). Without this, evidence with V2-only types (e.g.
+        # curriculum_distribution_plan, student_worksheets) would silently disappear from
+        # the portfolio response, so the Files tab shows 0 even after saving.
+        sections: Dict[str, Any] = {key: {"count": 0, "items": [], "types_covered": []} for key in EVIDENCE_SECTIONS.keys()}
+        bucketed_types: Dict[str, set] = {key: set() for key in sections.keys()}
+        for ev in evidence_list:
+            etype = ev.get("evidence_type")
+            section_key = SECTION_FOR_TYPE.get(etype, "administrative")
+            if section_key not in sections:
+                sections[section_key] = {"count": 0, "items": [], "types_covered": []}
+                bucketed_types[section_key] = set()
+            sections[section_key]["items"].append(ev)
+            if etype:
+                bucketed_types[section_key].add(etype)
+        for key, bucket in sections.items():
+            bucket["count"] = len(bucket["items"])
+            bucket["types_covered"] = list(bucketed_types.get(key, set()))
 
         total = len(evidence_list)
         auto_count = sum(1 for e in evidence_list if e.get("source") == "auto")
