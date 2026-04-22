@@ -1158,25 +1158,34 @@ class TeacherSessionEngine:
         # Teacher's private notes = everything except parent broadcasts
         teacher_notes = max(0, notes_count - sent_to_parents)
 
+        tenant_id_scope = session.get("tenant_id") or session.get("school_id")
         student_interactions = {}
         for i in interactions:
             sid = i["student_id"]
             if sid not in student_interactions:
                 student_interactions[sid] = {"correct": 0, "participation": 0}
-            if i.get("answer_result") == AnswerResult.CORRECT.value:
+            # Only count correct answers from QUESTION-type interactions (not behaviour/skill side-effects)
+            if i.get("interaction_type") == InteractionType.QUESTION.value and i.get("answer_result") == AnswerResult.CORRECT.value:
                 student_interactions[sid]["correct"] += 1
             if i.get("interaction_type") == InteractionType.PARTICIPATION.value:
                 student_interactions[sid]["participation"] += 1
 
+        # Stable sort: score desc, then correct desc, then participation desc, then sid asc
         sorted_students = sorted(
             student_interactions.items(),
-            key=lambda x: x[1]["correct"] * 2 + x[1]["participation"],
-            reverse=True
+            key=lambda x: (-(x[1]["correct"] * 2 + x[1]["participation"]), -x[1]["correct"], -x[1]["participation"], x[0])
         )
 
         top_participants = []
         for sid, st in sorted_students[:3]:
-            student = await gd_find_one(self.session, "students", {"id": sid})
+            score = st["correct"] * 2 + st["participation"]
+            if score <= 0:
+                # Skip students with no positive activity — they aren't truly "top"
+                continue
+            student_filter = {"id": sid}
+            if tenant_id_scope:
+                student_filter["tenant_id"] = tenant_id_scope
+            student = await gd_find_one(self.session, "students", student_filter)
             if student:
                 top_participants.append({
                     "student_id": sid,
@@ -1190,7 +1199,10 @@ class TeacherSessionEngine:
         present_ids = [a["student_id"] for a in attendance if a["status"] == AttendanceStatus.PRESENT.value]
         for sid in present_ids:
             if sid not in interacted_ids:
-                student = await gd_find_one(self.session, "students", {"id": sid})
+                student_filter = {"id": sid}
+                if tenant_id_scope:
+                    student_filter["tenant_id"] = tenant_id_scope
+                student = await gd_find_one(self.session, "students", student_filter)
                 if student:
                     needs_attention.append({
                         "student_id": sid,
@@ -1331,12 +1343,13 @@ class TeacherSessionEngine:
             "note_type": "parent",
         })
 
+        tenant_id_scope_end = session.get("tenant_id") or session.get("school_id")
         student_interactions = {}
         for i in interactions:
             sid = i["student_id"]
             if sid not in student_interactions:
                 student_interactions[sid] = {"correct": 0, "participation": 0, "negative": 0, "positive": 0}
-            if i.get("answer_result") == AnswerResult.CORRECT.value:
+            if i.get("interaction_type") == InteractionType.QUESTION.value and i.get("answer_result") == AnswerResult.CORRECT.value:
                 student_interactions[sid]["correct"] += 1
             if i.get("interaction_type") == InteractionType.PARTICIPATION.value:
                 student_interactions[sid]["participation"] += 1
@@ -1345,15 +1358,21 @@ class TeacherSessionEngine:
             if i.get("behaviour_category") == BehaviourCategory.POSITIVE.value:
                 student_interactions[sid]["positive"] += 1
         
+        # Stable sort: score desc, then correct desc, then participation desc, then sid asc
         sorted_students = sorted(
             student_interactions.items(),
-            key=lambda x: x[1]["correct"] * 2 + x[1]["participation"],
-            reverse=True
+            key=lambda x: (-(x[1]["correct"] * 2 + x[1]["participation"]), -x[1]["correct"], -x[1]["participation"], x[0])
         )
         
         top_participants = []
         for sid, stats in sorted_students[:3]:
-            student = await gd_find_one(self.session, "students", {"id": sid})
+            score = stats["correct"] * 2 + stats["participation"]
+            if score <= 0:
+                continue
+            student_filter = {"id": sid}
+            if tenant_id_scope_end:
+                student_filter["tenant_id"] = tenant_id_scope_end
+            student = await gd_find_one(self.session, "students", student_filter)
             if student:
                 top_participants.append({
                     "student_id": sid,
@@ -1367,7 +1386,10 @@ class TeacherSessionEngine:
         present_ids = [a["student_id"] for a in attendance if a["status"] == AttendanceStatus.PRESENT.value]
         for sid in present_ids:
             if sid not in interacted_student_ids:
-                student = await gd_find_one(self.session, "students", {"id": sid})
+                student_filter = {"id": sid}
+                if tenant_id_scope_end:
+                    student_filter["tenant_id"] = tenant_id_scope_end
+                student = await gd_find_one(self.session, "students", student_filter)
                 if student:
                     needs_attention.append({
                         "student_id": sid,
@@ -1381,7 +1403,10 @@ class TeacherSessionEngine:
                 neg_students[sid] = neg_students.get(sid, 0) + 1
         for sid, count in neg_students.items():
             if count >= 2:
-                student = await gd_find_one(self.session, "students", {"id": sid})
+                student_filter = {"id": sid}
+                if tenant_id_scope_end:
+                    student_filter["tenant_id"] = tenant_id_scope_end
+                student = await gd_find_one(self.session, "students", student_filter)
                 if student and not any(n["student_id"] == sid for n in needs_attention):
                     needs_attention.append({
                         "student_id": sid,
@@ -1576,6 +1601,52 @@ class TeacherSessionEngine:
             "session_id": session_id,
             "note_type": "parent",
         })
+
+        # Rehydrate top_participants and needs_attention for completed sessions
+        tenant_id_scope_c = session.get("tenant_id") or session.get("school_id")
+        student_stats_c = {}
+        for i in interactions:
+            sid = i["student_id"]
+            if sid not in student_stats_c:
+                student_stats_c[sid] = {"correct": 0, "participation": 0}
+            if i.get("interaction_type") == InteractionType.QUESTION.value and i.get("answer_result") == AnswerResult.CORRECT.value:
+                student_stats_c[sid]["correct"] += 1
+            if i.get("interaction_type") == InteractionType.PARTICIPATION.value:
+                student_stats_c[sid]["participation"] += 1
+        sorted_c = sorted(
+            student_stats_c.items(),
+            key=lambda x: (-(x[1]["correct"] * 2 + x[1]["participation"]), -x[1]["correct"], -x[1]["participation"], x[0])
+        )
+        top_participants_c = []
+        for sid, st in sorted_c[:3]:
+            if st["correct"] * 2 + st["participation"] <= 0:
+                continue
+            sf = {"id": sid}
+            if tenant_id_scope_c:
+                sf["tenant_id"] = tenant_id_scope_c
+            stu = await gd_find_one(self.session, "students", sf)
+            if stu:
+                top_participants_c.append({
+                    "student_id": sid,
+                    "name": stu.get("full_name"),
+                    "correct_answers": st["correct"],
+                    "participations": st["participation"],
+                })
+        needs_attention_c = []
+        interacted_c = set(i["student_id"] for i in interactions)
+        for sid in [a["student_id"] for a in attendance if a["status"] == AttendanceStatus.PRESENT.value]:
+            if sid not in interacted_c:
+                sf = {"id": sid}
+                if tenant_id_scope_c:
+                    sf["tenant_id"] = tenant_id_scope_c
+                stu = await gd_find_one(self.session, "students", sf)
+                if stu:
+                    needs_attention_c.append({
+                        "student_id": sid,
+                        "name": stu.get("full_name"),
+                        "reason": "لم يشارك في الحصة",
+                    })
+
         return SessionSummaryResponse(
             session_record_id=session_id,
             duration_minutes=round(completed_duration),
@@ -1594,8 +1665,8 @@ class TeacherSessionEngine:
             skills_recorded=skills_count,
             evaluated_students=evaluated_students_c,
             notes_sent=notes_sent_c,
-            top_participants=[],
-            needs_attention=[],
+            top_participants=top_participants_c,
+            needs_attention=needs_attention_c,
         )
 
     async def _update_student_profiles_after_session(self, session_id, school_id, attendance, interactions, student_interactions, now):
