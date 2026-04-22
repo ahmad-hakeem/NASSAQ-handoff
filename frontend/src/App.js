@@ -8,6 +8,7 @@ import { NassaqAlertProvider } from "./components/ui/NassaqAlertDialog";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { GenericNameGuard } from "./components/GenericNameGuard";
 import AppRoutes from "./routes/appRoutes";
+import { BetaBanner } from "./components/BetaDisclaimer";
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
           <WebSocketProvider>
             <NassaqAlertProvider>
               <BrowserRouter>
+                <BetaBanner />
                 <GenericNameGuard>
                   <AppRoutes />
                 </GenericNameGuard>

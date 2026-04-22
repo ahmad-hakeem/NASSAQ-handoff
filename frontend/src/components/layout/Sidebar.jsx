@@ -13,6 +13,7 @@ import {
 import { Badge } from '../ui/badge';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '../ui/NassaqAlertDialog';
+import { BetaBadge } from '../BetaDisclaimer';
 import {
   LayoutDashboard,
   Building2,
@@ -450,8 +451,9 @@ export const Sidebar = ({ children }) => {
         {/* Logo and collapse button row */}
         <div className={`flex items-center ${collapsed ? 'justify-center' : 'justify-between'} w-full`}>
           {!collapsed && (
-            <Link to="/">
+            <Link to="/" className="flex items-center gap-2">
               <img src={LOGO_WHITE} alt="نَسَّق" className="h-10 w-auto rounded-xl" />
+              <BetaBadge />
             </Link>
           )}
           {collapsed && (

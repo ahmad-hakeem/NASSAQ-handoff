@@ -3624,5 +3624,10 @@
   "errorPickingStudent": "خطأ في اختيار الطالب",
   "errorLoadingSessionSummary": "خطأ في تحميل ملخص الحصة",
   "attendanceNotApproved": "لم يتم اعتماد الحضور",
-  "noInteractionsRecorded": "لا توجد تفاعلات مسجلة"
+  "noInteractionsRecorded": "لا توجد تفاعلات مسجلة",
+  "betaBannerTitle": "المنصة قيد التطوير",
+  "betaBannerBody": "بعض الميزات والحسابات قد تتغير، وقد تواجه مشاكل بسيطة. شكراً لتفهمك ومساعدتنا بإبلاغنا عن أي ملاحظة.",
+  "betaDismiss": "إغلاق",
+  "betaBadgeLabel": "تجريبي",
+  "betaBadgeTooltip": "نسخة تجريبية — المنصة مازالت قيد التطوير والتحديث"
 }

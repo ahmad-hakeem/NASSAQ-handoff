@@ -3622,5 +3622,10 @@
   "errorPickingStudent": "Error picking student",
   "errorLoadingSessionSummary": "Error loading session summary",
   "attendanceNotApproved": "Attendance not approved",
-  "noInteractionsRecorded": "No interactions recorded"
+  "noInteractionsRecorded": "No interactions recorded",
+  "betaBannerTitle": "Platform under development",
+  "betaBannerBody": "Some features and calculations may change, and you might encounter minor issues. Thanks for your patience and for reporting any feedback.",
+  "betaDismiss": "Dismiss",
+  "betaBadgeLabel": "Beta",
+  "betaBadgeTooltip": "Beta version — the platform is still under active development"
 }
