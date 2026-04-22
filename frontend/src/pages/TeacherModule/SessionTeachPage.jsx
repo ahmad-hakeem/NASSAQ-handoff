@@ -3556,13 +3556,14 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
   return (
     <div className="min-h-screen bg-background p-4 flex items-center justify-center" dir={isRTL ? 'rtl' : 'ltr'}>
       <div className="w-full max-w-md space-y-4 pb-6">
-        <div className="bg-gradient-to-br from-brand-turquoise to-brand-navy rounded-2xl p-6 text-foreground text-center relative overflow-hidden">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.08),transparent_60%)]" />
+        <div className="bg-gradient-to-br from-brand-turquoise to-brand-navy rounded-2xl p-6 text-white text-center relative overflow-hidden shadow-lg shadow-brand-navy/20">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.18),transparent_60%)]" />
+          <div className="absolute inset-0 bg-black/10" />
           <div className="relative z-10">
-            <Trophy className="h-14 w-14 mx-auto mb-3 text-amber-700 dark:text-amber-300" />
-            <h1 className="font-cairo text-2xl font-bold">{t('sessionEnded')}</h1>
-            <p className="text-muted-foreground mt-1">{sessionInfo?.subject_name || sessionInfo?.subjectName} — {sessionInfo?.class_name || sessionInfo?.className}</p>
-            <div className="mt-4 text-3xl font-mono font-bold">{summary.duration_minutes || 0} <span className="text-lg text-muted-foreground">{t('durationMinutes')}</span></div>
+            <Trophy className="h-14 w-14 mx-auto mb-3 text-amber-300 drop-shadow-[0_2px_4px_rgba(0,0,0,0.4)]" />
+            <h1 className="font-cairo text-2xl font-bold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">{t('sessionEnded')}</h1>
+            <p className="text-white/90 mt-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]">{sessionInfo?.subject_name || sessionInfo?.subjectName} — {sessionInfo?.class_name || sessionInfo?.className}</p>
+            <div className="mt-4 text-3xl font-mono font-bold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">{summary.duration_minutes || 0} <span className="text-lg text-white/85 font-cairo">{t('durationMinutes')}</span></div>
           </div>
         </div>
 
