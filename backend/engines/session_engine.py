@@ -217,6 +217,8 @@ class SessionSummaryResponse(BaseModel):
     positive_behaviours: int
     negative_behaviours: int
     skills_recorded: int = 0
+    evaluated_students: int = 0
+    notes_sent: int = 0
     top_participants: List[Dict[str, Any]]
     needs_attention: List[Dict[str, Any]]
 
@@ -1149,10 +1151,12 @@ class TeacherSessionEngine:
         skills_students = list(set(d.get("student_id") for d in skills_docs))
 
         notes_count = await gd_count(self.session, "session_notes", {"session_id": session_id})
-        teacher_notes = await gd_count(self.session, "session_notes", {
+        sent_to_parents = await gd_count(self.session, "session_notes", {
             "session_id": session_id,
-            "note_type": "session"
+            "note_type": "parent"
         })
+        # Teacher's private notes = everything except parent broadcasts
+        teacher_notes = max(0, notes_count - sent_to_parents)
 
         student_interactions = {}
         for i in interactions:
@@ -1244,6 +1248,7 @@ class TeacherSessionEngine:
             interactions={
                 "total_participations": len(participations),
                 "participating_students": len(participants),
+                "evaluated_students": len(skills_students),
                 "questions_asked": len(questions),
                 "correct_answers": correct,
                 "wrong_answers": wrong,
@@ -1261,6 +1266,7 @@ class TeacherSessionEngine:
             notes={
                 "total": notes_count,
                 "teacher_notes": teacher_notes,
+                "sent_to_parents": sent_to_parents,
             },
             warnings=warnings,
             top_participants=top_participants,
@@ -1318,7 +1324,13 @@ class TeacherSessionEngine:
         negative_behaviours = sum(1 for b in behaviours if b.get("behaviour_category") == BehaviourCategory.NEGATIVE.value)
         
         skills_recorded = await gd_count(self.session, "student_skills", {"session_id": session_id})
-        
+        skills_docs_end = await gd_find(self.session, "student_skills", {"session_id": session_id})
+        evaluated_students_count = len(set(d.get("student_id") for d in skills_docs_end if d.get("student_id")))
+        notes_sent_count = await gd_count(self.session, "session_notes", {
+            "session_id": session_id,
+            "note_type": "parent",
+        })
+
         student_interactions = {}
         for i in interactions:
             sid = i["student_id"]
@@ -1527,6 +1539,8 @@ class TeacherSessionEngine:
             positive_behaviours=positive_behaviours,
             negative_behaviours=negative_behaviours,
             skills_recorded=skills_recorded,
+            evaluated_students=evaluated_students_count,
+            notes_sent=notes_sent_count,
             top_participants=top_participants,
             needs_attention=needs_attention
         )
@@ -1556,6 +1570,12 @@ class TeacherSessionEngine:
         positive_b = sum(1 for b in behaviours if b.get("behaviour_category") == BehaviourCategory.POSITIVE.value)
         negative_b = sum(1 for b in behaviours if b.get("behaviour_category") == BehaviourCategory.NEGATIVE.value)
         skills_count = await gd_count(self.session, "student_skills", {"session_id": session_id})
+        skills_docs_c = await gd_find(self.session, "student_skills", {"session_id": session_id})
+        evaluated_students_c = len(set(d.get("student_id") for d in skills_docs_c if d.get("student_id")))
+        notes_sent_c = await gd_count(self.session, "session_notes", {
+            "session_id": session_id,
+            "note_type": "parent",
+        })
         return SessionSummaryResponse(
             session_record_id=session_id,
             duration_minutes=round(completed_duration),
@@ -1572,6 +1592,8 @@ class TeacherSessionEngine:
             positive_behaviours=positive_b,
             negative_behaviours=negative_b,
             skills_recorded=skills_count,
+            evaluated_students=evaluated_students_c,
+            notes_sent=notes_sent_c,
             top_participants=[],
             needs_attention=[],
         )

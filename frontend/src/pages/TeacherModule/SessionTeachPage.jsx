@@ -791,8 +791,8 @@ export default function SessionTeachPage() {
       if (isCustom) {
         await api.post(`/session/${sessionId}/note`, {
           student_id: selectedStudent.id,
-          content: `${t('skill')}: ${skill.name_ar || skill.name}${skillNote ? ' - ' + skillNote : ''}`,
-          type: 'skill',
+          text: `${t('skill')}: ${skill.name_ar || skill.name}${skillNote ? ' - ' + skillNote : ''}`,
+          note_type: 'skill',
         });
       } else {
         await api.post(`/session/${sessionId}/skill`, {
@@ -827,8 +827,8 @@ export default function SessionTeachPage() {
       const noteSuffix = recitationNote ? ` - ${recitationNote}` : '';
       await api.post(`/session/${sessionId}/note`, {
         student_id: selectedStudent.id,
-        content: `${t('recitation')}: ${label} (${t('attempts')}: ${recitationAttempts})${noteSuffix}`,
-        type: 'recitation',
+        text: `${t('recitation')}: ${label} (${t('attempts')}: ${recitationAttempts})${noteSuffix}`,
+        note_type: 'recitation',
       });
       if (mastered) {
         confetti({ particleCount: 40, spread: 60, origin: { y: 0.6 }, colors: ['#10b981', '#34d399', '#6ee7b7'] });
