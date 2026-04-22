@@ -2789,6 +2789,8 @@
   "select": "Select",
   "select2": "Select",
   "selectAbsenteesOnly": "Select absentees only — tap a student to toggle status",
+  "selectAbsenteesOnlyHint": "Mark absentees only — everyone is present by default",
+  "attendanceConfirmation": "Confirm Attendance",
   "selectAccountType": "Select Account Type",
   "selectAClass": "Select a class",
   "selectAClass2": "Select a class",

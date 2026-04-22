@@ -2789,6 +2789,8 @@
   "select": "اختر صلة القرابة",
   "select2": "اختر",
   "selectAbsenteesOnly": "اختر الغائبين فقط — انقر على الطالب لتغيير حالته",
+  "selectAbsenteesOnlyHint": "حدد الغائبين فقط — الجميع حاضر افتراضياً",
+  "attendanceConfirmation": "تأكيد الحضور",
   "selectAccountType": "اختر نوع الحساب",
   "selectAClass": "اختر فصلاً لعرض التقارير",
   "selectAClass2": "اختر فصلاً",

@@ -363,36 +363,67 @@ export default function TeacherHomePage() {
             </div>
           </Card>
 
-          {/* Period Timeline (Mobile) */}
-          {totalPeriods > 0 && (
-            <div className="flex items-center gap-1">
-              {Array.from({ length: totalPeriods }, (_, i) => i + 1).map((num) => {
-                let status = 'upcoming';
-                if (isSchoolTime) {
-                  if (num < currentPeriod) status = 'done';
-                  else if (num === currentPeriod) status = 'active';
-                }
-                return (
-                  <div
-                    key={num}
-                    className={`flex-1 h-8 rounded-md flex items-center justify-center text-xs font-cairo font-bold transition-colors border ${
-                      status === 'done'
-                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
-                        : status === 'active'
-                        ? 'bg-brand-turquoise/15 border-brand-turquoise/40 text-brand-turquoise ring-1 ring-brand-turquoise/30'
-                        : 'bg-muted/50 border-border/50 text-muted-foreground'
-                    }`}
-                  >
-                    {status === 'done' ? (
-                      <Check className="h-3.5 w-3.5" />
-                    ) : (
-                      num
-                    )}
+          {/* Period Timeline (Mobile) — visual schedule with end markers + counts */}
+          {totalPeriods > 0 && (() => {
+            const periodList = Array.from({ length: totalPeriods }, (_, i) => i + 1).map((num) => {
+              let status = 'upcoming';
+              if (isSchoolTime) {
+                if (num < currentPeriod) status = 'done';
+                else if (num === currentPeriod) status = 'active';
+              }
+              const lesson = todayLessons.find(l => l.period === num);
+              return { num, status, lesson };
+            });
+            const completedCount = periodList.filter(p => p.status === 'done').length;
+            const remainingCount = periodList.filter(p => p.status === 'upcoming' || p.status === 'active').length;
+            return (
+              <div className="bg-background border border-border/50 rounded-xl p-3 shadow-sm space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-cairo font-bold text-xs text-foreground flex items-center gap-1.5">
+                    <Clock className="h-3.5 w-3.5 text-brand-turquoise" />
+                    {t('schoolDayTimeline')}
+                  </h3>
+                  <div className="flex items-center gap-2 text-[10px] font-tajawal text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      <span className="tabular-nums">{completedCount}</span> {t('periodsCompleted')}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-600" />
+                      <span className="tabular-nums">{remainingCount}</span> {t('periodsRemaining')}
+                    </span>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                </div>
+                <div className="flex items-stretch gap-1">
+                  {periodList.map((p) => (
+                    <div key={p.num} className="flex-1 flex flex-col items-stretch gap-0.5" title={p.lesson ? `${p.lesson.subject || ''} • ${p.lesson.className || ''} • ${p.lesson.time || ''}` : `${t('period') || 'الحصة'} ${p.num}`}>
+                      <div className={`h-9 rounded-md flex items-center justify-center text-xs font-cairo font-bold transition-colors border ${
+                        p.status === 'done'
+                          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                          : p.status === 'active'
+                          ? 'bg-brand-turquoise/15 border-brand-turquoise/40 text-brand-turquoise ring-1 ring-brand-turquoise/30'
+                          : 'bg-muted/50 border-border/50 text-muted-foreground'
+                      }`}>
+                        {p.status === 'done' ? (
+                          <Check className="h-3.5 w-3.5" />
+                        ) : p.status === 'active' ? (
+                          <span className="relative">
+                            {p.num}
+                            <span className="absolute -top-1 -end-1.5 w-1.5 h-1.5 bg-brand-turquoise rounded-full animate-ping" />
+                          </span>
+                        ) : (
+                          p.num
+                        )}
+                      </div>
+                      {p.lesson?.time && (
+                        <span className="text-[8px] text-center text-muted-foreground/70 font-mono leading-none truncate">{p.lesson.time}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
 
           {classMetrics && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">

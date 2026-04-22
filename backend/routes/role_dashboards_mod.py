@@ -2300,6 +2300,41 @@ async def broadcast_session_note_to_parents(
                 failed += 1
                 logger.warning("Failed inserting parent notification (parent=%s student=%s): %s", pid, sid, e)
 
+    # 5) auto-capture portfolio evidence: parent communication log
+    if sent > 0:
+        try:
+            from engines.portfolio_evidence_engine import PortfolioEvidenceEngine
+            _pe = PortfolioEvidenceEngine(db)
+            _today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            _names_preview = ", ".join([n for n in students_map.values() if n][:3])
+            _more = max(0, students_with_parents - 3)
+            _names_str = _names_preview + (f" +{_more}" if _more > 0 else "")
+            await _pe.capture_evidence(
+                teacher_id=teacher_id,
+                school_id=tenant_id,
+                evidence_type="parent_communication_log",
+                title_ar=f"تواصل مع أولياء الأمور — {subject_name or 'حصة'}".strip(),
+                title_en=f"Parent Communication — {subject_name or 'Session'}".strip(),
+                description_ar=(f"ملاحظة لأولياء أمور: {_names_str}" if _names_str else "ملاحظة مرسلة لأولياء الأمور خلال الحصة"),
+                description_en=f"In-session note sent to {students_with_parents} parent(s)",
+                source="auto",
+                source_entity_type="session_note",
+                source_entity_id=note_result.get("note_id") or session_id,
+                class_id=class_id,
+                subject_id=subject_id,
+                metadata={
+                    "session_id": session_id,
+                    "note_id": note_result.get("note_id"),
+                    "students_count": len(valid_ids),
+                    "parents_notified": students_with_parents,
+                    "notifications_sent": sent,
+                    "channel": "in_session_quick_note",
+                },
+                event_date=_today,
+            )
+        except Exception as _pe_err:  # noqa: BLE001
+            logger.debug("Portfolio evidence (parent note) failed: %s", _pe_err)
+
     return {
         "message": "تم إرسال الملاحظة لأولياء الأمور",
         "note_id": note_result.get("note_id"),

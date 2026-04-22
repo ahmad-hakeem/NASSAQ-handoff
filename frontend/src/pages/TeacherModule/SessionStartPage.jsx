@@ -352,9 +352,13 @@ export default function SessionStartPage() {
               <div className="w-6 h-6 rounded-lg bg-brand-turquoise/20 flex items-center justify-center">
                 <GraduationCap className="h-3.5 w-3.5 text-brand-turquoise" />
               </div>
-              <h1 className={`font-cairo font-bold ${themeStyles.text} text-base`}>{sessionInfo?.subjectName}</h1>
+              <h1 className={`font-cairo font-bold ${themeStyles.text} text-base`}>{t('attendanceConfirmation') || 'تأكيد الحضور'}</h1>
             </div>
-            <p className={`${themeStyles.textSub} text-xs font-tajawal mt-0.5`}>{sessionInfo?.className}</p>
+            <p className={`${themeStyles.textSub} text-[11px] font-tajawal mt-0.5 truncate`}>
+              <span className="font-semibold">{sessionInfo?.subjectName}</span>
+              {sessionInfo?.className ? <span className="text-muted-foreground/70 mx-1">·</span> : null}
+              <span>{sessionInfo?.className}</span>
+            </p>
           </div>
 
           <div className="flex items-center gap-2">
@@ -384,6 +388,17 @@ export default function SessionStartPage() {
 
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-5xl mx-auto p-4 space-y-5">
+
+          {/* Prominent instruction subtitle — تأكيد الحضور: حدد الغائبين فقط */}
+          <div className={`rounded-2xl border-s-4 border-brand-turquoise ${isDark ? 'bg-brand-turquoise/10' : 'bg-brand-turquoise/5'} px-4 py-3 flex items-start gap-3`}>
+            <div className="w-8 h-8 rounded-lg bg-brand-turquoise/20 flex items-center justify-center flex-shrink-0">
+              <UserCheck className="h-4 w-4 text-brand-turquoise" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h2 className={`font-cairo font-bold ${themeStyles.text} text-sm leading-tight`}>{t('attendanceConfirmation') || 'تأكيد الحضور'}</h2>
+              <p className={`${themeStyles.textSub} text-xs font-tajawal mt-0.5 leading-snug`}>{t('selectAbsenteesOnlyHint') || 'حدد الغائبين فقط — الجميع حاضر افتراضياً'}</p>
+            </div>
+          </div>
 
           <div className={`rounded-2xl border ${themeStyles.cardBg} p-5 transition-colors duration-300`}>
             <div className="flex items-center justify-between mb-5">

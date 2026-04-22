@@ -982,7 +982,17 @@ export default function SessionTeachPage() {
                     </span>
                   )}
                 </div>
-                <p className="text-muted-foreground text-[11px] tracking-wide truncate mt-0.5">{sessionInfo?.class_name || sessionInfo?.className}</p>
+                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                  <p className="text-muted-foreground text-[11px] tracking-wide truncate">{sessionInfo?.class_name || sessionInfo?.className}</p>
+                  <span className="inline-flex items-center gap-1 text-[10px] font-cairo font-bold text-emerald-500/90" title={t('present')}>
+                    <span className="w-1 h-1 rounded-full bg-emerald-500" aria-hidden="true" />
+                    <span className="tabular-nums">{presentStudents.length}</span> {t('present')}
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-[10px] font-cairo font-bold text-rose-500/90" title={t('absent')}>
+                    <span className="w-1 h-1 rounded-full bg-rose-500" aria-hidden="true" />
+                    <span className="tabular-nums">{Math.max(0, (students?.length || 0) - presentStudents.length)}</span> {t('absent')}
+                  </span>
+                </div>
               </div>
             </div>
             {/* Gold time chip */}
