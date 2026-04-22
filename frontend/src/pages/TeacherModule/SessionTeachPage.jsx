@@ -2500,7 +2500,7 @@ export default function SessionTeachPage() {
                   <button
                     type="button"
                     onClick={toggleAll}
-                    className="text-xs font-cairo font-bold text-amber-500 hover:text-amber-600 transition-colors px-2 py-1 rounded-md hover:bg-amber-500/10 flex-shrink-0"
+                    className="text-xs font-cairo font-bold text-amber-700 dark:text-amber-300 hover:text-amber-800 dark:hover:text-amber-200 transition-colors px-2.5 py-1 rounded-md bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 flex-shrink-0"
                   >
                     {allSelected ? (t('deselectAll') || 'إلغاء التحديد') : (t('selectAll') || 'تحديد الكل')}
                   </button>
@@ -2539,12 +2539,12 @@ export default function SessionTeachPage() {
                 </div>
 
                 <div className="flex items-center justify-between pt-1">
-                  <span className="text-xs font-cairo text-muted-foreground">
-                    {t('selected') || 'المحددون'}: <span className="text-amber-500 font-bold font-mono">{quickNoteIds.size}</span> / {presentList.length}
+                  <span className="text-xs font-cairo text-foreground/70">
+                    {t('selected') || 'المحددون'}: <span className="text-amber-700 dark:text-amber-300 font-bold font-mono">{quickNoteIds.size}</span> <span className="text-muted-foreground">/ {presentList.length}</span>
                   </span>
-                  <span className="text-[10px] text-muted-foreground font-tajawal flex items-center gap-1">
-                    <Send className="h-3 w-3" />
-                    {t('sendsToParentsOnly') || 'يُرسل لأولياء الأمور فقط'}
+                  <span className="text-[10px] text-foreground/70 font-tajawal flex items-center gap-1">
+                    <Send className="h-3 w-3 text-amber-600 dark:text-amber-400" />
+                    {t('sendsToParentsOnly') || 'تُرسل لأولياء الأمور فقط'}
                   </span>
                 </div>
 
@@ -2553,7 +2553,7 @@ export default function SessionTeachPage() {
                     type="button"
                     onClick={() => setShowQuickNote(false)}
                     disabled={quickNoteSending}
-                    className="flex-1 h-11 rounded-xl bg-muted hover:bg-muted/70 text-foreground text-sm font-cairo transition-colors disabled:opacity-50"
+                    className="flex-1 h-11 rounded-xl bg-muted hover:bg-muted/70 text-foreground text-sm font-cairo font-bold border border-border transition-colors disabled:opacity-50"
                   >
                     {t('close') || 'إغلاق'}
                   </button>
@@ -2561,7 +2561,7 @@ export default function SessionTeachPage() {
                     type="button"
                     onClick={sendQuickNote}
                     disabled={quickNoteSending || !quickNoteText.trim() || quickNoteIds.size === 0}
-                    className="flex-1 h-11 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-cairo font-bold flex items-center justify-center gap-2 transition-colors shadow-md"
+                    className="flex-1 h-11 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 disabled:from-muted disabled:to-muted disabled:text-muted-foreground disabled:cursor-not-allowed text-white text-sm font-cairo font-bold flex items-center justify-center gap-2 transition-colors shadow-md disabled:shadow-none border border-amber-700/40 disabled:border-border"
                   >
                     {quickNoteSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                     {t('send') || 'إرسال'} ({quickNoteIds.size})
