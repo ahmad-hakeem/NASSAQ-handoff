@@ -2596,8 +2596,16 @@ export default function SessionTeachPage() {
                 </button>
                 <button
                   onClick={async () => {
-                    if (homeworkStatuses[selectedStudent.id] !== 'not_done') {
-                      await toggleHomework(selectedStudent.id);
+                    const sid = selectedStudent.id;
+                    const studentName = selectedStudent.full_name?.split(' ')[0] || '';
+                    try {
+                      await api.post(`/session/${sessionId}/homework`, { student_id: sid, status: 'not_done' });
+                      setHomeworkStatuses(prev => ({ ...prev, [sid]: 'not_done' }));
+                      toast.success(`${t('notSubmitted')} — ${studentName}`);
+                      addLog('homework', `${studentName} — ${t('didNotSubmitHomework') || 'لم يسلم الواجب'}`, 'text-amber-600');
+                    } catch (e) {
+                      console.error('Homework not-submitted error:', e);
+                      nassaqError(e.response?.data?.detail || t('errorSavingHomework') || 'تعذر تسجيل الواجب');
                     }
                     setShowRandomPopup(false);
                   }}
@@ -2606,7 +2614,15 @@ export default function SessionTeachPage() {
                   <BookOpen className="h-5 w-5" /> {t('didNotSubmitHomework') || 'لم يسلم الواجب'}
                 </button>
                 <button
-                  onClick={() => { setActionTab('recitation'); setShowRandomPopup(false); }}
+                  onClick={() => {
+                    if (!recitationEnabled) {
+                      toast.error(t('enableRecitationFirst') || 'فعّل التسميع من إعدادات الحصة أولاً');
+                      return;
+                    }
+                    setActionTab('recitation');
+                    setShowRandomPopup(false);
+                    toast(t('recordRecitationInPanel') || 'سجّل التسميع من اللوحة الجانبية', { icon: '🎤' });
+                  }}
                   className="h-14 rounded-xl bg-purple-500 hover:bg-purple-600 text-white font-cairo font-bold text-sm flex items-center justify-center gap-2 active:scale-[0.97] transition-colors shadow-md"
                 >
                   <Mic className="h-5 w-5" /> {t('recitation')}
