@@ -750,34 +750,60 @@ class TeacherSessionEngine:
             raise HTTPException(status_code=400, detail="لا يوجد طلاب حاضرين")
         
         present_student_ids = [a["student_id"] for a in attendance]
-        
+
         # Get interaction history for this session
         interactions = await gd_find(self.session, "session_interactions",
             {"session_id": session_id, "interaction_type": InteractionType.QUESTION.value}, limit=500)
-        
-        # Count selections per student
-        selection_counts = {}
-        last_selection_order = {}
+
+        # Also count "selected but not yet answered" picks (so repeated random picks
+        # without an answer still de-prioritise the same student)
+        selection_events = await gd_find(self.session, "session_events",
+            {"session_id": session_id, "event_type": EventType.STUDENT_SELECTED.value}, limit=500)
+
+        # Count selections per student + remember last position (recency)
+        selection_counts: Dict[str, int] = {}
+        last_selection_order: Dict[str, int] = {}
         for i, interaction in enumerate(interactions):
-            sid = interaction["student_id"]
+            sid = interaction.get("student_id")
+            if not sid:
+                continue
             selection_counts[sid] = selection_counts.get(sid, 0) + 1
             last_selection_order[sid] = i
-        
-        # Calculate selection weights (lower = more likely to be selected)
+        # Offset selection events after interactions so they count as "more recent"
+        offset = len(interactions)
+        for j, ev in enumerate(selection_events):
+            sid = ev.get("student_id")
+            if not sid:
+                continue
+            selection_counts[sid] = selection_counts.get(sid, 0) + 1
+            last_selection_order[sid] = offset + j
+
+        # Shuffle first so equal weights tie-break randomly (otherwise stable sort
+        # always picks the first students in roster order when no history exists)
+        shuffled_ids = list(present_student_ids)
+        random.shuffle(shuffled_ids)
+
+        # Weight: fewer selections + older recency = lower weight = higher chance.
+        # Add a small random jitter so identical weights still vary between calls.
         weights = []
-        for sid in present_student_ids:
+        for sid in shuffled_ids:
             count = selection_counts.get(sid, 0)
             last_order = last_selection_order.get(sid, -1)
-            
-            # Weight formula: fewer selections = lower weight = higher chance
-            # Recently selected students get higher weight (lower chance)
-            weight = count * 10 + (last_order + 1) * 0.5
+            jitter = random.random()  # 0..1 — breaks any remaining ties
+            weight = count * 10 + (last_order + 1) * 0.5 + jitter
             weights.append((sid, weight))
-        
-        # Sort by weight (ascending) and select from bottom third
+
+        # Sort by weight (ascending). Use a wider pool when history is short so we
+        # don't keep picking from a tiny set of "first" students.
         weights.sort(key=lambda x: x[1])
-        selection_pool = weights[:max(len(weights) // 3, 1)]
-        
+        n = len(weights)
+        if sum(selection_counts.values()) < n:
+            # Early in the session — give everyone a fair shot
+            pool_size = n
+        else:
+            pool_size = max(n // 3, min(3, n))
+        selection_pool = weights[:pool_size]
+
         # Random selection from pool
         selected_id = random.choice(selection_pool)[0]
         
