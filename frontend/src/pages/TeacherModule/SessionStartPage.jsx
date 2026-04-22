@@ -15,12 +15,12 @@ import {
 const STATUS_CONFIG = {
   present: {
     label: 'حاضر', labelEn: 'Present', short: 'ح',
-    dark: { ring: 'ring-emerald-400', bg: 'bg-emerald-500', text: 'text-emerald-400', card: 'border-border bg-card/60', glow: '' },
+    dark: { ring: 'ring-emerald-400', bg: 'bg-emerald-500', text: 'text-emerald-600 dark:text-emerald-400', card: 'border-border bg-card/60', glow: '' },
     light: { ring: 'ring-emerald-500', bg: 'bg-emerald-500', text: 'text-emerald-700', card: 'border-gray-200 bg-card', glow: '' },
   },
   absent: {
     label: 'غائب', labelEn: 'Absent', short: 'غ',
-    dark: { ring: 'ring-red-400', bg: 'bg-red-500', text: 'text-red-400', card: 'border-red-500/30 bg-red-500/10', glow: 'shadow-red-500/20' },
+    dark: { ring: 'ring-red-400', bg: 'bg-red-500', text: 'text-red-600 dark:text-red-400', card: 'border-red-500/30 bg-red-500/10', glow: 'shadow-red-500/20' },
     light: { ring: 'ring-red-500', bg: 'bg-red-500', text: 'text-red-700', card: 'border-pink-300 bg-pink-50', glow: 'shadow-pink-200/40' },
   },
 };
@@ -305,7 +305,7 @@ export default function SessionStartPage() {
 
           <div className="flex items-center justify-center gap-4 text-muted-foreground text-sm font-tajawal">
             <span className="flex items-center gap-2 bg-foreground/5 px-4 py-2 rounded-full border border-border">
-              <Users className="h-4 w-4 text-emerald-400" /> {stats.present} حاضر
+              <Users className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /> {stats.present} حاضر
             </span>
             <span className="flex items-center gap-2 bg-foreground/5 px-4 py-2 rounded-full border border-border">
               <GraduationCap className="h-4 w-4 text-brand-turquoise" /> {sessionInfo?.subjectName}
@@ -379,9 +379,9 @@ export default function SessionStartPage() {
               className={`p-2 rounded-xl transition-colors border ${themeStyles.btnBg} ${themeStyles.btnText}`}
               title={isDark ? 'الوضع الفاتح' : 'الوضع الداكن'}
             >
-              {isDark ? <Sun className="h-4 w-4 text-amber-400" /> : <Moon className="h-4 w-4" />}
+              {isDark ? <Sun className="h-4 w-4 text-amber-600 dark:text-amber-400" /> : <Moon className="h-4 w-4" />}
             </button>
-            <Badge className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-cairo text-xs">جارية</Badge>
+            <Badge className="bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 font-cairo text-xs">جارية</Badge>
           </div>
         </div>
       </header>
@@ -413,7 +413,7 @@ export default function SessionStartPage() {
               </div>
               <div className="flex items-center gap-2">
                 <div className={`px-4 py-2 rounded-xl ${isDark ? 'bg-emerald-500/15' : 'bg-emerald-50'} border ${isDark ? 'border-emerald-500/20' : 'border-emerald-200'}`}>
-                  <span className={`font-mono font-bold text-2xl ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>{presentPct}%</span>
+                  <span className={`font-mono font-bold text-2xl ${isDark ? 'text-emerald-600 dark:text-emerald-400' : 'text-emerald-600'}`}>{presentPct}%</span>
                   <span className={`${themeStyles.textSub} text-xs ms-1 font-tajawal`}>{t('attendance')}</span>
                 </div>
               </div>
@@ -421,8 +421,8 @@ export default function SessionStartPage() {
 
             <div className="grid grid-cols-2 gap-3 mb-5">
               {[
-                { key: 'present', icon: UserCheck, label: t('present'), gradient: 'from-emerald-500 to-emerald-600', numColor: isDark ? 'text-emerald-400' : 'text-emerald-600' },
-                { key: 'absent', icon: UserX, label: t('absent'), gradient: 'from-red-500 to-red-600', numColor: isDark ? 'text-red-400' : 'text-red-600' },
+                { key: 'present', icon: UserCheck, label: t('present'), gradient: 'from-emerald-500 to-emerald-600', numColor: isDark ? 'text-emerald-600 dark:text-emerald-400' : 'text-emerald-600' },
+                { key: 'absent', icon: UserX, label: t('absent'), gradient: 'from-red-500 to-red-600', numColor: isDark ? 'text-red-600 dark:text-red-400' : 'text-red-600' },
               ].map(s => (
                 <div key={s.key} className={`${themeStyles.statBg} rounded-xl p-3 text-center border transition-colors duration-300 hover:scale-[1.02]`}>
                   <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${s.gradient} flex items-center justify-center mx-auto mb-2 shadow-sm`}>
@@ -493,10 +493,10 @@ export default function SessionStartPage() {
                 </span>
               </div>
               <div className="flex items-center gap-3 mb-3">
-                <span className={`text-xs font-cairo font-medium px-3 py-1 rounded-full ${isDark ? 'bg-emerald-500/15 text-emerald-400' : 'bg-emerald-50 text-emerald-600'} border ${isDark ? 'border-emerald-500/20' : 'border-emerald-200'}`}>
+                <span className={`text-xs font-cairo font-medium px-3 py-1 rounded-full ${isDark ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' : 'bg-emerald-50 text-emerald-600'} border ${isDark ? 'border-emerald-500/20' : 'border-emerald-200'}`}>
                   {t('present')}: {stats.present}
                 </span>
-                <span className={`text-xs font-cairo font-medium px-3 py-1 rounded-full ${isDark ? 'bg-red-500/15 text-red-400' : 'bg-pink-50 text-red-600'} border ${isDark ? 'border-red-500/20' : 'border-pink-200'}`}>
+                <span className={`text-xs font-cairo font-medium px-3 py-1 rounded-full ${isDark ? 'bg-red-500/15 text-red-600 dark:text-red-400' : 'bg-pink-50 text-red-600'} border ${isDark ? 'border-red-500/20' : 'border-pink-200'}`}>
                   {t('absent')}: {stats.absent}
                 </span>
               </div>
@@ -553,8 +553,8 @@ function GenderSection({ students, gender, label, theme, themeStyles, t, isDark,
   const accentGradient = isMale ? 'from-sky-500 to-blue-600' : 'from-pink-500 to-rose-600';
   const accentBg = isMale ? 'bg-sky-500/20' : 'bg-pink-500/20';
   const badgeClass = isMale
-    ? `bg-sky-500/20 ${isDark ? 'text-sky-400' : 'text-sky-600'} border-sky-500/30 text-xs`
-    : `bg-pink-500/20 ${isDark ? 'text-pink-400' : 'text-pink-600'} border-pink-500/30 text-xs`;
+    ? `bg-sky-500/20 ${isDark ? 'text-sky-600 dark:text-sky-400' : 'text-sky-600'} border-sky-500/30 text-xs`
+    : `bg-pink-500/20 ${isDark ? 'text-pink-600 dark:text-pink-400' : 'text-pink-600'} border-pink-500/30 text-xs`;
   const headerBorder = isMale
     ? (isDark ? 'border-sky-500/20' : 'border-sky-200')
     : (isDark ? 'border-pink-500/20' : 'border-pink-200');
@@ -644,8 +644,8 @@ function StudentCard({ student, index, onUpdate, theme, themeStyles, t, isDark }
           {student.gender && (
             <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-cairo ${
               isFemale
-                ? (isDark ? 'bg-pink-500/15 text-pink-400' : 'bg-pink-100 text-pink-600')
-                : (isDark ? 'bg-sky-500/15 text-sky-400' : 'bg-sky-100 text-sky-600')
+                ? (isDark ? 'bg-pink-500/15 text-pink-600 dark:text-pink-400' : 'bg-pink-100 text-pink-600')
+                : (isDark ? 'bg-sky-500/15 text-sky-600 dark:text-sky-400' : 'bg-sky-100 text-sky-600')
             }`}>
               {isFemale ? t('femaleStudent') : t('maleStudent')}
             </span>

@@ -25,8 +25,8 @@ import confetti from 'canvas-confetti';
 
 import { useTranslation } from '../../contexts/ThemeContext';
 const GENDER_COLORS = {
-  male: { bg: 'bg-sky-600', ring: 'ring-sky-400', label: 'طلاب', labelKey: 'maleStudents', icon: 'M', light: 'bg-sky-900/30' },
-  female: { bg: 'bg-pink-600', ring: 'ring-pink-400', label: 'طالبات', labelKey: 'femaleStudents', icon: 'F', light: 'bg-pink-900/30' },
+  male: { bg: 'bg-sky-600', ring: 'ring-sky-400', label: 'طلاب', labelKey: 'maleStudents', icon: 'M', light: 'bg-sky-500/10 dark:bg-sky-900/30' },
+  female: { bg: 'bg-pink-600', ring: 'ring-pink-400', label: 'طالبات', labelKey: 'femaleStudents', icon: 'F', light: 'bg-pink-500/10 dark:bg-pink-900/30' },
 };
 
 const MODES = [
@@ -973,7 +973,7 @@ export default function SessionTeachPage() {
                     {sessionInfo?.subject_name || sessionInfo?.subjectName}
                   </h1>
                   {mode && (
-                    <span className="hidden sm:inline-flex items-center gap-1.5 text-emerald-300 text-[10px] uppercase tracking-[0.18em] font-semibold">
+                    <span className="hidden sm:inline-flex items-center gap-1.5 text-emerald-700 dark:text-emerald-300 text-[10px] uppercase tracking-[0.18em] font-semibold">
                       <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
                         <span className="absolute inset-0 rounded-full bg-emerald-400 animate-ping opacity-60" />
                         <span className="relative rounded-full h-1.5 w-1.5 bg-emerald-400" />
@@ -997,7 +997,7 @@ export default function SessionTeachPage() {
             </div>
             {/* Gold time chip */}
             <div className="hidden sm:flex items-center gap-1.5 ms-1 ps-3 border-s border-border">
-              <Clock className="h-3.5 w-3.5 text-amber-400/80" aria-hidden="true" />
+              <Clock className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400/80" aria-hidden="true" />
               <span className="font-mono text-foreground text-sm font-bold tabular-nums tracking-wider">{timer}</span>
             </div>
           </div>
@@ -1015,7 +1015,7 @@ export default function SessionTeachPage() {
             </span>
             <span className="w-px h-6 bg-foreground/10" aria-hidden="true" />
             <span className="flex flex-col items-center leading-none">
-              <span className={`text-sm font-bold tabular-nums ${accuracy >= 60 ? 'text-emerald-300' : 'text-rose-300'}`}>{accuracy}%</span>
+              <span className={`text-sm font-bold tabular-nums ${accuracy >= 60 ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'}`}>{accuracy}%</span>
               <span className="text-[9px] uppercase tracking-[0.16em] text-muted-foreground mt-0.5">{t('correct')}</span>
             </span>
           </div>
@@ -1038,7 +1038,7 @@ export default function SessionTeachPage() {
                 setShowQuickNote(true);
               }}
               aria-label={t('sendQuickNote') || 'إرسال ملاحظة'}
-              className="p-2 rounded-md text-amber-300 hover:text-amber-200 hover:bg-amber-500/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
+              className="p-2 rounded-md text-amber-700 dark:text-amber-300 hover:text-amber-200 hover:bg-amber-500/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
               title={t('sendQuickNote') || 'إرسال ملاحظة'}
             >
               <StickyNote className="h-4 w-4" />
@@ -1064,7 +1064,7 @@ export default function SessionTeachPage() {
                 onClick={() => setEvalMode('individual')}
                 aria-pressed={evalMode === 'individual'}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-[10px] uppercase tracking-[0.14em] font-semibold transition-colors ${
-                  evalMode === 'individual' ? 'bg-foreground/10 text-amber-300' : 'text-muted-foreground hover:text-foreground/80'
+                  evalMode === 'individual' ? 'bg-foreground/10 text-amber-700 dark:text-amber-300' : 'text-muted-foreground hover:text-foreground/80'
                 }`}
               >
                 <User className="h-3 w-3" />
@@ -1074,7 +1074,7 @@ export default function SessionTeachPage() {
                 onClick={() => setEvalMode('group')}
                 aria-pressed={evalMode === 'group'}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-[10px] uppercase tracking-[0.14em] font-semibold transition-colors ${
-                  evalMode === 'group' ? 'bg-foreground/10 text-amber-300' : 'text-muted-foreground hover:text-foreground/80'
+                  evalMode === 'group' ? 'bg-foreground/10 text-amber-700 dark:text-amber-300' : 'text-muted-foreground hover:text-foreground/80'
                 }`}
               >
                 <UsersRound className="h-3 w-3" />
@@ -1086,7 +1086,7 @@ export default function SessionTeachPage() {
               <button
                 onClick={() => setShowGroupModal(true)}
                 aria-label={t('manageGroups')}
-                className="p-2 rounded-md text-purple-300 hover:bg-purple-500/15 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/70"
+                className="p-2 rounded-md text-purple-700 dark:text-purple-300 hover:bg-purple-500/15 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400/70"
                 title={t('manageGroups')}
               >
                 <Settings className="h-4 w-4" />
@@ -1237,7 +1237,7 @@ export default function SessionTeachPage() {
             const ring = { purple: 'rgba(168,85,247,0.18)', blue: 'rgba(59,130,246,0.18)', amber: 'rgba(245,158,11,0.18)' }[accent];
             const text = { purple: 'text-purple-200', blue: 'text-sky-200', amber: 'text-amber-200' }[accent];
             const dot = { purple: 'bg-purple-400', blue: 'bg-sky-400', amber: 'bg-amber-400' }[accent];
-            const label = { purple: 'text-purple-300/80', blue: 'text-sky-300/80', amber: 'text-amber-300/80' }[accent];
+            const label = { purple: 'text-purple-700 dark:text-purple-300/80', blue: 'text-sky-700 dark:text-sky-300/80', amber: 'text-amber-700 dark:text-amber-300/80' }[accent];
             const railFrom = { purple: 'from-purple-400', blue: 'from-sky-400', amber: 'from-amber-400' }[accent];
             const railTo = { purple: 'to-fuchsia-500', blue: 'to-blue-500', amber: 'to-orange-500' }[accent];
             return (
@@ -1320,7 +1320,7 @@ export default function SessionTeachPage() {
                   <p className="font-cairo">{t('noGroupsCreated')}</p>
                   <button
                     onClick={() => setShowGroupModal(true)}
-                    className="px-4 py-2 rounded-xl bg-purple-600/20 text-purple-400 text-sm font-medium hover:bg-purple-600/30 transition-colors border border-purple-500/30 flex items-center gap-2"
+                    className="px-4 py-2 rounded-xl bg-purple-600/20 text-purple-600 dark:text-purple-400 text-sm font-medium hover:bg-purple-600/30 transition-colors border border-purple-500/30 flex items-center gap-2"
                   >
                     <UsersRound className="h-4 w-4" />
                     {t('manageGroups')}
@@ -1336,7 +1336,7 @@ export default function SessionTeachPage() {
                   const gc = GENDER_COLORS[group.key];
                   const dotColor = group.key === 'male' ? 'bg-sky-400' : 'bg-pink-400';
                   const textColor = group.key === 'male' ? 'text-sky-200/90' : 'text-pink-200/90';
-                  const countColor = group.key === 'male' ? 'text-sky-300' : 'text-pink-300';
+                  const countColor = group.key === 'male' ? 'text-sky-700 dark:text-sky-300' : 'text-pink-700 dark:text-pink-300';
                   return (
                     <div key={group.key}>
                       <div className="flex items-center gap-2 mb-2">
@@ -1391,7 +1391,7 @@ export default function SessionTeachPage() {
                     </Avatar>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-[9px] uppercase tracking-[0.22em] text-amber-300/90 font-bold mb-1">{t('selectedStudentLabel')}</p>
+                    <p className="text-[9px] uppercase tracking-[0.22em] text-amber-700 dark:text-amber-300/90 font-bold mb-1">{t('selectedStudentLabel')}</p>
                     <p className="text-foreground font-cairo font-extrabold text-base truncate leading-tight">{selectedStudent.full_name}</p>
                     <p className="text-muted-foreground text-[11px] tracking-wide mt-0.5">{selectedStudent.student_code || sessionInfo?.class_name || sessionInfo?.className}</p>
                   </div>
@@ -1405,9 +1405,9 @@ export default function SessionTeachPage() {
                 </div>
                 <div className="grid grid-cols-3 gap-2 mt-3 relative">
                   {[
-                    { value: selectedStudent.participation_count || selectedStudent.interactionCount || 0, labelKey: 'participations', accent: 'text-sky-300' },
-                    { value: selectedStudent.correct_answers || selectedStudent.correctAnswers || 0, labelKey: 'correct', accent: 'text-emerald-300' },
-                    { value: selectedStudent.interaction_count || selectedStudent.interactionCount || 0, labelKey: 'interaction', accent: 'text-purple-300' },
+                    { value: selectedStudent.participation_count || selectedStudent.interactionCount || 0, labelKey: 'participations', accent: 'text-sky-700 dark:text-sky-300' },
+                    { value: selectedStudent.correct_answers || selectedStudent.correctAnswers || 0, labelKey: 'correct', accent: 'text-emerald-700 dark:text-emerald-300' },
+                    { value: selectedStudent.interaction_count || selectedStudent.interactionCount || 0, labelKey: 'interaction', accent: 'text-purple-700 dark:text-purple-300' },
                   ].map((kpi, i) => (
                     <div key={i} className="bg-foreground/[0.025] border border-border rounded-lg px-2 py-2 text-center">
                       <div className={`${kpi.accent} text-xl font-extrabold leading-none tabular-nums`}>{kpi.value}</div>
@@ -1493,12 +1493,12 @@ export default function SessionTeachPage() {
                   <div className="space-y-2">
                     {homeworkLoading ? (
                       <div className="flex items-center justify-center py-6">
-                        <Loader2 className="h-6 w-6 animate-spin text-blue-400" />
+                        <Loader2 className="h-6 w-6 animate-spin text-blue-600 dark:text-blue-400" />
                       </div>
                     ) : <>
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-muted-foreground text-xs font-cairo">{t('homeworkMarkNotSubmitted')}</span>
-                      <span className="text-blue-400 text-xs font-bold font-cairo">
+                      <span className="text-blue-600 dark:text-blue-400 text-xs font-bold font-cairo">
                         {Object.values(homeworkStatuses).filter(s => s === 'done').length}/{students.filter(s => s.attendance_status === 'present').length} {t('submitted')}
                       </span>
                     </div>
@@ -1518,7 +1518,7 @@ export default function SessionTeachPage() {
                             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
                               isDone ? 'bg-green-600 text-foreground' : 'bg-foreground/10 text-muted-foreground'
                             }`}>
-                              {isDone ? <CheckCircle2 className="h-4 w-4 text-green-400" /> : <XCircle className="h-4 w-4 text-red-400" />}
+                              {isDone ? <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" /> : <XCircle className="h-4 w-4 text-red-600 dark:text-red-400" />}
                             </div>
                             <span className={`flex-1 text-start text-sm font-cairo truncate ${
                               isDone ? 'text-foreground' : 'text-muted-foreground line-through'
@@ -1527,8 +1527,8 @@ export default function SessionTeachPage() {
                             </span>
                             <span className={`text-xs font-bold font-cairo px-2 py-0.5 rounded-full ${
                               isDone
-                                ? 'bg-green-500/20 text-green-400'
-                                : 'bg-red-500/20 text-red-400'
+                                ? 'bg-green-500/20 text-green-600 dark:text-green-400'
+                                : 'bg-red-500/20 text-red-600 dark:text-red-400'
                             }`}>
                               {isDone ? t('homeworkDone') : t('homeworkNotDone')}
                             </span>
@@ -1618,7 +1618,7 @@ export default function SessionTeachPage() {
                           className="bg-foreground/10 hover:bg-foreground/20 text-foreground rounded-lg py-2 px-1 text-xs text-center transition-colors"
                         >
                           <div className="font-medium truncate">{b.labelKey ? t(b.labelKey) : b.label}</div>
-                          <div className={`text-[10px] mt-0.5 ${b.points.startsWith('-') ? 'text-red-400' : 'text-green-400'}`}>{b.points}</div>
+                          <div className={`text-[10px] mt-0.5 ${b.points.startsWith('-') ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>{b.points}</div>
                         </button>
                       ))}
                     </div>
@@ -1642,10 +1642,10 @@ export default function SessionTeachPage() {
                         <button
                           key={skill.id}
                           onClick={() => recordSkill(skill)}
-                          className="bg-purple-900/40 hover:bg-purple-800/60 text-foreground rounded-lg py-2 px-1 text-xs text-center transition-colors border border-purple-500/20"
+                          className="bg-purple-500/10 dark:bg-purple-900/40 hover:bg-purple-800/60 text-foreground rounded-lg py-2 px-1 text-xs text-center transition-colors border border-purple-500/20"
                         >
                           <div className="font-medium truncate">{skill.name_ar || skill.name}</div>
-                          <div className="text-[10px] mt-0.5 text-purple-300">+3</div>
+                          <div className="text-[10px] mt-0.5 text-purple-700 dark:text-purple-300">+3</div>
                         </button>
                       ))}
                     </div>
@@ -1684,7 +1684,7 @@ export default function SessionTeachPage() {
                   onClick={() => setRightPanel(tab.id)}
                   aria-pressed={active}
                   className={`relative flex-1 flex items-center justify-center gap-1.5 py-3 text-[10px] uppercase tracking-[0.14em] font-bold transition-colors focus-visible:outline-none focus-visible:bg-foreground/5 ${
-                    active ? 'text-amber-300' : 'text-muted-foreground hover:text-muted-foreground'
+                    active ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground hover:text-muted-foreground'
                   }`}
                 >
                   <tab.icon className="h-3.5 w-3.5" />
@@ -1728,15 +1728,15 @@ export default function SessionTeachPage() {
                   <div className="text-muted-foreground text-[9px] uppercase tracking-[0.14em] mt-1.5 font-semibold">{t('questions')}</div>
                 </div>
                 <div className="bg-foreground/[0.025] border border-border rounded-lg px-2.5 py-2">
-                  <div className="text-emerald-300 text-lg font-extrabold leading-none tabular-nums">{stats.correct}</div>
+                  <div className="text-emerald-700 dark:text-emerald-300 text-lg font-extrabold leading-none tabular-nums">{stats.correct}</div>
                   <div className="text-muted-foreground text-[9px] uppercase tracking-[0.14em] mt-1.5 font-semibold">{t('correct')}</div>
                 </div>
                 <div className="bg-foreground/[0.025] border border-border rounded-lg px-2.5 py-2">
-                  <div className={`text-lg font-extrabold leading-none tabular-nums ${accuracy >= 60 ? 'text-emerald-300' : 'text-rose-300'}`}>{accuracy}%</div>
+                  <div className={`text-lg font-extrabold leading-none tabular-nums ${accuracy >= 60 ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'}`}>{accuracy}%</div>
                   <div className="text-muted-foreground text-[9px] uppercase tracking-[0.14em] mt-1.5 font-semibold">{t('accuracy')}</div>
                 </div>
                 <div className="bg-foreground/[0.025] border border-border rounded-lg px-2.5 py-2">
-                  <div className="text-sky-300 text-lg font-extrabold leading-none tabular-nums">{stats.participation}</div>
+                  <div className="text-sky-700 dark:text-sky-300 text-lg font-extrabold leading-none tabular-nums">{stats.participation}</div>
                   <div className="text-muted-foreground text-[9px] uppercase tracking-[0.14em] mt-1.5 font-semibold">{t('interaction')}</div>
                 </div>
               </div>
@@ -1754,15 +1754,15 @@ export default function SessionTeachPage() {
                   </div>
                 ) : (
                   notes.map(note => (
-                    <div key={note.id} className="bg-amber-900/20 border border-amber-500/20 rounded-lg px-3 py-2">
+                    <div key={note.id} className="bg-amber-500/10 dark:bg-amber-900/20 border border-amber-500/20 rounded-lg px-3 py-2">
                       <div className="flex items-start justify-between gap-2">
                         <p className="text-foreground text-xs leading-relaxed flex-1">{note.text}</p>
-                        <button onClick={() => deleteNote(note.id)} className="text-muted-foreground/70 hover:text-red-400 flex-shrink-0">
+                        <button onClick={() => deleteNote(note.id)} className="text-muted-foreground/70 hover:text-red-600 dark:text-red-400 flex-shrink-0">
                           <Trash2 className="h-3 w-3" />
                         </button>
                       </div>
                       <div className="flex items-center gap-2 mt-1.5">
-                        <Badge className="bg-amber-500/20 text-amber-300 text-[9px] px-1.5 py-0">
+                        <Badge className="bg-amber-500/20 text-amber-700 dark:text-amber-300 text-[9px] px-1.5 py-0">
                           {note.note_type === 'student' ? t('studentNoteShort')
                             : note.note_type === 'behavioural' ? t('behaviouralNoteShort')
                             : note.note_type === 'educational' ? t('educationalNoteShort')
@@ -1835,11 +1835,11 @@ export default function SessionTeachPage() {
                     <h4 className="text-muted-foreground text-[10px] font-medium uppercase tracking-wider">{t('attendanceShort')}</h4>
                     <div className="grid grid-cols-2 gap-2">
                       <div className="text-center">
-                        <div className="text-green-400 text-lg font-bold">{liveMetrics.attendance?.present || 0}</div>
+                        <div className="text-green-600 dark:text-green-400 text-lg font-bold">{liveMetrics.attendance?.present || 0}</div>
                         <div className="text-muted-foreground text-[10px]">{t('present')}</div>
                       </div>
                       <div className="text-center">
-                        <div className="text-red-400 text-lg font-bold">{liveMetrics.attendance?.absent || 0}</div>
+                        <div className="text-red-600 dark:text-red-400 text-lg font-bold">{liveMetrics.attendance?.absent || 0}</div>
                         <div className="text-muted-foreground text-[10px]">{t('absent')}</div>
                       </div>
                     </div>
@@ -1853,15 +1853,15 @@ export default function SessionTeachPage() {
                     <h4 className="text-muted-foreground text-[10px] font-medium uppercase tracking-wider">{t('interaction')}</h4>
                     <div className="grid grid-cols-3 gap-2 text-center">
                       <div>
-                        <div className="text-blue-400 text-lg font-bold">{liveMetrics.interaction?.total_questions || 0}</div>
+                        <div className="text-blue-600 dark:text-blue-400 text-lg font-bold">{liveMetrics.interaction?.total_questions || 0}</div>
                         <div className="text-muted-foreground text-[10px]">{t('questions')}</div>
                       </div>
                       <div>
-                        <div className="text-green-400 text-lg font-bold">{liveMetrics.interaction?.correct_answers || 0}</div>
+                        <div className="text-green-600 dark:text-green-400 text-lg font-bold">{liveMetrics.interaction?.correct_answers || 0}</div>
                         <div className="text-muted-foreground text-[10px]">{t('correct')}</div>
                       </div>
                       <div>
-                        <div className="text-red-400 text-lg font-bold">{liveMetrics.interaction?.wrong_answers || 0}</div>
+                        <div className="text-red-600 dark:text-red-400 text-lg font-bold">{liveMetrics.interaction?.wrong_answers || 0}</div>
                         <div className="text-muted-foreground text-[10px]">{t('error')}</div>
                       </div>
                     </div>
@@ -1875,11 +1875,11 @@ export default function SessionTeachPage() {
                     <h4 className="text-muted-foreground text-[10px] font-medium uppercase tracking-wider">{t('participationLabel')}</h4>
                     <div className="grid grid-cols-2 gap-2 text-center">
                       <div>
-                        <div className="text-purple-400 text-lg font-bold">{liveMetrics.interaction?.unique_participants || 0}</div>
+                        <div className="text-purple-600 dark:text-purple-400 text-lg font-bold">{liveMetrics.interaction?.unique_participants || 0}</div>
                         <div className="text-muted-foreground text-[10px]">{t('participant')}</div>
                       </div>
                       <div>
-                        <div className="text-amber-400 text-lg font-bold">{liveMetrics.interaction?.not_interacted || 0}</div>
+                        <div className="text-amber-600 dark:text-amber-400 text-lg font-bold">{liveMetrics.interaction?.not_interacted || 0}</div>
                         <div className="text-muted-foreground text-[10px]">{t('notInteracted')}</div>
                       </div>
                     </div>
@@ -1892,15 +1892,15 @@ export default function SessionTeachPage() {
                     <h4 className="text-muted-foreground text-[10px] font-medium uppercase tracking-wider">{t('behaviourAndSkillsHeading')}</h4>
                     <div className="grid grid-cols-3 gap-2 text-center">
                       <div>
-                        <div className="text-green-400 text-base font-bold">{liveMetrics.behaviour?.positive || 0}</div>
+                        <div className="text-green-600 dark:text-green-400 text-base font-bold">{liveMetrics.behaviour?.positive || 0}</div>
                         <div className="text-muted-foreground text-[10px]">{t('positive')}</div>
                       </div>
                       <div>
-                        <div className="text-red-400 text-base font-bold">{liveMetrics.behaviour?.negative || 0}</div>
+                        <div className="text-red-600 dark:text-red-400 text-base font-bold">{liveMetrics.behaviour?.negative || 0}</div>
                         <div className="text-muted-foreground text-[10px]">{t('negative')}</div>
                       </div>
                       <div>
-                        <div className="text-purple-400 text-base font-bold">{liveMetrics.skills_recorded || 0}</div>
+                        <div className="text-purple-600 dark:text-purple-400 text-base font-bold">{liveMetrics.skills_recorded || 0}</div>
                         <div className="text-muted-foreground text-[10px]">{t('skillsShort')}</div>
                       </div>
                     </div>
@@ -1927,7 +1927,7 @@ export default function SessionTeachPage() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => setShowFollowupRecord(true)}
-            className="group flex items-center gap-2 px-3.5 py-1.5 rounded-md bg-amber-500/10 text-amber-300 text-[11px] uppercase tracking-[0.14em] font-bold hover:bg-amber-500/15 hover:text-amber-200 transition-colors border border-amber-500/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
+            className="group flex items-center gap-2 px-3.5 py-1.5 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[11px] uppercase tracking-[0.14em] font-bold hover:bg-amber-500/15 hover:text-amber-200 transition-colors border border-amber-500/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
           >
             <Table2 className="h-3.5 w-3.5" />
             {t('followupRecord')}
@@ -1939,7 +1939,7 @@ export default function SessionTeachPage() {
           )}
         </div>
         <div className="flex items-center gap-2 text-[10px]">
-          <span className="flex items-center gap-1.5 uppercase tracking-[0.16em] font-semibold text-emerald-300/80" role="status" aria-live="polite">
+          <span className="flex items-center gap-1.5 uppercase tracking-[0.16em] font-semibold text-emerald-700 dark:text-emerald-300/80" role="status" aria-live="polite">
             <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
               <span className="absolute inset-0 rounded-full bg-emerald-400 animate-ping opacity-60" />
               <span className="relative rounded-full h-1.5 w-1.5 bg-emerald-400" />
@@ -1964,7 +1964,7 @@ export default function SessionTeachPage() {
               <div className="space-y-2 mb-3">
                 {ops.map(op => (
                   <div key={op.id} className={`flex items-center gap-2 text-xs rounded-lg px-3 py-2 ${
-                    op.severity === 'error' ? 'bg-red-100 text-red-700 border border-red-200' : 'bg-amber-100 text-amber-700 border border-amber-200'
+                    op.severity === 'error' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 border border-red-200' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 border border-amber-200'
                   }`}>
                     <AlertTriangle className="h-3.5 w-3.5 flex-none" />
                     {op.label}
@@ -1998,7 +1998,7 @@ export default function SessionTeachPage() {
           <div className="space-y-4">
             <button
               onClick={() => autoGroupByLevel()}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600/20 text-purple-400 text-sm font-medium hover:bg-purple-600/30 transition-colors border border-purple-500/30"
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600/20 text-purple-600 dark:text-purple-400 text-sm font-medium hover:bg-purple-600/30 transition-colors border border-purple-500/30"
             >
               <Zap className="h-4 w-4" />
               {t('autoGroupByLevel')}
@@ -2028,7 +2028,7 @@ export default function SessionTeachPage() {
                   </div>
                   <button
                     onClick={() => setGroups(groups.filter((_, i) => i !== gi))}
-                    className="p-1 text-red-400 hover:text-red-500"
+                    className="p-1 text-red-600 dark:text-red-400 hover:text-red-500"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -2053,7 +2053,7 @@ export default function SessionTeachPage() {
                             updated[gi] = { ...updated[gi], students: updated[gi].students.filter(id => id !== sid) };
                             setGroups(updated);
                           }}
-                          className="text-red-400 hover:text-red-500"
+                          className="text-red-600 dark:text-red-400 hover:text-red-500"
                         >
                           <XCircle className="h-3 w-3" />
                         </button>
@@ -2268,7 +2268,7 @@ export default function SessionTeachPage() {
                               <Star className="h-2.5 w-2.5" />
                               {label}
                               {isCustom && (
-                                <button onClick={() => setCustomSkills(prev => prev.filter((_, j) => j !== i - skillTypes.length))} className="text-red-400 hover:text-red-500">
+                                <button onClick={() => setCustomSkills(prev => prev.filter((_, j) => j !== i - skillTypes.length))} className="text-red-600 dark:text-red-400 hover:text-red-500">
                                   <XCircle className="h-2.5 w-2.5" />
                                 </button>
                               )}
@@ -2295,7 +2295,7 @@ export default function SessionTeachPage() {
                               input.value = '';
                             }
                           }}
-                          className="p-1 rounded-lg bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 hover:bg-purple-200 dark:hover:bg-purple-900/50 transition-colors"
+                          className="p-1 rounded-lg bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 hover:bg-purple-200 dark:hover:bg-purple-500/10 dark:bg-purple-900/50 transition-colors"
                         >
                           <Plus className="h-3.5 w-3.5" />
                         </button>
@@ -2362,7 +2362,7 @@ export default function SessionTeachPage() {
                             min={0}
                             max={100}
                           />
-                          <button onClick={() => setFollowupColumns(followupColumns.filter((_, i) => i !== ci))} className="text-red-400 hover:text-red-500">
+                          <button onClick={() => setFollowupColumns(followupColumns.filter((_, i) => i !== ci))} className="text-red-600 dark:text-red-400 hover:text-red-500">
                             <Trash2 className="h-3 w-3" />
                           </button>
                         </div>
@@ -3169,19 +3169,19 @@ function SessionReviewPhase({ reviewData, sessionInfo, closingNote, setClosingNo
     <div className="min-h-screen bg-background p-4 flex items-center justify-center" dir={isRTL ? 'rtl' : 'ltr'}>
       <div className="w-full max-w-lg space-y-4 pb-6 max-h-screen overflow-y-auto">
         <div className="bg-gradient-to-br from-card to-background rounded-2xl p-5 border border-border text-center">
-          <ClipboardCheck className="h-12 w-12 mx-auto mb-2 text-amber-400" />
+          <ClipboardCheck className="h-12 w-12 mx-auto mb-2 text-amber-600 dark:text-amber-400" />
           <h1 className="font-cairo text-xl font-bold text-foreground">{t('sessionSummaryReview')}</h1>
           <p className="text-muted-foreground text-sm mt-1">{sessionInfo?.subject_name || sessionInfo?.subjectName} — {sessionInfo?.class_name || sessionInfo?.className}</p>
           <div className="mt-3 text-2xl font-mono font-bold text-foreground">{r.duration_minutes || 0} <span className="text-sm text-muted-foreground">{t('durationMinutes')}</span></div>
         </div>
 
         {r.warnings?.length > 0 && (
-          <div className="bg-amber-900/30 border border-amber-500/30 rounded-xl p-4 space-y-2">
-            <h3 className="text-amber-400 text-sm font-bold font-cairo flex items-center gap-2">
+          <div className="bg-amber-500/10 dark:bg-amber-900/30 border border-amber-500/30 rounded-xl p-4 space-y-2">
+            <h3 className="text-amber-600 dark:text-amber-400 text-sm font-bold font-cairo flex items-center gap-2">
               <AlertTriangle className="h-4 w-4" /> {t('warnings')}
             </h3>
             {r.warnings.map((w, i) => (
-              <div key={i} className="flex items-center gap-2 text-amber-300 text-xs">
+              <div key={i} className="flex items-center gap-2 text-amber-700 dark:text-amber-300 text-xs">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-none" />
                 {w}
               </div>
@@ -3191,16 +3191,16 @@ function SessionReviewPhase({ reviewData, sessionInfo, closingNote, setClosingNo
 
         <div className="bg-card rounded-xl p-4">
           <h3 className="text-muted-foreground text-sm mb-3 font-cairo font-bold flex items-center gap-2">
-            <Users className="h-4 w-4 text-green-400" /> {t('attendanceData')}
+            <Users className="h-4 w-4 text-green-600 dark:text-green-400" /> {t('attendanceData')}
           </h3>
           <div className="grid grid-cols-3 gap-2">
             {[
               { label: t('registered'), value: r.attendance?.total, color: 'text-foreground' },
-              { label: t('present'), value: r.attendance?.present, color: 'text-green-400' },
-              { label: t('absent'), value: r.attendance?.absent, color: 'text-red-400' },
-              { label: t('late'), value: r.attendance?.late, color: 'text-amber-400' },
-              { label: t('excused'), value: r.attendance?.excused, color: 'text-blue-400' },
-              { label: t('attendanceRate'), value: `${r.attendance?.rate || 0}%`, color: 'text-emerald-400' },
+              { label: t('present'), value: r.attendance?.present, color: 'text-green-600 dark:text-green-400' },
+              { label: t('absent'), value: r.attendance?.absent, color: 'text-red-600 dark:text-red-400' },
+              { label: t('late'), value: r.attendance?.late, color: 'text-amber-600 dark:text-amber-400' },
+              { label: t('excused'), value: r.attendance?.excused, color: 'text-blue-600 dark:text-blue-400' },
+              { label: t('attendanceRate'), value: `${r.attendance?.rate || 0}%`, color: 'text-emerald-600 dark:text-emerald-400' },
             ].map(item => (
               <div key={item.label} className="bg-foreground/5 rounded-lg p-2 text-center">
                 <div className={`text-lg font-bold ${item.color}`}>{item.value ?? 0}</div>
@@ -3212,18 +3212,18 @@ function SessionReviewPhase({ reviewData, sessionInfo, closingNote, setClosingNo
 
         <div className="bg-card rounded-xl p-4">
           <h3 className="text-muted-foreground text-sm mb-3 font-cairo font-bold flex items-center gap-2">
-            <Activity className="h-4 w-4 text-blue-400" /> {t('interactionData')}
+            <Activity className="h-4 w-4 text-blue-600 dark:text-blue-400" /> {t('interactionData')}
           </h3>
           <div className="grid grid-cols-3 gap-2">
             {[
-              { label: t('participations'), value: r.interactions?.total_participations, color: 'text-blue-400' },
-              { label: t('participatingStudents'), value: r.interactions?.participating_students, color: 'text-purple-400' },
-              { label: t('evaluatedStudents'), value: r.interactions?.evaluated_students ?? r.interactions?.participating_students, color: 'text-indigo-400' },
-              { label: t('questions'), value: r.interactions?.questions_asked, color: 'text-cyan-400' },
-              { label: t('correctAnswers'), value: r.interactions?.correct_answers, color: 'text-green-400' },
-              { label: t('wrongAnswers'), value: r.interactions?.wrong_answers, color: 'text-red-400' },
-              { label: t('notesSent'), value: r.notes?.sent_to_parents ?? 0, color: 'text-emerald-400' },
-              { label: t('participationRate'), value: `${r.interactions?.participation_rate || 0}%`, color: 'text-emerald-400' },
+              { label: t('participations'), value: r.interactions?.total_participations, color: 'text-blue-600 dark:text-blue-400' },
+              { label: t('participatingStudents'), value: r.interactions?.participating_students, color: 'text-purple-600 dark:text-purple-400' },
+              { label: t('evaluatedStudents'), value: r.interactions?.evaluated_students ?? r.interactions?.participating_students, color: 'text-indigo-600 dark:text-indigo-400' },
+              { label: t('questions'), value: r.interactions?.questions_asked, color: 'text-cyan-600 dark:text-cyan-400' },
+              { label: t('correctAnswers'), value: r.interactions?.correct_answers, color: 'text-green-600 dark:text-green-400' },
+              { label: t('wrongAnswers'), value: r.interactions?.wrong_answers, color: 'text-red-600 dark:text-red-400' },
+              { label: t('notesSent'), value: r.notes?.sent_to_parents ?? 0, color: 'text-emerald-600 dark:text-emerald-400' },
+              { label: t('participationRate'), value: `${r.interactions?.participation_rate || 0}%`, color: 'text-emerald-600 dark:text-emerald-400' },
             ].map(item => (
               <div key={item.label} className="bg-foreground/5 rounded-lg p-2 text-center">
                 <div className={`text-lg font-bold ${item.color}`}>{item.value ?? 0}</div>
@@ -3236,17 +3236,17 @@ function SessionReviewPhase({ reviewData, sessionInfo, closingNote, setClosingNo
         {(r.behaviours?.total > 0) && (
           <div className="bg-card rounded-xl p-4">
             <h3 className="text-muted-foreground text-sm mb-3 font-cairo font-bold flex items-center gap-2">
-              <Heart className="h-4 w-4 text-pink-400" /> {t('behaviourData')}
+              <Heart className="h-4 w-4 text-pink-600 dark:text-pink-400" /> {t('behaviourData')}
             </h3>
             <div className="grid grid-cols-2 gap-3">
-              <div className="bg-green-900/30 rounded-lg p-3 text-center">
-                <ThumbsUp className="h-5 w-5 text-green-400 mx-auto mb-1" />
-                <div className="text-xl font-bold text-green-400">{r.behaviours?.positive || 0}</div>
+              <div className="bg-green-500/10 dark:bg-green-900/30 rounded-lg p-3 text-center">
+                <ThumbsUp className="h-5 w-5 text-green-600 dark:text-green-400 mx-auto mb-1" />
+                <div className="text-xl font-bold text-green-600 dark:text-green-400">{r.behaviours?.positive || 0}</div>
                 <div className="text-muted-foreground text-[10px]">{t('positiveBehaviour')}</div>
               </div>
-              <div className="bg-red-900/30 rounded-lg p-3 text-center">
-                <ThumbsDown className="h-5 w-5 text-red-400 mx-auto mb-1" />
-                <div className="text-xl font-bold text-red-400">{r.behaviours?.negative || 0}</div>
+              <div className="bg-red-500/10 dark:bg-red-900/30 rounded-lg p-3 text-center">
+                <ThumbsDown className="h-5 w-5 text-red-600 dark:text-red-400 mx-auto mb-1" />
+                <div className="text-xl font-bold text-red-600 dark:text-red-400">{r.behaviours?.negative || 0}</div>
                 <div className="text-muted-foreground text-[10px]">{t('negativeBehaviour')}</div>
               </div>
             </div>
@@ -3256,15 +3256,15 @@ function SessionReviewPhase({ reviewData, sessionInfo, closingNote, setClosingNo
         {(r.skills?.recorded > 0) && (
           <div className="bg-card rounded-xl p-4">
             <h3 className="text-muted-foreground text-sm mb-3 font-cairo font-bold flex items-center gap-2">
-              <Star className="h-4 w-4 text-purple-400" /> {t('skillsData')}
+              <Star className="h-4 w-4 text-purple-600 dark:text-purple-400" /> {t('skillsData')}
             </h3>
             <div className="grid grid-cols-2 gap-3">
-              <div className="bg-purple-900/30 rounded-lg p-3 text-center">
-                <div className="text-xl font-bold text-purple-400">{r.skills?.recorded}</div>
+              <div className="bg-purple-500/10 dark:bg-purple-900/30 rounded-lg p-3 text-center">
+                <div className="text-xl font-bold text-purple-600 dark:text-purple-400">{r.skills?.recorded}</div>
                 <div className="text-muted-foreground text-[10px]">{t('recordedSkill')}</div>
               </div>
-              <div className="bg-indigo-900/30 rounded-lg p-3 text-center">
-                <div className="text-xl font-bold text-indigo-400">{r.skills?.students_count}</div>
+              <div className="bg-indigo-500/10 dark:bg-indigo-900/30 rounded-lg p-3 text-center">
+                <div className="text-xl font-bold text-indigo-600 dark:text-indigo-400">{r.skills?.students_count}</div>
                 <div className="text-muted-foreground text-[10px]">{t('student')}</div>
               </div>
             </div>
@@ -3304,15 +3304,15 @@ function SessionReviewPhase({ reviewData, sessionInfo, closingNote, setClosingNo
         {r.top_participants?.length > 0 && (
           <div className="bg-card rounded-xl p-4">
             <h3 className="text-muted-foreground text-sm mb-3 font-cairo font-bold flex items-center gap-2">
-              <Award className="h-4 w-4 text-amber-400" /> {t('topParticipants')}
+              <Award className="h-4 w-4 text-amber-600 dark:text-amber-400" /> {t('topParticipants')}
             </h3>
             {r.top_participants.map((p, i) => (
               <div key={i} className="flex items-center justify-between py-1.5">
                 <div className="flex items-center gap-2">
-                  <span className="text-amber-400 text-xs font-bold w-5">#{i + 1}</span>
+                  <span className="text-amber-600 dark:text-amber-400 text-xs font-bold w-5">#{i + 1}</span>
                   <span className="text-foreground text-sm">{p.name}</span>
                 </div>
-                <span className="text-green-400 text-xs">{p.correct_answers} ✓ | {p.participations} {t('participation')}</span>
+                <span className="text-green-600 dark:text-green-400 text-xs">{p.correct_answers} ✓ | {p.participations} {t('participation')}</span>
               </div>
             ))}
           </div>
@@ -3320,7 +3320,7 @@ function SessionReviewPhase({ reviewData, sessionInfo, closingNote, setClosingNo
 
         <div className="bg-card rounded-xl p-4">
           <h3 className="text-muted-foreground text-sm mb-3 font-cairo font-bold flex items-center gap-2">
-            <PenLine className="h-4 w-4 text-cyan-400" /> {t('closingNoteLabel')}
+            <PenLine className="h-4 w-4 text-cyan-600 dark:text-cyan-400" /> {t('closingNoteLabel')}
           </h3>
           <Textarea
             value={closingNote}
@@ -3398,7 +3398,7 @@ function StudentCard({ student, isFlashing, isSelected, onClick }) {
       </p>
       {count > 0 && (
         <div className="mt-0.5 flex items-center justify-center gap-1">
-          <span className="text-green-400 text-[9px] font-bold">{correct}</span>
+          <span className="text-green-600 dark:text-green-400 text-[9px] font-bold">{correct}</span>
           <span className="text-muted-foreground/70 text-[9px]">/</span>
           <span className="text-muted-foreground text-[9px]">{count}</span>
         </div>
@@ -3537,7 +3537,7 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
         <div className="bg-gradient-to-br from-brand-turquoise to-brand-navy rounded-2xl p-6 text-foreground text-center relative overflow-hidden">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.08),transparent_60%)]" />
           <div className="relative z-10">
-            <Trophy className="h-14 w-14 mx-auto mb-3 text-amber-300" />
+            <Trophy className="h-14 w-14 mx-auto mb-3 text-amber-700 dark:text-amber-300" />
             <h1 className="font-cairo text-2xl font-bold">{t('sessionEnded')}</h1>
             <p className="text-muted-foreground mt-1">{sessionInfo?.subject_name || sessionInfo?.subjectName} — {sessionInfo?.class_name || sessionInfo?.className}</p>
             <div className="mt-4 text-3xl font-mono font-bold">{summary.duration_minutes || 0} <span className="text-lg text-muted-foreground">{t('durationMinutes')}</span></div>
@@ -3546,12 +3546,12 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
 
         <div className="grid grid-cols-2 gap-3">
           {[
-            { label: t('present'), value: summary.present_count, color: 'text-green-400', bg: 'bg-green-900/30', icon: <UserCheck className="h-5 w-5 text-green-400" /> },
-            { label: t('absent'), value: summary.absent_count, color: 'text-red-400', bg: 'bg-red-900/30', icon: <XCircle className="h-5 w-5 text-red-400" /> },
-            { label: t('evaluatedStudents'), value: summary.evaluated_students ?? summary.present_count, color: 'text-indigo-400', bg: 'bg-indigo-900/30', icon: <ClipboardCheck className="h-5 w-5 text-indigo-400" /> },
-            { label: t('questions'), value: summary.questions_asked, color: 'text-blue-400', bg: 'bg-blue-900/30', icon: <FileQuestion className="h-5 w-5 text-blue-400" /> },
-            { label: t('correctAnswers'), value: summary.correct_answers, color: 'text-amber-400', bg: 'bg-amber-900/30', icon: <CheckCircle2 className="h-5 w-5 text-amber-400" /> },
-            { label: t('notesSent'), value: summary.notes_sent ?? 0, color: 'text-emerald-400', bg: 'bg-emerald-900/30', icon: <Send className="h-5 w-5 text-emerald-400" /> },
+            { label: t('present'), value: summary.present_count, color: 'text-green-600 dark:text-green-400', bg: 'bg-green-500/10 dark:bg-green-900/30', icon: <UserCheck className="h-5 w-5 text-green-600 dark:text-green-400" /> },
+            { label: t('absent'), value: summary.absent_count, color: 'text-red-600 dark:text-red-400', bg: 'bg-red-500/10 dark:bg-red-900/30', icon: <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" /> },
+            { label: t('evaluatedStudents'), value: summary.evaluated_students ?? summary.present_count, color: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-500/10 dark:bg-indigo-900/30', icon: <ClipboardCheck className="h-5 w-5 text-indigo-600 dark:text-indigo-400" /> },
+            { label: t('questions'), value: summary.questions_asked, color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-500/10 dark:bg-blue-900/30', icon: <FileQuestion className="h-5 w-5 text-blue-600 dark:text-blue-400" /> },
+            { label: t('correctAnswers'), value: summary.correct_answers, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-500/10 dark:bg-amber-900/30', icon: <CheckCircle2 className="h-5 w-5 text-amber-600 dark:text-amber-400" /> },
+            { label: t('notesSent'), value: summary.notes_sent ?? 0, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-500/10 dark:bg-emerald-900/30', icon: <Send className="h-5 w-5 text-emerald-600 dark:text-emerald-400" /> },
           ].map(item => (
             <div key={item.label} className={`${item.bg} rounded-xl p-4 text-center`}>
               <div className="text-lg mb-1">{item.icon}</div>
@@ -3564,27 +3564,27 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
         {(hasBehaviours || hasSkills) && (
           <div className="bg-card rounded-xl p-4">
             <h3 className="text-muted-foreground text-sm mb-3 flex items-center gap-2">
-              <Heart className="h-4 w-4 text-pink-400" /> {t('behaviourData')}
+              <Heart className="h-4 w-4 text-pink-600 dark:text-pink-400" /> {t('behaviourData')}
             </h3>
             <div className={`grid ${hasSkills ? 'grid-cols-3' : 'grid-cols-2'} gap-3`}>
               {hasBehaviours && (
                 <>
-                  <div className="bg-green-900/30 rounded-lg p-3 text-center">
-                    <ThumbsUp className="h-5 w-5 text-green-400 mx-auto mb-1" />
-                    <div className="text-xl font-bold text-green-400">{summary.positive_behaviours || 0}</div>
+                  <div className="bg-green-500/10 dark:bg-green-900/30 rounded-lg p-3 text-center">
+                    <ThumbsUp className="h-5 w-5 text-green-600 dark:text-green-400 mx-auto mb-1" />
+                    <div className="text-xl font-bold text-green-600 dark:text-green-400">{summary.positive_behaviours || 0}</div>
                     <div className="text-muted-foreground text-[10px]">{t('positiveBehaviour')}</div>
                   </div>
-                  <div className="bg-red-900/30 rounded-lg p-3 text-center">
-                    <ThumbsDown className="h-5 w-5 text-red-400 mx-auto mb-1" />
-                    <div className="text-xl font-bold text-red-400">{summary.negative_behaviours || 0}</div>
+                  <div className="bg-red-500/10 dark:bg-red-900/30 rounded-lg p-3 text-center">
+                    <ThumbsDown className="h-5 w-5 text-red-600 dark:text-red-400 mx-auto mb-1" />
+                    <div className="text-xl font-bold text-red-600 dark:text-red-400">{summary.negative_behaviours || 0}</div>
                     <div className="text-muted-foreground text-[10px]">{t('negativeBehaviour')}</div>
                   </div>
                 </>
               )}
               {hasSkills && (
-                <div className="bg-purple-900/30 rounded-lg p-3 text-center">
-                  <Star className="h-5 w-5 text-purple-400 mx-auto mb-1" />
-                  <div className="text-xl font-bold text-purple-400">{summary.skills_recorded}</div>
+                <div className="bg-purple-500/10 dark:bg-purple-900/30 rounded-lg p-3 text-center">
+                  <Star className="h-5 w-5 text-purple-600 dark:text-purple-400 mx-auto mb-1" />
+                  <div className="text-xl font-bold text-purple-600 dark:text-purple-400">{summary.skills_recorded}</div>
                   <div className="text-muted-foreground text-[10px]">{t('recordedSkill')}</div>
                 </div>
               )}
@@ -3610,12 +3610,12 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
         {summary.needs_attention?.length > 0 && (
           <div className="bg-card rounded-xl p-4">
             <h3 className="text-muted-foreground text-sm mb-3 flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-amber-400" /> {t('needsAttention')}
+              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" /> {t('needsAttention')}
             </h3>
             {summary.needs_attention.map((s, i) => (
               <div key={i} className="flex items-center justify-between py-1.5 border-b border-border last:border-0">
                 <span className="text-foreground text-sm">{s.name}</span>
-                <span className="text-amber-400 text-xs">{s.reason}</span>
+                <span className="text-amber-600 dark:text-amber-400 text-xs">{s.reason}</span>
               </div>
             ))}
           </div>
@@ -3624,15 +3624,15 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
         {summary.top_participants?.length > 0 && (
           <div className="bg-card rounded-xl p-4">
             <h3 className="text-muted-foreground text-sm mb-3 flex items-center gap-2">
-              <Award className="h-4 w-4 text-amber-400" /> {t('topParticipants')}
+              <Award className="h-4 w-4 text-amber-600 dark:text-amber-400" /> {t('topParticipants')}
             </h3>
             {summary.top_participants.map((p, i) => (
               <div key={i} className="flex items-center justify-between py-1.5">
                 <div className="flex items-center gap-2">
-                  <span className="text-amber-400 text-xs font-bold w-5">#{i + 1}</span>
+                  <span className="text-amber-600 dark:text-amber-400 text-xs font-bold w-5">#{i + 1}</span>
                   <span className="text-foreground text-sm">{p.name}</span>
                 </div>
-                <Badge className="bg-amber-900/50 text-amber-300 text-xs">{p.correct_answers} ✓</Badge>
+                <Badge className="bg-amber-500/10 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 text-xs">{p.correct_answers} ✓</Badge>
               </div>
             ))}
           </div>
@@ -3652,7 +3652,7 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
             {t('sendSummaryToParentsAndAdmin')}
           </button>
         ) : (
-          <div className="flex items-center justify-center gap-2 text-emerald-400 text-sm py-2">
+          <div className="flex items-center justify-center gap-2 text-emerald-600 dark:text-emerald-400 text-sm py-2">
             <CheckCircle2 className="h-4 w-4" />
             <span>{t('sentSuccessfully')}</span>
           </div>

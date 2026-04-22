@@ -20,18 +20,18 @@ import {
 
 import { useTranslation } from '../../contexts/ThemeContext';
 const STATUS_MAP = {
-  completed: { label: 'مكتملة', labelEn: 'Completed', color: 'bg-green-100 text-green-700 border-green-200' },
-  ended: { label: 'منتهية', labelEn: 'Ended', color: 'bg-green-100 text-green-700 border-green-200' },
-  in_progress: { label: 'جارية', labelEn: 'Active', color: 'bg-blue-100 text-blue-700 border-blue-200' },
-  session_opened: { label: 'مفتوحة', labelEn: 'Opened', color: 'bg-sky-100 text-sky-700 border-sky-200' },
-  attendance_in_progress: { label: 'تسجيل حضور', labelEn: 'Attendance', color: 'bg-indigo-100 text-indigo-700 border-indigo-200' },
-  attendance_approved: { label: 'حضور مؤكد', labelEn: 'Att. Approved', color: 'bg-cyan-100 text-cyan-700 border-cyan-200' },
-  teaching_in_progress: { label: 'تدريس', labelEn: 'Teaching', color: 'bg-teal-100 text-teal-700 border-teal-200' },
-  interaction_running: { label: 'تفاعل', labelEn: 'Interaction', color: 'bg-violet-100 text-violet-700 border-violet-200' },
-  session_review: { label: 'مراجعة', labelEn: 'Review', color: 'bg-amber-100 text-amber-700 border-amber-200' },
-  cancelled: { label: 'ملغاة', labelEn: 'Cancelled', color: 'bg-red-100 text-red-700 border-red-200' },
-  auto_closed: { label: 'أُغلقت تلقائياً', labelEn: 'Auto Closed', color: 'bg-orange-100 text-orange-700 border-orange-200' },
-  paused: { label: 'متوقفة مؤقتاً', labelEn: 'Paused', color: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
+  completed: { label: 'مكتملة', labelEn: 'Completed', color: 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-500/30' },
+  ended: { label: 'منتهية', labelEn: 'Ended', color: 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-500/30' },
+  in_progress: { label: 'جارية', labelEn: 'Active', color: 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-500/30' },
+  session_opened: { label: 'مفتوحة', labelEn: 'Opened', color: 'bg-sky-100 text-sky-700 border-sky-200 dark:bg-sky-900/30 dark:text-sky-300 dark:border-sky-500/30' },
+  attendance_in_progress: { label: 'تسجيل حضور', labelEn: 'Attendance', color: 'bg-indigo-100 text-indigo-700 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-500/30' },
+  attendance_approved: { label: 'حضور مؤكد', labelEn: 'Att. Approved', color: 'bg-cyan-100 text-cyan-700 border-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-300 dark:border-cyan-500/30' },
+  teaching_in_progress: { label: 'تدريس', labelEn: 'Teaching', color: 'bg-teal-100 text-teal-700 border-teal-200 dark:bg-teal-900/30 dark:text-teal-300 dark:border-teal-500/30' },
+  interaction_running: { label: 'تفاعل', labelEn: 'Interaction', color: 'bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-900/30 dark:text-violet-300 dark:border-violet-500/30' },
+  session_review: { label: 'مراجعة', labelEn: 'Review', color: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-500/30' },
+  cancelled: { label: 'ملغاة', labelEn: 'Cancelled', color: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-500/30' },
+  auto_closed: { label: 'أُغلقت تلقائياً', labelEn: 'Auto Closed', color: 'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-500/30' },
+  paused: { label: 'متوقفة مؤقتاً', labelEn: 'Paused', color: 'bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-500/30' },
 };
 
 export default function SessionsManageTab() {
@@ -131,7 +131,7 @@ export default function SessionsManageTab() {
   });
 
   const getStatusBadge = (status) => {
-    const s = STATUS_MAP[status] || { label: status || 'مجدولة', labelEn: status || 'Scheduled', color: 'bg-gray-100 text-gray-700 border-gray-200' };
+    const s = STATUS_MAP[status] || { label: status || 'مجدولة', labelEn: status || 'Scheduled', color: 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-900/30 dark:text-gray-300 dark:border-gray-500/30' };
     return <Badge className={s.color}>{isRTL ? s.label : s.labelEn}</Badge>;
   };
 
@@ -473,7 +473,7 @@ export default function SessionsManageTab() {
                             <span className="text-sm text-gray-700 dark:text-gray-300">
                               <span className="text-amber-500 font-bold text-xs">#{i + 1}</span> {p.name}
                             </span>
-                            <Badge className="bg-amber-100 text-amber-700 text-xs">{p.correct} ✓</Badge>
+                            <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 text-xs">{p.correct} ✓</Badge>
                           </div>
                         ))}
                       </div>
