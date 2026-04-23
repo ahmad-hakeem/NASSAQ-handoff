@@ -1024,8 +1024,20 @@ export default function SessionTeachPage() {
               </button>
               {showOverflowMenu && (
                 <>
-                  <div className="fixed inset-0 z-30" onClick={() => setShowOverflowMenu(false)} />
-                  <div className={`absolute z-40 top-full mt-2 ${isRTL ? 'left-0' : 'right-0'} w-72 bg-popover border border-border rounded-xl shadow-2xl p-2.5 space-y-1.5`} dir={isRTL ? 'rtl' : 'ltr'}>
+                  <div
+                    className="fixed inset-0 z-[60]"
+                    onClick={() => setShowOverflowMenu(false)}
+                    onMouseDown={() => setShowOverflowMenu(false)}
+                    onTouchStart={() => setShowOverflowMenu(false)}
+                  />
+                  <div
+                    className={`absolute z-[70] top-full mt-2 ${isRTL ? 'left-0' : 'right-0'} w-72 bg-background border border-border rounded-xl shadow-2xl p-2.5 space-y-1.5`}
+                    dir={isRTL ? 'rtl' : 'ltr'}
+                    onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onTouchStart={(e) => e.stopPropagation()}
+                  >
                     {/* Mode segmented control */}
                     <div className="px-1 pt-0.5 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground font-bold">{t('mode')}</div>
                     <div className="flex items-center bg-foreground/[0.04] border border-border rounded-lg p-0.5 gap-0.5">
