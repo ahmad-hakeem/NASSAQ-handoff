@@ -913,6 +913,14 @@ export default function UsersClassesManagement() {
     else setSearchParams({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
+  useEffect(() => {
+    const f = searchParams.get('filter');
+    if (f && f !== activeTab) {
+      setActiveTab(f);
+      setActiveFilter(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const fetchAllData = async () => {
     setLoading(true);

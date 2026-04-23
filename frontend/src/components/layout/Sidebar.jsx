@@ -301,15 +301,15 @@ export const Sidebar = ({ children }) => {
         subItems: [
           {
             label: t('teachers'),
-            href: '/admin/teachers',
+            href: '/admin/users-management?filter=teachers',
           },
           {
             label: t('students'),
-            href: '/admin/students',
+            href: '/admin/users-management?filter=students',
           },
           {
             label: t('classes2'),
-            href: '/admin/classes',
+            href: '/admin/users-management?filter=classes',
           },
         ],
       },
