@@ -166,14 +166,9 @@ export default function SessionTeachPage() {
     try { return localStorage.getItem('sessionTeach.rightPanel') || 'log'; }
     catch { return 'log'; }
   });
-  const [panelOpen, setPanelOpen] = useState(() => {
-    if (typeof window === 'undefined') return true;
-    try {
-      const stored = localStorage.getItem('sessionTeach.panelOpen');
-      if (stored !== null) return stored === '1';
-    } catch { /* ignore */ }
-    return typeof window !== 'undefined' && window.innerWidth >= 1280;
-  });
+  // Activity log panel always starts closed in the redesigned layout (mockup hides it).
+  // Users can still open it from the overflow (⋯) menu during the session.
+  const [panelOpen, setPanelOpen] = useState(false);
   const [notes, setNotes] = useState([]);
   const [newNote, setNewNote] = useState('');
   const [noteType, setNoteType] = useState('session');
@@ -2199,7 +2194,7 @@ export default function SessionTeachPage() {
         </Button>
         <Button
           onClick={() => setShowFollowupRecord(true)}
-          className="flex-1 h-10 px-5 bg-gradient-to-b from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white font-cairo font-bold border border-sky-400/40 shadow-[0_4px_12px_-2px_rgba(59,130,246,0.4)] gap-2"
+          className="h-10 px-5 bg-gradient-to-b from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white font-cairo font-bold border border-sky-400/40 shadow-[0_4px_12px_-2px_rgba(59,130,246,0.4)] gap-2"
         >
           <FileText className="h-4 w-4" />
           {t('followupRecord')}
