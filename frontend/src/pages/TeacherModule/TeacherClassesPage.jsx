@@ -938,24 +938,6 @@ export default function TeacherClassesPage() {
                     variant="outline"
                     size="sm"
                     className="h-9 gap-1.5"
-                    onClick={handleOpenAddClassDialog}
-                  >
-                    <Plus className="h-4 w-4" />
-                    <span className="hidden sm:inline">{t('addClass')}</span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-9 gap-1.5"
-                    onClick={handleOpenImportDialog}
-                  >
-                    <Upload className="h-4 w-4" />
-                    <span className="hidden sm:inline">{t('importData')}</span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-9 gap-1.5"
                     onClick={() => setShowSettingsModal(true)}
                   >
                     <Settings className="h-4 w-4" />
