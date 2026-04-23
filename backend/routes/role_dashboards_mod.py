@@ -818,6 +818,10 @@ async def get_teacher_classes(
         if subject_ids:
             subjects = await gd_find(db.session, "subjects", {"id": {"$in": subject_ids}}, limit=20)
         subject_names = [s.get("name_ar") or s.get("name_en") or "مادة" for s in subjects]
+        subjects_data = [
+            {"id": s.get("id"), "name": s.get("name_ar") or s.get("name_en") or "مادة"}
+            for s in subjects if s.get("id")
+        ]
 
         class_schedule = [s for s in schedule_sessions if s.get("class_id") == cls_id]
         weekly_periods = len(class_schedule) or sum(a.get("weekly_sessions", 0) for a in class_assignments)
@@ -871,6 +875,8 @@ async def get_teacher_classes(
             **cls,
             "student_count": student_count,
             "subjects": subject_names,
+            "subject_ids": subject_ids,
+            "subjects_data": subjects_data,
             "weekly_periods": weekly_periods,
             "grade_name": grade_name,
             "next_session": next_session_info,
