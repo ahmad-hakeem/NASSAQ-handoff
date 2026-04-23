@@ -232,11 +232,28 @@ async def get_class(class_id: str, current_user: dict = Depends(get_current_user
         raise HTTPException(status_code=404, detail="الفصل غير موجود")
     
     teacher_name = None
-    if class_doc.get("homeroom_teacher_id"):
-        teacher = await gd_find_one(db.session, "teachers", {"id": class_doc.get("homeroom_teacher_id")})
+    teacher_id_resolved = class_doc.get("homeroom_teacher_id")
+    if teacher_id_resolved:
+        teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id_resolved})
         if teacher:
             teacher_name = teacher.get("full_name")
-    
+
+    # Fallback: if no explicit homeroom is set, use the first assigned teacher
+    # from teacher_class_assignments so the principal/teacher views agree with
+    # what the assignment screen shows.
+    if not teacher_name:
+        tca = await gd_find_one(
+            db.session,
+            "teacher_class_assignments",
+            {"class_id": class_id, "is_active": {"$ne": False}},
+        )
+        if tca and tca.get("teacher_id"):
+            teacher = await gd_find_one(db.session, "teachers", {"id": tca["teacher_id"]})
+            if teacher:
+                teacher_name = teacher.get("full_name")
+                if not class_doc.get("homeroom_teacher_id"):
+                    class_doc["homeroom_teacher_id"] = teacher.get("id")
+
     class_doc["homeroom_teacher_name"] = teacher_name
     return ClassResponse(**class_doc)
 

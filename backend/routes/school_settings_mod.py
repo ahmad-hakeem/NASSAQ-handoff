@@ -2051,44 +2051,53 @@ async def _auto_populate_teacher_class_assignments(school_id: str):
     """
     Auto-populate teacher-class assignments: all teachers linked to all classes by default.
     Uses bulk upsert for concurrency safety (idempotent).
+
+    IMPORTANT: this runs from a GET handler. The pg_session_middleware rolls
+    back GET-request transactions to defend against accidental writes, which
+    means inserts on db.session would vanish at end-of-request. We use a
+    dedicated session with an explicit commit so the auto-populated rows
+    actually persist.
     """
-    teachers = await gd_find(db.session, "teachers", {"school_id": school_id, "is_active": {"$ne": False}}, limit=2000)
-    classes = await gd_find(db.session, "classes", {"school_id": school_id, "is_active": {"$ne": False}}, limit=500)
+    from db import async_session_factory
 
-    if not teachers or not classes:
-        return 0
+    async with async_session_factory() as ses:
+        teachers = await gd_find(ses, "teachers", {"school_id": school_id, "is_active": {"$ne": False}}, limit=2000)
+        classes = await gd_find(ses, "classes", {"school_id": school_id, "is_active": {"$ne": False}}, limit=500)
 
-    existing_count = await gd_count(db.session, "teacher_class_assignments", {"school_id": school_id})
-    expected_total = len(teachers) * len(classes)
-    if existing_count >= expected_total:
-        return 0
+        if not teachers or not classes:
+            return 0
 
-    settings = await gd_find_one(db.session, "school_settings", {"school_id": school_id})
-    academic_year_id = None
-    if settings:
-        nested = settings.get("settings", {})
-        academic_year_id = nested.get("academic_year") or settings.get("academicYear")
+        existing_count = await gd_count(ses, "teacher_class_assignments", {"school_id": school_id})
+        expected_total = len(teachers) * len(classes)
+        if existing_count >= expected_total:
+            return 0
 
-    now = datetime.now(timezone.utc).isoformat()
-    upserted = 0
-    for t in teachers:
-        for c in classes:
-            filt = {"school_id": school_id, "teacher_id": t["id"], "class_id": c["id"]}
-            doc = {
-                "id": str(uuid.uuid4()),
-                "school_id": school_id,
-                "teacher_id": t["id"],
-                "class_id": c["id"],
-                "is_active": True,
-                "created_at": now,
-            }
-            try:
-                async with db.session.begin_nested():
-                    await gd_upsert(db.session, "teacher_class_assignments", filt, doc)
-                upserted += 1
-            except Exception as e:
-                logger.warning(f"auto-populate upsert failed for teacher={t['id']} class={c['id']}: {e}")
-    return upserted
+        now = datetime.now(timezone.utc).isoformat()
+        upserted = 0
+        for t in teachers:
+            for c in classes:
+                filt = {"school_id": school_id, "teacher_id": t["id"], "class_id": c["id"]}
+                doc = {
+                    "id": str(uuid.uuid4()),
+                    "school_id": school_id,
+                    "teacher_id": t["id"],
+                    "class_id": c["id"],
+                    "is_active": True,
+                    "created_at": now,
+                }
+                try:
+                    async with ses.begin_nested():
+                        await gd_upsert(ses, "teacher_class_assignments", filt, doc)
+                    upserted += 1
+                except Exception as e:
+                    logger.warning(f"auto-populate upsert failed for teacher={t['id']} class={c['id']}: {e}")
+        try:
+            await ses.commit()
+        except Exception as e:
+            logger.warning(f"auto-populate commit failed for school {school_id}: {e}")
+            await ses.rollback()
+            return 0
+        return upserted
 
 
 async def _ensure_teacher_linked_to_all_classes(school_id: str, teacher_id: str):
