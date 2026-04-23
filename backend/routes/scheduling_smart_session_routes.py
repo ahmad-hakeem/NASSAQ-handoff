@@ -626,6 +626,8 @@ async def _verify_class_access(class_id: str, current_user: dict):
     class_school = cls.get("school_id") or cls.get("tenant_id")
     if role in ("teacher",):
         tid = current_user.get("teacher_id") or current_user.get("id")
+        if cls.get("homeroom_teacher_id") and tid and cls.get("homeroom_teacher_id") == tid:
+            return
         assignments = await gd_find(db.session, "class_subjects", {"class_id": class_id, "teacher_id": tid}, limit=1)
         if assignments:
             return
