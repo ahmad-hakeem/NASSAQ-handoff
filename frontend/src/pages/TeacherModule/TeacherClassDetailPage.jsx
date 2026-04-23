@@ -742,16 +742,26 @@ export default function TeacherClassDetailPage() {
                           </div>
                         ) : (
                           <div className="flex items-center gap-2 flex-wrap">
-                            {absences.slice(0, 12).map((abs, idx) => (
-                              <div key={abs.id || idx} className="flex flex-col items-center gap-0.5">
-                                <div className="w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/30 border-2 border-red-300 dark:border-red-700 flex items-center justify-center">
-                                  <X className="h-3.5 w-3.5 text-red-500" />
+                            {absences.slice(0, 12).map((abs, idx) => {
+                              const d = abs.date ? new Date(abs.date) : null;
+                              const isValid = d && !isNaN(d.getTime());
+                              const shortLabel = isValid
+                                ? `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`
+                                : '';
+                              const fullLabel = isValid
+                                ? d.toLocaleDateString(isRTL ? 'ar-EG' : 'en-GB', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
+                                : '';
+                              return (
+                                <div key={abs.id || idx} className="flex flex-col items-center gap-0.5" title={fullLabel}>
+                                  <div className="w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/30 border-2 border-red-300 dark:border-red-700 flex items-center justify-center">
+                                    <X className="h-3.5 w-3.5 text-red-500" />
+                                  </div>
+                                  <span className="text-[10px] text-muted-foreground whitespace-nowrap font-tajawal">
+                                    {shortLabel}
+                                  </span>
                                 </div>
-                                <span className="text-[9px] text-muted-foreground whitespace-nowrap">
-                                  {abs.date ? abs.date.slice(5) : ''}
-                                </span>
-                              </div>
-                            ))}
+                              );
+                            })}
                             {absences.length > 12 && (
                               <Badge variant="secondary" className="text-[10px]">
                                 +{absences.length - 12}
