@@ -697,6 +697,37 @@ class TeacherSessionEngine:
         late = sum(1 for r in records if r["status"] == AttendanceStatus.LATE.value)
         excused = sum(1 for r in records if r["status"] == AttendanceStatus.EXCUSED.value)
 
+        # Sync approved attendance into the canonical `attendance` table so it
+        # is visible in class-level absence logs / dashboards. The session
+        # records remain the source of truth for the live lesson, but the
+        # canonical table is what TeacherClassDetailPage and reports query.
+        try:
+            session = await gd_find_one(self.session, "class_sessions", {"id": session_id})
+            if session and session.get("class_id") and session.get("school_id") and session.get("date"):
+                from engines.attendance_engine import AttendanceEngine
+                from dependencies import db as _db
+                att_engine = AttendanceEngine(_db)
+                bulk = [
+                    {
+                        "student_id": r["student_id"],
+                        "status": r["status"],
+                        "session_id": session_id,
+                    }
+                    for r in records if r.get("student_id")
+                ]
+                if bulk:
+                    await att_engine.record_bulk_attendance(
+                        tenant_id=session["school_id"],
+                        section_id=session["class_id"],
+                        attendance_date=session["date"],
+                        attendance_records=bulk,
+                        recorded_by=teacher_id,
+                    )
+        except Exception as sync_err:  # pragma: no cover — never fail approval
+            logging.getLogger("nassaq").warning(
+                f"Failed to sync session {session_id} attendance into canonical table: {sync_err}"
+            )
+
         await self._log_event(
             session_id=session_id,
             event_type=EventType.ATTENDANCE_APPROVED.value,
