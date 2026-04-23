@@ -706,7 +706,21 @@ class TeacherSessionEngine:
             if session and session.get("class_id") and session.get("school_id") and session.get("date"):
                 from engines.attendance_engine import AttendanceEngine
                 from dependencies import db as _db
-                att_engine = AttendanceEngine(_db)
+                # Coerce session date into a datetime — the Attendance.date
+                # column is DateTime(timezone=True) and rejects bare strings.
+                _raw_date = session["date"]
+                if isinstance(_raw_date, str):
+                    try:
+                        _att_date = datetime.fromisoformat(_raw_date.replace("Z", "+00:00"))
+                    except ValueError:
+                        _att_date = datetime.strptime(_raw_date[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                elif isinstance(_raw_date, datetime):
+                    _att_date = _raw_date
+                else:
+                    # date object
+                    _att_date = datetime(_raw_date.year, _raw_date.month, _raw_date.day, tzinfo=timezone.utc)
+                if _att_date.tzinfo is None:
+                    _att_date = _att_date.replace(tzinfo=timezone.utc)
                 bulk = [
                     {
                         "student_id": r["student_id"],
@@ -716,13 +730,18 @@ class TeacherSessionEngine:
                     for r in records if r.get("student_id")
                 ]
                 if bulk:
-                    await att_engine.record_bulk_attendance(
-                        tenant_id=session["school_id"],
-                        section_id=session["class_id"],
-                        attendance_date=session["date"],
-                        attendance_records=bulk,
-                        recorded_by=teacher_id,
-                    )
+                    # Run inside a SAVEPOINT so a failure here can be rolled
+                    # back without aborting the outer request transaction
+                    # (which still has _log_event and response work to do).
+                    async with self.session.begin_nested():
+                        att_engine = AttendanceEngine(_db)
+                        await att_engine.record_bulk_attendance(
+                            tenant_id=session["school_id"],
+                            section_id=session["class_id"],
+                            attendance_date=_att_date,
+                            attendance_records=bulk,
+                            recorded_by=teacher_id,
+                        )
         except Exception as sync_err:  # pragma: no cover — never fail approval
             logging.getLogger("nassaq").warning(
                 f"Failed to sync session {session_id} attendance into canonical table: {sync_err}"
