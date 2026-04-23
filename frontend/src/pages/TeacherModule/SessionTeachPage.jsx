@@ -19,11 +19,23 @@ import {
   StickyNote, Plus, Trash2, PenLine, UserCheck,
   Download, History, FileSpreadsheet,
   Settings, UsersRound, User, Table2, GripVertical, Search, Mic,
-  PanelRightClose, PanelRightOpen
+  PanelRightClose, PanelRightOpen, ArrowRight, ArrowLeft, MoreHorizontal,
+  Save, FileText, RotateCcw, Eye, ShieldAlert, X
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 import { useTranslation } from '../../contexts/ThemeContext';
+
+// Health condition badges (mirrors SessionStartPage)
+const HEALTH_BADGES = {
+  diabetes: { icon: Heart, color: 'text-red-500', bg: 'bg-red-100 dark:bg-red-500/20', labelKey: 'healthBadgeDiabetes' },
+  allergy: { icon: AlertTriangle, color: 'text-amber-500', bg: 'bg-amber-100 dark:bg-amber-500/20', labelKey: 'healthBadgeAllergy' },
+  asthma: { icon: Heart, color: 'text-blue-500', bg: 'bg-blue-100 dark:bg-blue-500/20', labelKey: 'healthBadgeAsthma' },
+  epilepsy: { icon: ShieldAlert, color: 'text-purple-500', bg: 'bg-purple-100 dark:bg-purple-500/20', labelKey: 'healthBadgeEpilepsy' },
+  vision: { icon: Eye, color: 'text-cyan-500', bg: 'bg-cyan-100 dark:bg-cyan-500/20', labelKey: 'healthBadgeVision' },
+  social_case: { icon: ShieldAlert, color: 'text-orange-500', bg: 'bg-orange-100 dark:bg-orange-500/20', labelKey: 'healthBadgeSocialCase' },
+  special_needs: { icon: Heart, color: 'text-pink-500', bg: 'bg-pink-100 dark:bg-pink-500/20', labelKey: 'healthBadgeSpecialNeeds' },
+};
 const GENDER_COLORS = {
   male: { bg: 'bg-sky-600', ring: 'ring-sky-400', label: 'طلاب', labelKey: 'maleStudents', icon: 'M', light: 'bg-sky-500/10 dark:bg-sky-900/30' },
   female: { bg: 'bg-pink-600', ring: 'ring-pink-400', label: 'طالبات', labelKey: 'femaleStudents', icon: 'F', light: 'bg-pink-500/10 dark:bg-pink-900/30' },
@@ -129,6 +141,10 @@ export default function SessionTeachPage() {
   const [quickNoteFilter, setQuickNoteFilter] = useState('');
   const [quickNoteSending, setQuickNoteSending] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState(null);
+  // Auto-close the on-demand action sheet whenever the selected student changes/clears.
+  // Sheet only opens when a sidebar action explicitly requests it via { openSheet: true }.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { setShowActionSheet(false); }, [selectedStudent?.id]);
   const [actionTab, setActionTab] = useState('question'); // question | participation | behaviour | skill | homework | recitation
   const [behaviourCategory, setBehaviourCategory] = useState('positive');
   const [behaviourNote, setBehaviourNote] = useState('');
@@ -189,7 +205,12 @@ export default function SessionTeachPage() {
   const [absencePickerDate, setAbsencePickerDate] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
+  // ===== Redesign state =====
+  const [showActionSheet, setShowActionSheet] = useState(false); // opens existing action panel as modal
+  const [showOverflowMenu, setShowOverflowMenu] = useState(false); // header (⋯) menu
+  const [savingSession, setSavingSession] = useState(false);
   // ===== Session settings (إعدادات الحصة) =====
+  // (action-sheet auto-close on selected-student change is wired below, after selectedStudent is declared)
   const [subjectsList, setSubjectsList] = useState([]);
   const [settingsSubjectId, setSettingsSubjectId] = useState('');
   const [participationEnabled, setParticipationEnabled] = useState(true);
@@ -959,9 +980,203 @@ export default function SessionTeachPage() {
         `,
       }}
     >
-      {/* ── Header — Editorial Console Bar ── */}
-      <header className="border-b border-border bg-background/80 backdrop-blur-md px-3 sm:px-4 py-2.5 flex-none shrink-0 relative">
+      {/* ── Header — Compact (redesign) ── */}
+      <header className="border-b border-border bg-background/80 backdrop-blur-md px-3 sm:px-4 py-2 flex-none shrink-0 relative">
         <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-amber-500/30 to-transparent" aria-hidden="true" />
+        <div className="w-full flex items-center justify-between gap-3">
+          {/* Right side (RTL): title + counts */}
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <div className="w-[3px] self-stretch rounded-full bg-gradient-to-b from-amber-400 to-amber-600 shadow-[0_0_8px_rgba(217,165,87,0.5)]" aria-hidden="true" />
+            <div className="min-w-0">
+              <h1 className="font-cairo font-extrabold text-foreground text-sm sm:text-base leading-tight truncate">
+                {sessionInfo?.subject_name || sessionInfo?.subjectName} {sessionInfo?.class_name ? `— ${sessionInfo.class_name}` : ''}
+              </h1>
+              <div className="flex items-center gap-3 mt-0.5">
+                <span className="inline-flex items-center gap-1 text-[11px] font-cairo font-bold text-emerald-600 dark:text-emerald-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+                  <span className="tabular-nums">{presentStudents.length}</span> {t('present')}
+                </span>
+                <span className="inline-flex items-center gap-1 text-[11px] font-cairo font-bold text-rose-600 dark:text-rose-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500" aria-hidden="true" />
+                  <span className="tabular-nums">{Math.max(0, (students?.length || 0) - presentStudents.length)}</span> {t('absent')}
+                </span>
+                <span className="hidden sm:inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                  <Clock className="h-3 w-3 text-amber-500" />
+                  <span className="font-mono tabular-nums">{timer}</span>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Left side: back arrow + overflow menu */}
+          <div className="flex items-center gap-1 flex-none">
+            <button
+              onClick={() => navigate('/teacher')}
+              aria-label={t('back') || 'رجوع'}
+              className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
+              title={t('back') || 'رجوع'}
+            >
+              {isRTL ? <ArrowLeft className="h-5 w-5" /> : <ArrowRight className="h-5 w-5" />}
+            </button>
+            <div className="relative">
+              <button
+                onClick={() => setShowOverflowMenu(v => !v)}
+                aria-label="More"
+                aria-expanded={showOverflowMenu}
+                className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
+              >
+                <MoreHorizontal className="h-5 w-5" />
+              </button>
+              {showOverflowMenu && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setShowOverflowMenu(false)} />
+                  <div className={`absolute z-40 top-full mt-1 ${isRTL ? 'left-0' : 'right-0'} w-64 bg-popover border border-border rounded-lg shadow-xl p-2 space-y-1`} dir={isRTL ? 'rtl' : 'ltr'}>
+                    {/* Mode buttons */}
+                    <div className="px-1 pt-1 pb-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">{t('mode')}</div>
+                    <div className="grid grid-cols-3 gap-1">
+                      {MODES.map(m => {
+                        const active = mode?.id === m.id;
+                        return (
+                          <button
+                            key={m.id}
+                            onClick={() => { handleSetMode(m); setShowOverflowMenu(false); }}
+                            className={`flex flex-col items-center gap-1 py-1.5 rounded text-[10px] font-bold ${
+                              active ? `${m.color} text-foreground` : 'text-muted-foreground hover:bg-foreground/[0.06]'
+                            }`}
+                          >
+                            <m.icon className="h-3.5 w-3.5" />
+                            {m.labelKey ? t(m.labelKey) : m.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="border-t border-border my-1" />
+                    <button
+                      onClick={() => { setPanelOpen(v => !v); setShowOverflowMenu(false); }}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-foreground/[0.06] text-sm"
+                    >
+                      {panelOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
+                      {panelOpen ? (t('hideActivityPanel') || 'إخفاء سجل النشاط') : (t('showActivityPanel') || 'عرض سجل النشاط')}
+                    </button>
+                    <button
+                      onClick={() => { setShowSearch(v => !v); setShowOverflowMenu(false); }}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-foreground/[0.06] text-sm"
+                    >
+                      <Search className="h-4 w-4" /> {t('search')}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setQuickNoteText(''); setQuickNoteIds(new Set()); setQuickNoteFilter('');
+                        setShowQuickNote(true); setShowOverflowMenu(false);
+                      }}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-foreground/[0.06] text-sm"
+                    >
+                      <StickyNote className="h-4 w-4 text-amber-500" /> {t('sendQuickNote') || 'إرسال ملاحظة'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowSettingsModal(true); loadSubjectsList(); loadSessionSettings();
+                        setShowOverflowMenu(false);
+                      }}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-foreground/[0.06] text-sm"
+                    >
+                      <Settings className="h-4 w-4" /> {t('sessionSettings')}
+                    </button>
+                    <div className="border-t border-border my-1" />
+                    <button
+                      onClick={() => { setShowEndDialog(true); setShowOverflowMenu(false); }}
+                      disabled={reviewLoading}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-rose-500/10 text-sm text-rose-600 dark:text-rose-400 font-bold"
+                    >
+                      {reviewLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+                      {t('endSession')}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* ── Toolbar (redesign) ── */}
+      <div className="flex-none border-b border-border bg-background/60 px-3 sm:px-4 py-2 flex items-center gap-2 flex-wrap">
+        <button
+          onClick={() => { loadStudents(); loadActivityLog(); }}
+          className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
+          title={t('refresh') || 'تحديث'}
+          aria-label={t('refresh') || 'تحديث'}
+        >
+          <RotateCcw className="h-4 w-4" />
+        </button>
+        <div className="flex items-center bg-foreground/[0.04] border border-border rounded-md p-0.5">
+          <button
+            onClick={() => setEvalMode('individual')}
+            aria-pressed={evalMode === 'individual'}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-bold transition-colors ${
+              evalMode === 'individual' ? 'bg-foreground/10 text-amber-700 dark:text-amber-300' : 'text-muted-foreground hover:text-foreground/80'
+            }`}
+          >
+            <User className="h-3 w-3" /> {t('individual')}
+          </button>
+          <button
+            onClick={() => setEvalMode('group')}
+            aria-pressed={evalMode === 'group'}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-bold transition-colors ${
+              evalMode === 'group' ? 'bg-foreground/10 text-amber-700 dark:text-amber-300' : 'text-muted-foreground hover:text-foreground/80'
+            }`}
+          >
+            <UsersRound className="h-3 w-3" /> {t('groups')}
+          </button>
+        </div>
+        {evalMode === 'group' && (
+          <button
+            onClick={() => setShowGroupModal(true)}
+            className="p-2 rounded-md text-purple-700 dark:text-purple-300 hover:bg-purple-500/15 transition-colors"
+            title={t('manageGroups')}
+            aria-label={t('manageGroups')}
+          >
+            <Settings className="h-4 w-4" />
+          </button>
+        )}
+        <button
+          onClick={() => setShowFollowupRecord(true)}
+          className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
+          title={t('followupRecord')}
+          aria-label={t('followupRecord')}
+        >
+          <FileText className="h-4 w-4" />
+        </button>
+        <button
+          onClick={selectRandom}
+          disabled={loading}
+          className="p-2 rounded-md text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 transition-colors disabled:opacity-50"
+          title={t('randomStudentPick')}
+          aria-label={t('randomStudentPick')}
+        >
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shuffle className="h-4 w-4" />}
+        </button>
+        <div className="flex-1 min-w-[140px] relative">
+          <Search className="absolute start-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder={t('search')}
+            className="w-full bg-foreground/[0.04] border border-border rounded-md ps-8 pe-2 py-1.5 text-xs outline-none focus:border-amber-400/60 placeholder:text-muted-foreground"
+          />
+        </div>
+        {selectedStudent && (
+          <span className="text-[11px] text-amber-700 dark:text-amber-300 font-bold flex items-center gap-1">
+            <UserCheck className="h-3 w-3" /> {selectedStudent.full_name}
+            <button onClick={() => { setSelectedStudent(null); setShowActionSheet(false); }} className="ms-1 hover:text-rose-500" aria-label="clear">
+              <X className="h-3 w-3" />
+            </button>
+          </span>
+        )}
+      </div>
+
+      {false && (
         <div className="w-full flex items-center justify-between gap-2 sm:gap-3 flex-wrap">
           <div className="flex items-center gap-3 min-w-0 flex-1 sm:flex-initial">
             {/* Gold accent rail + class info */}
@@ -1137,7 +1352,7 @@ export default function SessionTeachPage() {
             </Button>
           </div>
         </div>
-      </header>
+      )}
 
       {timeWarning && (
         <div className={`flex-none px-4 py-2 text-center text-sm font-cairo font-bold flex items-center justify-center gap-2 ${
@@ -1153,8 +1368,8 @@ export default function SessionTeachPage() {
         </div>
       )}
 
-      {/* ── Main layout: left = console, right = log ── */}
-      <div className="flex-1 min-h-0 flex overflow-hidden w-full">
+      {/* ── Main layout: action sidebar on the visual right (mockup), student console on the left ── */}
+      <div className={`flex-1 min-h-0 flex overflow-hidden w-full ${isRTL ? 'flex-row-reverse' : ''}`}>
 
         {/* ── Console (left 2/3) ── */}
         <div className="flex-1 flex flex-col overflow-hidden p-3 gap-3 min-h-0">
@@ -1195,44 +1410,7 @@ export default function SessionTeachPage() {
             </div>
           )}
 
-          {/* Random student button — Editorial Studio CTA */}
-          <button
-            onClick={selectRandom}
-            disabled={loading}
-            aria-label={t('randomStudentPick')}
-            className={`group relative flex-none w-full h-14 rounded-xl font-cairo font-extrabold text-foreground text-sm flex items-center justify-center gap-3 active:scale-[0.99] transition-all disabled:opacity-60 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 focus-visible:ring-offset-2 focus-visible:ring-offset-background overflow-hidden border ${
-              selectedStudent
-                ? 'bg-gradient-to-r from-amber-500 via-amber-400 to-orange-500 hover:from-amber-400 hover:via-amber-300 hover:to-orange-400 border-amber-300/40 shadow-[0_8px_24px_-6px_rgba(245,158,11,0.55),inset_0_1px_0_rgba(255,255,255,0.25)]'
-                : 'bg-gradient-to-r from-amber-500 via-amber-400 to-orange-500 hover:from-amber-400 hover:via-amber-300 hover:to-orange-400 border-amber-300/40 shadow-[0_8px_24px_-6px_rgba(245,158,11,0.55),inset_0_1px_0_rgba(255,255,255,0.25)]'
-            }`}
-          >
-            <span className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.18),transparent_70%)] opacity-0 group-hover:opacity-100 transition-opacity" aria-hidden="true" />
-            <span className="relative flex items-center gap-3">
-              {loading ? (
-                <><Loader2 className="h-5 w-5 animate-spin" /> <span className="tracking-wide">{t('hakimChoosing')}</span></>
-              ) : (
-                <>
-                  <Shuffle className="h-5 w-5 drop-shadow-sm" />
-                  <span className="tracking-wide drop-shadow-sm">{selectedStudent ? t('anotherRandomPick') : t('randomStudentPick')}</span>
-                </>
-              )}
-            </span>
-          </button>
-
-          {/* Mode selector (mobile) */}
-          <div className="sm:hidden flex-none shrink-0 grid grid-cols-3 gap-2">
-            {MODES.map(m => (
-              <button key={m.id} onClick={() => handleSetMode(m)}
-                className={`rounded-lg py-2 text-xs font-medium flex flex-col items-center gap-1 transition-colors ${
-                  mode?.id === m.id ? `${m.color} text-foreground ring-2 ring-foreground/30` : 'bg-foreground/10 text-muted-foreground'
-                }`}>
-                <m.icon className="h-4 w-4" />
-                {m.labelKey ? t(m.labelKey) : m.label}
-              </button>
-            ))}
-          </div>
-
-          {mode && (() => {
+          {false && (() => {
             const accent = mode.id === 'review' ? 'purple' : mode.id === 'homework' ? 'blue' : 'amber';
             const ring = { purple: 'rgba(168,85,247,0.18)', blue: 'rgba(59,130,246,0.18)', amber: 'rgba(245,158,11,0.18)' }[accent];
             const text = { purple: 'text-purple-200', blue: 'text-sky-200', amber: 'text-amber-200' }[accent];
@@ -1279,9 +1457,9 @@ export default function SessionTeachPage() {
                         <span className="text-muted-foreground text-xs font-medium font-cairo">{group.name} ({groupStudents.length})</span>
                         <div className="flex-1 h-px bg-foreground/10" />
                       </div>
-                      <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 xl:grid-cols-8 gap-2">
+                      <div className="flex flex-col gap-1.5">
                         {groupStudents.map((student) => (
-                          <StudentCard
+                          <StudentRow
                             key={student.id}
                             student={student}
                             isFlashing={flashId === student.id}
@@ -1300,9 +1478,9 @@ export default function SessionTeachPage() {
                       <span className="text-muted-foreground text-xs font-medium font-cairo">{t('unassigned')} ({unassignedStudents.length})</span>
                       <div className="flex-1 h-px bg-foreground/10" />
                     </div>
-                    <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 xl:grid-cols-8 gap-2">
+                    <div className="flex flex-col gap-1.5">
                       {unassignedStudents.map((student) => (
-                        <StudentCard
+                        <StudentRow
                           key={student.id}
                           student={student}
                           isFlashing={flashId === student.id}
@@ -1345,9 +1523,9 @@ export default function SessionTeachPage() {
                         <span className={`${countColor} text-[10px] font-bold tabular-nums`}>({group.students.length})</span>
                         <div className="flex-1 h-px bg-foreground/10" />
                       </div>
-                      <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 xl:grid-cols-8 gap-2">
+                      <div className="flex flex-col gap-1.5">
                         {group.students.map((student) => (
-                          <StudentCard
+                          <StudentRow
                             key={student.id}
                             student={student}
                             isFlashing={flashId === student.id}
@@ -1361,9 +1539,9 @@ export default function SessionTeachPage() {
                 })}
               </div>
             ) : (
-              <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 xl:grid-cols-8 gap-2">
+              <div className="flex flex-col gap-1.5">
                 {filteredStudents.map((student) => (
-                  <StudentCard
+                  <StudentRow
                     key={student.id}
                     student={student}
                     isFlashing={flashId === student.id}
@@ -1375,9 +1553,16 @@ export default function SessionTeachPage() {
             )}
           </div>
 
-          {/* ── Action Panel ── */}
-          {selectedStudent && (
-            <div className="flex-none shrink-0 flex flex-col bg-foreground/[0.02] rounded-xl border border-border overflow-hidden shadow-[0_8px_30px_-8px_rgba(0,0,0,0.5)] backdrop-blur-sm max-h-[60vh] sm:max-h-[55vh]">
+          {/* ── Action Panel (opens via right sidebar action) ── */}
+          {selectedStudent && showActionSheet && (
+            <div className="flex-none shrink-0 flex flex-col bg-foreground/[0.02] rounded-xl border border-border overflow-hidden shadow-[0_8px_30px_-8px_rgba(0,0,0,0.5)] backdrop-blur-sm max-h-[60vh] sm:max-h-[55vh] relative">
+              <button
+                onClick={() => setShowActionSheet(false)}
+                className="absolute top-2 end-2 z-20 p-1.5 rounded-md bg-foreground/10 hover:bg-foreground/20 text-muted-foreground hover:text-foreground"
+                aria-label="close"
+              >
+                <X className="h-4 w-4" />
+              </button>
               {/* Selected student header — Editorial profile */}
               <div className="flex-none shrink-0 px-5 py-4 border-b border-border bg-gradient-to-b from-foreground/[0.03] to-transparent relative overflow-hidden">
                 <div className="absolute -top-8 -end-8 w-32 h-32 rounded-full bg-amber-500/[0.06] blur-2xl pointer-events-none" aria-hidden="true" />
@@ -1396,7 +1581,7 @@ export default function SessionTeachPage() {
                     <p className="text-muted-foreground text-[11px] tracking-wide mt-0.5">{selectedStudent.student_code || sessionInfo?.class_name || sessionInfo?.className}</p>
                   </div>
                   <button
-                    onClick={() => { setSelectedStudent(null); setFlashId(null); }}
+                    onClick={() => { setSelectedStudent(null); setFlashId(null); setShowActionSheet(false); }}
                     aria-label={t('close') || 'Close'}
                     className="text-muted-foreground hover:text-foreground p-1.5 rounded-md hover:bg-foreground/5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
                   >
@@ -1666,6 +1851,64 @@ export default function SessionTeachPage() {
           )}
         </div>
 
+        {/* ── Right Action Sidebar (redesign) ── */}
+        <aside className="flex-none w-[78px] sm:w-[92px] border-e border-border bg-background/60 backdrop-blur-sm flex flex-col overflow-y-auto py-2 px-1.5 gap-3">
+          {(() => {
+            const guard = (fn, opts = {}) => () => {
+              if (!selectedStudent) { toast.error(t('selectStudentFirst') || 'اختر طالباً أولاً'); return; }
+              fn();
+              if (opts.openSheet) setShowActionSheet(true);
+            };
+            const SideBtn = ({ onClick, color, icon: Icon, label, disabled }) => (
+              <button
+                onClick={onClick}
+                disabled={disabled}
+                className={`w-full flex flex-col items-center gap-1 py-2 rounded-lg border ${color} text-foreground transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed`}
+              >
+                <Icon className="h-4 w-4" />
+                <span className="text-[10px] font-cairo font-bold leading-tight text-center">{label}</span>
+              </button>
+            );
+            return (
+              <>
+                {/* التقييم */}
+                <div className="space-y-1.5">
+                  <div className="text-[9px] uppercase tracking-wider text-muted-foreground text-center font-bold">{t('evaluation') || 'التقييم'}</div>
+                  <SideBtn onClick={guard(() => recordAnswer('correct'))} color="bg-emerald-500/15 border-emerald-400/40 hover:bg-emerald-500/25" icon={CheckCircle2} label={t('correct')} />
+                  <SideBtn onClick={guard(() => recordAnswer('wrong'))} color="bg-rose-500/15 border-rose-400/40 hover:bg-rose-500/25" icon={XCircle} label={t('wrong')} />
+                  <SideBtn onClick={guard(() => recordAnswer('no_answer'))} color="bg-amber-500/15 border-amber-400/40 hover:bg-amber-500/25" icon={Minus} label={t('noAnswer') || 'لم'} />
+                  {recitationEnabled && (
+                    <SideBtn onClick={guard(() => setActionTab('recitation'), { openSheet: true })} color="bg-purple-500/15 border-purple-400/40 hover:bg-purple-500/25" icon={Mic} label={t('recitation')} />
+                  )}
+                  {participationEnabled && (
+                    <SideBtn onClick={guard(() => setActionTab('participation'), { openSheet: true })} color="bg-sky-500/15 border-sky-400/40 hover:bg-sky-500/25" icon={Hand} label={t('participation')} />
+                  )}
+                  {homeworkEnabled && (
+                    <SideBtn onClick={guard(() => setActionTab('homework'), { openSheet: true })} color="bg-blue-500/15 border-blue-400/40 hover:bg-blue-500/25" icon={ClipboardCheck} label={t('homework')} />
+                  )}
+                </div>
+                {/* السلوك */}
+                <div className="space-y-1.5">
+                  <div className="text-[9px] uppercase tracking-wider text-muted-foreground text-center font-bold">{t('behaviour') || 'السلوك'}</div>
+                  <SideBtn onClick={guard(() => { setBehaviourCategory('positive'); setActionTab('behaviour'); }, { openSheet: true })} color="bg-emerald-500/15 border-emerald-400/40 hover:bg-emerald-500/25" icon={ThumbsUp} label={t('positive')} />
+                  <SideBtn onClick={guard(() => { setBehaviourCategory('negative'); setActionTab('behaviour'); }, { openSheet: true })} color="bg-rose-500/15 border-rose-400/40 hover:bg-rose-500/25" icon={ThumbsDown} label={t('negative')} />
+                </div>
+                {/* المهارات */}
+                {skillEnabled && (
+                  <div className="space-y-1.5">
+                    <div className="text-[9px] uppercase tracking-wider text-muted-foreground text-center font-bold">{t('skills') || 'المهارات'}</div>
+                    <SideBtn onClick={guard(() => setActionTab('skill'), { openSheet: true })} color="bg-violet-500/15 border-violet-400/40 hover:bg-violet-500/25" icon={Star} label={t('skill')} />
+                  </div>
+                )}
+                {/* AI Hakim */}
+                <div className="mt-auto pt-2 border-t border-border">
+                  <SideBtn onClick={() => selectRandom()} color="bg-gradient-to-b from-amber-500/30 to-orange-500/30 border-amber-400/50 hover:from-amber-500/40 hover:to-orange-500/40" icon={Sparkles} label={t('hakimAI') || 'حكيم AI'} disabled={loading} />
+                </div>
+              </>
+            );
+          })()}
+        </aside>
+
         {/* ── Right Panel (Activity Log + Notes, desktop only, collapsible) ── */}
         {panelOpen && (
         <div
@@ -1921,32 +2164,53 @@ export default function SessionTeachPage() {
         )}
       </div>
 
-      {/* Follow-up record bottom bar — Editorial footer */}
-      <div className="flex-none shrink-0 bg-background/80 backdrop-blur-md border-t border-border px-4 py-2 flex items-center justify-between relative z-10">
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-500/20 to-transparent" aria-hidden="true" />
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setShowFollowupRecord(true)}
-            className="group flex items-center gap-2 px-3.5 py-1.5 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[11px] uppercase tracking-[0.14em] font-bold hover:bg-amber-500/15 hover:text-amber-200 transition-colors border border-amber-500/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
-          >
-            <Table2 className="h-3.5 w-3.5" />
-            {t('followupRecord')}
-          </button>
-          {evalMode === 'group' && groups.length > 0 && (
-            <span className="text-muted-foreground text-[10px] uppercase tracking-[0.14em] font-semibold">
-              <span className="tabular-nums text-muted-foreground">{groups.length}</span> {t('groups')} <span className="text-muted-foreground/40 mx-1">·</span> <span className="tabular-nums text-muted-foreground">{unassignedStudents.length}</span> {t('unassigned')}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2 text-[10px]">
-          <span className="flex items-center gap-1.5 uppercase tracking-[0.16em] font-semibold text-emerald-700 dark:text-emerald-300/80" role="status" aria-live="polite">
-            <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
-              <span className="absolute inset-0 rounded-full bg-emerald-400 animate-ping opacity-60" />
-              <span className="relative rounded-full h-1.5 w-1.5 bg-emerald-400" />
-            </span>
-            {t('autoSaveActive')}
+      {/* Bottom bar — redesign: refresh + save session + follow-up record */}
+      <div className="flex-none shrink-0 bg-background/90 backdrop-blur-md border-t border-border px-3 sm:px-4 py-2.5 flex items-center gap-2 sm:gap-3 relative z-10">
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-500/30 to-transparent" aria-hidden="true" />
+        <button
+          onClick={() => { loadStudents(); loadActivityLog(); }}
+          className="p-2.5 rounded-lg bg-foreground/[0.06] hover:bg-foreground/10 text-muted-foreground hover:text-foreground border border-border transition-colors"
+          title={t('refresh') || 'تحديث'}
+          aria-label={t('refresh') || 'تحديث'}
+        >
+          <RotateCcw className="h-4 w-4" />
+        </button>
+        <Button
+          onClick={async () => {
+            setSavingSession(true);
+            try {
+              if (followupColumns.length > 0 || Object.keys(followupData).length > 0) {
+                await api.post(`/session/${sessionId}/followup-record`, {
+                  columns: followupColumns, data: followupData, absences: followupAbsences
+                });
+              }
+              toast.success(t('savedSuccessfully') || 'تم الحفظ');
+            } catch (e) {
+              toast.error(t('errorSaving') || 'خطأ في الحفظ');
+            } finally {
+              setSavingSession(false);
+            }
+          }}
+          disabled={savingSession}
+          className="flex-1 sm:flex-none h-10 px-5 bg-gradient-to-b from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white font-cairo font-bold border border-emerald-400/40 shadow-[0_4px_12px_-2px_rgba(16,185,129,0.4)] gap-2"
+        >
+          {savingSession ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          {t('saveSession') || 'حفظ الحصة'}
+        </Button>
+        <Button
+          onClick={() => setShowFollowupRecord(true)}
+          className="flex-1 h-10 px-5 bg-gradient-to-b from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white font-cairo font-bold border border-sky-400/40 shadow-[0_4px_12px_-2px_rgba(59,130,246,0.4)] gap-2"
+        >
+          <FileText className="h-4 w-4" />
+          {t('followupRecord')}
+        </Button>
+        <span className="hidden sm:flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] font-semibold text-emerald-700 dark:text-emerald-300/80" role="status">
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="absolute inset-0 rounded-full bg-emerald-400 animate-ping opacity-60" />
+            <span className="relative rounded-full h-1.5 w-1.5 bg-emerald-400" />
           </span>
-        </div>
+          {t('autoSaveActive')}
+        </span>
       </div>
 
       {/* End Session Confirmation Dialog */}
@@ -3374,6 +3638,87 @@ function SessionReviewPhase({ reviewData, sessionInfo, closingNote, setClosingNo
   );
 }
 
+
+function StudentRow({ student, isFlashing, isSelected, onClick, onMenu }) {
+  const initials = student.full_name?.charAt(0) || '?';
+  const count = student.interactionCount || 0;
+  const correct = student.correctAnswers || 0;
+  const isFemale = student.gender === 'female';
+  const isAbsent = student.attendance_status === 'absent';
+  const avatarBg = isFemale ? 'bg-gradient-to-br from-pink-500 to-rose-600' : 'bg-gradient-to-br from-sky-500 to-blue-600';
+  const conditions = student.health_conditions || student.conditions || [];
+  const condList = Array.isArray(conditions) ? conditions : (typeof conditions === 'string' ? conditions.split(',').map(s => s.trim()).filter(Boolean) : []);
+
+  return (
+    <div
+      onClick={onClick}
+      role="button"
+      tabIndex={0}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick?.(); } }}
+      className={`group relative flex items-center gap-3 px-3 py-2 rounded-lg border transition-all cursor-pointer ${
+        isFlashing
+          ? 'bg-amber-500/20 border-amber-400 ring-2 ring-amber-400 scale-[1.01]'
+          : isSelected
+          ? 'bg-amber-500/10 border-amber-400/60 ring-1 ring-amber-400/50'
+          : isAbsent
+          ? 'bg-rose-500/5 border-rose-400/30 hover:bg-rose-500/10'
+          : 'bg-card/40 border-border hover:bg-foreground/[0.04]'
+      }`}
+    >
+      <div className={`relative w-10 h-10 rounded-full flex-none flex items-center justify-center text-foreground font-bold shadow ${avatarBg}`}>
+        {student.avatar_url ? (
+          <img src={student.avatar_url} alt={initials} className="w-10 h-10 rounded-full object-cover" />
+        ) : (
+          <span className="text-sm">{initials}</span>
+        )}
+        {count > 0 && (
+          <span className={`absolute -top-1 -end-1 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center text-white shadow-sm ${
+            correct > 0 ? 'bg-emerald-500' : 'bg-amber-500'
+          }`}>
+            {count}
+          </span>
+        )}
+      </div>
+      <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
+        <span className={`font-cairo text-sm font-bold truncate ${isAbsent ? 'text-rose-600 dark:text-rose-400 line-through opacity-70' : 'text-foreground'}`}>
+          {student.full_name}
+        </span>
+        {student.student_code && (
+          <span className="text-[10px] text-muted-foreground tabular-nums">#{student.student_code}</span>
+        )}
+        {isAbsent && (
+          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-600 dark:text-rose-400 bg-rose-500/10 border border-rose-400/30 rounded px-1.5 py-0.5">
+            <X className="h-3 w-3" /> غائب
+          </span>
+        )}
+        {condList.slice(0, 4).map((c, i) => {
+          const def = HEALTH_BADGES[c];
+          if (!def) return null;
+          const Icon = def.icon;
+          return (
+            <span key={i} title={c} className={`inline-flex items-center justify-center w-5 h-5 rounded-full ${def.bg}`}>
+              <Icon className={`h-3 w-3 ${def.color}`} />
+            </span>
+          );
+        })}
+        {count > 0 && (
+          <span className="ms-auto text-[10px] text-muted-foreground tabular-nums hidden sm:inline">
+            <span className="text-emerald-600 dark:text-emerald-400 font-bold">{correct}</span>/{count}
+          </span>
+        )}
+      </div>
+      {onMenu && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onMenu(student); }}
+          className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-foreground/10 opacity-60 group-hover:opacity-100"
+          aria-label="more"
+        >
+          <MoreHorizontal className="h-4 w-4" />
+        </button>
+      )}
+    </div>
+  );
+}
 
 function StudentCard({ student, isFlashing, isSelected, onClick }) {
   const initials = student.full_name?.charAt(0) || '?';
