@@ -185,7 +185,8 @@ async def create_class(
         if teacher:
             teacher_name = teacher.get("full_name")
     
-    return ClassResponse(**class_doc, homeroom_teacher_name=teacher_name)
+    class_doc["homeroom_teacher_name"] = teacher_name
+    return ClassResponse(**class_doc)
 
 @router.get("/classes", response_model=List[ClassResponse])
 async def get_classes(
@@ -236,7 +237,8 @@ async def get_class(class_id: str, current_user: dict = Depends(get_current_user
         if teacher:
             teacher_name = teacher.get("full_name")
     
-    return ClassResponse(**class_doc, homeroom_teacher_name=teacher_name)
+    class_doc["homeroom_teacher_name"] = teacher_name
+    return ClassResponse(**class_doc)
 
 @router.put("/classes/{class_id}")
 async def update_class(
