@@ -1025,66 +1025,67 @@ export default function SessionTeachPage() {
               {showOverflowMenu && (
                 <>
                   <div className="fixed inset-0 z-30" onClick={() => setShowOverflowMenu(false)} />
-                  <div className={`absolute z-40 top-full mt-1 ${isRTL ? 'left-0' : 'right-0'} w-64 bg-popover border border-border rounded-lg shadow-xl p-2 space-y-1`} dir={isRTL ? 'rtl' : 'ltr'}>
-                    {/* Mode buttons */}
-                    <div className="px-1 pt-1 pb-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">{t('mode')}</div>
-                    <div className="grid grid-cols-3 gap-1">
+                  <div className={`absolute z-40 top-full mt-2 ${isRTL ? 'left-0' : 'right-0'} w-72 bg-popover border border-border rounded-xl shadow-2xl p-2.5 space-y-1.5`} dir={isRTL ? 'rtl' : 'ltr'}>
+                    {/* Mode segmented control */}
+                    <div className="px-1 pt-0.5 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground font-bold">{t('mode')}</div>
+                    <div className="flex items-center bg-foreground/[0.04] border border-border rounded-lg p-0.5 gap-0.5">
                       {MODES.map(m => {
                         const active = mode?.id === m.id;
                         return (
                           <button
                             key={m.id}
                             onClick={() => { handleSetMode(m); setShowOverflowMenu(false); }}
-                            className={`flex flex-col items-center gap-1 py-1.5 rounded text-[10px] font-bold ${
-                              active ? `${m.color} text-foreground` : 'text-muted-foreground hover:bg-foreground/[0.06]'
+                            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-1 rounded-md text-[11px] font-bold transition-colors ${
+                              active ? `${m.color} text-foreground shadow-sm` : 'text-muted-foreground hover:bg-foreground/[0.06]'
                             }`}
+                            title={m.labelKey ? t(m.labelKey) : m.label}
                           >
-                            <m.icon className="h-3.5 w-3.5" />
-                            {m.labelKey ? t(m.labelKey) : m.label}
+                            <m.icon className="h-3.5 w-3.5 flex-none" />
+                            <span className="truncate">{m.labelKey ? t(m.labelKey) : m.label}</span>
                           </button>
                         );
                       })}
                     </div>
-                    <div className="border-t border-border my-1" />
+                    <div className="border-t border-border my-1.5" />
                     <button
                       onClick={() => { setPanelOpen(v => !v); setShowOverflowMenu(false); }}
-                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-foreground/[0.06] text-sm"
+                      className="w-full flex items-center gap-2.5 px-2 py-2 rounded-md hover:bg-foreground/[0.06] text-sm text-foreground transition-colors"
                     >
-                      {panelOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
-                      {panelOpen ? (t('hideActivityPanel') || 'إخفاء سجل النشاط') : (t('showActivityPanel') || 'عرض سجل النشاط')}
+                      {panelOpen ? <PanelRightClose className="h-4 w-4 flex-none text-muted-foreground" /> : <PanelRightOpen className="h-4 w-4 flex-none text-muted-foreground" />}
+                      <span className="truncate">{panelOpen ? (t('hideActivityPanel') || 'إخفاء سجل النشاط') : (t('showActivityPanel') || 'عرض سجل النشاط')}</span>
                     </button>
                     <button
                       onClick={() => { setShowSearch(v => !v); setShowOverflowMenu(false); }}
-                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-foreground/[0.06] text-sm"
+                      className="w-full flex items-center gap-2.5 px-2 py-2 rounded-md hover:bg-foreground/[0.06] text-sm text-foreground transition-colors"
                     >
-                      <Search className="h-4 w-4" /> {t('search')}
+                      <Search className="h-4 w-4 flex-none text-muted-foreground" /> <span className="truncate">{t('search')}</span>
                     </button>
                     <button
                       onClick={() => {
                         setQuickNoteText(''); setQuickNoteIds(new Set()); setQuickNoteFilter('');
                         setShowQuickNote(true); setShowOverflowMenu(false);
                       }}
-                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-foreground/[0.06] text-sm"
+                      className="w-full flex items-center gap-2.5 px-2 py-2 rounded-md hover:bg-foreground/[0.06] text-sm text-foreground transition-colors"
                     >
-                      <StickyNote className="h-4 w-4 text-amber-500" /> {t('sendQuickNote') || 'إرسال ملاحظة'}
+                      <StickyNote className="h-4 w-4 flex-none text-amber-500" /> <span className="truncate">{t('sendQuickNote') || 'إرسال ملاحظة'}</span>
                     </button>
                     <button
                       onClick={() => {
                         setShowSettingsModal(true); loadSubjectsList(); loadSessionSettings();
                         setShowOverflowMenu(false);
                       }}
-                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-foreground/[0.06] text-sm"
+                      className="w-full flex items-center gap-2.5 px-2 py-2 rounded-md hover:bg-foreground/[0.06] text-sm text-foreground transition-colors"
                     >
-                      <Settings className="h-4 w-4" /> {t('sessionSettings')}
+                      <Settings className="h-4 w-4 flex-none text-muted-foreground" /> <span className="truncate">{t('sessionSettings')}</span>
                     </button>
-                    <div className="border-t border-border my-1" />
+                    <div className="border-t border-border my-1.5" />
                     <button
                       onClick={() => { setShowEndDialog(true); setShowOverflowMenu(false); }}
                       disabled={reviewLoading}
-                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-rose-500/10 text-sm text-rose-600 dark:text-rose-400 font-bold"
+                      className="w-full flex items-center gap-2.5 px-2 py-2 rounded-md hover:bg-rose-500/10 text-sm text-rose-600 dark:text-rose-400 font-bold transition-colors disabled:opacity-50"
                     >
-                      {reviewLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
-                      {t('endSession')}
+                      {reviewLoading ? <Loader2 className="h-4 w-4 flex-none animate-spin" /> : <X className="h-4 w-4 flex-none" />}
+                      <span className="truncate">{t('endSession')}</span>
                     </button>
                   </div>
                 </>
