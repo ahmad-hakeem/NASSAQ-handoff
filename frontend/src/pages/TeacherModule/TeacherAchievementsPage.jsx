@@ -1859,7 +1859,7 @@ function EvidenceRow({ item, isRTL, onView, onEdit, onDelete }) {
           </span>
           {item.source === 'auto' && (
             <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-600 dark:border-amber-700 dark:text-amber-400 gap-1">
-              <Zap className="w-2.5 h-2.5" /> تقني
+              <Zap className="w-2.5 h-2.5" /> {t('portfolioAuto')}
             </Badge>
           )}
         </div>
