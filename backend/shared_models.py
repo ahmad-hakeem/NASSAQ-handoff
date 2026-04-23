@@ -483,13 +483,18 @@ class StudentUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 class ClassUpdate(BaseModel):
+    model_config = ConfigDict(extra="ignore")
     name: Optional[str] = None
+    name_en: Optional[str] = None
     grade: Optional[str] = None
+    grade_level: Optional[str] = None
     section: Optional[str] = None
     capacity: Optional[int] = None
     class_teacher_id: Optional[str] = None
+    homeroom_teacher_id: Optional[str] = None
     grade_id: Optional[str] = None
     academic_year_id: Optional[str] = None
+    is_active: Optional[bool] = None
 
 class ClassResponse(BaseModel):
     model_config = ConfigDict(extra="ignore", from_attributes=True)
