@@ -761,6 +761,17 @@ async def get_teacher_classes(
     # stored against teachers.id, not users.id.
     resolved_teacher_id = teacher.get("id") if teacher else teacher_id
 
+    # First-touch initialization: if this school has never had teacher-class
+    # assignments populated, run the one-shot auto-populate so newly created
+    # teachers see their default classes without waiting for the principal to
+    # open the assignments settings tab.
+    if school_id:
+        try:
+            from routes.school_settings_mod import _auto_populate_teacher_class_assignments
+            await _auto_populate_teacher_class_assignments(school_id)
+        except Exception as e:
+            logger.warning(f"teacher classes initial populate failed for school {school_id}: {e}")
+
     assignments = await gd_find(db.session, "teacher_assignments", {
         "teacher_id": resolved_teacher_id,
         "is_active": True

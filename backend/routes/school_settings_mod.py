@@ -2050,7 +2050,12 @@ class TeacherClassAssignmentResponse(BaseModel):
 async def _auto_populate_teacher_class_assignments(school_id: str):
     """
     Auto-populate teacher-class assignments: all teachers linked to all classes by default.
-    Uses bulk upsert for concurrency safety (idempotent).
+    Runs ONLY ONCE per school, on first touch (when no assignments exist at all).
+    Subsequent additions of new teachers/classes are handled by `_ensure_teacher_linked_to_all_classes`
+    and `_ensure_class_linked_to_all_teachers` at create time.
+
+    This guarantees that if a principal/admin deletes an assignment, it stays
+    deleted — we will not silently recreate it on the next page load.
 
     IMPORTANT: this runs from a GET handler. The pg_session_middleware rolls
     back GET-request transactions to defend against accidental writes, which
@@ -2061,15 +2066,15 @@ async def _auto_populate_teacher_class_assignments(school_id: str):
     from db import async_session_factory
 
     async with async_session_factory() as ses:
+        existing_count = await gd_count(ses, "teacher_class_assignments", {"school_id": school_id})
+        if existing_count > 0:
+            # School has already been initialized — never re-populate.
+            return 0
+
         teachers = await gd_find(ses, "teachers", {"school_id": school_id, "is_active": {"$ne": False}}, limit=2000)
         classes = await gd_find(ses, "classes", {"school_id": school_id, "is_active": {"$ne": False}}, limit=500)
 
         if not teachers or not classes:
-            return 0
-
-        existing_count = await gd_count(ses, "teacher_class_assignments", {"school_id": school_id})
-        expected_total = len(teachers) * len(classes)
-        if existing_count >= expected_total:
             return 0
 
         now = datetime.now(timezone.utc).isoformat()
