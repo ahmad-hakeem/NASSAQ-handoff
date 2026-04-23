@@ -101,6 +101,7 @@ const THEME_COLORS = {
 };
 
 const StudentCard = ({ student, isRTL, onView, onEdit, onDelete, onAction, viewMode = 'grid' }) => {
+  const { t } = useTranslation();
   const tc = THEME_COLORS.student;
   if (viewMode === 'list') {
     return (
@@ -173,9 +174,9 @@ const StudentCard = ({ student, isRTL, onView, onEdit, onDelete, onAction, viewM
               <p className="text-[10px] text-muted-foreground font-mono">{student.student_number || student.id?.slice(0, 8)}</p>
               {student.talents?.length > 0 && (
                 <div className="flex flex-wrap gap-0.5 mt-1">
-                  {student.talents.slice(0, 2).map(t => (
-                    <span key={t} className="text-[8px] px-1.5 py-0 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 border border-amber-200 dark:border-amber-700">
-                      {tc.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).substring(0, 12)}
+                  {student.talents.slice(0, 2).map(talent => (
+                    <span key={talent} className="text-[8px] px-1.5 py-0 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 border border-amber-200 dark:border-amber-700">
+                      {String(talent).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).substring(0, 12)}
                     </span>
                   ))}
                   {student.talents.length > 2 && (
