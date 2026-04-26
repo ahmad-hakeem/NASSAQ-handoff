@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 import HakimPresence from '../../components/hakim/HakimPresence';
+import FollowupGradesTable from '../../components/teacher/FollowupGradesTable';
 
 import { useTranslation } from '../../contexts/ThemeContext';
 
@@ -618,80 +619,35 @@ export default function TeacherClassDetailPage() {
         </div>
       ) : (
         <Card className="overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-muted/50 border-b border-border">
-                  <th className="p-3 text-start font-medium font-cairo sticky start-0 bg-muted/50 z-10 min-w-[180px]">{t('name')}</th>
-                  {visibleColumns.map(col => (
-                    <th key={col.id} className="p-3 text-center font-medium font-cairo min-w-[90px]">
-                      <div>{getColumnDisplay(col)}</div>
-                      <div className="text-[10px] text-muted-foreground font-normal">/{col.max_grade}</div>
-                    </th>
-                  ))}
-                  <th className="p-3 text-center font-medium font-cairo min-w-[80px] bg-blue-50 dark:bg-blue-900/20">{t('subtotal')}</th>
-                  <th className="p-3 text-center font-medium font-cairo min-w-[80px] bg-brand-navy/5 dark:bg-brand-turquoise/10">{t('grandTotal')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredStudents.length === 0 ? (
-                  <tr>
-                    <td colSpan={visibleColumns.length + 3} className="text-center py-12 text-muted-foreground">
-                      {t('noStudents')}
-                    </td>
-                  </tr>
-                ) : (
-                  filteredStudents.map((student, idx) => {
-                    const totalMax = visibleColumns.reduce((s, c) => s + (c.max_grade || 0), 0);
-                    const totalScore = visibleColumns.reduce((s, c) => {
-                      const val = parseFloat(studentGrades[`${student.id}_${c.id}`] || '0');
-                      return s + (isNaN(val) ? 0 : val);
-                    }, 0);
-                    return (
-                      <tr key={student.id} className="border-b border-border/50 hover:bg-muted/20 transition-colors duration-150">
-                        <td className="p-3 sticky start-0 bg-background z-10">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-7 h-7 rounded-full bg-brand-navy dark:bg-brand-turquoise flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                              {student.full_name?.charAt(0) || (idx + 1)}
-                            </div>
-                            <div className="min-w-0">
-                              <p className="font-medium text-sm truncate font-cairo">{student.full_name || `${t('students')} ${idx + 1}`}</p>
-                              <p className="text-[10px] text-muted-foreground">{student.student_number || ''}</p>
-                            </div>
-                          </div>
-                        </td>
-                        {visibleColumns.map(col => (
-                          <td key={col.id} className="p-2 text-center">
-                            <Input
-                              type="number"
-                              min={0}
-                              max={col.max_grade}
-                              step={0.5}
-                              className="w-16 h-8 text-center text-sm mx-auto"
-                              placeholder="—"
-                              value={studentGrades[`${student.id}_${col.id}`] || ''}
-                              onChange={(e) => handleGradeChange(student.id, col.id, e.target.value)}
-                            />
-                          </td>
-                        ))}
-                        <td className="p-3 text-center bg-blue-50/50 dark:bg-blue-900/10">
-                          <span className="font-bold text-blue-600">{totalScore}</span>
-                          <span className="text-xs text-muted-foreground">/{totalMax}</span>
-                        </td>
-                        <td className="p-3 text-center bg-brand-navy/5 dark:bg-brand-turquoise/5">
-                          <span className={`font-bold text-lg ${
-                            totalMax > 0 && (totalScore / totalMax * 100) >= 90 ? 'text-emerald-600' :
-                            totalMax > 0 && (totalScore / totalMax * 100) >= 75 ? 'text-blue-600' :
-                            totalMax > 0 && (totalScore / totalMax * 100) >= 60 ? 'text-amber-600' : 'text-red-500'
-                          }`}>{totalScore}</span>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+          {(() => {
+            // Adapt class-detail data shapes to the shared FollowupGradesTable contract.
+            const adaptedColumns = gradeColumns.map(c => ({
+              id: c.id,
+              name: getColumnDisplay(c),
+              group: c.column_type === 'exams' ? 'exams' : 'coursework',
+              maxGrade: c.max_grade,
+              hidden: c.visible === false,
+            }));
+            const adaptedGrades = {};
+            filteredStudents.forEach(s => {
+              const row = {};
+              gradeColumns.forEach(c => {
+                const raw = studentGrades[`${s.id}_${c.id}`];
+                if (raw !== undefined && raw !== '') row[c.id] = raw;
+              });
+              adaptedGrades[s.id] = row;
+            });
+            return (
+              <FollowupGradesTable
+                students={filteredStudents}
+                columns={adaptedColumns}
+                gradesData={adaptedGrades}
+                onGradeChange={(sid, cid, value) => handleGradeChange(sid, cid, value)}
+                emptyMessage={t('noStudents')}
+                t={t}
+              />
+            );
+          })()}
         </Card>
       )}
     </div>
