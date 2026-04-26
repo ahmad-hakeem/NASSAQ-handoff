@@ -75,6 +75,7 @@ export default function TeacherClassDetailPage() {
   const [studentGrades, setStudentGrades] = useState({});
   const [gradesLoading, setGradesLoading] = useState(false);
   const [showColumnSettings, setShowColumnSettings] = useState(false);
+  const [showQuickAddCol, setShowQuickAddCol] = useState(false);
   const [newColName, setNewColName] = useState('');
   const [newColType, setNewColType] = useState('coursework');
   const [newColMax, setNewColMax] = useState(10);
@@ -278,7 +279,9 @@ export default function TeacherClassDetailPage() {
       });
       toast.success(t('columnAdded'));
       setNewColName('');
+      setNewColType('coursework');
       setNewColMax(10);
+      setShowQuickAddCol(false);
       fetchGradeColumns();
     } catch (err) {
       console.error(err);
@@ -589,10 +592,12 @@ export default function TeacherClassDetailPage() {
     </div>
   );
 
-  const renderRecordsTab = () => (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="relative flex-1 min-w-[200px]">
+  const renderRecordsTab = () => {
+    const visibleColCount = gradeColumns.filter(c => c.visible !== false).length;
+    return (
+      <div className="space-y-4">
+        {/* Search row */}
+        <div className="relative">
           <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder={t('searchByNameOrId')}
@@ -601,56 +606,149 @@ export default function TeacherClassDetailPage() {
             className="ps-9 h-9"
           />
         </div>
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" className="gap-1.5" onClick={() => fileInputRef.current?.click()}>
-            <FileSpreadsheet className="h-3.5 w-3.5" />
-            {t('importGrades')}
-          </Button>
-          <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setShowColumnSettings(true)}>
-            <Settings className="h-3.5 w-3.5" />
-            {t('columnSettings')}
-          </Button>
+
+        {/* Toolbar — mirrors كشف المتابعة */}
+        <div className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg bg-muted/40 dark:bg-card/40 border border-border">
+          <div className="text-xs text-muted-foreground font-cairo">
+            {students.length} طالب
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button size="sm" variant="outline" className="gap-1.5 font-cairo" onClick={() => fileInputRef.current?.click()}>
+              <FileSpreadsheet className="h-3.5 w-3.5" />
+              {t('importGrades')}
+            </Button>
+            <Button size="sm" variant="outline" className="gap-1.5 font-cairo" onClick={() => setShowColumnSettings(true)}>
+              <Settings className="h-3.5 w-3.5" />
+              إعدادات الأعمدة
+            </Button>
+            <Button
+              size="sm"
+              className="gap-1.5 font-cairo bg-brand-turquoise hover:bg-brand-turquoise/90 text-white"
+              onClick={() => setShowQuickAddCol(true)}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              إضافة عمود
+            </Button>
+          </div>
+        </div>
+
+        {gradesLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-brand-turquoise" />
+          </div>
+        ) : (
+          <Card className="overflow-hidden">
+            {(() => {
+              // Adapt class-detail data shapes to the shared FollowupGradesTable contract.
+              const adaptedColumns = gradeColumns.map(c => ({
+                id: c.id,
+                name: getColumnDisplay(c),
+                group: c.column_type === 'exams' ? 'exams' : 'coursework',
+                maxGrade: c.max_grade,
+                hidden: c.visible === false,
+              }));
+              const adaptedGrades = {};
+              filteredStudents.forEach(s => {
+                const row = {};
+                gradeColumns.forEach(c => {
+                  const raw = studentGrades[`${s.id}_${c.id}`];
+                  if (raw !== undefined && raw !== '') row[c.id] = raw;
+                });
+                adaptedGrades[s.id] = row;
+              });
+              return (
+                <FollowupGradesTable
+                  students={filteredStudents}
+                  columns={adaptedColumns}
+                  gradesData={adaptedGrades}
+                  onGradeChange={(sid, cid, value) => handleGradeChange(sid, cid, value)}
+                  emptyMessage={t('noStudents')}
+                  t={t}
+                />
+              );
+            })()}
+          </Card>
+        )}
+
+        {/* Footer chip — visible columns count */}
+        <div className="flex items-center justify-end px-1">
+          <span className="text-xs text-muted-foreground font-cairo">
+            {visibleColCount} عمود ظاهر
+          </span>
         </div>
       </div>
+    );
+  };
 
-      {gradesLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-brand-turquoise" />
+  const resetNewColumnForm = () => {
+    setNewColName('');
+    setNewColType('coursework');
+    setNewColMax(10);
+  };
+
+  const renderQuickAddColumnDialog = () => (
+    <Dialog
+      open={showQuickAddCol}
+      onOpenChange={(o) => {
+        setShowQuickAddCol(o);
+        if (!o) resetNewColumnForm();
+      }}
+    >
+      <DialogContent className="max-w-md" dir={isRTL ? 'rtl' : 'ltr'}>
+        <DialogHeader>
+          <DialogTitle className="font-cairo flex items-center gap-2">
+            <Plus className="h-5 w-5 text-brand-turquoise" />
+            إضافة عمود جديد
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          <div>
+            <label className="block text-xs font-cairo font-semibold mb-1">اسم العمود</label>
+            <Input
+              type="text"
+              value={newColName}
+              onChange={(e) => setNewColName(e.target.value)}
+              placeholder="مثال: نشاط صفي"
+              onKeyDown={(e) => e.key === 'Enter' && handleAddColumn()}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-cairo font-semibold mb-1">نوع العمود</label>
+            <Select value={newColType} onValueChange={setNewColType}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="coursework">أعمال سنة</SelectItem>
+                <SelectItem value="exams">اختبارات</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="block text-xs font-cairo font-semibold mb-1">الدرجة القصوى</label>
+            <Input
+              type="number"
+              min={1}
+              max={100}
+              value={newColMax}
+              onChange={(e) => setNewColMax(parseInt(e.target.value) || 10)}
+            />
+          </div>
         </div>
-      ) : (
-        <Card className="overflow-hidden">
-          {(() => {
-            // Adapt class-detail data shapes to the shared FollowupGradesTable contract.
-            const adaptedColumns = gradeColumns.map(c => ({
-              id: c.id,
-              name: getColumnDisplay(c),
-              group: c.column_type === 'exams' ? 'exams' : 'coursework',
-              maxGrade: c.max_grade,
-              hidden: c.visible === false,
-            }));
-            const adaptedGrades = {};
-            filteredStudents.forEach(s => {
-              const row = {};
-              gradeColumns.forEach(c => {
-                const raw = studentGrades[`${s.id}_${c.id}`];
-                if (raw !== undefined && raw !== '') row[c.id] = raw;
-              });
-              adaptedGrades[s.id] = row;
-            });
-            return (
-              <FollowupGradesTable
-                students={filteredStudents}
-                columns={adaptedColumns}
-                gradesData={adaptedGrades}
-                onGradeChange={(sid, cid, value) => handleGradeChange(sid, cid, value)}
-                emptyMessage={t('noStudents')}
-                t={t}
-              />
-            );
-          })()}
-        </Card>
-      )}
-    </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => { setShowQuickAddCol(false); resetNewColumnForm(); }}
+          >
+            {t('cancel') || 'إلغاء'}
+          </Button>
+          <Button size="sm" onClick={handleAddColumn} className="bg-brand-turquoise hover:bg-brand-turquoise/90 text-white">
+            {t('save') || 'حفظ'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 
   const renderAbsenceTab = () => (
@@ -993,6 +1091,7 @@ export default function TeacherClassDetailPage() {
 
       {renderAddLessonDialog()}
       {renderColumnSettings()}
+      {renderQuickAddColumnDialog()}
 
       <input
         ref={fileInputRef}
