@@ -1039,27 +1039,31 @@ export default function SessionTeachPage() {
                     onPointerDown={(e) => e.stopPropagation()}
                     onTouchStart={(e) => e.stopPropagation()}
                   >
-                    {/* Mode segmented control */}
-                    <div className="px-1 pt-0.5 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground font-bold">{t('mode')}</div>
-                    <div className="flex items-center bg-foreground/[0.04] border border-border rounded-lg p-0.5 gap-0.5">
-                      {MODES.map(m => {
-                        const active = mode?.id === m.id;
-                        return (
-                          <button
-                            key={m.id}
-                            onClick={() => { handleSetMode(m); setShowOverflowMenu(false); }}
-                            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-1 rounded-md text-[11px] font-bold transition-colors ${
-                              active ? `${m.color} text-foreground shadow-sm` : 'text-muted-foreground hover:bg-foreground/[0.06]'
-                            }`}
-                            title={m.labelKey ? t(m.labelKey) : m.label}
-                          >
-                            <m.icon className="h-3.5 w-3.5 flex-none" />
-                            <span className="truncate">{m.labelKey ? t(m.labelKey) : m.label}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <div className="border-t border-border my-1.5" />
+                    {/* Mode segmented control — hidden per product requirement */}
+                    {false && (
+                      <>
+                        <div className="px-1 pt-0.5 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground font-bold">{t('mode')}</div>
+                        <div className="flex items-center bg-foreground/[0.04] border border-border rounded-lg p-0.5 gap-0.5">
+                          {MODES.map(m => {
+                            const active = mode?.id === m.id;
+                            return (
+                              <button
+                                key={m.id}
+                                onClick={() => { handleSetMode(m); setShowOverflowMenu(false); }}
+                                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-1 rounded-md text-[11px] font-bold transition-colors ${
+                                  active ? `${m.color} text-foreground shadow-sm` : 'text-muted-foreground hover:bg-foreground/[0.06]'
+                                }`}
+                                title={m.labelKey ? t(m.labelKey) : m.label}
+                              >
+                                <m.icon className="h-3.5 w-3.5 flex-none" />
+                                <span className="truncate">{m.labelKey ? t(m.labelKey) : m.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div className="border-t border-border my-1.5" />
+                      </>
+                    )}
                     <button
                       onClick={() => { setPanelOpen(v => !v); setShowOverflowMenu(false); }}
                       className="w-full flex items-center gap-2.5 px-2 py-2 rounded-md hover:bg-foreground/[0.06] text-sm text-foreground transition-colors"
@@ -1317,28 +1321,33 @@ export default function SessionTeachPage() {
               </button>
             )}
 
-            <span className="hidden sm:block w-px h-5 bg-foreground/10 mx-1" aria-hidden="true" />
+            {/* Mode segmented control — hidden per product requirement */}
+            {false && (
+              <>
+                <span className="hidden sm:block w-px h-5 bg-foreground/10 mx-1" aria-hidden="true" />
 
-            <div className="hidden sm:flex items-center gap-1">
-              {MODES.map(m => {
-                const active = mode?.id === m.id;
-                return (
-                  <button
-                    key={m.id}
-                    onClick={() => handleSetMode(m)}
-                    aria-pressed={active}
-                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-bold tracking-wide transition-all ${
-                      active
-                        ? `${m.color} text-foreground shadow-[0_0_0_1px_rgba(255,255,255,0.1)_inset]`
-                        : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]'
-                    }`}
-                  >
-                    <m.icon className="h-3.5 w-3.5" />
-                    {m.labelKey ? t(m.labelKey) : m.label}
-                  </button>
-                );
-              })}
-            </div>
+                <div className="hidden sm:flex items-center gap-1">
+                  {MODES.map(m => {
+                    const active = mode?.id === m.id;
+                    return (
+                      <button
+                        key={m.id}
+                        onClick={() => handleSetMode(m)}
+                        aria-pressed={active}
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-bold tracking-wide transition-all ${
+                          active
+                            ? `${m.color} text-foreground shadow-[0_0_0_1px_rgba(255,255,255,0.1)_inset]`
+                            : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]'
+                        }`}
+                      >
+                        <m.icon className="h-3.5 w-3.5" />
+                        {m.labelKey ? t(m.labelKey) : m.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
             <button
               onClick={() => {
                 setShowSettingsModal(true);
@@ -1448,12 +1457,9 @@ export default function SessionTeachPage() {
           })()}
 
           {/* Student grid — individual or group mode */}
+          {/* Mode is no longer required to start the session — the grid renders immediately. */}
           <div className="flex-1 min-h-0 overflow-y-auto">
-            {!mode ? (
-              <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
-                {t('selectSessionModeToStart')}
-              </div>
-            ) : evalMode === 'group' ? (
+            {evalMode === 'group' ? (
               groups.length > 0 ? (
               <div className="space-y-3">
                 {groups.map(group => {
