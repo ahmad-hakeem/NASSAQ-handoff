@@ -743,8 +743,8 @@ export default function TeacherMainDashboard() {
             </div>
           </section>
 
-          {/* Teaching Performance */}
-          {teachingMetrics && (
+          {/* Teaching Performance — HIDDEN per request (logic kept intact) */}
+          {false && teachingMetrics && (
             <Card className="border border-border/50 shadow-sm overflow-hidden">
               <CardContent className="p-0">
                 <div className="bg-gradient-to-r from-brand-turquoise/5 to-brand-navy/5 px-6 py-4 border-b border-border/30">
@@ -781,7 +781,8 @@ export default function TeacherMainDashboard() {
             </Card>
           )}
 
-          {/* Two Column: Activities + Quick Actions */}
+          {/* Two Column: Recent Activities + Quick Actions + Pending Tasks — HIDDEN per request (logic kept intact) */}
+          {false && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             <Card className="border border-border/50 shadow-sm">
               <CardHeader className="pb-3">
@@ -891,6 +892,7 @@ export default function TeacherMainDashboard() {
               </Card>
             </div>
           </div>
+          )}
 
           {/* Hakim AI Insights */}
           {(classHealthData.length > 0 || riskAlerts.length > 0 || hakimLoading) && (
