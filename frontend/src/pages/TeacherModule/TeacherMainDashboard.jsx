@@ -22,7 +22,7 @@ import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 import { useTranslation } from '../../contexts/ThemeContext';
 const HAKIM_CHARACTER = '/hakim-poses/teacher-helper.png';
 
-const PeriodTimeline = ({ upcomingLessons, totalPeriods, currentPeriod, isSchoolTime, isRTL, t }) => {
+const PeriodTimeline = ({ upcomingLessons, totalPeriods, currentPeriod, isSchoolTime, isRTL, t, onDark = false }) => {
   const periods = [];
   for (let i = 1; i <= totalPeriods; i++) {
     const lesson = upcomingLessons.find(l => l.period === i);
@@ -37,20 +37,42 @@ const PeriodTimeline = ({ upcomingLessons, totalPeriods, currentPeriod, isSchool
   const completed = periods.filter(p => p.status === 'done').length;
   const remaining = periods.filter(p => p.status === 'upcoming').length;
 
+  // Theme-aware classes — when embedded inside the dark Welcome Card we use
+  // light/translucent surfaces and white text so contrast is preserved.
+  const titleCls = onDark ? 'text-white' : 'text-foreground';
+  const titleIconCls = onDark ? 'text-brand-turquoise' : 'text-brand-turquoise';
+  const countersCls = onDark ? 'text-white/70' : 'text-muted-foreground';
+  const remainingDotCls = onDark ? 'bg-white/30' : 'bg-slate-300 dark:bg-slate-600';
+  const completedDotCls = onDark ? 'bg-emerald-400' : 'bg-emerald-500';
+
+  const doneCellCls = onDark
+    ? 'bg-emerald-400/15 border-emerald-300/40'
+    : 'bg-emerald-500/10 border-emerald-500/30 dark:bg-emerald-500/15';
+  const activeCellCls = onDark
+    ? 'bg-brand-turquoise/25 border-brand-turquoise/60 ring-2 ring-brand-turquoise/40 shadow-sm'
+    : 'bg-brand-turquoise/15 border-brand-turquoise/40 ring-2 ring-brand-turquoise/30 shadow-sm';
+  const upcomingCellCls = onDark
+    ? 'bg-white/5 border-white/15'
+    : 'bg-muted/50 border-border/50';
+
+  const doneIconCls = onDark ? 'text-emerald-300' : 'text-emerald-600 dark:text-emerald-400';
+  const activeNumCls = onDark ? 'text-white' : 'text-brand-turquoise';
+  const upcomingNumCls = onDark ? 'text-white/80' : 'text-muted-foreground';
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="font-cairo font-bold text-sm text-foreground flex items-center gap-2">
-          <Clock className="h-4 w-4 text-brand-turquoise" />
+        <h3 className={`font-cairo font-bold text-sm flex items-center gap-2 ${titleCls}`}>
+          <Clock className={`h-4 w-4 ${titleIconCls}`} />
           {t('schoolDayTimeline')}
         </h3>
-        <div className="flex items-center gap-3 text-xs font-tajawal text-muted-foreground">
+        <div className={`flex items-center gap-3 text-xs font-tajawal ${countersCls}`}>
           <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            <span className={`w-2 h-2 rounded-full ${completedDotCls}`} />
             {completed} {t('periodsCompleted')}
           </span>
           <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-600" />
+            <span className={`w-2 h-2 rounded-full ${remainingDotCls}`} />
             {remaining} {t('periodsRemaining')}
           </span>
         </div>
@@ -64,20 +86,20 @@ const PeriodTimeline = ({ upcomingLessons, totalPeriods, currentPeriod, isSchool
           >
             <div className={`h-10 rounded-lg flex items-center justify-center transition-colors duration-300 border ${
               period.status === 'done'
-                ? 'bg-emerald-500/10 border-emerald-500/30 dark:bg-emerald-500/15'
+                ? doneCellCls
                 : period.status === 'active'
-                ? 'bg-brand-turquoise/15 border-brand-turquoise/40 ring-2 ring-brand-turquoise/30 shadow-sm'
-                : 'bg-muted/50 border-border/50'
+                ? activeCellCls
+                : upcomingCellCls
             }`}>
               {period.status === 'done' ? (
-                <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                <Check className={`h-4 w-4 ${doneIconCls}`} />
               ) : period.status === 'active' ? (
                 <div className="relative">
-                  <span className="font-cairo font-bold text-sm text-brand-turquoise">{period.number}</span>
+                  <span className={`font-cairo font-bold text-sm ${activeNumCls}`}>{period.number}</span>
                   <span className="absolute -top-0.5 -end-1 w-2 h-2 bg-brand-turquoise rounded-full animate-ping" />
                 </div>
               ) : (
-                <span className="font-cairo text-sm text-muted-foreground">{period.number}</span>
+                <span className={`font-cairo text-sm ${upcomingNumCls}`}>{period.number}</span>
               )}
             </div>
 
@@ -493,6 +515,19 @@ export default function TeacherMainDashboard() {
                   </div>
                 </div>
               </div>
+
+              {/* School Day Path — integrated at the bottom of the welcome card */}
+              <div className="mt-5 pt-4 border-t border-white/10">
+                <PeriodTimeline
+                  upcomingLessons={stats.upcomingLessons}
+                  totalPeriods={totalPeriods}
+                  currentPeriod={currentPeriod}
+                  isSchoolTime={isSchoolTime}
+                  isRTL={isRTL}
+                  t={t}
+                  onDark
+                />
+              </div>
             </div>
           </div>
 
@@ -644,17 +679,7 @@ export default function TeacherMainDashboard() {
               </div>
             )}
 
-            {/* C) School Day Timeline — supporting visual progress */}
-            <Card className="border border-border/50 shadow-sm p-4">
-              <PeriodTimeline
-                upcomingLessons={stats.upcomingLessons}
-                totalPeriods={totalPeriods}
-                currentPeriod={currentPeriod}
-                isSchoolTime={isSchoolTime}
-                isRTL={isRTL}
-                t={t}
-              />
-            </Card>
+            {/* C) School Day Timeline moved into the Welcome Card above */}
           </section>
 
           {/* Metric Cards */}
