@@ -682,7 +682,8 @@ export default function TeacherMainDashboard() {
             {/* C) School Day Timeline moved into the Welcome Card above */}
           </section>
 
-          {/* Metric Cards */}
+          {/* Metric Cards — HIDDEN per request (logic kept intact) */}
+          {false && (
           <section>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 md:gap-4">
               {[
@@ -742,6 +743,7 @@ export default function TeacherMainDashboard() {
               ))}
             </div>
           </section>
+          )}
 
           {/* Teaching Performance — HIDDEN per request (logic kept intact) */}
           {false && teachingMetrics && (
@@ -894,8 +896,8 @@ export default function TeacherMainDashboard() {
           </div>
           )}
 
-          {/* Hakim AI Insights */}
-          {(classHealthData.length > 0 || riskAlerts.length > 0 || hakimLoading) && (
+          {/* Hakim AI Insights — HIDDEN per request (logic kept intact) */}
+          {false && (classHealthData.length > 0 || riskAlerts.length > 0 || hakimLoading) && (
             <Card className="border border-brand-purple/20 shadow-sm overflow-hidden">
               <CardHeader className="pb-3 bg-gradient-to-r from-brand-purple/5 to-transparent border-b border-brand-purple/10">
                 <div className="flex items-center gap-3">
