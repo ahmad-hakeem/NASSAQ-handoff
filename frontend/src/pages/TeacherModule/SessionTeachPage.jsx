@@ -338,10 +338,11 @@ export default function SessionTeachPage() {
         skill_enabled: skillEnabled,
         extra_columns: followupColumns,
       });
-      // Persist followup columns alongside grade data
-      if (followupColumns.length > 0 || Object.keys(followupData).length > 0) {
+      // Persist grade values only. Columns are owned by the class-level
+      // grade-columns API (single source of truth shared with سجل الطلاب).
+      if (Object.keys(followupData).length > 0) {
         await api.post(`/session/${sessionId}/followup-record`, {
-          columns: followupColumns, data: followupData
+          data: followupData
         }).catch(() => {});
       }
       toast.success(t('saved') || t('saveSettings'));
@@ -433,9 +434,11 @@ export default function SessionTeachPage() {
           evalMode, groups, stats, mode: mode?.id, actionTab, followupData, followupColumns, followupAbsences,
           customPositiveBehaviours, customNegativeBehaviours, customSkills
         }));
-        if (followupColumns.length > 0 || Object.keys(followupData).length > 0 || Object.keys(followupAbsences).length > 0) {
+        // Only autosave grade values + absences. Columns are persisted via the
+        // class-level grade-columns API so we don't overwrite them here.
+        if (Object.keys(followupData).length > 0 || Object.keys(followupAbsences).length > 0) {
           api.post(`/session/${sessionId}/followup-record`, {
-            columns: followupColumns, data: followupData, absences: followupAbsences
+            data: followupData, absences: followupAbsences
           }).catch(() => {});
         }
       } catch (e) { /* ignore */ }
@@ -525,14 +528,110 @@ export default function SessionTeachPage() {
     if (!sessionId) return;
     try {
       const res = await api.get(`/session/${sessionId}/followup-record`);
+      // Columns are now loaded from the class-level endpoint (single source of
+      // truth shared with فصولي → سجل الطلاب). The session record only stores
+      // grade values and absence dates.
       setFollowupData(res.data?.data || {});
       setFollowupAbsences(res.data?.absences || {});
-      if (res.data?.columns?.length) setFollowupColumns(res.data.columns.map(migrateColumn));
-      else if (followupColumns.length === 0) setFollowupColumns(defaultColumns);
+    } catch (e) { /* ignore */ }
+  }, [api, sessionId]);
+
+  // Adapt backend grade-column shape to FollowupGradesTable's local shape.
+  // Both keep the backend UUID as `id` so grade values map correctly across UIs.
+  const adaptBackendColumn = (c) => ({
+    id: c.id,
+    name: c.name,
+    group: c.column_type === 'exams' ? 'exams' : 'coursework',
+    maxGrade: c.max_grade,
+    hidden: c.visible === false,
+    type: 'grade',
+    _order: c.order ?? 0,
+  });
+
+  const classIdForGrades = sessionInfo?.class_id || sessionInfo?.classId || null;
+
+  const loadClassGradeColumns = useCallback(async () => {
+    if (!classIdForGrades) return;
+    try {
+      const res = await api.get(`/class/${classIdForGrades}/grade-columns`);
+      const list = Array.isArray(res.data) ? res.data : [];
+      const adapted = list
+        .map(adaptBackendColumn)
+        .sort((a, b) => (a._order || 0) - (b._order || 0));
+      setFollowupColumns(adapted);
     } catch (e) {
-      if (followupColumns.length === 0) setFollowupColumns(defaultColumns);
+      console.error('loadClassGradeColumns failed', e);
     }
-  }, [api, sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [api, classIdForGrades]);
+
+  const addClassGradeColumn = useCallback(async ({ name, group, maxGrade }) => {
+    if (!classIdForGrades) {
+      toast.error('لا يمكن حفظ العمود — معرف الفصل غير متوفر');
+      return false;
+    }
+    if (!name || !name.trim()) {
+      toast.error(t('columnNameRequired') || 'يرجى إدخال اسم العمود');
+      return false;
+    }
+    try {
+      await api.post(`/class/${classIdForGrades}/grade-columns`, {
+        name: name.trim(),
+        column_type: group === 'exams' ? 'exams' : 'coursework',
+        max_grade: Math.max(1, Number(maxGrade) || 10),
+        order: followupColumns.length + 1,
+      });
+      toast.success(t('columnAdded') || 'تم إضافة العمود');
+      await loadClassGradeColumns();
+      return true;
+    } catch (err) {
+      console.error(err);
+      const detail = err?.response?.data?.detail || err?.message || (t('saveFailed') || 'فشل الحفظ');
+      toast.error(detail);
+      return false;
+    }
+  }, [api, classIdForGrades, followupColumns.length, loadClassGradeColumns, t]);
+
+  const updateClassGradeColumn = useCallback(async (columnId, patch) => {
+    if (!columnId) return false;
+    const body = {};
+    if (patch.name !== undefined) body.name = patch.name;
+    if (patch.maxGrade !== undefined) body.max_grade = Math.max(1, Number(patch.maxGrade) || 1);
+    if (patch.hidden !== undefined) body.visible = !patch.hidden;
+    if (patch.order !== undefined) body.order = patch.order;
+    try {
+      await api.put(`/grade-column/${columnId}`, body);
+      await loadClassGradeColumns();
+      return true;
+    } catch (err) {
+      console.error(err);
+      const detail = err?.response?.data?.detail || err?.message || (t('saveFailed') || 'فشل الحفظ');
+      toast.error(detail);
+      return false;
+    }
+  }, [api, loadClassGradeColumns, t]);
+
+  const deleteClassGradeColumn = useCallback(async (columnId) => {
+    if (!columnId) return false;
+    try {
+      await api.delete(`/grade-column/${columnId}`);
+      toast.success(t('columnDeleted') || 'تم حذف العمود');
+      await loadClassGradeColumns();
+      return true;
+    } catch (err) {
+      console.error(err);
+      const detail = err?.response?.data?.detail || err?.message || (t('saveFailed') || 'فشل الحفظ');
+      toast.error(detail);
+      return false;
+    }
+  }, [api, loadClassGradeColumns, t]);
+
+  // Re-fetch class-level columns whenever the كشف المتابعة dialog is opened,
+  // so the Live Class always shows the same columns as فصولي → سجل الطلاب.
+  useEffect(() => {
+    if (showFollowupRecord && classIdForGrades) {
+      loadClassGradeColumns();
+    }
+  }, [showFollowupRecord, classIdForGrades, loadClassGradeColumns]);
 
   const [remainingMinutes, setRemainingMinutes] = useState(null);
 
@@ -2194,9 +2293,9 @@ export default function SessionTeachPage() {
           onClick={async () => {
             setSavingSession(true);
             try {
-              if (followupColumns.length > 0 || Object.keys(followupData).length > 0) {
+              if (Object.keys(followupData).length > 0 || Object.keys(followupAbsences).length > 0) {
                 await api.post(`/session/${sessionId}/followup-record`, {
-                  columns: followupColumns, data: followupData, absences: followupAbsences
+                  data: followupData, absences: followupAbsences
                 });
               }
               toast.success(t('savedSuccessfully') || 'تم الحفظ');
@@ -2407,10 +2506,11 @@ export default function SessionTeachPage() {
       {/* Session Settings Modal (إعدادات الحصة) */}
       <Dialog open={showSettingsModal} onOpenChange={(open) => {
         setShowSettingsModal(open);
-        // Preserve existing autosave: persist followup record on close
-        if (!open && sessionId && (followupColumns.length > 0 || Object.keys(followupData).length > 0)) {
+        // Preserve existing autosave: persist grade values on close.
+        // Columns are owned by the class-level API.
+        if (!open && sessionId && Object.keys(followupData).length > 0) {
           api.post(`/session/${sessionId}/followup-record`, {
-            columns: followupColumns, data: followupData
+            data: followupData
           }).catch(() => {});
         }
       }}>
@@ -2707,6 +2807,10 @@ export default function SessionTeachPage() {
         setAbsencePickerStudent={setAbsencePickerStudent}
         absencePickerDate={absencePickerDate}
         setAbsencePickerDate={setAbsencePickerDate}
+        classId={classIdForGrades}
+        onAddColumn={addClassGradeColumn}
+        onUpdateColumn={updateClassGradeColumn}
+        onDeleteColumn={deleteClassGradeColumn}
       />
 
       <Dialog open={showQuickNote} onOpenChange={setShowQuickNote}>
@@ -2966,6 +3070,10 @@ function FollowupRecordDialog({
   newColumnDraft, setNewColumnDraft,
   absencePickerStudent, setAbsencePickerStudent,
   absencePickerDate, setAbsencePickerDate,
+  classId,
+  onAddColumn,
+  onUpdateColumn,
+  onDeleteColumn,
 }) {
   const { t } = useTranslation();
   const allStudents = students || [];
@@ -2974,34 +3082,112 @@ function FollowupRecordDialog({
   // lives in FollowupGradesTable now.
   const visibleColumns = followupColumns.filter(c => !c.hidden);
 
-  const handleAddColumn = () => {
+  // Local edit state for inline column-name/max-grade edits inside the
+  // Column Settings dialog. We persist via the parent callback on blur so we
+  // don't fire a request on every keystroke.
+  const [editingColumnDrafts, setEditingColumnDrafts] = useState({});
+  const getDraftValue = (col, field) => {
+    const draft = editingColumnDrafts[col.id];
+    if (draft && draft[field] !== undefined) return draft[field];
+    return field === 'name' ? col.name : col.maxGrade;
+  };
+  const setDraftValue = (col, field, value) => {
+    setEditingColumnDrafts(prev => ({
+      ...prev,
+      [col.id]: { ...(prev[col.id] || {}), [field]: value },
+    }));
+  };
+  const flushDraft = async (col, field) => {
+    const draft = editingColumnDrafts[col.id];
+    if (!draft || draft[field] === undefined) return;
+    const next = draft[field];
+    const current = field === 'name' ? col.name : col.maxGrade;
+    if (String(next) === String(current)) {
+      setEditingColumnDrafts(prev => {
+        const copy = { ...prev };
+        if (copy[col.id]) {
+          const inner = { ...copy[col.id] };
+          delete inner[field];
+          if (Object.keys(inner).length === 0) delete copy[col.id]; else copy[col.id] = inner;
+        }
+        return copy;
+      });
+      return;
+    }
+    if (onUpdateColumn) {
+      await onUpdateColumn(col.id, { [field]: next });
+    }
+    setEditingColumnDrafts(prev => {
+      const copy = { ...prev };
+      delete copy[col.id];
+      return copy;
+    });
+  };
+
+  const handleAddColumn = async () => {
     const name = newColumnDraft.name?.trim();
-    if (!name) return;
+    if (!name) {
+      toast.error(t('columnNameRequired') || 'يرجى إدخال اسم العمود');
+      return;
+    }
+    if (onAddColumn && classId) {
+      const ok = await onAddColumn({
+        name,
+        group: newColumnDraft.group,
+        maxGrade: newColumnDraft.maxGrade,
+      });
+      if (ok) {
+        setNewColumnDraft({ name: '', group: 'coursework', maxGrade: 10 });
+        setShowAddColumnModal(false);
+      }
+      return;
+    }
+    // Fallback (no classId): keep legacy local-only behaviour so the dialog
+    // still works in edge cases where session has no class context.
     const id = `col_${Date.now()}`;
-    const col = {
-      id,
-      name,
+    setFollowupColumns(prev => [...prev, {
+      id, name,
       group: newColumnDraft.group,
       maxGrade: Math.max(1, Number(newColumnDraft.maxGrade) || 10),
-      type: 'grade',
-      hidden: false,
-    };
-    setFollowupColumns(prev => [...prev, col]);
+      type: 'grade', hidden: false,
+    }]);
     setNewColumnDraft({ name: '', group: 'coursework', maxGrade: 10 });
     setShowAddColumnModal(false);
   };
 
-  const handleDeleteColumn = (id) => {
+  const handleDeleteColumn = async (id) => {
+    if (onDeleteColumn && classId) {
+      await onDeleteColumn(id);
+      return;
+    }
     setFollowupColumns(prev => prev.filter(c => c.id !== id));
   };
-  const handleToggleHidden = (id) => {
+  const handleToggleHidden = async (id) => {
+    const col = followupColumns.find(c => c.id === id);
+    if (!col) return;
+    if (onUpdateColumn && classId) {
+      await onUpdateColumn(id, { hidden: !col.hidden });
+      return;
+    }
     setFollowupColumns(prev => prev.map(c => c.id === id ? { ...c, hidden: !c.hidden } : c));
   };
   const handleEditMaxGrade = (id, value) => {
+    const col = followupColumns.find(c => c.id === id);
+    if (!col) return;
+    if (classId) {
+      setDraftValue(col, 'maxGrade', value);
+      return;
+    }
     const v = Math.max(1, Number(value) || 1);
     setFollowupColumns(prev => prev.map(c => c.id === id ? { ...c, maxGrade: v } : c));
   };
   const handleEditColumnName = (id, value) => {
+    const col = followupColumns.find(c => c.id === id);
+    if (!col) return;
+    if (classId) {
+      setDraftValue(col, 'name', value);
+      return;
+    }
     setFollowupColumns(prev => prev.map(c => c.id === id ? { ...c, name: value } : c));
   };
 
@@ -3264,8 +3450,9 @@ function FollowupRecordDialog({
                 </button>
                 <input
                   type="text"
-                  value={col.name}
+                  value={getDraftValue(col, 'name')}
                   onChange={e => handleEditColumnName(col.id, e.target.value)}
+                  onBlur={() => flushDraft(col, 'name')}
                   className="flex-1 text-xs font-medium bg-transparent border border-border dark:border-border rounded px-2 py-1.5 outline-none focus:border-brand-turquoise"
                 />
                 <span className={`text-[10px] px-2 py-1 rounded font-cairo font-semibold ${
@@ -3280,8 +3467,9 @@ function FollowupRecordDialog({
                   <input
                     type="number"
                     min={1}
-                    value={col.maxGrade}
+                    value={getDraftValue(col, 'maxGrade')}
                     onChange={e => handleEditMaxGrade(col.id, e.target.value)}
+                    onBlur={() => flushDraft(col, 'maxGrade')}
                     className="w-14 text-xs text-center bg-transparent border border-border dark:border-border rounded px-1 py-1.5 outline-none focus:border-brand-turquoise"
                   />
                 </div>

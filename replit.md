@@ -625,6 +625,21 @@ All 11 session routes wired in `server.py` calling `TeacherSessionEngine` method
 ### Key Data Fix
 `validate_session_start` now checks `timetable_sessions` as fallback when `schedule_sessions` is empty. Teacher dashboard also falls back to `timetable_sessions` for today's lessons.
 
+### Unified Gradebook Columns (April 26, 2026)
+Class-level grade columns are the single source of truth for both:
+- Teacher Module → فصولي → سجل الطلاب tab (`TeacherClassDetailPage`)
+- Live Class → كشف المتابعة modal (`FollowupRecordDialog` inside `SessionTeachPage`)
+
+Backend endpoints (in `routes/scheduling_smart_session_routes.py`):
+- `GET /api/class/{class_id}/grade-columns` — auto-seeds 5 default columns on first call
+- `POST /api/class/{class_id}/grade-columns` — add column `{name, column_type, max_grade, order}`
+- `PUT /api/grade-column/{id}` — rename, change `max_grade`, toggle `visible`
+- `DELETE /api/grade-column/{id}`
+
+`_verify_class_access` accepts any of: `class_subjects`, `schedule_entries`, `teacher_assignments`, `class_sessions` (matches `role_dashboards_mod.py` access pattern — fixes 403 for substitutes / manually-assigned teachers).
+
+Frontend mapping `{column_type, max_grade, visible}` ↔ `{group, maxGrade, hidden}` lives in `adaptBackendColumn` (SessionTeachPage). Backend UUID is preserved as `id` so per-student grade values map across both UIs. Grade *values* and *absences* remain session-scoped via `/api/session/{id}/followup-record` — that endpoint no longer accepts/returns column definitions from the Live Class side.
+
 ## All Engines (20 Engines — 200+ endpoints total)
 
 ### Core 6 Engines:
