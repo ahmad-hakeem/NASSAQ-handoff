@@ -616,6 +616,7 @@
   "code": "Code",
   "colors": "Colors",
   "columnAdded": "Column added",
+  "columnNameRequired": "Please enter a column name",
   "columnDeleted": "Column deleted",
   "columnName": "Column Name",
   "columns": "Columns",

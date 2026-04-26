@@ -622,6 +622,7 @@
   "columnAdded": "تم إضافة العمود",
   "columnDeleted": "تم حذف العمود",
   "columnName": "اسم العمود",
+  "columnNameRequired": "يرجى إدخال اسم العمود",
   "columns": "عدد الأعمدة",
   "columnSettings": "إعدادات الأعمدة",
   "columnType": "نوع العمود",

@@ -269,7 +269,10 @@ export default function TeacherClassDetailPage() {
   };
 
   const handleAddColumn = async () => {
-    if (!newColName.trim()) return;
+    if (!newColName.trim()) {
+      toast.error(t('columnNameRequired'));
+      return;
+    }
     try {
       await api.post(`/class/${classId}/grade-columns`, {
         name: newColName.trim(),
@@ -285,6 +288,8 @@ export default function TeacherClassDetailPage() {
       fetchGradeColumns();
     } catch (err) {
       console.error(err);
+      const detail = err?.response?.data?.detail || err?.message || t('saveFailed');
+      toast.error(detail);
     }
   };
 
