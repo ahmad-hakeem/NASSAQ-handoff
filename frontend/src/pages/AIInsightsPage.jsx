@@ -471,7 +471,7 @@ const HealthRing = ({ label, value, color, icon: Icon, isRTL }) => {
   );
 };
 
-const TeacherMonitoringSection = ({ isRTL, api }) => {
+const TeacherMonitoringSection = ({ isRTL, api, isTeacher = false }) => {
   const { t } = useTranslation();
   const [monitorData, setMonitorData] = useState(null);
   const [monitorLoading, setMonitorLoading] = useState(true);
@@ -537,7 +537,7 @@ const TeacherMonitoringSection = ({ isRTL, api }) => {
     { label: t('avgGrade'), value: d.avgGrade || '-', icon: Award, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/30', detail: t('avgCourseworkGrade') },
     { label: t('positiveBehavior'), value: d.positiveBehavior, icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-950/30', detail: `${behaviorPositiveRate}% ${t('ofTotalBehavior')}` },
     { label: t('negativeBehavior'), value: d.negativeBehavior, icon: TrendingDown, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/30', detail: `${d.warningBehavior} ${t('warnings')}` },
-    { label: t('totalStudentsLabel'), value: d.totalStudents, icon: Users, color: 'text-brand-navy', bg: 'bg-blue-50 dark:bg-blue-950/30', detail: t('enrolledInSchool') },
+    { label: isTeacher ? t('myStudents') : t('totalStudentsLabel'), value: d.totalStudents, icon: Users, color: 'text-brand-navy', bg: 'bg-blue-50 dark:bg-blue-950/30', detail: isTeacher ? t('enrolledInYourClasses') : t('enrolledInSchool') },
     { label: t('subjectsAssessed'), value: d.skillsAssessed, icon: Star, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/30', detail: `${t('passRate')}: ${d.avgSkillScore}%` },
     { label: t('participation'), value: `${d.participationRate}%`, icon: Activity, color: 'text-cyan-600', bg: 'bg-cyan-50 dark:bg-cyan-950/30', detail: t('studentEngagement') },
     { label: t('behaviorRecords'), value: d.totalBehavior, icon: Eye, color: 'text-violet-600', bg: 'bg-violet-50 dark:bg-violet-950/30', detail: t('totalBehaviorMonitoring') },
@@ -551,7 +551,7 @@ const TeacherMonitoringSection = ({ isRTL, api }) => {
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-turquoise to-teal-600 flex items-center justify-center shadow-md shadow-brand-turquoise/20">
               <UserCheck className="h-4.5 w-4.5 text-white" />
             </div>
-            {t('teacherMonitoringInsights')}
+            {isTeacher ? t('myTeachingPerformanceSummary') : t('teacherMonitoringInsights')}
           </CardTitle>
           <Badge className="bg-brand-turquoise/10 text-brand-turquoise border-0 font-cairo text-xs px-2.5">
             {t('liveData')}
@@ -600,6 +600,7 @@ export const AIInsightsPage = () => {
   const { t } = useTranslation();
   const { api, user } = useAuth();
   const canSeeStudentPerf = STUDENT_PERF_ROLES.includes(user?.role);
+  const isTeacher = user?.role === 'teacher';
   const { isRTL, toggleTheme, toggleLanguage, isDark } = useTheme();
   const navigate = useNavigate();
 
@@ -807,7 +808,9 @@ export const AIInsightsPage = () => {
                       {t('smartPerformanceIndex')}
                     </h2>
                     <p className="text-sm text-white font-tajawal max-w-md leading-relaxed">
-                      {t('comprehensiveSchoolPerformanceBasedOnAiAnalysis')}
+                      {isTeacher
+                        ? t('comprehensiveTeachingPerformanceBasedOnAiAnalysis')
+                        : t('comprehensiveSchoolPerformanceBasedOnAiAnalysis')}
                     </p>
 
                     <div className="flex items-center gap-3 mt-5 justify-center lg:justify-start">
@@ -848,25 +851,27 @@ export const AIInsightsPage = () => {
           </div>
 
           {/* ══════ QUICK STATS ROW ══════ */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className={`grid grid-cols-2 ${isTeacher ? 'lg:grid-cols-3' : 'lg:grid-cols-4'} gap-4`}>
             <VisualMetricCard
               icon={Users}
-              label={t('totalStudents')}
+              label={isTeacher ? t('myStudents') : t('totalStudents')}
               value={metrics.total_students || 0}
-              subLabel={t('enrolled')}
+              subLabel={isTeacher ? t('enrolledInYourClasses') : t('enrolled')}
               gradient="from-brand-turquoise to-teal-600"
-              onClick={() => navigate('/admin/users-management')}
+              onClick={() => !isTeacher && navigate('/admin/users-management')}
               delay={100}
             />
-            <VisualMetricCard
-              icon={GraduationCap}
-              label={t('totalTeachers')}
-              value={metrics.total_teachers || 0}
-              subLabel={`${metrics.student_teacher_ratio || 0}:1 ${t('ratio')}`}
-              gradient="from-brand-purple to-violet-600"
-              onClick={() => navigate('/admin/users-management?filter=teachers')}
-              delay={200}
-            />
+            {!isTeacher && (
+              <VisualMetricCard
+                icon={GraduationCap}
+                label={t('totalTeachers')}
+                value={metrics.total_teachers || 0}
+                subLabel={`${metrics.student_teacher_ratio || 0}:1 ${t('ratio')}`}
+                gradient="from-brand-purple to-violet-600"
+                onClick={() => navigate('/admin/users-management?filter=teachers')}
+                delay={200}
+              />
+            )}
             <VisualMetricCard
               icon={Activity}
               label={t('attendanceRate')}
@@ -923,7 +928,7 @@ export const AIInsightsPage = () => {
 
           {/* ══════ TEACHER MONITORING INSIGHTS ══════ */}
           <div className="ai-slide-in">
-            <TeacherMonitoringSection isRTL={isRTL} api={api} />
+            <TeacherMonitoringSection isRTL={isRTL} api={api} isTeacher={isTeacher} />
           </div>
 
           {/* ══════ ALL SECTIONS ══════ */}

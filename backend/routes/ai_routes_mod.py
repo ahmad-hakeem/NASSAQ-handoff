@@ -783,24 +783,98 @@ def _hakim_fallback(msg: str) -> HakimResponse:
 
 
 # ============== AI INSIGHTS APIs ==============
+
+async def _resolve_teacher_scope(current_user: dict) -> Optional[Dict[str, Any]]:
+    """
+    If the current user is a teacher, return their scoping context: the list of
+    class IDs they teach plus the student IDs in those classes. Returns None for
+    any non-teacher role so callers fall back to school-wide queries.
+    """
+    role = current_user.get("role", "")
+    if role != UserRole.TEACHER.value:
+        return None
+
+    teacher_id = current_user.get("teacher_id")
+    school_id = current_user.get("tenant_id")
+    if not teacher_id or not school_id:
+        return {"teacher_id": teacher_id, "school_id": school_id, "class_ids": [], "student_ids": []}
+
+    assignments = await gd_find(db.session, "teacher_assignments", {
+        "teacher_id": teacher_id, "is_active": True
+    }, limit=200)
+    tca_docs = await gd_find(db.session, "teacher_class_assignments", {
+        "teacher_id": teacher_id
+    }, limit=200)
+    class_ids = list({
+        *(a.get("class_id") for a in assignments if a.get("class_id")),
+        *(d.get("class_id") for d in tca_docs if d.get("class_id")),
+    })
+
+    student_ids: List[str] = []
+    if class_ids:
+        students = await gd_find(db.session, "students", {
+            "school_id": school_id,
+            "class_id": {"$in": class_ids},
+            "is_active": True,
+        }, limit=2000)
+        student_ids = [s.get("id") for s in students if s.get("id")]
+
+    return {
+        "teacher_id": teacher_id,
+        "school_id": school_id,
+        "class_ids": class_ids,
+        "student_ids": student_ids,
+    }
+
+
+def _scope_query_for(scope: Optional[Dict[str, Any]], school_id: Optional[str], collection: str) -> Dict[str, Any]:
+    """
+    Build a base filter dict for a given collection. For teachers, narrows by
+    class_id (or student_id where applicable). For non-teachers, scopes by
+    school_id only.
+    """
+    base: Dict[str, Any] = {"school_id": school_id} if school_id else {}
+    if not scope:
+        return base
+    cids = scope.get("class_ids") or []
+    sids = scope.get("student_ids") or []
+    if collection in {"attendance", "grades", "behaviour_records", "assessments", "classes", "timetable_sessions", "schedule_sessions"}:
+        if collection == "classes":
+            base["id"] = {"$in": cids} if cids else {"$in": ["__none__"]}
+        else:
+            base["class_id"] = {"$in": cids} if cids else {"$in": ["__none__"]}
+    elif collection == "students":
+        base["id"] = {"$in": sids} if sids else {"$in": ["__none__"]}
+    elif collection == "teachers":
+        tid = scope.get("teacher_id")
+        base["id"] = tid if tid else "__none__"
+    return base
+
+
 @router.get("/ai/insights/overview")
 async def get_ai_insights_overview(
     current_user: dict = Depends(get_current_user)
 ):
-    """Get AI-powered insights overview for the school"""
+    """Get AI-powered insights overview for the school (or for the current
+    teacher's classes when the caller is a teacher)."""
     school_id = current_user.get("tenant_id")
+    teacher_scope = await _resolve_teacher_scope(current_user)
 
     # Platform admins (no tenant_id) get aggregate stats across ALL schools so
     # the overview, attendance and counts stay consistent. School-scoped users
-    # only see their own school's data.
+    # only see their own school's data. Teachers see only their own classes.
     scope_query = {"school_id": school_id} if school_id else {}
+    students_q = _scope_query_for(teacher_scope, school_id, "students")
+    teachers_q = _scope_query_for(teacher_scope, school_id, "teachers")
+    attendance_q = _scope_query_for(teacher_scope, school_id, "attendance")
+    grades_q = _scope_query_for(teacher_scope, school_id, "grades")
 
-    total_students = await gd_count(db.session, "students", scope_query)
-    total_teachers = await gd_count(db.session, "teachers", scope_query)
+    total_students = await gd_count(db.session, "students", students_q)
+    total_teachers = await gd_count(db.session, "teachers", teachers_q)
 
     # Get attendance data using the same scope as students/teachers
-    attendance_count = await gd_count(db.session, "attendance", {**scope_query, "status": "present"})
-    total_attendance = await gd_count(db.session, "attendance", scope_query)
+    attendance_count = await gd_count(db.session, "attendance", {**attendance_q, "status": "present"})
+    total_attendance = await gd_count(db.session, "attendance", attendance_q)
 
     has_attendance_data = total_attendance > 0
     has_any_data = total_students > 0 or total_teachers > 0 or has_attendance_data
@@ -815,7 +889,7 @@ async def get_ai_insights_overview(
     if total_students > 0:
         active_grades = await gd_find(
             db.session, "grades",
-            {**scope_query, "created_at": {"$gte": month_ago_iso}},
+            {**grades_q, "created_at": {"$gte": month_ago_iso}},
             limit=10000,
         )
         active_student_ids = {g.get("student_id") for g in active_grades if g.get("student_id")}
@@ -834,15 +908,15 @@ async def get_ai_insights_overview(
         # Real month-over-month trend: recompute the same score using last month's data.
         prev_month_start = (now_utc - timedelta(days=60)).strftime("%Y-%m-%d")
         prev_month_end = (now_utc - timedelta(days=30)).strftime("%Y-%m-%d")
-        prev_total = await gd_count(db.session, "attendance", {**scope_query, "date": {"$gte": prev_month_start, "$lt": prev_month_end}})
-        prev_present = await gd_count(db.session, "attendance", {**scope_query, "date": {"$gte": prev_month_start, "$lt": prev_month_end}, "status": "present"})
+        prev_total = await gd_count(db.session, "attendance", {**attendance_q, "date": {"$gte": prev_month_start, "$lt": prev_month_end}})
+        prev_present = await gd_count(db.session, "attendance", {**attendance_q, "date": {"$gte": prev_month_start, "$lt": prev_month_end}, "status": "present"})
         prev_att_rate = round((prev_present / prev_total) * 100, 1) if prev_total > 0 else attendance_rate
 
         prev_eng_rate = 0.0
         if total_students > 0:
             prev_grades = await gd_find(
                 db.session, "grades",
-                {**scope_query, "created_at": {"$gte": (now_utc - timedelta(days=60)).isoformat(), "$lt": month_ago_iso}},
+                {**grades_q, "created_at": {"$gte": (now_utc - timedelta(days=60)).isoformat(), "$lt": month_ago_iso}},
                 limit=10000,
             )
             prev_active_ids = {g.get("student_id") for g in prev_grades if g.get("student_id")}
@@ -879,8 +953,10 @@ async def get_ai_insights_overview(
 async def get_ai_predictions(
     current_user: dict = Depends(get_current_user)
 ):
-    """Get AI predictions for the school based on real data analysis"""
+    """Get AI predictions for the school (or for the current teacher's classes
+    when the caller is a teacher) based on real data analysis."""
     school_id = current_user.get("tenant_id")
+    teacher_scope = await _resolve_teacher_scope(current_user)
     predictions = []
     pred_id = 0
 
@@ -891,11 +967,13 @@ async def get_ai_predictions(
     two_weeks_ago_str = two_weeks_ago.strftime("%Y-%m-%d")
 
     q = {"school_id": school_id} if school_id else {}
+    attendance_q = _scope_query_for(teacher_scope, school_id, "attendance")
+    grades_q = _scope_query_for(teacher_scope, school_id, "grades")
 
-    this_week_total = await gd_count(db.session, "attendance", {**q, "date": {"$gte": week_ago_str}})
-    this_week_present = await gd_count(db.session, "attendance", {**q, "date": {"$gte": week_ago_str}, "status": "present"})
-    last_week_total = await gd_count(db.session, "attendance", {**q, "date": {"$gte": two_weeks_ago_str, "$lt": week_ago_str}})
-    last_week_present = await gd_count(db.session, "attendance", {**q, "date": {"$gte": two_weeks_ago_str, "$lt": week_ago_str}, "status": "present"})
+    this_week_total = await gd_count(db.session, "attendance", {**attendance_q, "date": {"$gte": week_ago_str}})
+    this_week_present = await gd_count(db.session, "attendance", {**attendance_q, "date": {"$gte": week_ago_str}, "status": "present"})
+    last_week_total = await gd_count(db.session, "attendance", {**attendance_q, "date": {"$gte": two_weeks_ago_str, "$lt": week_ago_str}})
+    last_week_present = await gd_count(db.session, "attendance", {**attendance_q, "date": {"$gte": two_weeks_ago_str, "$lt": week_ago_str}, "status": "present"})
 
     this_rate = round((this_week_present / this_week_total) * 100, 1) if this_week_total > 0 else 0
     last_rate = round((last_week_present / last_week_total) * 100, 1) if last_week_total > 0 else 0
@@ -930,8 +1008,8 @@ async def get_ai_predictions(
             "category": "attendance"
         })
 
-    recent_grades = await gd_find(db.session, "grades", {**q, "created_at": {"$gte": week_ago.isoformat()}}, limit=500)
-    older_grades = await gd_find(db.session, "grades", {**q, "created_at": {"$gte": two_weeks_ago.isoformat(), "$lt": week_ago.isoformat()}}, limit=500)
+    recent_grades = await gd_find(db.session, "grades", {**grades_q, "created_at": {"$gte": week_ago.isoformat()}}, limit=500)
+    older_grades = await gd_find(db.session, "grades", {**grades_q, "created_at": {"$gte": two_weeks_ago.isoformat(), "$lt": week_ago.isoformat()}}, limit=500)
     if recent_grades:
         recent_avg = sum(g.get("percentage", 0) for g in recent_grades) / len(recent_grades)
         older_avg = sum(g.get("percentage", 0) for g in older_grades) / len(older_grades) if older_grades else recent_avg
@@ -966,7 +1044,7 @@ async def get_ai_predictions(
             })
 
     absent_pipeline = [
-        {"$match": {**q, "status": "absent", "date": {"$gte": week_ago_str}}},
+        {"$match": {**attendance_q, "status": "absent", "date": {"$gte": week_ago_str}}},
         {"$group": {"_id": "$student_id", "count": {"$sum": 1}}},
         {"$match": {"count": {"$gte": 3}}},
         {"$count": "total"}
@@ -990,18 +1068,25 @@ async def get_ai_predictions(
 async def get_ai_recommendations(
     current_user: dict = Depends(get_current_user)
 ):
-    """Get AI-powered recommendations based on real school data"""
+    """Get AI-powered recommendations based on real school data (or the
+    current teacher's classes when the caller is a teacher)."""
     school_id = current_user.get("tenant_id")
+    teacher_scope = await _resolve_teacher_scope(current_user)
     recommendations = []
     rec_id = 0
     q = {"school_id": school_id} if school_id else {}
+    attendance_q = _scope_query_for(teacher_scope, school_id, "attendance")
+    students_q = _scope_query_for(teacher_scope, school_id, "students")
+    teachers_q = _scope_query_for(teacher_scope, school_id, "teachers")
+    classes_q = _scope_query_for(teacher_scope, school_id, "classes")
+    assessments_q = _scope_query_for(teacher_scope, school_id, "assessments")
 
     today = datetime.now(timezone.utc)
     month_ago = today - timedelta(days=30)
     month_ago_str = month_ago.strftime("%Y-%m-%d")
 
-    total_att = await gd_count(db.session, "attendance", {**q, "date": {"$gte": month_ago_str}})
-    present_att = await gd_count(db.session, "attendance", {**q, "date": {"$gte": month_ago_str}, "status": "present"})
+    total_att = await gd_count(db.session, "attendance", {**attendance_q, "date": {"$gte": month_ago_str}})
+    present_att = await gd_count(db.session, "attendance", {**attendance_q, "date": {"$gte": month_ago_str}, "status": "present"})
     att_rate = round((present_att / total_att) * 100, 1) if total_att > 0 else 100
 
     if att_rate < 85:
@@ -1015,7 +1100,7 @@ async def get_ai_recommendations(
             "expected_impact": int(85 - att_rate)
         })
 
-    late_count = await gd_count(db.session, "attendance", {**q, "date": {"$gte": month_ago_str}, "status": "late"})
+    late_count = await gd_count(db.session, "attendance", {**attendance_q, "date": {"$gte": month_ago_str}, "status": "late"})
     if total_att > 0 and (late_count / total_att * 100) > 5:
         rec_id += 1
         late_pct = round(late_count / total_att * 100, 1)
@@ -1028,8 +1113,8 @@ async def get_ai_recommendations(
             "expected_impact": 10
         })
 
-    total_students = await gd_count(db.session, "students", q)
-    total_teachers = await gd_count(db.session, "teachers", q)
+    total_students = await gd_count(db.session, "students", students_q)
+    total_teachers = await gd_count(db.session, "teachers", teachers_q)
     if total_teachers > 0:
         ratio = total_students / total_teachers
         if ratio > 25:
@@ -1043,7 +1128,7 @@ async def get_ai_recommendations(
                 "expected_impact": 20
             })
 
-    classes_list = await gd_find(db.session, "classes", q, limit=100)
+    classes_list = await gd_find(db.session, "classes", classes_q, limit=100)
     class_ids_all = [c["id"] for c in classes_list]
     cls_name_map = {c["id"]: c.get("name", c["id"]) for c in classes_list}
 
@@ -1083,7 +1168,7 @@ async def get_ai_recommendations(
             "expected_impact": 15
         })
 
-    recent_assessments = await gd_count(db.session, "assessments", {**q, "created_at": {"$gte": month_ago.isoformat()}})
+    recent_assessments = await gd_count(db.session, "assessments", {**assessments_q, "created_at": {"$gte": month_ago.isoformat()}})
     if recent_assessments == 0 and total_students > 0:
         rec_id += 1
         recommendations.append({
@@ -1111,16 +1196,21 @@ async def get_ai_recommendations(
 async def get_ai_alerts(
     current_user: dict = Depends(get_current_user)
 ):
-    """Get AI-generated alerts based on real school data"""
+    """Get AI-generated alerts based on real school data (or the current
+    teacher's classes when the caller is a teacher)."""
     school_id = current_user.get("tenant_id")
+    teacher_scope = await _resolve_teacher_scope(current_user)
     alerts = []
     q = {"school_id": school_id} if school_id else {}
+    attendance_q = _scope_query_for(teacher_scope, school_id, "attendance")
+    sessions_q = _scope_query_for(teacher_scope, school_id, "timetable_sessions")
+    behaviour_q = _scope_query_for(teacher_scope, school_id, "behaviour_records")
     today = datetime.now(timezone.utc)
     today_str = today.strftime("%Y-%m-%d")
     week_ago_str = (today - timedelta(days=7)).strftime("%Y-%m-%d")
 
     consecutive_pipeline = [
-        {"$match": {**q, "status": "absent", "date": {"$gte": week_ago_str}}},
+        {"$match": {**attendance_q, "status": "absent", "date": {"$gte": week_ago_str}}},
         {"$group": {"_id": "$student_id", "days": {"$sum": 1}, "dates": {"$push": "$date"}}},
         {"$match": {"days": {"$gte": 3}}},
         {"$count": "total"}
@@ -1138,8 +1228,8 @@ async def get_ai_alerts(
             "route": "/admin/attendance"
         })
 
-    today_total = await gd_count(db.session, "attendance", {**q, "date": today_str})
-    today_present = await gd_count(db.session, "attendance", {**q, "date": today_str, "status": "present"})
+    today_total = await gd_count(db.session, "attendance", {**attendance_q, "date": today_str})
+    today_present = await gd_count(db.session, "attendance", {**attendance_q, "date": today_str, "status": "present"})
     if today_total > 0:
         today_rate = round((today_present / today_total) * 100, 1)
         if today_rate < 80:
@@ -1163,7 +1253,7 @@ async def get_ai_alerts(
                 "route": "/admin/attendance"
             })
 
-    unassigned_sessions = await gd_count(db.session, "timetable_sessions", {**q, "$or": [{"teacher_id": None}, {"teacher_id": ""}]})
+    unassigned_sessions = await gd_count(db.session, "timetable_sessions", {**sessions_q, "$or": [{"teacher_id": None}, {"teacher_id": ""}]})
     if unassigned_sessions > 0:
         alerts.append({
             "id": str(uuid.uuid4())[:8],
@@ -1176,7 +1266,7 @@ async def get_ai_alerts(
         })
 
     recent_behaviour = await gd_count(db.session, "behaviour_records", {
-        **q,
+        **behaviour_q,
         "type": "negative",
         "created_at": {"$gte": (today - timedelta(days=7)).isoformat()}
     })
@@ -1562,9 +1652,95 @@ async def get_recommendations_ai(
 @router.get("/ai/insights/at-risk-students")
 async def get_at_risk_students(
     current_user: dict = Depends(require_roles([
-        UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN, UserRole.SCHOOL_PRINCIPAL
+        UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN,
+        UserRole.SCHOOL_PRINCIPAL, UserRole.TEACHER,
     ])),
 ):
+    role = current_user.get("role", "")
+    school_id = current_user.get("tenant_id")
+
+    if role == UserRole.TEACHER.value:
+        scope = await _resolve_teacher_scope(current_user) or {}
+        student_ids = scope.get("student_ids") or []
+        class_ids = scope.get("class_ids") or []
+        if not student_ids:
+            return []
+
+        students = await gd_find(db.session, "students", {
+            "school_id": school_id,
+            "id": {"$in": student_ids},
+        }, limit=2000)
+        classes = await gd_find(db.session, "classes", {
+            "school_id": school_id,
+            "id": {"$in": class_ids},
+        }, limit=200) if class_ids else []
+        cls_name_map = {c["id"]: c.get("name", c["id"]) for c in classes}
+
+        month_ago_iso = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+        month_ago_date = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%d")
+
+        att_rows = await gd_find(db.session, "attendance", {
+            "school_id": school_id,
+            "student_id": {"$in": student_ids},
+            "date": {"$gte": month_ago_date},
+        }, limit=20000)
+        grade_rows = await gd_find(db.session, "grades", {
+            "school_id": school_id,
+            "student_id": {"$in": student_ids},
+            "created_at": {"$gte": month_ago_iso},
+        }, limit=20000)
+
+        att_by_student: Dict[str, Dict[str, int]] = {}
+        for r in att_rows:
+            sid = r.get("student_id")
+            if not sid:
+                continue
+            entry = att_by_student.setdefault(sid, {"total": 0, "present": 0})
+            entry["total"] += 1
+            if r.get("status") == "present":
+                entry["present"] += 1
+
+        grades_by_student: Dict[str, List[float]] = {}
+        for g in grade_rows:
+            sid = g.get("student_id")
+            if not sid:
+                continue
+            pct = g.get("percentage")
+            if isinstance(pct, (int, float)):
+                grades_by_student.setdefault(sid, []).append(float(pct))
+
+        at_risk: List[Dict[str, Any]] = []
+        for s in students:
+            sid = s.get("id")
+            att = att_by_student.get(sid, {"total": 0, "present": 0})
+            att_rate = round((att["present"] / att["total"]) * 100, 1) if att["total"] > 0 else 100.0
+            grades = grades_by_student.get(sid, [])
+            grade_avg = round(sum(grades) / len(grades), 1) if grades else 100.0
+
+            factors: List[str] = []
+            issue_type = None
+            if att_rate < 80:
+                factors.append("انخفاض الحضور")
+                issue_type = "attendance"
+            if grade_avg < 60:
+                factors.append("تدني الأداء الأكاديمي")
+                issue_type = issue_type or "academic"
+            if not factors:
+                continue
+
+            risk_score = int(min(att_rate, grade_avg))
+            at_risk.append({
+                "id": sid,
+                "name": s.get("full_name") or s.get("name") or "—",
+                "grade": cls_name_map.get(s.get("class_id"), s.get("grade") or ""),
+                "risk_level": risk_score,
+                "risk_type": issue_type or "attendance",
+                "factors": factors,
+            })
+
+        at_risk.sort(key=lambda r: r["risk_level"])
+        return at_risk[:20]
+
     overview = await get_students_overview(refresh=0, current_user=current_user)
     result = []
     for row in overview["intervention_list"][:20]:
