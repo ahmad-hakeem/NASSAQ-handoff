@@ -26,7 +26,7 @@ import {
   GraduationCap, Clock, ChevronLeft, ChevronDown, ChevronUp,
   Play, Search, AlertTriangle, CheckCircle2, Award, Activity,
   Eye, EyeOff, Plus, Trash2, Edit3, Upload, FileSpreadsheet,
-  Settings, Info, X, Check, Minus, CircleDot, History
+  Settings, Info, X, Check, Minus, CircleDot, History, XCircle
 } from 'lucide-react';
 import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 import HakimPresence from '../../components/hakim/HakimPresence';
@@ -892,51 +892,105 @@ export default function TeacherClassDetailPage() {
     </div>
   );
 
-  const renderHistoryDialog = () => (
-    <Dialog open={!!historyStudent} onOpenChange={(open) => { if (!open) setHistoryStudent(null); }}>
-      <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto" dir={isRTL ? 'rtl' : 'ltr'}>
-        <DialogHeader>
-          <DialogTitle className="font-cairo flex items-center gap-2">
-            <Clock className="h-5 w-5 text-brand-turquoise" />
-            {historyStudent?.student?.full_name || ''}
-          </DialogTitle>
-        </DialogHeader>
-        <div className="space-y-2">
-          {(!historyStudent?.records || historyStudent.records.length === 0) ? (
-            <div className="text-center py-8 text-sm text-muted-foreground font-cairo">
-              {t('noAttendanceRecords') || 'لا يوجد سجل حضور'}
+  const renderHistoryDialog = () => {
+    const records = historyStudent?.records || [];
+    const presentCount = records.filter(r => r.status === 'present').length;
+    const absentCount = records.filter(r => r.status === 'absent').length;
+    const lateCount = records.filter(r => r.status === 'late').length;
+    const excusedCount = records.filter(r => r.status === 'excused').length;
+    // Attendance rate counts present + late as attended (late is hidden across UI but still counts as attended)
+    const attended = presentCount + lateCount;
+    const totalRecorded = attended + absentCount + excusedCount;
+    const rate = totalRecorded > 0 ? Math.round((attended / totalRecorded) * 100) : 0;
+
+    const classLine = [
+      classData?.grade_name,
+      classData?.section ? `${classData.section}` : null,
+    ].filter(Boolean).join(' - ');
+
+    return (
+      <Dialog open={!!historyStudent} onOpenChange={(open) => { if (!open) setHistoryStudent(null); }}>
+        <DialogContent
+          className="max-w-md max-h-[85vh] overflow-y-auto p-0 gap-0 border-0 shadow-2xl"
+          dir={isRTL ? 'rtl' : 'ltr'}
+        >
+          <DialogHeader className="px-6 pt-6 pb-4 text-center space-y-1">
+            <DialogTitle className="font-cairo text-xl font-bold text-foreground">
+              {historyStudent?.student?.full_name || ''}
+            </DialogTitle>
+            {classLine && (
+              <p className="text-xs text-muted-foreground font-cairo">{classLine}</p>
+            )}
+          </DialogHeader>
+
+          <div className="px-6 pb-2">
+            <div className="grid grid-cols-4 gap-2">
+              <div className="rounded-xl border border-emerald-200/60 dark:border-emerald-900/40 bg-emerald-50/60 dark:bg-emerald-950/20 p-3 text-center">
+                <div className="text-xl font-bold text-emerald-600 tabular-nums font-cairo">{rate}%</div>
+                <div className="text-[10px] text-muted-foreground mt-0.5 font-cairo">{t('attendanceRate') || 'نسبة الحضور'}</div>
+              </div>
+              <div className="rounded-xl border border-amber-200/60 dark:border-amber-900/40 bg-amber-50/60 dark:bg-amber-950/20 p-3 text-center">
+                <div className="text-xl font-bold text-amber-600 tabular-nums font-cairo">{lateCount}</div>
+                <div className="text-[10px] text-muted-foreground mt-0.5 font-cairo">{t('late') || 'متأخر'}</div>
+              </div>
+              <div className="rounded-xl border border-red-200/60 dark:border-red-900/40 bg-red-50/60 dark:bg-red-950/20 p-3 text-center">
+                <div className="text-xl font-bold text-red-600 tabular-nums font-cairo">{absentCount}</div>
+                <div className="text-[10px] text-muted-foreground mt-0.5 font-cairo">{t('absent') || 'غائب'}</div>
+              </div>
+              <div className="rounded-xl border border-emerald-200/60 dark:border-emerald-900/40 bg-emerald-50/60 dark:bg-emerald-950/20 p-3 text-center">
+                <div className="text-xl font-bold text-emerald-600 tabular-nums font-cairo">{attended}</div>
+                <div className="text-[10px] text-muted-foreground mt-0.5 font-cairo">{t('present') || 'حاضر'}</div>
+              </div>
             </div>
-          ) : (
-            historyStudent.records.map((r, idx) => {
-              const dateLabel = (() => {
-                const ds = dateOnly(r.date);
-                const d = ds ? new Date(ds) : null;
-                if (!d || isNaN(d.getTime())) return ds;
-                return d.toLocaleDateString(isRTL ? 'ar-EG' : 'en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
-              })();
-              const styleByStatus = {
-                absent: { wrap: 'border-red-200 bg-red-50/60 dark:border-red-900/40 dark:bg-red-950/20', badge: 'bg-red-500 text-white', label: t('absent') || 'غائب' },
-                excused: { wrap: 'border-blue-200 bg-blue-50/60 dark:border-blue-900/40 dark:bg-blue-950/20', badge: 'bg-blue-500 text-white', label: t('excused2') || 'بعذر' },
-                present: { wrap: 'border-emerald-200 bg-emerald-50/60 dark:border-emerald-900/40 dark:bg-emerald-950/20', badge: 'bg-emerald-500 text-white', label: t('present') || 'حاضر' },
-                // 'late' is shown in history as 'present' since the late status is hidden from UI everywhere
-                late: { wrap: 'border-emerald-200 bg-emerald-50/60 dark:border-emerald-900/40 dark:bg-emerald-950/20', badge: 'bg-emerald-500 text-white', label: t('present') || 'حاضر' },
-              };
-              const s = styleByStatus[r.status] || styleByStatus.present;
-              return (
-                <div
-                  key={r.id || `${r.date}-${idx}`}
-                  className={`flex items-center justify-between p-2.5 rounded-lg border ${s.wrap}`}
-                >
-                  <span className="text-xs font-cairo">{dateLabel}</span>
-                  <Badge className={s.badge}>{s.label}</Badge>
-                </div>
-              );
-            })
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
+          </div>
+
+          <div className="px-6 py-3">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-xs font-bold text-emerald-600 tabular-nums font-cairo">{rate}%</span>
+              <span className="text-xs text-muted-foreground font-cairo">{t('attendanceRate2') || 'معدل الحضور'}</span>
+            </div>
+            <Progress value={rate} className="h-2" />
+          </div>
+
+          <div className="px-6 pb-6 pt-2 space-y-2">
+            {records.length === 0 ? (
+              <div className="text-center py-8 text-sm text-muted-foreground font-cairo">
+                {t('noAttendanceRecords') || 'لا توجد سجلات حضور'}
+              </div>
+            ) : (
+              records.map((r, idx) => {
+                const dateLabel = (() => {
+                  const ds = dateOnly(r.date);
+                  const d = ds ? new Date(ds) : null;
+                  if (!d || isNaN(d.getTime())) return ds;
+                  return d.toLocaleDateString(isRTL ? 'ar-EG' : 'en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+                })();
+                const styleByStatus = {
+                  absent:  { icon: XCircle,      iconColor: 'text-red-500',     badge: 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400 border-red-200 dark:border-red-900/40',                 label: t('absent') || 'غائب' },
+                  excused: { icon: AlertTriangle,iconColor: 'text-blue-500',    badge: 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400 border-blue-200 dark:border-blue-900/40',           label: t('excused2') || 'بعذر' },
+                  present: { icon: CheckCircle2, iconColor: 'text-emerald-500', badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/40', label: t('present') || 'حاضر' },
+                  // 'late' rendered as present per UI policy (late hidden from UI)
+                  late:    { icon: CheckCircle2, iconColor: 'text-emerald-500', badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/40', label: t('present') || 'حاضر' },
+                };
+                const s = styleByStatus[r.status] || styleByStatus.present;
+                const Icon = s.icon;
+                return (
+                  <div
+                    key={r.id || `${r.date}-${idx}`}
+                    className="flex items-center justify-between gap-3 p-2.5 rounded-lg border border-border/60 bg-card"
+                  >
+                    <Badge variant="outline" className={`${s.badge} font-cairo border`}>{s.label}</Badge>
+                    <span className="text-sm font-cairo text-foreground flex-1 text-center">{dateLabel}</span>
+                    <Icon className={`h-5 w-5 ${s.iconColor} shrink-0`} />
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  };
 
   const renderAddLessonDialog = () => (
     <Dialog open={showAddLesson} onOpenChange={setShowAddLesson}>
