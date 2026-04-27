@@ -3245,19 +3245,8 @@ function FollowupRecordDialog({
                 سجل الطلاب
               </span>
             </button>
-            <button
-              onClick={() => setFollowupTab('absences')}
-              className={`px-4 py-2 text-sm font-cairo font-semibold rounded-t-lg transition ${
-                followupTab === 'absences'
-                  ? 'bg-brand-turquoise/10 text-brand-turquoise border-b-2 border-brand-turquoise'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <span className="inline-flex items-center gap-2">
-                <UserCheck className="h-4 w-4" />
-                سجل الغياب
-              </span>
-            </button>
+            {/* "سجل الغياب" tab hidden by request — absences are now managed
+                from the unified attendance tab in فصولي → تفاصيل الفصل. */}
           </div>
 
           {/* Toolbar (students tab only) */}
