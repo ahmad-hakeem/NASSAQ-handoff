@@ -79,14 +79,14 @@ const StudentAttendancePage = () => {
     }
   };
 
+  // Note: 'late' is intentionally hidden from the student-facing UI; legacy late records render as present
   const getStatusIcon = (status) => {
     switch (status) {
       case 'present':
+      case 'late':
         return <CheckCircle className="h-5 w-5 text-green-600" />;
       case 'absent':
         return <XCircle className="h-5 w-5 text-red-600" />;
-      case 'late':
-        return <Clock className="h-5 w-5 text-amber-600" />;
       case 'excused':
         return <AlertCircle className="h-5 w-5 text-blue-600" />;
       default:
@@ -98,7 +98,7 @@ const StudentAttendancePage = () => {
     const labels = {
       present: t('present'),
       absent: t('absent'),
-      late: t('late'),
+      late: t('present'),
       excused: t('excused2')
     };
     return labels[status] || status;
@@ -108,7 +108,7 @@ const StudentAttendancePage = () => {
     const bgs = {
       present: 'bg-green-50 border-green-200',
       absent: 'bg-red-50 border-red-200',
-      late: 'bg-amber-50 border-amber-200',
+      late: 'bg-green-50 border-green-200',
       excused: 'bg-blue-50 border-blue-200'
     };
     return bgs[status] || 'bg-gray-50 border-gray-200';
@@ -154,7 +154,7 @@ const StudentAttendancePage = () => {
         </Card>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           <Card className="rounded-xl border-0 shadow-sm">
             <CardContent className="p-4 text-center">
               <div className="w-10 h-10 mx-auto mb-2 rounded-lg bg-green-100 flex items-center justify-center">
@@ -172,16 +172,6 @@ const StudentAttendancePage = () => {
               </div>
               <p className="text-xl font-bold text-red-600">{stats.absent || 0}</p>
               <p className="text-xs text-muted-foreground">{t('absent')}</p>
-            </CardContent>
-          </Card>
-
-          <Card className="rounded-xl border-0 shadow-sm">
-            <CardContent className="p-4 text-center">
-              <div className="w-10 h-10 mx-auto mb-2 rounded-lg bg-amber-100 flex items-center justify-center">
-                <Clock className="h-5 w-5 text-amber-600" />
-              </div>
-              <p className="text-xl font-bold text-amber-600">{stats.late || 0}</p>
-              <p className="text-xs text-muted-foreground">{t('late')}</p>
             </CardContent>
           </Card>
 

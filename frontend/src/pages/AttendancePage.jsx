@@ -81,6 +81,7 @@ const statusConfig = {
     color: 'bg-yellow-500',
     bgColor: 'bg-yellow-100 dark:bg-yellow-900/30',
     textColor: 'text-yellow-700 dark:text-yellow-400',
+    hidden: true,
   },
   excused: {
     label: { ar: 'بعذر', en: 'Excused' },
@@ -321,17 +322,16 @@ export const AttendancePage = () => {
     }
   }, [activeTab, selectedClass, selectedDate]);
 
-  // Calculate current stats
+  // Calculate current stats (late is hidden from UI but still counted as present-equivalent if backend returns it)
   const stats = {
     total: students.length,
-    present: Object.values(attendanceRecords).filter(r => r.status === 'present').length,
+    present: Object.values(attendanceRecords).filter(r => r.status === 'present' || r.status === 'late').length,
     absent: Object.values(attendanceRecords).filter(r => r.status === 'absent').length,
-    late: Object.values(attendanceRecords).filter(r => r.status === 'late').length,
     excused: Object.values(attendanceRecords).filter(r => r.status === 'excused').length,
   };
   
-  const recorded = stats.present + stats.absent + stats.late + stats.excused;
-  const attendanceRate = recorded > 0 ? ((stats.present + stats.late) / recorded * 100).toFixed(1) : 0;
+  const recorded = stats.present + stats.absent + stats.excused;
+  const attendanceRate = recorded > 0 ? (stats.present / recorded * 100).toFixed(1) : 0;
 
   return (
     <Sidebar>
@@ -452,7 +452,7 @@ export const AttendancePage = () => {
               </Card>
 
               {/* Stats */}
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <Card className="card-nassaq">
                   <CardContent className="p-4">
                     <div className="flex items-center gap-3">
@@ -490,20 +490,6 @@ export const AttendancePage = () => {
                       <div>
                         <p className="text-2xl font-bold">{stats.absent}</p>
                         <p className="text-xs text-muted-foreground">{t('absent')}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-                
-                <Card className="card-nassaq">
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-yellow-500/10 flex items-center justify-center">
-                        <Clock className="h-5 w-5 text-yellow-500" />
-                      </div>
-                      <div>
-                        <p className="text-2xl font-bold">{stats.late}</p>
-                        <p className="text-xs text-muted-foreground">{t('late')}</p>
                       </div>
                     </div>
                   </CardContent>
@@ -618,7 +604,7 @@ export const AttendancePage = () => {
                               
                               {/* Status Buttons */}
                               <div className="grid grid-cols-4 gap-2">
-                                {Object.entries(statusConfig).map(([status, config]) => {
+                                {Object.entries(statusConfig).filter(([, c]) => !c.hidden).map(([status, config]) => {
                                   const Icon = config.icon;
                                   const isSelected = currentStatus === status;
                                   
@@ -668,7 +654,7 @@ export const AttendancePage = () => {
               {dailyReport && (
                 <>
                   {/* Summary Cards */}
-                  <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                     <Card className="card-nassaq col-span-2">
                       <CardContent className="p-4 text-center">
                         <p className="text-4xl font-bold text-brand-turquoise">
@@ -699,12 +685,6 @@ export const AttendancePage = () => {
                       </CardContent>
                     </Card>
                     
-                    <Card className="card-nassaq">
-                      <CardContent className="p-4 text-center">
-                        <p className="text-2xl font-bold text-yellow-600">{dailyReport.summary.late}</p>
-                        <p className="text-xs text-muted-foreground">{t('late')}</p>
-                      </CardContent>
-                    </Card>
                   </div>
 
                   {/* Records Table */}
@@ -758,7 +738,7 @@ export const AttendancePage = () => {
                       <CardTitle className="font-cairo">{t('overallSummary')}</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div className="text-center p-4 bg-muted rounded-xl">
                           <p className="text-3xl font-bold text-brand-turquoise">{summaryReport.overall.attendance_rate}%</p>
                           <p className="text-sm text-muted-foreground">{t('attendanceRate2')}</p>
@@ -774,10 +754,6 @@ export const AttendancePage = () => {
                         <div className="text-center p-4 bg-red-100 dark:bg-red-900/30 rounded-xl">
                           <p className="text-3xl font-bold text-red-600">{summaryReport.overall.absent}</p>
                           <p className="text-sm text-muted-foreground">{t('absent')}</p>
-                        </div>
-                        <div className="text-center p-4 bg-yellow-100 dark:bg-yellow-900/30 rounded-xl">
-                          <p className="text-3xl font-bold text-yellow-600">{summaryReport.overall.late}</p>
-                          <p className="text-sm text-muted-foreground">{t('late')}</p>
                         </div>
                       </div>
                     </CardContent>
@@ -796,7 +772,6 @@ export const AttendancePage = () => {
                             <TableHead>{t('total')}</TableHead>
                             <TableHead>{t('present')}</TableHead>
                             <TableHead>{t('absent')}</TableHead>
-                            <TableHead>{t('late')}</TableHead>
                             <TableHead>{t('attendanceRate')}</TableHead>
                           </TableRow>
                         </TableHeader>
@@ -807,7 +782,6 @@ export const AttendancePage = () => {
                               <TableCell>{day.total}</TableCell>
                               <TableCell className="text-green-600">{day.present}</TableCell>
                               <TableCell className="text-red-600">{day.absent}</TableCell>
-                              <TableCell className="text-yellow-600">{day.late}</TableCell>
                               <TableCell>
                                 <Badge className={day.attendance_rate >= 90 ? 'bg-green-500' : day.attendance_rate >= 75 ? 'bg-yellow-500' : 'bg-red-500'}>
                                   {day.attendance_rate}%

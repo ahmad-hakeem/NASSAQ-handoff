@@ -80,6 +80,7 @@ const statusConfig = {
     color: 'bg-yellow-500',
     bgColor: 'bg-yellow-100 dark:bg-yellow-900/30',
     textColor: 'text-yellow-700 dark:text-yellow-400',
+    hidden: true,
   },
   excused: {
     label: { ar: 'بعذر', en: 'Excused' },
@@ -266,14 +267,14 @@ export const TeacherAttendancePage = () => {
   // Calculate current stats
   const stats = {
     total: teachers.length,
-    present: Object.values(attendanceRecords).filter(r => r.status === 'present').length,
+    // late merged into present (hidden from UI but counted as present-equivalent)
+    present: Object.values(attendanceRecords).filter(r => r.status === 'present' || r.status === 'late').length,
     absent: Object.values(attendanceRecords).filter(r => r.status === 'absent').length,
-    late: Object.values(attendanceRecords).filter(r => r.status === 'late').length,
     excused: Object.values(attendanceRecords).filter(r => r.status === 'excused').length,
   };
   
-  const recorded = stats.present + stats.absent + stats.late + stats.excused;
-  const attendanceRate = recorded > 0 ? ((stats.present + stats.late) / recorded * 100).toFixed(1) : 0;
+  const recorded = stats.present + stats.absent + stats.excused;
+  const attendanceRate = recorded > 0 ? (stats.present / recorded * 100).toFixed(1) : 0;
 
   // Filter teachers by search
   const filteredTeachers = teachers.filter(teacher => 
@@ -423,20 +424,6 @@ export const TeacherAttendancePage = () => {
                 <Card className="card-nassaq">
                   <CardContent className="p-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-yellow-500/10 flex items-center justify-center">
-                        <Clock className="h-5 w-5 text-yellow-500" />
-                      </div>
-                      <div>
-                        <p className="text-2xl font-bold">{stats.late}</p>
-                        <p className="text-xs text-muted-foreground">{t('late')}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-                
-                <Card className="card-nassaq">
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
                         <FileText className="h-5 w-5 text-blue-500" />
                       </div>
@@ -549,7 +536,7 @@ export const TeacherAttendancePage = () => {
                               
                               {/* Status Buttons */}
                               <div className="grid grid-cols-4 gap-2">
-                                {Object.entries(statusConfig).map(([status, config]) => {
+                                {Object.entries(statusConfig).filter(([, c]) => !c.hidden).map(([status, config]) => {
                                   const Icon = config.icon;
                                   const isSelected = currentStatus === status;
                                   
@@ -604,7 +591,7 @@ export const TeacherAttendancePage = () => {
                       <CardTitle className="font-cairo">{t('teacherAttendanceSummary')}</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div className="text-center p-4 bg-muted rounded-xl">
                           <p className="text-3xl font-bold text-brand-turquoise">{summaryReport.overall.attendance_rate}%</p>
                           <p className="text-sm text-muted-foreground">{t('attendanceRate2')}</p>
@@ -620,10 +607,6 @@ export const TeacherAttendancePage = () => {
                         <div className="text-center p-4 bg-red-100 dark:bg-red-900/30 rounded-xl">
                           <p className="text-3xl font-bold text-red-600">{summaryReport.overall.absent}</p>
                           <p className="text-sm text-muted-foreground">{t('absent')}</p>
-                        </div>
-                        <div className="text-center p-4 bg-yellow-100 dark:bg-yellow-900/30 rounded-xl">
-                          <p className="text-3xl font-bold text-yellow-600">{summaryReport.overall.late}</p>
-                          <p className="text-sm text-muted-foreground">{t('late')}</p>
                         </div>
                       </div>
                     </CardContent>

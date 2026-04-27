@@ -245,11 +245,10 @@ export function AcademicTab({ hook }) {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}</div>
           ) : attendanceSummary ? (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 {[
                   { label: t('present'), value: attendanceSummary.present_count ?? attendanceSummary.present ?? 0, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-950/20' },
                   { label: t('absent'), value: attendanceSummary.absent_count ?? attendanceSummary.absent ?? 0, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/20' },
-                  { label: t('late'), value: attendanceSummary.late_count ?? attendanceSummary.late ?? 0, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/20' },
                   { label: t('excused2'), value: attendanceSummary.excused_count ?? attendanceSummary.excused ?? 0, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/20' },
                 ].map((item, i) => (
                   <div key={i} className={`text-center p-4 rounded-xl ${item.bg}`}>
@@ -272,7 +271,6 @@ export function AcademicTab({ hook }) {
                         <RechartsTooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} />
                         <Bar dataKey="present" name={t('present')} fill="#22c55e" radius={[3, 3, 0, 0]} />
                         <Bar dataKey="absent" name={t('absent')} fill="#ef4444" radius={[3, 3, 0, 0]} />
-                        <Bar dataKey="late" name={t('late')} fill="#f59e0b" radius={[3, 3, 0, 0]} />
                         <Bar dataKey="excused" name={t('excused2')} fill="#3b82f6" radius={[3, 3, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>

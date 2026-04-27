@@ -533,7 +533,7 @@ const TeacherMonitoringSection = ({ isRTL, api }) => {
   const behaviorPositiveRate = d.totalBehavior > 0 ? Math.round((d.positiveBehavior / d.totalBehavior) * 100) : 0;
 
   const monitorCards = [
-    { label: t('attendanceLabel'), value: `${d.attendanceRate}%`, icon: ClipboardCheck, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-950/30', detail: isRTL ? `${d.attendance.present} حاضر | ${d.attendance.absent} غائب | ${d.attendance.late} متأخر` : `${d.attendance.present} present | ${d.attendance.absent} absent | ${d.attendance.late} late` },
+    { label: t('attendanceLabel'), value: `${d.attendanceRate}%`, icon: ClipboardCheck, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-950/30', detail: isRTL ? `${d.attendance.present} حاضر | ${d.attendance.absent} غائب` : `${d.attendance.present} present | ${d.attendance.absent} absent` },
     { label: t('avgGrade'), value: d.avgGrade || '-', icon: Award, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/30', detail: t('avgCourseworkGrade') },
     { label: t('positiveBehavior'), value: d.positiveBehavior, icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-950/30', detail: `${behaviorPositiveRate}% ${t('ofTotalBehavior')}` },
     { label: t('negativeBehavior'), value: d.negativeBehavior, icon: TrendingDown, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/30', detail: `${d.warningBehavior} ${t('warnings')}` },

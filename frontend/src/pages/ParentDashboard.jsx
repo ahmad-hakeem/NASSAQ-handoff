@@ -244,17 +244,6 @@ export default function ParentDashboard() {
                 </CardContent>
               </Card>
 
-              <Card className="rounded-xl shadow-sm border-0">
-                <CardContent className="p-4 text-center">
-                  <div className="p-2 rounded-lg bg-yellow-100 w-fit mx-auto mb-2">
-                    <Clock className="h-5 w-5 text-yellow-600" />
-                  </div>
-                  <span className="text-2xl font-bold text-yellow-600">
-                    {selectedChild.stats.lates}
-                  </span>
-                  <p className="text-xs text-muted-foreground">مرات التأخير</p>
-                </CardContent>
-              </Card>
             </div>
 
             {/* Tabs */}

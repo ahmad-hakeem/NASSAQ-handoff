@@ -26,7 +26,7 @@ import {
   GraduationCap, Clock, ChevronLeft, ChevronDown, ChevronUp,
   Play, Search, AlertTriangle, CheckCircle2, Award, Activity,
   Eye, EyeOff, Plus, Trash2, Edit3, Upload, FileSpreadsheet,
-  Settings, Info, X, Check, Minus, CircleDot
+  Settings, Info, X, Check, Minus, CircleDot, History
 } from 'lucide-react';
 import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 import HakimPresence from '../../components/hakim/HakimPresence';
@@ -55,9 +55,11 @@ export default function TeacherClassDetailPage() {
   const [students, setStudents] = useState([]);
   const [schedule, setSchedule] = useState([]);
 
-  const VALID_TABS = ['curriculum', 'records', 'absence'];
+  const VALID_TABS = ['curriculum', 'records', 'attendance'];
   const tabFromUrl = searchParams.get('tab');
-  const activeTab = VALID_TABS.includes(tabFromUrl) ? tabFromUrl : 'curriculum';
+  // Map legacy 'absence' tab key to the new unified 'attendance' tab
+  const normalizedTabFromUrl = tabFromUrl === 'absence' ? 'attendance' : tabFromUrl;
+  const activeTab = VALID_TABS.includes(normalizedTabFromUrl) ? normalizedTabFromUrl : 'curriculum';
   const setActiveTab = (tab) => {
     setSearchParams({ tab }, { replace: true });
   };
@@ -82,8 +84,10 @@ export default function TeacherClassDetailPage() {
   const [editingCol, setEditingCol] = useState(null);
   const [editingColMax, setEditingColMax] = useState(10);
 
-  const [absenceData, setAbsenceData] = useState([]);
-  const [absenceLoading, setAbsenceLoading] = useState(false);
+  const [attendanceRecords, setAttendanceRecords] = useState([]);
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const [togglingStudentId, setTogglingStudentId] = useState(null);
+  const [historyStudent, setHistoryStudent] = useState(null);
   const [studentSearch, setStudentSearch] = useState('');
 
   const teacherId = user?.teacher_id || user?.id;
@@ -185,26 +189,53 @@ export default function TeacherClassDetailPage() {
     }
   }, [api, classId]);
 
-  const fetchAbsenceData = useCallback(async () => {
+  const fetchAttendanceData = useCallback(async () => {
     if (!classId) return;
-    setAbsenceLoading(true);
+    setAttendanceLoading(true);
     try {
       const res = await api.get(`/attendance/class/${classId}?start_date=2024-01-01&end_date=2030-12-31`);
       const records = Array.isArray(res.data) ? res.data : [];
-      const absences = records.filter(r => r.status === 'absent');
-      setAbsenceData(absences);
+      setAttendanceRecords(records);
     } catch (err) {
-      console.error('Error loading absences:', err);
+      console.error('Error loading attendance:', err);
     } finally {
-      setAbsenceLoading(false);
+      setAttendanceLoading(false);
     }
   }, [api, classId]);
 
   useEffect(() => {
     if (activeTab === 'curriculum') fetchCurriculum();
     else if (activeTab === 'records') fetchGradeColumns();
-    else if (activeTab === 'absence') fetchAbsenceData();
-  }, [activeTab, fetchCurriculum, fetchGradeColumns, fetchAbsenceData]);
+    else if (activeTab === 'attendance') fetchAttendanceData();
+  }, [activeTab, fetchCurriculum, fetchGradeColumns, fetchAttendanceData]);
+
+  const todayISO = new Date().toISOString().split('T')[0];
+  // Normalize backend dates which may be 'YYYY-MM-DD' or full ISO timestamps
+  const dateOnly = (d) => (d ? String(d).slice(0, 10) : '');
+
+  const handleToggleAttendance = async (studentId, newStatus) => {
+    if (!classId || !studentId) return;
+    setTogglingStudentId(studentId);
+    try {
+      await api.post('/attendance/bulk', {
+        class_id: classId,
+        date: todayISO,
+        records: [{ student_id: studentId, status: newStatus }],
+      });
+      // Optimistic local update: replace today's record for this student
+      setAttendanceRecords(prev => {
+        const filtered = prev.filter(r => !(r.student_id === studentId && dateOnly(r.date) === todayISO));
+        return [...filtered, { student_id: studentId, date: todayISO, status: newStatus }];
+      });
+      toast.success(newStatus === 'present' ? (t('markedPresent') || 'تم تسجيل الحضور') : (t('markedAbsent') || 'تم تسجيل الغياب'));
+    } catch (err) {
+      console.error('Failed to toggle attendance', err);
+      const detail = err?.response?.data?.detail || err?.message || (t('saveFailed') || 'فشل الحفظ');
+      toast.error(detail);
+    } finally {
+      setTogglingStudentId(null);
+    }
+  };
 
   const handleToggleLesson = async (lesson) => {
     try {
@@ -374,19 +405,26 @@ export default function TeacherClassDetailPage() {
     return weeks.length > 0 ? Math.max(...weeks) : 0;
   }, [weekGroups]);
 
-  const absencesByStudent = useMemo(() => {
+  // Build per-student attendance summary: today's status + present/absent counts + full record list
+  const attendanceByStudent = useMemo(() => {
     const map = {};
-    students.forEach(s => { map[s.id] = { student: s, absences: [] }; });
-    absenceData.forEach(r => {
-      if (map[r.student_id]) {
-        map[r.student_id].absences.push(r);
-      }
+    students.forEach(s => {
+      map[s.id] = { student: s, presentCount: 0, absentCount: 0, todayStatus: null, records: [] };
+    });
+    attendanceRecords.forEach(r => {
+      const entry = map[r.student_id];
+      if (!entry) return;
+      entry.records.push(r);
+      if (r.status === 'present' || r.status === 'late') entry.presentCount += 1;
+      else if (r.status === 'absent') entry.absentCount += 1;
+      if (dateOnly(r.date) === todayISO) entry.todayStatus = r.status;
     });
     Object.values(map).forEach(entry => {
-      entry.absences.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+      entry.records.sort((a, b) => dateOnly(b.date).localeCompare(dateOnly(a.date)));
     });
     return Object.values(map);
-  }, [students, absenceData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [students, attendanceRecords, todayISO]);
 
   const { currentLessonId, nextLessonId } = useMemo(() => {
     const allLessons = (curriculumData.lessons || [])
@@ -756,9 +794,9 @@ export default function TeacherClassDetailPage() {
     </Dialog>
   );
 
-  const renderAbsenceTab = () => (
+  const renderAttendanceTab = () => (
     <div className="space-y-4">
-      {absenceLoading ? (
+      {attendanceLoading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-brand-turquoise" />
         </div>
@@ -768,69 +806,83 @@ export default function TeacherClassDetailPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-muted/50 border-b border-border">
-                  <th className="p-3 text-start font-medium font-cairo min-w-[200px]">{t('name')}</th>
-                  <th className="p-3 text-start font-medium font-cairo">{t('attendanceRecords')}</th>
+                  <th className="p-3 text-start font-medium font-cairo min-w-[200px]">{t('student3') || 'الطالب'}</th>
+                  <th className="p-3 text-center font-medium font-cairo min-w-[220px]">{t('status2') || 'الحالة'}</th>
+                  <th className="p-3 text-center font-medium font-cairo text-emerald-600">{t('present') || 'حاضر'}</th>
+                  <th className="p-3 text-center font-medium font-cairo text-red-500">{t('absent') || 'غائب'}</th>
+                  <th className="p-3 text-center font-medium font-cairo">{t('history') || 'السجل'}</th>
                 </tr>
               </thead>
               <tbody>
-                {absencesByStudent.length === 0 ? (
+                {attendanceByStudent.length === 0 ? (
                   <tr>
-                    <td colSpan={2} className="text-center py-12 text-muted-foreground">{t('noStudents')}</td>
+                    <td colSpan={5} className="text-center py-12 text-muted-foreground">{t('noStudents')}</td>
                   </tr>
                 ) : (
-                  absencesByStudent.map(({ student, absences }) => (
-                    <tr key={student.id} className="border-b border-border/50 hover:bg-muted/20 transition-colors duration-150">
-                      <td className="p-3">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-full bg-brand-navy dark:bg-brand-turquoise flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                            {student.full_name?.charAt(0) || '?'}
-                          </div>
-                          <div>
+                  attendanceByStudent.map(({ student, presentCount, absentCount, todayStatus, records }) => {
+                    const isAbsent = todayStatus === 'absent';
+                    const isPresent = todayStatus === 'present' || todayStatus === 'late';
+                    const isToggling = togglingStudentId === student.id;
+                    return (
+                      <tr key={student.id} className="border-b border-border/50 hover:bg-muted/20 transition-colors duration-150">
+                        <td className="p-3">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-full bg-brand-navy dark:bg-brand-turquoise flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                              {student.full_name?.charAt(0) || '?'}
+                            </div>
                             <p className="font-medium text-sm font-cairo">{student.full_name}</p>
-                            <p className="text-[10px] text-muted-foreground">
-                              {absences.length > 0 ? `${absences.length} ${t('absencesCount')}` : t('noAbsences')}
-                            </p>
                           </div>
-                        </div>
-                      </td>
-                      <td className="p-3">
-                        {absences.length === 0 ? (
-                          <div className="flex items-center gap-2">
-                            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                            <span className="text-xs text-emerald-600 font-tajawal">{t('studentHasFullAttendance')}</span>
+                        </td>
+                        <td className="p-3">
+                          <div className="inline-flex items-center rounded-full border border-border overflow-hidden bg-background">
+                            <button
+                              type="button"
+                              disabled={isToggling}
+                              onClick={() => handleToggleAttendance(student.id, 'absent')}
+                              className={`px-4 py-1.5 text-xs font-cairo font-semibold transition ${
+                                isAbsent
+                                  ? 'bg-red-500 text-white'
+                                  : 'text-muted-foreground hover:bg-muted/40'
+                              } ${isToggling ? 'opacity-60 cursor-wait' : ''}`}
+                              data-testid={`attendance-absent-${student.id}`}
+                            >
+                              {t('absent') || 'غائب'}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isToggling}
+                              onClick={() => handleToggleAttendance(student.id, 'present')}
+                              className={`px-4 py-1.5 text-xs font-cairo font-semibold transition ${
+                                isPresent
+                                  ? 'bg-emerald-500 text-white'
+                                  : 'text-muted-foreground hover:bg-muted/40'
+                              } ${isToggling ? 'opacity-60 cursor-wait' : ''}`}
+                              data-testid={`attendance-present-${student.id}`}
+                            >
+                              {t('present') || 'حاضر'}
+                            </button>
                           </div>
-                        ) : (
-                          <div className="flex items-center gap-2 flex-wrap">
-                            {absences.slice(0, 12).map((abs, idx) => {
-                              const d = abs.date ? new Date(abs.date) : null;
-                              const isValid = d && !isNaN(d.getTime());
-                              const shortLabel = isValid
-                                ? `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`
-                                : '';
-                              const fullLabel = isValid
-                                ? d.toLocaleDateString(isRTL ? 'ar-EG' : 'en-GB', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
-                                : '';
-                              return (
-                                <div key={abs.id || idx} className="flex flex-col items-center gap-0.5" title={fullLabel}>
-                                  <div className="w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/30 border-2 border-red-300 dark:border-red-700 flex items-center justify-center">
-                                    <X className="h-3.5 w-3.5 text-red-500" />
-                                  </div>
-                                  <span className="text-[10px] text-muted-foreground whitespace-nowrap font-tajawal">
-                                    {shortLabel}
-                                  </span>
-                                </div>
-                              );
-                            })}
-                            {absences.length > 12 && (
-                              <Badge variant="secondary" className="text-[10px]">
-                                +{absences.length - 12}
-                              </Badge>
-                            )}
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  ))
+                        </td>
+                        <td className="p-3 text-center">
+                          <span className="text-sm font-bold font-cairo tabular-nums text-emerald-600">{presentCount}</span>
+                        </td>
+                        <td className="p-3 text-center">
+                          <span className="text-sm font-bold font-cairo tabular-nums text-red-500">{absentCount}</span>
+                        </td>
+                        <td className="p-3 text-center">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => setHistoryStudent({ student, records })}
+                            aria-label={t('history') || 'السجل'}
+                          >
+                            <Clock className="h-4 w-4 text-muted-foreground" />
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -838,6 +890,52 @@ export default function TeacherClassDetailPage() {
         </Card>
       )}
     </div>
+  );
+
+  const renderHistoryDialog = () => (
+    <Dialog open={!!historyStudent} onOpenChange={(open) => { if (!open) setHistoryStudent(null); }}>
+      <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto" dir={isRTL ? 'rtl' : 'ltr'}>
+        <DialogHeader>
+          <DialogTitle className="font-cairo flex items-center gap-2">
+            <Clock className="h-5 w-5 text-brand-turquoise" />
+            {historyStudent?.student?.full_name || ''}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-2">
+          {(!historyStudent?.records || historyStudent.records.length === 0) ? (
+            <div className="text-center py-8 text-sm text-muted-foreground font-cairo">
+              {t('noAttendanceRecords') || 'لا يوجد سجل حضور'}
+            </div>
+          ) : (
+            historyStudent.records.map((r, idx) => {
+              const dateLabel = (() => {
+                const ds = dateOnly(r.date);
+                const d = ds ? new Date(ds) : null;
+                if (!d || isNaN(d.getTime())) return ds;
+                return d.toLocaleDateString(isRTL ? 'ar-EG' : 'en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+              })();
+              const styleByStatus = {
+                absent: { wrap: 'border-red-200 bg-red-50/60 dark:border-red-900/40 dark:bg-red-950/20', badge: 'bg-red-500 text-white', label: t('absent') || 'غائب' },
+                excused: { wrap: 'border-blue-200 bg-blue-50/60 dark:border-blue-900/40 dark:bg-blue-950/20', badge: 'bg-blue-500 text-white', label: t('excused2') || 'بعذر' },
+                present: { wrap: 'border-emerald-200 bg-emerald-50/60 dark:border-emerald-900/40 dark:bg-emerald-950/20', badge: 'bg-emerald-500 text-white', label: t('present') || 'حاضر' },
+                // 'late' is shown in history as 'present' since the late status is hidden from UI everywhere
+                late: { wrap: 'border-emerald-200 bg-emerald-50/60 dark:border-emerald-900/40 dark:bg-emerald-950/20', badge: 'bg-emerald-500 text-white', label: t('present') || 'حاضر' },
+              };
+              const s = styleByStatus[r.status] || styleByStatus.present;
+              return (
+                <div
+                  key={r.id || `${r.date}-${idx}`}
+                  className={`flex items-center justify-between p-2.5 rounded-lg border ${s.wrap}`}
+                >
+                  <span className="text-xs font-cairo">{dateLabel}</span>
+                  <Badge className={s.badge}>{s.label}</Badge>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 
   const renderAddLessonDialog = () => (
@@ -1014,14 +1112,6 @@ export default function TeacherClassDetailPage() {
                 <Button variant="outline" size="sm" className="h-9" onClick={fetchClassData} disabled={loading}>
                   <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                 </Button>
-                <Button
-                  className="bg-brand-turquoise hover:bg-brand-turquoise/90 h-9"
-                  size="sm"
-                  onClick={() => navigate(`/teacher/attendance?class=${classId}`)}
-                >
-                  <ClipboardCheck className="h-4 w-4 me-1" />
-                  {t('attendance3')}
-                </Button>
               </div>
             </div>
           </div>
@@ -1030,7 +1120,7 @@ export default function TeacherClassDetailPage() {
             {[
               { key: 'curriculum', label: t('curriculumPlan'), icon: BookOpen },
               { key: 'records', label: t('studentRecords'), icon: ClipboardCheck },
-              { key: 'absence', label: t('absenceLog'), icon: Calendar },
+              { key: 'attendance', label: t('attendanceLog') || 'الحضور والغياب', icon: Calendar },
             ].map(tab => (
               <button
                 key={tab.key}
@@ -1089,7 +1179,7 @@ export default function TeacherClassDetailPage() {
 
             {activeTab === 'curriculum' && renderCurriculumTab()}
             {activeTab === 'records' && renderRecordsTab()}
-            {activeTab === 'absence' && renderAbsenceTab()}
+            {activeTab === 'attendance' && renderAttendanceTab()}
           </div>
         )}
       </div>
@@ -1097,6 +1187,7 @@ export default function TeacherClassDetailPage() {
       {renderAddLessonDialog()}
       {renderColumnSettings()}
       {renderQuickAddColumnDialog()}
+      {renderHistoryDialog()}
 
       <input
         ref={fileInputRef}
