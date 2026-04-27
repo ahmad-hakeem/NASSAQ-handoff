@@ -3555,6 +3555,7 @@
   "gradeLabel": "المرحلة",
   "homeroomLabel": "معلم الفصل",
   "recordAttendance": "تسجيل الحضور",
+  "attendanceLogTitle": "سجل الحضور والغياب",
   "staffAttendanceMgmt": "إدارة حضور المعلمين والاداريين",
   "examsAssessmentsMgmt": "إدارة الاختبارات والتقييمات",
   "messageContent": "نص الرسالة",

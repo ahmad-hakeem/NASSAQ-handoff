@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import SectionErrorBoundary from '../../components/SectionErrorBoundary';
 import FollowupGradesTable from '../../components/teacher/FollowupGradesTable';
 import SidebarSettingsDialog from '../../components/teacher/SidebarSettingsDialog';
+import InlineAttendanceTable from '../../components/teacher/InlineAttendanceTable';
 import { Card, CardContent } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
@@ -241,6 +242,7 @@ export default function SessionTeachPage() {
   const [showHakim, setShowHakim] = useState(false);
   const [showRandomPopup, setShowRandomPopup] = useState(false);
   const [showQuickNote, setShowQuickNote] = useState(false);
+  const [showAttendanceModal, setShowAttendanceModal] = useState(false);
   const [quickNoteText, setQuickNoteText] = useState('');
   const [quickNoteIds, setQuickNoteIds] = useState(() => new Set());
   const [quickNoteFilter, setQuickNoteFilter] = useState('');
@@ -1298,6 +1300,18 @@ export default function SessionTeachPage() {
             <UsersRound className="h-3 w-3" /> {t('groups')}
           </button>
         </div>
+        {/* Record Attendance (in-class) — opens unified inline-editable attendance modal */}
+        <button
+          onClick={() => setShowAttendanceModal(true)}
+          disabled={!classIdForGrades}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-teal-500 hover:bg-teal-600 text-white text-[11px] font-bold shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          title={t('recordAttendance') || 'تسجيل الحضور'}
+          aria-label={t('recordAttendance') || 'تسجيل الحضور'}
+          data-testid="open-attendance-modal-btn"
+        >
+          <ClipboardCheck className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">{t('recordAttendance') || 'تسجيل الحضور'}</span>
+        </button>
         {/* Send Quick Note (global) — moved out of overflow menu */}
         <button
           onClick={() => {
@@ -3208,6 +3222,37 @@ export default function SessionTeachPage() {
         onUpdateColumn={updateClassGradeColumn}
         onDeleteColumn={deleteClassGradeColumn}
       />
+
+      {/* Record Attendance (تسجيل الحضور) — opens the unified inline-editable
+          attendance table reused from فصولي → تفاصيل الفصل. Toggling a status
+          fires the API immediately and updates the live class state without
+          leaving /teacher/session/teach. */}
+      <Dialog open={showAttendanceModal} onOpenChange={setShowAttendanceModal}>
+        <DialogContent
+          className="max-w-3xl max-h-[85vh] overflow-y-auto"
+          dir={isRTL ? 'rtl' : 'ltr'}
+        >
+          <DialogHeader>
+            <DialogTitle className="font-cairo flex items-center gap-2 text-lg">
+              <ClipboardCheck className="h-5 w-5 text-teal-500" />
+              {t('attendanceLogTitle') || 'سجل الحضور والغياب'}
+            </DialogTitle>
+          </DialogHeader>
+          <InlineAttendanceTable
+            classId={classIdForGrades}
+            students={students}
+            classData={{
+              grade_name: sessionInfo?.grade_name || sessionInfo?.gradeName,
+              section: sessionInfo?.section,
+            }}
+            onStatusChange={(studentId, newStatus) => {
+              setStudents(prev => prev.map(s =>
+                s.id === studentId ? { ...s, attendance_status: newStatus } : s
+              ));
+            }}
+          />
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showQuickNote} onOpenChange={setShowQuickNote}>
         <DialogContent className="max-w-lg" dir={isRTL ? 'rtl' : 'ltr'}>
