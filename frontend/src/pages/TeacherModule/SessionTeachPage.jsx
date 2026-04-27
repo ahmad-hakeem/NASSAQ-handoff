@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import SectionErrorBoundary from '../../components/SectionErrorBoundary';
 import FollowupGradesTable from '../../components/teacher/FollowupGradesTable';
+import SidebarSettingsDialog from '../../components/teacher/SidebarSettingsDialog';
 import { Card, CardContent } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
@@ -186,10 +187,17 @@ export default function SessionTeachPage() {
   const [groups, setGroups] = useState([]);
   const [showGroupModal, setShowGroupModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showSidebarSettings, setShowSidebarSettings] = useState(false);
   const [showFollowupRecord, setShowFollowupRecord] = useState(false);
   const [customPositiveBehaviours, setCustomPositiveBehaviours] = useState([]);
   const [customNegativeBehaviours, setCustomNegativeBehaviours] = useState([]);
   const [customSkills, setCustomSkills] = useState([]);
+  const [customEvaluationItems, setCustomEvaluationItems] = useState([
+    { id: 'eval_default_correct',  name: 'إجابة صحيحة',     color: 'emerald', icon: 'CheckCircle2',    points: 1  },
+    { id: 'eval_default_wrong',    name: 'إجابة خاطئة',     color: 'red',     icon: 'XCircle',         points: 0  },
+    { id: 'eval_default_homework', name: 'لم يسلّم الواجب',  color: 'amber',   icon: 'ClipboardCheck',  points: -1 },
+    { id: 'eval_default_recite',   name: 'تسميع',           color: 'purple',  icon: 'Mic',             points: 2  },
+  ]);
   const [followupData, setFollowupData] = useState({});
   const [followupColumns, setFollowupColumns] = useState([]);
   const [followupAbsences, setFollowupAbsences] = useState({});
@@ -432,7 +440,7 @@ export default function SessionTeachPage() {
       try {
         sessionStorage.setItem(`session_state_${sessionId}`, JSON.stringify({
           evalMode, groups, stats, mode: mode?.id, actionTab, followupData, followupColumns, followupAbsences,
-          customPositiveBehaviours, customNegativeBehaviours, customSkills
+          customPositiveBehaviours, customNegativeBehaviours, customSkills, customEvaluationItems
         }));
         // Only autosave grade values + absences. Columns are persisted via the
         // class-level grade-columns API so we don't overwrite them here.
@@ -445,7 +453,7 @@ export default function SessionTeachPage() {
     };
     autoSaveRef.current = setInterval(saveState, 10000);
     return () => { if (autoSaveRef.current) clearInterval(autoSaveRef.current); };
-  }, [sessionId, evalMode, groups, stats, mode, actionTab, followupData, followupColumns, followupAbsences, api, customPositiveBehaviours, customNegativeBehaviours, customSkills]);
+  }, [sessionId, evalMode, groups, stats, mode, actionTab, followupData, followupColumns, followupAbsences, api, customPositiveBehaviours, customNegativeBehaviours, customSkills, customEvaluationItems]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -458,9 +466,16 @@ export default function SessionTeachPage() {
         if (state.followupData && Object.keys(state.followupData).length > 0) setFollowupData(state.followupData);
         if (state.followupColumns?.length) setFollowupColumns(state.followupColumns.map(migrateColumn));
         if (state.followupAbsences && Object.keys(state.followupAbsences).length > 0) setFollowupAbsences(state.followupAbsences);
-        if (state.customPositiveBehaviours?.length) setCustomPositiveBehaviours(state.customPositiveBehaviours);
-        if (state.customNegativeBehaviours?.length) setCustomNegativeBehaviours(state.customNegativeBehaviours);
+        // Migrate legacy string[] entries -> {id, name, points} objects
+        const migrateBhv = (arr, defaultPoints) => (arr || []).map((b, i) => (
+          typeof b === 'string'
+            ? { id: `legacy_${defaultPoints > 0 ? 'p' : 'n'}_${i}_${b}`, name: b, points: defaultPoints }
+            : b
+        ));
+        if (state.customPositiveBehaviours?.length) setCustomPositiveBehaviours(migrateBhv(state.customPositiveBehaviours, 2));
+        if (state.customNegativeBehaviours?.length) setCustomNegativeBehaviours(migrateBhv(state.customNegativeBehaviours, -2));
         if (state.customSkills?.length) setCustomSkills(state.customSkills);
+        if (state.customEvaluationItems?.length) setCustomEvaluationItems(state.customEvaluationItems);
       }
     } catch (e) { /* ignore */ }
   }, [sessionId]);
@@ -1187,6 +1202,15 @@ export default function SessionTeachPage() {
                     </button>
                     <button
                       onClick={() => {
+                        setShowSidebarSettings(true);
+                        setShowOverflowMenu(false);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-2 py-2 rounded-md hover:bg-foreground/[0.06] text-sm text-foreground transition-colors"
+                    >
+                      <Settings className="h-4 w-4 flex-none text-muted-foreground" /> <span className="truncate">{t('sidebarSettings')}</span>
+                    </button>
+                    <button
+                      onClick={() => {
                         setShowSettingsModal(true); loadSubjectsList(); loadSessionSettings();
                         setShowOverflowMenu(false);
                       }}
@@ -1448,14 +1472,10 @@ export default function SessionTeachPage() {
               </>
             )}
             <button
-              onClick={() => {
-                setShowSettingsModal(true);
-                loadSubjectsList();
-                loadSessionSettings();
-              }}
-              aria-label={t('sessionSettings')}
+              onClick={() => setShowSidebarSettings(true)}
+              aria-label={t('sidebarSettings')}
               className="ms-1 p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60"
-              title={t('evaluationSettings')}
+              title={t('sidebarSettings')}
             >
               <Settings className="h-4 w-4" />
             </button>
@@ -1905,11 +1925,22 @@ export default function SessionTeachPage() {
                     <div className="grid grid-cols-3 gap-1.5">
                       {[
                         ...(BEHAVIOURS[behaviourCategory] || []),
-                        ...(behaviourCategory === 'positive' ? customPositiveBehaviours : customNegativeBehaviours).map(name => ({
-                          id: `custom_${name}`,
-                          label: name,
-                          points: behaviourCategory === 'positive' ? '+2' : '-2'
-                        }))
+                        ...(behaviourCategory === 'positive' ? customPositiveBehaviours : customNegativeBehaviours).map(b => {
+                          // Support both legacy string and new {id, name, points} shape
+                          if (typeof b === 'string') {
+                            return {
+                              id: `custom_${b}`,
+                              label: b,
+                              points: behaviourCategory === 'positive' ? '+2' : '-2'
+                            };
+                          }
+                          const p = Number(b.points) || 0;
+                          return {
+                            id: b.id || `custom_${b.name}`,
+                            label: b.name,
+                            points: p > 0 ? `+${p}` : `${p}`
+                          };
+                        })
                       ].map(b => (
                         <button
                           key={b.id}
@@ -2502,6 +2533,29 @@ export default function SessionTeachPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Sidebar Settings Dialog (إعدادات الشريط الجانبي) — 3 tabs */}
+      <SidebarSettingsDialog
+        open={showSidebarSettings}
+        onOpenChange={setShowSidebarSettings}
+        isRTL={isRTL}
+        t={t}
+        evaluationItems={customEvaluationItems}
+        onAddEvaluationItem={(item) => setCustomEvaluationItems((prev) => [...prev, item])}
+        onRemoveEvaluationItem={(id) => setCustomEvaluationItems((prev) => prev.filter((x) => x.id !== id))}
+        positiveBehaviours={customPositiveBehaviours}
+        negativeBehaviours={customNegativeBehaviours}
+        onAddPositiveBehaviour={(item) => setCustomPositiveBehaviours((prev) => [...prev, item])}
+        onAddNegativeBehaviour={(item) => setCustomNegativeBehaviours((prev) => [...prev, item])}
+        onRemovePositiveBehaviour={(id) => setCustomPositiveBehaviours((prev) => prev.filter((x) => (typeof x === 'string' ? `custom_${x}` !== id : x.id !== id)))}
+        onRemoveNegativeBehaviour={(id) => setCustomNegativeBehaviours((prev) => prev.filter((x) => (typeof x === 'string' ? `custom_${x}` !== id : x.id !== id)))}
+        skillEnabled={skillEnabled}
+        onToggleSkillEnabled={setSkillEnabled}
+        skillTypes={skillTypes}
+        customSkills={customSkills}
+        onAddCustomSkill={(name) => setCustomSkills((prev) => [...prev, name])}
+        onRemoveCustomSkill={(idx) => setCustomSkills((prev) => prev.filter((_, j) => j !== idx))}
+      />
 
       {/* Session Settings Modal (إعدادات الحصة) */}
       <Dialog open={showSettingsModal} onOpenChange={(open) => {

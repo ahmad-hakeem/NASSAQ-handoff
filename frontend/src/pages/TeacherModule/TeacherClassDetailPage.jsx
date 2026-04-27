@@ -31,6 +31,7 @@ import {
 import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 import HakimPresence from '../../components/hakim/HakimPresence';
 import FollowupGradesTable from '../../components/teacher/FollowupGradesTable';
+import SidebarSettingsDialog from '../../components/teacher/SidebarSettingsDialog';
 
 import { useTranslation } from '../../contexts/ThemeContext';
 
@@ -89,6 +90,52 @@ export default function TeacherClassDetailPage() {
   const [togglingStudentId, setTogglingStudentId] = useState(null);
   const [historyStudent, setHistoryStudent] = useState(null);
   const [studentSearch, setStudentSearch] = useState('');
+
+  // ===== Sidebar Settings (إعدادات الشريط الجانبي) — class-level, persisted in localStorage =====
+  const SIDEBAR_KEY = `class_sidebar_settings_${classId || 'unknown'}`;
+  const [showSidebarSettings, setShowSidebarSettings] = useState(false);
+  const [customSkills, setCustomSkills] = useState([]);
+  const [customPositiveBehaviours, setCustomPositiveBehaviours] = useState([]);
+  const [customNegativeBehaviours, setCustomNegativeBehaviours] = useState([]);
+  const [customEvaluationItems, setCustomEvaluationItems] = useState([
+    { id: 'eval_default_correct',  name: 'إجابة صحيحة',     color: 'emerald', icon: 'CheckCircle2',    points: 1  },
+    { id: 'eval_default_wrong',    name: 'إجابة خاطئة',     color: 'red',     icon: 'XCircle',         points: 0  },
+    { id: 'eval_default_homework', name: 'لم يسلّم الواجب',  color: 'amber',   icon: 'ClipboardCheck',  points: -1 },
+    { id: 'eval_default_recite',   name: 'تسميع',           color: 'purple',  icon: 'Mic',             points: 2  },
+  ]);
+  // Skills toggle (preserves legacy toggle row in the Skills tab UI)
+  const [skillEnabled, setSkillEnabled] = useState(true);
+
+  // Hydrate from localStorage on classId change. Migrate any legacy
+  // string[] entries in behaviours -> {id, name, points} objects.
+  useEffect(() => {
+    if (!classId) return;
+    try {
+      const raw = localStorage.getItem(SIDEBAR_KEY);
+      if (!raw) return;
+      const s = JSON.parse(raw);
+      const migrate = (arr, defaultPoints) => (arr || []).map((b, i) => (
+        typeof b === 'string'
+          ? { id: `legacy_${defaultPoints > 0 ? 'p' : 'n'}_${i}_${b}`, name: b, points: defaultPoints }
+          : b
+      ));
+      if (Array.isArray(s.customSkills)) setCustomSkills(s.customSkills);
+      if (Array.isArray(s.customPositiveBehaviours)) setCustomPositiveBehaviours(migrate(s.customPositiveBehaviours, 2));
+      if (Array.isArray(s.customNegativeBehaviours)) setCustomNegativeBehaviours(migrate(s.customNegativeBehaviours, -2));
+      if (Array.isArray(s.customEvaluationItems) && s.customEvaluationItems.length) setCustomEvaluationItems(s.customEvaluationItems);
+      if (typeof s.skillEnabled === 'boolean') setSkillEnabled(s.skillEnabled);
+    } catch { /* ignore */ }
+  }, [classId, SIDEBAR_KEY]);
+
+  // Persist to localStorage on change
+  useEffect(() => {
+    if (!classId) return;
+    try {
+      localStorage.setItem(SIDEBAR_KEY, JSON.stringify({
+        customSkills, customPositiveBehaviours, customNegativeBehaviours, customEvaluationItems, skillEnabled,
+      }));
+    } catch { /* ignore */ }
+  }, [classId, SIDEBAR_KEY, customSkills, customPositiveBehaviours, customNegativeBehaviours, customEvaluationItems, skillEnabled]);
 
   const teacherId = user?.teacher_id || user?.id;
   const fileInputRef = useRef(null);
@@ -1163,6 +1210,17 @@ export default function TeacherClassDetailPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 gap-1.5 font-cairo"
+                  onClick={() => setShowSidebarSettings(true)}
+                  title={t('sidebarSettings')}
+                  aria-label={t('sidebarSettings')}
+                >
+                  <Settings className="h-4 w-4" />
+                  <span className="hidden sm:inline text-xs">{t('sidebarSettings')}</span>
+                </Button>
                 <Button variant="outline" size="sm" className="h-9" onClick={fetchClassData} disabled={loading}>
                   <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                 </Button>
@@ -1253,6 +1311,29 @@ export default function TeacherClassDetailPage() {
           if (file) toast.success(t('importData') + ': ' + file.name);
           if (fileInputRef.current) fileInputRef.current.value = '';
         }}
+      />
+
+      {/* Sidebar Settings Dialog (إعدادات الشريط الجانبي) — 3 tabs */}
+      <SidebarSettingsDialog
+        open={showSidebarSettings}
+        onOpenChange={setShowSidebarSettings}
+        isRTL={isRTL}
+        t={t}
+        evaluationItems={customEvaluationItems}
+        onAddEvaluationItem={(item) => setCustomEvaluationItems((prev) => [...prev, item])}
+        onRemoveEvaluationItem={(id) => setCustomEvaluationItems((prev) => prev.filter((x) => x.id !== id))}
+        positiveBehaviours={customPositiveBehaviours}
+        negativeBehaviours={customNegativeBehaviours}
+        onAddPositiveBehaviour={(item) => setCustomPositiveBehaviours((prev) => [...prev, item])}
+        onAddNegativeBehaviour={(item) => setCustomNegativeBehaviours((prev) => [...prev, item])}
+        onRemovePositiveBehaviour={(id) => setCustomPositiveBehaviours((prev) => prev.filter((x) => x.id !== id))}
+        onRemoveNegativeBehaviour={(id) => setCustomNegativeBehaviours((prev) => prev.filter((x) => x.id !== id))}
+        skillEnabled={skillEnabled}
+        onToggleSkillEnabled={setSkillEnabled}
+        skillTypes={[]}
+        customSkills={customSkills}
+        onAddCustomSkill={(name) => setCustomSkills((prev) => [...prev, name])}
+        onRemoveCustomSkill={(idx) => setCustomSkills((prev) => prev.filter((_, j) => j !== idx))}
       />
 
       <HakimAssistant />
