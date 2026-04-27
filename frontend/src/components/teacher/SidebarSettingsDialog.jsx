@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Button } from '../ui/button';
 import {
   Settings, Trash2, Plus, Star, ThumbsUp, ThumbsDown,
   CheckCircle2, XCircle, ClipboardCheck, Mic, Hand, Sparkles,
+  BookOpen, FileSpreadsheet, GripVertical, Loader2,
 } from 'lucide-react';
 
 /**
@@ -31,14 +32,49 @@ const formatPoints = (n) => {
 };
 
 /**
- * Shared "Sidebar Settings" dialog used in both فصولي → تفاصيل الفصل
- * and the live class (الحصة التفاعلية). It exposes three tabs:
- *   1) عناصر التقييم – customizable evaluation items list
- *   2) السلوكيات     – grouped positive/negative behaviour lists
- *   3) المهارات      – kept identical to the legacy skills section
+ * Internal toggle row used by the "خيارات الحصة" tab. Mirrors the visual
+ * shape of the legacy SettingsToggleRow originally inlined in
+ * SessionTeachPage so behavior + RTL handling are preserved verbatim.
+ */
+function SettingsToggleRow({ icon, label, enabled, onToggle, t }) {
+  return (
+    <div className="flex items-center justify-between gap-2 bg-muted/30 dark:bg-card/50 rounded-lg px-3 py-2">
+      <span className="flex items-center gap-2 text-sm font-medium font-cairo">
+        <span className={enabled ? 'text-brand-turquoise' : 'text-muted-foreground'}>{icon}</span>
+        {label}
+      </span>
+      <button
+        type="button"
+        onClick={onToggle}
+        role="switch"
+        aria-checked={enabled}
+        className={`relative inline-flex items-center h-6 w-11 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-turquoise/60 ${
+          enabled ? 'bg-brand-turquoise' : 'bg-muted-foreground/30'
+        }`}
+        title={enabled ? (t ? t('enabled') : 'On') : (t ? t('disabled') : 'Off')}
+      >
+        <span
+          className={`inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform ${
+            enabled ? 'translate-x-5 rtl:-translate-x-5' : 'translate-x-0.5 rtl:-translate-x-0.5'
+          }`}
+        />
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Shared "Sidebar Settings" dialog used in فصولي → تفاصيل الفصل
+ * and the live class (الحصة التفاعلية).
  *
- * The dialog is fully controlled. The parent owns all state arrays
- * and persistence; this component only renders + emits add/remove.
+ * It groups its tabs into two visual sections:
+ *   Group A — تعريفات العناصر:  عناصر التقييم · السلوكيات · المهارات
+ *   Group B — تكوين الحصة:       خيارات الحصة · انماط التقييم
+ *
+ * Group B is rendered only when a `sessionConfig` prop is supplied, which
+ * is how SessionTeachPage merges its former "إعدادات الحصة" modal in
+ * here. All state is owned by the parent — this component is purely
+ * controlled.
  */
 export default function SidebarSettingsDialog({
   open,
@@ -66,7 +102,16 @@ export default function SidebarSettingsDialog({
   customSkills = [],
   onAddCustomSkill,
   onRemoveCustomSkill,
+
+  // ── Group B: session configuration (optional) ─────────────────
+  // When this object is provided, the dialog renders the second
+  // visual group of tabs (خيارات الحصة, انماط التقييم) and a
+  // sticky Save button on those tabs.
+  sessionConfig = null,
 }) {
+  const hasSessionConfig = !!sessionConfig;
+
+  // Default to the first tab of the first visible group.
   const [tab, setTab] = useState('evaluation');
 
   // ── Add-form local state ───────────────────────────────────────
@@ -107,16 +152,37 @@ export default function SidebarSettingsDialog({
   };
 
   // ─────────────────────────────────────────────────────────────────
-  // Tab definitions
+  // Tab group definitions
   // ─────────────────────────────────────────────────────────────────
-  const TABS = [
-    { id: 'evaluation', label: t('evaluationElements') || 'عناصر التقييم' },
-    { id: 'behaviours', label: t('behaviours') || 'السلوكيات' },
-    { id: 'skills',     label: t('skills') || 'المهارات' },
-  ];
+  const TAB_GROUPS = useMemo(() => {
+    const groups = [
+      {
+        id: 'elements',
+        label: t('elementsDefinitions') || 'تعريفات العناصر',
+        tabs: [
+          { id: 'evaluation', label: t('evaluationElements') || 'عناصر التقييم' },
+          { id: 'behaviours', label: t('behaviours') || 'السلوكيات' },
+          { id: 'skills',     label: t('skills') || 'المهارات' },
+        ],
+      },
+    ];
+    if (hasSessionConfig) {
+      groups.push({
+        id: 'session',
+        label: t('sessionConfiguration') || 'تكوين الحصة',
+        tabs: [
+          { id: 'sessionOptions',     label: t('sessionOptions') || 'خيارات الحصة' },
+          { id: 'evaluationPatterns', label: t('evaluationPatterns') || 'أنماط التقييم' },
+        ],
+      });
+    }
+    return groups;
+  }, [hasSessionConfig, t]);
+
+  const isSessionTab = tab === 'sessionOptions' || tab === 'evaluationPatterns';
 
   // ─────────────────────────────────────────────────────────────────
-  // Renderers
+  // Group A renderers
   // ─────────────────────────────────────────────────────────────────
   const renderEvaluationTab = () => (
     <div className="space-y-4">
@@ -280,7 +346,6 @@ export default function SidebarSettingsDialog({
           className="w-full text-sm bg-card dark:bg-muted border border-border rounded-full px-4 py-2.5 outline-none focus:border-brand-turquoise font-cairo text-center placeholder:text-muted-foreground/60"
         />
         <div className="grid grid-cols-2 gap-2">
-          {/* Negative on the left (LTR order); RTL flips visually so this lands on the visual left */}
           <Button
             type="button"
             variant="outline"
@@ -386,46 +451,291 @@ export default function SidebarSettingsDialog({
     </div>
   );
 
+  // ─────────────────────────────────────────────────────────────────
+  // Group B renderers (session configuration)
+  // ─────────────────────────────────────────────────────────────────
+  const renderSessionOptionsTab = () => {
+    const sc = sessionConfig || {};
+    const subjectsList = sc.subjectsList || [];
+    return (
+      <div className="space-y-5">
+        {/* Subject selection (required first) */}
+        <div className="space-y-2">
+          <label className="text-sm font-medium font-cairo flex items-center gap-2">
+            <BookOpen className="h-4 w-4 text-brand-turquoise" />
+            {t('selectSubject')} <span className="text-red-500">*</span>
+          </label>
+          <select
+            value={sc.subjectId || ''}
+            onChange={(e) => sc.onSubjectIdChange?.(e.target.value)}
+            className="w-full bg-card dark:bg-muted border border-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand-turquoise font-cairo"
+          >
+            <option value="">{t('selectSubject')}</option>
+            {subjectsList.map((s) => {
+              const id = String(s.id ?? s.subject_id ?? s._id ?? '');
+              const label = isRTL
+                ? (s.name_ar || s.name || s.name_en || id)
+                : (s.name_en || s.name || s.name_ar || id);
+              return <option key={id} value={id}>{label}</option>;
+            })}
+          </select>
+          {!sc.subjectId && (
+            <p className="text-[11px] text-muted-foreground font-cairo">{t('selectSubjectFirst')}</p>
+          )}
+        </div>
+
+        {sc.subjectId && (
+          <>
+            {/* Participation toggle */}
+            <SettingsToggleRow
+              icon={<Hand className="h-4 w-4" />}
+              label={t('participation')}
+              enabled={!!sc.participationEnabled}
+              onToggle={() => sc.onParticipationEnabledChange?.(!sc.participationEnabled)}
+              t={t}
+            />
+
+            {/* Homework toggle + view-mode options */}
+            <div className="space-y-2">
+              <SettingsToggleRow
+                icon={<ClipboardCheck className="h-4 w-4" />}
+                label={t('homework')}
+                enabled={!!sc.homeworkEnabled}
+                onToggle={() => sc.onHomeworkEnabledChange?.(!sc.homeworkEnabled)}
+                t={t}
+              />
+              {sc.homeworkEnabled && (
+                <div className="ms-2 grid grid-cols-1 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => sc.onHomeworkViewModeChange?.('not_submitted')}
+                    className={`flex items-center justify-between gap-2 px-3 py-2 rounded-lg border-2 text-xs font-medium font-cairo transition-colors ${
+                      sc.homeworkViewMode === 'not_submitted'
+                        ? 'border-brand-turquoise bg-brand-turquoise/10 text-brand-turquoise'
+                        : 'border-border text-muted-foreground'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2"><XCircle className="h-3.5 w-3.5" /> {t('clickStudentNotSubmitted')}</span>
+                    {sc.homeworkViewMode === 'not_submitted' && <CheckCircle2 className="h-3.5 w-3.5" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => sc.onHomeworkViewModeChange?.('submitted')}
+                    className={`flex items-center justify-between gap-2 px-3 py-2 rounded-lg border-2 text-xs font-medium font-cairo transition-colors ${
+                      sc.homeworkViewMode === 'submitted'
+                        ? 'border-brand-turquoise bg-brand-turquoise/10 text-brand-turquoise'
+                        : 'border-border text-muted-foreground'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5" /> {t('clickStudentSubmitted')}</span>
+                    {sc.homeworkViewMode === 'submitted' && <CheckCircle2 className="h-3.5 w-3.5" />}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Recitation toggle + max attempts */}
+            <div className="space-y-2">
+              <SettingsToggleRow
+                icon={<Mic className="h-4 w-4" />}
+                label={t('recitation')}
+                enabled={!!sc.recitationEnabled}
+                onToggle={() => sc.onRecitationEnabledChange?.(!sc.recitationEnabled)}
+                t={t}
+              />
+              {sc.recitationEnabled && (
+                <div className="ms-2 flex items-center gap-2">
+                  <label className="text-xs text-muted-foreground font-cairo flex-1">{t('maxAttemptsLabel')}</label>
+                  <select
+                    value={sc.recitationMaxAttempts || 1}
+                    onChange={(e) => sc.onRecitationMaxAttemptsChange?.(parseInt(e.target.value) || 1)}
+                    className="bg-card dark:bg-muted border border-border rounded-md px-2 py-1 text-xs font-cairo outline-none focus:border-brand-turquoise"
+                  >
+                    <option value={1}>{t('oneAttempt')}</option>
+                    <option value={2}>{t('twoAttempts')}</option>
+                    <option value={3}>{t('threeAttempts')}</option>
+                  </select>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
+
+  const renderEvaluationPatternsTab = () => {
+    const sc = sessionConfig || {};
+    const followupColumns = Array.isArray(sc.followupColumns) ? sc.followupColumns : [];
+    const updateColumn = (idx, patch) => {
+      const updated = [...followupColumns];
+      updated[idx] = { ...updated[idx], ...patch };
+      sc.onFollowupColumnsChange?.(updated);
+    };
+    return (
+      <div className="space-y-4">
+        {!sc.subjectId && (
+          <p className="text-[11px] text-muted-foreground font-cairo text-center py-2">
+            {t('selectSubjectFirst')}
+          </p>
+        )}
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <label className="text-sm font-medium font-cairo flex items-center gap-2">
+              <FileSpreadsheet className="h-4 w-4 text-brand-turquoise" />
+              {t('addOtherItemsQuestion')}
+            </label>
+            <button
+              type="button"
+              onClick={() => sc.onShowAddOtherItemsChange?.(!sc.showAddOtherItems)}
+              className={`px-3 py-1 rounded-md text-[11px] font-bold font-cairo transition-colors ${
+                sc.showAddOtherItems ? 'bg-brand-turquoise text-white' : 'bg-muted text-muted-foreground'
+              }`}
+            >
+              {sc.showAddOtherItems ? (t('yes') || 'نعم') : (t('no') || 'لا')}
+            </button>
+          </div>
+
+          {sc.showAddOtherItems && (
+            <div className="space-y-2">
+              {followupColumns.map((col, ci) => (
+                <div key={col.id} className="flex items-center gap-2 bg-muted/40 dark:bg-card rounded-lg p-2">
+                  <GripVertical className="h-3.5 w-3.5 text-muted-foreground flex-none" />
+                  <input
+                    value={col.name}
+                    onChange={(e) => updateColumn(ci, { name: e.target.value })}
+                    className="flex-1 bg-transparent text-sm font-cairo outline-none"
+                  />
+                  <select
+                    value={col.type || 'grade'}
+                    onChange={(e) => updateColumn(ci, { type: e.target.value })}
+                    className="text-[10px] bg-card dark:bg-muted rounded border px-1 py-0.5 font-cairo"
+                  >
+                    <option value="grade">{t('gradeType')}</option>
+                    <option value="check">{t('checkType')}</option>
+                    <option value="text">{t('textType')}</option>
+                  </select>
+                  <input
+                    type="number"
+                    value={col.maxGrade}
+                    onChange={(e) => updateColumn(ci, { maxGrade: parseInt(e.target.value) || 0 })}
+                    className="w-14 text-center text-xs bg-card dark:bg-muted rounded border px-1 py-0.5 font-cairo"
+                    min={0}
+                    max={100}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => sc.onFollowupColumnsChange?.(followupColumns.filter((_, i) => i !== ci))}
+                    className="text-red-600 dark:text-red-400 hover:text-red-500"
+                    aria-label={t('delete') || 'حذف'}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => sc.onFollowupColumnsChange?.([
+                  ...followupColumns,
+                  {
+                    id: `col_${Date.now()}`,
+                    name: t('newColumn'),
+                    maxGrade: 10,
+                    type: 'grade',
+                    group: 'coursework',
+                  },
+                ])}
+                className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-dashed border-border text-muted-foreground text-xs font-cairo hover:text-brand-turquoise hover:border-brand-turquoise transition-colors"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                {t('addColumn')}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // ─────────────────────────────────────────────────────────────────
+  // Render
+  // ─────────────────────────────────────────────────────────────────
+  const dialogTitle = hasSessionConfig
+    ? (t('sessionSettings') || 'إعدادات الحصة')
+    : (t('sidebarSettings') || 'إعدادات الشريط الجانبي');
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-md w-full max-h-[90vh] overflow-y-auto p-0 gap-0 border-0 shadow-2xl rounded-2xl"
+        className="max-w-md w-full max-h-[90vh] overflow-y-auto p-0 gap-0 border-0 shadow-2xl rounded-2xl backdrop-blur-sm"
         dir={isRTL ? 'rtl' : 'ltr'}
       >
         <DialogHeader className="px-5 pt-5 pb-3 border-b border-border">
           <DialogTitle className="font-cairo flex items-center gap-2 text-base font-bold">
             <Settings className="h-5 w-5 text-brand-turquoise" />
-            {t('sidebarSettings') || 'إعدادات الشريط الجانبي'}
+            {dialogTitle}
           </DialogTitle>
         </DialogHeader>
 
-        {/* Tab navigation with underline indicator */}
-        <div className="flex items-center px-5 pt-3 border-b border-border">
-          {TABS.map((tDef) => {
-            const active = tab === tDef.id;
-            return (
-              <button
-                key={tDef.id}
-                type="button"
-                onClick={() => setTab(tDef.id)}
-                className={`flex-1 px-3 pb-3 pt-2 text-sm font-cairo font-semibold transition relative ${
-                  active ? 'text-brand-turquoise' : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {tDef.label}
-                {active && (
-                  <span className="absolute inset-x-3 -bottom-px h-[2px] bg-brand-turquoise rounded-full" />
-                )}
-              </button>
-            );
-          })}
+        {/* Grouped tab navigation */}
+        <div className="px-5 pt-3 border-b border-border space-y-3 pb-1">
+          {TAB_GROUPS.map((grp, gi) => (
+            <div key={grp.id} className={gi > 0 ? 'pt-2 border-t border-dashed border-border' : ''}>
+              {hasSessionConfig && (
+                <div className="text-[10px] font-bold font-cairo text-muted-foreground uppercase tracking-wider mb-1.5 text-end">
+                  {grp.label}
+                </div>
+              )}
+              <div className="flex items-center">
+                {grp.tabs.map((tDef) => {
+                  const active = tab === tDef.id;
+                  return (
+                    <button
+                      key={tDef.id}
+                      type="button"
+                      onClick={() => setTab(tDef.id)}
+                      className={`flex-1 px-3 pb-3 pt-2 text-sm font-cairo font-semibold transition relative ${
+                        active ? 'text-brand-turquoise' : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {tDef.label}
+                      {active && (
+                        <span className="absolute inset-x-3 -bottom-px h-[2px] bg-brand-turquoise rounded-full" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
 
         <div className="p-5">
-          {tab === 'evaluation' && renderEvaluationTab()}
-          {tab === 'behaviours' && renderBehavioursTab()}
-          {tab === 'skills' && renderSkillsTab()}
+          {tab === 'evaluation'         && renderEvaluationTab()}
+          {tab === 'behaviours'         && renderBehavioursTab()}
+          {tab === 'skills'             && renderSkillsTab()}
+          {tab === 'sessionOptions'     && hasSessionConfig && renderSessionOptionsTab()}
+          {tab === 'evaluationPatterns' && hasSessionConfig && renderEvaluationPatternsTab()}
         </div>
+
+        {/* Sticky Save bar — only on Group B (session config) tabs */}
+        {hasSessionConfig && isSessionTab && (
+          <div className="sticky bottom-0 bg-background/95 backdrop-blur border-t border-border px-5 py-3">
+            <Button
+              type="button"
+              onClick={() => sessionConfig.onSave?.()}
+              disabled={!sessionConfig.subjectId || !!sessionConfig.saving}
+              className="w-full bg-violet-600 hover:bg-violet-700 text-white font-cairo font-bold"
+            >
+              {sessionConfig.saving ? (
+                <span className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> {t('saving')}</span>
+              ) : (
+                <span className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4" /> {t('savePattern')}</span>
+              )}
+            </Button>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );
