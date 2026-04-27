@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Sidebar } from '../../components/layout/Sidebar';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
@@ -13,7 +13,7 @@ import { toast } from 'sonner';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import {
   ClipboardCheck, Users, Check, X,
-  Loader2, Save, CheckCircle2
+  Loader2, Save, CheckCircle2, ArrowRight, ArrowLeft
 } from 'lucide-react';
 import { HakimAssistant } from '../../components/hakim/HakimAssistant';
 
@@ -28,7 +28,13 @@ export default function TeacherAttendanceManagePage() {
   const { user, api, isRTL } = useAuth();
   const { nassaqError, nassaqWarning } = useNassaqAlert();
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const preselectedClass = searchParams.get('class');
+
+  const handleBack = () => {
+    if (window.history.length > 1) navigate(-1);
+    else navigate('/teacher');
+  };
   
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -170,13 +176,25 @@ export default function TeacherAttendanceManagePage() {
         {/* Header */}
         <div className="sticky top-0 z-20 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm border-b p-4">
           <div className="flex items-center justify-between flex-wrap gap-4">
-            <div>
-              <h1 className="text-2xl font-bold text-brand-navy dark:text-brand-turquoise font-cairo">
-                {t('attendance3')}
-              </h1>
-              <p className="text-sm text-muted-foreground">
-                {t('recordStudentAttendance')}
-              </p>
+            <div className="flex items-center gap-3">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 shrink-0"
+                onClick={handleBack}
+                aria-label={isRTL ? 'رجوع' : 'Back'}
+                data-testid="back-button"
+              >
+                {isRTL ? <ArrowRight className="h-5 w-5" /> : <ArrowLeft className="h-5 w-5" />}
+              </Button>
+              <div>
+                <h1 className="text-2xl font-bold text-brand-navy dark:text-brand-turquoise font-cairo">
+                  {t('attendance3')}
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                  {t('recordStudentAttendance')}
+                </p>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" onClick={markAllPresent}>
