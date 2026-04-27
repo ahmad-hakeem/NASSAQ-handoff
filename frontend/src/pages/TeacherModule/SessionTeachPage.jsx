@@ -211,7 +211,6 @@ export default function SessionTeachPage() {
   const [showSearch, setShowSearch] = useState(false);
   // ===== Redesign state =====
   const [showActionSheet, setShowActionSheet] = useState(false); // opens existing action panel as modal
-  const [showOverflowMenu, setShowOverflowMenu] = useState(false); // header (⋯) menu
   const [savingSession, setSavingSession] = useState(false);
   // ===== Session settings (إعدادات الحصة) =====
   // (action-sheet auto-close on selected-student change is wired below, after selectedStudent is declared)
@@ -822,6 +821,15 @@ export default function SessionTeachPage() {
     setActionTab(getTabForMode(mode?.id));
   };
 
+  // Open the Quick Note dialog with one student preselected (used by inline row action).
+  const openQuickNoteForStudent = (student) => {
+    if (!student?.id) return;
+    setQuickNoteText('');
+    setQuickNoteFilter('');
+    setQuickNoteIds(new Set([student.id]));
+    setShowQuickNote(true);
+  };
+
   const addLog = (emoji, text, color = 'text-foreground') => {
     setActivityLog(prev => [{ id: Date.now(), emoji, text, color, time: new Date().toLocaleTimeString(isRTL ? 'ar' : 'en', { hour: '2-digit', minute: '2-digit' }) }, ...prev].slice(0, 30));
   };
@@ -1118,7 +1126,7 @@ export default function SessionTeachPage() {
             </div>
           </div>
 
-          {/* Left side: back arrow + overflow menu */}
+          {/* Left side: back arrow only (overflow menu removed; actions redistributed to header/footer/student rows) */}
           <div className="flex items-center gap-1 flex-none">
             <button
               onClick={() => navigate('/teacher')}
@@ -1128,109 +1136,6 @@ export default function SessionTeachPage() {
             >
               {isRTL ? <ArrowLeft className="h-5 w-5" /> : <ArrowRight className="h-5 w-5" />}
             </button>
-            <div className="relative">
-              <button
-                onClick={() => setShowOverflowMenu(v => !v)}
-                aria-label="More"
-                aria-expanded={showOverflowMenu}
-                className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
-              >
-                <MoreHorizontal className="h-5 w-5" />
-              </button>
-              {showOverflowMenu && (
-                <>
-                  <div
-                    className="fixed inset-0 z-[60]"
-                    onClick={() => setShowOverflowMenu(false)}
-                    onMouseDown={() => setShowOverflowMenu(false)}
-                    onTouchStart={() => setShowOverflowMenu(false)}
-                  />
-                  <div
-                    className={`absolute z-[70] top-full mt-2 ${isRTL ? 'left-0' : 'right-0'} w-72 bg-background border border-border rounded-xl shadow-2xl p-2.5 space-y-1.5`}
-                    dir={isRTL ? 'rtl' : 'ltr'}
-                    onClick={(e) => e.stopPropagation()}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onTouchStart={(e) => e.stopPropagation()}
-                  >
-                    {/* Mode segmented control — hidden per product requirement */}
-                    {false && (
-                      <>
-                        <div className="px-1 pt-0.5 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground font-bold">{t('mode')}</div>
-                        <div className="flex items-center bg-foreground/[0.04] border border-border rounded-lg p-0.5 gap-0.5">
-                          {MODES.map(m => {
-                            const active = mode?.id === m.id;
-                            return (
-                              <button
-                                key={m.id}
-                                onClick={() => { handleSetMode(m); setShowOverflowMenu(false); }}
-                                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-1 rounded-md text-[11px] font-bold transition-colors ${
-                                  active ? `${m.color} text-foreground shadow-sm` : 'text-muted-foreground hover:bg-foreground/[0.06]'
-                                }`}
-                                title={m.labelKey ? t(m.labelKey) : m.label}
-                              >
-                                <m.icon className="h-3.5 w-3.5 flex-none" />
-                                <span className="truncate">{m.labelKey ? t(m.labelKey) : m.label}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                        <div className="border-t border-border my-1.5" />
-                      </>
-                    )}
-                    <button
-                      onClick={() => { setPanelOpen(v => !v); setShowOverflowMenu(false); }}
-                      className="w-full flex items-center gap-2.5 px-2 py-2 rounded-md hover:bg-foreground/[0.06] text-sm text-foreground transition-colors"
-                    >
-                      {panelOpen ? <PanelRightClose className="h-4 w-4 flex-none text-muted-foreground" /> : <PanelRightOpen className="h-4 w-4 flex-none text-muted-foreground" />}
-                      <span className="truncate">{panelOpen ? (t('hideActivityPanel') || 'إخفاء سجل النشاط') : (t('showActivityPanel') || 'عرض سجل النشاط')}</span>
-                    </button>
-                    <button
-                      onClick={() => { setShowSearch(v => !v); setShowOverflowMenu(false); }}
-                      className="w-full flex items-center gap-2.5 px-2 py-2 rounded-md hover:bg-foreground/[0.06] text-sm text-foreground transition-colors"
-                    >
-                      <Search className="h-4 w-4 flex-none text-muted-foreground" /> <span className="truncate">{t('search')}</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        setQuickNoteText(''); setQuickNoteIds(new Set()); setQuickNoteFilter('');
-                        setShowQuickNote(true); setShowOverflowMenu(false);
-                      }}
-                      className="w-full flex items-center gap-2.5 px-2 py-2 rounded-md hover:bg-foreground/[0.06] text-sm text-foreground transition-colors"
-                    >
-                      <StickyNote className="h-4 w-4 flex-none text-amber-500" /> <span className="truncate">{t('sendQuickNote') || 'إرسال ملاحظة'}</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowSidebarSettings(true);
-                        setShowOverflowMenu(false);
-                      }}
-                      className="w-full flex items-center gap-2.5 px-2 py-2 rounded-md hover:bg-foreground/[0.06] text-sm text-foreground transition-colors"
-                    >
-                      <Settings className="h-4 w-4 flex-none text-muted-foreground" /> <span className="truncate">{t('sidebarSettings')}</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowSettingsModal(true); loadSubjectsList(); loadSessionSettings();
-                        setShowOverflowMenu(false);
-                      }}
-                      className="w-full flex items-center gap-2.5 px-2 py-2 rounded-md hover:bg-foreground/[0.06] text-sm text-foreground transition-colors"
-                    >
-                      <Settings className="h-4 w-4 flex-none text-muted-foreground" /> <span className="truncate">{t('sessionSettings')}</span>
-                    </button>
-                    <div className="border-t border-border my-1.5" />
-                    <button
-                      onClick={() => { setShowEndDialog(true); setShowOverflowMenu(false); }}
-                      disabled={reviewLoading}
-                      className="w-full flex items-center gap-2.5 px-2 py-2 rounded-md hover:bg-rose-500/10 text-sm text-rose-600 dark:text-rose-400 font-bold transition-colors disabled:opacity-50"
-                    >
-                      {reviewLoading ? <Loader2 className="h-4 w-4 flex-none animate-spin" /> : <X className="h-4 w-4 flex-none" />}
-                      <span className="truncate">{t('endSession')}</span>
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
           </div>
         </div>
       </header>
@@ -1265,6 +1170,19 @@ export default function SessionTeachPage() {
             <UsersRound className="h-3 w-3" /> {t('groups')}
           </button>
         </div>
+        {/* Send Quick Note (global) — moved out of overflow menu */}
+        <button
+          onClick={() => {
+            setQuickNoteText(''); setQuickNoteIds(new Set()); setQuickNoteFilter('');
+            setShowQuickNote(true);
+          }}
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-amber-400/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 text-[11px] font-bold transition-colors"
+          title={t('sendQuickNote') || 'إرسال ملاحظة سريعة'}
+          aria-label={t('sendQuickNote') || 'إرسال ملاحظة سريعة'}
+        >
+          <StickyNote className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">{t('sendQuickNote') || 'إرسال ملاحظة سريعة'}</span>
+        </button>
         {evalMode === 'group' && (
           <button
             onClick={() => setShowGroupModal(true)}
@@ -1599,6 +1517,7 @@ export default function SessionTeachPage() {
                             isFlashing={flashId === student.id}
                             isSelected={selectedStudent?.id === student.id}
                             onClick={() => handleStudentClick(student)}
+                            onSendNote={openQuickNoteForStudent}
                           />
                         ))}
                       </div>
@@ -1620,6 +1539,7 @@ export default function SessionTeachPage() {
                           isFlashing={flashId === student.id}
                           isSelected={selectedStudent?.id === student.id}
                           onClick={() => handleStudentClick(student)}
+                          onSendNote={openQuickNoteForStudent}
                         />
                       ))}
                     </div>
@@ -1665,6 +1585,7 @@ export default function SessionTeachPage() {
                             isFlashing={flashId === student.id}
                             isSelected={selectedStudent?.id === student.id}
                             onClick={() => handleStudentClick(student)}
+                            onSendNote={openQuickNoteForStudent}
                           />
                         ))}
                       </div>
@@ -1681,6 +1602,7 @@ export default function SessionTeachPage() {
                     isFlashing={flashId === student.id}
                     isSelected={selectedStudent?.id === student.id}
                     onClick={() => handleStudentClick(student)}
+                    onSendNote={openQuickNoteForStudent}
                   />
                 ))}
               </div>
@@ -2348,6 +2270,25 @@ export default function SessionTeachPage() {
         >
           <FileText className="h-4 w-4" />
           {t('followupRecord')}
+        </Button>
+        {/* Sidebar Settings (moved out of overflow menu) — neutral slate */}
+        <Button
+          onClick={() => setShowSidebarSettings(true)}
+          className="h-10 px-4 bg-gradient-to-b from-slate-500 to-slate-600 hover:from-slate-400 hover:to-slate-500 text-white font-cairo font-bold border border-slate-400/40 shadow-[0_4px_12px_-2px_rgba(100,116,139,0.35)] gap-2"
+          title={t('sidebarSettings')}
+        >
+          <Settings className="h-4 w-4" />
+          <span className="hidden sm:inline">{t('sidebarSettings')}</span>
+        </Button>
+        {/* End Class (moved out of overflow menu) — destructive rose */}
+        <Button
+          onClick={() => setShowEndDialog(true)}
+          disabled={reviewLoading}
+          className="h-10 px-4 bg-gradient-to-b from-rose-500 to-rose-600 hover:from-rose-400 hover:to-rose-500 text-white font-cairo font-bold border border-rose-400/40 shadow-[0_4px_12px_-2px_rgba(244,63,94,0.4)] gap-2 disabled:opacity-60"
+          title={t('endSession')}
+        >
+          {reviewLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+          <span className="hidden sm:inline">{t('endSession')}</span>
         </Button>
         <span className="hidden sm:flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] font-semibold text-emerald-700 dark:text-emerald-300/80" role="status">
           <span className="relative flex h-1.5 w-1.5">
@@ -3768,7 +3709,7 @@ function SessionReviewPhase({ reviewData, sessionInfo, closingNote, setClosingNo
 }
 
 
-function StudentRow({ student, isFlashing, isSelected, onClick, onMenu }) {
+function StudentRow({ student, isFlashing, isSelected, onClick, onMenu, onSendNote }) {
   const initials = student.full_name?.charAt(0) || '?';
   const count = student.interactionCount || 0;
   const correct = student.correctAnswers || 0;
@@ -3836,6 +3777,16 @@ function StudentRow({ student, isFlashing, isSelected, onClick, onMenu }) {
           </span>
         )}
       </div>
+      {onSendNote && !isAbsent && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onSendNote(student); }}
+          className="p-1.5 rounded-md text-amber-600 dark:text-amber-400 hover:text-amber-700 hover:bg-amber-500/15 transition-colors opacity-70 group-hover:opacity-100 flex-none"
+          aria-label="إرسال ملاحظة"
+          title="إرسال ملاحظة"
+        >
+          <StickyNote className="h-4 w-4" />
+        </button>
+      )}
       {onMenu && (
         <button
           onClick={(e) => { e.stopPropagation(); onMenu(student); }}
