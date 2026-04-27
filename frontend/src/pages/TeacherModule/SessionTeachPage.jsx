@@ -4318,9 +4318,8 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
   const { api } = useAuth();
   const { nassaqError } = useNassaqAlert();
   const navigate = useNavigate();
-  const [sendingNotif, setSendingNotif] = useState(false);
-  const [notifSent, setNotifSent] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const hasSentReport = useRef(false);
 
   useEffect(() => {
     confetti({ particleCount: 120, spread: 80, origin: { y: 0.5 } });
@@ -4330,7 +4329,13 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
   }, []);
 
   const sendParentNotifications = async () => {
-    setSendingNotif(true);
+    const storageKey = summary?.session_record_id ? `nassaq:summarySent:${summary.session_record_id}` : null;
+    const clearGuardForRetry = () => {
+      hasSentReport.current = false;
+      if (storageKey) {
+        try { sessionStorage.removeItem(storageKey); } catch (_) { /* noop */ }
+      }
+    };
     const subjectName = sessionInfo?.subject_name || sessionInfo?.subjectName || '';
     const className = sessionInfo?.class_name || sessionInfo?.className || '';
     const durationMin = summary.duration_minutes || 0;
@@ -4371,19 +4376,36 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
       ]);
       const successCount = results.filter(r => r.status === 'fulfilled').length;
       if (successCount > 0) {
-        setNotifSent(true);
         toast.success(t('reportSentToParentsAndAdmin'));
         confetti({ particleCount: 50, spread: 60, origin: { y: 0.7 }, colors: ['#10b981', '#34d399', '#6ee7b7'] });
       } else {
+        clearGuardForRetry();
         nassaqError(t('failedToSendNotifications'));
       }
     } catch (e) {
       console.error('Error sending notifications:', e);
+      clearGuardForRetry();
       nassaqError(t('failedToSendNotifications'));
-    } finally {
-      setSendingNotif(false);
     }
   };
+
+  useEffect(() => {
+    if (hasSentReport.current) return;
+    if (!summary || !summary.session_record_id) return;
+    const storageKey = `nassaq:summarySent:${summary.session_record_id}`;
+    try {
+      if (sessionStorage.getItem(storageKey) === '1') {
+        hasSentReport.current = true;
+        return;
+      }
+      sessionStorage.setItem(storageKey, '1');
+    } catch (_) {
+      // sessionStorage unavailable — fall back to ref-only guard
+    }
+    hasSentReport.current = true;
+    sendParentNotifications();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [summary?.session_record_id]);
 
   const exportReport = async () => {
     setExporting(true);
@@ -4529,26 +4551,6 @@ function SessionSummary({ summary, sessionInfo, onHome, isRTL }) {
                 <Badge className="bg-amber-500/10 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 text-xs">{p.correct_answers} ✓</Badge>
               </div>
             ))}
-          </div>
-        )}
-
-        {!notifSent ? (
-          <button
-            onClick={sendParentNotifications}
-            disabled={sendingNotif}
-            className="w-full h-11 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-foreground text-sm font-cairo font-bold flex items-center justify-center gap-2 transition-colors"
-          >
-            {sendingNotif ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
-            {t('sendSummaryToParentsAndAdmin')}
-          </button>
-        ) : (
-          <div className="flex items-center justify-center gap-2 text-emerald-600 dark:text-emerald-400 text-sm py-2">
-            <CheckCircle2 className="h-4 w-4" />
-            <span>{t('sentSuccessfully')}</span>
           </div>
         )}
 
