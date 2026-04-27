@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import SectionErrorBoundary from '../../components/SectionErrorBoundary';
@@ -79,6 +80,108 @@ const LOG_ICONS = {
   participation: Hand,
 };
 
+/**
+ * EvalPopover — context-aware floating popover anchored to a sidebar trigger button.
+ * - Renders into a portal at <body> so it can't be clipped by overflow:auto ancestors.
+ * - Auto-flips horizontally based on which half of the viewport the trigger is in
+ *   (sidebar on the right edge in RTL → opens to the left of trigger; vice-versa for LTR).
+ * - Clamps within viewport edges and recomputes on resize/scroll.
+ * - Closes on outside click and Escape.
+ */
+function EvalPopover({ open, onClose, anchorRef, title, children, width = 320 }) {
+  const popRef = useRef(null);
+  const [pos, setPos] = useState({ left: 0, top: 0, ready: false });
+
+  // Reset readiness on each open so a previously-cached position doesn't briefly flash
+  // before we re-measure against the (possibly relocated) trigger.
+  useLayoutEffect(() => {
+    if (open) setPos(p => ({ ...p, ready: false }));
+  }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open || !anchorRef?.current) return;
+    const recompute = () => {
+      const a = anchorRef.current?.getBoundingClientRect();
+      if (!a) return;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const margin = 8;
+      const ph = popRef.current?.offsetHeight || 320;
+      const pw = popRef.current?.offsetWidth || width;
+      const triggerCenter = a.left + a.width / 2;
+      const openLeft = triggerCenter > vw / 2;
+      let left = openLeft ? a.left - pw - margin : a.right + margin;
+      let top = a.top;
+      if (left < margin) left = margin;
+      if (left + pw > vw - margin) left = Math.max(margin, vw - pw - margin);
+      if (top + ph > vh - margin) top = Math.max(margin, vh - ph - margin);
+      if (top < margin) top = margin;
+      setPos({ left, top, ready: true });
+    };
+    recompute();
+    const r2 = () => recompute();
+    window.addEventListener('resize', r2);
+    window.addEventListener('scroll', r2, true);
+    return () => {
+      window.removeEventListener('resize', r2);
+      window.removeEventListener('scroll', r2, true);
+    };
+  }, [open, anchorRef, width, children]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onMouseDown = (e) => {
+      if (popRef.current?.contains(e.target)) return;
+      if (anchorRef?.current?.contains(e.target)) return;
+      onClose();
+    };
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open, onClose, anchorRef]);
+
+  if (!open) return null;
+  return createPortal(
+    <div
+      ref={popRef}
+      style={{
+        position: 'fixed',
+        left: pos.left,
+        top: pos.top,
+        width,
+        zIndex: 9999,
+        visibility: pos.ready ? 'visible' : 'hidden',
+      }}
+      className="max-w-[92vw] bg-background/95 backdrop-blur-xl border border-border rounded-xl shadow-[0_18px_50px_-12px_rgba(0,0,0,0.55)] ring-1 ring-amber-400/10 overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+      role="dialog"
+      aria-modal="false"
+      aria-label={typeof title === 'string' ? title : 'evaluation'}
+    >
+      {title && (
+        <div className="px-3 py-2 border-b border-border bg-foreground/[0.04] flex items-center justify-between gap-2">
+          <span className="text-xs font-bold text-foreground font-cairo truncate">{title}</span>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 hover:bg-foreground/10 rounded text-muted-foreground hover:text-foreground transition-colors"
+            aria-label="close"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+      <div className="p-3 max-h-[60vh] overflow-y-auto scrollbar-thin">
+        {children}
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 function SettingsToggleRow({ icon, label, enabled, onToggle, t }) {
   return (
     <div className="flex items-center justify-between gap-2 bg-muted/30 dark:bg-card/50 rounded-lg px-3 py-2">
@@ -143,11 +246,25 @@ export default function SessionTeachPage() {
   const [quickNoteFilter, setQuickNoteFilter] = useState('');
   const [quickNoteSending, setQuickNoteSending] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState(null);
-  // Auto-close the on-demand action sheet whenever the selected student changes/clears.
-  // Sheet only opens when a sidebar action explicitly requests it via { openSheet: true }.
+  // ── Sidebar contextual popovers (replace the old central tabbed evaluation sheet).
+  // Single open-at-a-time controller; null when nothing is open.
+  // Values: 'positive' | 'negative' | 'homework' | 'recitation' | 'skill'
+  const [openPopover, setOpenPopover] = useState(null);
+  const positivePopRef = useRef(null);
+  const negativePopRef = useRef(null);
+  const homeworkPopRef = useRef(null);
+  const recitationPopRef = useRef(null);
+  const skillPopRef = useRef(null);
+  // Auto-close the (now-deprecated) central action sheet AND any open popover whenever the
+  // selected student changes/clears, so stale anchors and previous-student notes don't leak.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { setShowActionSheet(false); }, [selectedStudent?.id]);
+  useEffect(() => {
+    setShowActionSheet(false);
+    setOpenPopover(null);
+  }, [selectedStudent?.id]);
   const [actionTab, setActionTab] = useState('question'); // question | participation | behaviour | skill | homework | recitation
+  // If the underlying capability is toggled off while its popover is open, dismiss it
+  // (otherwise we'd leave a stranded popover anchored to a button that no longer renders).
   const [behaviourCategory, setBehaviourCategory] = useState('positive');
   const [behaviourNote, setBehaviourNote] = useState('');
   const [recitationAttempts, setRecitationAttempts] = useState(1);
@@ -233,6 +350,17 @@ export default function SessionTeachPage() {
       (actionTab === 'skill' && !skillEnabled);
     if (disabled) setActionTab('question');
   }, [actionTab, participationEnabled, homeworkEnabled, recitationEnabled, skillEnabled]);
+  // If the underlying capability is toggled OFF while its popover is open, dismiss it —
+  // otherwise we'd leave a stranded popover anchored to a button that no longer renders.
+  useEffect(() => {
+    if (
+      (openPopover === 'recitation' && !recitationEnabled) ||
+      (openPopover === 'homework' && !homeworkEnabled) ||
+      (openPopover === 'skill' && !skillEnabled)
+    ) {
+      setOpenPopover(null);
+    }
+  }, [openPopover, recitationEnabled, homeworkEnabled, skillEnabled]);
   const flashRef = useRef(null);
   useEffect(() => { return () => { if (flashRef.current) clearInterval(flashRef.current); }; }, []);
   const timer = useSessionTimer(startTime);
@@ -1611,8 +1739,8 @@ export default function SessionTeachPage() {
             )}
           </div>
 
-          {/* ── Action Panel (opens via right sidebar action) ── */}
-          {selectedStudent && showActionSheet && (
+          {/* ── Central tabbed action panel — DEPRECATED (replaced by contextual popovers on the right sidebar). Gated to never render but kept for reference / fallback. ── */}
+          {false && selectedStudent && showActionSheet && (
             <div className="flex-none shrink-0 flex flex-col bg-foreground/[0.02] rounded-xl border border-border overflow-hidden shadow-[0_8px_30px_-8px_rgba(0,0,0,0.5)] backdrop-blur-sm max-h-[60vh] sm:max-h-[55vh] relative">
               <button
                 onClick={() => setShowActionSheet(false)}
@@ -1923,16 +2051,35 @@ export default function SessionTeachPage() {
         {/* ── Right Action Sidebar (redesign) ── */}
         <aside className="flex-none w-[78px] sm:w-[92px] border-e border-border bg-background/60 backdrop-blur-sm flex flex-col overflow-y-auto py-2 px-1.5 gap-3">
           {(() => {
-            const guard = (fn, opts = {}) => () => {
+            const guard = (fn) => () => {
               if (!selectedStudent) { toast.error(t('selectStudentFirst') || 'اختر طالباً أولاً'); return; }
               fn();
-              if (opts.openSheet) setShowActionSheet(true);
+            };
+            // Open one popover at a time. Re-clicking same button toggles it closed.
+            const togglePopover = (key) => {
+              if (!selectedStudent) { toast.error(t('selectStudentFirst') || 'اختر طالباً أولاً'); return; }
+              if (key === 'positive' || key === 'negative') setBehaviourCategory(key);
+              setOpenPopover(prev => prev === key ? null : key);
             };
             const SideBtn = ({ onClick, color, icon: Icon, label, disabled }) => (
               <button
                 onClick={onClick}
                 disabled={disabled}
                 className={`w-full flex flex-col items-center gap-1 py-2 rounded-lg border ${color} text-foreground transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed`}
+              >
+                <Icon className="h-4 w-4" />
+                <span className="text-[10px] font-cairo font-bold leading-tight text-center">{label}</span>
+              </button>
+            );
+            // Trigger button that also forwards a ref so the popover can anchor to it.
+            const TriggerBtn = ({ refEl, onClick, color, icon: Icon, label, isOpen, disabled }) => (
+              <button
+                ref={refEl}
+                onClick={onClick}
+                disabled={disabled}
+                aria-haspopup="dialog"
+                aria-expanded={isOpen}
+                className={`w-full flex flex-col items-center gap-1 py-2 rounded-lg border ${color} text-foreground transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed ${isOpen ? 'ring-2 ring-amber-400/70 shadow-[0_0_0_2px_rgba(245,158,11,0.18)]' : ''}`}
               >
                 <Icon className="h-4 w-4" />
                 <span className="text-[10px] font-cairo font-bold leading-tight text-center">{label}</span>
@@ -1947,30 +2094,281 @@ export default function SessionTeachPage() {
                   <SideBtn onClick={guard(() => recordAnswer('wrong'))} color="bg-rose-500/15 border-rose-400/40 hover:bg-rose-500/25" icon={XCircle} label={t('wrong')} />
                   <SideBtn onClick={guard(() => recordAnswer('no_answer'))} color="bg-amber-500/15 border-amber-400/40 hover:bg-amber-500/25" icon={Minus} label={t('noAnswer') || 'لم'} />
                   {recitationEnabled && (
-                    <SideBtn onClick={guard(() => setActionTab('recitation'), { openSheet: true })} color="bg-purple-500/15 border-purple-400/40 hover:bg-purple-500/25" icon={Mic} label={t('recitation')} />
+                    <TriggerBtn
+                      refEl={recitationPopRef}
+                      onClick={() => togglePopover('recitation')}
+                      isOpen={openPopover === 'recitation'}
+                      color="bg-purple-500/15 border-purple-400/40 hover:bg-purple-500/25"
+                      icon={Mic}
+                      label={t('recitation')}
+                    />
                   )}
-                  {/* مشاركة (participation) button removed per UX cleanup — still accessible via the action sheet's tabs */}
                   {homeworkEnabled && (
-                    <SideBtn onClick={guard(() => setActionTab('homework'), { openSheet: true })} color="bg-blue-500/15 border-blue-400/40 hover:bg-blue-500/25" icon={ClipboardCheck} label={t('homework')} />
+                    <TriggerBtn
+                      refEl={homeworkPopRef}
+                      onClick={() => togglePopover('homework')}
+                      isOpen={openPopover === 'homework'}
+                      color="bg-blue-500/15 border-blue-400/40 hover:bg-blue-500/25"
+                      icon={ClipboardCheck}
+                      label={t('homework')}
+                    />
                   )}
                 </div>
                 {/* السلوك */}
                 <div className="space-y-1.5">
                   <div className="text-[9px] uppercase tracking-wider text-muted-foreground text-center font-bold">{t('behaviour') || 'السلوك'}</div>
-                  <SideBtn onClick={guard(() => { setBehaviourCategory('positive'); setActionTab('behaviour'); }, { openSheet: true })} color="bg-emerald-500/15 border-emerald-400/40 hover:bg-emerald-500/25" icon={ThumbsUp} label={t('positive')} />
-                  <SideBtn onClick={guard(() => { setBehaviourCategory('negative'); setActionTab('behaviour'); }, { openSheet: true })} color="bg-rose-500/15 border-rose-400/40 hover:bg-rose-500/25" icon={ThumbsDown} label={t('negative')} />
+                  <TriggerBtn
+                    refEl={positivePopRef}
+                    onClick={() => togglePopover('positive')}
+                    isOpen={openPopover === 'positive'}
+                    color="bg-emerald-500/15 border-emerald-400/40 hover:bg-emerald-500/25"
+                    icon={ThumbsUp}
+                    label={t('positive')}
+                  />
+                  <TriggerBtn
+                    refEl={negativePopRef}
+                    onClick={() => togglePopover('negative')}
+                    isOpen={openPopover === 'negative'}
+                    color="bg-rose-500/15 border-rose-400/40 hover:bg-rose-500/25"
+                    icon={ThumbsDown}
+                    label={t('negative')}
+                  />
                 </div>
                 {/* المهارات */}
                 {skillEnabled && (
                   <div className="space-y-1.5">
                     <div className="text-[9px] uppercase tracking-wider text-muted-foreground text-center font-bold">{t('skills') || 'المهارات'}</div>
-                    <SideBtn onClick={guard(() => setActionTab('skill'), { openSheet: true })} color="bg-violet-500/15 border-violet-400/40 hover:bg-violet-500/25" icon={Star} label={t('skill')} />
+                    <TriggerBtn
+                      refEl={skillPopRef}
+                      onClick={() => togglePopover('skill')}
+                      isOpen={openPopover === 'skill'}
+                      color="bg-violet-500/15 border-violet-400/40 hover:bg-violet-500/25"
+                      icon={Star}
+                      label={t('skill')}
+                    />
                   </div>
                 )}
-                {/* AI Hakim sidebar button removed per UX cleanup — still triggered from the toolbar's "اختيار عشوائي" button */}
               </>
             );
           })()}
+
+          {/* ── Contextual evaluation popovers — anchored to the sidebar triggers above ── */}
+          {/* Positive behaviour popover */}
+          <EvalPopover
+            open={openPopover === 'positive' && !!selectedStudent}
+            onClose={() => setOpenPopover(null)}
+            anchorRef={positivePopRef}
+            title={`${t('positive') || 'إيجابي'} — ${selectedStudent?.full_name || ''}`}
+            width={300}
+          >
+            <div className="grid grid-cols-2 gap-1.5">
+              {[
+                ...(BEHAVIOURS.positive || []),
+                ...customPositiveBehaviours.map(b => {
+                  if (typeof b === 'string') return { id: `custom_${b}`, label: b, points: '+2' };
+                  const p = Number(b.points) || 0;
+                  return { id: b.id || `custom_${b.name}`, label: b.name, points: p > 0 ? `+${p}` : `${p}` };
+                })
+              ].map(b => (
+                <button
+                  key={b.id}
+                  onClick={async () => { setBehaviourCategory('positive'); await recordBehaviour(b); setOpenPopover(null); }}
+                  className="bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-400/30 hover:border-emerald-400/60 text-foreground rounded-lg py-2 px-2 text-xs text-center transition-colors"
+                >
+                  <div className="font-medium font-cairo truncate">{b.labelKey ? t(b.labelKey) : b.label}</div>
+                  <div className="text-[10px] mt-0.5 text-emerald-700 dark:text-emerald-300 font-bold">{b.points}</div>
+                </button>
+              ))}
+            </div>
+            <input
+              className="mt-2 w-full bg-foreground/10 text-foreground text-xs rounded px-2 py-1.5 placeholder-muted-foreground outline-none focus:ring-2 focus:ring-emerald-400/40 font-cairo"
+              placeholder={t('optionalNote') || 'ملاحظة اختيارية'}
+              aria-label={t('optionalNote') || 'ملاحظة اختيارية'}
+              value={behaviourNote}
+              onChange={e => setBehaviourNote(e.target.value)}
+            />
+          </EvalPopover>
+
+          {/* Negative behaviour popover */}
+          <EvalPopover
+            open={openPopover === 'negative' && !!selectedStudent}
+            onClose={() => setOpenPopover(null)}
+            anchorRef={negativePopRef}
+            title={`${t('negative') || 'سلبي'} — ${selectedStudent?.full_name || ''}`}
+            width={300}
+          >
+            <div className="grid grid-cols-2 gap-1.5">
+              {[
+                ...(BEHAVIOURS.negative || []),
+                ...customNegativeBehaviours.map(b => {
+                  if (typeof b === 'string') return { id: `custom_${b}`, label: b, points: '-2' };
+                  const p = Number(b.points) || 0;
+                  return { id: b.id || `custom_${b.name}`, label: b.name, points: p > 0 ? `+${p}` : `${p}` };
+                })
+              ].map(b => (
+                <button
+                  key={b.id}
+                  onClick={async () => { setBehaviourCategory('negative'); await recordBehaviour(b); setOpenPopover(null); }}
+                  className="bg-rose-500/10 hover:bg-rose-500/20 border border-rose-400/30 hover:border-rose-400/60 text-foreground rounded-lg py-2 px-2 text-xs text-center transition-colors"
+                >
+                  <div className="font-medium font-cairo truncate">{b.labelKey ? t(b.labelKey) : b.label}</div>
+                  <div className="text-[10px] mt-0.5 text-rose-700 dark:text-rose-300 font-bold">{b.points}</div>
+                </button>
+              ))}
+            </div>
+            <input
+              className="mt-2 w-full bg-foreground/10 text-foreground text-xs rounded px-2 py-1.5 placeholder-muted-foreground outline-none focus:ring-2 focus:ring-rose-400/40 font-cairo"
+              placeholder={t('optionalNote') || 'ملاحظة اختيارية'}
+              aria-label={t('optionalNote') || 'ملاحظة اختيارية'}
+              value={behaviourNote}
+              onChange={e => setBehaviourNote(e.target.value)}
+            />
+          </EvalPopover>
+
+          {/* Skills popover */}
+          <EvalPopover
+            open={openPopover === 'skill' && !!selectedStudent}
+            onClose={() => setOpenPopover(null)}
+            anchorRef={skillPopRef}
+            title={`${t('skill') || 'مهارة'} — ${selectedStudent?.full_name || ''}`}
+            width={300}
+          >
+            {(skillTypes.length === 0 && customSkills.length === 0) ? (
+              <p className="text-muted-foreground text-xs text-center py-3 font-cairo">{t('noSkillsRegistered') || 'لا توجد مهارات مسجلة'}</p>
+            ) : (
+              <div className="grid grid-cols-2 gap-1.5">
+                {[
+                  ...skillTypes,
+                  ...customSkills.map(name => ({ id: `custom_${name}`, name, name_ar: name }))
+                ].map(skill => (
+                  <button
+                    key={skill.id}
+                    onClick={async () => { await recordSkill(skill); setOpenPopover(null); }}
+                    className="bg-violet-500/10 hover:bg-violet-500/20 border border-violet-400/30 hover:border-violet-400/60 text-foreground rounded-lg py-2 px-2 text-xs text-center transition-colors"
+                  >
+                    <div className="font-medium font-cairo truncate">{skill.name_ar || skill.name}</div>
+                    <div className="text-[10px] mt-0.5 text-violet-700 dark:text-violet-300 font-bold">+3</div>
+                  </button>
+                ))}
+              </div>
+            )}
+            <input
+              className="mt-2 w-full bg-foreground/10 text-foreground text-xs rounded px-2 py-1.5 placeholder-muted-foreground outline-none focus:ring-2 focus:ring-violet-400/40 font-cairo"
+              placeholder={t('optionalNote') || 'ملاحظة اختيارية'}
+              aria-label={t('optionalNote') || 'ملاحظة اختيارية'}
+              value={skillNote}
+              onChange={e => setSkillNote(e.target.value)}
+            />
+          </EvalPopover>
+
+          {/* Recitation popover */}
+          <EvalPopover
+            open={openPopover === 'recitation' && !!selectedStudent}
+            onClose={() => setOpenPopover(null)}
+            anchorRef={recitationPopRef}
+            title={`${t('recitation') || 'التسميع'} — ${selectedStudent?.full_name || ''}`}
+            width={300}
+          >
+            <div className="space-y-3">
+              <div>
+                <div className="text-muted-foreground text-[11px] mb-1.5 font-cairo">{t('attempts') || 'المحاولات'}</div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {[1, 2, 3].map(n => (
+                    <button
+                      key={n}
+                      onClick={() => setRecitationAttempts(n)}
+                      className={`py-1.5 rounded text-xs font-bold font-cairo transition-colors ${
+                        recitationAttempts === n
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-foreground/10 text-muted-foreground hover:bg-foreground/15'
+                      }`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={async () => { await recordRecitation(true); setOpenPopover(null); }}
+                  className="flex items-center justify-center gap-1.5 py-2 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-400/40 text-foreground text-xs font-cairo font-bold transition-colors"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  <span>{t('recitationMastered') || 'متقن'}</span>
+                </button>
+                <button
+                  onClick={async () => { await recordRecitation(false); setOpenPopover(null); }}
+                  className="flex items-center justify-center gap-1.5 py-2 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 border border-rose-400/40 text-foreground text-xs font-cairo font-bold transition-colors"
+                >
+                  <XCircle className="h-4 w-4" />
+                  <span>{t('recitationNotMastered') || 'لم يتقن'}</span>
+                </button>
+              </div>
+              <input
+                className="w-full bg-foreground/10 text-foreground text-xs rounded px-2 py-1.5 placeholder-muted-foreground outline-none focus:ring-2 focus:ring-purple-400/40 font-cairo"
+                placeholder={t('optionalNote') || 'ملاحظة اختيارية'}
+                aria-label={t('optionalNote') || 'ملاحظة اختيارية'}
+                value={recitationNote}
+                onChange={e => setRecitationNote(e.target.value)}
+              />
+            </div>
+          </EvalPopover>
+
+          {/* Homework popover (full class checklist for the active session) */}
+          <EvalPopover
+            open={openPopover === 'homework' && !!selectedStudent}
+            onClose={() => setOpenPopover(null)}
+            anchorRef={homeworkPopRef}
+            title={t('modeHomework') || t('homework') || 'الواجب'}
+            width={340}
+          >
+            {homeworkLoading ? (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 className="h-6 w-6 animate-spin text-blue-600 dark:text-blue-400" />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-muted-foreground text-xs font-cairo">{t('homeworkMarkNotSubmitted') || 'حدّد المسلّمين'}</span>
+                  <span className="text-blue-600 dark:text-blue-400 text-xs font-bold font-cairo">
+                    {Object.values(homeworkStatuses).filter(s => s === 'done').length}/{students.filter(s => s.attendance_status === 'present').length} {t('submitted') || 'مسلّم'}
+                  </span>
+                </div>
+                <div className="space-y-1.5 pe-1 max-h-[44vh] overflow-y-auto scrollbar-thin">
+                  {students.filter(s => s.attendance_status === 'present').map(student => {
+                    const isDone = homeworkStatuses[student.id] !== 'not_done';
+                    return (
+                      <button
+                        key={student.id}
+                        onClick={() => toggleHomework(student.id)}
+                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors active:scale-[0.97] ${
+                          isDone
+                            ? 'bg-green-600/15 border border-green-500/30'
+                            : 'bg-foreground/5 border border-border hover:border-border'
+                        }`}
+                      >
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
+                          isDone ? 'bg-green-600/30' : 'bg-foreground/10'
+                        }`}>
+                          {isDone ? <CheckCircle2 className="h-4 w-4 text-green-700 dark:text-green-400" /> : <XCircle className="h-4 w-4 text-rose-600 dark:text-rose-400" />}
+                        </div>
+                        <span className={`flex-1 text-start text-xs font-cairo truncate ${
+                          isDone ? 'text-foreground' : 'text-muted-foreground line-through'
+                        }`}>
+                          {student.full_name || t('student')}
+                        </span>
+                        <span className={`text-[10px] font-bold font-cairo px-1.5 py-0.5 rounded-full ${
+                          isDone ? 'bg-green-500/20 text-green-700 dark:text-green-400' : 'bg-rose-500/20 text-rose-700 dark:text-rose-400'
+                        }`}>
+                          {isDone ? (t('homeworkDone') || 'مسلّم') : (t('homeworkNotDone') || 'غير مسلّم')}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </EvalPopover>
         </aside>
 
         {/* ── Right Panel (Activity Log + Notes, desktop only, collapsible) ── */}
