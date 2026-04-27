@@ -31,7 +31,7 @@ import {
   User as UserIcon, Mail, Phone, BookMarked, Heart, Compass,
   ScrollText, Shield, Building2, ListChecks, Video, ImageIcon,
   ClipboardList, FileCheck, PenSquare, Megaphone, HandHeart,
-  PlayCircle, Wand2
+  PlayCircle, Wand2, Upload
 } from 'lucide-react';
 import { useTranslation } from '../../contexts/ThemeContext';
 
@@ -282,7 +282,10 @@ export default function TeacherAchievementsPage() {
   const [expandedV2, setExpandedV2] = useState({ intro: true });
   const [expandedSubsec, setExpandedSubsec] = useState({});
   const [cvDialog, setCvDialog] = useState({ open: false, kind: 'training_attended' });
-  const [cvForm, setCvForm] = useState({ title: '', organization: '', date: '', hours: '', description: '' });
+  const [cvForm, setCvForm] = useState({ title: '', organization: '', date: '', hours: '', description: '', file_url: '', file_name: '' });
+  const [cvFileUploading, setCvFileUploading] = useState(false);
+  const cvFileInputRef = useRef(null);
+  const cvUploadTokenRef = useRef(0);
   const [cvSaving, setCvSaving] = useState(false);
 
   // Manual evidence dialog (V2 sub-sections)
@@ -611,8 +614,36 @@ export default function TeacherAchievementsPage() {
   };
 
   const openCVDialog = (kind) => {
-    setCvForm({ title: '', organization: '', date: '', hours: '', description: '' });
+    cvUploadTokenRef.current++;
+    setCvFileUploading(false);
+    setCvForm({ title: '', organization: '', date: '', hours: '', description: '', file_url: '', file_name: '' });
     setCvDialog({ open: true, kind });
+  };
+
+  const handleCvFile = async (file) => {
+    if (cvFileInputRef.current) cvFileInputRef.current.value = '';
+    if (!file) return;
+    const MAX = 10 * 1024 * 1024;
+    if (file.size > MAX) { toast.error('حجم الملف يتجاوز 10 ميغابايت'); return; }
+    const token = ++cvUploadTokenRef.current;
+    setCvFileUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await api.post('/teacher/portfolio/upload', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      if (token !== cvUploadTokenRef.current) return;
+      if (res?.data?.success) {
+        setCvForm(p => ({ ...p, file_url: res.data.file_url, file_name: res.data.file_name }));
+        toast.success('تم رفع الملف');
+      }
+    } catch (err) {
+      if (token !== cvUploadTokenRef.current) return;
+      toast.error(err?.response?.data?.detail || 'فشل رفع الملف');
+    } finally {
+      if (token === cvUploadTokenRef.current) setCvFileUploading(false);
+    }
   };
 
   const handleAddCVItem = async () => {
@@ -626,6 +657,8 @@ export default function TeacherAchievementsPage() {
         date: cvForm.date || null,
         hours: cvForm.hours ? Number(cvForm.hours) : null,
         description: cvForm.description.trim() || null,
+        file_url: cvForm.file_url || null,
+        file_name: cvForm.file_name || null,
       });
       toast.success('تمت الإضافة');
       setCvDialog({ open: false, kind: 'training_attended' });
@@ -1796,10 +1829,61 @@ export default function TeacherAchievementsPage() {
               <Label className="text-xs font-medium mb-1.5 block">وصف مختصر</Label>
               <Textarea value={cvForm.description} onChange={(e) => setCvForm(p => ({ ...p, description: e.target.value }))} rows={3} placeholder="اختياري" dir={isRTL ? 'rtl' : 'ltr'} className="resize-none" />
             </div>
+            {/* Optional file attachment — PDF / DOC / images */}
+            <div>
+              <Label className="text-xs font-medium mb-1.5 block">إرفاق ملف (اختياري) - PDF, DOC, pictures formats</Label>
+              <input
+                ref={cvFileInputRef}
+                type="file"
+                className="hidden"
+                accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp,.gif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*"
+                onChange={(e) => handleCvFile(e.target.files?.[0])}
+              />
+              {cvForm.file_url ? (
+                <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-violet-200 dark:border-violet-800/60 bg-violet-50/60 dark:bg-violet-900/20">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <FileText className="w-4 h-4 text-violet-600 dark:text-violet-400 shrink-0" />
+                    <span className="text-xs font-medium text-violet-700 dark:text-violet-300 truncate font-tajawal">
+                      {cvForm.file_name || 'ملف مرفق'}
+                    </span>
+                  </div>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 shrink-0"
+                    title="إزالة الملف"
+                    onClick={() => { cvUploadTokenRef.current++; setCvFileUploading(false); setCvForm(p => ({ ...p, file_url: '', file_name: '' })); }}
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                  </Button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  disabled={cvFileUploading}
+                  onClick={() => cvFileInputRef.current?.click()}
+                  className="w-full py-3 rounded-lg border-2 border-dashed border-violet-300 dark:border-violet-700 hover:border-violet-500 dark:hover:border-violet-500 hover:bg-violet-50/50 dark:hover:bg-violet-900/10 transition-colors flex flex-col items-center justify-center gap-1 text-violet-600 dark:text-violet-300 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {cvFileUploading ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <span className="text-xs font-tajawal">جارٍ الرفع…</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-5 h-5" />
+                      <span className="text-xs font-tajawal">اضغط لاختيار ملف</span>
+                      <span className="text-[10px] text-violet-500/80 dark:text-violet-400/80 font-tajawal">PDF, DOC, صور — حتى 10 ميغابايت</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCvDialog({ open: false, kind: 'training_attended' })}>إلغاء</Button>
-            <Button onClick={handleAddCVItem} disabled={cvSaving || !cvForm.title || cvForm.title.trim().length < 2}>
+            <Button onClick={handleAddCVItem} disabled={cvSaving || cvFileUploading || !cvForm.title || cvForm.title.trim().length < 2}>
               {cvSaving && <Loader2 className={`w-4 h-4 animate-spin ${isRTL ? 'ml-2' : 'mr-2'}`} />}
               حفظ
             </Button>
@@ -1847,6 +1931,7 @@ function AccordionCard({ icon: Icon, color, bg, title, subtitle, count, expanded
 }
 
 function EvidenceRow({ item, isRTL, onView, onEdit, onDelete }) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-750 hover:bg-gray-100 dark:hover:bg-gray-700">
       <div className="w-9 h-9 rounded-full bg-white dark:bg-gray-800 flex items-center justify-center shrink-0 border border-gray-200 dark:border-gray-700">

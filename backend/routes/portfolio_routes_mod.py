@@ -1454,6 +1454,8 @@ class CVItemCreate(BaseModel):
     date: Optional[str] = None
     hours: Optional[int] = Field(None, ge=0, le=100000)
     description: Optional[str] = Field(None, max_length=1000)
+    file_url: Optional[str] = None
+    file_name: Optional[str] = Field(None, max_length=300)
 
 
 @router.post("/teacher/portfolio/cv-item")
@@ -1462,6 +1464,19 @@ async def add_cv_item(payload: CVItemCreate, current_user: dict = Depends(get_cu
         raise HTTPException(status_code=403, detail="غير مصرح")
     if payload.kind not in CV_KINDS:
         raise HTTPException(status_code=422, detail="invalid_kind")
+
+    # Validate optional file_url: same caps & schemes as manual evidence attachments
+    if payload.file_url:
+        MAX_DATA_URL = 14 * 1024 * 1024  # base64 of 10 MB ≈ 13.3 MB
+        if len(payload.file_url) > MAX_DATA_URL:
+            raise HTTPException(status_code=413, detail="file_too_large")
+        if not (payload.file_url.startswith("data:application/pdf;base64,")
+                or payload.file_url.startswith("data:application/msword;base64,")
+                or payload.file_url.startswith("data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,")
+                or payload.file_url.startswith("data:image/")
+                or payload.file_url.startswith("https://")
+                or payload.file_url.startswith("http://")):
+            raise HTTPException(status_code=422, detail="unsupported_file_type")
 
     await _lock_teacher_meta(current_user["id"])
     meta = await _load_meta(current_user["id"])
@@ -1474,6 +1489,8 @@ async def add_cv_item(payload: CVItemCreate, current_user: dict = Depends(get_cu
         "date": payload.date or None,
         "hours": payload.hours,
         "description": (payload.description or "").strip() or None,
+        "file_url": (payload.file_url or "").strip() or None,
+        "file_name": (payload.file_name or "").strip() or None,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     items.append(new_item)
