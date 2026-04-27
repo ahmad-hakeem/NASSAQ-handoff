@@ -383,16 +383,6 @@ export const Sidebar = ({ children }) => {
         label: t('communicationNotifications'),
         href: '/teacher/communication',
         roles: ['teacher'],
-        subItems: [
-          {
-            label: t('viewBulletin'),
-            href: '/teacher/communication?tab=bulletin',
-          },
-          {
-            label: t('attendWorkshop'),
-            href: '/teacher/communication?tab=workshop',
-          },
-        ],
       },
       {
         icon: Network,
