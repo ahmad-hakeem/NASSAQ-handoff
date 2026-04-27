@@ -1195,20 +1195,22 @@ export default function SessionTeachPage() {
         )}
         <button
           onClick={() => setShowFollowupRecord(true)}
-          className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
-          title={t('followupRecord')}
-          aria-label={t('followupRecord')}
+          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] text-sm font-medium transition-colors"
+          title={t('followupRecord') || 'كشف المتابعة'}
+          aria-label={t('followupRecord') || 'كشف المتابعة'}
         >
           <FileText className="h-4 w-4" />
+          <span className="hidden sm:inline">{t('followupRecord') || 'كشف المتابعة'}</span>
         </button>
         <button
           onClick={selectRandom}
           disabled={loading}
-          className="p-2 rounded-md text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 transition-colors disabled:opacity-50"
-          title={t('randomStudentPick')}
-          aria-label={t('randomStudentPick')}
+          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-amber-400/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 text-sm font-medium transition-colors disabled:opacity-50"
+          title={t('randomStudentPick') || 'اختيار عشوائي'}
+          aria-label={t('randomStudentPick') || 'اختيار عشوائي'}
         >
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shuffle className="h-4 w-4" />}
+          <span className="hidden sm:inline">{t('randomStudentPick') || 'اختيار عشوائي'}</span>
         </button>
         <div className="flex-1 min-w-[140px] relative">
           <Search className="absolute start-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -1947,9 +1949,7 @@ export default function SessionTeachPage() {
                   {recitationEnabled && (
                     <SideBtn onClick={guard(() => setActionTab('recitation'), { openSheet: true })} color="bg-purple-500/15 border-purple-400/40 hover:bg-purple-500/25" icon={Mic} label={t('recitation')} />
                   )}
-                  {participationEnabled && (
-                    <SideBtn onClick={guard(() => setActionTab('participation'), { openSheet: true })} color="bg-sky-500/15 border-sky-400/40 hover:bg-sky-500/25" icon={Hand} label={t('participation')} />
-                  )}
+                  {/* مشاركة (participation) button removed per UX cleanup — still accessible via the action sheet's tabs */}
                   {homeworkEnabled && (
                     <SideBtn onClick={guard(() => setActionTab('homework'), { openSheet: true })} color="bg-blue-500/15 border-blue-400/40 hover:bg-blue-500/25" icon={ClipboardCheck} label={t('homework')} />
                   )}
@@ -1967,10 +1967,7 @@ export default function SessionTeachPage() {
                     <SideBtn onClick={guard(() => setActionTab('skill'), { openSheet: true })} color="bg-violet-500/15 border-violet-400/40 hover:bg-violet-500/25" icon={Star} label={t('skill')} />
                   </div>
                 )}
-                {/* AI Hakim */}
-                <div className="mt-auto pt-2 border-t border-border">
-                  <SideBtn onClick={() => selectRandom()} color="bg-gradient-to-b from-amber-500/30 to-orange-500/30 border-amber-400/50 hover:from-amber-500/40 hover:to-orange-500/40" icon={Sparkles} label={t('hakimAI') || 'حكيم AI'} disabled={loading} />
-                </div>
+                {/* AI Hakim sidebar button removed per UX cleanup — still triggered from the toolbar's "اختيار عشوائي" button */}
               </>
             );
           })()}
@@ -2231,72 +2228,78 @@ export default function SessionTeachPage() {
         )}
       </div>
 
-      {/* Bottom bar — redesign: refresh + save session + follow-up record */}
-      <div className="flex-none shrink-0 bg-background/90 backdrop-blur-md border-t border-border px-3 sm:px-4 py-2.5 flex items-center gap-2 sm:gap-3 relative z-10">
+      {/* Bottom bar — distributed: 2 primary buttons start (RTL right), 2 secondary/destructive end (RTL left) */}
+      <div className="flex-none shrink-0 bg-background/90 backdrop-blur-md border-t border-border px-3 sm:px-4 py-2.5 flex items-center justify-between w-full gap-2 sm:gap-3 relative z-10 flex-wrap">
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-500/30 to-transparent" aria-hidden="true" />
-        <button
-          onClick={() => { loadStudents(); loadActivityLog(); }}
-          className="p-2.5 rounded-lg bg-foreground/[0.06] hover:bg-foreground/10 text-muted-foreground hover:text-foreground border border-border transition-colors"
-          title={t('refresh') || 'تحديث'}
-          aria-label={t('refresh') || 'تحديث'}
-        >
-          <RotateCcw className="h-4 w-4" />
-        </button>
-        <Button
-          onClick={async () => {
-            setSavingSession(true);
-            try {
-              if (Object.keys(followupData).length > 0 || Object.keys(followupAbsences).length > 0) {
-                await api.post(`/session/${sessionId}/followup-record`, {
-                  data: followupData, absences: followupAbsences
-                });
+
+        {/* Right group (RTL start): Refresh + Save Class + Follow-up Record */}
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+          <button
+            onClick={() => { loadStudents(); loadActivityLog(); }}
+            className="p-2.5 rounded-lg bg-foreground/[0.06] hover:bg-foreground/10 text-muted-foreground hover:text-foreground border border-border transition-colors"
+            title={t('refresh') || 'تحديث'}
+            aria-label={t('refresh') || 'تحديث'}
+          >
+            <RotateCcw className="h-4 w-4" />
+          </button>
+          <Button
+            onClick={async () => {
+              setSavingSession(true);
+              try {
+                if (Object.keys(followupData).length > 0 || Object.keys(followupAbsences).length > 0) {
+                  await api.post(`/session/${sessionId}/followup-record`, {
+                    data: followupData, absences: followupAbsences
+                  });
+                }
+                toast.success(t('savedSuccessfully') || 'تم الحفظ');
+              } catch (e) {
+                toast.error(t('errorSaving') || 'خطأ في الحفظ');
+              } finally {
+                setSavingSession(false);
               }
-              toast.success(t('savedSuccessfully') || 'تم الحفظ');
-            } catch (e) {
-              toast.error(t('errorSaving') || 'خطأ في الحفظ');
-            } finally {
-              setSavingSession(false);
-            }
-          }}
-          disabled={savingSession}
-          className="flex-1 sm:flex-none h-10 px-5 bg-gradient-to-b from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white font-cairo font-bold border border-emerald-400/40 shadow-[0_4px_12px_-2px_rgba(16,185,129,0.4)] gap-2"
-        >
-          {savingSession ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          {t('saveSession') || 'حفظ الحصة'}
-        </Button>
-        <Button
-          onClick={() => setShowFollowupRecord(true)}
-          className="h-10 px-5 bg-gradient-to-b from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white font-cairo font-bold border border-sky-400/40 shadow-[0_4px_12px_-2px_rgba(59,130,246,0.4)] gap-2"
-        >
-          <FileText className="h-4 w-4" />
-          {t('followupRecord')}
-        </Button>
-        {/* Sidebar Settings (moved out of overflow menu) — neutral slate */}
-        <Button
-          onClick={() => setShowSidebarSettings(true)}
-          className="h-10 px-4 bg-gradient-to-b from-slate-500 to-slate-600 hover:from-slate-400 hover:to-slate-500 text-white font-cairo font-bold border border-slate-400/40 shadow-[0_4px_12px_-2px_rgba(100,116,139,0.35)] gap-2"
-          title={t('sidebarSettings')}
-        >
-          <Settings className="h-4 w-4" />
-          <span className="hidden sm:inline">{t('sidebarSettings')}</span>
-        </Button>
-        {/* End Class (moved out of overflow menu) — destructive rose */}
-        <Button
-          onClick={() => setShowEndDialog(true)}
-          disabled={reviewLoading}
-          className="h-10 px-4 bg-gradient-to-b from-rose-500 to-rose-600 hover:from-rose-400 hover:to-rose-500 text-white font-cairo font-bold border border-rose-400/40 shadow-[0_4px_12px_-2px_rgba(244,63,94,0.4)] gap-2 disabled:opacity-60"
-          title={t('endSession')}
-        >
-          {reviewLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
-          <span className="hidden sm:inline">{t('endSession')}</span>
-        </Button>
-        <span className="hidden sm:flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] font-semibold text-emerald-700 dark:text-emerald-300/80" role="status">
-          <span className="relative flex h-1.5 w-1.5">
-            <span className="absolute inset-0 rounded-full bg-emerald-400 animate-ping opacity-60" />
-            <span className="relative rounded-full h-1.5 w-1.5 bg-emerald-400" />
+            }}
+            disabled={savingSession}
+            className="h-10 px-5 bg-gradient-to-b from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white font-cairo font-bold border border-emerald-400/40 shadow-[0_4px_12px_-2px_rgba(16,185,129,0.4)] gap-2"
+          >
+            {savingSession ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            {t('saveSession') || 'حفظ الحصة'}
+          </Button>
+          <Button
+            onClick={() => setShowFollowupRecord(true)}
+            className="h-10 px-5 bg-gradient-to-b from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white font-cairo font-bold border border-sky-400/40 shadow-[0_4px_12px_-2px_rgba(59,130,246,0.4)] gap-2"
+          >
+            <FileText className="h-4 w-4" />
+            {t('followupRecord')}
+          </Button>
+        </div>
+
+        {/* Left group (RTL end): Sidebar Settings + End Class + autosave indicator */}
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+          <Button
+            onClick={() => setShowSidebarSettings(true)}
+            className="h-10 px-4 bg-gradient-to-b from-slate-500 to-slate-600 hover:from-slate-400 hover:to-slate-500 text-white font-cairo font-bold border border-slate-400/40 shadow-[0_4px_12px_-2px_rgba(100,116,139,0.35)] gap-2"
+            title={t('sidebarSettings')}
+          >
+            <Settings className="h-4 w-4" />
+            <span className="hidden sm:inline">{t('sidebarSettings')}</span>
+          </Button>
+          <Button
+            onClick={() => setShowEndDialog(true)}
+            disabled={reviewLoading}
+            className="h-10 px-4 bg-gradient-to-b from-rose-500 to-rose-600 hover:from-rose-400 hover:to-rose-500 text-white font-cairo font-bold border border-rose-400/40 shadow-[0_4px_12px_-2px_rgba(244,63,94,0.4)] gap-2 disabled:opacity-60"
+            title={t('endSession')}
+          >
+            {reviewLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+            <span className="hidden sm:inline">{t('endSession')}</span>
+          </Button>
+          <span className="hidden md:flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] font-semibold text-emerald-700 dark:text-emerald-300/80" role="status">
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="absolute inset-0 rounded-full bg-emerald-400 animate-ping opacity-60" />
+              <span className="relative rounded-full h-1.5 w-1.5 bg-emerald-400" />
+            </span>
+            {t('autoSaveActive')}
           </span>
-          {t('autoSaveActive')}
-        </span>
+        </div>
       </div>
 
       {/* End Session Confirmation Dialog */}
