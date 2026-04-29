@@ -223,11 +223,10 @@ export default function SessionTeachPage() {
   const [selectedStudent, setSelectedStudent] = useState(null);
   // ── Sidebar contextual popovers (replace the old central tabbed evaluation sheet).
   // Single open-at-a-time controller; null when nothing is open.
-  // Values: 'positive' | 'negative' | 'homework' | 'recitation' | 'skill'
+  // Values: 'positive' | 'negative' | 'recitation' | 'skill'
   const [openPopover, setOpenPopover] = useState(null);
   const positivePopRef = useRef(null);
   const negativePopRef = useRef(null);
-  const homeworkPopRef = useRef(null);
   const recitationPopRef = useRef(null);
   const skillPopRef = useRef(null);
   // Auto-close the (now-deprecated) central action sheet AND any open popover whenever the
@@ -332,12 +331,21 @@ export default function SessionTeachPage() {
   useEffect(() => {
     if (
       (openPopover === 'recitation' && !recitationEnabled) ||
-      (openPopover === 'homework' && !homeworkEnabled) ||
       (openPopover === 'skill' && !skillEnabled)
     ) {
       setOpenPopover(null);
     }
-  }, [openPopover, recitationEnabled, homeworkEnabled, skillEnabled]);
+  }, [openPopover, recitationEnabled, skillEnabled]);
+  // Load homework statuses for the inline per-student toggle whenever the
+  // homework feature is enabled and we have a roster. Defaults every present
+  // student to "أنجز" (done) — see loadHomeworkStatuses.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (homeworkEnabled && sessionId && students.length > 0) {
+      loadHomeworkStatuses(students);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [homeworkEnabled, sessionId, students.length]);
   const flashRef = useRef(null);
   useEffect(() => { return () => { if (flashRef.current) clearInterval(flashRef.current); }; }, []);
   const timer = useSessionTimer(startTime);
@@ -1638,6 +1646,9 @@ export default function SessionTeachPage() {
                             isSelected={selectedStudent?.id === student.id}
                             onClick={() => handleStudentClick(student)}
                             onSendNote={openQuickNoteForStudent}
+                            homeworkEnabled={homeworkEnabled}
+                            homeworkStatus={homeworkStatuses[student.id]}
+                            onToggleHomework={toggleHomework}
                           />
                         ))}
                       </div>
@@ -1660,6 +1671,9 @@ export default function SessionTeachPage() {
                           isSelected={selectedStudent?.id === student.id}
                           onClick={() => handleStudentClick(student)}
                           onSendNote={openQuickNoteForStudent}
+                          homeworkEnabled={homeworkEnabled}
+                          homeworkStatus={homeworkStatuses[student.id]}
+                          onToggleHomework={toggleHomework}
                         />
                       ))}
                     </div>
@@ -1706,6 +1720,9 @@ export default function SessionTeachPage() {
                             isSelected={selectedStudent?.id === student.id}
                             onClick={() => handleStudentClick(student)}
                             onSendNote={openQuickNoteForStudent}
+                            homeworkEnabled={homeworkEnabled}
+                            homeworkStatus={homeworkStatuses[student.id]}
+                            onToggleHomework={toggleHomework}
                           />
                         ))}
                       </div>
@@ -1723,6 +1740,9 @@ export default function SessionTeachPage() {
                     isSelected={selectedStudent?.id === student.id}
                     onClick={() => handleStudentClick(student)}
                     onSendNote={openQuickNoteForStudent}
+                    homeworkEnabled={homeworkEnabled}
+                    homeworkStatus={homeworkStatuses[student.id]}
+                    onToggleHomework={toggleHomework}
                   />
                 ))}
               </div>
@@ -2093,16 +2113,6 @@ export default function SessionTeachPage() {
                       label={t('recitation')}
                     />
                   )}
-                  {homeworkEnabled && (
-                    <TriggerBtn
-                      refEl={homeworkPopRef}
-                      onClick={() => togglePopover('homework')}
-                      isOpen={openPopover === 'homework'}
-                      color="bg-blue-500/15 border-blue-400/40 hover:bg-blue-500/25"
-                      icon={ClipboardCheck}
-                      label={t('homework')}
-                    />
-                  )}
                 </div>
                 {/* السلوك */}
                 <div className="space-y-1.5">
@@ -2304,61 +2314,6 @@ export default function SessionTeachPage() {
             </div>
           </EvalPopover>
 
-          {/* Homework popover (full class checklist for the active session) */}
-          <EvalPopover
-            open={openPopover === 'homework' && !!selectedStudent}
-            onClose={() => setOpenPopover(null)}
-            anchorRef={homeworkPopRef}
-            title={t('modeHomework') || t('homework') || 'الواجب'}
-            width={340}
-          >
-            {homeworkLoading ? (
-              <div className="flex items-center justify-center py-6">
-                <Loader2 className="h-6 w-6 animate-spin text-blue-600 dark:text-blue-400" />
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-muted-foreground text-xs font-cairo">{t('homeworkMarkNotSubmitted') || 'حدّد المسلّمين'}</span>
-                  <span className="text-blue-600 dark:text-blue-400 text-xs font-bold font-cairo">
-                    {Object.values(homeworkStatuses).filter(s => s === 'done').length}/{students.filter(s => s.attendance_status === 'present').length} {t('submitted') || 'مسلّم'}
-                  </span>
-                </div>
-                <div className="space-y-1.5 pe-1 max-h-[44vh] overflow-y-auto scrollbar-thin">
-                  {students.filter(s => s.attendance_status === 'present').map(student => {
-                    const isDone = homeworkStatuses[student.id] !== 'not_done';
-                    return (
-                      <button
-                        key={student.id}
-                        onClick={() => toggleHomework(student.id)}
-                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors active:scale-[0.97] ${
-                          isDone
-                            ? 'bg-green-600/15 border border-green-500/30'
-                            : 'bg-foreground/5 border border-border hover:border-border'
-                        }`}
-                      >
-                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
-                          isDone ? 'bg-green-600/30' : 'bg-foreground/10'
-                        }`}>
-                          {isDone ? <CheckCircle2 className="h-4 w-4 text-green-700 dark:text-green-400" /> : <XCircle className="h-4 w-4 text-rose-600 dark:text-rose-400" />}
-                        </div>
-                        <span className={`flex-1 text-start text-xs font-cairo truncate ${
-                          isDone ? 'text-foreground' : 'text-muted-foreground line-through'
-                        }`}>
-                          {student.full_name || t('student')}
-                        </span>
-                        <span className={`text-[10px] font-bold font-cairo px-1.5 py-0.5 rounded-full ${
-                          isDone ? 'bg-green-500/20 text-green-700 dark:text-green-400' : 'bg-rose-500/20 text-rose-700 dark:text-rose-400'
-                        }`}>
-                          {isDone ? (t('homeworkDone') || 'مسلّم') : (t('homeworkNotDone') || 'غير مسلّم')}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </EvalPopover>
         </aside>
 
         {/* ── Right Panel (Activity Log + Notes, desktop only, collapsible) ── */}
@@ -3887,12 +3842,15 @@ function SessionReviewPhase({ reviewData, sessionInfo, closingNote, setClosingNo
 }
 
 
-function StudentRow({ student, isFlashing, isSelected, onClick, onMenu, onSendNote }) {
+function StudentRow({ student, isFlashing, isSelected, onClick, onMenu, onSendNote, homeworkEnabled, homeworkStatus, onToggleHomework }) {
   const initials = student.full_name?.charAt(0) || '?';
   const count = student.interactionCount || 0;
   const correct = student.correctAnswers || 0;
   const isFemale = student.gender === 'female';
   const isAbsent = student.attendance_status === 'absent';
+  // Default state for the inline homework toggle is "أنجز" (done) — only the
+  // explicit 'not_done' status flips the badge to the muted/red state.
+  const isHomeworkDone = homeworkStatus !== 'not_done';
   const avatarBg = isFemale ? 'bg-gradient-to-br from-pink-500 to-rose-600' : 'bg-gradient-to-br from-sky-500 to-blue-600';
   const conditions = student.health_conditions || student.conditions || [];
   const condList = Array.isArray(conditions) ? conditions : (typeof conditions === 'string' ? conditions.split(',').map(s => s.trim()).filter(Boolean) : []);
@@ -3955,6 +3913,21 @@ function StudentRow({ student, isFlashing, isSelected, onClick, onMenu, onSendNo
           </span>
         )}
       </div>
+      {homeworkEnabled && onToggleHomework && !isAbsent && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onToggleHomework(student.id); }}
+          className={`p-1.5 rounded-md transition-colors opacity-80 group-hover:opacity-100 flex-none ${
+            isHomeworkDone
+              ? 'text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 hover:bg-emerald-500/15'
+              : 'text-rose-600 dark:text-rose-400 hover:text-rose-700 hover:bg-rose-500/15'
+          }`}
+          aria-label={isHomeworkDone ? 'أنجز الواجب' : 'لم ينجز الواجب'}
+          aria-pressed={isHomeworkDone}
+          title={isHomeworkDone ? 'الواجب: أنجز' : 'الواجب: لم ينجز'}
+        >
+          <ClipboardCheck className="h-4 w-4" />
+        </button>
+      )}
       {onSendNote && !isAbsent && (
         <button
           onClick={(e) => { e.stopPropagation(); onSendNote(student); }}
