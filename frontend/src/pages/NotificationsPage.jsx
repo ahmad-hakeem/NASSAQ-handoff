@@ -16,7 +16,7 @@ import {
   Bell, BellOff, Check, CheckCheck, Trash2, Filter, RefreshCw,
   Calendar, CalendarCheck, ClipboardList, AlertTriangle, Info,
   MessageSquare, Megaphone, Eye, Clock, Search, Settings,
-  Inbox, AlertCircle, Loader2
+  Inbox, AlertCircle, Loader2, FileText
 } from 'lucide-react';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -31,6 +31,9 @@ const notificationTypeConfig = {
   behaviour: { icon: AlertTriangle, label: { ar: 'السلوك', en: 'Behaviour' }, color: 'bg-yellow-500', iconColor: 'text-yellow-500' },
   communication: { icon: MessageSquare, label: { ar: 'التواصل', en: 'Communication' }, color: 'bg-teal-500', iconColor: 'text-teal-500' },
   announcement: { icon: Megaphone, label: { ar: 'الإعلانات', en: 'Announcements' }, color: 'bg-orange-500', iconColor: 'text-orange-500' },
+  circular: { icon: FileText, label: { ar: 'تعميم', en: 'Circular' }, color: 'bg-indigo-500', iconColor: 'text-indigo-500' },
+  other: { icon: Info, label: { ar: 'أخرى', en: 'Other' }, color: 'bg-slate-500', iconColor: 'text-slate-500' },
+  circular_ack: { icon: CheckCheck, label: { ar: 'تأكيد استلام تعميم', en: 'Circular Ack' }, color: 'bg-green-500', iconColor: 'text-green-600' },
 };
 
 const ACCOUNT_TYPE_LABEL_AR = {
@@ -71,10 +74,13 @@ const priorityConfig = {
 
 export const NotificationsPage = () => {
   const { t } = useTranslation();
-  const { user, api } = useAuth();
+  const { user, api, isPlatformAdmin, isSchoolPrincipal } = useAuth();
   const { isRTL } = useTheme();
   const navigate = useNavigate();
   const { nassaqError } = useNassaqAlert();
+
+  const isManagerView = isPlatformAdmin || isSchoolPrincipal;
+  const isReceiverView = !isManagerView;
 
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -87,6 +93,7 @@ export const NotificationsPage = () => {
   const [activeTab, setActiveTab] = useState('all');
   const [prefSettings, setPrefSettings] = useState(null);
   const [savingPrefs, setSavingPrefs] = useState(false);
+  const [acknowledgedIds, setAcknowledgedIds] = useState(() => new Set());
 
   const fetchNotifications = useCallback(async () => {
     try {
@@ -156,6 +163,31 @@ export const NotificationsPage = () => {
   const handleNotificationClick = (notification) => {
     if (!notification.read_status) handleMarkAsRead(notification.id);
     if (notification.action_url) navigate(notification.action_url);
+  };
+
+  const handleAcknowledgeCircular = async (notification) => {
+    if (acknowledgedIds.has(notification.id)) return;
+    setAcknowledgedIds(prev => {
+      const next = new Set(prev);
+      next.add(notification.id);
+      return next;
+    });
+    try {
+      await api.post(`/notifications/${notification.id}/acknowledge`, {
+        circularId: notification.id,
+        userId: user?.id,
+      });
+      if (!notification.read_status) {
+        setNotifications(prev => prev.map(n => n.id === notification.id ? { ...n, read_status: true } : n));
+      }
+    } catch (error) {
+      setAcknowledgedIds(prev => {
+        const next = new Set(prev);
+        next.delete(notification.id);
+        return next;
+      });
+      nassaqError(isRTL ? 'تعذر تسجيل تأكيد الاستلام' : 'Failed to acknowledge circular');
+    }
   };
 
   const handleSavePreferences = async () => {
@@ -233,6 +265,60 @@ export const NotificationsPage = () => {
     const typeConf = notificationTypeConfig[notification.notification_type] || notificationTypeConfig.system;
     const priorityConf = priorityConfig[notification.priority] || priorityConfig.medium;
     const IconComponent = typeConf.icon;
+    const isCircular = notification.notification_type === 'circular';
+    const isCircularAck = notification.notification_type === 'circular_ack';
+    const showAcknowledgeButton = isCircular && isReceiverView;
+    const showCircularAckCard = isCircularAck && isManagerView;
+    const isAcknowledged = acknowledgedIds.has(notification.id);
+
+    if (showCircularAckCard) {
+      return (
+        <div
+          key={notification.id}
+          className={`p-4 rounded-xl border cursor-pointer transition-all hover:shadow-md bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-900/40 ${!notification.read_status ? 'ring-1 ring-green-300/60' : ''}`}
+          onClick={() => handleNotificationClick(notification)}
+          data-testid={`notif-circular-ack-${notification.id}`}
+        >
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-green-100 dark:bg-green-900/40">
+              <CheckCheck className="h-4 w-4 text-green-600 dark:text-green-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <h4 className={`font-medium text-sm text-green-800 dark:text-green-200 truncate ${!notification.read_status ? 'font-bold' : ''}`}>
+                      {isRTL ? 'تأكيد استلام تعميم' : 'Circular Acknowledged'}
+                    </h4>
+                    {!notification.read_status && <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />}
+                  </div>
+                  <p className="text-xs text-green-900/80 dark:text-green-100/80 line-clamp-2">
+                    {prettifyText(isRTL ? notification.message : (notification.message_en || notification.message), isRTL)}
+                  </p>
+                </div>
+                <Badge className="bg-green-600 text-white text-[10px] border-0">
+                  {isRTL ? 'تم الاستلام' : 'Acknowledged'}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between mt-2.5">
+                <div className="flex items-center gap-2 text-[10px] text-green-800/70 dark:text-green-200/70">
+                  <Clock className="h-3 w-3" />
+                  {formatTimeAgo(notification.created_at)}
+                  {notification.sender_name && (<><span>•</span><span>{notification.sender_name}</span></>)}
+                </div>
+                <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                  {!notification.read_status && (
+                    <Button size="sm" variant="ghost" onClick={() => handleMarkAsRead(notification.id)} className="h-7 w-7 p-0 rounded-lg text-green-700 hover:text-green-800"><Check className="h-3.5 w-3.5" /></Button>
+                  )}
+                  <Button size="sm" variant="ghost" onClick={() => handleDeleteNotification(notification.id)} className="h-7 w-7 p-0 rounded-lg text-red-500 hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div
         key={notification.id}
@@ -267,6 +353,29 @@ export const NotificationsPage = () => {
                 )}
               </div>
             </div>
+            {showAcknowledgeButton && (
+              <div className="mt-3" onClick={(e) => e.stopPropagation()}>
+                <Button
+                  size="sm"
+                  onClick={() => handleAcknowledgeCircular(notification)}
+                  disabled={isAcknowledged}
+                  className={`h-8 gap-1.5 ${isAcknowledged ? 'bg-green-600 hover:bg-green-600 text-white' : 'bg-brand-turquoise hover:bg-brand-turquoise/90 text-white'}`}
+                  data-testid={`notif-ack-btn-${notification.id}`}
+                >
+                  {isAcknowledged ? (
+                    <>
+                      <CheckCheck className="h-3.5 w-3.5" />
+                      {isRTL ? 'تم الاستلام' : 'Acknowledged'}
+                    </>
+                  ) : (
+                    <>
+                      <Check className="h-3.5 w-3.5" />
+                      {isRTL ? 'تلقيت التعميم' : 'Acknowledge Receipt'}
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
             <div className="flex items-center justify-between mt-2.5">
               <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
                 <Clock className="h-3 w-3" />

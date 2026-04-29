@@ -116,10 +116,14 @@ async def create_notification_internal(
         "id": notification_id,
         "user_id": recipient_id,
         "title": title,
+        "title_en": title_en,
         "message": message,
+        "message_en": message_en,
         "type": notification_type,
         "priority": priority,
         "action_url": action_url,
+        "related_entity": related_entity,
+        "related_entity_id": related_entity_id,
         "sender_id": sender_id,
         "sender_name": sender_name_resolved,
         "tenant_id": school_id,
@@ -366,6 +370,65 @@ async def delete_notification(
     await gd_delete_one(db.session, "notifications", {"id": notification_id})
     
     return {"success": True, "message": "Notification deleted"}
+
+class CircularAckRequest(BaseModel):
+    circularId: str
+    userId: str
+
+@router.post("/notifications/{notification_id}/acknowledge")
+async def acknowledge_circular(
+    notification_id: str,
+    payload: CircularAckRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """Acknowledge receipt of a Ministry Circular (تعميم).
+    Triggers a circular_ack notification back to the original sender (Manager/Admin)."""
+    if payload.circularId != notification_id or payload.userId != current_user['id']:
+        raise HTTPException(status_code=400, detail="Mismatched circular or user identifier")
+
+    original = await gd_find_one(db.session, "notifications", {"id": notification_id})
+    if not original:
+        raise HTTPException(status_code=404, detail="Circular not found")
+
+    if original.get('type') != 'circular':
+        raise HTTPException(status_code=400, detail="Notification is not a circular")
+
+    if original.get('user_id') != current_user['id']:
+        raise HTTPException(status_code=403, detail="Not authorized to acknowledge this circular")
+
+    original_tenant = original.get('tenant_id')
+    user_tenant = current_user.get('tenant_id')
+    if original_tenant and user_tenant and original_tenant != user_tenant:
+        raise HTTPException(status_code=403, detail="Cross-tenant acknowledgment not allowed")
+
+    sender_id = original.get('sender_id')
+    if not sender_id:
+        raise HTTPException(status_code=400, detail="Original sender not found")
+
+    teacher_name = current_user.get('full_name') or current_user.get('name') or ''
+    original_title_ar = original.get('title') or ''
+    original_title_en = original.get('title_en') or original_title_ar
+
+    ack_title_ar = "تأكيد استلام تعميم"
+    ack_title_en = "Circular Acknowledgement"
+    ack_message_ar = f"المعلم {teacher_name} أكد استلام التعميم: {original_title_ar}"
+    ack_message_en = f"Teacher {teacher_name} acknowledged the circular: {original_title_en}"
+
+    await create_notification_internal(
+        title=ack_title_ar,
+        message=ack_message_ar,
+        recipient_id=sender_id,
+        notification_type="circular_ack",
+        priority="medium",
+        sender_id=current_user['id'],
+        related_entity="notification",
+        related_entity_id=notification_id,
+        title_en=ack_title_en,
+        message_en=ack_message_en,
+        school_id=current_user.get('tenant_id'),
+    )
+
+    return {"success": True, "message": "Circular acknowledged"}
 
 @router.get("/notifications/analytics")
 async def get_notification_analytics(

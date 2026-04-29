@@ -100,6 +100,8 @@ export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
           { code: 'alert', name_ar: 'تنبيه', name_en: 'Alert' },
           { code: 'event', name_ar: 'حدث', name_en: 'Event' },
           { code: 'emergency', name_ar: 'طوارئ', name_en: 'Emergency' },
+          { code: 'circular', name_ar: 'تعميم', name_en: 'Circular' },
+          { code: 'other', name_ar: 'أخرى', name_en: 'Other' },
         ],
         priorities: priorityRes.data.priorities || [
           { code: 'low', name_ar: 'منخفضة', name_en: 'Low' },

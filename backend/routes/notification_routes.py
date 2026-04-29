@@ -33,6 +33,9 @@ class NotificationType(str, Enum):
     alert = "alert"
     event = "event"
     emergency = "emergency"
+    circular = "circular"
+    other = "other"
+    circular_ack = "circular_ack"
 
 class SendNotificationRequest(BaseModel):
     title_ar: str = Field(..., min_length=1)
