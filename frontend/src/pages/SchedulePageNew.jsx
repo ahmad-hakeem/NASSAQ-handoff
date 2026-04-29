@@ -19,8 +19,9 @@ import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import {
   Wand2, UserX, Sparkles, Loader2, RefreshCw,
-  Scale, Hourglass, UserMinus, AlertOctagon, AlertTriangle,
+  Scale, Hourglass, UserMinus, AlertOctagon, AlertTriangle, Repeat,
 } from 'lucide-react';
+import CandidatesSidePanel from '../components/schedule/CandidatesSidePanel';
 
 const DAYS = [
   { key: 'sunday',    ar: 'الأحد' },
@@ -61,18 +62,50 @@ function KpiCard({ icon: Icon, label, value, suffix, accent }) {
 
 // ─── Cell renderers ────────────────────────────────────────────────────────
 function FilledCell({ cell, onClick }) {
-  // cell.is_vacant => مستبدل أحمر (المعلم غائب — حصته شاغرة)
+  // cell.is_vacant => حصة شاغرة (معلمها غائب) — تفتح نافذة المرشحين عند الضغط
   if (cell?.is_vacant) {
     return (
       <button
         type="button"
         onClick={onClick}
+        title="اضغط لاختيار بديل من جدول الانتظار"
         className="w-full h-full min-h-[44px] flex flex-col items-center justify-center text-[11px] font-semibold leading-tight px-1 py-1
                    bg-red-100 hover:bg-red-200 text-red-800 border border-red-300 rounded-md transition-colors"
       >
         <span className="font-bold">شاغرة</span>
         <span className="text-[10px] opacity-75 truncate max-w-full">{cell.class_name}</span>
       </button>
+    );
+  }
+  // cell.is_substituted => الخانة الأصلية للمعلم الغائب بعد إسناد بديل
+  if (cell?.is_substituted) {
+    return (
+      <div
+        className="w-full h-full min-h-[44px] flex flex-col items-center justify-center text-[11px] leading-tight px-1 py-1
+                   bg-emerald-50 border border-emerald-300 rounded-md text-emerald-800"
+        title={`بديل: ${cell.substitute_teacher_name || ''}`}
+      >
+        <span className="font-bold">{cell.class_name || '—'}</span>
+        <span className="text-[9px] truncate max-w-full opacity-80">
+          بديل: {cell.substitute_teacher_name || '—'}
+        </span>
+      </div>
+    );
+  }
+  // cell.is_substitute => الخانة المضافة لصف المعلم البديل
+  if (cell?.is_substitute) {
+    return (
+      <div
+        className="w-full h-full min-h-[44px] flex flex-col items-center justify-center text-[11px] leading-tight px-1 py-1
+                   bg-violet-50 border border-violet-300 rounded-md text-violet-800 relative"
+        title={`بديل عن ${cell.original_teacher_name || ''}`}
+      >
+        <Repeat className="absolute top-0.5 right-0.5 h-2.5 w-2.5 opacity-70" />
+        <span className="font-bold">{cell.class_name || '—'}</span>
+        <span className="text-[9px] truncate max-w-full opacity-80">
+          {cell.subject_name || ''}
+        </span>
+      </div>
     );
   }
   return (
@@ -115,6 +148,10 @@ export default function SchedulePageNew() {
   const [error, setError] = useState('');
   const [grid, setGrid] = useState(null);
 
+  // Substitution drawer state
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerSlot, setDrawerSlot] = useState(null);
+
   const loadGrid = useCallback(async () => {
     if (!schoolId) return;
     try {
@@ -149,8 +186,53 @@ export default function SchedulePageNew() {
   }, [schoolId]);
 
   const handleVacantClick = useCallback((cellData) => {
-    console.log('Vacant clicked', cellData);
-  }, []);
+    if (!cellData?.session?.session_id) {
+      toast.error('لا يمكن فتح المرشحين — الخانة لا ترتبط بحصة معروفة');
+      return;
+    }
+    const today = grid?.today || cellData.day_of_week;
+    const todayDate = new Date().toISOString().slice(0, 10);
+    setDrawerSlot({
+      original_session_id: cellData.session.session_id,
+      day_of_week: cellData.day_of_week,
+      period_number: cellData.period_number,
+      class_id: cellData.session.class_id,
+      class_name: cellData.session.class_name,
+      subject_id: cellData.session.subject_id,
+      subject_name: cellData.session.subject_name,
+      absent_teacher_name: cellData.teacher_name,
+      absence_date: cellData.day_of_week === today ? todayDate : todayDate,
+      school_id: schoolId,
+    });
+    setDrawerOpen(true);
+  }, [grid?.today, schoolId]);
+
+  const handleUndoSubstitution = useCallback(async (substitutionId) => {
+    try {
+      await api.delete(`/substitutions/${substitutionId}`, {
+        params: { school_id: schoolId },
+        headers: { 'X-School-Context': schoolId },
+      });
+      await loadGrid();
+      toast.success('تم التراجع عن الإسناد');
+    } catch (err) {
+      const msg = err.response?.data?.detail || err.message || 'فشل التراجع';
+      toast.error(msg);
+    }
+  }, [api, schoolId, loadGrid]);
+
+  const handleAssigned = useCallback((substitution, cand) => {
+    // Optimistic refresh + undo toast
+    loadGrid();
+    const subId = substitution?.id;
+    toast.success('تم إسناد الحصة وإرسال إشعار', {
+      description: `البديل: ${cand?.teacher_name || '—'}`,
+      duration: 10000,
+      action: subId
+        ? { label: 'تراجع', onClick: () => handleUndoSubstitution(subId) }
+        : undefined,
+    });
+  }, [loadGrid, handleUndoSubstitution]);
 
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
@@ -262,6 +344,15 @@ export default function SchedulePageNew() {
             <p className="text-sm font-medium">{alertText}</p>
           </div>
         )}
+
+        {/* ── Substitution drawer ───────────────────────────────────── */}
+        <CandidatesSidePanel
+          open={drawerOpen}
+          onOpenChange={setDrawerOpen}
+          slot={drawerSlot}
+          api={api}
+          onAssigned={handleAssigned}
+        />
 
         {/* ── Master matrix grid ───────────────────────────────────── */}
         <Card className="border border-slate-200 shadow-sm overflow-hidden">

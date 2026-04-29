@@ -261,6 +261,59 @@ async def get_master_grid(
         }
         assigned_count[tid] = assigned_count.get(tid, 0) + 1
 
+    # ── Merge today's substitute assignments ──────────────────────────────
+    # Substitutes don't mutate timetable_sessions; we overlay them onto cells
+    # so the absent teacher's red cell flips to "تم الاستبدال" and the
+    # substitute teacher gets a synthetic "بديل" cell in their row.
+    today_iso = datetime.now(timezone.utc).date().isoformat()
+    sub_rows = await gd_find(
+        db.session, "substitute_assignments",
+        {"school_id": sid, "absence_date": today_iso},
+        limit=2000,
+    )
+    teacher_name_map = {t.get("id"): (t.get("full_name") or "") for t in teachers}
+    substituted_today = 0
+    for sub in sub_rows:
+        sub_day = (sub.get("day_of_week") or "").lower()
+        if sub_day != today_key:
+            continue
+        try:
+            sub_period_int = int(sub.get("period_number"))
+        except (TypeError, ValueError):
+            continue
+        sub_period_key = str(sub_period_int)
+        absent_tid = sub.get("original_teacher_id")
+        sub_tid = sub.get("substitute_teacher_id")
+
+        # Flip the absent teacher's vacant cell to substituted.
+        if absent_tid:
+            absent_day_cells = cells.setdefault(absent_tid, {}).setdefault(sub_day, {})
+            existing = absent_day_cells.get(sub_period_key)
+            if existing is not None:
+                existing["is_vacant"] = False
+                existing["is_substituted"] = True
+                existing["substitution_id"] = sub.get("id")
+                existing["substitute_teacher_id"] = sub_tid
+                existing["substitute_teacher_name"] = teacher_name_map.get(sub_tid, "")
+                substituted_today += 1
+
+        # Add synthetic cell to substitute teacher's row.
+        if sub_tid:
+            sub_day_cells = cells.setdefault(sub_tid, {}).setdefault(sub_day, {})
+            if sub_period_key not in sub_day_cells:
+                sub_day_cells[sub_period_key] = {
+                    "session_id": sub.get("original_session_id"),
+                    "class_id": sub.get("class_id"),
+                    "class_name": sub.get("class_name") or class_name_map.get(sub.get("class_id"), ""),
+                    "subject_id": sub.get("subject_id"),
+                    "subject_name": sub.get("subject_name") or subject_name_map.get(sub.get("subject_id"), ""),
+                    "is_vacant": False,
+                    "is_substitute": True,
+                    "substitution_id": sub.get("id"),
+                    "original_teacher_id": absent_tid,
+                    "original_teacher_name": teacher_name_map.get(absent_tid, ""),
+                }
+
     teacher_rows: list[dict] = []
     fairness_values: list[float] = []
     for t in teachers:
@@ -282,12 +335,14 @@ async def get_master_grid(
 
     fairness_pct = round(_jains_fairness(fairness_values) * 100)
 
-    vacant_today = sum(
+    vacant_today_total = sum(
         1
         for s in sessions
         if (s.get("day_of_week") or s.get("day") or "").lower() == today_key
         and s.get("teacher_id") in absent_ids
     )
+    # Substituted slots no longer count against the vacancy KPI.
+    vacant_today = max(vacant_today_total - substituted_today, 0)
     # نصيب الأسبوع: مجموع الحصص المُسندة لمعلمين غائبين اليوم — تقريب لاحتياج الاستبدال
     # خلال بقية الأسبوع. (المرحلة التالية ستضيف derivation حقيقي من quota/demand.)
     vacant_week = sum(
@@ -313,6 +368,7 @@ async def get_master_grid(
         "absent_teachers_today": len(absent_ids),
         "vacant_sessions_today": vacant_today,
         "vacant_sessions_week": vacant_week,
+        "substituted_sessions_today": substituted_today,
     }
 
     alert = None
