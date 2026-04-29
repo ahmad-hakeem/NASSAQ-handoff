@@ -13,9 +13,7 @@ import {
   Clock,
   TrendingUp,
   TrendingDown,
-  Minus,
   AlertTriangle,
-  UserPlus,
   School,
   ClipboardList,
   Eye,
@@ -46,9 +44,6 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import AddStudentWizard from '../wizards/AddStudentWizard';
-import { AddTeacherWizard } from '../wizards/AddTeacherWizard';
-import { CreateClassWizard } from '../wizards/CreateClassWizard';
 import { SendNotificationWizard } from '../wizards/SendNotificationWizard';
 import { CreateScheduleWizard } from '../wizards/CreateScheduleWizard';
 import { LiveSessionsMonitor } from '../wizards/LiveSessionsMonitor';
@@ -180,42 +175,6 @@ const SchoolDayProgress = ({ isRTL }) => {
         </div>
       </div>
     </div>
-  );
-};
-
-const HeroMetric = ({ title, value, subtitle, icon: Icon, gradient, onClick, isRTL, change, changeType }) => {
-  const NavArrow = isRTL ? ChevronLeft : ChevronRight;
-  return (
-    <Card 
-      className={`relative overflow-hidden border-0 shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer group ${gradient}`}
-      onClick={onClick}
-    >
-      <CardContent className="p-5 relative z-10">
-        <div className="flex items-start justify-between">
-          <div className="space-y-3">
-            <p className="text-sm font-tajawal text-white/85">{title}</p>
-            <div className="flex items-baseline gap-2">
-              <span className="text-4xl font-bold font-cairo text-white">{value}</span>
-              {change && (
-                <span className={`text-sm font-tajawal flex items-center gap-0.5 ${
-                  changeType === 'up' ? 'text-emerald-300' : changeType === 'down' ? 'text-red-300' : 'text-white/90'
-                }`}>
-                  {changeType === 'up' ? <TrendingUp className="h-3.5 w-3.5" /> : changeType === 'down' ? <TrendingDown className="h-3.5 w-3.5" /> : <Minus className="h-3.5 w-3.5" />}
-                  {change}
-                </span>
-              )}
-            </div>
-            {subtitle && <p className="text-xs text-white/90 font-tajawal">{subtitle}</p>}
-          </div>
-          <div className="w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center group-hover:bg-white/20 transition-colors">
-            <Icon className="h-7 w-7 text-white/90" />
-          </div>
-        </div>
-        <div className="absolute bottom-3 end-4 opacity-0 group-hover:opacity-100 transition-opacity">
-          <NavArrow className="h-5 w-5 text-white/80" />
-        </div>
-      </CardContent>
-    </Card>
   );
 };
 
@@ -768,24 +727,20 @@ const StrategicNav = ({ onAction, isRTL, onNavigate }) => {
   );
 };
 
-const QuickAddBar = ({ onAction, isRTL }) => {
+const QuickAddBar = ({ onAction }) => {
   const { t } = useTranslation();
-  const actions = [
-    { id: 'add-student', label: t('addStudent'), icon: UserPlus, color: 'text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 border-blue-200 dark:border-blue-800' },
-    { id: 'add-teacher', label: t('addTeacher'), icon: GraduationCap, color: 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800' },
-    { id: 'create-class', label: t('createClass'), icon: School, color: 'text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/30 border-purple-200 dark:border-purple-800' },
-    { id: 'send-notification', label: t('sendNotice'), icon: Send, color: 'text-pink-600 dark:text-pink-400 hover:bg-pink-50 dark:hover:bg-pink-950/30 border-pink-200 dark:border-pink-800' },
-  ];
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      {actions.map((a) => (
-        <Button key={a.id} variant="outline" size="sm" onClick={() => onAction(a.id)}
-          className={`rounded-xl text-xs h-8 px-3 border ${a.color} transition-all`}>
-          <a.icon className="h-3.5 w-3.5 me-1.5" />
-          {a.label}
-        </Button>
-      ))}
+    <div className="flex flex-1 flex-wrap items-center justify-end gap-2 max-md:flex-none max-md:justify-start">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => onAction('send-notification')}
+        className="rounded-xl text-xs h-8 px-3 border text-pink-600 dark:text-pink-400 hover:bg-pink-50 dark:hover:bg-pink-950/30 border-pink-200 dark:border-pink-800 transition-all"
+      >
+        <Send className="h-3.5 w-3.5 me-1.5" />
+        {t('sendNotice')}
+      </Button>
     </div>
   );
 };
@@ -799,12 +754,7 @@ export const SchoolDashboardContent = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [dashboardData, setDashboardData] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
-  const [grades, setGrades] = useState([]);
-  const [classes, setClasses] = useState([]);
 
-  const [showAddStudentWizard, setShowAddStudentWizard] = useState(false);
-  const [showAddTeacherWizard, setShowAddTeacherWizard] = useState(false);
-  const [showCreateClassWizard, setShowCreateClassWizard] = useState(false);
   const [showSendNotificationWizard, setShowSendNotificationWizard] = useState(false);
   const [showCreateScheduleWizard, setShowCreateScheduleWizard] = useState(false);
   const [showLiveSessionsMonitor, setShowLiveSessionsMonitor] = useState(false);
@@ -860,20 +810,7 @@ export const SchoolDashboardContent = () => {
 
   useEffect(() => {
     fetchDashboardData();
-    const fetchWizardData = async () => {
-      try {
-        const [gradesRes, classesRes] = await Promise.all([
-          api.get('/reference/grades').catch(() => ({ data: [] })),
-          api.get('/classes').catch(() => ({ data: [] })),
-        ]);
-        setGrades(gradesRes.data || []);
-        setClasses(classesRes.data || []);
-      } catch (err) {
-        console.error('Error fetching wizard data:', err);
-      }
-    };
-    fetchWizardData();
-  }, [api, fetchDashboardData]);
+  }, [fetchDashboardData]);
 
   useEffect(() => {
     const interval = setInterval(() => fetchDashboardData(false), 20000);
@@ -882,9 +819,6 @@ export const SchoolDashboardContent = () => {
 
   const handleQuickAction = (actionId) => {
     switch (actionId) {
-      case 'add-student': setShowAddStudentWizard(true); break;
-      case 'add-teacher': setShowAddTeacherWizard(true); break;
-      case 'create-class': setShowCreateClassWizard(true); break;
       case 'view-sessions': setShowLiveSessionsMonitor(true); break;
       case 'send-notification': setShowSendNotificationWizard(true); break;
       default: break;
@@ -902,13 +836,11 @@ export const SchoolDashboardContent = () => {
     );
   }
 
-  const m = dashboardData?.metrics;
-
   return (
     <div className="space-y-5" data-testid="school-dashboard-content">
-      <div className="flex items-center justify-between">
-        <QuickAddBar onAction={handleQuickAction} isRTL={isRTL} />
-        <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap max-md:gap-2">
+        <QuickAddBar onAction={handleQuickAction} />
+        <div className="flex items-center gap-3 max-md:w-full max-md:justify-end">
           {lastUpdated && (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
@@ -927,55 +859,6 @@ export const SchoolDashboardContent = () => {
       <SectionErrorBoundary name="SchoolDayProgress" isRTL={isRTL} fallbackMessage={t('failedToLoadSchoolDayProgress')}>
         <SchoolDayProgress isRTL={isRTL} />
       </SectionErrorBoundary>
-
-      <section data-testid="key-metrics-section">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <HeroMetric
-            title={t('totalStudents')}
-            value={m?.totalStudents?.value || 0}
-            change={m?.totalStudents?.change}
-            changeType={m?.totalStudents?.changeType}
-            subtitle={t('enrolledStudents')}
-            icon={Users}
-            gradient="bg-gradient-to-br from-blue-500 to-blue-600 dark:from-blue-600 dark:to-blue-700"
-            onClick={() => navigate('/admin/users-management')}
-            isRTL={isRTL}
-          />
-          <HeroMetric
-            title={t('totalTeachers')}
-            value={m?.totalTeachers?.value || 0}
-            change={m?.totalTeachers?.change}
-            changeType={m?.totalTeachers?.changeType}
-            subtitle={t('teachingStaff')}
-            icon={GraduationCap}
-            gradient="bg-gradient-to-br from-emerald-500 to-emerald-600 dark:from-emerald-600 dark:to-emerald-700"
-            onClick={() => navigate('/admin/users-management')}
-            isRTL={isRTL}
-          />
-          <HeroMetric
-            title={t('todaysSessions')}
-            value={m?.todaySessions?.value || 0}
-            change={m?.todaySessions?.change}
-            changeType={m?.todaySessions?.changeType}
-            subtitle={t('scheduledSessions')}
-            icon={Clock}
-            gradient="bg-gradient-to-br from-violet-500 to-violet-600 dark:from-violet-600 dark:to-violet-700"
-            onClick={() => navigate('/school/schedule')}
-            isRTL={isRTL}
-          />
-          <HeroMetric
-            title={t('substituteQueue')}
-            value={m?.waitingSubstitute?.value || 0}
-            change={m?.waitingSubstitute?.change}
-            changeType={m?.waitingSubstitute?.changeType}
-            subtitle={t('awaitingSubstitute')}
-            icon={Timer}
-            gradient={`bg-gradient-to-br ${(m?.waitingSubstitute?.value || 0) > 0 ? 'from-red-500 to-red-600 dark:from-red-600 dark:to-red-700' : 'from-slate-500 to-slate-600 dark:from-slate-600 dark:to-slate-700'}`}
-            onClick={() => setShowLiveSessionsMonitor(true)}
-            isRTL={isRTL}
-          />
-        </div>
-      </section>
 
       <section className="grid lg:grid-cols-2 gap-5" data-testid="dashboard-kpi-section">
         <SectionErrorBoundary name="AttendanceRadial" isRTL={isRTL} fallbackMessage={t('failedToLoadAttendanceData')}>
@@ -1002,17 +885,6 @@ export const SchoolDashboardContent = () => {
         </SectionErrorBoundary>
       </section>
 
-      <AddStudentWizard 
-        open={showAddStudentWizard} 
-        onOpenChange={setShowAddStudentWizard}
-        isRTL={isRTL}
-        api={api}
-        grades={grades}
-        classes={classes}
-        onSuccess={() => fetchDashboardData(true)}
-      />
-      <AddTeacherWizard open={showAddTeacherWizard} onOpenChange={setShowAddTeacherWizard} />
-      <CreateClassWizard open={showCreateClassWizard} onOpenChange={setShowCreateClassWizard} />
       <SendNotificationWizard open={showSendNotificationWizard} onOpenChange={setShowSendNotificationWizard} />
       <CreateScheduleWizard open={showCreateScheduleWizard} onOpenChange={setShowCreateScheduleWizard} />
       <LiveSessionsMonitor open={showLiveSessionsMonitor} onOpenChange={setShowLiveSessionsMonitor} />
