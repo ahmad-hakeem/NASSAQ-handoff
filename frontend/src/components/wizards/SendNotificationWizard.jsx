@@ -59,6 +59,7 @@ export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
     send_push: true,
     send_sms: false,
     send_email: false,
+    send_whatsapp: false,
   });
   
   const [options, setOptions] = useState({
@@ -130,8 +131,9 @@ export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
     const headers = token ? { Authorization: `Bearer ${token}` } : {};
     
     try {
+      const { send_whatsapp, ...apiData } = data;
       const payload = {
-        ...data,
+        ...apiData,
         recipient_filter: needsFilter ? data.recipient_filter : null,
       };
 
@@ -164,6 +166,7 @@ export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
       send_push: true,
       send_sms: false,
       send_email: false,
+      send_whatsapp: false,
     });
     setSuccess(false);
     setResult(null);
@@ -306,7 +309,7 @@ export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
               />
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2 hidden">
               <Label>{t('titleEnglish')}</Label>
               <Input
                 value={data.title_en}
@@ -328,7 +331,7 @@ export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
               />
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2 hidden">
               <Label>{t('messageEnglish')}</Label>
               <Textarea
                 value={data.message_en}
@@ -352,7 +355,7 @@ export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
                     />
                     <Label htmlFor="send_push" className="cursor-pointer">{t('push')}</Label>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 hidden">
                     <Checkbox
                       id="send_sms"
                       checked={data.send_sms}
@@ -360,13 +363,23 @@ export const SendNotificationWizard = ({ open, onClose, onOpenChange }) => {
                     />
                     <Label htmlFor="send_sms" className="cursor-pointer">{t('sms')}</Label>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 hidden">
                     <Checkbox
                       id="send_email"
                       checked={data.send_email}
                       onCheckedChange={(checked) => onChange('send_email', checked)}
                     />
                     <Label htmlFor="send_email" className="cursor-pointer">{t('email5')}</Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="send_whatsapp"
+                      checked={data.send_whatsapp}
+                      onCheckedChange={(checked) => onChange('send_whatsapp', checked)}
+                    />
+                    <Label htmlFor="send_whatsapp" className="cursor-pointer">
+                      {isRTL ? 'إرسال عبر الواتساب' : 'WhatsApp'}
+                    </Label>
                   </div>
                 </div>
               </CardContent>
