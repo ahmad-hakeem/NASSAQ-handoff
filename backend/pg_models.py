@@ -15,7 +15,7 @@ import uuid
 from datetime import datetime, timezone
 from sqlalchemy import (
     Column, String, Integer, Float, Boolean, DateTime, Text, Enum as SAEnum,
-    ForeignKey, Index, JSON, UniqueConstraint, Sequence
+    ForeignKey, Index, JSON, UniqueConstraint, Sequence, text
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID, JSONB
 from sqlalchemy.orm import relationship
@@ -154,6 +154,8 @@ class Teacher(Base):
     national_id = Column(String, nullable=True, index=True)
     weekly_periods = Column(Integer, nullable=True)
     max_daily_periods = Column(Integer, nullable=True)
+    preferences = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
+    constraints = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
     user_id = Column(String, nullable=True, index=True)
     teacher_id = Column(String, nullable=True, index=True)
     qr_code = Column(Text, nullable=True)

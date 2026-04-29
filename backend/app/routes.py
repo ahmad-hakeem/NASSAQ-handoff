@@ -38,6 +38,7 @@ def register_routes(app, api_router: APIRouter):
     from routes.scheduling_smart_engine_routes import router as scheduling_smart_router
     from routes.scheduling_smart_session_routes import router as scheduling_smart_sess_router
     from routes.schedule_candidates_routes import router as schedule_candidates_router
+    from routes.schedule_master_grid_routes import router as schedule_master_grid_router
     from routes.attendance_routes_mod import router as attendance_mod_router
     from routes.assessment_routes_mod import router as assessment_mod_router
     from routes.behaviour_routes_mod import router as behaviour_mod_router
@@ -77,6 +78,7 @@ def register_routes(app, api_router: APIRouter):
     api_router.include_router(scheduling_smart_router)
     api_router.include_router(scheduling_smart_sess_router)
     api_router.include_router(schedule_candidates_router)
+    api_router.include_router(schedule_master_grid_router)
     api_router.include_router(attendance_mod_router)
     api_router.include_router(assessment_mod_router)
     api_router.include_router(behaviour_mod_router)

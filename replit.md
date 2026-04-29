@@ -9,10 +9,11 @@ The codebase previously had **two parallel scheduling systems**. The OLD system 
 
 **Active (NEW) system:**
 - Engine: `backend/engines/smart_scheduling_engine.py`
-- Routes: `backend/routes/scheduling_smart_engine_routes.py` (`/api/smart-scheduling/*`), `scheduling_smart_session_routes.py`, `schedule_candidates_routes.py`, `timetable_readiness_routes.py`
+- Routes: `backend/routes/scheduling_smart_engine_routes.py` (`/api/smart-scheduling/*`), `scheduling_smart_session_routes.py`, `schedule_candidates_routes.py`, `timetable_readiness_routes.py`, `schedule_master_grid_routes.py` (`/api/schedule/master-grid` — KPI + master matrix payload for the unified Smart Master Grid page)
 - Storage: `timetables` and `timetable_sessions` keys in the `generic_documents` collection (NOT real ORM tables)
-- Frontend page: `frontend/src/pages/SchedulePageNew.jsx` — mounted at `/school/schedule` and `/admin/schedule`
-- Frontend components: `frontend/src/components/schedule/` (CandidatesSidePanel, TeacherScheduleGrid, WaitingSessionsPanel)
+- Frontend page: `frontend/src/pages/SchedulePageNew.jsx` — refactored into the "إدارة الجداول الذكية" (Smart Master Grid) UI with a dashboard (4 KPI cards + red alert banner + auto-generate / log-absence buttons) and a single sticky-axes RTL matrix of teachers × (day × period). Mounted at `/school/schedule` and `/admin/schedule`.
+- Frontend components: `frontend/src/components/schedule/` (CandidatesSidePanel, TeacherScheduleGrid, WaitingSessionsPanel) — kept in tree but currently unmounted from the new page; reserved for the next iteration that connects vacant cells to the candidates side drawer.
+- Teacher record: extended with two JSONB columns `preferences` and `constraints` (Alembic revision `s1t2u3v4w5x6`) so the future auto-generator can honor per-teacher rules.
 - Back-compat: `/principal/timetable` redirects to `/school/schedule` in `appRoutes.js`
 
 **Removed (OLD) system — DO NOT recreate:**
