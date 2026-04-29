@@ -71,6 +71,32 @@ const BEHAVIOURS = {
   ],
 };
 
+// Icon + color maps for evaluation items configured in the
+// SidebarSettingsDialog. Mirrors the maps used inside that dialog so
+// the sidebar buttons render with the same visual identity teachers
+// pick when adding a new evaluation item.
+const SIDEBAR_EVAL_ICONS = {
+  CheckCircle2, XCircle, ClipboardCheck, Mic, Hand, Star, Sparkles,
+};
+const SIDEBAR_EVAL_COLORS = {
+  emerald: 'bg-emerald-500/15 border-emerald-400/40 hover:bg-emerald-500/25',
+  red:     'bg-rose-500/15 border-rose-400/40 hover:bg-rose-500/25',
+  amber:   'bg-amber-500/15 border-amber-400/40 hover:bg-amber-500/25',
+  sky:     'bg-sky-500/15 border-sky-400/40 hover:bg-sky-500/25',
+  purple:  'bg-purple-500/15 border-purple-400/40 hover:bg-purple-500/25',
+  gray:    'bg-foreground/5 border-border hover:bg-foreground/10',
+};
+// IDs of the four built-in evaluation items. The sidebar already
+// renders dedicated, hard-wired buttons for these (they have bespoke
+// confetti/scoring/recitation behavior), so we filter them out when
+// rendering the *additional* user-added items below them.
+const DEFAULT_EVAL_IDS = new Set([
+  'eval_default_correct',
+  'eval_default_wrong',
+  'eval_default_homework',
+  'eval_default_recite',
+]);
+
 const LOG_ICONS = {
   correct: CheckCircle2,
   wrong: XCircle,
@@ -946,6 +972,33 @@ export default function SessionTeachPage() {
 
   const addLog = (emoji, text, color = 'text-foreground') => {
     setActivityLog(prev => [{ id: Date.now(), emoji, text, color, time: new Date().toLocaleTimeString(isRTL ? 'ar' : 'en', { hour: '2-digit', minute: '2-digit' }) }, ...prev].slice(0, 30));
+  };
+
+  // Record a teacher-defined evaluation item from the right action
+  // sidebar. Posts a typed note carrying the item name and points so
+  // the activity log + reports stay in sync; no points are stored on
+  // the score endpoint since custom items have arbitrary magnitudes.
+  const recordCustomEvaluation = async (item) => {
+    if (!selectedStudent) { toast.error(t('selectStudentFirst') || 'اختر طالباً أولاً'); return; }
+    const points = Number(item?.points) || 0;
+    const signed = points > 0 ? `+${points}` : String(points);
+    const firstName = selectedStudent.full_name?.split(' ')[0] || '';
+    try {
+      await api.post(`/session/${sessionId}/note`, {
+        student_id: selectedStudent.id,
+        text: `${item.name}${points ? ` (${signed})` : ''}`,
+        note_type: 'evaluation',
+      });
+      toast.success(`${firstName} — ${item.name}${points ? ` (${signed})` : ''}`);
+      addLog(
+        'note',
+        `${firstName} — ${item.name}${points ? ` (${signed})` : ''}`,
+        points > 0 ? 'text-emerald-700' : points < 0 ? 'text-red-600' : 'text-muted-foreground',
+      );
+    } catch (e) {
+      console.error('Error recording evaluation:', e);
+      nassaqError(t('errorRecordingAnswer'));
+    }
   };
 
   const recordAnswer = async (result) => {
@@ -2108,6 +2161,25 @@ export default function SessionTeachPage() {
                       label={t('recitation')}
                     />
                   )}
+                  {/* Teacher-defined evaluation items added via the
+                      sidebar settings dialog. Re-renders automatically
+                      whenever `customEvaluationItems` changes, so newly
+                      added items appear immediately without a reload. */}
+                  {customEvaluationItems
+                    .filter(item => !DEFAULT_EVAL_IDS.has(item.id))
+                    .map(item => {
+                      const Icon = SIDEBAR_EVAL_ICONS[item.icon] || CheckCircle2;
+                      const color = SIDEBAR_EVAL_COLORS[item.color] || SIDEBAR_EVAL_COLORS.gray;
+                      return (
+                        <SideBtn
+                          key={item.id}
+                          onClick={guard(() => recordCustomEvaluation(item))}
+                          color={color}
+                          icon={Icon}
+                          label={item.name}
+                        />
+                      );
+                    })}
                 </div>
                 {/* السلوك */}
                 <div className="space-y-1.5">
