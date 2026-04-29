@@ -26,7 +26,7 @@ from engines.sql_utils import gd_find
 
 
 DAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday"]
-PERIODS = list(range(1, 8))  # 1..7
+PERIODS = list(range(1, 13))  # 1..12 — يغطّي مدارس الفترتين والمدارس متعدّدة الحصص
 DEFAULT_WEEKLY_QUOTA = 24
 
 

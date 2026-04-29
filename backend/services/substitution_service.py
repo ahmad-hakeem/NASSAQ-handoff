@@ -358,6 +358,33 @@ async def assign_substitute(
     }
     await gd_insert(session, "substitute_assignments", sub_doc)
 
+    # ── Post-insert race guard ────────────────────────────────────────────
+    # We don't have a unique DB constraint on (school_id, original_session_id,
+    # absence_date) inside the generic_documents store, so two concurrent
+    # POSTs could both pass the pre-insert `gd_find_one` check and end up
+    # writing duplicate rows. Re-count after insert: if >1 row exists for
+    # this conflict key OR another row exists for (substitute, slot, date),
+    # rollback our insert and surface a clear error.
+    dup_for_session = await gd_count(session, "substitute_assignments", {
+        "school_id": school_id,
+        "original_session_id": original_session_id,
+        "absence_date": absence_date,
+    })
+    dup_for_substitute = await gd_count(session, "substitute_assignments", {
+        "school_id": school_id,
+        "substitute_teacher_id": substitute_teacher_id,
+        "day_of_week": day,
+        "period_number": period,
+        "absence_date": absence_date,
+    })
+    if dup_for_session > 1 or dup_for_substitute > 1:
+        await gd_delete_one(session, "substitute_assignments", {"id": sub_id})
+        return {
+            "success": False,
+            "error": "race_conflict",
+            "message_ar": "تم إسناد بديل لهذه الحصة من جلسة أخرى — حدّث الصفحة",
+        }
+
     # Send in-app notification to substitute teacher
     notification_id = None
     sub_user_id = sub_teacher.get("user_id")
