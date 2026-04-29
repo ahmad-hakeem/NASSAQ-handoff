@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { toast } from 'sonner';
 import { useTranslation, useTheme } from '../../contexts/ThemeContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
@@ -39,14 +41,6 @@ const EVENT_TYPES = {
   meeting:     { label_ar: 'اجتماع',         label_en: 'Meeting',      dot: 'bg-blue-500',    ring: 'ring-blue-500/20'    },
 };
 
-const SEED_EVENTS = [
-  { id: 'evt-1', title_ar: 'جولة تفقدية – مبنى ب', title_en: 'Inspection Tour – Building B', type: 'trip',    date: '2026-03-28', details_ar: 'جولة تفقدية على فصول مبنى ب يرافقها قائد المدرسة.', details_en: 'Inspection of Building B classrooms led by the principal.' },
-  { id: 'evt-2', title_ar: 'يوم مفتوح لأولياء الأمور', title_en: 'Open Day for Parents', type: 'parents',  date: '2026-03-29', details_ar: 'استقبال أولياء الأمور لمناقشة أداء الطلاب الفصلي.', details_en: 'Welcoming parents to discuss term performance.' },
-  { id: 'evt-3', title_ar: 'تقرير نهاية الفصل', title_en: 'End-of-Term Report', type: 'report',   date: '2026-03-30', details_ar: 'تسليم التقارير النهائية للفصل الدراسي.', details_en: 'Submission of final term reports.' },
-  { id: 'evt-4', title_ar: 'اختبارات نَفِس الأسبوعية', title_en: 'Weekly Nafis Tests', type: 'exam',     date: '2026-04-02', details_ar: 'انعقاد الاختبارات الأسبوعية لطلاب الصف.', details_en: 'Weekly assessments for grade students.' },
-  { id: 'evt-5', title_ar: 'بداية إجازة منتصف الفصل', title_en: 'Mid-term Break Begins', type: 'holiday',  date: '2026-04-05', details_ar: 'بداية عطلة منتصف الفصل الدراسي للطلاب.', details_en: 'Start of mid-term break for students.' },
-];
-
 const SHORT_MONTHS_AR = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
 const SHORT_MONTHS_EN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -73,6 +67,7 @@ const isToday = (iso) => {
 export const AdminCalendar = () => {
   const { t } = useTranslation();
   const { isRTL } = useTheme();
+  const { api } = useAuth();
   const lang = isRTL ? 'ar' : 'en';
 
   const [events, setEvents] = useState([]);
@@ -82,15 +77,22 @@ export const AdminCalendar = () => {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ title_ar: '', title_en: '', type: 'meeting', date: '' });
   const [busy, setBusy] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
-  const [importedFile, setImportedFile] = useState(null);
   const fileInputRef = useRef(null);
 
   const fetchEvents = useCallback(async () => {
-    await new Promise((r) => setTimeout(r, 250));
-    setEvents([...SEED_EVENTS].sort((a, b) => a.date.localeCompare(b.date)));
-    setLoading(false);
-  }, []);
+    try {
+      const res = await api.get('/v1/calendar/events');
+      const data = Array.isArray(res?.data) ? res.data : (res?.data?.events || []);
+      setEvents(data);
+    } catch (err) {
+      // Endpoint may not exist yet — start with an empty list, populated by import/manual add.
+      setEvents([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [api]);
 
   useEffect(() => { fetchEvents(); }, [fetchEvents]);
 
@@ -159,74 +161,28 @@ export const AdminCalendar = () => {
     URL.revokeObjectURL(url);
   };
 
-  const parseCsvToEvents = (text) => {
-    const typeMap = {
-      'رحلة': 'trip',
-      'تقرير': 'report',
-      'إجازة': 'holiday',
-      'اختبار': 'exam',
-      'اجتماع': 'meeting',
-      'أولياء الأمور': 'parents',
-      'trip': 'trip',
-      'report': 'report',
-      'holiday': 'holiday',
-      'exam': 'exam',
-      'meeting': 'meeting',
-      'parents': 'parents',
-    };
-    const lines = text.replace(/\r/g, '').split('\n');
-    const out = [];
-    for (let i = 1; i < lines.length; i++) {
-      try {
-        const raw = lines[i];
-        if (!raw || !raw.trim()) continue;
-        const cols = raw.split(',').map((c) => c.trim());
-        const name = cols[0];
-        const date = cols[1];
-        const typeRaw = (cols[2] || '').trim();
-        if (!name || !date) continue;
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
-        const type = typeMap[typeRaw] || 'meeting';
-        out.push({
-          id: `evt-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}`,
-          title_ar: name,
-          title_en: name,
-          type,
-          date,
-          details_ar: '',
-          details_en: '',
-        });
-      } catch {
-        // ignore malformed row
-      }
-    }
-    return out;
-  };
-
-  const handleFileSelect = (e) => {
+  const handleFileSelect = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setImportedFile(file);
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const text = String(ev.target?.result || '').replace(/^\uFEFF/, '');
-        const newEvents = parseCsvToEvents(text);
-        if (newEvents.length > 0) {
-          setEvents((prev) => [...prev, ...newEvents]);
-        }
-      } catch (err) {
-        // eslint-disable-next-line no-console
-        console.error('[AdminCalendar] CSV parse error:', err);
-      }
-    };
-    reader.onerror = () => {
+    setIsImporting(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await api.post('/v1/calendar/import', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const data = Array.isArray(res?.data) ? res.data : (res?.data?.events || []);
+      setEvents(data);
+      toast.success(isRTL ? 'تم استيراد الأحداث بنجاح' : 'Events imported successfully');
+    } catch (err) {
       // eslint-disable-next-line no-console
-      console.error('[AdminCalendar] failed to read file');
-    };
-    reader.readAsText(file);
-    // Reset so selecting the same file again still triggers onChange.
-    e.target.value = null;
+      console.error('[AdminCalendar] import error:', err);
+      toast.error(isRTL ? 'تعذر استيراد الملف' : 'Failed to import file');
+    } finally {
+      setIsImporting(false);
+      // Reset so selecting the same file again still triggers onChange.
+      if (e?.target) e.target.value = null;
+    }
   };
 
   const deleteEvent = async (id) => {
@@ -253,9 +209,18 @@ export const AdminCalendar = () => {
             </Badge>
             <DropdownMenu open={addMenuOpen} onOpenChange={setAddMenuOpen}>
               <DropdownMenuTrigger asChild>
-                <Button size="sm" variant="outline" className="h-8 rounded-xl text-xs px-2.5 gap-1 border-brand-turquoise/40 text-brand-turquoise hover:bg-brand-turquoise/10">
-                  <Plus className="h-3.5 w-3.5" />
-                  {isRTL ? 'إضافة' : 'Add'}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={isImporting}
+                  className="h-8 rounded-xl text-xs px-2.5 gap-1 border-brand-turquoise/40 text-brand-turquoise hover:bg-brand-turquoise/10 disabled:opacity-60"
+                >
+                  {isImporting ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Plus className="h-3.5 w-3.5" />
+                  )}
+                  {isImporting ? (isRTL ? 'جارٍ الاستيراد' : 'Importing') : (isRTL ? 'إضافة' : 'Add')}
                   <ChevronDown className="h-3 w-3 opacity-70" />
                 </Button>
               </DropdownMenuTrigger>
@@ -267,10 +232,14 @@ export const AdminCalendar = () => {
                 <DropdownMenuItem
                   onClick={triggerImport}
                   className="gap-2"
-                  disabled={busy}
+                  disabled={busy || isImporting}
                   data-testid="admin-calendar-import"
                 >
-                  <Upload className="h-3.5 w-3.5 text-brand-purple" />
+                  {isImporting ? (
+                    <Loader2 className="h-3.5 w-3.5 text-brand-purple animate-spin" />
+                  ) : (
+                    <Upload className="h-3.5 w-3.5 text-brand-purple" />
+                  )}
                   {isRTL ? 'استيراد' : 'Import'}
                 </DropdownMenuItem>
                 <DropdownMenuItem
