@@ -1320,15 +1320,6 @@ export default function SessionTeachPage() {
           </button>
         )}
         <button
-          onClick={() => setShowFollowupRecord(true)}
-          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] text-sm font-medium transition-colors"
-          title={t('followupRecord') || 'كشف المتابعة'}
-          aria-label={t('followupRecord') || 'كشف المتابعة'}
-        >
-          <FileText className="h-4 w-4" />
-          <span className="hidden sm:inline">{t('followupRecord') || 'كشف المتابعة'}</span>
-        </button>
-        <button
           onClick={selectRandom}
           disabled={loading}
           className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-amber-400/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 text-sm font-medium transition-colors disabled:opacity-50"
