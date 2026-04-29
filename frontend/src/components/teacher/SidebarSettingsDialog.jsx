@@ -154,7 +154,9 @@ export default function SidebarSettingsDialog({
   // from the chosen category/type so the scoring math stays consistent.
   const [evalDraft, setEvalDraft] = useState({ name: '', type: '', color: '', points: 1 });
   const [behaviourDraft, setBehaviourDraft] = useState({ name: '', points: 1 });
-  const [skillDraft, setSkillDraft] = useState('');
+  // Skills now carry both a display name and a teacher-defined point
+  // magnitude (the same shape as custom behaviours/evaluation items).
+  const [skillDraft, setSkillDraft] = useState({ name: '', points: 3 });
 
   // Coerce a free-form number input to its absolute integer value as a
   // string. Used by the points fields so a teacher cannot type "-" or
@@ -194,10 +196,15 @@ export default function SidebarSettingsDialog({
   };
 
   const handleAddSkill = () => {
-    const name = skillDraft.trim();
+    const name = (skillDraft.name || '').trim();
     if (!name) return;
-    onAddCustomSkill?.(name);
-    setSkillDraft('');
+    const rawPts = Math.abs(Number(skillDraft.points));
+    const points = Number.isFinite(rawPts) && rawPts > 0 ? rawPts : 3;
+    // Pass an object so the parent can store the configured magnitude
+    // alongside the name. Parents that haven't migrated yet will simply
+    // see the name via the legacy `.name` access path.
+    onAddCustomSkill?.({ id: `skl_${Date.now()}`, name, points });
+    setSkillDraft({ name: '', points: 3 });
   };
 
   // ─────────────────────────────────────────────────────────────────
@@ -496,20 +503,37 @@ export default function SidebarSettingsDialog({
         <p className="text-[11px] text-muted-foreground font-cairo">{t('currentSkills') || 'المهارات الحالية'}</p>
         <div className="flex flex-wrap gap-1.5">
           {[
-            ...skillTypes.map((s) => (typeof s === 'string' ? s : (s?.name_ar || s?.name_en || s?.name || s?.label || ''))),
-            ...customSkills,
-          ].map((skill, i) => {
-            const isCustom = i >= skillTypes.length;
-            const label = typeof skill === 'string' ? skill : String(skill ?? '');
-            if (!label) return null;
+            // Predefined skills surfaced from the backend as objects;
+            // their points come from the session score rules so we
+            // don't show a magnitude here.
+            ...skillTypes.map((s) => ({
+              label: typeof s === 'string' ? s : (s?.name_ar || s?.name_en || s?.name || s?.label || ''),
+              points: null,
+              isCustom: false,
+            })),
+            // Custom skills may be plain strings (legacy state) or
+            // `{name, points}` objects produced by the new add form.
+            ...customSkills.map((s) => {
+              if (typeof s === 'string') return { label: s, points: null, isCustom: true };
+              return {
+                label: s?.name || s?.label || '',
+                points: Number.isFinite(Number(s?.points)) ? Math.abs(Number(s.points)) : null,
+                isCustom: true,
+              };
+            }),
+          ].map((entry, i) => {
+            if (!entry.label) return null;
             return (
               <span
-                key={`${i}-${label}`}
+                key={`${i}-${entry.label}`}
                 className="inline-flex items-center gap-1 bg-purple-50 dark:bg-purple-900/20 px-2 py-1 rounded-lg text-[11px] text-purple-700 dark:text-purple-300"
               >
                 <Star className="h-2.5 w-2.5" />
-                {label}
-                {isCustom && (
+                {entry.label}
+                {entry.points !== null && (
+                  <span className="font-bold tabular-nums">+{entry.points}</span>
+                )}
+                {entry.isCustom && (
                   <button
                     type="button"
                     onClick={() => onRemoveCustomSkill?.(i - skillTypes.length)}
@@ -529,19 +553,38 @@ export default function SidebarSettingsDialog({
           )}
         </div>
 
+        {/* Add-skill form: name + points magnitude. Points are added to
+            the student's score (like positive behaviours) when the
+            teacher records the skill in the live class. */}
         <div className="flex items-center gap-1.5 pt-1">
           <input
-            value={skillDraft}
-            onChange={(e) => setSkillDraft(e.target.value)}
+            value={skillDraft.name}
+            onChange={(e) => setSkillDraft((d) => ({ ...d, name: e.target.value }))}
             onKeyDown={(e) => { if (e.key === 'Enter') handleAddSkill(); }}
             className="flex-1 text-[11px] bg-card dark:bg-muted rounded-lg border px-2 py-1.5 outline-none focus:border-purple-500 font-cairo"
             placeholder={t('addNewSkill') || 'إضافة مهارة جديدة'}
             dir={isRTL ? 'rtl' : 'ltr'}
           />
+          <input
+            type="number"
+            min="0"
+            step="1"
+            inputMode="numeric"
+            value={skillDraft.points}
+            onChange={(e) => setSkillDraft((d) => ({ ...d, points: sanitizePoints(e.target.value) }))}
+            onKeyDown={(e) => {
+              if (e.key === '-' || e.key === '+' || e.key === 'e' || e.key === 'E') e.preventDefault();
+              if (e.key === 'Enter') handleAddSkill();
+            }}
+            className="w-14 text-[11px] text-center bg-card dark:bg-muted rounded-lg border px-2 py-1.5 outline-none focus:border-purple-500 font-cairo tabular-nums"
+            placeholder={t('pointsMagnitude') || (t('points') || 'الدرجات')}
+            aria-label={t('pointsMagnitude') || (t('points') || 'الدرجات')}
+            dir="ltr"
+          />
           <button
             type="button"
             onClick={handleAddSkill}
-            disabled={!skillDraft.trim()}
+            disabled={!skillDraft.name.trim()}
             className="p-1.5 rounded-lg bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 hover:bg-purple-200 dark:hover:bg-purple-900/50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             aria-label={t('add') || 'إضافة'}
           >
@@ -557,47 +600,17 @@ export default function SidebarSettingsDialog({
   // ─────────────────────────────────────────────────────────────────
   const renderSessionOptionsTab = () => {
     const sc = sessionConfig || {};
-    const subjectsList = sc.subjectsList || [];
+    // Subject selection and the participation toggle were removed from
+    // this tab on purpose:
+    //   • Subject is auto-inherited from the active session context, so
+    //     forcing the teacher to pick it again was redundant.
+    //   • Participation is always on by default and the toggle was
+    //     causing confusion. The boolean is still kept in parent state
+    //     (defaulted to true) so the API payload shape is unchanged.
     return (
       <div className="space-y-5">
-        {/* Subject selection (required first) */}
+        {/* Homework toggle + view-mode options */}
         <div className="space-y-2">
-          <label className="text-sm font-medium font-cairo flex items-center gap-2">
-            <BookOpen className="h-4 w-4 text-brand-turquoise" />
-            {t('selectSubject')} <span className="text-red-500">*</span>
-          </label>
-          <select
-            value={sc.subjectId || ''}
-            onChange={(e) => sc.onSubjectIdChange?.(e.target.value)}
-            className="w-full bg-card dark:bg-muted border border-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand-turquoise font-cairo"
-          >
-            <option value="">{t('selectSubject')}</option>
-            {subjectsList.map((s) => {
-              const id = String(s.id ?? s.subject_id ?? s._id ?? '');
-              const label = isRTL
-                ? (s.name_ar || s.name || s.name_en || id)
-                : (s.name_en || s.name || s.name_ar || id);
-              return <option key={id} value={id}>{label}</option>;
-            })}
-          </select>
-          {!sc.subjectId && (
-            <p className="text-[11px] text-muted-foreground font-cairo">{t('selectSubjectFirst')}</p>
-          )}
-        </div>
-
-        {sc.subjectId && (
-          <>
-            {/* Participation toggle */}
-            <SettingsToggleRow
-              icon={<Hand className="h-4 w-4" />}
-              label={t('participation')}
-              enabled={!!sc.participationEnabled}
-              onToggle={() => sc.onParticipationEnabledChange?.(!sc.participationEnabled)}
-              t={t}
-            />
-
-            {/* Homework toggle + view-mode options */}
-            <div className="space-y-2">
               <SettingsToggleRow
                 icon={<ClipboardCheck className="h-4 w-4" />}
                 label={t('homework')}
@@ -659,8 +672,6 @@ export default function SidebarSettingsDialog({
                 </div>
               )}
             </div>
-          </>
-        )}
       </div>
     );
   };
@@ -675,11 +686,9 @@ export default function SidebarSettingsDialog({
     };
     return (
       <div className="space-y-4">
-        {!sc.subjectId && (
-          <p className="text-[11px] text-muted-foreground font-cairo text-center py-2">
-            {t('selectSubjectFirst')}
-          </p>
-        )}
+        {/* The subject-required hint that used to live here was removed
+            with the subject dropdown — the subject is now inherited
+            from the active session context. */}
 
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2">
@@ -826,7 +835,7 @@ export default function SidebarSettingsDialog({
             <Button
               type="button"
               onClick={() => sessionConfig.onSave?.()}
-              disabled={!sessionConfig.subjectId || !!sessionConfig.saving}
+              disabled={!!sessionConfig.saving}
               className="w-full bg-violet-600 hover:bg-violet-700 text-white font-cairo font-bold"
             >
               {sessionConfig.saving ? (

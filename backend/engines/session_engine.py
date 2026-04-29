@@ -2146,24 +2146,43 @@ class TeacherSessionEngine:
         student_id: str,
         skill_type_id: str,
         teacher_id: str,
-        notes: Optional[str] = None
+        notes: Optional[str] = None,
+        custom_name: Optional[str] = None,
+        points_override: Optional[int] = None,
     ) -> Dict[str, Any]:
-        """Record a skill observation for a student during a session"""
+        """Record a skill observation for a student during a session.
+
+        Custom (teacher-defined) skills that are not present in the
+        ``skills_types`` table can be recorded by passing ``custom_name``
+        together with an optional ``points_override``. In that case the
+        record is stored with ``skill_type_id=None`` and the override
+        points are applied to the student's score the same way positive
+        behaviours do, instead of falling back to the fixed
+        ``special_skill`` rule. This keeps the score in sync with what
+        the teacher configured in the sidebar settings.
+        """
         now = datetime.now(timezone.utc)
 
         session = await gd_find_one(self.session, "class_sessions", {"id": session_id})
         if not session:
             raise HTTPException(status_code=404, detail="الجلسة غير موجودة")
 
+        # Detect a custom (locally-defined) skill: either explicitly
+        # marked via ``custom_name`` or carrying the ``custom_`` prefix
+        # the frontend uses for ad-hoc entries.
+        is_custom = bool(custom_name) or (
+            isinstance(skill_type_id, str) and skill_type_id.startswith("custom_")
+        )
+
         skill_type = None
-        if skill_type_id:
+        if skill_type_id and not is_custom:
             skill_type = await gd_find_one(self.session, "skills_types", {"id": skill_type_id})
             if not skill_type:
                 skill_type = await gd_find_one(self.session, "skills_types", {"name_ar": skill_type_id})
             if not skill_type:
                 skill_type = await gd_find_one(self.session, "skills_types", {"name_en": skill_type_id})
 
-        if not skill_type:
+        if not skill_type and not is_custom:
             existing = await gd_find(self.session, "skills_types", {}, limit=200)
             pre_seed_count = len(existing) if existing else 0
             if pre_seed_count == 0 and skill_type_id:
@@ -2210,13 +2229,24 @@ class TeacherSessionEngine:
                 )
                 raise HTTPException(status_code=400, detail="الطالب لا ينتمي لهذا الفصل")
 
+        # Resolve display name and persisted FK depending on whether
+        # this is a registered skill type or a teacher-defined custom one.
+        if is_custom:
+            display_name = (custom_name or "").strip() or "مهارة"
+            persisted_skill_type_id = None
+            event_marker = f"custom:{display_name}"
+        else:
+            display_name = skill_type.get("name_ar", skill_type.get("name"))
+            persisted_skill_type_id = skill_type_id
+            event_marker = skill_type_id
+
         skill_record = {
             "id": str(uuid.uuid4()),
             "student_id": student_id,
             "class_id": session.get("class_id"),
             "session_id": session_id,
-            "skill_type_id": skill_type_id,
-            "skill_name": skill_type.get("name_ar", skill_type.get("name")),
+            "skill_type_id": persisted_skill_type_id,
+            "skill_name": display_name,
             "recorded_by_teacher": teacher_id,
             "notes": notes,
             "timestamp": now.isoformat(),
@@ -2231,7 +2261,7 @@ class TeacherSessionEngine:
             "type": InteractionType.BEHAVIOUR.value,
             "interaction_type": InteractionType.BEHAVIOUR.value,
             "behaviour_category": BehaviourCategory.SKILL.value,
-            "behaviour_type": skill_type_id,
+            "behaviour_type": event_marker,
             "behaviour_details": notes,
             "recorded_by": teacher_id,
             "recorded_at": now.isoformat(),
@@ -2240,27 +2270,39 @@ class TeacherSessionEngine:
         }
         await gd_insert(self.session, "session_interactions", interaction)
 
+        # Score change: prefer an explicit override (custom skills carry
+        # their own configured magnitude); otherwise fall back to the
+        # session's special_skill rule, mirroring positive-behaviour
+        # scoring semantics.
         rules = await self._get_session_score_rules(session_id)
-        score_change = rules.get("special_skill", 3)
-        await self._update_student_score(
-            student_id,
-            score_change,
-            "skill",
-            f"مهارة: {skill_type.get('name_ar', skill_type.get('name'))}"
-        )
+        if points_override is not None:
+            try:
+                score_change = int(points_override)
+            except (TypeError, ValueError):
+                score_change = rules.get("special_skill", 3)
+        else:
+            score_change = rules.get("special_skill", 3)
+
+        if score_change != 0:
+            await self._update_student_score(
+                student_id,
+                score_change,
+                "skill",
+                f"مهارة: {display_name}"
+            )
 
         await self._log_event(
             session_id=session_id,
             event_type=EventType.SKILL_RECORDED.value,
             actor_id=teacher_id,
             student_id=student_id,
-            new_value=skill_type_id,
-            metadata={"score_change": score_change, "skill_name": skill_type.get("name_ar", skill_type.get("name"))}
+            new_value=event_marker,
+            metadata={"score_change": score_change, "skill_name": display_name}
         )
 
         return {
             "message": "تم تسجيل المهارة",
-            "skill_name": skill_type.get("name_ar", skill_type.get("name")),
+            "skill_name": display_name,
             "score_change": score_change,
             "skill_record_id": skill_record["id"]
         }

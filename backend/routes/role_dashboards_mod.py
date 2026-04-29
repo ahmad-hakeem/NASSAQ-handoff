@@ -2162,7 +2162,9 @@ async def record_session_skill(
         student_id=data.get("student_id"),
         skill_type_id=data.get("skill_type_id"),
         teacher_id=teacher_id,
-        notes=data.get("notes")
+        notes=data.get("notes"),
+        custom_name=data.get("custom_name"),
+        points_override=data.get("points_override"),
     )
     if audit_engine:
         await audit_engine.log(

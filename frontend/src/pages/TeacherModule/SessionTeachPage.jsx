@@ -469,14 +469,22 @@ export default function SessionTeachPage() {
   }, [api, sessionId]);
 
   const saveSessionSettings = async () => {
-    if (!settingsSubjectId) {
+    // Subject is inherited from the active session context — the
+    // teacher no longer picks it from the settings dialog. Fall back
+    // to the session's own subject_id if the local settings state
+    // hasn't been hydrated yet.
+    const effectiveSubjectId = settingsSubjectId
+      || sessionInfo?.subject_id
+      || sessionInfo?.subjectId
+      || '';
+    if (!effectiveSubjectId) {
       toast.error(t('selectSubjectFirst'));
       return;
     }
     setSavingSettings(true);
     try {
       await api.post(`/session/${sessionId}/settings`, {
-        subject_id: settingsSubjectId,
+        subject_id: effectiveSubjectId,
         participation_enabled: participationEnabled,
         homework_enabled: homeworkEnabled,
         homework_view_mode: homeworkViewMode,
@@ -1094,22 +1102,27 @@ export default function SessionTeachPage() {
     if (!selectedStudent) return;
     const isCustom = String(skill.id).startsWith('custom_');
     try {
+      // Both predefined and custom skills now go through the same
+      // `/skill` endpoint so the student's score is updated in the
+      // backend (mirrors how positive behaviours work). Custom skills
+      // pass `custom_name` + `points_override` so the backend records
+      // the configured magnitude instead of the default special_skill
+      // rule.
+      const payload = {
+        student_id: selectedStudent.id,
+        skill_type_id: skill.id,
+        notes: skillNote || null,
+      };
       if (isCustom) {
-        await api.post(`/session/${sessionId}/note`, {
-          student_id: selectedStudent.id,
-          text: `${t('skill')}: ${skill.name_ar || skill.name}${skillNote ? ' - ' + skillNote : ''}`,
-          note_type: 'skill',
-        });
-      } else {
-        await api.post(`/session/${sessionId}/skill`, {
-          student_id: selectedStudent.id,
-          skill_type_id: skill.id,
-          notes: skillNote || null,
-        });
+        payload.custom_name = skill.name_ar || skill.name;
+        const pts = Number(skill.points);
+        if (Number.isFinite(pts)) payload.points_override = Math.abs(pts);
       }
+      const res = await api.post(`/session/${sessionId}/skill`, payload);
+      const change = res?.data?.score_change || 0;
       confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 }, colors: ['#8b5cf6', '#a78bfa', '#c4b5fd'] });
       toast.success(`${t('skill')}: ${skill.name_ar || skill.name} — ${selectedStudent.full_name?.split(' ')[0]}`);
-      addLog('skill', `${selectedStudent.full_name?.split(' ')[0]} — ${skill.name_ar || skill.name}`, 'text-purple-700');
+      addLog('skill', `${selectedStudent.full_name?.split(' ')[0]} — ${skill.name_ar || skill.name} (${change > 0 ? '+' : ''}${change})`, 'text-purple-700');
       setSkillNote('');
       setStudents(prev => prev.map(s =>
         s.id === selectedStudent.id ? { ...s, interactionCount: s.interactionCount + 1 } : s
@@ -1309,13 +1322,18 @@ export default function SessionTeachPage() {
 
       {/* ── Toolbar (redesign) ── */}
       <div className="flex-none border-b border-border bg-background/60 px-3 sm:px-4 py-2 flex items-center gap-2 flex-wrap">
+        {/* Single refresh control for the page. The duplicate refresh
+            icon that used to live in the bottom bar was removed; this
+            labeled button is now the canonical "تحديث" action and is
+            styled to match the other header buttons. */}
         <button
           onClick={() => { loadStudents(); loadActivityLog(); }}
-          className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
+          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md text-xs font-cairo font-bold text-muted-foreground hover:text-foreground bg-foreground/[0.04] hover:bg-foreground/[0.08] border border-border transition-colors"
           title={t('refresh') || 'تحديث'}
           aria-label={t('refresh') || 'تحديث'}
         >
-          <RotateCcw className="h-4 w-4" />
+          <RotateCcw className="h-3.5 w-3.5" />
+          <span>{t('refresh') || 'تحديث'}</span>
         </button>
         <div className="flex items-center bg-foreground/[0.04] border border-border rounded-md p-0.5">
           <button
@@ -2077,17 +2095,31 @@ export default function SessionTeachPage() {
                     <div className="grid grid-cols-3 gap-1.5">
                       {[
                         ...skillTypes,
-                        ...customSkills.map(name => ({ id: `custom_${name}`, name, name_ar: name }))
-                      ].map(skill => (
-                        <button
-                          key={skill.id}
-                          onClick={() => recordSkill(skill)}
-                          className="bg-purple-500/10 dark:bg-purple-900/40 hover:bg-purple-800/60 text-foreground rounded-lg py-2 px-1 text-xs text-center transition-colors border border-purple-500/20"
-                        >
-                          <div className="font-medium truncate">{skill.name_ar || skill.name}</div>
-                          <div className="text-[10px] mt-0.5 text-purple-700 dark:text-purple-300">+3</div>
-                        </button>
-                      ))}
+                        // Custom skills may be plain strings (legacy) or
+                        // `{name, points}` objects since the settings UI
+                        // now lets teachers configure a magnitude.
+                        ...customSkills.map(s => {
+                          if (typeof s === 'string') {
+                            return { id: `custom_${s}`, name: s, name_ar: s, points: 3 };
+                          }
+                          const name = s?.name ?? '';
+                          const pts = Math.abs(Number(s?.points)) || 3;
+                          return { id: s?.id || `custom_${name}`, name, name_ar: name, points: pts };
+                        })
+                      ].map(skill => {
+                        const pts = Number(skill.points);
+                        const display = Number.isFinite(pts) ? Math.abs(pts) : 3;
+                        return (
+                          <button
+                            key={skill.id}
+                            onClick={() => recordSkill(skill)}
+                            className="bg-purple-500/10 dark:bg-purple-900/40 hover:bg-purple-800/60 text-foreground rounded-lg py-2 px-1 text-xs text-center transition-colors border border-purple-500/20"
+                          >
+                            <div className="font-medium truncate">{skill.name_ar || skill.name}</div>
+                            <div className="text-[10px] mt-0.5 text-purple-700 dark:text-purple-300">+{display}</div>
+                          </button>
+                        );
+                      })}
                     </div>
                     {skillTypes.length === 0 && customSkills.length === 0 && (
                       <p className="text-muted-foreground text-xs text-center py-2">{t('noSkillsRegistered')}</p>
@@ -2306,17 +2338,28 @@ export default function SessionTeachPage() {
               <div className="grid grid-cols-2 gap-1.5">
                 {[
                   ...skillTypes,
-                  ...customSkills.map(name => ({ id: `custom_${name}`, name, name_ar: name }))
-                ].map(skill => (
-                  <button
-                    key={skill.id}
-                    onClick={async () => { await recordSkill(skill); setOpenPopover(null); }}
-                    className="bg-violet-500/10 hover:bg-violet-500/20 border border-violet-400/30 hover:border-violet-400/60 text-foreground rounded-lg py-2 px-2 text-xs text-center transition-colors"
-                  >
-                    <div className="font-medium font-cairo truncate">{skill.name_ar || skill.name}</div>
-                    <div className="text-[10px] mt-0.5 text-violet-700 dark:text-violet-300 font-bold">+3</div>
-                  </button>
-                ))}
+                  ...customSkills.map(s => {
+                    if (typeof s === 'string') {
+                      return { id: `custom_${s}`, name: s, name_ar: s, points: 3 };
+                    }
+                    const name = s?.name ?? '';
+                    const pts = Math.abs(Number(s?.points)) || 3;
+                    return { id: s?.id || `custom_${name}`, name, name_ar: name, points: pts };
+                  })
+                ].map(skill => {
+                  const pts = Number(skill.points);
+                  const display = Number.isFinite(pts) ? Math.abs(pts) : 3;
+                  return (
+                    <button
+                      key={skill.id}
+                      onClick={async () => { await recordSkill(skill); setOpenPopover(null); }}
+                      className="bg-violet-500/10 hover:bg-violet-500/20 border border-violet-400/30 hover:border-violet-400/60 text-foreground rounded-lg py-2 px-2 text-xs text-center transition-colors"
+                    >
+                      <div className="font-medium font-cairo truncate">{skill.name_ar || skill.name}</div>
+                      <div className="text-[10px] mt-0.5 text-violet-700 dark:text-violet-300 font-bold">+{display}</div>
+                    </button>
+                  );
+                })}
               </div>
             )}
             <input
@@ -2642,16 +2685,11 @@ export default function SessionTeachPage() {
       <div className="flex-none shrink-0 bg-background/90 backdrop-blur-md border-t border-border px-3 sm:px-4 py-2.5 flex items-center justify-between w-full gap-2 sm:gap-3 relative z-10 flex-wrap">
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-500/30 to-transparent" aria-hidden="true" />
 
-        {/* Right group (RTL start): Refresh + Save Class + Follow-up Record */}
+        {/* Right group (RTL start): Save Class + Follow-up Record.
+            The duplicate refresh icon that used to sit here was
+            removed; the toolbar button at the top of the page is now
+            the single source of refresh. */}
         <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-          <button
-            onClick={() => { loadStudents(); loadActivityLog(); }}
-            className="p-2.5 rounded-lg bg-foreground/[0.06] hover:bg-foreground/10 text-muted-foreground hover:text-foreground border border-border transition-colors"
-            title={t('refresh') || 'تحديث'}
-            aria-label={t('refresh') || 'تحديث'}
-          >
-            <RotateCcw className="h-4 w-4" />
-          </button>
           <Button
             onClick={async () => {
               setSavingSession(true);
