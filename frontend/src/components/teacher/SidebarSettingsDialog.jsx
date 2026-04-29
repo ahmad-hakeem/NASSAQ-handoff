@@ -24,11 +24,46 @@ const EVAL_ICONS = {
   CheckCircle2, XCircle, ClipboardCheck, Mic, Hand, Star, Sparkles,
 };
 
-const formatPoints = (n) => {
+/**
+ * Format a points value with a leading +/- sign. When `signOverride` is
+ * 'positive' or 'negative' the sign is forced regardless of `n`'s own
+ * sign — this lets the UI present the badge using the *category* a
+ * teacher selected (e.g. an item filed under "إيجابي") even if the
+ * underlying value happens to be stored unsigned. Falls back to the
+ * intrinsic sign of `n` when no override is provided.
+ */
+const formatPoints = (n, signOverride) => {
+  const abs = Math.abs(Number(n) || 0);
+  if (signOverride === 'positive') return abs === 0 ? '0' : `${abs}+`;
+  if (signOverride === 'negative') return abs === 0 ? '0' : `${abs}-`;
   const v = Number(n) || 0;
   if (v > 0) return `${v}+`;
   if (v < 0) return `${Math.abs(v)}-`;
   return '0';
+};
+
+/**
+ * Map an evaluation "type" (positive/negative/neutral) to the sign
+ * applied to its raw absolute points value. Teachers only ever enter
+ * positive numbers in the form — the sign is derived here so the
+ * scoring math (add for positive categories, subtract for negative)
+ * stays consistent end-to-end.
+ */
+const signedPointsForType = (rawPoints, type) => {
+  const abs = Math.abs(Number(rawPoints) || 0);
+  if (type === 'positive') return abs;
+  if (type === 'negative') return -abs;
+  return 0; // neutral
+};
+
+/**
+ * Default color paired with each evaluation type. Used when the
+ * teacher picks a type but hasn't overridden the color.
+ */
+const DEFAULT_COLOR_FOR_TYPE = {
+  positive: 'emerald',
+  negative: 'red',
+  neutral: 'gray',
 };
 
 /**
@@ -115,30 +150,44 @@ export default function SidebarSettingsDialog({
   const [tab, setTab] = useState('evaluation');
 
   // ── Add-form local state ───────────────────────────────────────
-  const [evalDraft, setEvalDraft] = useState({ name: '', color: 'emerald', points: 1 });
+  // Teachers only ever enter the *magnitude* of points; sign is derived
+  // from the chosen category/type so the scoring math stays consistent.
+  const [evalDraft, setEvalDraft] = useState({ name: '', type: '', color: '', points: 1 });
   const [behaviourDraft, setBehaviourDraft] = useState({ name: '', points: 1 });
   const [skillDraft, setSkillDraft] = useState('');
+
+  // Coerce a free-form number input to its absolute integer value as a
+  // string. Used by the points fields so a teacher cannot type "-" or
+  // submit a negative magnitude — sign always comes from the category.
+  const sanitizePoints = (raw) => {
+    if (raw === '' || raw === null || raw === undefined) return '';
+    const n = Math.abs(Number(raw));
+    if (!Number.isFinite(n)) return '';
+    return String(n);
+  };
 
   const handleAddEvaluation = () => {
     const name = evalDraft.name.trim();
     if (!name) return;
+    if (!evalDraft.type) return; // category is required
+    const color = evalDraft.color || DEFAULT_COLOR_FOR_TYPE[evalDraft.type] || 'gray';
     onAddEvaluationItem?.({
       id: `eval_${Date.now()}`,
       name,
-      color: evalDraft.color,
-      points: Number(evalDraft.points) || 0,
+      type: evalDraft.type,
+      color,
+      points: signedPointsForType(evalDraft.points, evalDraft.type),
     });
-    setEvalDraft({ name: '', color: 'emerald', points: 1 });
+    setEvalDraft({ name: '', type: '', color: '', points: 1 });
   };
 
   const handleAddBehaviour = (category) => {
     const name = behaviourDraft.name.trim();
     if (!name) return;
-    const item = {
-      id: `bhv_${Date.now()}`,
-      name,
-      points: Number(behaviourDraft.points) || 0,
-    };
+    // Force the sign from the button the teacher clicked, ignoring any
+    // sign the teacher might have typed.
+    const points = signedPointsForType(behaviourDraft.points, category);
+    const item = { id: `bhv_${Date.now()}`, name, points };
     if (category === 'positive') onAddPositiveBehaviour?.(item);
     else onAddNegativeBehaviour?.(item);
     setBehaviourDraft({ name: '', points: 1 });
@@ -193,6 +242,13 @@ export default function SidebarSettingsDialog({
           </p>
         ) : (
           evaluationItems.map((item) => {
+            // Derive the visual category: prefer the explicit `type`
+            // saved with the item, otherwise fall back to the sign of
+            // its stored points (legacy items have no `type`).
+            const derivedType = item.type
+              || (Number(item.points) > 0 ? 'positive'
+                : Number(item.points) < 0 ? 'negative'
+                : 'neutral');
             const color = EVAL_COLORS[item.color] || EVAL_COLORS.gray;
             const Icon = EVAL_ICONS[item.icon] || CheckCircle2;
             return (
@@ -209,7 +265,7 @@ export default function SidebarSettingsDialog({
                   <Trash2 className="h-4 w-4" />
                 </button>
                 <span className={`text-xs font-bold tabular-nums font-cairo flex-none w-8 text-center ${color.points}`}>
-                  {formatPoints(item.points)}
+                  {formatPoints(item.points, derivedType)}
                 </span>
                 <div className="flex-1 flex items-center justify-end gap-2">
                   <span className="text-sm font-cairo text-foreground">{item.name}</span>
@@ -221,7 +277,8 @@ export default function SidebarSettingsDialog({
         )}
       </div>
 
-      {/* Add new evaluation form */}
+      {/* Add new evaluation form ─ teacher enters magnitude only;
+          sign is derived from the chosen type (positive/negative/neutral). */}
       <div className="space-y-2 pt-2">
         <input
           type="text"
@@ -232,30 +289,64 @@ export default function SidebarSettingsDialog({
           dir={isRTL ? 'rtl' : 'ltr'}
           className="w-full text-sm bg-card dark:bg-muted border border-border rounded-full px-4 py-2.5 outline-none focus:border-brand-turquoise font-cairo placeholder:text-muted-foreground/60"
         />
-        <div className="grid grid-cols-2 gap-2">
-          <select
-            value={evalDraft.color}
-            onChange={(e) => setEvalDraft((d) => ({ ...d, color: e.target.value }))}
-            className="text-sm bg-card dark:bg-muted border border-border rounded-full px-4 py-2.5 outline-none focus:border-brand-turquoise font-cairo text-center"
-          >
-            {Object.keys(EVAL_COLORS).map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
-          <input
-            type="number"
-            value={evalDraft.points}
-            onChange={(e) => setEvalDraft((d) => ({ ...d, points: e.target.value }))}
-            placeholder={t('points') || 'النقاط'}
-            dir={isRTL ? 'rtl' : 'ltr'}
-            className="text-sm bg-card dark:bg-muted border border-border rounded-full px-4 py-2.5 outline-none focus:border-brand-turquoise font-cairo text-center placeholder:text-muted-foreground/60"
-          />
+        <div className="grid grid-cols-3 gap-2">
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] font-cairo text-muted-foreground text-center">
+              {t('chooseType') || 'اختر النوع'}
+            </span>
+            <select
+              value={evalDraft.type}
+              onChange={(e) => setEvalDraft((d) => ({ ...d, type: e.target.value }))}
+              className={`text-sm bg-card dark:bg-muted border border-border rounded-full px-4 py-2.5 outline-none focus:border-brand-turquoise font-cairo text-center ${evalDraft.type ? '' : 'text-muted-foreground/60'}`}
+            >
+              <option value="" disabled>{t('chooseType') || 'اختر النوع'}</option>
+              <option value="positive">{t('positive') || 'إيجابي'} (+)</option>
+              <option value="negative">{t('negative') || 'سلبي'} (−)</option>
+              <option value="neutral">{t('neutral') || 'محايد'}</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] font-cairo text-muted-foreground text-center">
+              {t('chooseColor') || 'اختر اللون'}
+            </span>
+            <select
+              value={evalDraft.color}
+              onChange={(e) => setEvalDraft((d) => ({ ...d, color: e.target.value }))}
+              className={`text-sm bg-card dark:bg-muted border border-border rounded-full px-4 py-2.5 outline-none focus:border-brand-turquoise font-cairo text-center ${evalDraft.color ? '' : 'text-muted-foreground/60'}`}
+            >
+              <option value="" disabled>{t('chooseColor') || 'اختر اللون'}</option>
+              {Object.keys(EVAL_COLORS).map((c) => (
+                <option key={c} value={c}>{t(`color_${c}`) || c}</option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] font-cairo text-muted-foreground text-center">
+              {t('pointsMagnitude') || (t('points') || 'النقاط')}
+            </span>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              inputMode="numeric"
+              value={evalDraft.points}
+              onChange={(e) => setEvalDraft((d) => ({ ...d, points: sanitizePoints(e.target.value) }))}
+              onKeyDown={(e) => {
+                // Block "-" and "+" so the magnitude stays unsigned.
+                if (e.key === '-' || e.key === '+' || e.key === 'e' || e.key === 'E') e.preventDefault();
+                if (e.key === 'Enter') handleAddEvaluation();
+              }}
+              placeholder={t('pointsMagnitude') || (t('points') || 'النقاط')}
+              dir={isRTL ? 'rtl' : 'ltr'}
+              className="text-sm bg-card dark:bg-muted border border-border rounded-full px-4 py-2.5 outline-none focus:border-brand-turquoise font-cairo text-center placeholder:text-muted-foreground/60"
+            />
+          </label>
         </div>
         <Button
           type="button"
           onClick={handleAddEvaluation}
-          disabled={!evalDraft.name.trim()}
-          className="w-full bg-violet-600 hover:bg-violet-700 text-white rounded-full py-3 font-cairo text-sm font-bold shadow-sm"
+          disabled={!evalDraft.name.trim() || !evalDraft.type}
+          className="w-full bg-violet-600 hover:bg-violet-700 text-white rounded-full py-3 font-cairo text-sm font-bold shadow-sm disabled:opacity-50"
         >
           <Plus className="h-4 w-4 me-1" />
           {t('addEvaluation') || 'إضافة تقييم'}
@@ -308,7 +399,10 @@ export default function SidebarSettingsDialog({
                 <Trash2 className="h-4 w-4" />
               </button>
               <span className={`text-xs font-bold tabular-nums font-cairo flex-none w-8 text-center ${pointsColor}`}>
-                {formatPoints(item.points)}
+                {/* Force the badge sign to match the category list this
+                    item lives in, regardless of how the underlying value
+                    was stored. */}
+                {formatPoints(item.points, isPositive ? 'positive' : 'negative')}
               </span>
               <div className="flex-1 flex items-center justify-end gap-2">
                 <span className="text-sm font-cairo text-foreground">{item.name}</span>
@@ -339,9 +433,16 @@ export default function SidebarSettingsDialog({
         />
         <input
           type="number"
+          min="0"
+          step="1"
+          inputMode="numeric"
           value={behaviourDraft.points}
-          onChange={(e) => setBehaviourDraft((d) => ({ ...d, points: e.target.value }))}
-          placeholder={t('points') || 'النقاط'}
+          onChange={(e) => setBehaviourDraft((d) => ({ ...d, points: sanitizePoints(e.target.value) }))}
+          onKeyDown={(e) => {
+            // Block sign keys — sign is supplied by the +/- buttons below.
+            if (e.key === '-' || e.key === '+' || e.key === 'e' || e.key === 'E') e.preventDefault();
+          }}
+          placeholder={t('pointsMagnitude') || (t('points') || 'النقاط')}
           dir={isRTL ? 'rtl' : 'ltr'}
           className="w-full text-sm bg-card dark:bg-muted border border-border rounded-full px-4 py-2.5 outline-none focus:border-brand-turquoise font-cairo text-center placeholder:text-muted-foreground/60"
         />

@@ -1988,7 +1988,11 @@ export default function SessionTeachPage() {
                       {[
                         ...(BEHAVIOURS[behaviourCategory] || []),
                         ...(behaviourCategory === 'positive' ? customPositiveBehaviours : customNegativeBehaviours).map(b => {
-                          // Support both legacy string and new {id, name, points} shape
+                          // Support both legacy string and new {id, name, points} shape.
+                          // The displayed sign is always derived from the category list
+                          // the item lives in (ignoring any stale stored sign), so the
+                          // teacher sees a consistent +/- regardless of how the item was
+                          // originally saved.
                           if (typeof b === 'string') {
                             return {
                               id: `custom_${b}`,
@@ -1996,11 +2000,11 @@ export default function SessionTeachPage() {
                               points: behaviourCategory === 'positive' ? '+2' : '-2'
                             };
                           }
-                          const p = Number(b.points) || 0;
+                          const abs = Math.abs(Number(b.points) || 0);
                           return {
                             id: b.id || `custom_${b.name}`,
                             label: b.name,
-                            points: p > 0 ? `+${p}` : `${p}`
+                            points: behaviourCategory === 'positive' ? `+${abs}` : `-${abs}`
                           };
                         })
                       ].map(b => (
@@ -2166,8 +2170,8 @@ export default function SessionTeachPage() {
                 ...(BEHAVIOURS.positive || []),
                 ...customPositiveBehaviours.map(b => {
                   if (typeof b === 'string') return { id: `custom_${b}`, label: b, points: '+2' };
-                  const p = Number(b.points) || 0;
-                  return { id: b.id || `custom_${b.name}`, label: b.name, points: p > 0 ? `+${p}` : `${p}` };
+                  const abs = Math.abs(Number(b.points) || 0);
+                  return { id: b.id || `custom_${b.name}`, label: b.name, points: `+${abs}` };
                 })
               ].map(b => (
                 <button
@@ -2202,8 +2206,8 @@ export default function SessionTeachPage() {
                 ...(BEHAVIOURS.negative || []),
                 ...customNegativeBehaviours.map(b => {
                   if (typeof b === 'string') return { id: `custom_${b}`, label: b, points: '-2' };
-                  const p = Number(b.points) || 0;
-                  return { id: b.id || `custom_${b.name}`, label: b.name, points: p > 0 ? `+${p}` : `${p}` };
+                  const abs = Math.abs(Number(b.points) || 0);
+                  return { id: b.id || `custom_${b.name}`, label: b.name, points: `-${abs}` };
                 })
               ].map(b => (
                 <button
