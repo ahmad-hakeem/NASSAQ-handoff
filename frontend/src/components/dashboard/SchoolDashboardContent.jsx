@@ -869,22 +869,6 @@ export const SchoolDashboardContent = () => {
         </SectionErrorBoundary>
       </section>
 
-      <SectionErrorBoundary name="StrategicNav" isRTL={isRTL}>
-        <StrategicNav onAction={handleQuickAction} isRTL={isRTL} onNavigate={(path) => navigate(path)} />
-      </SectionErrorBoundary>
-
-      <section>
-        <SectionErrorBoundary name="PerformanceSnapshot" isRTL={isRTL}>
-          <PerformanceSnapshot metrics={dashboardData?.metrics} attendance={dashboardData?.attendance} isRTL={isRTL} />
-        </SectionErrorBoundary>
-      </section>
-
-      <section>
-        <SectionErrorBoundary name="AnalyticsSummary" isRTL={isRTL}>
-          <AnalyticsSummaryCard isRTL={isRTL} onNavigate={(path) => navigate(path)} />
-        </SectionErrorBoundary>
-      </section>
-
       <SendNotificationWizard open={showSendNotificationWizard} onOpenChange={setShowSendNotificationWizard} />
       <CreateScheduleWizard open={showCreateScheduleWizard} onOpenChange={setShowCreateScheduleWizard} />
       <LiveSessionsMonitor open={showLiveSessionsMonitor} onOpenChange={setShowLiveSessionsMonitor} />
