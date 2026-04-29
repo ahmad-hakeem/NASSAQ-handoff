@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation, useTheme } from '../../contexts/ThemeContext';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
@@ -81,6 +81,9 @@ export const AdminCalendar = () => {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ title_ar: '', title_en: '', type: 'meeting', date: '' });
   const [busy, setBusy] = useState(false);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [importedFile, setImportedFile] = useState(null);
+  const fileInputRef = useRef(null);
 
   const fetchEvents = useCallback(async () => {
     await new Promise((r) => setTimeout(r, 250));
@@ -131,10 +134,29 @@ export const AdminCalendar = () => {
     setEditing(null);
   };
 
-  const importEvents = async () => {
+  const triggerImport = () => {
+    setAddMenuOpen(false);
+    setTimeout(() => {
+      fileInputRef.current?.click();
+    }, 0);
+  };
+
+  const handleFileSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportedFile(file);
     setBusy(true);
+    // Placeholder for backend processing — captured for future API call.
+    // eslint-disable-next-line no-console
+    console.log('[AdminCalendar] file selected for import:', {
+      name: file.name,
+      size: file.size,
+      type: file.type,
+    });
     await new Promise((r) => setTimeout(r, 200));
     setBusy(false);
+    // Reset input so selecting the same file again still triggers onChange.
+    e.target.value = '';
   };
 
   const deleteEvent = async (id) => {
@@ -159,7 +181,7 @@ export const AdminCalendar = () => {
             <Badge className="bg-brand-turquoise/15 text-brand-turquoise border-0 font-cairo text-[11px] px-2 py-0.5">
               {todayLabel}
             </Badge>
-            <DropdownMenu>
+            <DropdownMenu open={addMenuOpen} onOpenChange={setAddMenuOpen}>
               <DropdownMenuTrigger asChild>
                 <Button size="sm" variant="outline" className="h-8 rounded-xl text-xs px-2.5 gap-1 border-brand-turquoise/40 text-brand-turquoise hover:bg-brand-turquoise/10">
                   <Plus className="h-3.5 w-3.5" />
@@ -168,16 +190,29 @@ export const AdminCalendar = () => {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="font-tajawal">
-                <DropdownMenuItem onClick={openAddForm} className="gap-2">
+                <DropdownMenuItem onClick={() => { setAddMenuOpen(false); openAddForm(); }} className="gap-2">
                   <Plus className="h-3.5 w-3.5 text-brand-turquoise" />
                   {isRTL ? 'إضافة يدوية' : 'Manual Add'}
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={importEvents} className="gap-2" disabled={busy}>
+                <DropdownMenuItem
+                  onClick={triggerImport}
+                  className="gap-2"
+                  disabled={busy}
+                  data-testid="admin-calendar-import"
+                >
                   <Upload className="h-3.5 w-3.5 text-brand-purple" />
                   {isRTL ? 'استيراد' : 'Import'}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            <input
+              type="file"
+              ref={fileInputRef}
+              className="hidden"
+              accept=".csv,.xlsx,.json"
+              onChange={handleFileSelect}
+              data-testid="admin-calendar-file-input"
+            />
           </div>
         </div>
       </CardHeader>
