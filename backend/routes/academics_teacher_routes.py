@@ -827,7 +827,11 @@ async def update_teacher(
         update_fields["gender"] = teacher_data.gender
     if teacher_data.is_active is not None:
         update_fields["is_active"] = teacher_data.is_active
-    
+    if teacher_data.preferences is not None:
+        update_fields["preferences"] = teacher_data.preferences
+    if teacher_data.constraints is not None:
+        update_fields["constraints"] = teacher_data.constraints
+
     result = await gd_update_one(db.session, "teachers", {"id": teacher_id}, update_fields)
     if result == 0:
         raise HTTPException(status_code=404, detail="المعلم غير موجود")

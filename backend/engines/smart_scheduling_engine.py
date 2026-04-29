@@ -230,6 +230,11 @@ class ResourceAvailability(BaseModel):
     weekly_load: int
     current_load: int = 0
     availability: Dict[str, List[int]]  # day -> available_periods
+    # Per-teacher preferences and constraints (Task #95). Soft preferences are
+    # used to bias scoring; hard constraints are enforced during placement
+    # (and used to pre-trim the availability matrix).
+    preferences: Dict[str, Any] = Field(default_factory=dict)
+    constraints: Dict[str, Any] = Field(default_factory=dict)
 
 
 class SchedulingCandidate(BaseModel):
@@ -1083,14 +1088,45 @@ class SmartSchedulingEngine:
                 if day in availability and period and not is_available:
                     if period in availability[day]:
                         availability[day].remove(period)
-            
+
+            # Task #95: Apply per-teacher hard constraints stored on the
+            # teacher record. `blocked_days` removes the day entirely;
+            # `blocked_periods` removes the same period from every day.
+            preferences = teacher.get("preferences") or {}
+            constraints = teacher.get("constraints") or {}
+            if not isinstance(preferences, dict):
+                preferences = {}
+            if not isinstance(constraints, dict):
+                constraints = {}
+
+            blocked_days = constraints.get("blocked_days") or []
+            if isinstance(blocked_days, list):
+                for bd in blocked_days:
+                    bd_norm = str(bd).lower().strip()
+                    if bd_norm in availability:
+                        availability.pop(bd_norm, None)
+
+            blocked_periods = constraints.get("blocked_periods") or []
+            if isinstance(blocked_periods, list):
+                blocked_period_ints = set()
+                for bp in blocked_periods:
+                    try:
+                        blocked_period_ints.add(int(bp))
+                    except (TypeError, ValueError):
+                        continue
+                if blocked_period_ints:
+                    for day, periods in list(availability.items()):
+                        availability[day] = [p for p in periods if p not in blocked_period_ints]
+
             resources.append(ResourceAvailability(
                 teacher_id=teacher_id,
                 teacher_name=teacher_name,
                 subject_ids=subject_ids,
                 weekly_load=weekly_load,
                 current_load=0,
-                availability=availability
+                availability=availability,
+                preferences=preferences,
+                constraints=constraints,
             ))
         
         return resources
@@ -1478,7 +1514,16 @@ class SmartSchedulingEngine:
                             # Check teacher load
                             if resource_usage.get(teacher_id, 0) >= resource.weekly_load:
                                 continue
-                            
+
+                            # Task #95 hard constraint: per-teacher
+                            # max_consecutive_periods. If placing this period
+                            # would create a run of consecutive teaching
+                            # periods strictly longer than the cap, skip it.
+                            if self._would_exceed_max_consecutive(
+                                resource, teacher_grid, day, period, teaching_period_numbers
+                            ):
+                                continue
+
                             score = 100
 
                             load_ratio = resource_usage.get(teacher_id, 0) / resource.weekly_load
@@ -1518,7 +1563,13 @@ class SmartSchedulingEngine:
                                 class_id, subject_id, teacher_id, day, period,
                                 working_days, teaching_period_numbers
                             )
-                            
+
+                            # Task #95: bias toward each teacher's stored
+                            # preferences (preferred_days, preferred_subjects).
+                            score = self._apply_teacher_preference_scoring(
+                                score, resource, subject_id, day
+                            )
+
                             if score > best_score:
                                 best_score = score
                                 best_candidate = {
@@ -1641,6 +1692,13 @@ class SmartSchedulingEngine:
                             if period not in resource.availability.get(day, []):
                                 continue
 
+                            # Task #95: respect per-teacher
+                            # max_consecutive_periods in the gap-filler too.
+                            if self._would_exceed_max_consecutive(
+                                resource, teacher_grid, day, period, teaching_period_numbers
+                            ):
+                                continue
+
                             # HardConstraintRegistry dispatch (gap-filler).
                             if _registry_rejects({
                                 "teacher_id": teacher_id,
@@ -1663,6 +1721,12 @@ class SmartSchedulingEngine:
                                 score += 25
                             else:
                                 score -= 10
+
+                            # Task #95: bias toward each teacher's stored
+                            # preferences during gap-fill placement too.
+                            score = self._apply_teacher_preference_scoring(
+                                score, resource, subject_id, day
+                            )
 
                             if score > best_score:
                                 best_score = score
@@ -2209,6 +2273,64 @@ class SmartSchedulingEngine:
         final_score = self._calculate_optimization_score(best_sessions, conflicts, resources)
         return best_sessions, max(final_score, best_score)
     
+    @staticmethod
+    def _would_exceed_max_consecutive(
+        resource: "ResourceAvailability",
+        teacher_grid: Dict[str, Dict[int, set]],
+        day: str,
+        period: int,
+        teaching_period_numbers: List[int],
+    ) -> bool:
+        """Task #95: Check whether placing the teacher at (day, period) would
+        create a run of consecutive teaching periods strictly longer than
+        ``constraints.max_consecutive_periods`` on the teacher record. A
+        missing/<=0 cap disables the check.
+        """
+        constraints = resource.constraints or {}
+        cap = constraints.get("max_consecutive_periods")
+        try:
+            cap = int(cap) if cap is not None else 0
+        except (TypeError, ValueError):
+            return False
+        if cap <= 0:
+            return False
+        teacher_id = resource.teacher_id
+        # Walk backward and forward from the candidate period counting
+        # contiguous teaching periods already booked for this teacher.
+        consecutive = 1
+        p = period - 1
+        while p in teaching_period_numbers and teacher_id in teacher_grid.get(day, {}).get(p, set()):
+            consecutive += 1
+            p -= 1
+        p = period + 1
+        while p in teaching_period_numbers and teacher_id in teacher_grid.get(day, {}).get(p, set()):
+            consecutive += 1
+            p += 1
+        return consecutive > cap
+
+    @staticmethod
+    def _apply_teacher_preference_scoring(
+        score: float,
+        resource: "ResourceAvailability",
+        subject_id: Optional[str],
+        day: str,
+    ) -> float:
+        """Task #95: Bias the placement score toward each teacher's stored
+        preferences. Both lists are optional; an empty/missing list is a
+        no-op so legacy teachers keep the previous behaviour.
+        """
+        prefs = resource.preferences or {}
+        preferred_days = prefs.get("preferred_days") or []
+        if isinstance(preferred_days, list) and preferred_days:
+            normalized = {str(d).lower().strip() for d in preferred_days}
+            if day in normalized:
+                score += 6
+        preferred_subjects = prefs.get("preferred_subjects") or []
+        if subject_id and isinstance(preferred_subjects, list) and preferred_subjects:
+            if subject_id in preferred_subjects:
+                score += 8
+        return score
+
     def _apply_soft_constraint_scoring(
         self, score, settings, grid, teacher_grid, resource_usage,
         class_id, subject_id, teacher_id, day, period,

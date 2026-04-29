@@ -63,6 +63,7 @@ import { Link } from 'react-router-dom';
 import { AddTeacherWizard } from '../components/wizards/AddTeacherWizard';
 import { BulkTeacherImport } from '../components/wizards/BulkTeacherImport';
 import AddStudentWizard from '../components/wizards/AddStudentWizard';
+import { TeacherSchedulePrefsDialog } from '../components/teacher/TeacherSchedulePrefsDialog';
 
 export const TeachersPage = () => {
   const { t } = useTranslation();
@@ -72,6 +73,8 @@ export const TeachersPage = () => {
   const [schools, setSchools] = useState([]);
   const [grades, setGrades] = useState([]);
   const [classes, setClasses] = useState([]);
+  const [subjects, setSubjects] = useState([]);
+  const [schoolSettings, setSchoolSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -80,6 +83,7 @@ export const TeachersPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSchool, setSelectedSchool] = useState('all');
   const [submitting, setSubmitting] = useState(false);
+  const [editingTeacher, setEditingTeacher] = useState(null);
   
   // Check if user is a school-level user (not platform admin)
   const { nassaqError, nassaqWarning, nassaqConfirm } = useNassaqAlert();
@@ -105,18 +109,25 @@ export const TeachersPage = () => {
       const teachersRes = await api.get('/teachers');
       setTeachers(teachersRes.data);
       
-      // Fetch grades and classes for student wizard
+      // Fetch grades and classes for student wizard, plus subjects/settings
+      // for the schedule preferences dialog.
       try {
-        const [gradesRes, classesRes] = await Promise.all([
+        const [gradesRes, classesRes, subjectsRes, settingsRes] = await Promise.all([
           api.get('/reference/grades').catch(() => ({ data: [] })),
           api.get('/classes').catch(() => ({ data: [] })),
+          api.get('/subjects').catch(() => ({ data: [] })),
+          api.get('/school/settings').catch(() => ({ data: {} })),
         ]);
         setGrades(gradesRes.data || []);
         setClasses(classesRes.data || []);
+        setSubjects(Array.isArray(subjectsRes.data) ? subjectsRes.data : []);
+        setSchoolSettings(settingsRes.data || {});
       } catch (e) {
         console.error('Error fetching grades/classes:', e);
         setGrades([]);
         setClasses([]);
+        setSubjects([]);
+        setSchoolSettings({});
       }
       
       // Only fetch schools list for platform admins
@@ -527,9 +538,12 @@ export const TeachersPage = () => {
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
-                                  <DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => setEditingTeacher(teacher)}
+                                    data-testid={`edit-teacher-${teacher.id}`}
+                                  >
                                     <Edit className="h-4 w-4 me-2" />
-                                    {t('edit')}
+                                    {isRTL ? 'تفضيلات الجدول' : 'Schedule preferences'}
                                   </DropdownMenuItem>
                                   <DropdownMenuItem 
                                     className="text-red-600"
@@ -581,6 +595,26 @@ export const TeachersPage = () => {
           onSuccess={() => {
             toast.success(t('studentAddedSuccessfully'));
             fetchData();
+          }}
+        />
+
+        {/* Schedule Preferences & Constraints Dialog (Task #95) */}
+        <TeacherSchedulePrefsDialog
+          open={!!editingTeacher}
+          onClose={() => setEditingTeacher(null)}
+          teacher={editingTeacher}
+          api={api}
+          isRTL={isRTL}
+          subjects={subjects}
+          workingDays={(() => {
+            const wd = schoolSettings?.working_days;
+            if (Array.isArray(wd)) return wd;
+            if (wd && typeof wd === 'object') return Object.entries(wd).filter(([, v]) => v).map(([k]) => k);
+            return undefined;
+          })()}
+          periodsPerDay={schoolSettings?.periods_per_day || 7}
+          onSaved={(updated) => {
+            setTeachers(prev => prev.map(tr => tr.id === updated.id ? { ...tr, ...updated } : tr));
           }}
         />
       </div>

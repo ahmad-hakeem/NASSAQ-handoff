@@ -23,7 +23,7 @@ def validate_saudi_national_id(value, required: bool = True):
     if not _SAUDI_NATIONAL_ID_RE.match(cleaned):
         raise ValueError("رقم الهوية الوطنية غير صالح: يجب أن يكون 10 أرقام ويبدأ بـ 1 أو 2")
     return cleaned
-from typing import List, Optional, Any, Union
+from typing import List, Optional, Any, Dict, Union
 from datetime import datetime, timezone
 from enum import Enum
 import re as _re
@@ -371,6 +371,7 @@ class TeacherCreate(BaseModel):
 
 class TeacherUpdate(BaseModel):
     full_name: Optional[str] = None
+    full_name_en: Optional[str] = None
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
     specialization: Optional[str] = None
@@ -378,12 +379,16 @@ class TeacherUpdate(BaseModel):
     subject: Optional[str] = None
     qualification: Optional[str] = None
     years_of_experience: Optional[int] = None
+    gender: Optional[str] = None
     is_active: Optional[bool] = None
+    preferences: Optional[Dict[str, Any]] = None
+    constraints: Optional[Dict[str, Any]] = None
 
 class TeacherResponse(BaseModel):
     model_config = ConfigDict(extra="ignore", from_attributes=True)
     id: str
     full_name: str
+    full_name_en: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None
     specialization: Optional[str] = None
@@ -391,11 +396,14 @@ class TeacherResponse(BaseModel):
     subject: Optional[str] = None
     qualification: Optional[str] = None
     years_of_experience: Optional[int] = None
+    gender: Optional[str] = None
     school_id: Optional[str] = None
     is_active: bool = True
     created_at: Optional[str] = None
     weekly_periods: Optional[int] = None
     max_daily_periods: Optional[int] = None
+    preferences: Optional[Dict[str, Any]] = None
+    constraints: Optional[Dict[str, Any]] = None
 
 class StudentCreate(BaseModel):
     model_config = ConfigDict(extra="ignore")
