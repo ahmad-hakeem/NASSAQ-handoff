@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { toast } from 'sonner';
 import { useTranslation, useTheme } from '../../contexts/ThemeContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
@@ -16,7 +18,6 @@ import {
   Pencil,
   Trash2,
   Check,
-  Upload,
   Loader2,
   X,
   ListChecks,
@@ -29,31 +30,43 @@ const PRIORITY_META = {
   normal: { label_ar: 'عادي',   label_en: 'Normal', badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300', dot: 'bg-emerald-500', weight: 2 },
 };
 
-const SEED_TASKS = [
-  { id: 't-1', text: 'متابعة لجنة الاختبارات المتأخرين',  details: 'مراجعة مع مرشد الاختبارات', priority: 'urgent', status: 'active' },
-  { id: 't-2', text: 'جولة تفقدية – مبنى ب',              details: '09:00 ص في البنية المدرسية', priority: 'urgent', status: 'active' },
-  { id: 't-3', text: 'زيارة صفية – الصف الثالث ج',        details: '10:30 ص حصة التعليم والتعلم', priority: 'medium', status: 'active' },
-  { id: 't-4', text: 'اجتماع مجلس الإدارة',                details: '08:00 ص الإدارة المدرسية',   priority: 'normal', status: 'completed' },
-];
+const todayStr = () => {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
 
 export const HakeemPlan = () => {
   const { t } = useTranslation();
   const { isRTL } = useTheme();
+  const { api } = useAuth();
   const lang = isRTL ? 'ar' : 'en';
 
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState({ text: '', priority: 'normal' });
+  const [draft, setDraft] = useState({ title: '', priority: 'normal' });
   const [editingId, setEditingId] = useState(null);
   const [editingText, setEditingText] = useState('');
   const inputRef = useRef(null);
 
   const fetchTasks = useCallback(async () => {
-    await new Promise((r) => setTimeout(r, 250));
-    setTasks(SEED_TASKS);
-    setLoading(false);
-  }, []);
+    try {
+      // Pass the user's local date so we don't drift around midnight UTC.
+      const res = await api.get('/v1/hakeem-plan/tasks', { params: { date: todayStr() } });
+      const data = Array.isArray(res?.data?.tasks) ? res.data.tasks : [];
+      setTasks(data);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[HakeemPlan] fetch error:', err);
+      toast.error(isRTL ? 'تعذر تحميل المهام' : 'Failed to load tasks');
+      setTasks([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [api, isRTL]);
 
   useEffect(() => { fetchTasks(); }, [fetchTasks]);
 
@@ -73,62 +86,122 @@ export const HakeemPlan = () => {
   );
   const completedTasks = useMemo(() => tasks.filter((tk) => tk.status === 'completed'), [tasks]);
 
+  const extractError = (err, fallback) => {
+    const detail = err?.response?.data?.error?.message || err?.response?.data?.detail;
+    return detail || fallback;
+  };
+
   const toggleStatus = async (task) => {
     const nextStatus = task.status === 'active' ? 'completed' : 'active';
+    // OPTIMISTIC: flip immediately so the row jumps between sections instantly.
     setTasks((prev) => prev.map((tk) => (tk.id === task.id ? { ...tk, status: nextStatus } : tk)));
-    await new Promise((r) => setTimeout(r, 150));
+    try {
+      const res = await api.patch(`/v1/hakeem-plan/tasks/${task.id}`, { status: nextStatus });
+      const updated = res?.data?.task;
+      if (updated) {
+        setTasks((prev) => prev.map((tk) => (tk.id === task.id ? updated : tk)));
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[HakeemPlan] toggle error:', err);
+      // Roll back on failure
+      setTasks((prev) => prev.map((tk) => (tk.id === task.id ? { ...tk, status: task.status } : tk)));
+      toast.error(extractError(err, isRTL ? 'تعذر تحديث المهمة' : 'Failed to update task'));
+    }
   };
 
   const addTask = async () => {
-    if (!draft.text.trim()) return;
-    const newTask = {
-      id: `t-${Date.now()}`,
-      text: draft.text.trim(),
+    const title = draft.title.trim();
+    if (!title) return;
+    const tempId = `tmp-${Date.now()}`;
+    const optimistic = {
+      id: tempId,
+      title,
       details: '',
       priority: draft.priority,
       status: 'active',
+      source: 'manual',
+      task_date: todayStr(),
     };
-    setTasks((prev) => [newTask, ...prev]);
-    setDraft({ text: '', priority: 'normal' });
+    // OPTIMISTIC: show row instantly
+    setTasks((prev) => [optimistic, ...prev]);
+    setDraft({ title: '', priority: 'normal' });
     setAdding(false);
-    await new Promise((r) => setTimeout(r, 150));
-  };
-
-  const importTasks = async () => {
-    await new Promise((r) => setTimeout(r, 150));
+    try {
+      const res = await api.post('/v1/hakeem-plan/tasks', {
+        title,
+        priority: optimistic.priority,
+        task_date: todayStr(),
+      });
+      const created = res?.data?.task;
+      if (created) {
+        setTasks((prev) => prev.map((tk) => (tk.id === tempId ? created : tk)));
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[HakeemPlan] add error:', err);
+      setTasks((prev) => prev.filter((tk) => tk.id !== tempId));
+      toast.error(extractError(err, isRTL ? 'تعذر إضافة المهمة' : 'Failed to add task'));
+    }
   };
 
   const startEdit = (task) => {
     setEditingId(task.id);
-    setEditingText(task.text);
+    setEditingText(task.title);
   };
 
   const commitEdit = async () => {
     if (!editingId) return;
     const id = editingId;
     const text = editingText.trim();
-    setTasks((prev) => prev.map((tk) => (tk.id === id && text ? { ...tk, text } : tk)));
+    const original = tasks.find((tk) => tk.id === id);
     setEditingId(null);
     setEditingText('');
-    await new Promise((r) => setTimeout(r, 100));
+    if (!text || !original || text === original.title) return;
+    // OPTIMISTIC
+    setTasks((prev) => prev.map((tk) => (tk.id === id ? { ...tk, title: text } : tk)));
+    try {
+      const res = await api.patch(`/v1/hakeem-plan/tasks/${id}`, { title: text });
+      const updated = res?.data?.task;
+      if (updated) {
+        setTasks((prev) => prev.map((tk) => (tk.id === id ? updated : tk)));
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[HakeemPlan] edit error:', err);
+      setTasks((prev) => prev.map((tk) => (tk.id === id ? original : tk)));
+      toast.error(extractError(err, isRTL ? 'تعذر تعديل المهمة' : 'Failed to edit task'));
+    }
   };
 
   const deleteTask = async (id) => {
+    const snapshot = tasks;
+    // OPTIMISTIC
     setTasks((prev) => prev.filter((tk) => tk.id !== id));
-    await new Promise((r) => setTimeout(r, 100));
+    try {
+      await api.delete(`/v1/hakeem-plan/tasks/${id}`);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[HakeemPlan] delete error:', err);
+      setTasks(snapshot);
+      toast.error(extractError(err, isRTL ? 'تعذر حذف المهمة' : 'Failed to delete task'));
+    }
   };
 
   const renderTaskRow = (task) => {
     const meta = PRIORITY_META[task.priority] || PRIORITY_META.normal;
     const isCompleted = task.status === 'completed';
     const isEditing = editingId === task.id;
+    const isAI = task.source === 'ai';
     return (
       <li
         key={task.id}
         className={`group flex items-center gap-3 p-2.5 rounded-xl border transition-all duration-200 ${
           isCompleted
             ? 'bg-muted/20 border-border/30 opacity-70'
-            : 'bg-background border-border/50 hover:border-brand-turquoise/40 hover:shadow-sm'
+            : isAI
+              ? 'bg-gradient-to-r from-brand-purple/[0.04] to-brand-turquoise/[0.04] border-brand-purple/30 hover:border-brand-purple/50 hover:shadow-sm'
+              : 'bg-background border-border/50 hover:border-brand-turquoise/40 hover:shadow-sm'
         }`}
         data-testid={`task-row-${task.id}`}
       >
@@ -160,9 +233,21 @@ export const HakeemPlan = () => {
               className="w-full h-7 rounded-md border border-input bg-background px-2 text-sm font-tajawal"
             />
           ) : (
-            <p className={`text-sm font-tajawal font-semibold truncate ${isCompleted ? 'line-through text-muted-foreground' : ''}`}>
-              {task.text}
-            </p>
+            <div className="flex items-center gap-1.5 min-w-0">
+              {isAI && !isCompleted && (
+                <span
+                  title={isRTL ? 'مقترح من حكيم' : 'Suggested by Hakeem'}
+                  aria-label={isRTL ? 'مقترح من حكيم' : 'Suggested by Hakeem'}
+                  className="shrink-0 inline-flex items-center justify-center w-4.5 h-4.5 rounded-md bg-gradient-to-br from-brand-purple to-brand-turquoise shadow-sm shadow-brand-purple/30"
+                  data-testid={`ai-source-badge-${task.id}`}
+                >
+                  <Sparkles className="h-2.5 w-2.5 text-white" />
+                </span>
+              )}
+              <p className={`text-sm font-tajawal font-semibold truncate ${isCompleted ? 'line-through text-muted-foreground' : ''}`}>
+                {task.title}
+              </p>
+            </div>
           )}
           {task.details && !isEditing && (
             <p className={`text-[11px] font-tajawal truncate ${isCompleted ? 'text-muted-foreground/70' : 'text-muted-foreground'}`}>
@@ -212,10 +297,10 @@ export const HakeemPlan = () => {
             {isRTL ? 'خطة حكيم لليوم' : "Hakeem's Daily Plan"}
           </CardTitle>
           <div className="flex items-center gap-1.5 flex-wrap">
-            <Badge className="bg-brand-turquoise/15 text-brand-turquoise border-0 font-cairo text-[11px] px-2 py-0.5">
+            <Badge className="bg-brand-turquoise/15 text-brand-turquoise border-0 font-cairo text-[11px] px-2 py-0.5" data-testid="hakeem-active-count">
               {activeTasks.length} {isRTL ? 'نشط' : 'active'}
             </Badge>
-            <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border-0 font-cairo text-[11px] px-2 py-0.5">
+            <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border-0 font-cairo text-[11px] px-2 py-0.5" data-testid="hakeem-completed-count">
               {completedTasks.length} {isRTL ? 'مكتمل' : 'completed'}
             </Badge>
           </div>
@@ -251,10 +336,6 @@ export const HakeemPlan = () => {
                 <Plus className="h-3.5 w-3.5 text-brand-turquoise" />
                 {isRTL ? 'إضافة يدوية' : 'Manual Add'}
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={importTasks} className="gap-2">
-                <Upload className="h-3.5 w-3.5 text-brand-purple" />
-                {isRTL ? 'استيراد' : 'Import'}
-              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -263,11 +344,11 @@ export const HakeemPlan = () => {
           <div className="flex items-center gap-2 p-2 rounded-xl border border-brand-turquoise/30 bg-brand-turquoise/5">
             <input
               ref={inputRef}
-              value={draft.text}
-              onChange={(e) => setDraft({ ...draft, text: e.target.value })}
+              value={draft.title}
+              onChange={(e) => setDraft({ ...draft, title: e.target.value })}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') addTask();
-                if (e.key === 'Escape') { setAdding(false); setDraft({ text: '', priority: 'normal' }); }
+                if (e.key === 'Escape') { setAdding(false); setDraft({ title: '', priority: 'normal' }); }
               }}
               placeholder={isRTL ? 'اكتب المهمة...' : 'Type the task...'}
               className="flex-1 h-8 rounded-lg border border-input bg-background px-2.5 text-sm font-tajawal"
@@ -286,14 +367,14 @@ export const HakeemPlan = () => {
             <Button
               size="sm"
               onClick={addTask}
-              disabled={!draft.text.trim()}
+              disabled={!draft.title.trim()}
               className="h-8 rounded-lg bg-brand-turquoise text-white hover:bg-brand-turquoise/90 px-3 text-xs"
             >
               {isRTL ? 'حفظ' : 'Save'}
             </Button>
             <button
               type="button"
-              onClick={() => { setAdding(false); setDraft({ text: '', priority: 'normal' }); }}
+              onClick={() => { setAdding(false); setDraft({ title: '', priority: 'normal' }); }}
               className="w-7 h-7 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground"
               aria-label={isRTL ? 'إلغاء' : 'Cancel'}
             >

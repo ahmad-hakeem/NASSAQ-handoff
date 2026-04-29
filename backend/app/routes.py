@@ -56,6 +56,7 @@ def register_routes(app, api_router: APIRouter):
     from routes.product_hub_routes import router as product_hub_router
     from routes.portfolio_routes_mod import router as portfolio_mod_router
     from routes.calendar_routes_mod import router as calendar_mod_router
+    from routes.hakeem_plan_routes_mod import router as hakeem_plan_mod_router
 
     api_router.include_router(auth_mod_router)
     api_router.include_router(user_mod_router)
@@ -94,6 +95,7 @@ def register_routes(app, api_router: APIRouter):
     api_router.include_router(product_hub_router)
     api_router.include_router(portfolio_mod_router)
     api_router.include_router(calendar_mod_router)
+    api_router.include_router(hakeem_plan_mod_router)
 
     from routes.principal_management_routes import router as principal_mgmt_router
     api_router.include_router(principal_mgmt_router)

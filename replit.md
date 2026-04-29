@@ -283,9 +283,15 @@ Each fix report must include: root cause, why it wasn't caught before, what chan
   - **PostgreSQL**: Replit built-in via `DATABASE_URL`, GenericDocument JSONB storage, Alembic migrations
   - **Repository layer**: `backend/repositories/__init__.py` — Simplified Repos class providing `session` property only. All data access via `gd_*` helpers from `engines/sql_utils.py`
   - **Session management**: Repos uses `contextvars.ContextVar` for per-request session isolation
-  - **Core files**: `backend/db.py` (async engine), `backend/pg_models.py` (ORM models), `backend/alembic/` (migrations, head: q1r2s3t4u5v6)
+  - **Core files**: `backend/db.py` (async engine), `backend/pg_models.py` (ORM models), `backend/alembic/` (migrations, head: r1s2t3u4v5w6)
   - **asyncpg SSL fix**: `sslmode` param stripped from DATABASE_URL (asyncpg uses `ssl=True` instead)
   - **Data access layer**: `backend/engines/sql_utils.py` — `gd_find`, `gd_find_one`, `gd_insert`, `gd_insert_many`, `gd_update_one`, `gd_update_many`, `gd_count`, `gd_delete_one`, `gd_delete_many`, `gd_distinct`, `gd_upsert`, `_gd_aggregate`. Supports filter operators, `order_by`/`desc_order`/`limit`/`offset` params, update operators (`$set`/`$push`/`$pull`/`$inc`/`$unset`), and `tenant_id`↔`school_id` aliasing
+
+### Hakeem's Daily Plan (خطة حكيم لليوم)
+- **DB**: `daily_tasks` table (Alembic `r1s2t3u4v5w6`) — `id`, `tenant_id` FK→`schools`, `user_id` FK→`users` (the plan owner), `title`, `details`, `priority` (urgent/medium/normal), `status` (active/completed), `source` (manual/ai), `task_date` (YYYY-MM-DD), `ai_meta` JSONB (free-form trigger context), `created_by`, `completed_at`, timestamps; indexes `(user_id, task_date)`, `(tenant_id, task_date)`, `(user_id, status)`. Registered in `engines/sql_utils.py::_get_orm_model`.
+- **API**: `backend/routes/hakeem_plan_routes_mod.py` mounted at `/api/v1/hakeem-plan` — `GET /tasks?date=YYYY-MM-DD` (defaults to today, sorted by priority asc), `POST /tasks` (manual create), `PATCH /tasks/{id}` (title/details/priority/status; auto-stamps `completed_at`), `DELETE /tasks/{id}`, `POST /tasks/ai-inject` (main-admin only — `zalat@/hakim@`). All user-scoped via `current_user.id`.
+- **AI Injection Service**: `backend/engines/hakeem_plan_service.py::inject_ai_task()` — call directly from in-process Hakeem analysis pipelines (no HTTP round-trip). Supports `dedupe_key` to avoid duplicate proactive recommendations on repeated runs. Tasks created via this helper are flagged `source='ai'` and default to `priority='urgent'`.
+- **Frontend**: `frontend/src/components/dashboard/HakeemPlan.jsx` on School Command Center — fully wired CRUD, optimistic toggle/add/edit/delete with rollback on failure, live active/completed counters reactively driven by fetched state, distinctive "Hakeem Sparkle" badge + soft purple/turquoise gradient on AI-source rows (`source === 'ai'`), toast errors via `sonner`.
 
 ### Administrative Calendar (الروزنامة الإدارية)
 - **DB**: `calendar_events` table (Alembic `q1r2s3t4u5v6`) — `id`, `tenant_id` FK→`schools` (CASCADE), `title_ar/en`, `type` (trip/parents/report/exam/holiday/meeting/other), `date` (YYYY-MM-DD string), `details_ar/en`, `created_by`, timestamps; indexes on `tenant_id`, `type`, `date`, plus compound `(tenant_id, date)`. Registered in `engines/sql_utils.py::_get_orm_model`.

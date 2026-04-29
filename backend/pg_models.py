@@ -1197,6 +1197,31 @@ class CalendarEvent(Base):
     )
 
 
+class DailyTask(Base):
+    __tablename__ = "daily_tasks"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    tenant_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=True, index=True)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    title = Column(String, nullable=False)
+    details = Column(Text, nullable=True)
+    priority = Column(String, nullable=False, default="normal", index=True)
+    status = Column(String, nullable=False, default="active", index=True)
+    source = Column(String, nullable=False, default="manual", index=True)
+    task_date = Column(String, nullable=False, index=True)
+    ai_meta = Column(JSONB, nullable=True)
+    created_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+    __table_args__ = (
+        Index("idx_daily_tasks_user_date", "user_id", "task_date"),
+        Index("idx_daily_tasks_tenant_date", "tenant_id", "task_date"),
+        Index("idx_daily_tasks_user_status", "user_id", "status"),
+    )
+
+
 class SystemSetting(Base):
     __tablename__ = "system_settings"
 
