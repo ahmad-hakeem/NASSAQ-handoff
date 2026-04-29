@@ -631,28 +631,63 @@ export default function SessionTeachPage() {
 
   const autoGroupByLevel = (studentsList = null) => {
     const list = studentsList || students.filter(s => s.attendance_status === 'present');
-    const levels = { high: [], medium: [], low: [], unassigned: [] };
-    list.forEach(s => {
-      const level = s.level || s.student_level || s.academic_level;
-      if (level === 'advanced' || level === 'high' || level === 'متقدم') levels.high.push(s);
-      else if (level === 'intermediate' || level === 'medium' || level === 'متوسط') levels.medium.push(s);
-      else if (level === 'beginner' || level === 'low' || level === 'مبتدئ') levels.low.push(s);
-      else {
-        const score = s.correct_answers || s.correctAnswers || 0;
-        const count = s.interaction_count || s.interactionCount || 0;
-        if (count >= 5 && score >= 3) levels.high.push(s);
-        else if (count >= 2) levels.medium.push(s);
-        else if (count > 0) levels.low.push(s);
-        else levels.unassigned.push(s);
-      }
-    });
-    const newGroups = [];
-    if (levels.high.length > 0) newGroups.push({ id: 'g-high', name: t('advancedLevel'), color: 'bg-green-600', students: levels.high.map(s => s.id) });
-    if (levels.medium.length > 0) newGroups.push({ id: 'g-medium', name: t('intermediateLevel'), color: 'bg-blue-600', students: levels.medium.map(s => s.id) });
-    if (levels.low.length > 0) newGroups.push({ id: 'g-low', name: t('beginnerLevel'), color: 'bg-amber-600', students: levels.low.map(s => s.id) });
-    if (levels.unassigned.length > 0 && newGroups.length === 0) {
-      newGroups.push({ id: 'g-all', name: t('group') + ' 1', color: 'bg-muted', students: levels.unassigned.map(s => s.id) });
+    if (list.length === 0) {
+      setGroups([]);
+      toast.success(t('groupsCreatedAutomatically'));
+      return;
     }
+
+    // Scenario A: try to bucket students by an explicit level signal
+    // (high / medium / low). When no explicit `level` field is present
+    // we derive a coarse signal from in-session activity so that classes
+    // already running for a while still get differentiated buckets.
+    const classify = (s) => {
+      const level = s.level || s.student_level || s.academic_level;
+      if (level === 'advanced'     || level === 'high'   || level === 'متقدم') return 'high';
+      if (level === 'intermediate' || level === 'medium' || level === 'متوسط') return 'medium';
+      if (level === 'beginner'     || level === 'low'    || level === 'مبتدئ') return 'low';
+      const score = Number(s.correct_answers || s.correctAnswers || 0);
+      const count = Number(s.interaction_count || s.interactionCount || 0);
+      if (count >= 5 && score >= 3) return 'high';
+      if (count >= 2) return 'medium';
+      if (count > 0) return 'low';
+      return null; // no signal available
+    };
+
+    const buckets = { high: [], medium: [], low: [] };
+    let unsignalled = 0;
+    list.forEach(s => {
+      const tier = classify(s);
+      if (tier) buckets[tier].push(s);
+      else unsignalled += 1;
+    });
+
+    const filled = Object.values(buckets).filter(b => b.length > 0).length;
+    const useLevels = filled >= 2 && unsignalled === 0;
+
+    let newGroups = [];
+    if (useLevels) {
+      if (buckets.high.length)   newGroups.push({ id: 'g-high',   name: t('advancedLevel'),     color: 'bg-green-600', students: buckets.high.map(s => s.id) });
+      if (buckets.medium.length) newGroups.push({ id: 'g-medium', name: t('intermediateLevel'), color: 'bg-blue-600',  students: buckets.medium.map(s => s.id) });
+      if (buckets.low.length)    newGroups.push({ id: 'g-low',    name: t('beginnerLevel'),     color: 'bg-amber-600', students: buckets.low.map(s => s.id) });
+    } else {
+      // Scenario B: no useful level data (or every student lands in the
+      // same bucket) — split the roster into 3 evenly-sized groups so the
+      // teacher gets distinct cards instead of one giant pile.
+      const palette = ['bg-green-600', 'bg-blue-600', 'bg-amber-600'];
+      const groupCount = Math.min(3, list.length);
+      const chunks = Array.from({ length: groupCount }, () => []);
+      list.forEach((s, idx) => { chunks[idx % groupCount].push(s); }); // round-robin keeps sizes balanced
+      newGroups = chunks
+        .filter(c => c.length > 0)
+        .map((chunk, i) => ({
+          id: `g-auto-${i + 1}`,
+          name: `${t('group')} ${i + 1}`,
+          color: palette[i % palette.length],
+          students: chunk.map(s => s.id),
+        }));
+    }
+
     setGroups(newGroups);
     toast.success(t('groupsCreatedAutomatically'));
   };
