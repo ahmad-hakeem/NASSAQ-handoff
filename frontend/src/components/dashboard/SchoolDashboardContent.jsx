@@ -47,6 +47,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { SendNotificationWizard } from '../wizards/SendNotificationWizard';
 import { CreateScheduleWizard } from '../wizards/CreateScheduleWizard';
 import { LiveSessionsMonitor } from '../wizards/LiveSessionsMonitor';
+import { AdminCalendar } from './AdminCalendar';
+import { HakeemPlan } from './HakeemPlan';
 
 const SchoolDayProgress = ({ isRTL }) => {
   const { t } = useTranslation();
@@ -860,12 +862,18 @@ export const SchoolDashboardContent = () => {
         <SchoolDayProgress isRTL={isRTL} />
       </SectionErrorBoundary>
 
-      <section className="grid lg:grid-cols-2 gap-5" data-testid="dashboard-kpi-section">
+      <section data-testid="dashboard-kpi-section">
         <SectionErrorBoundary name="AttendanceRadial" isRTL={isRTL} fallbackMessage={t('failedToLoadAttendanceData')}>
           <AttendanceRadial data={dashboardData?.attendance} isRTL={isRTL} />
         </SectionErrorBoundary>
-        <SectionErrorBoundary name="DailyOpsPanel" isRTL={isRTL} fallbackMessage={t('failedToLoadOperationsPanel')}>
-          <DailyOpsPanel data={dashboardData?.interventions} isRTL={isRTL} onNavigate={(path) => navigate(path)} />
+      </section>
+
+      <section className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-md:gap-4" data-testid="dashboard-planning-section">
+        <SectionErrorBoundary name="AdminCalendar" isRTL={isRTL} fallbackMessage={t('failedToLoadOperationsPanel')}>
+          <AdminCalendar />
+        </SectionErrorBoundary>
+        <SectionErrorBoundary name="HakeemPlan" isRTL={isRTL} fallbackMessage={t('failedToLoadOperationsPanel')}>
+          <HakeemPlan />
         </SectionErrorBoundary>
       </section>
 
