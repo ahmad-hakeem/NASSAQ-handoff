@@ -19,8 +19,8 @@ import {
   User, Lock, Bell, Globe, Save, Loader2, Camera, Mail, Phone, Key,
   Eye, EyeOff, Award, BookOpen, Users, CheckCircle2, Activity, Flame,
   Shield, History, Clock, Building2, IdCard, ChevronLeft, ChevronRight,
-  Check, X, LogIn, LogOut, ClipboardList, MessageSquare, Star, FileText,
-  Trash2, Upload
+  Check, X, LogIn, LogOut, ClipboardList, ClipboardCheck, MessageSquare,
+  Star, FileText, Trash2, Upload, Settings as SettingsIcon
 } from 'lucide-react';
 
 const BG_PATTERN = 'https://customer-assets.emergentagent.com/job_f5ea20bb-5cf5-462f-a7f0-958201e27f89/artifacts/1itjy61q_Nassaq%20Background.png';
@@ -53,9 +53,64 @@ const PasswordStrength = ({ password, isRTL }) => {
   );
 };
 
-const activityIcons = {
-  login: LogIn, logout: LogOut, session: ClipboardList, attendance: CheckCircle2,
-  behavior: Star, grade: FileText, message: MessageSquare, profile: User, security: Shield, other: Activity,
+const EVENT_META = {
+  'auth.login':                { ar: 'تسجيل دخول',          en: 'Login',                icon: LogIn },
+  'auth.logout':               { ar: 'تسجيل خروج',          en: 'Logout',               icon: LogOut },
+  'session.start':             { ar: 'بدء حصة',             en: 'Session Started',      icon: BookOpen },
+  'session.end':               { ar: 'إنهاء حصة',           en: 'Session Ended',        icon: BookOpen },
+  'attendance.record':         { ar: 'تسجيل حضور وغياب',    en: 'Attendance Recorded',  icon: ClipboardCheck },
+  'attendance.create':         { ar: 'تسجيل حضور وغياب',    en: 'Attendance Recorded',  icon: ClipboardCheck },
+  'attendance.update':         { ar: 'تعديل الحضور',        en: 'Attendance Updated',   icon: ClipboardCheck },
+  'attendance.bulk_recorded':  { ar: 'تسجيل حضور وغياب',    en: 'Attendance Recorded',  icon: ClipboardCheck },
+  'behavior.create':           { ar: 'تسجيل سلوك',          en: 'Behavior Recorded',    icon: Star },
+  'behavior.bulk_recorded':    { ar: 'تسجيل سلوك',          en: 'Behavior Recorded',    icon: Star },
+  'grade.create':              { ar: 'تسجيل درجات',         en: 'Grades Recorded',      icon: FileText },
+  'grade.bulk_recorded':       { ar: 'تسجيل درجات',         en: 'Grades Recorded',      icon: FileText },
+  'message.send':              { ar: 'إرسال رسالة',         en: 'Message Sent',         icon: MessageSquare },
+  'notification.send':         { ar: 'إرسال إشعار',         en: 'Notification Sent',    icon: Bell },
+  'user.update':               { ar: 'تحديث الملف الشخصي',  en: 'Profile Updated',      icon: User },
+  'user_updated':              { ar: 'تحديث الملف الشخصي',  en: 'Profile Updated',      icon: User },
+  'profile.update':            { ar: 'تحديث الملف الشخصي',  en: 'Profile Updated',      icon: User },
+  'password.change':           { ar: 'تغيير كلمة المرور',   en: 'Password Changed',     icon: Key },
+  'settings.update':           { ar: 'تحديث الإعدادات',     en: 'Settings Updated',     icon: SettingsIcon },
+};
+
+const CATEGORY_ICONS = {
+  auth: LogIn,
+  session: BookOpen,
+  attendance: ClipboardCheck,
+  behavior: Star,
+  grade: FileText,
+  message: MessageSquare,
+  notification: Bell,
+  user: User,
+  profile: User,
+  password: Key,
+  security: Shield,
+  settings: SettingsIcon,
+};
+
+const humanizeKey = (key) => {
+  if (!key || typeof key !== 'string') return '';
+  return key
+    .replace(/[._]+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+};
+
+const resolveActivity = (act, isRTL, fallbackText) => {
+  const action = (act && act.action) || '';
+  const meta = EVENT_META[action];
+  if (meta) {
+    return { label: isRTL ? meta.ar : meta.en, Icon: meta.icon };
+  }
+  const backendLabel = isRTL ? act?.label_ar : act?.label_en;
+  const label = (backendLabel && backendLabel !== action)
+    ? backendLabel
+    : (humanizeKey(action) || fallbackText);
+  const prefix = action.split('.')[0];
+  const Icon = CATEGORY_ICONS[prefix] || CATEGORY_ICONS[act?.icon] || Activity;
+  return { label, Icon };
 };
 
 export default function TeacherSettingsPage() {
@@ -693,40 +748,65 @@ export default function TeacherSettingsPage() {
                           <p className="text-xs text-muted-foreground/60 mt-1 font-cairo">{t('yourActivitiesWillAppearHereAsYouUseThePlatform')}</p>
                         </div>
                       ) : (
-                        <div className="space-y-6">
+                        <div className="space-y-8">
                           {Object.entries(groupActivitiesByDate(activities)).map(([date, acts]) => (
                             <div key={date}>
-                              <div className="flex items-center gap-2 mb-3">
-                                <Clock className="h-3.5 w-3.5 text-brand-turquoise" />
-                                <span className="text-xs font-medium text-brand-turquoise font-cairo">{date}</span>
+                              <div className="flex items-center gap-3 mb-4">
+                                <span className="text-sm font-semibold text-brand-navy dark:text-brand-turquoise font-cairo">{date}</span>
+                                <Badge variant="secondary" className="bg-brand-turquoise/10 text-brand-turquoise border-0 text-[11px] h-5 px-2 font-cairo font-medium">
+                                  {isRTL
+                                    ? `${acts.length} ${acts.length === 1 ? 'حدث' : (acts.length === 2 ? 'حدثان' : 'أحداث')}`
+                                    : `${acts.length} ${acts.length === 1 ? 'event' : 'events'}`}
+                                </Badge>
                                 <div className="flex-1 h-px bg-border" />
-                                <Badge variant="secondary" className="text-[10px]">{acts.length}</Badge>
                               </div>
-                              <div className="space-y-2 ps-2 border-s-2 border-brand-turquoise/20 ms-1.5">
-                                {acts.map((act, idx) => {
-                                  const Icon = activityIcons[act.icon] || Activity;
-                                  return (
-                                    <div key={act.id || idx} className="flex items-start gap-3 p-3 rounded-xl hover:bg-muted/30 transition-colors relative">
-                                      <div className="absolute -start-[13px] top-4 w-2.5 h-2.5 rounded-full bg-brand-turquoise/40 border-2 border-white dark:border-gray-800" />
-                                      <div className="w-8 h-8 rounded-lg bg-brand-turquoise/10 flex items-center justify-center shrink-0">
-                                        <Icon className="h-4 w-4 text-brand-turquoise" />
-                                      </div>
-                                      <div className="flex-1 min-w-0">
-                                        <p className="font-medium text-sm font-cairo">{isRTL ? act.label_ar : act.label_en}</p>
-                                        {act.description && typeof act.description === 'string' && (
-                                          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{act.description}</p>
-                                        )}
-                                        <div className="flex items-center gap-2 mt-1">
-                                          <span className="text-[10px] text-muted-foreground/60 flex items-center gap-1">
-                                            <Clock className="h-2.5 w-2.5" />
-                                            {act.timestamp ? new Date(act.timestamp).toLocaleTimeString(isRTL ? 'ar-SA' : 'en-US', { timeStyle: 'short' }) : ''}
-                                          </span>
-                                          {act.page && <Badge variant="secondary" className="text-[9px] h-4">{act.page}</Badge>}
+                              <div className="relative">
+                                <div
+                                  className="absolute top-4 bottom-4 w-px bg-brand-turquoise/30 pointer-events-none"
+                                  style={isRTL ? { right: '30px' } : { left: '30px' }}
+                                  aria-hidden
+                                />
+                                <div className="space-y-3 relative">
+                                  {acts.map((act, idx) => {
+                                    const { label, Icon } = resolveActivity(act, isRTL, t('unknownEvent'));
+                                    return (
+                                      <div
+                                        key={act.id || idx}
+                                        className="flex items-start gap-4 p-3 rounded-xl hover:bg-muted/30 transition-colors"
+                                      >
+                                        <div className="relative z-10 w-9 h-9 rounded-full bg-white dark:bg-gray-900 border-2 border-brand-turquoise/40 flex items-center justify-center shadow-sm shrink-0">
+                                          <Icon className="h-4 w-4 text-brand-turquoise" />
+                                        </div>
+                                        <div className="flex-1 min-w-0 pt-1">
+                                          <p className="font-semibold text-sm text-foreground font-cairo leading-tight">
+                                            {label}
+                                          </p>
+                                          {act.description && typeof act.description === 'string' && (
+                                            <p className="text-xs text-muted-foreground mt-1 line-clamp-1 font-cairo">
+                                              {act.description}
+                                            </p>
+                                          )}
+                                          <div className="flex items-center gap-2 mt-2">
+                                            <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 font-cairo">
+                                              <Clock className="h-3 w-3" />
+                                              {act.timestamp
+                                                ? new Date(act.timestamp).toLocaleTimeString(
+                                                    isRTL ? 'ar-SA' : 'en-US',
+                                                    { timeStyle: 'short' }
+                                                  )
+                                                : ''}
+                                            </span>
+                                            {act.page && (
+                                              <Badge variant="outline" className="text-[10px] h-5 px-1.5 font-cairo border-muted-foreground/20 text-muted-foreground/80">
+                                                {act.page}
+                                              </Badge>
+                                            )}
+                                          </div>
                                         </div>
                                       </div>
-                                    </div>
-                                  );
-                                })}
+                                    );
+                                  })}
+                                </div>
                               </div>
                             </div>
                           ))}

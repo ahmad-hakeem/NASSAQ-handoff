@@ -1872,6 +1872,7 @@
   "noActiveSessionsRightNow": "لا توجد جلسات نشطة حالياً",
   "noActivitiesRecorded": "لا توجد أنشطة مسجلة",
   "noActivitiesRecordedYet": "لا توجد أنشطة مسجلة بعد",
+  "unknownEvent": "حدث غير معروف",
   "noActivitiesYet": "لا توجد أنشطة حالياً",
   "noActivityDataYet": "لا توجد بيانات نشاط بعد",
   "noActivityLog": "لا يوجد سجل نشاط",
