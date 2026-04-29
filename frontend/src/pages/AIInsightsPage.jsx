@@ -22,6 +22,8 @@ import {
   BookOpen, ClipboardCheck, Award, UserCheck,
 } from 'lucide-react';
 import { Progress } from '../components/ui/progress';
+import { AttendanceRadial } from '../components/dashboard/AttendancePanel';
+import SectionErrorBoundary from '../components/SectionErrorBoundary';
 
 const HAKIM_AVATAR = '/hakim-poses/detecting-patterns.png';
 
@@ -700,16 +702,20 @@ export const AIInsightsPage = () => {
   const [recommendations, setRecommendations] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [studentRisks, setStudentRisks] = useState([]);
+  const [attendanceData, setAttendanceData] = useState(null);
 
   const fetchData = useCallback(async () => {
     try {
-      const [overviewRes, predictionsRes, recommendationsRes, alertsRes, risksRes] = await Promise.all([
+      const [overviewRes, predictionsRes, recommendationsRes, alertsRes, risksRes, dashboardRes] = await Promise.all([
         api.get('/ai/insights/overview').catch(() => ({ data: null })),
         api.get('/ai/insights/predictions').catch(() => ({ data: [] })),
         api.get('/ai/insights/recommendations').catch(() => ({ data: [] })),
         api.get('/ai/insights/alerts').catch(() => ({ data: [] })),
         api.get('/ai/insights/at-risk-students').catch(() => ({ data: [] })),
+        api.get('/school/dashboard').catch(() => ({ data: null })),
       ]);
+
+      setAttendanceData(dashboardRes?.data?.attendance || null);
 
       if (overviewRes.data) {
         setInsights({
@@ -973,6 +979,15 @@ export const AIInsightsPage = () => {
               )}
             </div>
           </div>
+
+          {/* ══════ ATTENDANCE PANEL (لوحة الحضور) ══════ */}
+          {!isTeacher && (
+            <div className="ai-slide-in">
+              <SectionErrorBoundary name="AttendanceRadial" isRTL={isRTL} fallbackMessage={t('failedToLoadAttendanceData')}>
+                <AttendanceRadial data={attendanceData} isRTL={isRTL} />
+              </SectionErrorBoundary>
+            </div>
+          )}
 
           {/* ══════ TEACHER MONITORING INSIGHTS ══════ */}
           <div className="ai-slide-in">
