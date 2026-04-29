@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme , useTranslation } from '../../contexts/ThemeContext';
+import { useNassaqAlert } from '../ui/NassaqAlertDialog';
 import { Button } from '../ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import {
@@ -35,6 +36,7 @@ export const PortalLayout = ({ children, portalType = 'student' }) => {
   const { t } = useTranslation();
   const { user, logout } = useAuth();
   const { isRTL } = useTheme();
+  const { nassaqWarning } = useNassaqAlert();
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -45,8 +47,19 @@ export const PortalLayout = ({ children, portalType = 'student' }) => {
   const gradientTo = isStudent ? 'to-teal-500' : 'to-brand-purple';
 
   const handleLogout = () => {
-    logout();
-    navigate('/login');
+    nassaqWarning(
+      t('areYouSureYouWantToLogOut'),
+      {
+        title: t('confirmLogout'),
+        confirmText: t('logout'),
+        cancelText: t('cancel'),
+        showCancel: true,
+        onConfirm: () => {
+          logout();
+          navigate('/login');
+        },
+      }
+    );
   };
 
   const studentMenuItems = [

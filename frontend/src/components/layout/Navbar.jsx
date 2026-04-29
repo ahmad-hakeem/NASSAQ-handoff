@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme, useTranslation } from '../../contexts/ThemeContext';
+import { useNassaqAlert } from '../ui/NassaqAlertDialog';
 import { Button } from '../ui/button';
 import {
   DropdownMenu,
@@ -30,6 +31,7 @@ export const Navbar = ({ variant = 'default' }) => {
   const { user, logout, isAuthenticated } = useAuth();
   const { theme, toggleTheme, toggleLanguage, language, isDark } = useTheme();
   const { t } = useTranslation();
+  const { nassaqWarning } = useNassaqAlert();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -41,8 +43,19 @@ export const Navbar = ({ variant = 'default' }) => {
   ];
 
   const handleLogout = () => {
-    logout();
-    navigate('/');
+    nassaqWarning(
+      t('areYouSureYouWantToLogOut'),
+      {
+        title: t('confirmLogout'),
+        confirmText: t('logout'),
+        cancelText: t('cancel'),
+        showCancel: true,
+        onConfirm: () => {
+          logout();
+          navigate('/');
+        },
+      }
+    );
   };
 
   const getDashboardLink = () => {

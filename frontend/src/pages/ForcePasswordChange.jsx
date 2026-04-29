@@ -113,8 +113,19 @@ export default function ForcePasswordChange() {
   };
   
   const handleLogout = () => {
-    logout();
-    navigate('/login');
+    nassaqWarning(
+      t('areYouSureYouWantToLogOut'),
+      {
+        title: t('confirmLogout'),
+        confirmText: t('logout'),
+        cancelText: t('cancel'),
+        showCancel: true,
+        onConfirm: () => {
+          logout();
+          navigate('/login');
+        },
+      }
+    );
   };
   
   return (

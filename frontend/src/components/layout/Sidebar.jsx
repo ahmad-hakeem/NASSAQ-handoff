@@ -180,6 +180,10 @@ export const Sidebar = ({ children }) => {
     nassaqWarning(
       t('areYouSureYouWantToLogOut'),
       {
+        title: t('confirmLogout'),
+        confirmText: t('logout'),
+        cancelText: t('cancel'),
+        showCancel: true,
         onConfirm: async () => {
           setLoggingOut(true);
           try {
