@@ -111,21 +111,31 @@ def _date_matches_today(date_val, today_iso: str) -> bool:
     return False
 
 
-async def _absent_teacher_ids_today(school_id: str, valid_teacher_ids: set[str]) -> set[str]:
+async def _absent_teacher_ids_today(
+    school_id: str,
+    valid_teacher_ids: set[str],
+    user_id_to_teacher_id: dict[str, str] | None = None,
+) -> set[str]:
     """يجمع معرفات المعلمين الغائبين اليوم من teacher_attendance أو attendance.
 
     يطبِّع الحقول: قد يأتي معرف المعلم في `teacher_id` أو `user_id`، وقد يكون
     التاريخ نصاً أو كائن datetime/date. يقتصر على المعرفات المعروفة كمعلمين
+    (مع ترجمة `user_id` إلى `teacher_id` عبر `user_id_to_teacher_id`)
     لتجنّب الخلط مع المستخدمين غير المعلمين.
     """
     today_iso = datetime.now(timezone.utc).date().isoformat()
     absent_ids: set[str] = set()
+    u2t = user_id_to_teacher_id or {}
 
     def _collect(rows):
         for r in rows:
             if not _date_matches_today(r.get("date"), today_iso):
                 continue
-            tid = r.get("teacher_id") or r.get("user_id")
+            raw = r.get("teacher_id") or r.get("user_id")
+            if not raw:
+                continue
+            # إذا كانت القيمة معرف مستخدم اربطها بمعرف المعلم
+            tid = raw if raw in valid_teacher_ids else u2t.get(raw)
             if tid and tid in valid_teacher_ids:
                 absent_ids.add(tid)
 
@@ -209,8 +219,16 @@ async def get_master_grid(
         s.get("id"): (s.get("name_ar") or s.get("name") or "") for s in subjects
     }
 
-    valid_teacher_ids = {t.get("id") for t in teachers if t.get("id")}
-    absent_ids = await _absent_teacher_ids_today(sid, valid_teacher_ids)
+    # خرائط ربط: قد تأتي سجلات الحضور بمعرّف teacher.id أو user_id؛ نمرّر الاتجاهين
+    # حتى نلتقط الغياب أينما حفظه نظام الحضور.
+    teacher_id_to_user_id = {t.get("id"): t.get("user_id") for t in teachers if t.get("id")}
+    user_id_to_teacher_id = {
+        t.get("user_id"): t.get("id") for t in teachers if t.get("user_id") and t.get("id")
+    }
+    valid_teacher_ids = set(teacher_id_to_user_id.keys())
+    absent_ids = await _absent_teacher_ids_today(
+        sid, valid_teacher_ids, user_id_to_teacher_id
+    )
     today_key = _today_day_key()
 
     cells: dict[str, dict[str, dict[str, object]]] = {}
