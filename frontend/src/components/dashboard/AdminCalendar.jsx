@@ -159,22 +159,74 @@ export const AdminCalendar = () => {
     URL.revokeObjectURL(url);
   };
 
-  const handleFileSelect = async (e) => {
+  const parseCsvToEvents = (text) => {
+    const typeMap = {
+      'رحلة': 'trip',
+      'تقرير': 'report',
+      'إجازة': 'holiday',
+      'اختبار': 'exam',
+      'اجتماع': 'meeting',
+      'أولياء الأمور': 'parents',
+      'trip': 'trip',
+      'report': 'report',
+      'holiday': 'holiday',
+      'exam': 'exam',
+      'meeting': 'meeting',
+      'parents': 'parents',
+    };
+    const lines = text.replace(/\r/g, '').split('\n');
+    const out = [];
+    for (let i = 1; i < lines.length; i++) {
+      try {
+        const raw = lines[i];
+        if (!raw || !raw.trim()) continue;
+        const cols = raw.split(',').map((c) => c.trim());
+        const name = cols[0];
+        const date = cols[1];
+        const typeRaw = (cols[2] || '').trim();
+        if (!name || !date) continue;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+        const type = typeMap[typeRaw] || 'meeting';
+        out.push({
+          id: `evt-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}`,
+          title_ar: name,
+          title_en: name,
+          type,
+          date,
+          details_ar: '',
+          details_en: '',
+        });
+      } catch {
+        // ignore malformed row
+      }
+    }
+    return out;
+  };
+
+  const handleFileSelect = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setImportedFile(file);
-    setBusy(true);
-    // Placeholder for backend processing — captured for future API call.
-    // eslint-disable-next-line no-console
-    console.log('[AdminCalendar] file selected for import:', {
-      name: file.name,
-      size: file.size,
-      type: file.type,
-    });
-    await new Promise((r) => setTimeout(r, 200));
-    setBusy(false);
-    // Reset input so selecting the same file again still triggers onChange.
-    e.target.value = '';
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const text = String(ev.target?.result || '').replace(/^\uFEFF/, '');
+        const newEvents = parseCsvToEvents(text);
+        if (newEvents.length > 0) {
+          setEvents((prev) => [...prev, ...newEvents]);
+        }
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('[AdminCalendar] CSV parse error:', err);
+      }
+    };
+    reader.onerror = () => {
+      // eslint-disable-next-line no-console
+      console.error('[AdminCalendar] failed to read file');
+    };
+    reader.readAsText(file);
+    // Reset so selecting the same file again still triggers onChange.
+    e.target.value = null;
   };
 
   const deleteEvent = async (id) => {
