@@ -411,21 +411,11 @@ export const AdminCalendar = () => {
           <div className="space-y-3">
             <div>
               <label className="text-xs font-cairo text-muted-foreground mb-1 block">
-                {isRTL ? 'العنوان (عربي)' : 'Title (AR)'}
+                {isRTL ? 'العنوان' : 'Title'}
               </label>
               <input
                 value={form.title_ar}
                 onChange={(e) => setForm({ ...form, title_ar: e.target.value })}
-                className="w-full h-9 rounded-lg border border-input bg-background px-3 text-sm"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-cairo text-muted-foreground mb-1 block">
-                {isRTL ? 'العنوان (إنجليزي)' : 'Title (EN)'}
-              </label>
-              <input
-                value={form.title_en}
-                onChange={(e) => setForm({ ...form, title_en: e.target.value })}
                 className="w-full h-9 rounded-lg border border-input bg-background px-3 text-sm"
               />
             </div>
@@ -458,7 +448,7 @@ export const AdminCalendar = () => {
               {isRTL ? 'إلغاء' : 'Cancel'}
             </Button>
             <Button
-              disabled={busy || !form.date || (!form.title_ar && !form.title_en)}
+              disabled={busy || !form.date || !form.title_ar}
               onClick={saveEvent}
               className="bg-brand-turquoise hover:bg-brand-turquoise/90 text-white"
             >
