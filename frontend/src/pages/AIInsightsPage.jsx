@@ -132,7 +132,7 @@ const VisualMetricCard = ({ icon: Icon, value, label, subLabel, gradient, accent
   );
 };
 
-const AlertsTimeline = ({ alerts, isRTL, onNavigate }) => {
+const AlertsTimeline = ({ alerts, isRTL, onNavigate, isTeacher = false }) => {
   const { t } = useTranslation();
   const typeConfig = {
     warning: { icon: AlertTriangle, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-950/30', line: 'bg-amber-300', accent: 'border-amber-200' },
@@ -149,6 +149,12 @@ const AlertsTimeline = ({ alerts, isRTL, onNavigate }) => {
     performance: '/principal/ai-insights',
   };
 
+  // Strip admin-only alerts (e.g. "scheduling — assign teachers to
+  // sessions") when the viewer is a teacher.
+  const visibleAlerts = isTeacher
+    ? alerts.filter(a => a?.category !== 'scheduling' && !isAdminOnlyItem(a))
+    : alerts;
+
   return (
     <Card className="card-nassaq overflow-hidden h-full">
       <CardHeader className="pb-3 border-b border-border/30">
@@ -159,24 +165,26 @@ const AlertsTimeline = ({ alerts, isRTL, onNavigate }) => {
             </div>
             {t('smartAlerts')}
           </CardTitle>
-          {alerts.length > 0 && (
-            <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 border-0 font-cairo text-xs px-2.5">{alerts.length}</Badge>
+          {visibleAlerts.length > 0 && (
+            <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 border-0 font-cairo text-xs px-2.5">{visibleAlerts.length}</Badge>
           )}
         </div>
       </CardHeader>
       <CardContent className="pt-4">
-        {alerts.length === 0 ? (
+        {visibleAlerts.length === 0 ? (
           <div className="flex flex-col items-center py-10 text-center">
             <div className="w-16 h-16 rounded-2xl bg-emerald-100/80 dark:bg-emerald-900/30 flex items-center justify-center mb-4 shadow-sm">
               <CheckCircle className="h-8 w-8 text-emerald-500" />
             </div>
-            <p className="text-sm font-cairo font-bold text-foreground">{t('everythingRunningSmoothly')}</p>
+            <p className="text-sm font-cairo font-bold text-foreground">
+              {isTeacher ? t('teacherClassesRunningSmoothly') : t('everythingRunningSmoothly')}
+            </p>
             <p className="text-xs text-muted-foreground/60 font-tajawal mt-1 max-w-[200px]">{t('hakimWillNotifyYouWhenPatternsAreDetected')}</p>
           </div>
         ) : (
           <div className="relative space-y-0">
             <div className="absolute start-[19px] top-4 bottom-4 w-[2px] bg-gradient-to-b from-amber-200 via-sky-200 to-emerald-200 dark:from-amber-800/40 dark:via-sky-800/40 dark:to-emerald-800/40 rounded-full" />
-            {alerts.slice(0, 6).map((alert, i) => {
+            {visibleAlerts.slice(0, 6).map((alert, i) => {
               const config = typeConfig[alert.type] || typeConfig.info;
               const AlertIcon = config.icon;
               const alertRoute = alert.route || alertRouteMap[alert.category] || null;
@@ -292,13 +300,51 @@ const PredictionsPanel = ({ predictions, isRTL }) => {
   );
 };
 
-const RecommendationsPanel = ({ recommendations, isRTL }) => {
+// Recommendations or alerts whose category is clearly an admin-level
+// concern (HR, staffing, hiring, school-wide scheduling) must never be
+// shown to a teacher — they can't act on them and the wording is wrong
+// for their role. The backend now suppresses these for teachers, but we
+// also filter on the client as defense-in-depth so a stale cache or a
+// new admin-only category added server-side can't leak through.
+const ADMIN_ONLY_CATEGORY_PATTERNS = [
+  /human\s*resources?/i,
+  /staffing/i,
+  /hiring/i,
+  /school[-\s]?wide/i,
+  /الموارد\s*البشرية/,
+  /الكادر/,
+  /التوظيف/,
+  /scheduling/i,
+  /الجدول/,
+];
+
+const isAdminOnlyItem = (item) => {
+  const cat = item?.category;
+  const candidates = [
+    typeof cat === 'string' ? cat : null,
+    cat?.ar,
+    cat?.en,
+    item?.title?.ar,
+    item?.title?.en,
+  ].filter(Boolean);
+  return candidates.some(text =>
+    ADMIN_ONLY_CATEGORY_PATTERNS.some(rx => rx.test(text))
+  );
+};
+
+const RecommendationsPanel = ({ recommendations, isRTL, isTeacher = false }) => {
   const { t } = useTranslation();
   const priorityConfig = {
     high: { color: 'from-red-500 to-rose-500', accent: 'bg-red-500', label: t('high2'), icon: Flame },
     medium: { color: 'from-amber-500 to-yellow-500', accent: 'bg-amber-500', label: t('medium2'), icon: Star },
     low: { color: 'from-emerald-500 to-teal-500', accent: 'bg-emerald-500', label: t('low2'), icon: Lightbulb },
   };
+
+  // Strip admin-only entries when a teacher is viewing, so the UI only
+  // surfaces pedagogical guidance the teacher can actually act on.
+  const visibleRecommendations = isTeacher
+    ? recommendations.filter(rec => !isAdminOnlyItem(rec))
+    : recommendations;
 
   return (
     <Card className="card-nassaq overflow-hidden h-full">
@@ -310,22 +356,24 @@ const RecommendationsPanel = ({ recommendations, isRTL }) => {
             </div>
             {t('smartRecommendations')}
           </CardTitle>
-          {recommendations.length > 0 && (
-            <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400 border-0 font-cairo text-xs px-2.5">{recommendations.length}</Badge>
+          {visibleRecommendations.length > 0 && (
+            <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400 border-0 font-cairo text-xs px-2.5">{visibleRecommendations.length}</Badge>
           )}
         </div>
       </CardHeader>
       <CardContent className="pt-4">
-        {recommendations.length === 0 ? (
+        {visibleRecommendations.length === 0 ? (
           <div className="flex flex-col items-center py-10 text-center">
             <div className="w-16 h-16 rounded-2xl bg-emerald-100/60 dark:bg-emerald-900/20 flex items-center justify-center mb-4 shadow-sm">
               <Lightbulb className="h-8 w-8 text-emerald-400/60" />
             </div>
-            <p className="text-sm font-cairo font-bold text-foreground">{t('noRecommendationsYet')}</p>
+            <p className="text-sm font-cairo font-bold text-foreground">
+              {isTeacher ? t('teacherClassesRunningSmoothly') : t('noRecommendationsYet')}
+            </p>
           </div>
         ) : (
           <div className="space-y-2.5">
-            {recommendations.map((rec, i) => {
+            {visibleRecommendations.map((rec, i) => {
               const config = priorityConfig[rec.priority] || priorityConfig.medium;
               const PIcon = config.icon;
               return (
@@ -935,13 +983,13 @@ export const AIInsightsPage = () => {
           <div className="space-y-6">
             <div className="space-y-6 ai-slide-in">
               <div id="alerts-section" className="grid lg:grid-cols-2 gap-6">
-                <AlertsTimeline alerts={alerts} isRTL={isRTL} onNavigate={handleAlertNavigate} />
+                <AlertsTimeline alerts={alerts} isRTL={isRTL} onNavigate={handleAlertNavigate} isTeacher={isTeacher} />
                 <div id="risks-section">
                   <RiskStudentsPanel students={studentRisks} isRTL={isRTL} onNavigate={handleStudentNavigate} />
                 </div>
               </div>
               <div className="grid lg:grid-cols-2 gap-6">
-                <RecommendationsPanel recommendations={recommendations} isRTL={isRTL} />
+                <RecommendationsPanel recommendations={recommendations} isRTL={isRTL} isTeacher={isTeacher} />
                 <PredictionsPanel predictions={predictions} isRTL={isRTL} />
               </div>
             </div>

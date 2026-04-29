@@ -1115,7 +1115,12 @@ async def get_ai_recommendations(
 
     total_students = await gd_count(db.session, "students", students_q)
     total_teachers = await gd_count(db.session, "teachers", teachers_q)
-    if total_teachers > 0:
+    # The HR/staffing recommendation ("Strengthen Teaching Staff") is a
+    # school-admin concern — teachers can't hire colleagues, so skip it
+    # entirely when the caller is a teacher. (For teachers `teachers_q`
+    # filters down to themselves, which would otherwise produce an
+    # absurd N:1 ratio and trigger this admin-only nudge.)
+    if teacher_scope is None and total_teachers > 0:
         ratio = total_students / total_teachers
         if ratio > 25:
             rec_id += 1
@@ -1181,14 +1186,24 @@ async def get_ai_recommendations(
         })
 
     if not recommendations:
-        recommendations.append({
-            "id": "1",
-            "category": {"ar": "الأداء العام", "en": "General Performance"},
-            "title": {"ar": "أداء المدرسة جيد", "en": "School Performance is Good"},
-            "description": {"ar": "المؤشرات الحالية جيدة. استمر في متابعة الأداء بانتظام للحفاظ على هذا المستوى", "en": "Current indicators are good. Continue regular monitoring to maintain this level"},
-            "priority": "low",
-            "expected_impact": 5
-        })
+        if teacher_scope is not None:
+            recommendations.append({
+                "id": "1",
+                "category": {"ar": "الأداء التعليمي", "en": "Teaching Performance"},
+                "title": {"ar": "فصولك تسير بشكل ممتاز", "en": "Your Classes Are Doing Great"},
+                "description": {"ar": "لا توجد توصيات عاجلة لفصولك حالياً. استمر في متابعة الأداء والمشاركة الصفية", "en": "No urgent recommendations for your classes right now. Keep monitoring participation and progress"},
+                "priority": "low",
+                "expected_impact": 5
+            })
+        else:
+            recommendations.append({
+                "id": "1",
+                "category": {"ar": "الأداء العام", "en": "General Performance"},
+                "title": {"ar": "أداء المدرسة جيد", "en": "School Performance is Good"},
+                "description": {"ar": "المؤشرات الحالية جيدة. استمر في متابعة الأداء بانتظام للحفاظ على هذا المستوى", "en": "Current indicators are good. Continue regular monitoring to maintain this level"},
+                "priority": "low",
+                "expected_impact": 5
+            })
 
     return recommendations
 
@@ -1253,17 +1268,21 @@ async def get_ai_alerts(
                 "route": "/admin/attendance"
             })
 
-    unassigned_sessions = await gd_count(db.session, "timetable_sessions", {**sessions_q, "$or": [{"teacher_id": None}, {"teacher_id": ""}]})
-    if unassigned_sessions > 0:
-        alerts.append({
-            "id": str(uuid.uuid4())[:8],
-            "type": "warning",
-            "title": {"ar": f"حصص بلا معلم: {unassigned_sessions}", "en": f"Unassigned Sessions: {unassigned_sessions}"},
-            "description": {"ar": f"يوجد {unassigned_sessions} حصة بدون معلم مُعيّن. قم بتعيين معلمين لها", "en": f"{unassigned_sessions} sessions have no teacher assigned"},
-            "timestamp": today.isoformat(),
-            "category": "scheduling",
-            "route": "/school/schedule"
-        })
+    # Skip the "Unassigned Sessions" alert for teachers — assigning
+    # teachers to timetable slots is a school-admin / scheduling task,
+    # not something a teacher can act on from their own dashboard.
+    if teacher_scope is None:
+        unassigned_sessions = await gd_count(db.session, "timetable_sessions", {**sessions_q, "$or": [{"teacher_id": None}, {"teacher_id": ""}]})
+        if unassigned_sessions > 0:
+            alerts.append({
+                "id": str(uuid.uuid4())[:8],
+                "type": "warning",
+                "title": {"ar": f"حصص بلا معلم: {unassigned_sessions}", "en": f"Unassigned Sessions: {unassigned_sessions}"},
+                "description": {"ar": f"يوجد {unassigned_sessions} حصة بدون معلم مُعيّن. قم بتعيين معلمين لها", "en": f"{unassigned_sessions} sessions have no teacher assigned"},
+                "timestamp": today.isoformat(),
+                "category": "scheduling",
+                "route": "/school/schedule"
+            })
 
     recent_behaviour = await gd_count(db.session, "behaviour_records", {
         **behaviour_q,
