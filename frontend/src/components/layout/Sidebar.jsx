@@ -391,7 +391,7 @@ export const Sidebar = ({ children }) => {
       {
         icon: Network,
         label: t('aiInsights'),
-        href: '/principal/ai-insights',
+        href: '/ai-insights',
         roles: ['teacher'],
       },
       {

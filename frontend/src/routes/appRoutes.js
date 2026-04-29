@@ -443,6 +443,9 @@ export default function AppRoutes() {
         <Route path="/principal/ai-insights" element={
           <ProtectedRoute allowedRoles={[...SCHOOL_ROLES, 'platform_admin', 'teacher']}><AIInsightsPage /></ProtectedRoute>
         } />
+        <Route path="/ai-insights" element={
+          <ProtectedRoute allowedRoles={[...SCHOOL_ROLES, 'platform_admin', 'teacher']}><AIInsightsPage /></ProtectedRoute>
+        } />
 
         {/* Account Settings - All authenticated users */}
         <Route path="/account/settings" element={
