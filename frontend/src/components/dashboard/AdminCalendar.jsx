@@ -26,6 +26,7 @@ import {
   ChevronDown,
   Sparkles,
   Loader2,
+  Download,
 } from 'lucide-react';
 import { formatFullDate } from '../../utils/hijriDate';
 
@@ -141,6 +142,23 @@ export const AdminCalendar = () => {
     }, 0);
   };
 
+  const handleDownloadTemplate = () => {
+    setAddMenuOpen(false);
+    const header = 'اسم المهمة,التاريخ (YYYY-MM-DD),نوع الحدث (رحلة، تقرير، إجازة، أخرى)';
+    const example = 'جولة تفقدية – مبنى ب,2026-04-01,رحلة';
+    const csvContent = `${header}\n${example}\n`;
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'nassaq_calendar_template.csv';
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   const handleFileSelect = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -202,6 +220,14 @@ export const AdminCalendar = () => {
                 >
                   <Upload className="h-3.5 w-3.5 text-brand-purple" />
                   {isRTL ? 'استيراد' : 'Import'}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={handleDownloadTemplate}
+                  className="gap-2"
+                  data-testid="admin-calendar-download-template"
+                >
+                  <Download className="h-3.5 w-3.5 text-brand-navy" />
+                  {isRTL ? 'تحميل القالب' : 'Download Template'}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
