@@ -89,23 +89,19 @@ function FilledCell({ cell, onClick }) {
   );
 }
 
-function EmptyCell({ teacherAbsent, onClick, vacantPayload }) {
-  // المعلم غائب => خانة فارغة تتحوّل لخانة شاغرة حمراء.
-  if (teacherAbsent) {
-    return (
-      <button
-        type="button"
-        onClick={onClick}
-        className="w-full h-full min-h-[44px] flex items-center justify-center text-[11px] font-semibold
-                   bg-red-100 hover:bg-red-200 text-red-700 border border-red-300 rounded-md transition-colors"
-      >
-        شاغرة
-      </button>
-    );
-  }
-  // فراغ عادي للمعلم — لا تنبيه
+function EmptyCell({ teacherAbsent }) {
+  // فراغ في صف المعلم — لا تنبيه. حتى لو كان المعلم غائباً، الخلية الفارغة تبقى
+  // فارغة (تظهر فقط بصبغة حمراء خفيفة على الصف). الخانات التي يجب وسمها "شاغرة"
+  // هي الخانات التي كان فيها حصة مجدولة وتحوّلت إلى vacant بسبب الغياب — وهي
+  // تُرَنْدَر عبر FilledCell.is_vacant = true.
   return (
-    <div className="w-full h-full min-h-[44px] bg-slate-50 border border-dashed border-slate-200 rounded-md" />
+    <div
+      className={`w-full h-full min-h-[44px] rounded-md border border-dashed ${
+        teacherAbsent
+          ? 'bg-red-50/60 border-red-200'
+          : 'bg-slate-50 border-slate-200'
+      }`}
+    />
   );
 }
 
@@ -172,9 +168,8 @@ export default function SchedulePageNew() {
   const dayLabelMap = useMemo(() => Object.fromEntries(DAYS.map(d => [d.key, d.ar])), []);
 
   return (
-    <div dir="rtl" className="min-h-screen bg-slate-50 text-slate-900">
-      <Sidebar />
-      <main className="md:mr-72 p-4 md:p-6 space-y-5">
+    <Sidebar>
+      <div dir="rtl" className="p-4 md:p-6 space-y-5 bg-slate-50 min-h-full text-slate-900">
         {/* ── Header ───────────────────────────────────────────────── */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div>
@@ -295,8 +290,8 @@ export default function SchedulePageNew() {
             )}
           </CardContent>
         </Card>
-      </main>
-    </div>
+      </div>
+    </Sidebar>
   );
 }
 
@@ -422,11 +417,7 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
                           onClick={cell.is_vacant ? () => onVacantClick(cellData) : undefined}
                         />
                       ) : (
-                        <EmptyCell
-                          teacherAbsent={rowAbsentTint}
-                          onClick={() => onVacantClick(cellData)}
-                          vacantPayload={cellData}
-                        />
+                        <EmptyCell teacherAbsent={rowAbsentTint} />
                       )}
                     </div>
                   );

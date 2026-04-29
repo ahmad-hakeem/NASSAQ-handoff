@@ -48,6 +48,30 @@ def _jains_fairness(values: list[float]) -> float:
     return (s * s) / (n * sq)
 
 
+_VALID_RANKS = {"expert", "advanced", "practitioner", "assistant"}
+_RANK_ALIASES = {
+    "خبير": "expert",
+    "متقدم": "advanced",
+    "ممارس": "practitioner",
+    "مساعد": "assistant",
+    "senior": "expert",
+    "junior": "assistant",
+}
+
+
+def _normalize_rank(raw) -> str:
+    """يُطبِّع قيمة rank المخزّنة كنص حر إلى مفاتيح TeacherRank القانونية.
+
+    يُرجِع نصاً فارغاً إن لم يكن للقيمة معنى — لتجنّب كسر الواجهة.
+    """
+    if not raw:
+        return ""
+    val = str(raw).strip().lower()
+    if val in _VALID_RANKS:
+        return val
+    return _RANK_ALIASES.get(val, _RANK_ALIASES.get(str(raw).strip(), ""))
+
+
 async def _resolve_active_timetable(school_id: str) -> Optional[dict]:
     """يبحث عن أحدث جدول منشور، وإن لم يوجد فأحدث مسودة (ترتيب حتمي)."""
     published = await gd_find(
@@ -230,7 +254,7 @@ async def get_master_grid(
             "id": tid,
             "full_name": t.get("full_name") or "",
             "subject": t.get("specialization") or t.get("subject") or "",
-            "rank": t.get("rank") or "",
+            "rank": _normalize_rank(t.get("rank")),
             "weekly_quota": quota,
             "assigned_periods": assigned,
             "is_absent_today": is_absent,
@@ -245,6 +269,13 @@ async def get_master_grid(
         for s in sessions
         if (s.get("day_of_week") or s.get("day") or "").lower() == today_key
         and s.get("teacher_id") in absent_ids
+    )
+    # نصيب الأسبوع: مجموع الحصص المُسندة لمعلمين غائبين اليوم — تقريب لاحتياج الاستبدال
+    # خلال بقية الأسبوع. (المرحلة التالية ستضيف derivation حقيقي من quota/demand.)
+    vacant_week = sum(
+        1
+        for s in sessions
+        if s.get("teacher_id") in absent_ids
     )
 
     assigned_waiting = 0
@@ -263,6 +294,7 @@ async def get_master_grid(
         "assigned_waiting": assigned_waiting,
         "absent_teachers_today": len(absent_ids),
         "vacant_sessions_today": vacant_today,
+        "vacant_sessions_week": vacant_week,
     }
 
     alert = None
