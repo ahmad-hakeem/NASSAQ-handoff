@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../contexts/AuthContext';
 import { Sidebar } from '../../components/layout/Sidebar';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
@@ -67,11 +68,17 @@ export default function TeacherCommunicationPage() {
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedRecipients, setSelectedRecipients] = useState([]);
   const [parentMode, setParentMode] = useState(null);
+  const [adminMode, setAdminMode] = useState(null);
   const [messageBody, setMessageBody] = useState('');
   const [messageSubject, setMessageSubject] = useState('');
 
   const [schoolNotifFilter, setSchoolNotifFilter] = useState('all');
   const [guidanceStudentIds, setGuidanceStudentIds] = useState([]);
+
+  const step1Ref = useRef(null);
+  const step2Ref = useRef(null);
+  const step3Ref = useRef(null);
+  const subPickerRef = useRef(null);
 
   // Sync `?tab=bulletin|workshop` from sidebar deep links into the right view + filter
   useEffect(() => {
@@ -204,6 +211,7 @@ export default function TeacherCommunicationPage() {
     setSelectedClass('');
     setSelectedRecipients([]);
     setParentMode(null);
+    setAdminMode(null);
     setMessageBody('');
     setMessageSubject('');
     setGuidanceStudentIds([]);
@@ -213,22 +221,19 @@ export default function TeacherCommunicationPage() {
     setSelectedTemplate(template);
     setMessageSubject(t(template.titleKey));
     setMessageBody(t(template.bodyKey));
-    setActiveView('recipients');
+    setSelectedCategory(null);
+    setSelectedRecipients([]);
+    setParentMode(null);
+    setAdminMode(null);
+    setGuidanceStudentIds([]);
   };
 
   const handleSelectCategory = (catId) => {
     setSelectedCategory(catId);
     setSelectedRecipients([]);
+    setParentMode(null);
+    setAdminMode(null);
     setGuidanceStudentIds([]);
-    if (catId === 'parents') {
-      setActiveView('parent-mode');
-    } else if (catId === 'students') {
-      setActiveView('student-select');
-    } else if (catId === 'staff') {
-      setActiveView('staff-select');
-    } else if (catId === 'admin') {
-      setActiveView('admin-select');
-    }
   };
 
   const handleParentModeSelect = (mode) => {
@@ -236,9 +241,8 @@ export default function TeacherCommunicationPage() {
     if (mode === 'all') {
       const allParentIds = students.filter(s => s.parent_id).map(s => s.parent_id);
       setSelectedRecipients([...new Set(allParentIds)]);
-      setActiveView('preview');
     } else {
-      setActiveView('parent-individual');
+      setSelectedRecipients([]);
     }
   };
 
@@ -248,29 +252,19 @@ export default function TeacherCommunicationPage() {
     );
   };
 
-  const handleSelectAllStudents = () => {
-    const allIds = filteredStudents.map(s => s.id);
-    const allSelected = allIds.every(id => selectedRecipients.includes(id));
-    if (allSelected) {
-      setSelectedRecipients(prev => prev.filter(id => !allIds.includes(id)));
-    } else {
-      setSelectedRecipients(prev => [...new Set([...prev, ...allIds])]);
-    }
-  };
-
   const handleStaffSelect = (roleId) => {
     setSelectedRecipients([roleId]);
-    setActiveView('preview');
   };
 
   const handleAdminSelect = (type) => {
     if (type === 'guidance') {
       setSelectedRecipients(['counselor']);
-      setActiveView('guidance-student-context');
+      setGuidanceStudentIds([]);
     } else {
       setSelectedRecipients(['admin_general']);
-      setActiveView('preview');
+      setGuidanceStudentIds([]);
     }
+    setAdminMode(type);
   };
 
   const goToPreview = () => {
@@ -278,7 +272,6 @@ export default function TeacherCommunicationPage() {
       nassaqError(t('noRecipientsSelected'));
       return;
     }
-    setActiveView('preview');
   };
 
   const markNotificationRead = async (notifId) => {
@@ -412,43 +405,6 @@ export default function TeacherCommunicationPage() {
     </div>
   );
 
-  const renderStepIndicator = (currentStep) => {
-    const steps = [
-      { n: 1, label: t('chooseTemplate') },
-      { n: 2, label: t('selectRecipients') },
-      { n: 3, label: t('messagePreview') },
-    ];
-    return (
-      <div className="flex items-center gap-2 flex-wrap">
-        {steps.map((s, idx) => {
-          const isActive = s.n === currentStep;
-          const isDone = s.n < currentStep;
-          return (
-            <React.Fragment key={s.n}>
-              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border ${
-                isActive
-                  ? 'bg-brand-turquoise/10 border-brand-turquoise text-brand-navy dark:text-white'
-                  : isDone
-                  ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-300 text-emerald-700 dark:text-emerald-300'
-                  : 'bg-muted/40 border-border/50 text-muted-foreground'
-              }`}>
-                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold ${
-                  isActive ? 'bg-brand-turquoise text-white' : isDone ? 'bg-emerald-500 text-white' : 'bg-muted text-muted-foreground'
-                }`}>
-                  {isDone ? '✓' : s.n}
-                </span>
-                <span className="text-xs font-cairo font-medium">{s.label}</span>
-              </div>
-              {idx < steps.length - 1 && (
-                <span className="h-px w-4 bg-border/70" aria-hidden="true" />
-              )}
-            </React.Fragment>
-          );
-        })}
-      </div>
-    );
-  };
-
   const renderCommunicationHub = () => (
     <div className="space-y-6">
       <button
@@ -491,11 +447,12 @@ export default function TeacherCommunicationPage() {
               setSelectedCategory(null);
               setSelectedRecipients([]);
               setParentMode(null);
+              setAdminMode(null);
               setSelectedClass('');
               setMessageSubject('');
               setMessageBody('');
               setGuidanceStudentIds([]);
-              setActiveView('templates');
+              setActiveView('wizard');
             }}
           >
             <Send className="h-5 w-5 me-2" />
@@ -506,103 +463,179 @@ export default function TeacherCommunicationPage() {
     </div>
   );
 
-  const renderTemplates = () => (
-    <div className="space-y-4">
-      <button
-        onClick={() => setActiveView('communication-hub')}
-        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-brand-navy dark:hover:text-brand-turquoise transition-colors duration-150"
-      >
-        <BackIcon className="h-4 w-4" />
-        {t('backToSections')}
-      </button>
+  const scrollIntoViewSoon = (ref) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (ref?.current) {
+          ref.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+    });
+  };
 
-      {renderStepIndicator(1)}
+  // Auto-scroll on progressive disclosure
+  useEffect(() => {
+    if (activeView !== 'wizard') return;
+    if (selectedTemplate && !selectedCategory) {
+      scrollIntoViewSoon(step2Ref);
+    }
+  }, [activeView, selectedTemplate, selectedCategory]);
 
-      <div>
-        <h2 className="text-xl font-bold font-cairo text-brand-navy dark:text-white mb-1">
-          {t('chooseTemplate')}
-        </h2>
-        <p className="text-sm text-muted-foreground mb-4">{t('communicationCenterSectionDesc')}</p>
+  useEffect(() => {
+    if (activeView !== 'wizard') return;
+    if (selectedCategory) {
+      scrollIntoViewSoon(subPickerRef);
+    }
+  }, [activeView, selectedCategory, parentMode, adminMode]);
+
+  useEffect(() => {
+    if (activeView !== 'wizard') return;
+    if (selectedRecipients.length > 0) {
+      scrollIntoViewSoon(step3Ref);
+    }
+  }, [activeView, selectedRecipients.length]);
+
+  const wizardCurrentStep = !selectedTemplate
+    ? 1
+    : selectedRecipients.length === 0
+    ? 2
+    : 3;
+
+  const handleJumpToStep = (n) => {
+    if (n === 1) {
+      step1Ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else if (n === 2) {
+      if (!selectedTemplate) return;
+      step2Ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else if (n === 3) {
+      if (selectedRecipients.length === 0) return;
+      step3Ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  const renderWizardStepBar = () => {
+    const steps = [
+      { n: 1, label: t('chooseTemplate') },
+      { n: 2, label: t('selectRecipients') },
+      { n: 3, label: t('messagePreview') },
+    ];
+    const reachable = (n) =>
+      n === 1 ? true : n === 2 ? !!selectedTemplate : selectedRecipients.length > 0;
+    return (
+      <div className="sticky top-[72px] z-10 bg-slate-50/90 dark:bg-gray-900/90 backdrop-blur-sm py-3 -mx-1 px-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          {steps.map((s, idx) => {
+            const isActive = s.n === wizardCurrentStep;
+            const isDone = s.n < wizardCurrentStep;
+            const canJump = reachable(s.n);
+            return (
+              <React.Fragment key={s.n}>
+                <button
+                  type="button"
+                  onClick={() => canJump && handleJumpToStep(s.n)}
+                  disabled={!canJump}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-colors duration-150 ${
+                    isActive
+                      ? 'bg-brand-turquoise/10 border-brand-turquoise text-brand-navy dark:text-white'
+                      : isDone
+                      ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-300 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50'
+                      : 'bg-muted/40 border-border/50 text-muted-foreground'
+                  } ${canJump ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`}
+                >
+                  <span
+                    className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold ${
+                      isActive
+                        ? 'bg-brand-turquoise text-white'
+                        : isDone
+                        ? 'bg-emerald-500 text-white'
+                        : 'bg-muted text-muted-foreground'
+                    }`}
+                  >
+                    {isDone ? '✓' : s.n}
+                  </span>
+                  <span className="text-xs font-cairo font-medium">{s.label}</span>
+                </button>
+                {idx < steps.length - 1 && (
+                  <span className="h-px w-4 bg-border/70" aria-hidden="true" />
+                )}
+              </React.Fragment>
+            );
+          })}
+        </div>
       </div>
+    );
+  };
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        {TEMPLATES.map(template => {
-          const TIcon = template.icon;
-          return (
-            <button
-              key={template.id}
-              onClick={() => applyTemplate(template)}
-              className="group p-4 rounded-xl border-2 border-border/50 hover:border-brand-turquoise/40 bg-card hover:shadow-md transition-shadow duration-200 text-center"
-            >
-              <div className={`w-11 h-11 mx-auto mb-2.5 rounded-xl ${template.color} flex items-center justify-center group-hover:scale-110 transition-transform duration-200`}>
-                <TIcon className="h-5 w-5 text-white" />
-              </div>
-              <p className="text-sm font-cairo font-medium leading-tight">
-                {t(template.titleKey)}
-              </p>
-            </button>
-          );
-        })}
-      </div>
+  const stepReveal = {
+    initial: { opacity: 0, height: 0 },
+    animate: { opacity: 1, height: 'auto' },
+    exit: { opacity: 0, height: 0 },
+    transition: { duration: 0.35, ease: [0.22, 0.61, 0.36, 1] },
+  };
+
+  const SelectedBadge = () => (
+    <span className="absolute top-2 end-2 w-6 h-6 rounded-full bg-brand-turquoise text-white flex items-center justify-center shadow-md">
+      <CheckCircle2 className="h-4 w-4" />
+    </span>
+  );
+
+  const renderTemplatesGrid = () => (
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      {TEMPLATES.map(template => {
+        const TIcon = template.icon;
+        const isSelected = selectedTemplate?.id === template.id;
+        return (
+          <button
+            key={template.id}
+            onClick={() => applyTemplate(template)}
+            className={`relative p-4 rounded-xl border-2 bg-card transition-all duration-200 text-center ${
+              isSelected
+                ? 'border-brand-turquoise ring-2 ring-brand-turquoise/30 shadow-md'
+                : 'border-border/50 hover:border-brand-turquoise/40 hover:shadow-md'
+            }`}
+          >
+            {isSelected && <SelectedBadge />}
+            <div className={`w-11 h-11 mx-auto mb-2.5 rounded-xl ${template.color} flex items-center justify-center transition-transform duration-200 ${isSelected ? 'scale-110' : 'group-hover:scale-110'}`}>
+              <TIcon className="h-5 w-5 text-white" />
+            </div>
+            <p className="text-sm font-cairo font-medium leading-tight">
+              {t(template.titleKey)}
+            </p>
+          </button>
+        );
+      })}
     </div>
   );
 
-  const renderRecipients = () => (
-    <div className="space-y-4">
-      <button
-        onClick={() => setActiveView('templates')}
-        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-brand-navy dark:hover:text-brand-turquoise transition-colors duration-150"
-      >
-        <BackIcon className="h-4 w-4" />
-        {t('backToTemplates')}
-      </button>
-
-      {renderStepIndicator(2)}
-
-      <div>
-        <h2 className="text-xl font-bold font-cairo text-brand-navy dark:text-white mb-1">
-          {t('selectRecipients')}
-        </h2>
-        <p className="text-sm text-muted-foreground mb-4">{t('recipientCategories')}</p>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-        {RECIPIENT_CATEGORIES.map(cat => {
-          const CIcon = cat.icon;
-          return (
-            <button
-              key={cat.id}
-              onClick={() => handleSelectCategory(cat.id)}
-              className="group p-5 rounded-xl border-2 border-border/50 hover:border-brand-turquoise/40 bg-card hover:shadow-md transition-shadow duration-200 text-center"
-            >
-              <div className={`w-12 h-12 mx-auto mb-3 rounded-xl ${cat.color} flex items-center justify-center group-hover:scale-110 transition-transform duration-200`}>
-                <CIcon className="h-6 w-6 text-white" />
-              </div>
-              <p className="text-sm font-cairo font-semibold">{t(cat.i18nKey)}</p>
-            </button>
-          );
-        })}
-      </div>
+  const renderRecipientCategoriesGrid = () => (
+    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+      {RECIPIENT_CATEGORIES.map(cat => {
+        const CIcon = cat.icon;
+        const isSelected = selectedCategory === cat.id;
+        return (
+          <button
+            key={cat.id}
+            onClick={() => handleSelectCategory(cat.id)}
+            className={`relative p-5 rounded-xl border-2 bg-card transition-all duration-200 text-center ${
+              isSelected
+                ? 'border-brand-turquoise ring-2 ring-brand-turquoise/30 shadow-md'
+                : 'border-border/50 hover:border-brand-turquoise/40 hover:shadow-md'
+            }`}
+          >
+            {isSelected && <SelectedBadge />}
+            <div className={`w-12 h-12 mx-auto mb-3 rounded-xl ${cat.color} flex items-center justify-center transition-transform duration-200 ${isSelected ? 'scale-110' : ''}`}>
+              <CIcon className="h-6 w-6 text-white" />
+            </div>
+            <p className="text-sm font-cairo font-semibold">{t(cat.i18nKey)}</p>
+          </button>
+        );
+      })}
     </div>
   );
 
-  const renderParentMode = () => (
+  const renderParentSubFlow = () => (
     <div className="space-y-4">
-      <button
-        onClick={() => setActiveView('recipients')}
-        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-brand-navy dark:hover:text-brand-turquoise transition-colors duration-150"
-      >
-        <BackIcon className="h-4 w-4" />
-        {t('backToCategories')}
-      </button>
-
       <div>
-        <h2 className="text-xl font-bold font-cairo text-brand-navy dark:text-white mb-1">
-          {t('parentsCategory')}
-        </h2>
-      </div>
-
-      <div className="mb-4">
         <Label className="text-sm font-medium mb-2 block">{t('selectClass')}</Label>
         <Select value={selectedClass} onValueChange={setSelectedClass}>
           <SelectTrigger className="w-full sm:w-[240px]">
@@ -619,8 +652,13 @@ export default function TeacherCommunicationPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <button
           onClick={() => handleParentModeSelect('individual')}
-          className="p-5 rounded-xl border-2 border-border/50 hover:border-blue-400/40 bg-card hover:shadow-md transition-shadow duration-200 text-start"
+          className={`relative p-5 rounded-xl border-2 bg-card transition-all duration-200 text-start ${
+            parentMode === 'individual'
+              ? 'border-brand-turquoise ring-2 ring-brand-turquoise/30 shadow-md'
+              : 'border-border/50 hover:border-blue-400/40 hover:shadow-md'
+          }`}
         >
+          {parentMode === 'individual' && <SelectedBadge />}
           <Users className="h-8 w-8 text-blue-500 mb-2" />
           <p className="font-cairo font-semibold text-sm">{t('individualParent')}</p>
           <p className="text-xs text-muted-foreground mt-1">{t('selectOneOrMoreStudents')}</p>
@@ -628,9 +666,14 @@ export default function TeacherCommunicationPage() {
 
         <button
           onClick={() => handleParentModeSelect('all')}
-          className="p-5 rounded-xl border-2 border-border/50 hover:border-green-400/40 bg-card hover:shadow-md transition-shadow duration-200 text-start"
+          className={`relative p-5 rounded-xl border-2 bg-card transition-all duration-200 text-start ${
+            parentMode === 'all'
+              ? 'border-brand-turquoise ring-2 ring-brand-turquoise/30 shadow-md'
+              : 'border-border/50 hover:border-green-400/40 hover:shadow-md'
+          } ${!selectedClass ? 'opacity-60' : ''}`}
           disabled={!selectedClass}
         >
+          {parentMode === 'all' && <SelectedBadge />}
           <Megaphone className="h-8 w-8 text-green-500 mb-2" />
           <p className="font-cairo font-semibold text-sm">{t('allParentsInClass')}</p>
           <p className="text-xs text-muted-foreground mt-1">
@@ -638,263 +681,111 @@ export default function TeacherCommunicationPage() {
           </p>
         </button>
       </div>
-    </div>
-  );
 
-  const renderParentIndividual = () => (
-    <div className="space-y-4">
-      <button
-        onClick={() => setActiveView('parent-mode')}
-        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-brand-navy dark:hover:text-brand-turquoise transition-colors duration-150"
-      >
-        <BackIcon className="h-4 w-4" />
-        {t('backToCategories')}
-      </button>
-
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <h2 className="text-xl font-bold font-cairo text-brand-navy dark:text-white">
-          {t('individualParent')}
-        </h2>
-        <div className="relative">
-          <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder={t('search')}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="ps-9 w-full sm:w-[200px] h-9"
-          />
-        </div>
-      </div>
-
-      <div className="mb-3">
-        <Select value={selectedClass} onValueChange={setSelectedClass}>
-          <SelectTrigger className="w-full sm:w-[240px]">
-            <SelectValue placeholder={t('selectClass')} />
-          </SelectTrigger>
-          <SelectContent>
-            {classes.map(cls => (
-              <SelectItem key={cls.id} value={cls.id}>{cls.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <Card>
-        <CardContent className="p-3">
-          <div className="max-h-[340px] overflow-y-auto space-y-1.5">
-            {filteredStudents.length === 0 ? (
-              <div className="text-center py-8 text-sm text-muted-foreground">
-                {t('noStudentsFound')}
+      <AnimatePresence initial={false}>
+        {parentMode === 'individual' && (
+          <motion.div key="parent-individual" {...stepReveal} className="overflow-hidden">
+            <div className="space-y-3 pt-2">
+              <div className="relative max-w-sm">
+                <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder={t('search')}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="ps-9 h-9"
+                />
               </div>
-            ) : (
-              filteredStudents.map(student => (
-                <div
-                  key={student.id}
-                  className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors duration-150 ${
-                    selectedRecipients.includes(student.parent_id || student.id)
-                      ? 'bg-brand-turquoise/10 border-brand-turquoise/30'
-                      : 'hover:bg-muted/50 border-transparent'
-                  }`}
-                  onClick={() => toggleRecipient(student.parent_id || student.id)}
-                >
-                  <Checkbox
-                    checked={selectedRecipients.includes(student.parent_id || student.id)}
-                    onCheckedChange={() => toggleRecipient(student.parent_id || student.id)}
-                  />
-                  <Avatar className="h-8 w-8">
-                    <AvatarFallback className={`text-xs font-bold ${
-                      student.gender === 'male' ? 'bg-sky-100 text-sky-600' : 'bg-pink-100 text-pink-600'
-                    }`}>
-                      {student.full_name?.charAt(0) || '?'}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{student.full_name}</p>
-                    <p className="text-[10px] text-muted-foreground">
-                      {t('parent')}: {student.parent_name || '-'}
-                    </p>
+              <Card>
+                <CardContent className="p-3">
+                  <div className="max-h-[340px] overflow-y-auto space-y-1.5">
+                    {filteredStudents.length === 0 ? (
+                      <div className="text-center py-8 text-sm text-muted-foreground">
+                        {t('noStudentsFound')}
+                      </div>
+                    ) : (
+                      filteredStudents.map(student => {
+                        const recId = student.parent_id || student.id;
+                        const isSel = selectedRecipients.includes(recId);
+                        return (
+                          <div
+                            key={student.id}
+                            className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors duration-150 ${
+                              isSel ? 'bg-brand-turquoise/10 border-brand-turquoise/30' : 'hover:bg-muted/50 border-transparent'
+                            }`}
+                            onClick={() => toggleRecipient(recId)}
+                          >
+                            <Checkbox checked={isSel} onCheckedChange={() => toggleRecipient(recId)} />
+                            <Avatar className="h-8 w-8">
+                              <AvatarFallback className={`text-xs font-bold ${student.gender === 'male' ? 'bg-sky-100 text-sky-600' : 'bg-pink-100 text-pink-600'}`}>
+                                {student.full_name?.charAt(0) || '?'}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">{student.full_name}</p>
+                              <p className="text-[10px] text-muted-foreground">
+                                {t('parent')}: {student.parent_name || '-'}
+                              </p>
+                            </div>
+                            {student.parent_phone && (
+                              <span className="text-[10px] text-muted-foreground flex items-center gap-1" dir="ltr">
+                                <Phone className="h-3 w-3" />{student.parent_phone}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
                   </div>
-                  {student.parent_phone && (
-                    <span className="text-[10px] text-muted-foreground flex items-center gap-1" dir="ltr">
-                      <Phone className="h-3 w-3" />{student.parent_phone}
-                    </span>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="flex items-center justify-between">
-        <Badge variant="secondary" className="font-cairo">
-          {selectedRecipients.length} {t('selected2')}
-        </Badge>
-        <Button
-          className="bg-brand-turquoise hover:bg-brand-turquoise/90 text-white"
-          disabled={selectedRecipients.length === 0}
-          onClick={goToPreview}
-        >
-          {t('confirmAndSend')}
-          {isRTL ? <ArrowLeft className="h-4 w-4 ms-2" /> : <ArrowRight className="h-4 w-4 ms-2" />}
-        </Button>
-      </div>
-    </div>
-  );
-
-  const renderStudentSelect = () => (
-    <div className="space-y-4">
-      <button
-        onClick={() => setActiveView('recipients')}
-        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-brand-navy dark:hover:text-brand-turquoise transition-colors duration-150"
-      >
-        <BackIcon className="h-4 w-4" />
-        {t('backToCategories')}
-      </button>
-
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <h2 className="text-xl font-bold font-cairo text-brand-navy dark:text-white">
-          {t('studentsCategory')}
-        </h2>
-        <div className="relative">
-          <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder={t('search')}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="ps-9 w-full sm:w-[200px] h-9"
-          />
-        </div>
-      </div>
-
-      <div className="flex items-center gap-3 flex-wrap">
-        <Select value={selectedClass} onValueChange={setSelectedClass}>
-          <SelectTrigger className="w-full sm:w-[240px]">
-            <SelectValue placeholder={t('selectClass')} />
-          </SelectTrigger>
-          <SelectContent>
-            {classes.map(cls => (
-              <SelectItem key={cls.id} value={cls.id}>{cls.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Button variant="outline" size="sm" onClick={handleSelectAllStudents}>
-          {filteredStudents.length > 0 && filteredStudents.every(s => selectedRecipients.includes(s.id))
-            ? t('deselectAll')
-            : t('selectAll')}
-        </Button>
-      </div>
-
-      <Card>
-        <CardContent className="p-3">
-          <div className="max-h-[340px] overflow-y-auto space-y-1.5">
-            {filteredStudents.length === 0 ? (
-              <div className="text-center py-8 text-sm text-muted-foreground">
-                {t('noStudentsFound')}
+                </CardContent>
+              </Card>
+              <div className="flex items-center">
+                <Badge variant="secondary" className="font-cairo">
+                  {selectedRecipients.length} {t('selected2')}
+                </Badge>
               </div>
-            ) : (
-              filteredStudents.map(student => (
-                <div
-                  key={student.id}
-                  className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors duration-150 ${
-                    selectedRecipients.includes(student.id)
-                      ? 'bg-brand-turquoise/10 border-brand-turquoise/30'
-                      : 'hover:bg-muted/50 border-transparent'
-                  }`}
-                  onClick={() => toggleRecipient(student.id)}
-                >
-                  <Checkbox
-                    checked={selectedRecipients.includes(student.id)}
-                    onCheckedChange={() => toggleRecipient(student.id)}
-                  />
-                  <Avatar className="h-8 w-8">
-                    <AvatarFallback className={`text-xs font-bold ${
-                      student.gender === 'male' ? 'bg-sky-100 text-sky-600' : 'bg-pink-100 text-pink-600'
-                    }`}>
-                      {student.full_name?.charAt(0) || '?'}
-                    </AvatarFallback>
-                  </Avatar>
-                  <p className="text-sm font-medium truncate flex-1">{student.full_name}</p>
-                </div>
-              ))
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="flex items-center justify-between">
-        <Badge variant="secondary" className="font-cairo">
-          {selectedRecipients.length} {t('selected2')}
-        </Badge>
-        <Button
-          className="bg-brand-turquoise hover:bg-brand-turquoise/90 text-white"
-          disabled={selectedRecipients.length === 0}
-          onClick={goToPreview}
-        >
-          {t('confirmAndSend')}
-          {isRTL ? <ArrowLeft className="h-4 w-4 ms-2" /> : <ArrowRight className="h-4 w-4 ms-2" />}
-        </Button>
-      </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 
-  const renderStaffSelect = () => (
-    <div className="space-y-4">
-      <button
-        onClick={() => setActiveView('recipients')}
-        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-brand-navy dark:hover:text-brand-turquoise transition-colors duration-150"
-      >
-        <BackIcon className="h-4 w-4" />
-        {t('backToCategories')}
-      </button>
-
-      <div>
-        <h2 className="text-xl font-bold font-cairo text-brand-navy dark:text-white mb-1">
-          {t('schoolStaffCategory')}
-        </h2>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {STAFF_ROLES.map(role => {
-          const RIcon = role.icon;
-          return (
-            <button
-              key={role.id}
-              onClick={() => handleStaffSelect(role.id)}
-              className="group p-4 rounded-xl border-2 border-border/50 hover:border-brand-purple/40 bg-card hover:shadow-md transition-shadow duration-200 text-start flex items-center gap-4"
-            >
-              <div className="w-10 h-10 rounded-lg bg-brand-purple/10 flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
-                <RIcon className="h-5 w-5 text-brand-purple" />
-              </div>
-              <p className="text-sm font-cairo font-semibold">{t(role.i18nKey)}</p>
-            </button>
-          );
-        })}
-      </div>
+  const renderStaffSubFlow = () => (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {STAFF_ROLES.map(role => {
+        const RIcon = role.icon;
+        const isSel = selectedRecipients.includes(role.id);
+        return (
+          <button
+            key={role.id}
+            onClick={() => handleStaffSelect(role.id)}
+            className={`relative p-4 rounded-xl border-2 bg-card transition-all duration-200 text-start flex items-center gap-4 ${
+              isSel ? 'border-brand-turquoise ring-2 ring-brand-turquoise/30 shadow-md' : 'border-border/50 hover:border-brand-purple/40 hover:shadow-md'
+            }`}
+          >
+            {isSel && <SelectedBadge />}
+            <div className="w-10 h-10 rounded-lg bg-brand-purple/10 flex items-center justify-center">
+              <RIcon className="h-5 w-5 text-brand-purple" />
+            </div>
+            <p className="text-sm font-cairo font-semibold">{t(role.i18nKey)}</p>
+          </button>
+        );
+      })}
     </div>
   );
 
-  const renderAdminSelect = () => (
+  const renderAdminSubFlow = () => (
     <div className="space-y-4">
-      <button
-        onClick={() => setActiveView('recipients')}
-        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-brand-navy dark:hover:text-brand-turquoise transition-colors duration-150"
-      >
-        <BackIcon className="h-4 w-4" />
-        {t('backToCategories')}
-      </button>
-
-      <div>
-        <h2 className="text-xl font-bold font-cairo text-brand-navy dark:text-white mb-1">
-          {t('adminCategory')}
-        </h2>
-      </div>
-
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <button
           onClick={() => handleAdminSelect('guidance')}
-          className="group p-5 rounded-xl border-2 border-border/50 hover:border-brand-navy/40 bg-card hover:shadow-md transition-shadow duration-200 text-start"
+          className={`relative p-5 rounded-xl border-2 bg-card transition-all duration-200 text-start ${
+            adminMode === 'guidance'
+              ? 'border-brand-turquoise ring-2 ring-brand-turquoise/30 shadow-md'
+              : 'border-border/50 hover:border-brand-navy/40 hover:shadow-md'
+          }`}
         >
+          {adminMode === 'guidance' && <SelectedBadge />}
           <GraduationCap className="h-8 w-8 text-brand-navy dark:text-brand-turquoise mb-2" />
           <p className="font-cairo font-semibold text-sm">{t('studentGuidance')}</p>
           <p className="text-xs text-muted-foreground mt-1">{t('selectOneOrMoreStudents')}</p>
@@ -902,80 +793,231 @@ export default function TeacherCommunicationPage() {
 
         <button
           onClick={() => handleAdminSelect('general')}
-          className="group p-5 rounded-xl border-2 border-border/50 hover:border-brand-navy/40 bg-card hover:shadow-md transition-shadow duration-200 text-start"
+          className={`relative p-5 rounded-xl border-2 bg-card transition-all duration-200 text-start ${
+            adminMode === 'general'
+              ? 'border-brand-turquoise ring-2 ring-brand-turquoise/30 shadow-md'
+              : 'border-border/50 hover:border-brand-navy/40 hover:shadow-md'
+          }`}
         >
+          {adminMode === 'general' && <SelectedBadge />}
           <Building2 className="h-8 w-8 text-brand-navy dark:text-brand-turquoise mb-2" />
           <p className="font-cairo font-semibold text-sm">{t('generalAdminNotification')}</p>
         </button>
       </div>
+
+      <AnimatePresence initial={false}>
+        {adminMode === 'guidance' && (
+          <motion.div key="guidance-context" {...stepReveal} className="overflow-hidden">
+            <div className="space-y-3 pt-2">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <p className="text-xs text-muted-foreground">{t('selectOneOrMoreStudents')}</p>
+                <div className="relative">
+                  <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder={t('search')}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="ps-9 w-full sm:w-[200px] h-9"
+                  />
+                </div>
+              </div>
+              <Select value={selectedClass} onValueChange={setSelectedClass}>
+                <SelectTrigger className="w-full sm:w-[240px]">
+                  <SelectValue placeholder={t('selectClass')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {classes.map(cls => (
+                    <SelectItem key={cls.id} value={cls.id}>{cls.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Card>
+                <CardContent className="p-3">
+                  <div className="max-h-[340px] overflow-y-auto space-y-1.5">
+                    {filteredStudents.length === 0 ? (
+                      <div className="text-center py-8 text-sm text-muted-foreground">
+                        {t('noStudentsFound')}
+                      </div>
+                    ) : (
+                      filteredStudents.map(student => {
+                        const isSel = guidanceStudentIds.includes(student.id);
+                        const toggle = () =>
+                          setGuidanceStudentIds(prev =>
+                            prev.includes(student.id) ? prev.filter(id => id !== student.id) : [...prev, student.id]
+                          );
+                        return (
+                          <div
+                            key={student.id}
+                            className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors duration-150 ${
+                              isSel ? 'bg-brand-turquoise/10 border-brand-turquoise/30' : 'hover:bg-muted/50 border-transparent'
+                            }`}
+                            onClick={toggle}
+                          >
+                            <Checkbox checked={isSel} onCheckedChange={toggle} />
+                            <Avatar className="h-8 w-8">
+                              <AvatarFallback className={`text-xs font-bold ${student.gender === 'male' ? 'bg-sky-100 text-sky-600' : 'bg-pink-100 text-pink-600'}`}>
+                                {student.full_name?.charAt(0) || '?'}
+                              </AvatarFallback>
+                            </Avatar>
+                            <p className="text-sm font-medium truncate flex-1">{student.full_name}</p>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+              <Badge variant="secondary" className="font-cairo">
+                {guidanceStudentIds.length} {t('selected2')}
+              </Badge>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 
-  const renderPreview = () => (
-    <div className="space-y-4">
-      <button
-        onClick={() => {
-          if (parentMode === 'individual') setActiveView('parent-individual');
-          else if (selectedCategory === 'students' || selectedCategory === 'guidance') setActiveView('student-select');
-          else setActiveView('recipients');
-        }}
-        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-brand-navy dark:hover:text-brand-turquoise transition-colors duration-150"
-      >
-        <BackIcon className="h-4 w-4" />
-        {t('backToCategories')}
-      </button>
-
-      {renderStepIndicator(3)}
-
-      <h2 className="text-xl font-bold font-cairo text-brand-navy dark:text-white">
-        {t('messagePreview')}
-      </h2>
-
-      <Card>
-        <CardContent className="p-5 space-y-4">
-          <div>
-            <Label className="text-xs text-muted-foreground">{t('selectedRecipients')}</Label>
-            <Badge variant="secondary" className="mt-1 font-cairo">
-              {selectedRecipients.length} {t('recipients3')}
-            </Badge>
-          </div>
-
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs">{t('messageSubject')} *</Label>
-              <Input
-                value={messageSubject}
-                onChange={(e) => setMessageSubject(e.target.value)}
-                placeholder={t('messageSubject')}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">{t('message')} *</Label>
-              <Textarea
-                value={messageBody}
-                onChange={(e) => setMessageBody(e.target.value)}
-                placeholder={t('writeYourMessageHere')}
-                rows={5}
-              />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="flex items-center justify-end gap-3">
-        <Button variant="outline" onClick={resetFlow}>{t('cancel')}</Button>
-        <Button
-          className="bg-brand-turquoise hover:bg-brand-turquoise/90 text-white"
-          onClick={handleSendMessage}
-          disabled={sending || !messageSubject || !messageBody}
-        >
-          {sending && <Loader2 className="h-4 w-4 animate-spin me-2" />}
-          <Send className="h-4 w-4 me-1" />
-          {t('send')}
-        </Button>
+  const renderRecipientSubPicker = () => {
+    if (!selectedCategory) return null;
+    let content = null;
+    if (selectedCategory === 'parents') content = renderParentSubFlow();
+    else if (selectedCategory === 'staff') content = renderStaffSubFlow();
+    else if (selectedCategory === 'admin') content = renderAdminSubFlow();
+    if (!content) return null;
+    return (
+      <div ref={subPickerRef} className="pt-4 mt-3 border-t border-border/40">
+        {content}
       </div>
-    </div>
-  );
+    );
+  };
+
+  const renderNotificationWizard = () => {
+    const step1Locked = wizardCurrentStep > 1;
+    const step2Locked = wizardCurrentStep > 2;
+    return (
+      <div className="space-y-5">
+        <button
+          onClick={() => setActiveView('communication-hub')}
+          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-brand-navy dark:hover:text-brand-turquoise transition-colors duration-150"
+        >
+          <BackIcon className="h-4 w-4" />
+          {t('backToSections')}
+        </button>
+
+        {renderWizardStepBar()}
+
+        {/* Step 1: Choose Template */}
+        <Card
+          ref={step1Ref}
+          className={`transition-opacity duration-300 ${step1Locked ? 'opacity-60 hover:opacity-100' : ''}`}
+        >
+          <CardContent className="p-5 space-y-4">
+            <div className="flex items-center gap-2">
+              <span className="w-7 h-7 rounded-full bg-brand-turquoise text-white flex items-center justify-center text-xs font-bold">1</span>
+              <h2 className="text-lg font-bold font-cairo text-brand-navy dark:text-white">
+                {t('chooseTemplate')}
+              </h2>
+              {selectedTemplate && (
+                <Badge variant="secondary" className="ms-auto font-cairo">
+                  {t(selectedTemplate.titleKey)}
+                </Badge>
+              )}
+            </div>
+            {renderTemplatesGrid()}
+          </CardContent>
+        </Card>
+
+        {/* Step 2: Recipients */}
+        <AnimatePresence initial={false}>
+          {selectedTemplate && (
+            <motion.div key="step-2" {...stepReveal} className="overflow-hidden">
+              <Card
+                ref={step2Ref}
+                className={`transition-opacity duration-300 ${step2Locked ? 'opacity-60 hover:opacity-100' : ''}`}
+              >
+                <CardContent className="p-5 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <span className="w-7 h-7 rounded-full bg-brand-turquoise text-white flex items-center justify-center text-xs font-bold">2</span>
+                    <h2 className="text-lg font-bold font-cairo text-brand-navy dark:text-white">
+                      {t('selectRecipients')}
+                    </h2>
+                    {selectedRecipients.length > 0 && (
+                      <Badge variant="secondary" className="ms-auto font-cairo">
+                        {selectedRecipients.length} {t('recipients3')}
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-sm text-muted-foreground">{t('recipientCategories')}</p>
+                  {renderRecipientCategoriesGrid()}
+                  {renderRecipientSubPicker()}
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Step 3: Preview & Send */}
+        <AnimatePresence initial={false}>
+          {selectedRecipients.length > 0 && (
+            <motion.div key="step-3" {...stepReveal} className="overflow-hidden">
+              <Card ref={step3Ref}>
+                <CardContent className="p-5 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <span className="w-7 h-7 rounded-full bg-brand-turquoise text-white flex items-center justify-center text-xs font-bold">3</span>
+                    <h2 className="text-lg font-bold font-cairo text-brand-navy dark:text-white">
+                      {t('messagePreview')}
+                    </h2>
+                  </div>
+
+                  <div>
+                    <Label className="text-xs text-muted-foreground">{t('selectedRecipients')}</Label>
+                    <div className="mt-1">
+                      <Badge variant="secondary" className="font-cairo">
+                        {selectedRecipients.length} {t('recipients3')}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">{t('messageSubject')} *</Label>
+                      <Input
+                        value={messageSubject}
+                        onChange={(e) => setMessageSubject(e.target.value)}
+                        placeholder={t('messageSubject')}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">{t('message')} *</Label>
+                      <Textarea
+                        value={messageBody}
+                        onChange={(e) => setMessageBody(e.target.value)}
+                        placeholder={t('writeYourMessageHere')}
+                        rows={5}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-3">
+                    <Button variant="outline" onClick={resetFlow}>{t('cancel')}</Button>
+                    <Button
+                      className="bg-brand-turquoise hover:bg-brand-turquoise/90 text-white"
+                      onClick={handleSendMessage}
+                      disabled={sending || !messageSubject || !messageBody}
+                    >
+                      {sending && <Loader2 className="h-4 w-4 animate-spin me-2" />}
+                      <Send className="h-4 w-4 me-1" />
+                      {t('send')}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  };
 
   const renderSchoolNotifications = () => (
     <div className="space-y-4">
@@ -1083,118 +1125,12 @@ export default function TeacherCommunicationPage() {
     </div>
   );
 
-  const renderGuidanceStudentContext = () => (
-    <div className="space-y-4">
-      <button
-        onClick={() => setActiveView('admin-select')}
-        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-brand-navy dark:hover:text-brand-turquoise transition-colors duration-150"
-      >
-        <BackIcon className="h-4 w-4" />
-        {t('backToCategories')}
-      </button>
-
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h2 className="text-xl font-bold font-cairo text-brand-navy dark:text-white">
-            {t('studentGuidance')}
-          </h2>
-          <p className="text-sm text-muted-foreground">{t('selectOneOrMoreStudents')}</p>
-        </div>
-        <div className="relative">
-          <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder={t('search')}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="ps-9 w-full sm:w-[200px] h-9"
-          />
-        </div>
-      </div>
-
-      <Select value={selectedClass} onValueChange={setSelectedClass}>
-        <SelectTrigger className="w-full sm:w-[240px]">
-          <SelectValue placeholder={t('selectClass')} />
-        </SelectTrigger>
-        <SelectContent>
-          {classes.map(cls => (
-            <SelectItem key={cls.id} value={cls.id}>{cls.name}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-
-      <Card>
-        <CardContent className="p-3">
-          <div className="max-h-[340px] overflow-y-auto space-y-1.5">
-            {filteredStudents.length === 0 ? (
-              <div className="text-center py-8 text-sm text-muted-foreground">
-                {t('noStudentsFound')}
-              </div>
-            ) : (
-              filteredStudents.map(student => (
-                <div
-                  key={student.id}
-                  className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors duration-150 ${
-                    guidanceStudentIds.includes(student.id)
-                      ? 'bg-brand-turquoise/10 border-brand-turquoise/30'
-                      : 'hover:bg-muted/50 border-transparent'
-                  }`}
-                  onClick={() => {
-                    setGuidanceStudentIds(prev =>
-                      prev.includes(student.id) ? prev.filter(id => id !== student.id) : [...prev, student.id]
-                    );
-                  }}
-                >
-                  <Checkbox
-                    checked={guidanceStudentIds.includes(student.id)}
-                    onCheckedChange={() => {
-                      setGuidanceStudentIds(prev =>
-                        prev.includes(student.id) ? prev.filter(id => id !== student.id) : [...prev, student.id]
-                      );
-                    }}
-                  />
-                  <Avatar className="h-8 w-8">
-                    <AvatarFallback className={`text-xs font-bold ${
-                      student.gender === 'male' ? 'bg-sky-100 text-sky-600' : 'bg-pink-100 text-pink-600'
-                    }`}>
-                      {student.full_name?.charAt(0) || '?'}
-                    </AvatarFallback>
-                  </Avatar>
-                  <p className="text-sm font-medium truncate flex-1">{student.full_name}</p>
-                </div>
-              ))
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="flex items-center justify-between">
-        <Badge variant="secondary" className="font-cairo">
-          {guidanceStudentIds.length} {t('selected2')}
-        </Badge>
-        <Button
-          className="bg-brand-turquoise hover:bg-brand-turquoise/90 text-white"
-          onClick={() => setActiveView('preview')}
-        >
-          {t('confirmAndSend')}
-          {isRTL ? <ArrowLeft className="h-4 w-4 ms-2" /> : <ArrowRight className="h-4 w-4 ms-2" />}
-        </Button>
-      </div>
-    </div>
-  );
 
   const renderActiveView = () => {
     switch (activeView) {
       case 'sections': return renderSections();
       case 'communication-hub': return renderCommunicationHub();
-      case 'templates': return renderTemplates();
-      case 'recipients': return renderRecipients();
-      case 'parent-mode': return renderParentMode();
-      case 'parent-individual': return renderParentIndividual();
-      case 'student-select': return renderStudentSelect();
-      case 'staff-select': return renderStaffSelect();
-      case 'admin-select': return renderAdminSelect();
-      case 'guidance-student-context': return renderGuidanceStudentContext();
-      case 'preview': return renderPreview();
+      case 'wizard': return renderNotificationWizard();
       case 'school-notifications': return renderSchoolNotifications();
       case 'system-alerts': return renderSystemAlerts();
       default: return renderSections();
