@@ -18,6 +18,14 @@ import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from '../components/ui/dialog';
+import {
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+} from '../components/ui/select';
+import { Label } from '../components/ui/label';
+import { Textarea } from '../components/ui/textarea';
+import {
   Wand2, UserX, Sparkles, Loader2, RefreshCw,
   Scale, Hourglass, UserMinus, AlertOctagon, AlertTriangle, Repeat,
 } from 'lucide-react';
@@ -152,6 +160,15 @@ export default function SchedulePageNew() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerSlot, setDrawerSlot] = useState(null);
 
+  // إنشاء الجدول تلقائياً
+  const [generating, setGenerating] = useState(false);
+
+  // تسجيل الغياب
+  const [absenceOpen, setAbsenceOpen] = useState(false);
+  const [absenceTeacherId, setAbsenceTeacherId] = useState('');
+  const [absenceNotes, setAbsenceNotes] = useState('');
+  const [savingAbsence, setSavingAbsence] = useState(false);
+
   const loadGrid = useCallback(async () => {
     if (!schoolId) return;
     try {
@@ -172,18 +189,130 @@ export default function SchedulePageNew() {
 
   useEffect(() => { loadGrid(); }, [loadGrid]);
 
-  const handleAutoGenerate = useCallback(() => {
-    // مرحلة لاحقة: ستستدعي محرك التوليد الفعلي.
-    console.log('Auto-generate clicked', { school_id: schoolId });
-    toast.info('سيتم تشغيل محرك التوليد التلقائي قريباً', {
-      description: 'هذه نسخة أولية — الزر مرتبط حالياً بمؤشّر فقط.',
+  const handleAutoGenerate = useCallback(async () => {
+    if (!schoolId) {
+      toast.error('تعذّر تحديد المدرسة الحالية');
+      return;
+    }
+    if (generating) return;
+
+    setGenerating(true);
+    const toastId = toast.loading('جارٍ تشغيل محرك التوليد التلقائي…', {
+      description: 'قد تستغرق العملية بضع ثوانٍ بحسب حجم البيانات.',
     });
-  }, [schoolId]);
+
+    try {
+      const response = await api.post(
+        `/smart-scheduling/generate/${schoolId}`,
+        {},
+        { headers: { 'X-School-Context': schoolId } },
+      );
+      const data = response.data || {};
+      const scheduled = data.scheduled_sessions ?? 0;
+      const total = data.total_sessions ?? 0;
+      const conflicts = data.conflicts_count ?? 0;
+      const unscheduled = data.unscheduled_count ?? 0;
+      const pct = Math.round(data.completion_percentage ?? 0);
+      const summary =
+        `تم جدولة ${scheduled} من ${total} حصة (${pct}%)` +
+        (conflicts ? ` • ${conflicts} تعارض` : '') +
+        (unscheduled ? ` • ${unscheduled} حصة لم تُجدول` : '');
+
+      if (data.success) {
+        toast.success(data.message_ar || 'تم توليد الجدول بنجاح', {
+          id: toastId,
+          description: summary,
+        });
+      } else {
+        toast.warning(data.message_ar || 'اكتمل التوليد مع ملاحظات', {
+          id: toastId,
+          description: summary,
+        });
+      }
+
+      setRefreshing(true);
+      await loadGrid();
+    } catch (e) {
+      const detail = e?.response?.data?.detail;
+      const status = e?.response?.status;
+      let msg = 'فشل توليد الجدول، يرجى المحاولة مرة أخرى';
+      if (typeof detail === 'string' && /[\u0600-\u06FF]/.test(detail)) {
+        msg = detail;
+      } else if (detail?.code === 'GENERATION_BLOCKED') {
+        msg = 'تعذّر التوليد: البيانات غير جاهزة بعد لتشغيل المحرك';
+      } else if (e?.response?.data?.message_ar) {
+        msg = e.response.data.message_ar;
+      } else if (status === 401 || status === 403) {
+        msg = 'لا تملك صلاحية تشغيل التوليد التلقائي';
+      } else if (status === 404) {
+        msg = 'لم يتم العثور على بيانات المدرسة المطلوبة';
+      } else if (e?.code === 'ERR_NETWORK' || !e?.response) {
+        msg = 'تعذّر الاتصال بالخادم، تحقق من الشبكة وحاول مجدداً';
+      }
+      toast.error(msg, { id: toastId });
+    } finally {
+      setGenerating(false);
+    }
+  }, [api, schoolId, generating, loadGrid]);
 
   const handleLogAbsence = useCallback(() => {
-    console.log('Log absence clicked', { school_id: schoolId });
-    toast.info('سيتم فتح نافذة تسجيل الغياب قريباً');
-  }, [schoolId]);
+    setAbsenceTeacherId('');
+    setAbsenceNotes('');
+    setAbsenceOpen(true);
+  }, []);
+
+  const handleSubmitAbsence = useCallback(async () => {
+    if (!absenceTeacherId) {
+      toast.error('يرجى اختيار معلم');
+      return;
+    }
+    if (!schoolId) {
+      toast.error('تعذّر تحديد المدرسة الحالية');
+      return;
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    setSavingAbsence(true);
+    try {
+      await api.post(
+        '/teacher-attendance/bulk',
+        {
+          records: [
+            {
+              teacher_id: absenceTeacherId,
+              date: today,
+              status: 'absent',
+              check_in_time: null,
+              notes: absenceNotes || '',
+            },
+          ],
+        },
+        { headers: { 'X-School-Context': schoolId } },
+      );
+      toast.success('تم تسجيل الغياب');
+      setAbsenceOpen(false);
+      setAbsenceTeacherId('');
+      setAbsenceNotes('');
+      setRefreshing(true);
+      await loadGrid();
+    } catch (e) {
+      const detail = e?.response?.data?.detail;
+      const status = e?.response?.status;
+      let msg = 'فشل تسجيل الغياب، يرجى المحاولة مرة أخرى';
+      if (typeof detail === 'string' && /[\u0600-\u06FF]/.test(detail)) {
+        msg = detail;
+      } else if (e?.response?.data?.message_ar) {
+        msg = e.response.data.message_ar;
+      } else if (status === 401 || status === 403) {
+        msg = 'لا تملك صلاحية تسجيل الغياب';
+      } else if (e?.code === 'ERR_NETWORK' || !e?.response) {
+        msg = 'تعذّر الاتصال بالخادم، تحقق من الشبكة وحاول مجدداً';
+      }
+      toast.error(msg);
+    } finally {
+      setSavingAbsence(false);
+    }
+  }, [api, schoolId, absenceTeacherId, absenceNotes, loadGrid]);
 
   const handleVacantClick = useCallback((cellData) => {
     if (!cellData?.session?.session_id) {
@@ -267,10 +396,15 @@ export default function SchedulePageNew() {
           <div className="flex flex-wrap items-center gap-2">
             <Button
               onClick={handleAutoGenerate}
+              disabled={generating}
               className="bg-violet-600 hover:bg-violet-700 text-white shadow-md"
             >
-              <Wand2 className="h-4 w-4 ml-2" />
-              إنشاء الجدول تلقائياً
+              {generating ? (
+                <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+              ) : (
+                <Wand2 className="h-4 w-4 ml-2" />
+              )}
+              {generating ? 'جارٍ التوليد…' : 'إنشاء الجدول تلقائياً'}
             </Button>
             <Button
               onClick={handleLogAbsence}
@@ -381,6 +515,79 @@ export default function SchedulePageNew() {
             )}
           </CardContent>
         </Card>
+
+        {/* ── Absence dialog ─────────────────────────────────────── */}
+        <Dialog open={absenceOpen} onOpenChange={setAbsenceOpen}>
+          <DialogContent dir="rtl" className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-[#1C3D74]">
+                <UserX className="h-5 w-5 text-red-600" />
+                تسجيل غياب معلم
+              </DialogTitle>
+              <DialogDescription>
+                سيُسجَّل المعلم المختار كغائب اليوم وتُحدَّث الخلايا والمؤشرات فوراً.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label htmlFor="absence-teacher">المعلم</Label>
+                <Select value={absenceTeacherId} onValueChange={setAbsenceTeacherId}>
+                  <SelectTrigger id="absence-teacher" className="w-full">
+                    <SelectValue placeholder="اختر معلماً…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {teacherRows.length === 0 ? (
+                      <div className="px-3 py-2 text-sm text-slate-500">
+                        لا يوجد معلمون متاحون
+                      </div>
+                    ) : (
+                      teacherRows.map((t) => (
+                        <SelectItem key={t.id} value={t.id} disabled={t.is_absent_today}>
+                          {t.full_name}
+                          {t.is_absent_today ? ' (غائب اليوم)' : ''}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="absence-notes">ملاحظات (اختياري)</Label>
+                <Textarea
+                  id="absence-notes"
+                  value={absenceNotes}
+                  onChange={(e) => setAbsenceNotes(e.target.value)}
+                  placeholder="سبب الغياب أو أي ملاحظات…"
+                  rows={3}
+                />
+              </div>
+            </div>
+
+            <DialogFooter className="gap-2 sm:gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setAbsenceOpen(false)}
+                disabled={savingAbsence}
+              >
+                إلغاء
+              </Button>
+              <Button
+                onClick={handleSubmitAbsence}
+                disabled={savingAbsence || !absenceTeacherId}
+                className="bg-red-600 hover:bg-red-700 text-white"
+              >
+                {savingAbsence ? (
+                  <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+                ) : (
+                  <UserX className="h-4 w-4 ml-2" />
+                )}
+                {savingAbsence ? 'جارٍ الحفظ…' : 'تسجيل الغياب'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </Sidebar>
   );
