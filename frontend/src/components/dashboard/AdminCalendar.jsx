@@ -87,12 +87,14 @@ export const AdminCalendar = () => {
       const data = Array.isArray(res?.data) ? res.data : (res?.data?.events || []);
       setEvents(data);
     } catch (err) {
-      // Endpoint may not exist yet — start with an empty list, populated by import/manual add.
+      // eslint-disable-next-line no-console
+      console.error('[AdminCalendar] fetch error:', err);
+      toast.error(isRTL ? 'تعذر تحميل الأحداث' : 'Failed to load events');
       setEvents([]);
     } finally {
       setLoading(false);
     }
-  }, [api]);
+  }, [api, isRTL]);
 
   useEffect(() => { fetchEvents(); }, [fetchEvents]);
 
@@ -124,17 +126,38 @@ export const AdminCalendar = () => {
 
   const saveEvent = async () => {
     setBusy(true);
-    await new Promise((r) => setTimeout(r, 200));
-    setEvents((prev) => {
-      if (editing) {
-        return prev.map((e) => (e.id === editing.id ? { ...e, ...form } : e));
+    try {
+      const payload = {
+        title_ar: form.title_ar?.trim() || form.title_en?.trim() || '',
+        title_en: form.title_en?.trim() || '',
+        type: form.type,
+        date: form.date,
+      };
+      if (editing?.id) {
+        const res = await api.put(`/v1/calendar/events/${editing.id}`, payload);
+        const updated = res?.data?.event;
+        if (updated) {
+          setEvents((prev) => prev.map((e) => (e.id === editing.id ? updated : e)));
+        }
+        toast.success(isRTL ? 'تم تحديث الحدث' : 'Event updated');
+      } else {
+        const res = await api.post('/v1/calendar/events', payload);
+        const created = res?.data?.event;
+        if (created) {
+          setEvents((prev) => [...prev, created]);
+        }
+        toast.success(isRTL ? 'تمت إضافة الحدث' : 'Event added');
       }
-      const id = `evt-${Date.now()}`;
-      return [...prev, { id, ...form }];
-    });
-    setBusy(false);
-    setShowForm(false);
-    setEditing(null);
+      setShowForm(false);
+      setEditing(null);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[AdminCalendar] save error:', err);
+      const detail = err?.response?.data?.error?.message || err?.response?.data?.detail;
+      toast.error(detail || (isRTL ? 'تعذر حفظ الحدث' : 'Failed to save event'));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const triggerImport = () => {
@@ -173,7 +196,12 @@ export const AdminCalendar = () => {
       });
       const data = Array.isArray(res?.data) ? res.data : (res?.data?.events || []);
       setEvents(data);
-      toast.success(isRTL ? 'تم استيراد الأحداث بنجاح' : 'Events imported successfully');
+      const inserted = res?.data?.inserted ?? data.length;
+      const skipped = res?.data?.skipped ?? 0;
+      const summary = isRTL
+        ? `تم استيراد ${inserted} حدث${skipped ? ` (تم تخطي ${skipped})` : ''}`
+        : `Imported ${inserted} event${inserted === 1 ? '' : 's'}${skipped ? ` (skipped ${skipped})` : ''}`;
+      toast.success(summary);
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('[AdminCalendar] import error:', err);
@@ -186,8 +214,18 @@ export const AdminCalendar = () => {
   };
 
   const deleteEvent = async (id) => {
+    const snapshot = events;
     setEvents((prev) => prev.filter((e) => e.id !== id));
-    await new Promise((r) => setTimeout(r, 150));
+    try {
+      await api.delete(`/v1/calendar/events/${id}`);
+      toast.success(isRTL ? 'تم حذف الحدث' : 'Event deleted');
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[AdminCalendar] delete error:', err);
+      setEvents(snapshot);
+      const detail = err?.response?.data?.error?.message || err?.response?.data?.detail;
+      toast.error(detail || (isRTL ? 'تعذر حذف الحدث' : 'Failed to delete event'));
+    }
   };
 
   return (
@@ -256,7 +294,7 @@ export const AdminCalendar = () => {
               type="file"
               ref={fileInputRef}
               className="hidden"
-              accept=".csv,.xlsx,.json"
+              accept=".csv,text/csv"
               onChange={handleFileSelect}
               data-testid="admin-calendar-file-input"
             />

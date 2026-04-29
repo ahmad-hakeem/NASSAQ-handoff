@@ -1177,6 +1177,26 @@ class Event(Base):
     )
 
 
+class CalendarEvent(Base):
+    __tablename__ = "calendar_events"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    tenant_id = Column(String, ForeignKey("schools.id", ondelete="CASCADE"), nullable=True, index=True)
+    title_ar = Column(String, nullable=False)
+    title_en = Column(String, nullable=True)
+    type = Column(String, nullable=False, default="meeting", index=True)
+    date = Column(String, nullable=False, index=True)
+    details_ar = Column(Text, nullable=True)
+    details_en = Column(Text, nullable=True)
+    created_by = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+    __table_args__ = (
+        Index("idx_calendar_events_tenant_date", "tenant_id", "date"),
+    )
+
+
 class SystemSetting(Base):
     __tablename__ = "system_settings"
 

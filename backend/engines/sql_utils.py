@@ -45,6 +45,7 @@ def _get_orm_model(collection: str):
         GradeLevel, EducationalStage, PhysicalClassroom,
         BehaviourType, TimetableConstraint, ApprovalRequest,
         Event, SystemSetting, RevokedToken, UserSession,
+        CalendarEvent,
     )
     _ORM_REGISTRY = {
         "users": User,
@@ -96,6 +97,7 @@ def _get_orm_model(collection: str):
         "timetable_constraints": TimetableConstraint,
         "approval_requests": ApprovalRequest,
         "events": Event,
+        "calendar_events": CalendarEvent,
         "system_settings": SystemSetting,
         "revoked_tokens": RevokedToken,
         "user_sessions": UserSession,

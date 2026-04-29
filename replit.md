@@ -283,9 +283,14 @@ Each fix report must include: root cause, why it wasn't caught before, what chan
   - **PostgreSQL**: Replit built-in via `DATABASE_URL`, GenericDocument JSONB storage, Alembic migrations
   - **Repository layer**: `backend/repositories/__init__.py` — Simplified Repos class providing `session` property only. All data access via `gd_*` helpers from `engines/sql_utils.py`
   - **Session management**: Repos uses `contextvars.ContextVar` for per-request session isolation
-  - **Core files**: `backend/db.py` (async engine), `backend/pg_models.py` (ORM models), `backend/alembic/` (migrations, head: h1i2j3k4l5m6)
+  - **Core files**: `backend/db.py` (async engine), `backend/pg_models.py` (ORM models), `backend/alembic/` (migrations, head: q1r2s3t4u5v6)
   - **asyncpg SSL fix**: `sslmode` param stripped from DATABASE_URL (asyncpg uses `ssl=True` instead)
   - **Data access layer**: `backend/engines/sql_utils.py` — `gd_find`, `gd_find_one`, `gd_insert`, `gd_insert_many`, `gd_update_one`, `gd_update_many`, `gd_count`, `gd_delete_one`, `gd_delete_many`, `gd_distinct`, `gd_upsert`, `_gd_aggregate`. Supports filter operators, `order_by`/`desc_order`/`limit`/`offset` params, update operators (`$set`/`$push`/`$pull`/`$inc`/`$unset`), and `tenant_id`↔`school_id` aliasing
+
+### Administrative Calendar (الروزنامة الإدارية)
+- **DB**: `calendar_events` table (Alembic `q1r2s3t4u5v6`) — `id`, `tenant_id` FK→`schools` (CASCADE), `title_ar/en`, `type` (trip/parents/report/exam/holiday/meeting/other), `date` (YYYY-MM-DD string), `details_ar/en`, `created_by`, timestamps; indexes on `tenant_id`, `type`, `date`, plus compound `(tenant_id, date)`. Registered in `engines/sql_utils.py::_get_orm_model`.
+- **API**: `backend/routes/calendar_routes_mod.py` — `GET /api/v1/calendar/events` (sorted asc), `POST /events`, `PUT /events/{id}`, `DELETE /events/{id}`, `POST /import` (CSV multipart, UTF-8/UTF-16 BOM-safe, 2 MB cap, header optional, AR/EN type aliases, malformed rows skipped not 500). Tenant-scoped via `current_user.tenant_id`; platform admins see global rows.
+- **Frontend**: `frontend/src/components/dashboard/AdminCalendar.jsx` on School Command Center — real fetch with toast on error, optimistic delete with rollback, import shows `inserted`/`skipped` summary, `isImporting` and `busy` loading flags, brand-navy/turquoise/purple palette, RTL via ThemeContext.
 
 ### Product Intelligence Hub (مركز ذكاء المنتج)
 - **Database Models**: `backend/models/product_hub_models.py` — Production-ready Pydantic schemas: 12 enums (IssueType, IssueStatus, IssuePriority, Reproducible, TeamEnum, ImpactType, RelatedTo, AccountType, Platform, CommentType, AuditAction, AuditRole), structured sub-models (IssueContext, IssueDescription, IssueTechnical, IssueBusiness, IssueAssignment, IssueAI, SubmissionMetadata, IssueVisibility, IssueSystem), `IssueCreate.to_issue_document()` builder, backward-compatible `ISSUE_TYPE_COMPAT` map (performance→performance_issue, etc.), attachment validation (max 10 files, allowed extensions), field length limits
