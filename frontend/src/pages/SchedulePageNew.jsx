@@ -28,7 +28,7 @@ import { Textarea } from '../components/ui/textarea';
 import {
   Wand2, UserX, Sparkles, Loader2, RefreshCw,
   Scale, Hourglass, UserMinus, AlertOctagon, AlertTriangle, Repeat,
-  ShieldAlert, Settings, ArrowLeft,
+  ShieldAlert, Settings, ArrowLeft, ListChecks,
   Undo2,
 } from 'lucide-react';
 import CandidatesSidePanel from '../components/schedule/CandidatesSidePanel';
@@ -481,6 +481,15 @@ export default function SchedulePageNew() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <Button
+              onClick={() => navigate('/school/standby')}
+              variant="outline"
+              className="border-amber-300 text-amber-800 hover:bg-amber-50"
+              title="فتح جدول الانتظار للتعديل اليدوي"
+            >
+              <ListChecks className="h-4 w-4 ml-2" />
+              جدول الانتظار
+            </Button>
             <Button
               onClick={handleAutoGenerate}
               disabled={generating}

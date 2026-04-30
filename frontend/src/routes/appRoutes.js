@@ -33,6 +33,7 @@ const StudentsPage = lazy(() => import("../pages/StudentsPage").then(m => ({ def
 const ClassesPage = lazy(() => import("../pages/ClassesPage").then(m => ({ default: m.ClassesPage })));
 const SubjectsPage = lazy(() => import("../pages/SubjectsPage").then(m => ({ default: m.SubjectsPage })));
 const SchedulePageNew = lazy(() => import("../pages/SchedulePageNew"));
+const StandbyRosterPage = lazy(() => import("../pages/StandbyRosterPage"));
 const TimeSlotsPage = lazy(() => import("../pages/TimeSlotsPage").then(m => ({ default: m.TimeSlotsPage })));
 const TeacherAssignmentsPage = lazy(() => import("../pages/TeacherAssignmentsPage").then(m => ({ default: m.TeacherAssignmentsPage })));
 const AttendancePage = lazy(() => import("../pages/AttendancePage").then(m => ({ default: m.AttendancePage })));
@@ -416,6 +417,12 @@ export default function AppRoutes() {
         } />
         <Route path="/school/schedule" element={
           <ProtectedRoute allowedRoles={SCHOOL_ROLES}><SchedulePageNew /></ProtectedRoute>
+        } />
+        <Route path="/school/standby" element={
+          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><StandbyRosterPage /></ProtectedRoute>
+        } />
+        <Route path="/admin/standby" element={
+          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><StandbyRosterPage /></ProtectedRoute>
         } />
         <Route path="/admin/time-slots" element={
           <ProtectedRoute allowedRoles={SCHOOL_ROLES}><TimeSlotsPage /></ProtectedRoute>

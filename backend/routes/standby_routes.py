@@ -5,6 +5,11 @@ Standby Routes — endpoints for the Smart Standby Roster + substitution flow.
   POST /api/substitutions      → create + notify
   DELETE /api/substitutions/{id} → revoke + remove notification (undo)
 
+  GET  /api/standby/roster                   → matrix payload for the manual
+                                               override UI (Task #102)
+  PUT  /api/standby/roster/cell              → add/remove/reset a single
+                                               manual override
+
 كل الـ endpoints تتطلب توثيقاً وعزل مستأجر صارم عبر `assert_school_access`.
 """
 from __future__ import annotations
@@ -18,9 +23,16 @@ from pydantic import BaseModel, Field
 
 from dependencies import db, get_current_user
 from engines.notification_engine import NotificationEngine
-from engines.sql_utils import gd_find_one
+from engines.sql_utils import gd_delete_many, gd_find, gd_find_one, gd_insert
 from utils.tenant_scope import assert_school_access, resolve_school_id
 
+from services.standby_roster_service import (
+    DAYS,
+    PERIODS,
+    apply_overrides_to_roster,
+    compute_standby_roster,
+    fetch_standby_overrides,
+)
 from services.substitution_service import (
     assign_substitute,
     revoke_substitute,
@@ -151,3 +163,290 @@ async def delete_substitution(
             status = 403
         raise HTTPException(status_code=status, detail=result.get("message_ar") or err or "فشل التراجع")
     return result
+
+
+# ── Standby Roster (manual override) endpoints — Task #102 ────────────────
+
+async def _resolve_active_timetable(school_id: str) -> Optional[dict]:
+    """يبحث عن أحدث جدول منشور، وإن لم يوجد فأحدث مسودة."""
+    pub = await gd_find(
+        db.session, "timetables",
+        {"school_id": school_id, "status": "published"},
+        order_by="created_at", desc_order=True, limit=1,
+    )
+    if pub:
+        return pub[0]
+    drafts = await gd_find(
+        db.session, "timetables",
+        {"school_id": school_id, "status": "draft"},
+        order_by="created_at", desc_order=True, limit=1,
+    )
+    return drafts[0] if drafts else None
+
+
+def _detect_periods(sessions: list[dict]) -> list[int]:
+    """يستنتج قائمة الحصص من الجدول الفعلي. الافتراضي 1..7 إن لم تكن هناك جلسات."""
+    seen: set[int] = set()
+    for s in sessions:
+        try:
+            p = int(s.get("period_number"))
+            if 1 <= p <= 12:
+                seen.add(p)
+        except (TypeError, ValueError):
+            continue
+    if not seen:
+        return list(range(1, 8))
+    upper = max(max(seen), 7)
+    return list(range(1, upper + 1))
+
+
+@router.get("/standby/roster")
+async def get_standby_roster(
+    school_id: Optional[str] = Query(None),
+    x_school_context: Optional[str] = Header(None),
+    current_user: dict = Depends(get_current_user),
+):
+    """يُرجع جدول الانتظار الكامل بصيغة matrix (teachers × days × periods).
+
+    لكل خانة:
+      - status: "standby" | "busy" | "blocked" | "free"
+      - auto: bool — هل اختارها المحرك التلقائي؟
+      - override: "add" | "remove" | None — هل عُدّلت يدوياً؟
+      - class_name / subject_name: عند status="busy"
+    """
+    sid = resolve_school_id(current_user, school_id or x_school_context)
+    if not sid:
+        raise HTTPException(status_code=400, detail="معرف المدرسة مطلوب")
+    assert_school_access(current_user, str(sid))
+
+    teachers = await gd_find(
+        db.session, "teachers",
+        {"school_id": str(sid), "is_active": True},
+        order_by="full_name", limit=2000,
+    )
+
+    timetable = await _resolve_active_timetable(str(sid))
+    timetable_id = timetable.get("id") if timetable else None
+    sessions: list[dict] = []
+    if timetable_id:
+        sessions = await gd_find(
+            db.session, "timetable_sessions",
+            {"timetable_id": timetable_id},
+            limit=10000,
+        )
+    periods = _detect_periods(sessions)
+
+    # Auto roster (without overrides) so we can label cells as auto vs override.
+    auto_roster = await compute_standby_roster(
+        db.session,
+        school_id=str(sid),
+        timetable_id=timetable_id,
+        teachers=teachers,
+        sessions=sessions,
+        apply_overrides=False,
+    )
+    overrides = await fetch_standby_overrides(
+        db.session, school_id=str(sid), timetable_id=timetable_id,
+    )
+
+    # Index: teacher_id -> set[(day, period)] busy slots from sessions.
+    # Index: teacher_id -> dict[(day, period)] -> {class_name, subject_name}
+    busy: dict[str, set] = {t.get("id"): set() for t in teachers if t.get("id")}
+    busy_meta: dict[str, dict] = {t.get("id"): {} for t in teachers if t.get("id")}
+    teacher_load: dict[str, int] = {tid: 0 for tid in busy}
+    for s in sessions:
+        tid = s.get("teacher_id")
+        if not tid or tid not in busy:
+            continue
+        try:
+            p = int(s.get("period_number"))
+        except (TypeError, ValueError):
+            continue
+        d = (s.get("day_of_week") or s.get("day") or "").lower()
+        if d not in DAYS or p not in periods:
+            continue
+        busy[tid].add((d, p))
+        busy_meta[tid][(d, p)] = {
+            "class_name": s.get("class_name") or "",
+            "subject_name": s.get("subject_name") or "",
+        }
+        teacher_load[tid] += 1
+
+    # Blocked-day map per teacher (uses the same helper used by the auto path).
+    from services.standby_roster_service import _resolve_blocked_days  # internal use OK
+    blocked_by_teacher: dict[str, set] = {
+        t.get("id"): _resolve_blocked_days(t) for t in teachers if t.get("id")
+    }
+
+    # Override index: (teacher_id, day, period) -> action
+    override_index: dict[tuple, str] = {}
+    for ov in overrides:
+        tid = ov.get("teacher_id")
+        d = (ov.get("day") or "").lower()
+        try:
+            p = int(ov.get("period"))
+        except (TypeError, ValueError):
+            continue
+        action = (ov.get("action") or "").lower()
+        if tid and d in DAYS and p in periods and action in ("add", "remove"):
+            override_index[(tid, d, p)] = action
+
+    # Final roster after overrides — used to mark "standby" cells.
+    final_roster = apply_overrides_to_roster(auto_roster, overrides, busy=busy)
+
+    teacher_rows: list[dict] = []
+    cells: dict[str, dict[str, dict[str, dict]]] = {}
+    standby_count: dict[str, int] = {}
+    for t in teachers:
+        tid = t.get("id")
+        if not tid:
+            continue
+        t_busy = busy.get(tid, set())
+        t_busy_meta = busy_meta.get(tid, {})
+        t_blocked = blocked_by_teacher.get(tid, set())
+        t_auto = auto_roster.get(tid, set())
+        t_final = final_roster.get(tid, set())
+
+        teacher_cells: dict[str, dict[str, dict]] = {}
+        for d in DAYS:
+            day_cells: dict[str, dict] = {}
+            for p in periods:
+                cell: dict = {"status": "free", "auto": False, "override": None}
+                if (d, p) in t_busy:
+                    cell["status"] = "busy"
+                    meta = t_busy_meta.get((d, p), {})
+                    cell["class_name"] = meta.get("class_name", "")
+                    cell["subject_name"] = meta.get("subject_name", "")
+                elif d in t_blocked:
+                    cell["status"] = "blocked"
+                else:
+                    if (d, p) in t_auto:
+                        cell["auto"] = True
+                    ov_action = override_index.get((tid, d, p))
+                    if ov_action:
+                        cell["override"] = ov_action
+                    if (d, p) in t_final:
+                        cell["status"] = "standby"
+                day_cells[str(p)] = cell
+            teacher_cells[d] = day_cells
+        cells[tid] = teacher_cells
+        standby_count[tid] = len(t_final)
+
+        teacher_rows.append({
+            "id": tid,
+            "full_name": t.get("full_name") or t.get("name") or "—",
+            "subject": t.get("specialization") or t.get("subject") or "",
+            "weekly_quota": t.get("weekly_periods") or 0,
+            "assigned_periods": teacher_load.get(tid, 0),
+            "standby_capacity": standby_count[tid],
+        })
+
+    return {
+        "timetable_id": timetable_id,
+        "days": DAYS,
+        "periods": periods,
+        "teachers": teacher_rows,
+        "cells": cells,
+        "totals": {
+            "teachers": len(teacher_rows),
+            "auto_slots": sum(len(s) for s in auto_roster.values()),
+            "final_slots": sum(len(s) for s in final_roster.values()),
+            "overrides": len(overrides),
+        },
+    }
+
+
+class StandbyOverrideRequest(BaseModel):
+    teacher_id: str = Field(..., min_length=1)
+    day: str = Field(..., min_length=3)
+    period: int = Field(..., ge=1, le=12)
+    action: str = Field(..., description="add | remove | reset")
+
+
+@router.put("/standby/roster/cell")
+async def put_standby_override(
+    body: StandbyOverrideRequest,
+    school_id: Optional[str] = Query(None),
+    x_school_context: Optional[str] = Header(None),
+    current_user: dict = Depends(get_current_user),
+):
+    """يضبط/يُلغي تعديلاً يدوياً لخانة انتظار واحدة.
+
+    `action`:
+      - "add"    — أُجبر إدراج المعلم في خانة الانتظار هذه.
+      - "remove" — استثنِ المعلم من خانة الانتظار هذه.
+      - "reset"  — احذف أي تعديل يدوي سابق على هذه الخانة (يعود التوزيع
+                   التلقائي إلى التحكم).
+    """
+    sid = resolve_school_id(current_user, school_id or x_school_context)
+    if not sid:
+        raise HTTPException(status_code=400, detail="معرف المدرسة مطلوب")
+    assert_school_access(current_user, str(sid))
+
+    day = (body.day or "").lower().strip()
+    if day not in DAYS:
+        raise HTTPException(status_code=400, detail="يوم غير صالح")
+    period = int(body.period)
+    action = (body.action or "").lower().strip()
+    if action not in ("add", "remove", "reset"):
+        raise HTTPException(status_code=400, detail="إجراء غير صالح")
+
+    teacher = await gd_find_one(db.session, "teachers", {"id": body.teacher_id})
+    if not teacher or teacher.get("school_id") != str(sid):
+        raise HTTPException(status_code=404, detail="المعلم غير موجود في هذه المدرسة")
+
+    timetable = await _resolve_active_timetable(str(sid))
+    timetable_id = timetable.get("id") if timetable else None
+
+    # validate the slot isn't a busy class when we're trying to add.
+    if action == "add" and timetable_id:
+        clash = await gd_find(
+            db.session, "timetable_sessions",
+            {
+                "timetable_id": timetable_id,
+                "teacher_id": body.teacher_id,
+                "day_of_week": day,
+                "period_number": period,
+            },
+            limit=1,
+        )
+        if clash:
+            raise HTTPException(
+                status_code=409,
+                detail="لا يمكن إضافة خانة انتظار فوق حصة مجدولة للمعلم نفسه",
+            )
+
+    # Always purge any existing override for this exact (teacher, day, period)
+    # tuple to keep the collection idempotent and prevent duplicates.
+    delete_filters = {
+        "school_id": str(sid),
+        "teacher_id": body.teacher_id,
+        "day": day,
+        "period": period,
+    }
+    deleted = await gd_delete_many(db.session, "standby_overrides", delete_filters)
+
+    inserted_id: Optional[str] = None
+    if action in ("add", "remove"):
+        now_iso = datetime.now(timezone.utc).isoformat()
+        doc = {
+            "school_id": str(sid),
+            "timetable_id": timetable_id,
+            "teacher_id": body.teacher_id,
+            "day": day,
+            "period": period,
+            "action": action,
+            "created_at": now_iso,
+            "created_by_user_id": current_user.get("id") if current_user else None,
+        }
+        inserted_id = await gd_insert(db.session, "standby_overrides", doc)
+
+    return {
+        "success": True,
+        "action": action,
+        "removed_previous": deleted,
+        "override_id": inserted_id,
+        "teacher_id": body.teacher_id,
+        "day": day,
+        "period": period,
+    }

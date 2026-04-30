@@ -67,11 +67,20 @@ async def compute_standby_roster(
     timetable_id: str | None = None,
     teachers: list[dict] | None = None,
     sessions: list[dict] | None = None,
+    apply_overrides: bool = True,
 ) -> Dict[str, Set[Tuple[str, int]]]:
     """يُرجع خريطة `{teacher_id: set[(day, period)]}` لخانات الانتظار المتاحة.
 
     إذا لم يُمرَّر `teachers` أو `sessions` فسنجلبهما من قاعدة البيانات.
     `timetable_id` اختياري — إن لم يُمرَّر نشتقه من الجدول النشط للمدرسة.
+
+    عند `apply_overrides=True` (الافتراضي) نقرأ collection `standby_overrides`
+    ونطبّق التعديلات اليدوية فوق التوزيع التلقائي:
+      - action="add"    → نُجبر إدراج (teacher, day, period) حتى لو لم يختره
+        المحرك التلقائي (مع استثناء الخانات المشغولة فعلاً بحصة).
+      - action="remove" → نُزيل (teacher, day, period) حتى لو اختاره المحرك.
+    التعديلات اليدوية تأخذ أولوية على التوزيع التلقائي ولا تُمحى عند إعادة
+    التوليد لأنها مخزَّنة في collection مستقل.
     """
     if teachers is None:
         teachers = await gd_find(
@@ -174,7 +183,73 @@ async def compute_standby_roster(
         if chosen:
             roster[tid] = chosen
 
+    if apply_overrides:
+        overrides = await fetch_standby_overrides(
+            session, school_id=school_id, timetable_id=timetable_id,
+        )
+        # نمرّر `busy` كي ترفض دالة الدمج إضافة خانة فوق حصة مجدولة فعلاً
+        # (حماية من override يصطدم بالجدول الأصلي).
+        roster = apply_overrides_to_roster(roster, overrides, busy=busy)
+
     return roster
+
+
+async def fetch_standby_overrides(
+    session,
+    *,
+    school_id: str,
+    timetable_id: str | None = None,
+) -> List[dict]:
+    """يجلب سجلات `standby_overrides` للمدرسة، مع تصفية اختيارية بحسب
+    `timetable_id` (نعتبر الأوفرايد بلا `timetable_id` ساري المفعول لكل
+    الجداول حتى يبقى نافعاً بعد إعادة التوليد)."""
+    rows = await gd_find(
+        session, "standby_overrides",
+        {"school_id": school_id},
+        limit=10000,
+    )
+    if timetable_id is None:
+        return rows
+    filtered: List[dict] = []
+    for r in rows:
+        ttid = r.get("timetable_id")
+        if not ttid or ttid == timetable_id:
+            filtered.append(r)
+    return filtered
+
+
+def apply_overrides_to_roster(
+    auto_roster: Dict[str, Set[Tuple[str, int]]],
+    overrides: List[dict],
+    busy: Dict[str, Set[Tuple[str, int]]] | None = None,
+) -> Dict[str, Set[Tuple[str, int]]]:
+    """يطبّق قائمة `overrides` فوق الـ auto roster ويُرجع النسخة النهائية.
+
+    الإضافة تُتجاهل بصمت إذا كانت الخانة مشغولة فعلاً بحصة في الجدول الأصلي
+    (المعلم لا يمكن أن يكون في انتظار وفي حصة في الوقت نفسه).
+    """
+    final: Dict[str, Set[Tuple[str, int]]] = {
+        tid: set(slots) for tid, slots in auto_roster.items()
+    }
+    busy = busy or {}
+    for ov in overrides or []:
+        tid = ov.get("teacher_id")
+        day = (ov.get("day") or "").lower()
+        period = _safe_int(ov.get("period"), 0)
+        action = (ov.get("action") or "").lower()
+        if not tid or day not in DAYS or period not in PERIODS:
+            continue
+        if action == "add":
+            if (day, period) in busy.get(tid, set()):
+                # لا يمكن إضافة خانة فوق حصة فعلية — نتجاهل بصمت.
+                continue
+            final.setdefault(tid, set()).add((day, period))
+        elif action == "remove":
+            slots = final.get(tid)
+            if slots is not None:
+                slots.discard((day, period))
+        # أي action آخر — نتجاهل (forward compatibility).
+    return final
 
 
 def _resolve_blocked_days(teacher: dict) -> Set[str]:
@@ -267,6 +342,8 @@ def _normalize_day_key(value) -> str | None:
 
 __all__ = [
     "compute_standby_roster",
+    "fetch_standby_overrides",
+    "apply_overrides_to_roster",
     "DAYS",
     "PERIODS",
     "DEFAULT_WEEKLY_QUOTA",
