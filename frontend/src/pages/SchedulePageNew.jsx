@@ -17,7 +17,6 @@ import { toast } from 'sonner';
 
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { Badge } from '../components/ui/badge';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '../components/ui/dialog';
@@ -30,6 +29,7 @@ import {
   Wand2, UserX, Sparkles, Loader2, RefreshCw,
   Scale, Hourglass, UserMinus, AlertOctagon, AlertTriangle, Repeat,
   ShieldAlert, Settings, ArrowLeft,
+  Undo2,
 } from 'lucide-react';
 import CandidatesSidePanel from '../components/schedule/CandidatesSidePanel';
 
@@ -188,6 +188,10 @@ export default function SchedulePageNew() {
   const [absenceNotes, setAbsenceNotes] = useState('');
   const [savingAbsence, setSavingAbsence] = useState(false);
 
+  // إلغاء الغياب
+  const [undoTeacher, setUndoTeacher] = useState(null);
+  const [undoingAbsence, setUndoingAbsence] = useState(false);
+
   const loadGrid = useCallback(async () => {
     if (!schoolId) return;
     try {
@@ -343,6 +347,59 @@ export default function SchedulePageNew() {
       setSavingAbsence(false);
     }
   }, [api, schoolId, absenceTeacherId, absenceNotes, loadGrid]);
+
+  const handleRequestUndoAbsence = useCallback((teacher) => {
+    if (!teacher?.id) return;
+    setUndoTeacher({ id: teacher.id, full_name: teacher.full_name || '' });
+  }, []);
+
+  const handleConfirmUndoAbsence = useCallback(async () => {
+    if (!undoTeacher?.id) return;
+    if (!schoolId) {
+      toast.error('تعذّر تحديد المدرسة الحالية');
+      return;
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    setUndoingAbsence(true);
+    try {
+      await api.post(
+        '/teacher-attendance/bulk',
+        {
+          records: [
+            {
+              teacher_id: undoTeacher.id,
+              date: today,
+              status: 'present',
+              check_in_time: null,
+              notes: '',
+            },
+          ],
+        },
+        { headers: { 'X-School-Context': schoolId } },
+      );
+      toast.success('تم إلغاء الغياب');
+      setUndoTeacher(null);
+      setRefreshing(true);
+      await loadGrid();
+    } catch (e) {
+      const detail = e?.response?.data?.detail;
+      const status = e?.response?.status;
+      let msg = 'فشل إلغاء الغياب، يرجى المحاولة مرة أخرى';
+      if (typeof detail === 'string' && /[\u0600-\u06FF]/.test(detail)) {
+        msg = detail;
+      } else if (e?.response?.data?.message_ar) {
+        msg = e.response.data.message_ar;
+      } else if (status === 401 || status === 403) {
+        msg = 'لا تملك صلاحية تعديل سجل الحضور';
+      } else if (e?.code === 'ERR_NETWORK' || !e?.response) {
+        msg = 'تعذّر الاتصال بالخادم، تحقق من الشبكة وحاول مجدداً';
+      }
+      toast.error(msg);
+    } finally {
+      setUndoingAbsence(false);
+    }
+  }, [api, schoolId, undoTeacher, loadGrid]);
 
   const handleVacantClick = useCallback((cellData) => {
     if (!cellData?.session?.session_id) {
@@ -540,6 +597,7 @@ export default function SchedulePageNew() {
                 periods={periods}
                 dayLabelMap={dayLabelMap}
                 onVacantClick={handleVacantClick}
+                onUndoAbsence={handleRequestUndoAbsence}
                 today={grid?.today}
               />
             )}
@@ -629,6 +687,56 @@ export default function SchedulePageNew() {
             navigate(path);
           }}
         />
+
+        {/* ── Undo absence confirmation dialog ─────────────────────── */}
+        <Dialog
+          open={!!undoTeacher}
+          onOpenChange={(open) => {
+            if (!open && !undoingAbsence) setUndoTeacher(null);
+          }}
+        >
+          <DialogContent dir="rtl" className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-[#1C3D74]">
+                <Undo2 className="h-5 w-5 text-emerald-600" />
+                إلغاء الغياب
+              </DialogTitle>
+              <DialogDescription>
+                سيُعاد تسجيل المعلم كحاضر اليوم وتُحدَّث الخلايا والمؤشرات فوراً.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="py-2 text-sm text-slate-700">
+              هل تريد فعلاً إلغاء غياب{' '}
+              <span className="font-semibold text-slate-900">
+                {undoTeacher?.full_name || '—'}
+              </span>{' '}
+              لهذا اليوم؟
+            </div>
+
+            <DialogFooter className="gap-2 sm:gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setUndoTeacher(null)}
+                disabled={undoingAbsence}
+              >
+                تراجع
+              </Button>
+              <Button
+                onClick={handleConfirmUndoAbsence}
+                disabled={undoingAbsence}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                {undoingAbsence ? (
+                  <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+                ) : (
+                  <Undo2 className="h-4 w-4 ml-2" />
+                )}
+                {undoingAbsence ? 'جارٍ الإلغاء…' : 'تأكيد إلغاء الغياب'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </Sidebar>
   );
@@ -757,7 +865,7 @@ function BlockedGenerationDialog({ open, onOpenChange, report, onNavigate }) {
 // ─── Master Matrix Grid Component ─────────────────────────────────────────
 // ملاحظة: نستخدم CSS Grid مع `position: sticky` على عمود المعلم وصف الرأس
 // للحصول على تثبيت بالاتجاهين في RTL مع تمرير سلس.
-function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantClick, today }) {
+function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantClick, onUndoAbsence, today }) {
   // ترتيب الأعمدة: لكل يوم تُضاف أعمدة الحصص (1..7) متتالية.
   const totalDataCols = days.length * periods.length;
   // عرض كل عمود حصة + عرض عمود المعلم الجانبي.
@@ -834,9 +942,9 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
                     <p className="font-semibold text-slate-900 text-sm truncate flex items-center gap-1">
                       {teacher.full_name}
                       {teacher.is_absent_today && (
-                        <Badge variant="outline" className="text-[10px] border-red-400 text-red-700 bg-red-100">
+                        <span className="text-[10px] font-semibold rounded border border-red-400 text-red-700 bg-red-100 px-1.5 py-0.5">
                           غائب
-                        </Badge>
+                        </span>
                       )}
                     </p>
                     <p className="text-[11px] text-slate-500 truncate">
@@ -850,6 +958,20 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
                     {teacher.weekly_quota || '—'}
                   </div>
                 </div>
+                {teacher.is_absent_today && (
+                  <div className="mt-1.5 flex">
+                    <button
+                      type="button"
+                      onClick={() => onUndoAbsence?.(teacher)}
+                      title="إعادة المعلم إلى حالة الحضور لهذا اليوم"
+                      aria-label={`إلغاء غياب ${teacher.full_name}`}
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold rounded-md border border-emerald-400 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 hover:border-emerald-500 hover:text-emerald-800 transition-colors px-2 py-0.5 cursor-pointer"
+                    >
+                      <Undo2 className="h-3 w-3" aria-hidden="true" />
+                      <span>إلغاء الغياب</span>
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Cells: per day, per period */}
