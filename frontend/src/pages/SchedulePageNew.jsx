@@ -10,6 +10,7 @@
  */
 
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Sidebar } from '../components/layout/Sidebar';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'sonner';
@@ -28,8 +29,21 @@ import { Textarea } from '../components/ui/textarea';
 import {
   Wand2, UserX, Sparkles, Loader2, RefreshCw,
   Scale, Hourglass, UserMinus, AlertOctagon, AlertTriangle, Repeat,
+  ShieldAlert, Settings, ArrowLeft,
 } from 'lucide-react';
 import CandidatesSidePanel from '../components/schedule/CandidatesSidePanel';
+
+// ─── Infeasibility issue → contextual next step ────────────────────────────
+// كل كود INF يحدد الصفحة الأنسب التي تحل المشكلة. عند غياب الكود نوجِّه إلى
+// إعدادات المدرسة العامة كملاذ افتراضي.
+const ISSUE_NEXT_STEP = {
+  'INF-01': { label: 'فتح إعدادات الهيكل الأكاديمي', path: '/school/settings?section=academic' },
+  'INF-02': { label: 'فتح إعدادات الهيكل الأكاديمي', path: '/school/settings?section=academic' },
+  'INF-03': { label: 'فتح صفحة المعلمين والإسنادات',  path: '/school/teachers' },
+  'INF-04': { label: 'فتح إعدادات القاعات',           path: '/school/settings?section=dynamic' },
+  'INF-05': { label: 'فتح إعدادات اليوم الدراسي',     path: '/school/settings?section=dynamic' },
+};
+const DEFAULT_NEXT_STEP = { label: 'فتح إعدادات المدرسة', path: '/school/settings' };
 
 const DAYS = [
   { key: 'sunday',    ar: 'الأحد' },
@@ -149,6 +163,7 @@ function EmptyCell({ teacherAbsent }) {
 // ─── Main page ─────────────────────────────────────────────────────────────
 export default function SchedulePageNew() {
   const { user, api } = useAuth();
+  const navigate = useNavigate();
   const schoolId = user?.tenant_id;
 
   const [loading, setLoading] = useState(true);
@@ -162,6 +177,10 @@ export default function SchedulePageNew() {
 
   // إنشاء الجدول تلقائياً
   const [generating, setGenerating] = useState(false);
+
+  // حوار "تعذّر التوليد" مع تفاصيل الـ infeasibility report
+  const [blockedOpen, setBlockedOpen] = useState(false);
+  const [blockedReport, setBlockedReport] = useState(null);
 
   // تسجيل الغياب
   const [absenceOpen, setAbsenceOpen] = useState(false);
@@ -235,10 +254,21 @@ export default function SchedulePageNew() {
     } catch (e) {
       const detail = e?.response?.data?.detail;
       const status = e?.response?.status;
+
+      // الحالة الخاصة: المحرك يرفض التشغيل بسبب بيانات ناقصة → نعرض حواراً
+      // مفصَّلاً بالأسباب بدلاً من رسالة عامة، حتى يستطيع المدير معالجتها فوراً.
+      if (status === 422 && detail?.code === 'GENERATION_BLOCKED' && detail?.report) {
+        toast.dismiss(toastId);
+        setBlockedReport(detail.report);
+        setBlockedOpen(true);
+        return;
+      }
+
       let msg = 'فشل توليد الجدول، يرجى المحاولة مرة أخرى';
       if (typeof detail === 'string' && /[\u0600-\u06FF]/.test(detail)) {
         msg = detail;
       } else if (detail?.code === 'GENERATION_BLOCKED') {
+        // Fallback: server returned the code but no report payload.
         msg = 'تعذّر التوليد: البيانات غير جاهزة بعد لتشغيل المحرك';
       } else if (e?.response?.data?.message_ar) {
         msg = e.response.data.message_ar;
@@ -588,8 +618,139 @@ export default function SchedulePageNew() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* ── Generation-blocked dialog (HTTP 422 / GENERATION_BLOCKED) ──── */}
+        <BlockedGenerationDialog
+          open={blockedOpen}
+          onOpenChange={setBlockedOpen}
+          report={blockedReport}
+          onNavigate={(path) => {
+            setBlockedOpen(false);
+            navigate(path);
+          }}
+        />
       </div>
     </Sidebar>
+  );
+}
+
+// ─── Generation-blocked dialog ─────────────────────────────────────────────
+// عند رفض المحرك للتوليد (HTTP 422 / GENERATION_BLOCKED) نعرض هنا قائمة
+// المشاكل بالعربية مع زر يفتح الصفحة الأنسب لمعالجة كل مشكلة.
+function BlockedGenerationDialog({ open, onOpenChange, report, onNavigate }) {
+  const issues = Array.isArray(report?.issues) ? report.issues : [];
+  const blockers  = issues.filter((i) => i.severity === 'blocker');
+  const advisories = issues.filter((i) => i.severity === 'advisory');
+
+  // اختر الإجراء الأساسي بناءً على أول blocker (أكثر إلحاحاً) أو الافتراضي.
+  const primaryStep = (blockers[0] && ISSUE_NEXT_STEP[blockers[0].code]) || DEFAULT_NEXT_STEP;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent dir="rtl" className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-red-700">
+            <ShieldAlert className="h-5 w-5" />
+            تعذّر تشغيل التوليد التلقائي
+          </DialogTitle>
+          <DialogDescription>
+            رفض المحرك بدء التوليد لأن البيانات الأساسية غير مكتملة. عالج
+            النقاط التالية ثم أعد المحاولة:
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3 py-2 max-h-[55vh] overflow-y-auto pr-1">
+          {issues.length === 0 ? (
+            <p className="text-sm text-slate-500 text-center py-6">
+              لا توجد تفاصيل إضافية متاحة من المحرك.
+            </p>
+          ) : (
+            <>
+              {blockers.length > 0 && (
+                <ul className="space-y-2">
+                  {blockers.map((iss, idx) => {
+                    const step = ISSUE_NEXT_STEP[iss.code] || DEFAULT_NEXT_STEP;
+                    return (
+                      <li
+                        key={`b-${iss.code}-${idx}`}
+                        className="rounded-lg border border-red-200 bg-red-50 p-3"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <Badge className="bg-red-600 hover:bg-red-600 text-white text-[10px]">
+                                مانع
+                              </Badge>
+                              <span className="text-[11px] font-mono text-slate-500">
+                                {iss.code}
+                              </span>
+                            </div>
+                            <p className="text-sm text-red-900 leading-relaxed">
+                              {iss.message_ar || iss.message_en}
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="border-red-300 text-red-700 hover:bg-red-100 shrink-0"
+                            onClick={() => onNavigate(step.path)}
+                          >
+                            <Settings className="h-3.5 w-3.5 ml-1" />
+                            <span className="text-xs">{step.label}</span>
+                          </Button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+
+              {advisories.length > 0 && (
+                <div className="pt-2">
+                  <p className="text-xs font-semibold text-slate-600 mb-2">
+                    ملاحظات إضافية (لا تمنع التوليد):
+                  </p>
+                  <ul className="space-y-2">
+                    {advisories.map((iss, idx) => (
+                      <li
+                        key={`a-${iss.code}-${idx}`}
+                        className="rounded-lg border border-amber-200 bg-amber-50 p-3"
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <Badge variant="outline" className="border-amber-400 text-amber-800 bg-amber-100 text-[10px]">
+                            إرشاد
+                          </Badge>
+                          <span className="text-[11px] font-mono text-slate-500">
+                            {iss.code}
+                          </span>
+                        </div>
+                        <p className="text-sm text-amber-900 leading-relaxed">
+                          {iss.message_ar || iss.message_en}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        <DialogFooter className="gap-2 sm:gap-2">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            إغلاق
+          </Button>
+          <Button
+            onClick={() => onNavigate(primaryStep.path)}
+            className="bg-[#1C3D74] hover:bg-[#162f5a] text-white"
+          >
+            <ArrowLeft className="h-4 w-4 ml-2" />
+            {primaryStep.label}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
