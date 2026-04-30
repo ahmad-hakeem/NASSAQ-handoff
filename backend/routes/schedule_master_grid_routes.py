@@ -115,16 +115,21 @@ async def _absent_teacher_ids_today(
     school_id: str,
     valid_teacher_ids: set[str],
     user_id_to_teacher_id: dict[str, str] | None = None,
-) -> set[str]:
+) -> dict[str, dict]:
     """يجمع معرفات المعلمين الغائبين اليوم من teacher_attendance أو attendance.
 
     يطبِّع الحقول: قد يأتي معرف المعلم في `teacher_id` أو `user_id`، وقد يكون
     التاريخ نصاً أو كائن datetime/date. يقتصر على المعرفات المعروفة كمعلمين
     (مع ترجمة `user_id` إلى `teacher_id` عبر `user_id_to_teacher_id`)
     لتجنّب الخلط مع المستخدمين غير المعلمين.
+
+    يعيد قاموساً مفهرساً بـ teacher_id وقيمته بيانات سجل الغياب الأساسية
+    (recorded_by / recorded_by_name / recorded_at) كي تتمكّن واجهة الجداول
+    من عرض "سجَّله: …" عند تحويم المؤشر فوق شارة "غائب". يبقى الاستخدام
+    `tid in absent_ids` صالحاً لأن `dict.__contains__` يفحص المفاتيح.
     """
     today_iso = datetime.now(timezone.utc).date().isoformat()
-    absent_ids: set[str] = set()
+    absent_meta: dict[str, dict] = {}
     u2t = user_id_to_teacher_id or {}
 
     def _collect(rows):
@@ -137,7 +142,13 @@ async def _absent_teacher_ids_today(
             # إذا كانت القيمة معرف مستخدم اربطها بمعرف المعلم
             tid = raw if raw in valid_teacher_ids else u2t.get(raw)
             if tid and tid in valid_teacher_ids:
-                absent_ids.add(tid)
+                # نُسجّل بيانات أحدث صف غياب لهذا المعلم اليوم.
+                meta = {
+                    "recorded_by": r.get("recorded_by"),
+                    "recorded_by_name": r.get("recorded_by_name") or "",
+                    "recorded_at": r.get("recorded_at") or r.get("updated_at") or r.get("created_at"),
+                }
+                absent_meta[tid] = meta
 
     rows1 = await gd_find(
         db.session,
@@ -147,7 +158,7 @@ async def _absent_teacher_ids_today(
     )
     _collect(rows1)
 
-    if not absent_ids:
+    if not absent_meta:
         rows2 = await gd_find(
             db.session,
             "attendance",
@@ -156,7 +167,7 @@ async def _absent_teacher_ids_today(
         )
         _collect(rows2)
 
-    return absent_ids
+    return absent_meta
 
 
 @router.get("/schedule/master-grid")
@@ -230,6 +241,34 @@ async def get_master_grid(
         sid, valid_teacher_ids, user_id_to_teacher_id
     )
     today_key = _today_day_key()
+
+    # Resolve any missing recorder names so the غائب pill tooltip can show
+    # "سجَّله: …" without a second round-trip from the client.
+    missing_recorder_ids = {
+        meta.get("recorded_by")
+        for meta in absent_ids.values()
+        if meta.get("recorded_by") and not meta.get("recorded_by_name")
+    }
+    if missing_recorder_ids:
+        try:
+            recorder_users = await gd_find(
+                db.session,
+                "users",
+                {"id": {"$in": list(missing_recorder_ids)}},
+                limit=len(missing_recorder_ids),
+            )
+            recorder_name_map = {
+                u.get("id"): (u.get("full_name") or u.get("name") or u.get("email") or "")
+                for u in recorder_users
+                if u.get("id")
+            }
+            for meta in absent_ids.values():
+                rid = meta.get("recorded_by")
+                if rid and not meta.get("recorded_by_name"):
+                    meta["recorded_by_name"] = recorder_name_map.get(rid, "")
+        except Exception:
+            # Tooltip enrichment is best-effort; never fail the grid for it.
+            pass
 
     cells: dict[str, dict[str, dict[str, object]]] = {}
     assigned_count: dict[str, int] = {}
@@ -321,6 +360,7 @@ async def get_master_grid(
         quota = t.get("weekly_periods") or 0
         assigned = assigned_count.get(tid, 0)
         is_absent = tid in absent_ids
+        absence_meta = absent_ids.get(tid) if is_absent else None
         teacher_rows.append({
             "id": tid,
             "full_name": t.get("full_name") or "",
@@ -329,6 +369,10 @@ async def get_master_grid(
             "weekly_quota": quota,
             "assigned_periods": assigned,
             "is_absent_today": is_absent,
+            # Audit trail surfaced in the grid tooltip when a teacher is absent.
+            "absence_recorded_by": (absence_meta or {}).get("recorded_by"),
+            "absence_recorded_by_name": (absence_meta or {}).get("recorded_by_name") or "",
+            "absence_recorded_at": (absence_meta or {}).get("recorded_at"),
         })
         if quota and quota > 0:
             fairness_values.append(min(1.0, assigned / quota))

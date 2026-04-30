@@ -26,6 +26,9 @@ import {
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import {
+  Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
+} from '../components/ui/tooltip';
+import {
   Wand2, UserX, Sparkles, Loader2, RefreshCw,
   Scale, Hourglass, UserMinus, AlertOctagon, AlertTriangle, Repeat,
   ShieldAlert, Settings, ArrowLeft, ListChecks,
@@ -61,6 +64,66 @@ const RANK_AR = {
   practitioner: 'ممارس',
   assistant: 'مساعد',
 };
+
+// Tiny Arabic relative-time formatter (mirrors TeacherAttendancePage).
+// Used by the absence tooltip so principals can see when a row was flipped.
+function formatAbsenceTimeAr(iso) {
+  if (!iso) return '';
+  const then = new Date(iso);
+  if (Number.isNaN(then.getTime())) return '';
+  const diffSec = Math.round((Date.now() - then.getTime()) / 1000);
+  if (diffSec < 5) return 'الآن';
+  if (diffSec < 60) return `قبل ${diffSec} ثانية`;
+  const mins = Math.round(diffSec / 60);
+  if (mins < 60) return `قبل ${mins} دقيقة`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `قبل ${hours} ساعة`;
+  const days = Math.round(hours / 24);
+  if (days < 7) return `قبل ${days} يوم`;
+  return then.toLocaleDateString('ar-EG');
+}
+
+// ─── Absence pill with recorder tooltip ───────────────────────────────────
+// The pill itself is unchanged visually; hovering reveals "سجَّله: <name>"
+// and the relative time. Falls back gracefully when the audit fields are
+// absent (older absence rows that predate the recorder feature).
+function AbsencePill({ recorderName, recordedAt }) {
+  const pill = (
+    <span
+      tabIndex={0}
+      className="text-[10px] font-semibold rounded border border-red-400 text-red-700 bg-red-100 px-1.5 py-0.5 cursor-help focus:outline-none focus:ring-1 focus:ring-red-400"
+    >
+      غائب
+    </span>
+  );
+
+  const hasAudit = Boolean(recorderName) || Boolean(recordedAt);
+  if (!hasAudit) return pill;
+
+  const relTime = formatAbsenceTimeAr(recordedAt);
+  return (
+    <TooltipProvider delayDuration={150}>
+      <Tooltip>
+        <TooltipTrigger asChild>{pill}</TooltipTrigger>
+        <TooltipContent
+          side="top"
+          align="start"
+          className="bg-slate-900 text-white text-[11px] leading-tight max-w-[220px]"
+        >
+          <div dir="rtl" className="space-y-0.5">
+            <div>
+              <span className="font-semibold">سجَّله:</span>{' '}
+              {recorderName || '—'}
+            </div>
+            {relTime && (
+              <div className="opacity-80">{relTime}</div>
+            )}
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
 
 // ─── Top-level KPI card ────────────────────────────────────────────────────
 function KpiCard({ icon: Icon, label, value, suffix, accent }) {
@@ -1020,9 +1083,10 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
                     <p className="font-semibold text-slate-900 text-sm truncate flex items-center gap-1">
                       {teacher.full_name}
                       {teacher.is_absent_today && (
-                        <span className="text-[10px] font-semibold rounded border border-red-400 text-red-700 bg-red-100 px-1.5 py-0.5">
-                          غائب
-                        </span>
+                        <AbsencePill
+                          recorderName={teacher.absence_recorded_by_name}
+                          recordedAt={teacher.absence_recorded_at}
+                        />
                       )}
                     </p>
                     <p className="text-[11px] text-slate-500 truncate">

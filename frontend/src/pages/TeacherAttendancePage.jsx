@@ -48,8 +48,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../components/ui/dialog';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '../components/ui/popover';
 import { Textarea } from '../components/ui/textarea';
 import { Label } from '../components/ui/label';
+import { History, UserCircle2, Undo2 } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -91,6 +97,36 @@ const statusConfig = {
   },
 };
 
+// ─── Audit-trail helpers ──────────────────────────────────────────────────
+// Tiny Arabic relative-time formatter used by the recorder line and the
+// history popover. We avoid pulling a locale package for one short string.
+function formatArabicRelativeTime(iso) {
+  if (!iso) return '';
+  const then = new Date(iso);
+  if (Number.isNaN(then.getTime())) return '';
+  const diffSec = Math.round((Date.now() - then.getTime()) / 1000);
+  if (diffSec < 5) return 'الآن';
+  if (diffSec < 60) return `قبل ${diffSec} ثانية`;
+  const mins = Math.round(diffSec / 60);
+  if (mins < 60) return `قبل ${mins} دقيقة`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `قبل ${hours} ساعة`;
+  const days = Math.round(hours / 24);
+  if (days < 7) return `قبل ${days} يوم`;
+  return then.toLocaleDateString('ar-EG');
+}
+
+// Map (action, status) → an Arabic verb phrase for the audit row.
+function describeHistoryEntry(entry) {
+  if (!entry) return '';
+  if (entry.action === 'undone') return 'ألغى الغياب';
+  if (entry.status === 'absent') return 'سجَّل غياباً';
+  if (entry.status === 'present') return 'سجَّل حضوراً';
+  if (entry.status === 'late') return 'سجَّل تأخراً';
+  if (entry.status === 'excused') return 'سجَّل بعذر';
+  return 'حدَّث الحالة';
+}
+
 export const TeacherAttendancePage = () => {
   const { t } = useTranslation();
   const { user, api } = useAuth();
@@ -110,6 +146,9 @@ export const TeacherAttendancePage = () => {
   const [attendanceRecords, setAttendanceRecords] = useState({});
   const [notesDialog, setNotesDialog] = useState({ open: false, teacherId: null });
   const [noteText, setNoteText] = useState('');
+  // Per-teacher history (last 3 changes), lazily fetched when the popover opens.
+  const [historyByTeacher, setHistoryByTeacher] = useState({});
+  const [historyLoading, setHistoryLoading] = useState({});
   
   // Reports
   const [activeTab, setActiveTab] = useState('record');
@@ -135,13 +174,19 @@ export const TeacherAttendancePage = () => {
           records[record.teacher_id] = {
             status: record.status,
             notes: record.notes || '',
-            check_in_time: record.check_in_time
+            check_in_time: record.check_in_time,
+            recorded_by: record.recorded_by || null,
+            recorded_by_name: record.recorded_by_name || '',
+            recorded_at: record.recorded_at || record.updated_at || null,
           };
         });
         setAttendanceRecords(records);
+        // Reset cached histories so the popover refetches after a date change.
+        setHistoryByTeacher({});
       } catch (error) {
         // If no attendance records exist, initialize empty
         setAttendanceRecords({});
+        setHistoryByTeacher({});
       }
     } catch (error) {
       console.error('Failed to fetch teachers:', error);
@@ -161,6 +206,24 @@ export const TeacherAttendancePage = () => {
         check_in_time: status === 'present' ? now : null
       }
     }));
+  };
+
+  const loadTeacherHistory = async (teacherId) => {
+    if (!teacherId) return;
+    setHistoryLoading((prev) => ({ ...prev, [teacherId]: true }));
+    try {
+      const res = await api.get('/teacher-attendance/history', {
+        params: { teacher_id: teacherId, date: selectedDate },
+      });
+      setHistoryByTeacher((prev) => ({
+        ...prev,
+        [teacherId]: Array.isArray(res.data?.history) ? res.data.history : [],
+      }));
+    } catch (error) {
+      setHistoryByTeacher((prev) => ({ ...prev, [teacherId]: [] }));
+    } finally {
+      setHistoryLoading((prev) => ({ ...prev, [teacherId]: false }));
+    }
   };
 
   const handleNotesSave = () => {
@@ -555,6 +618,90 @@ export const TeacherAttendancePage = () => {
                                 })}
                               </div>
                               
+                              {/* Recorder line — surfaces who last touched this row */}
+                              {currentStatus && attendanceRecords[teacher.id]?.recorded_by_name && (
+                                <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                                  <div className="flex items-center gap-1 min-w-0">
+                                    <UserCircle2 className="h-3.5 w-3.5 shrink-0" />
+                                    <span className="truncate">
+                                      <span className="font-semibold">سجَّله:</span>{' '}
+                                      {attendanceRecords[teacher.id].recorded_by_name}
+                                      {attendanceRecords[teacher.id].recorded_at && (
+                                        <span className="opacity-70">
+                                          {' '}
+                                          • {formatArabicRelativeTime(attendanceRecords[teacher.id].recorded_at)}
+                                        </span>
+                                      )}
+                                    </span>
+                                  </div>
+                                  <Popover
+                                    onOpenChange={(open) => {
+                                      if (open && historyByTeacher[teacher.id] === undefined) {
+                                        loadTeacherHistory(teacher.id);
+                                      }
+                                    }}
+                                  >
+                                    <PopoverTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-6 px-2 text-[11px]"
+                                        data-testid={`history-btn-${teacher.id}`}
+                                      >
+                                        <History className="h-3 w-3 me-1" />
+                                        السجل
+                                      </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent
+                                      align="end"
+                                      className="w-72 p-3"
+                                      dir="rtl"
+                                    >
+                                      <div className="text-xs font-semibold mb-2 text-foreground">
+                                        آخر التغييرات (حتى ٣)
+                                      </div>
+                                      {historyLoading[teacher.id] ? (
+                                        <div className="text-xs text-muted-foreground py-2">
+                                          جارٍ التحميل…
+                                        </div>
+                                      ) : (historyByTeacher[teacher.id] || []).length === 0 ? (
+                                        <div className="text-xs text-muted-foreground py-2">
+                                          لا توجد تغييرات مسجَّلة لهذا اليوم.
+                                        </div>
+                                      ) : (
+                                        <ul className="space-y-2">
+                                          {(historyByTeacher[teacher.id] || []).map((entry, idx) => (
+                                            <li
+                                              key={`${teacher.id}-h-${idx}`}
+                                              className="flex items-start gap-2 text-xs border-b border-border last:border-b-0 pb-1.5 last:pb-0"
+                                            >
+                                              {entry.action === 'undone' ? (
+                                                <Undo2 className="h-3.5 w-3.5 mt-0.5 text-emerald-600 shrink-0" />
+                                              ) : (
+                                                <UserCircle2 className="h-3.5 w-3.5 mt-0.5 text-brand-navy shrink-0" />
+                                              )}
+                                              <div className="min-w-0 flex-1">
+                                                <p className="text-foreground">
+                                                  <span className="font-semibold">
+                                                    {entry.actor_name || '—'}
+                                                  </span>{' '}
+                                                  <span className="text-muted-foreground">
+                                                    {describeHistoryEntry(entry)}
+                                                  </span>
+                                                </p>
+                                                <p className="text-[10px] text-muted-foreground">
+                                                  {formatArabicRelativeTime(entry.at)}
+                                                </p>
+                                              </div>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      )}
+                                    </PopoverContent>
+                                  </Popover>
+                                </div>
+                              )}
+
                               {/* Notes Button */}
                               <Button
                                 variant="ghost"
